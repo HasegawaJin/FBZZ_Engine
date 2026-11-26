@@ -49,8 +49,9 @@ void SeedUnregisteredDisplayNames(const std::vector<TypeMapping>& mappings)
     const std::vector<std::string> registered = scene::ScriptFactory::RegisteredTypeNames();
     for (const TypeMapping& mapping : mappings) {
         const std::string typeKey = "cs:" + mapping.guid;
-        if (!std::binary_search(registered.begin(), registered.end(), typeKey))
+        if (!std::binary_search(registered.begin(), registered.end(), typeKey)) {
             scene::ScriptFactory::SetDisplayName(typeKey, mapping.clrName);
+        }
     }
 }
 
@@ -64,7 +65,9 @@ bool IsHex(const std::string& value, std::size_t length)
 std::string LowerHex(std::string value)
 {
     for (char& character : value)
-        if (character >= 'A' && character <= 'F') character = static_cast<char>(character + ('a' - 'A'));
+        if (character >= 'A' && character <= 'F') {
+            character = static_cast<char>(character + ('a' - 'A'));
+        }
     return value;
 }
 
@@ -72,7 +75,9 @@ bool IsScriptMetadataPath(const std::filesystem::path& path)
 {
     std::string name = util::FileSystem::PathToUtf8(path.filename());
     for (char& character : name)
-        if (character >= 'A' && character <= 'Z') character = static_cast<char>(character + ('a' - 'A'));
+        if (character >= 'A' && character <= 'Z') {
+            character = static_cast<char>(character + ('a' - 'A'));
+        }
     return name.ends_with(".cs.meta");
 }
 
@@ -81,25 +86,37 @@ bool IsScriptMetadataPath(const std::filesystem::path& path)
 bool SourceSha256(const std::filesystem::path& path, std::string& result)
 {
     std::vector<std::uint8_t> bytes;
-    if (!util::FileSystem::ReadBinary(path, bytes)) return false;
+    if (!util::FileSystem::ReadBinary(path, bytes)) {
+        return false;
+    }
     struct HashHandles {
         BCRYPT_ALG_HANDLE algorithm = nullptr;
         BCRYPT_HASH_HANDLE hash = nullptr;
         ~HashHandles()
         {
-            if (hash) BCryptDestroyHash(hash);
-            if (algorithm) BCryptCloseAlgorithmProvider(algorithm, 0);
+            if (hash) {
+                BCryptDestroyHash(hash);
+            }
+            if (algorithm) {
+                BCryptCloseAlgorithmProvider(algorithm, 0);
+            }
         }
     } handles;
     if (BCryptOpenAlgorithmProvider(&handles.algorithm, BCRYPT_SHA256_ALGORITHM, nullptr, 0) < 0 ||
-        BCryptCreateHash(handles.algorithm, &handles.hash, nullptr, 0, nullptr, 0, 0) < 0) return false;
+        BCryptCreateHash(handles.algorithm, &handles.hash, nullptr, 0, nullptr, 0, 0) < 0) {
+        return false;
+    }
     for (std::size_t offset = 0; offset < bytes.size();) {
         const ULONG size = static_cast<ULONG>(std::min<std::size_t>(bytes.size() - offset, 1024 * 1024));
-        if (BCryptHashData(handles.hash, bytes.data() + offset, size, 0) < 0) return false;
+        if (BCryptHashData(handles.hash, bytes.data() + offset, size, 0) < 0) {
+            return false;
+        }
         offset += size;
     }
     std::array<std::uint8_t, 32> digest{};
-    if (BCryptFinishHash(handles.hash, digest.data(), static_cast<ULONG>(digest.size()), 0) < 0) return false;
+    if (BCryptFinishHash(handles.hash, digest.data(), static_cast<ULONG>(digest.size()), 0) < 0) {
+        return false;
+    }
     constexpr char HEX[] = "0123456789abcdef";
     result.clear();
     for (const std::uint8_t value : digest) {
@@ -114,12 +131,20 @@ bool IsSourcePath(const std::string& relative)
     const std::filesystem::path path = util::FileSystem::PathFromUtf8(relative);
     std::string extension = util::FileSystem::PathToUtf8(path.extension());
     for (char& character : extension)
-        if (character >= 'A' && character <= 'Z') character = static_cast<char>(character + ('a' - 'A'));
+        if (character >= 'A' && character <= 'Z') {
+            character = static_cast<char>(character + ('a' - 'A'));
+        }
     if (!relative.starts_with("Assets/") || extension != ".cs" ||
-        relative.find('\\') != std::string::npos || relative.find(':') != std::string::npos) return false;
-    if (path.is_absolute()) return false;
+        relative.find('\\') != std::string::npos || relative.find(':') != std::string::npos) {
+        return false;
+    }
+    if (path.is_absolute()) {
+        return false;
+    }
     for (const std::filesystem::path& part : path)
-        if (part == "." || part == ".." || part.empty()) return false;
+        if (part == "." || part == ".." || part.empty()) {
+            return false;
+        }
     return true;
 }
 
@@ -130,7 +155,9 @@ bool IsUnlinkedSource(const std::filesystem::path& root, const std::filesystem::
     std::filesystem::path current = root;
     for (const std::filesystem::path& part : relative) {
         current /= part;
-        if (std::filesystem::is_symlink(current, error) || error) return false;
+        if (std::filesystem::is_symlink(current, error) || error) {
+            return false;
+        }
     }
     return std::filesystem::is_regular_file(path, error) && !error;
 }
@@ -184,9 +211,13 @@ bool ReadMetadata(const std::filesystem::path& path, const std::filesystem::path
 
 toml::array& TypeRows(MetadataFile& file)
 {
-    if (!file.root["managed"].is_table()) file.root.insert("managed", toml::table{});
+    if (!file.root["managed"].is_table()) {
+        file.root.insert("managed", toml::table{});
+    }
     toml::table& managed = *file.root["managed"].as_table();
-    if (!managed["types"].is_array()) managed.insert("types", toml::array{});
+    if (!managed["types"].is_array()) {
+        managed.insert("types", toml::array{});
+    }
     return *managed["types"].as_array();
 }
 
@@ -198,7 +229,9 @@ bool CollectMappings(std::vector<MetadataFile>& files, std::vector<TypeMapping>&
     for (std::size_t fileIndex = 0; fileIndex < files.size(); ++fileIndex) {
         const MetadataFile& file = files[fileIndex];
         const toml::array* rows = file.root["managed"]["types"].as_array();
-        if (!rows) continue;
+        if (!rows) {
+            continue;
+        }
         for (std::size_t rowIndex = 0; rowIndex < rows->size(); ++rowIndex) {
             const toml::table* row = (*rows)[rowIndex].as_table();
             const std::string guid = row ? LowerHex((*row)["guid"].value_or(std::string{})) : "";
@@ -252,7 +285,9 @@ bool CommitFiles(std::vector<MetadataFile>& files, std::string& diagnostic)
     std::vector<std::size_t> committed;
     for (std::size_t index = 0; index < files.size(); ++index) {
         MetadataFile& file = files[index];
-        if (!file.changed) continue;
+        if (!file.changed) {
+            continue;
+        }
         std::ostringstream stream;
         stream << file.root;
         if (asset::MetaFile::Save(util::FileSystem::PathToUtf8(file.path), stream.str())) {
@@ -262,10 +297,10 @@ bool CommitFiles(std::vector<MetadataFile>& files, std::string& diagnostic)
         bool restored = true;
         for (const std::size_t previous : committed) {
             MetadataFile& written = files[previous];
-            /// @note ロールバックは失敗前の原本バイト列を正確に復元する。
-            if (written.existed)
+            // ロールバックは失敗前の原本バイト列を正確に復元する。
+            if (written.existed) {
                 restored = util::FileSystem::WriteTextAtomic(util::FileSystem::PathToUtf8(written.path), written.original) && restored;
-            else {
+            } else {
                 std::error_code error;
                 restored = std::filesystem::remove(written.path, error) && !error && restored;
             }
@@ -276,7 +311,7 @@ bool CommitFiles(std::vector<MetadataFile>& files, std::string& diagnostic)
     return true;
 }
 
-} /// @note namespace
+} // namespace
 
 bool LoadManagedScriptDisplayNames(const std::filesystem::path& projectRoot, std::string& diagnostic)
 {
@@ -284,20 +319,39 @@ bool LoadManagedScriptDisplayNames(const std::filesystem::path& projectRoot, std
     std::vector<MetadataFile> files;
     std::error_code error;
     std::filesystem::recursive_directory_iterator iterator(projectRoot / "Assets", error);
-    if (error) { diagnostic = "Cannot inspect project Script metadata"; return false; }
+    if (error) {
+        diagnostic = "Cannot inspect project Script metadata";
+        return false;
+    }
     for (; iterator != std::filesystem::recursive_directory_iterator(); iterator.increment(error)) {
-        if (error) break;
-        if (iterator->is_symlink(error)) { iterator.disable_recursion_pending(); continue; }
-        if (error) break;
+        if (error) {
+            break;
+        }
+        if (iterator->is_symlink(error)) {
+            iterator.disable_recursion_pending();
+            continue;
+        }
+        if (error) {
+            break;
+        }
         const std::filesystem::path path = iterator->path();
-        if (!iterator->is_regular_file(error) || !IsScriptMetadataPath(path)) continue;
+        if (!iterator->is_regular_file(error) || !IsScriptMetadataPath(path)) {
+            continue;
+        }
         MetadataFile file;
-        if (!ReadMetadata(path, projectRoot, file, diagnostic)) return false;
+        if (!ReadMetadata(path, projectRoot, file, diagnostic)) {
+            return false;
+        }
         files.push_back(std::move(file));
     }
-    if (error) { diagnostic = "Cannot inspect project Script metadata"; return false; }
+    if (error) {
+        diagnostic = "Cannot inspect project Script metadata";
+        return false;
+    }
     std::vector<TypeMapping> mappings;
-    if (!CollectMappings(files, mappings, diagnostic)) return false;
+    if (!CollectMappings(files, mappings, diagnostic)) {
+        return false;
+    }
     SeedUnregisteredDisplayNames(mappings);
     return true;
 }
@@ -315,21 +369,40 @@ bool PrepareManagedScriptManifest(const std::filesystem::path& projectRoot,
     std::map<std::string, std::size_t> fileBySource;
     std::error_code error;
     std::filesystem::recursive_directory_iterator iterator(projectRoot / "Assets", error);
-    if (error) { diagnostic = "Cannot inspect project Script metadata"; return false; }
+    if (error) {
+        diagnostic = "Cannot inspect project Script metadata";
+        return false;
+    }
     for (; iterator != std::filesystem::recursive_directory_iterator(); iterator.increment(error)) {
-        if (error) break;
-        if (iterator->is_symlink(error)) { iterator.disable_recursion_pending(); continue; }
-        if (error) break;
+        if (error) {
+            break;
+        }
+        if (iterator->is_symlink(error)) {
+            iterator.disable_recursion_pending();
+            continue;
+        }
+        if (error) {
+            break;
+        }
         const std::filesystem::path path = iterator->path();
-        if (!iterator->is_regular_file(error) || !IsScriptMetadataPath(path)) continue;
+        if (!iterator->is_regular_file(error) || !IsScriptMetadataPath(path)) {
+            continue;
+        }
         MetadataFile file;
-        if (!ReadMetadata(path, projectRoot, file, diagnostic)) return false;
+        if (!ReadMetadata(path, projectRoot, file, diagnostic)) {
+            return false;
+        }
         fileBySource.emplace(file.relativeSource, files.size());
         files.push_back(std::move(file));
     }
-    if (error) { diagnostic = "Cannot inspect project Script metadata"; return false; }
+    if (error) {
+        diagnostic = "Cannot inspect project Script metadata";
+        return false;
+    }
     std::vector<TypeMapping> mappings;
-    if (!CollectMappings(files, mappings, diagnostic)) return false;
+    if (!CollectMappings(files, mappings, diagnostic)) {
+        return false;
+    }
     JsonValue manifest = JsonValue::MakeObject();
     manifest.Set("schemaVersion", JsonValue(1));
     manifest.Set("assemblyName", JsonValue(util::FileSystem::PathToUtf8(assembly.stem())));
@@ -350,13 +423,31 @@ bool PrepareManagedScriptManifest(const std::filesystem::path& projectRoot,
             const JsonValue* path = source.Find("path");
             const JsonValue* line = source.Find("line");
             const JsonValue* hash = source.Find("contentHash");
-            if (!path || !path->IsString() || !IsSourcePath(path->AsString()) || !line || !line->IsNumber() ||
-                line->AsNumber() < 1 || line->AsNumber() > 2147483647.0 || std::floor(line->AsNumber()) != line->AsNumber() ||
-                !hash || !hash->IsString() || !IsHex(hash->AsString(), 64) ||
-                !declarations.emplace(path->AsString(), line->AsInt()).second) {
+            const auto invalidDeclaration = [&] {
                 diagnostic = "Invalid compiled Script declaration for " + name->AsString();
                 return false;
+            };
+
+            // 相対ソースパスと整数の行番号を検査し、重複確認に使える位置を確定する。
+            if (!path || !path->IsString() || !IsSourcePath(path->AsString())) {
+                return invalidDeclaration();
             }
+            if (!line || !line->IsNumber()) {
+                return invalidDeclaration();
+            }
+            const double lineNumber = line->AsNumber();
+            if (lineNumber < 1 || lineNumber > 2147483647.0 || std::floor(lineNumber) != lineNumber) {
+                return invalidDeclaration();
+            }
+
+            // ディスク上の計算結果と比較できる SHA-256 を持つ宣言だけを登録する。
+            if (!hash || !hash->IsString() || !IsHex(hash->AsString(), 64)) {
+                return invalidDeclaration();
+            }
+            if (!declarations.emplace(path->AsString(), line->AsInt()).second) {
+                return invalidDeclaration();
+            }
+
             const std::filesystem::path absolute = projectRoot / util::FileSystem::PathFromUtf8(path->AsString());
             if (!IsUnlinkedSource(projectRoot, absolute)) {
                 diagnostic = "Script declaration is absent or linked outside the project: " + path->AsString();
@@ -365,7 +456,10 @@ bool PrepareManagedScriptManifest(const std::filesystem::path& projectRoot,
             auto actual = sourceHashes.find(path->AsString());
             if (actual == sourceHashes.end()) {
                 std::string actualHash;
-                if (!SourceSha256(absolute, actualHash)) { diagnostic = "Cannot hash Script source " + path->AsString(); return false; }
+                if (!SourceSha256(absolute, actualHash)) {
+                    diagnostic = "Cannot hash Script source " + path->AsString();
+                    return false;
+                }
                 actual = sourceHashes.emplace(path->AsString(), std::move(actualHash)).first;
             }
             if (actual->second != hash->AsString()) {
@@ -375,14 +469,18 @@ bool PrepareManagedScriptManifest(const std::filesystem::path& projectRoot,
             sourcePaths.insert(path->AsString());
             if (!fileBySource.contains(path->AsString())) {
                 MetadataFile file;
-                if (!ReadMetadata(std::filesystem::path(absolute.wstring() + L".meta"), projectRoot, file, diagnostic)) return false;
+                if (!ReadMetadata(std::filesystem::path(absolute.wstring() + L".meta"), projectRoot, file, diagnostic)) {
+                    return false;
+                }
                 fileBySource.emplace(file.relativeSource, files.size());
                 files.push_back(std::move(file));
             }
         }
         const TypeMapping* chosen = nullptr;
         for (const TypeMapping& mapping : mappings) {
-            if (mapping.clrName != name->AsString()) continue;
+            if (mapping.clrName != name->AsString()) {
+                continue;
+            }
             if (!sourcePaths.contains(files[mapping.file].relativeSource)) {
                 diagnostic = "Move the existing type mapping to a current declaration .cs.meta: " + name->AsString();
                 return false;
@@ -415,8 +513,12 @@ bool PrepareManagedScriptManifest(const std::filesystem::path& projectRoot,
     }
     manifest.Set("types", std::move(types));
     std::vector<TypeMapping> verifiedMappings;
-    if (!CollectMappings(files, verifiedMappings, diagnostic)) return false;
-    if (!CommitFiles(files, diagnostic)) return false;
+    if (!CollectMappings(files, verifiedMappings, diagnostic)) {
+        return false;
+    }
+    if (!CommitFiles(files, diagnostic)) {
+        return false;
+    }
     const std::filesystem::path sidecar = std::filesystem::path(assembly.wstring() + L".scripts.json");
     if (!util::FileSystem::WriteTextAtomic(util::FileSystem::PathToUtf8(sidecar), ai::SerializeJson(manifest))) {
         diagnostic = "Cannot write candidate Script GUID manifest";
@@ -426,4 +528,4 @@ bool PrepareManagedScriptManifest(const std::filesystem::path& projectRoot,
     return true;
 }
 
-} /// @note namespace fbzz::editor
+} // namespace fbzz::editor

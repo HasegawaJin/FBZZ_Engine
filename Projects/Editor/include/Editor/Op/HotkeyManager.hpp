@@ -125,4 +125,4 @@ private:
     std::vector<std::string>         m_suppressedOperators;
 };
 
-} /// @note namespace fbzz::editor
+} // namespace fbzz::editor

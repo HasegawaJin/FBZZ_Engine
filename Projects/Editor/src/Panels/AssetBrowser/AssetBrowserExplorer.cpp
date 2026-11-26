@@ -27,7 +27,11 @@ namespace {
 class ExplorerComScope {
 public:
     ExplorerComScope() : m_result(CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED | COINIT_DISABLE_OLE1DDE)) {}
-    ~ExplorerComScope() { if (SUCCEEDED(m_result)) CoUninitialize(); }
+    ~ExplorerComScope() {
+        if (SUCCEEDED(m_result)) {
+            CoUninitialize();
+        }
+    }
     ExplorerComScope(const ExplorerComScope&) = delete;
     ExplorerComScope& operator=(const ExplorerComScope&) = delete;
     HRESULT Result() const { return m_result; }
@@ -57,49 +61,65 @@ bool ReportExplorerFailure(std::string_view path, const char* reason, unsigned l
 AssetBrowserExplorerTarget ResolveAssetBrowserExplorerTarget(
     std::string_view projectRoot, std::string_view assetPath)
 {
-    if (assetPath.empty() || assetPath.find('\0') != std::string_view::npos) return {};
+    if (assetPath.empty() || assetPath.find('\0') != std::string_view::npos) {
+        return {};
+    }
     std::string diskPath(assetPath);
     const bool isGuid = asset::AssetDatabase::IsGuidRef(assetPath);
     if (isGuid) {
         diskPath = asset::AssetDatabase::PathFromGuid(asset::AssetDatabase::GuidFromRef(assetPath));
-        if (diskPath.empty()) return {};
+        if (diskPath.empty()) {
+            return {};
+        }
     } else {
         for (const std::string_view suffix : { "::mesh::", "::sprite::" }) {
-            if (const std::size_t offset = diskPath.find(suffix); offset != std::string::npos)
+            if (const std::size_t offset = diskPath.find(suffix); offset != std::string::npos) {
                 diskPath.resize(offset);
+            }
         }
     }
 
     std::filesystem::path path = util::FileSystem::PathFromUtf8(diskPath);
-    if (path.empty() || (path.has_root_path() && !path.is_absolute())) return {};
+    if (path.empty() || (path.has_root_path() && !path.is_absolute())) {
+        return {};
+    }
     if (!path.is_absolute()) {
-        if (projectRoot.empty()) return {};
+        if (projectRoot.empty()) {
+            return {};
+        }
         path = util::FileSystem::PathFromUtf8(std::string(projectRoot)) / path;
     }
     std::error_code error;
     path = std::filesystem::absolute(path, error).lexically_normal();
-    if (error) return {};
+    if (error) {
+        return {};
+    }
     if (!isGuid && !util::FileSystem::Exists(path)) {
-        /// @note 旧論理パスの生成物は既存の import 解決規則で Library/Baked の実体を探す。
+        // 旧論理パスの生成物は既存の import 解決規則で Library/Baked の実体を探す。
         diskPath = asset::AssetManager::ResolveAssetPath(util::FileSystem::PathToUtf8(path));
-        if (diskPath.empty()) return {};
+        if (diskPath.empty()) {
+            return {};
+        }
         path = util::FileSystem::PathFromUtf8(diskPath);
     }
     const auto status = std::filesystem::status(path, error);
-    if (error || (!std::filesystem::is_regular_file(status) && !std::filesystem::is_directory(status)))
+    if (error || (!std::filesystem::is_regular_file(status) && !std::filesystem::is_directory(status))) {
         return {};
+    }
     return { util::FileSystem::PathToUtf8(path), std::filesystem::is_directory(status) };
 }
 
 bool RevealAssetBrowserInExplorer(std::string_view projectRoot, std::string_view assetPath)
 {
     const AssetBrowserExplorerTarget target = ResolveAssetBrowserExplorerTarget(projectRoot, assetPath);
-    if (target.path.empty())
+    if (target.path.empty()) {
         return ReportExplorerFailure(assetPath, "Target is missing or cannot be resolved");
+    }
 
     const ExplorerComScope com;
-    if (FAILED(com.Result()) && com.Result() != RPC_E_CHANGED_MODE)
+    if (FAILED(com.Result()) && com.Result() != RPC_E_CHANGED_MODE) {
         return ReportExplorerFailure(target.path, "COM initialization failed", static_cast<unsigned long>(com.Result()));
+    }
 
     const std::wstring path = util::FileSystem::PathFromUtf8(target.path).make_preferred().wstring();
     if (target.isDirectory) {
@@ -110,8 +130,9 @@ bool RevealAssetBrowserInExplorer(std::string_view projectRoot, std::string_view
         info.lpVerb = L"explore";
         info.lpFile = path.c_str();
         info.nShow = SW_SHOWNORMAL;
-        if (!ShellExecuteExW(&info))
+        if (!ShellExecuteExW(&info)) {
             return ReportExplorerFailure(target.path, "Could not open folder", GetLastError());
+        }
         return true;
     }
 
@@ -119,13 +140,15 @@ bool RevealAssetBrowserInExplorer(std::string_view projectRoot, std::string_view
     PIDLIST_ABSOLUTE rawItem = nullptr;
     HRESULT result = SHParseDisplayName(path.c_str(), nullptr, &rawItem, 0, nullptr);
     const std::unique_ptr<ITEMIDLIST_ABSOLUTE, ExplorerPidlDeleter> item(rawItem);
-    if (FAILED(result))
+    if (FAILED(result)) {
         return ReportExplorerFailure(target.path, "Could not resolve file in Windows Shell", static_cast<unsigned long>(result));
+    }
     /// @see https://learn.microsoft.com/en-us/windows/win32/api/shlobj_core/nf-shlobj_core-shopenfolderandselectitems cidl=0 は指定項目の親フォルダーを開いてその項目を選択する。
     result = SHOpenFolderAndSelectItems(item.get(), 0, nullptr, 0);
-    if (FAILED(result))
+    if (FAILED(result)) {
         return ReportExplorerFailure(target.path, "Could not select file in Explorer", static_cast<unsigned long>(result));
+    }
     return true;
 }
 
-} /// @note namespace fbzz::editor
+} // namespace fbzz::editor

@@ -22,11 +22,14 @@ bool DrawClothPinBrush(EditorContext& ctx, ClothPinBrush& brush, const ImVec2& m
     const ImVec2 savedCursor = ImGui::GetCursorScreenPos();
     ImGui::SetCursorScreenPos({min.x + 8, min.y + size.y - 64});
     ImGui::BeginGroup();
-    if (ImGui::SmallButton(ctx.clothPinPainting ? "Finish Cloth Pins" : "Paint Cloth Pins"))
+    if (ImGui::SmallButton(ctx.clothPinPainting ? "Finish Cloth Pins" : "Paint Cloth Pins")) {
         InvokeOperator(ctx, "cloth.paint_mode");
+    }
     ImGui::SameLine();
     if (ImGui::SmallButton("Edit Cloth Anchors")) {
-        if (!ctx.clothPinPainting) InvokeOperator(ctx, "cloth.paint_mode");
+        if (!ctx.clothPinPainting) {
+            InvokeOperator(ctx, "cloth.paint_mode");
+        }
         brush.anchorMode = true;
         brush.distanceMode = false;
         brush.dragging = false;
@@ -37,21 +40,27 @@ bool DrawClothPinBrush(EditorContext& ctx, ClothPinBrush& brush, const ImVec2& m
         static constexpr const char* modes[]{"固定点を塗る", "揺れる範囲を塗る", "固定先を配置"};
         ImGui::SetNextItemWidth(180);
         if (ImGui::Combo("操作", &mode, modes, 3)) {
-            brush.distanceMode = mode == 1; brush.anchorMode = mode == 2; brush.dragging = false;
+            brush.distanceMode = mode == 1;
+            brush.anchorMode = mode == 2;
+            brush.dragging = false;
         }
         if (!brush.anchorMode) {
             ImGui::SameLine();
             ImGui::SetNextItemWidth(140);
             ImGui::SliderFloat("Radius (px)", &brush.radius, 4.0f, 100.0f, "%.0f");
         }
-        if (brush.anchorMode) ImGui::TextUnformatted("点をクリック: 固定先を作成 / 接続済みの固定先を選択 → Gizmoで移動");
-        else if (brush.distanceMode) {
+        if (brush.anchorMode) {
+            ImGui::TextUnformatted("点をクリック: 固定先を作成 / 接続済みの固定先を選択 → Gizmoで移動");
+        } else if (brush.distanceMode) {
             ImGui::SameLine();
             ImGui::SetNextItemWidth(120);
-            if (ImGui::DragFloat("Distance (m)", &brush.distance, 0.01f, 0.0f, 100.0f, "%.3f", ImGuiSliderFlags_AlwaysClamp))
+            if (ImGui::DragFloat("Distance (m)", &brush.distance, 0.01f, 0.0f, 100.0f, "%.3f", ImGuiSliderFlags_AlwaysClamp)) {
                 brush.dragging = false;
+            }
             ImGui::TextUnformatted("Through selection | Drag: set distance | Shift+drag: inherit | Blue: 0, gold: brush value");
-        } else ImGui::TextUnformatted("Through selection | Drag: pin | Shift+drag: release | Gold: pinned");
+        } else {
+            ImGui::TextUnformatted("Through selection | Drag: pin | Shift+drag: release | Gold: pinned");
+        }
     }
     ImGui::EndGroup();
     const bool controlsHovered = ImGui::IsItemHovered();
@@ -70,24 +79,43 @@ bool DrawClothPinBrush(EditorContext& ctx, ClothPinBrush& brush, const ImVec2& m
     }
     if (brush.anchorMode && !cloth->clothAssetPath.empty()) {
         const auto* source = asset::AssetManager::Get(asset::AssetManager::Load<asset::ClothAsset>(cloth->clothAssetPath));
-        if (!source || source->revision != state.assetRevision) return controlsHovered;
+        if (!source || source->revision != state.assetRevision) {
+            return controlsHovered;
+        }
     }
     const auto& io = ImGui::GetIO();
     std::vector<int> distanceParticles;
     std::vector<float> distanceValues;
-    for (const auto& entry : cloth->maxDistances) { distanceParticles.push_back(entry.particle); distanceValues.push_back(entry.distance); }
-    if (brush.dragging && (brush.lastFrame != frame - 1 || brush.scene != ctx.activeScene
-        || brush.target != go->instanceId || brush.assetPath != cloth->clothAssetPath
-        || brush.revision != state.assetRevision || brush.shape != state.shape
-        || brush.beforeOverride != cloth->overridePins || brush.beforePins != cloth->pinnedParticles
-        || brush.strokeDistanceMode != brush.distanceMode || brush.strokeDistance != brush.distance
-        || brush.beforeDefaultDistance != cloth->skinMaxDistance
-        || brush.beforeUseSkinning != cloth->useSkinning
-        || brush.beforeDistanceParticles != distanceParticles || brush.beforeDistances != distanceValues
-        || brush.touched.size() != state.restLocal.size() || io.KeyAlt || io.KeyCtrl
-        || ImGui::IsMouseDown(ImGuiMouseButton_Right) || ImGui::IsMouseDown(ImGuiMouseButton_Middle)
-        || ImGui::IsKeyPressed(ImGuiKey_Escape)))
+    for (const auto& entry : cloth->maxDistances) {
+        distanceParticles.push_back(entry.particle);
+        distanceValues.push_back(entry.distance);
+    }
+    // 同じ布と粒子配列を編集中で、開始時の設定を引き続き使える場合だけストロークを継続する。
+    const auto shouldCancelStroke = [&] {
+        const bool targetChanged = brush.lastFrame != frame - 1 || brush.scene != ctx.activeScene
+            || brush.target != go->instanceId || brush.assetPath != cloth->clothAssetPath
+            || brush.revision != state.assetRevision || brush.shape != state.shape;
+        if (targetChanged) {
+            return true;
+        }
+        const bool pinStateChanged = brush.beforeOverride != cloth->overridePins
+            || brush.beforePins != cloth->pinnedParticles;
+        if (pinStateChanged) {
+            return true;
+        }
+        const bool distanceStateChanged = brush.strokeDistanceMode != brush.distanceMode
+            || brush.strokeDistance != brush.distance || brush.beforeDefaultDistance != cloth->skinMaxDistance
+            || brush.beforeUseSkinning != cloth->useSkinning
+            || brush.beforeDistanceParticles != distanceParticles || brush.beforeDistances != distanceValues;
+        if (distanceStateChanged || brush.touched.size() != state.restLocal.size()) {
+            return true;
+        }
+        return io.KeyAlt || io.KeyCtrl || ImGui::IsMouseDown(ImGuiMouseButton_Right)
+            || ImGui::IsMouseDown(ImGuiMouseButton_Middle) || ImGui::IsKeyPressed(ImGuiKey_Escape);
+    };
+    if (brush.dragging && shouldCancelStroke()) {
         brush.dragging = false;
+    }
     brush.lastFrame = frame;
     const bool canPaint = hovered && !controlsHovered && !ImGui::IsAnyItemActive()
         && !io.KeyAlt && !io.KeyCtrl && !ImGui::IsMouseDown(ImGuiMouseButton_Right) && !ImGui::IsMouseDown(ImGuiMouseButton_Middle)
@@ -122,7 +150,9 @@ bool DrawClothPinBrush(EditorContext& ctx, ClothPinBrush& brush, const ImVec2& m
     auto* draw = ImGui::GetWindowDrawList();
     std::vector<float> distances(state.restLocal.size(), cloth->useSkinning ? cloth->skinMaxDistance : -1.0f);
     for (const auto& entry : cloth->maxDistances)
-        if (entry.particle >= 0 && static_cast<size_t>(entry.particle) < distances.size()) distances[entry.particle] = entry.distance;
+        if (entry.particle >= 0 && static_cast<size_t>(entry.particle) < distances.size()) {
+            distances[entry.particle] = entry.distance;
+        }
     draw->PushClipRect(min, {min.x + size.x, min.y + size.y}, true);
     const auto vp = ctx.editorCamera->GetProjectionMatrix() * ctx.editorCamera->GetViewMatrix();
     int nearestParticle = -1;
@@ -134,23 +164,32 @@ bool DrawClothPinBrush(EditorContext& ctx, ClothPinBrush& brush, const ImVec2& m
         const auto world = t.worldPosition + t.worldRotation * math::Vector3{local.x*t.worldScale.x, local.y*t.worldScale.y, local.z*t.worldScale.z};
         const auto clip = vp * math::Vector4{world.x, world.y, world.z, 1.0f};
         if (!std::isfinite(clip.x) || !std::isfinite(clip.y) || !std::isfinite(clip.z)
-            || !std::isfinite(clip.w) || clip.w <= 0.0f || clip.z < 0.0f || clip.z > clip.w) continue;
+            || !std::isfinite(clip.w) || clip.w <= 0.0f || clip.z < 0.0f || clip.z > clip.w) {
+            continue;
+        }
         const ImVec2 p{min.x + (clip.x/clip.w + 1)*size.x*0.5f, min.y + (1-clip.y/clip.w)*size.y*0.5f};
-        if (p.x < min.x || p.y < min.y || p.x > min.x + size.x || p.y > min.y + size.y) continue;
+        if (p.x < min.x || p.y < min.y || p.x > min.x + size.x || p.y > min.y + size.y) {
+            continue;
+        }
         if (brush.anchorMode && canPaint) {
             const float dx = mouse.x - p.x, dy = mouse.y - p.y;
             const float distance = dx * dx + dy * dy, depth = clip.z / clip.w;
             if (distance < nearestDistance || (distance == nearestDistance && depth < nearestDepth)) {
-                nearestParticle = static_cast<int>(i); nearestDistance = distance; nearestDepth = depth; nearestPosition = p;
+                nearestParticle = static_cast<int>(i);
+                nearestDistance = distance;
+                nearestDepth = depth;
+                nearestPosition = p;
             }
         }
         if (brush.dragging && canPaint) {
-            /// @note マウスの前回位置からの線分を太らせ、速いドラッグでもフレーム間の塗り残しを防ぐ。
+            // マウスの前回位置からの線分を太らせ、速いドラッグでもフレーム間の塗り残しを防ぐ。
             const float dx = mouse.x - brush.lastX, dy = mouse.y - brush.lastY;
             const float lengthSq = dx*dx + dy*dy;
             const float u = lengthSq > 0 ? std::clamp(((p.x-brush.lastX)*dx + (p.y-brush.lastY)*dy)/lengthSq, 0.0f, 1.0f) : 0;
             const float x = p.x - (brush.lastX + u*dx), y = p.y - (brush.lastY + u*dy);
-            if (x*x + y*y <= brush.radius*brush.radius) brush.touched[i] = true;
+            if (x*x + y*y <= brush.radius*brush.radius) {
+                brush.touched[i] = true;
+            }
         }
         const bool touched = brush.dragging && brush.touched[i];
         const bool fixed = touched ? !brush.remove : pinned[i];
@@ -162,21 +201,31 @@ bool DrawClothPinBrush(EditorContext& ctx, ClothPinBrush& brush, const ImVec2& m
                 : ImGui::ColorConvertFloat4ToU32({0.15f+0.85f*ratio,0.65f,1.0f-0.8f*ratio,1.0f});
         }
         draw->AddCircleFilled(p, touched ? 4.0f : 3.0f, color);
-        if (brush.distanceMode && pinned[i]) draw->AddCircle(p,5.0f,IM_COL32(255,255,255,230));
+        if (brush.distanceMode && pinned[i]) {
+            draw->AddCircle(p,5.0f,IM_COL32(255,255,255,230));
+        }
     }
-    if (brush.anchorMode && nearestParticle >= 0) draw->AddCircle(nearestPosition, 8.0f, IM_COL32(255,255,255,255), 24, 2.0f);
-    if (canPaint && !brush.anchorMode) draw->AddCircle(mouse, brush.radius, IM_COL32(240,240,240,220), 40, 1.5f);
+    if (brush.anchorMode && nearestParticle >= 0) {
+        draw->AddCircle(nearestPosition, 8.0f, IM_COL32(255,255,255,255), 24, 2.0f);
+    }
+    if (canPaint && !brush.anchorMode) {
+        draw->AddCircle(mouse, brush.radius, IM_COL32(240,240,240,220), 40, 1.5f);
+    }
     draw->PopClipRect();
     if (brush.anchorMode && canPaint && nearestParticle >= 0 && ImGui::IsMouseClicked(ImGuiMouseButton_Left)) {
         const std::string ownerGuid = go->instanceId;
         std::string targetGuid;
         bool connected = false;
         for (const auto& attachment : cloth->attachments) {
-            if (attachment.particle != nearestParticle) continue;
+            if (attachment.particle != nearestParticle) {
+                continue;
+            }
             connected = true;
             const auto* target = attachment.targetReference.guid.empty()
                 ? ctx.activeScene->GetGameObject(attachment.target) : ctx.activeScene->FindByGuid(attachment.targetReference.guid);
-            if (target) targetGuid = target->instanceId;
+            if (target) {
+                targetGuid = target->instanceId;
+            }
             break;
         }
         if (connected && targetGuid.empty()) {
@@ -185,20 +234,32 @@ bool DrawClothPinBrush(EditorContext& ctx, ClothPinBrush& brush, const ImVec2& m
         }
         if (!connected) {
             OpArgs args;
-            args.Set("node", go->instanceId); args.Set("kind", std::string("cloth"));
-            args.Set("particle", nearestParticle); args.Set("markerPosition", state.restLocal[nearestParticle]);
-            args.Set("localPosition", math::Vector3::ZERO); args.Set("maxDistance", 0.0f);
+            args.Set("node", go->instanceId);
+            args.Set("kind", std::string("cloth"));
+            args.Set("particle", nearestParticle);
+            args.Set("markerPosition", state.restLocal[nearestParticle]);
+            args.Set("localPosition", math::Vector3::ZERO);
+            args.Set("maxDistance", 0.0f);
             const auto result = InvokeOperator(ctx, "control_points.create_cloth_anchor", args);
-            if (!result.ok) { FBZZ_LOG_WARN("Cloth anchor: %s", result.message.c_str()); return true; }
-            if (const auto* target = result.data.Find("target"); target && target->IsString()) targetGuid = target->AsString();
+            if (!result.ok) {
+                FBZZ_LOG_WARN("Cloth anchor: %s", result.message.c_str());
+                return true;
+            }
+            if (const auto* target = result.data.Find("target"); target && target->IsString()) {
+                targetGuid = target->AsString();
+            }
         }
         if (!targetGuid.empty()) {
-            OpArgs edit; edit.Set("owner", ownerGuid);
+            OpArgs edit;
+            edit.Set("owner", ownerGuid);
             static_cast<void>(InvokeOperator(ctx, "control_points.edit", edit));
-            OpArgs select; select.Set("target", targetGuid);
+            OpArgs select;
+            select.Set("target", targetGuid);
             const auto result = InvokeOperator(ctx, "control_points.select", select);
             if (!result.ok) FBZZ_LOG_WARN("Cloth anchor: %s", result.message.c_str());
-            else ctx.clothPinPainting = false;
+            else {
+                ctx.clothPinPainting = false;
+            }
         }
         return true;
     }
@@ -219,7 +280,9 @@ bool DrawClothPinBrush(EditorContext& ctx, ClothPinBrush& brush, const ImVec2& m
                 if (!result.ok) FBZZ_LOG_WARN("Cloth brush: %s", result.message.c_str());
             }
             brush.dragging = false;
-        } else if (!ImGui::IsMouseDown(ImGuiMouseButton_Left)) brush.dragging = false;
+        } else if (!ImGui::IsMouseDown(ImGuiMouseButton_Left)) {
+            brush.dragging = false;
+        }
     }
     return controlsHovered;
 }

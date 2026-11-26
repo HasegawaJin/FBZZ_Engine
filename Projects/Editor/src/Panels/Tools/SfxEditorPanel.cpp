@@ -34,11 +34,13 @@ void Invoke(EditorContext& ctx, const char* id, const OpArgs& args = {})
 bool Slider(const char* label, float& value, float min, float max, const char* tooltip = nullptr)
 {
     const bool changed = ImGui::SliderFloat(label, &value, min, max);
-    if (tooltip && ImGui::IsItemHovered()) ImGui::SetTooltip("%s", tooltip);
+    if (tooltip && ImGui::IsItemHovered()) {
+        ImGui::SetTooltip("%s", tooltip);
+    }
     return changed;
 }
 
-} /// @note namespace
+} // namespace
 
 void SfxEditorPanel::OnLoadSettings(const EditorSettings& settings)
 {
@@ -53,7 +55,9 @@ void SfxEditorPanel::OnSaveSettings(EditorSettings& settings) const
 void SfxEditorPanel::EnsureWaveform(const EditorContext& ctx)
 {
     const uint64_t hash = audio::HashSpec(ctx.sfxEditorSpec);
-    if (m_waveformValid && hash == m_waveformSpecHash) return;
+    if (m_waveformValid && hash == m_waveformSpecHash) {
+        return;
+    }
     m_waveformValid    = true;
     m_waveformSpecHash = hash;
     m_waveform.clear();
@@ -63,17 +67,19 @@ void SfxEditorPanel::EnsureWaveform(const EditorContext& ctx)
     m_sampleCount = pcm.size() / 2;
     m_durationSeconds = fmt.sampleRate > 0
         ? static_cast<float>(m_sampleCount) / static_cast<float>(fmt.sampleRate) : 0.0f;
-    if (m_sampleCount == 0) return;
+    if (m_sampleCount == 0) {
+        return;
+    }
 
-    /// @note 16bit リトルエンディアンをバイトから組み立てる (Synth::Render と対)。
+    // 16bit リトルエンディアンをバイトから組み立てる (Synth::Render と対)。
     const auto sampleAt = [&pcm](size_t index) {
         const auto lo = static_cast<uint16_t>(pcm[index * 2]);
         const auto hi = static_cast<uint16_t>(pcm[index * 2 + 1]);
         return static_cast<int>(static_cast<int16_t>(static_cast<uint16_t>(lo | (hi << 8))));
     };
 
-    /// @note 最大値で間引く: 平均を取ると高い周波数の波形が打ち消し合ってほぼ直線に見え、
-    /// @note 「音が出ているのか」すら読めなくなる。
+    // 最大値で間引く: 平均を取ると高い周波数の波形が打ち消し合ってほぼ直線に見え、
+    // 「音が出ているのか」すら読めなくなる。
     const size_t buckets = (std::min)(static_cast<size_t>(kWaveformResolution), m_sampleCount);
     m_waveform.resize(buckets);
     for (size_t i = 0; i < buckets; ++i) {
@@ -82,7 +88,9 @@ void SfxEditorPanel::EnsureWaveform(const EditorContext& ctx)
         int peak = 0;
         for (size_t s = begin; s < end && s < m_sampleCount; ++s) {
             const int value = sampleAt(s);
-            if (std::abs(value) > std::abs(peak)) peak = value;
+            if (std::abs(value) > std::abs(peak)) {
+                peak = value;
+            }
         }
         m_waveform[i] = static_cast<float>(peak) / 32768.0f;
     }
@@ -90,7 +98,9 @@ void SfxEditorPanel::EnsureWaveform(const EditorContext& ctx)
 
 void SfxEditorPanel::LoadRequested(EditorContext& ctx)
 {
-    if (m_requestedPath.empty()) return;
+    if (m_requestedPath.empty()) {
+        return;
+    }
     const std::string path = m_requestedPath;
     m_requestedPath.clear();
 
@@ -99,8 +109,8 @@ void SfxEditorPanel::LoadRequested(EditorContext& ctx)
         FBZZ_LOG_WARN("SFX Editor: cannot open [%s]", path.c_str());
         return;
     }
-    /// @note 未保存の下書きは開いた時点で失われる (Behavior Tree / Animation Graph と同じ)。
-    /// @note 黙って消えると原因が追えないので、せめて Console には残す。
+    // 未保存の下書きは開いた時点で失われる (Behavior Tree / Animation Graph と同じ)。
+    // 黙って消えると原因が追えないので、せめて Console には残す。
     if (ctx.sfxEditorDirty) {
         FBZZ_LOG_WARN("SFX Editor: 未保存の変更を破棄して [%s] を開きます", path.c_str());
     }
@@ -124,9 +134,9 @@ bool SfxEditorPanel::DrawParameters(EditorContext& ctx)
         changed = true;
     }
 
-    /// @note スライダーは Operator を通さない: ドラッグ中は毎フレーム値が変わり、1 フレームごとに
-    /// @note sfx.set_param を呼ぶと AI 向けの粒度の操作が秒間 60 回走る。実体は同じ
-    /// @note ctx.sfxEditorSpec なので直接書き、離した時点の状態を Operator 経由と揃える。
+    // スライダーは Operator を通さない: ドラッグ中は毎フレーム値が変わり、1 フレームごとに
+    // sfx.set_param を呼ぶと AI 向けの粒度の操作が秒間 60 回走る。実体は同じ
+    // ctx.sfxEditorSpec なので直接書き、離した時点の状態を Operator 経由と揃える。
     if (ImGui::CollapsingHeader("Envelope", ImGuiTreeNodeFlags_DefaultOpen)) {
         changed |= Slider("Attack",  spec.attack,  0.0f, 1.0f, "立ち上がりにかける秒数");
         changed |= Slider("Sustain", spec.sustain, 0.0f, 2.0f, "最大音量を保つ秒数");
@@ -185,47 +195,63 @@ void SfxEditorPanel::OnRenderContent(EditorContext& ctx)
         ImGui::TextDisabled("(未保存の下書き — Save で保存先を決める)");
     } else {
         std::string shown = ctx.sfxEditorPath;
-        if (!ctx.projectRoot.empty() && shown.rfind(ctx.projectRoot, 0) == 0)
+        if (!ctx.projectRoot.empty() && shown.rfind(ctx.projectRoot, 0) == 0) {
             shown = shown.substr(ctx.projectRoot.size() + 1);
+        }
         ImGui::Text("%s%s", shown.c_str(), ctx.sfxEditorDirty ? " *" : "");
     }
 
     ImGui::BeginDisabled(!CanInvokeOperator(ctx, "sfx.save"));
-    if (ImGui::Button("Save")) Invoke(ctx, "sfx.save");
+    if (ImGui::Button("Save")) {
+        Invoke(ctx, "sfx.save");
+    }
     ImGui::EndDisabled();
 
     ImGui::SameLine();
     ImGui::BeginDisabled(!CanInvokeOperator(ctx, "sfx.export_wav"));
-    if (ImGui::Button("Export .wav")) Invoke(ctx, "sfx.export_wav");
+    if (ImGui::Button("Export .wav")) {
+        Invoke(ctx, "sfx.export_wav");
+    }
     ImGui::EndDisabled();
-    if (ImGui::IsItemHovered() && ctx.sfxEditorPath.empty())
+    if (ImGui::IsItemHovered() && ctx.sfxEditorPath.empty()) {
         ImGui::SetTooltip("先に .synth を保存してください");
+    }
 
     ImGui::Separator();
 
     ImGui::TextUnformatted("Preset");
     for (int i = 0; i < static_cast<int>(audio::SynthPreset::Count); ++i) {
-        if (i > 0) ImGui::SameLine();
+        if (i > 0) {
+            ImGui::SameLine();
+        }
         const char* name = audio::PresetToString(static_cast<audio::SynthPreset>(i));
         if (ImGui::SmallButton(name)) {
             OpArgs args;
             args.Set("preset", std::string(name));
             Invoke(ctx, "sfx.load_preset", args);
-            if (m_autoPreview) Invoke(ctx, "sfx.preview");
+            if (m_autoPreview) {
+                Invoke(ctx, "sfx.preview");
+            }
         }
     }
 
     if (ImGui::Button("Randomize")) {
         Invoke(ctx, "sfx.randomize");
-        if (m_autoPreview) Invoke(ctx, "sfx.preview");
+        if (m_autoPreview) {
+            Invoke(ctx, "sfx.preview");
+        }
     }
     ImGui::SameLine();
     if (ImGui::Button("Mutate")) {
         Invoke(ctx, "sfx.mutate");
-        if (m_autoPreview) Invoke(ctx, "sfx.preview");
+        if (m_autoPreview) {
+            Invoke(ctx, "sfx.preview");
+        }
     }
     ImGui::SameLine();
-    if (ImGui::Button("Play")) Invoke(ctx, "sfx.preview");
+    if (ImGui::Button("Play")) {
+        Invoke(ctx, "sfx.preview");
+    }
     ImGui::SameLine();
     bool autoPreview = m_autoPreview;
     if (ImGui::Checkbox("Auto", &autoPreview)) {
@@ -233,7 +259,9 @@ void SfxEditorPanel::OnRenderContent(EditorContext& ctx)
         args.Set("autoPreview", autoPreview);
         Invoke(ctx, "sfx.editor.configure", args);
     }
-    if (ImGui::IsItemHovered()) ImGui::SetTooltip("値を変えるたびに自動で鳴らす");
+    if (ImGui::IsItemHovered()) {
+        ImGui::SetTooltip("値を変えるたびに自動で鳴らす");
+    }
 
     EnsureWaveform(ctx);
     if (!m_waveform.empty()) {
@@ -251,11 +279,13 @@ void SfxEditorPanel::OnRenderContent(EditorContext& ctx)
         ctx.sfxEditorDirty = true;
         m_previewPending   = true;
     }
-    /// @note 操作を離してから鳴らす: ドラッグ中に毎フレーム鳴らすと同じ音が何十も重なる。
+    // 操作を離してから鳴らす: ドラッグ中に毎フレーム鳴らすと同じ音が何十も重なる。
     if (m_previewPending && !ImGui::IsAnyItemActive()) {
         m_previewPending = false;
-        if (m_autoPreview) Invoke(ctx, "sfx.preview");
+        if (m_autoPreview) {
+            Invoke(ctx, "sfx.preview");
+        }
     }
 }
 
-} /// @note namespace fbzz::editor
+} // namespace fbzz::editor

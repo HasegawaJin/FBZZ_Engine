@@ -33,8 +33,8 @@ private:
     void RefreshGrid(EditorContext& ctx, scene::EntityID grid);
     void DetachGridCell(EditorContext& ctx, scene::EntityID grid, int x, int z);
 
-    int  m_gridSelectedX = -1;
-    int  m_gridSelectedZ = -1;
+    int  m_gridSelectedX = -1; ///< 編集中に選択した Terrain Grid セルの X 添字。未選択なら -1。
+    int  m_gridSelectedZ = -1; ///< 編集中に選択した Terrain Grid セルの Z 添字。未選択なら -1。
 };
 
-} /// @note namespace fbzz::editor
+} // namespace fbzz::editor

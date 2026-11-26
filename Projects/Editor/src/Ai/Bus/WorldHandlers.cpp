@@ -64,7 +64,7 @@ JsonValue TerrainStatsJson(const scene::TerrainComponent& terrain)
             maxValue = std::max(maxValue, value);
             sum += static_cast<double>(value);
         }
-        /// @note 正規化値でなくワールド高さで返す。AI が指定する targetHeight と単位を揃えるため。
+        // 正規化値でなくワールド高さで返す。AI が指定する targetHeight と単位を揃えるため。
         stats.Set("minHeight", JsonValue(minValue * terrain.maxHeight));
         stats.Set("maxHeight", JsonValue(maxValue * terrain.maxHeight));
         stats.Set("meanHeight", JsonValue(sum / static_cast<double>(expected) * terrain.maxHeight));
@@ -73,17 +73,19 @@ JsonValue TerrainStatsJson(const scene::TerrainComponent& terrain)
     const bool hasSplat = terrain.HasValidSplat() && expected > 0;
     stats.Set("hasSplatData", JsonValue(hasSplat));
     if (hasSplat) {
-        /// @note 層ごとの «重みの総和 / 頂点数»。4 枠に入らない層は 0 になる。
+        // 層ごとの «重みの総和 / 頂点数»。4 枠に入らない層は 0 になる。
         std::vector<double> layerSum(static_cast<size_t>(terrain.LayerCount()), 0.0);
         const size_t slots = static_cast<size_t>(scene::TERRAIN_SPLAT_SLOTS);
         for (size_t i = 0; i < expected * slots; ++i) {
             const size_t layer = terrain.splatIndices[i];
-            if (terrain.splatWeights[i] != 0 && layer < layerSum.size())
+            if (terrain.splatWeights[i] != 0 && layer < layerSum.size()) {
                 layerSum[layer] += static_cast<double>(terrain.splatWeights[i]);
+            }
         }
         JsonValue coverage = JsonValue::MakeArray();
-        for (double sum : layerSum)
+        for (double sum : layerSum) {
             coverage.Push(JsonValue(sum / (static_cast<double>(expected) * 255.0)));
+        }
         stats.Set("layerCoverage", std::move(coverage));
     }
     return stats;
@@ -92,15 +94,21 @@ JsonValue TerrainStatsJson(const scene::TerrainComponent& terrain)
 Outcome DoTerrainInspect(editor::EditorContext& ctx, const JsonValue& payload)
 {
     scene::Scene* activeScene = ctx.activeScene;
-    if (activeScene == nullptr) return Outcome::Err("NO_SCENE", "アクティブシーンがありません");
+    if (activeScene == nullptr) {
+        return Outcome::Err("NO_SCENE", "アクティブシーンがありません");
+    }
     const std::string filterId = StringField(payload, "id");
 
     JsonValue terrains = JsonValue::MakeArray();
     for (scene::EntityID eid : activeScene->GetEntities<scene::TerrainComponent>()) {
         GameObject* go = activeScene->GetGameObject(eid);
         auto* terrain = activeScene->GetComponent<scene::TerrainComponent>(eid);
-        if (go == nullptr || terrain == nullptr) continue;
-        if (!filterId.empty() && go->instanceId != filterId) continue;
+        if (go == nullptr || terrain == nullptr) {
+            continue;
+        }
+        if (!filterId.empty() && go->instanceId != filterId) {
+            continue;
+        }
 
         JsonValue entry = JsonValue::MakeObject();
         entry.Set("id", JsonValue(go->instanceId));
@@ -112,7 +120,7 @@ Outcome DoTerrainInspect(editor::EditorContext& ctx, const JsonValue& payload)
         entry.Set("maxHeight", JsonValue(terrain->maxHeight));
         entry.Set("chunkSize", JsonValue(terrain->chunkSize));
         entry.Set("terrainAssetPath", JsonValue(terrain->terrainAssetPath));
-        /// @note ローカル寸法とワールド原点。ブラシ位置をワールドで指定するために両方要る。
+        // ローカル寸法とワールド原点。ブラシ位置をワールドで指定するために両方要る。
         entry.Set("localSize", VectorToJson({
             static_cast<float>(terrain->columns - 1) * terrain->cellSize,
             terrain->maxHeight,
@@ -133,8 +141,9 @@ Outcome DoTerrainInspect(editor::EditorContext& ctx, const JsonValue& payload)
         terrains.Push(std::move(entry));
     }
 
-    if (!filterId.empty() && terrains.AsArray().empty())
+    if (!filterId.empty() && terrains.AsArray().empty()) {
         return Outcome::Err("NOT_PRESENT", "TerrainComponent を持つノードが見つかりません: " + filterId);
+    }
 
     JsonValue result = JsonValue::MakeObject();
     result.Set("count", JsonValue(static_cast<int>(terrains.AsArray().size())));
@@ -158,11 +167,17 @@ std::vector<TerrainHit> CollectTerrainsUnderBrush(scene::Scene& activeScene,
     for (scene::EntityID eid : activeScene.GetEntities<scene::TerrainComponent>()) {
         GameObject* go = activeScene.GetGameObject(eid);
         auto* terrain = activeScene.GetComponent<scene::TerrainComponent>(eid);
-        if (go == nullptr || terrain == nullptr || !terrain->enabled) continue;
-        if (!restrictToNodeId.empty() && go->instanceId != restrictToNodeId) continue;
+        if (go == nullptr || terrain == nullptr || !terrain->enabled) {
+            continue;
+        }
+        if (!restrictToNodeId.empty() && go->instanceId != restrictToNodeId) {
+            continue;
+        }
         const math::Vector3 local = ToTerrainLocal(go->transform, worldCenter);
-        /// @note 半径 0 の問い合わせ (sample) でも矩形内なら拾えるよう、下限を 0 として扱う。
-        if (!BrushOverlapsTerrainXZ(*terrain, local, std::max(radius, 0.0f))) continue;
+        // 半径 0 の問い合わせ (sample) でも矩形内なら拾えるよう、下限を 0 として扱う。
+        if (!BrushOverlapsTerrainXZ(*terrain, local, std::max(radius, 0.0f))) {
+            continue;
+        }
         hits.push_back({ go, terrain, local });
     }
     return hits;
@@ -173,19 +188,25 @@ std::vector<TerrainHit> CollectTerrainsUnderBrush(scene::Scene& activeScene,
 Outcome DoTerrainSample(editor::EditorContext& ctx, const JsonValue& payload)
 {
     scene::Scene* activeScene = ctx.activeScene;
-    if (activeScene == nullptr) return Outcome::Err("NO_SCENE", "アクティブシーンがありません");
+    if (activeScene == nullptr) {
+        return Outcome::Err("NO_SCENE", "アクティブシーンがありません");
+    }
     const JsonValue* points = payload.Find("points");
-    if (points == nullptr || !points->IsArray() || points->AsArray().empty())
+    if (points == nullptr || !points->IsArray() || points->AsArray().empty()) {
         return Outcome::Err("BAD_ARG", "points ([[x,y,z], ...]) が必要です");
-    if (points->AsArray().size() > 256)
+    }
+    if (points->AsArray().size() > 256) {
         return Outcome::Err("BAD_ARG", "points は 256 点までです");
+    }
     const std::string restrictTo = StringField(payload, "id");
 
     JsonValue samples = JsonValue::MakeArray();
     for (const JsonValue& pointValue : points->AsArray()) {
-        if (!pointValue.IsArray() || pointValue.AsArray().size() < 2) continue;
+        if (!pointValue.IsArray() || pointValue.AsArray().size() < 2) {
+            continue;
+        }
         const auto& array = pointValue.AsArray();
-        /// @note [x, z] の 2 要素も許す (高さを問い合わせるのに y は不要なため)。
+        // [x, z] の 2 要素も許す (高さを問い合わせるのに y は不要なため)。
         const bool hasY = array.size() >= 3;
         const math::Vector3 world{
             static_cast<float>(array[0].AsNumber()),
@@ -207,16 +228,16 @@ Outcome DoTerrainSample(editor::EditorContext& ctx, const JsonValue& payload)
         sample.Set("onTerrain", JsonValue(true));
         sample.Set("terrainId", JsonValue(hit.go->instanceId));
         sample.Set("local", VectorToJson({ hit.local.x, localHeight, hit.local.z }));
-        /// @note 高さはワールド Y で返す (ブラシの targetHeight もワールド系で受けるため)。
+        // 高さはワールド Y で返す (ブラシの targetHeight もワールド系で受けるため)。
         sample.Set("worldHeight", JsonValue(ToTerrainWorld(hit.go->transform,
             { hit.local.x, localHeight, hit.local.z }).y));
         sample.Set("normal", VectorToJson(localNormal));
-        /// @note 斜度は NavMesh の歩行可否と直結するので、法線から算出して添える。
+        // 斜度は NavMesh の歩行可否と直結するので、法線から算出して添える。
         sample.Set("slopeDegrees", JsonValue(math::ToDeg(std::acos(
             std::clamp(localNormal.y, -1.0f, 1.0f)))));
         sample.Set("hole", JsonValue(terrain.IsHoleAtLocal(hit.local.x, hit.local.z)));
         if (terrain.HasValidSplat() && terrain.cellSize > 0.0f) {
-            /// @note 最寄り頂点の 4 枠のうち重みを持つ層だけを返す。正準形なので重みの降順に並ぶ。
+            // 最寄り頂点の 4 枠のうち重みを持つ層だけを返す。正準形なので重みの降順に並ぶ。
             const int gx = std::clamp(static_cast<int>(hit.local.x / terrain.cellSize + 0.5f), 0, terrain.columns - 1);
             const int gz = std::clamp(static_cast<int>(hit.local.z / terrain.cellSize + 0.5f), 0, terrain.rows - 1);
             const size_t base = (static_cast<size_t>(gz) * static_cast<size_t>(terrain.columns)
@@ -224,7 +245,9 @@ Outcome DoTerrainSample(editor::EditorContext& ctx, const JsonValue& payload)
             JsonValue weights = JsonValue::MakeArray();
             for (size_t slot = 0; slot < static_cast<size_t>(scene::TERRAIN_SPLAT_SLOTS); ++slot) {
                 const std::uint8_t weight = terrain.splatWeights[base + slot];
-                if (weight == 0) continue;
+                if (weight == 0) {
+                    continue;
+                }
                 JsonValue layerWeight = JsonValue::MakeObject();
                 layerWeight.Set("layer", JsonValue(static_cast<int>(terrain.splatIndices[base + slot])));
                 layerWeight.Set("weight", JsonValue(static_cast<float>(weight) / 255.0f));
@@ -244,22 +267,32 @@ Outcome DoTerrainSample(editor::EditorContext& ctx, const JsonValue& payload)
 /// @brief payload からブラシ形状を読む。sculpt / paint の両方で共用する。
 bool ReadTerrainBrush(const JsonValue& payload, TerrainBrush& outBrush, std::string& outError)
 {
-    if (const JsonValue* v = payload.Find("radius"); v != nullptr && v->IsNumber())
+    if (const JsonValue* v = payload.Find("radius"); v != nullptr && v->IsNumber()) {
         outBrush.radius = static_cast<float>(v->AsNumber());
-    if (const JsonValue* v = payload.Find("strength"); v != nullptr && v->IsNumber())
+    }
+    if (const JsonValue* v = payload.Find("strength"); v != nullptr && v->IsNumber()) {
         outBrush.strength = static_cast<float>(v->AsNumber());
+    }
     const std::string falloff = LowerAscii(StringField(payload, "falloff"));
     if (!falloff.empty()) {
-        if (falloff == "linear")        outBrush.falloff = TerrainFalloff::Linear;
-        else if (falloff == "smooth")   outBrush.falloff = TerrainFalloff::Smooth;
-        else if (falloff == "gaussian") outBrush.falloff = TerrainFalloff::Gaussian;
-        else { outError = "falloff は linear / smooth / gaussian です"; return false; }
+        if (falloff == "linear") {
+            outBrush.falloff = TerrainFalloff::Linear;
+        } else if (falloff == "smooth") {
+            outBrush.falloff = TerrainFalloff::Smooth;
+        } else if (falloff == "gaussian") {
+            outBrush.falloff = TerrainFalloff::Gaussian;
+        } else {
+            outError = "falloff は linear / smooth / gaussian です";
+            return false;
+        }
     }
     if (!(outBrush.radius > 0.0f) || outBrush.radius > 500.0f) {
-        outError = "radius は 0 より大きく 500 以下で指定してください"; return false;
+        outError = "radius は 0 より大きく 500 以下で指定してください";
+        return false;
     }
     if (!(outBrush.strength > 0.0f) || outBrush.strength > 1.0f) {
-        outError = "strength は 0 より大きく 1 以下で指定してください"; return false;
+        outError = "strength は 0 より大きく 1 以下で指定してください";
+        return false;
     }
     return true;
 }
@@ -271,37 +304,60 @@ bool ReadTerrainSculptParams(const JsonValue& payload, TerrainBrush& outBrush, s
 {
     const auto readNumber = [&payload](const char* key, double& out) {
         const JsonValue* v = payload.Find(key);
-        if (v == nullptr || !v->IsNumber()) return false;
+        if (v == nullptr || !v->IsNumber()) {
+            return false;
+        }
         out = v->AsNumber();
         return true;
     };
     double value = 0.0;
     if (readNumber("noiseScale", value)) {
-        if (!(value > 0.0) || value > 1000.0) { outError = "noiseScale は 0 より大きく 1000 以下 [m] で指定してください"; return false; }
+        if (!(value > 0.0) || value > 1000.0) {
+            outError = "noiseScale は 0 より大きく 1000 以下 [m] で指定してください";
+            return false;
+        }
         outBrush.noiseScale = static_cast<float>(value);
     }
     if (readNumber("noiseOctaves", value)) {
-        if (value < 1.0 || value > 8.0) { outError = "noiseOctaves は 1〜8 で指定してください"; return false; }
+        if (value < 1.0 || value > 8.0) {
+            outError = "noiseOctaves は 1〜8 で指定してください";
+            return false;
+        }
         outBrush.noiseOctaves = static_cast<int>(value);
     }
     if (readNumber("seed", value)) {
-        if (value < 0.0 || value > 4294967295.0) { outError = "seed は 0〜4294967295 の整数で指定してください"; return false; }
+        if (value < 0.0 || value > 4294967295.0) {
+            outError = "seed は 0〜4294967295 の整数で指定してください";
+            return false;
+        }
         outBrush.seed = static_cast<std::uint32_t>(value);
     }
     if (readNumber("terraceStep", value)) {
-        if (!(value > 0.0) || value > 1000.0) { outError = "terraceStep は 0 より大きく 1000 以下 [m] で指定してください"; return false; }
+        if (!(value > 0.0) || value > 1000.0) {
+            outError = "terraceStep は 0 より大きく 1000 以下 [m] で指定してください";
+            return false;
+        }
         outBrush.terraceStep = static_cast<float>(value);
     }
     if (readNumber("terraceSharpness", value)) {
-        if (value < 0.0 || value > 1.0) { outError = "terraceSharpness は 0〜1 で指定してください"; return false; }
+        if (value < 0.0 || value > 1.0) {
+            outError = "terraceSharpness は 0〜1 で指定してください";
+            return false;
+        }
         outBrush.terraceSharpness = static_cast<float>(value);
     }
     if (readNumber("talus", value)) {
-        if (!(value > 0.0) || !(value < 90.0)) { outError = "talus は 0 より大きく 90 未満 [度] で指定してください"; return false; }
+        if (!(value > 0.0) || !(value < 90.0)) {
+            outError = "talus は 0 より大きく 90 未満 [度] で指定してください";
+            return false;
+        }
         outBrush.talusDegrees = static_cast<float>(value);
     }
     if (readNumber("droplets", value)) {
-        if (value < 1.0 || value > 4096.0) { outError = "droplets は 1〜4096 で指定してください"; return false; }
+        if (value < 1.0 || value > 4096.0) {
+            outError = "droplets は 1〜4096 で指定してください";
+            return false;
+        }
         outBrush.erosionDroplets = static_cast<int>(value);
     }
     return true;
@@ -323,16 +379,22 @@ std::unique_ptr<ICommand> MakeTerrainEditCommand(scene::Scene* activeScene,
     auto apply = [activeScene, markDirty](const std::vector<TerrainSnapshot>& values) {
         for (const TerrainSnapshot& snapshot : values) {
             GameObject* target = activeScene->FindByGuid(snapshot.instanceId);
-            if (target == nullptr) continue;
+            if (target == nullptr) {
+                continue;
+            }
             auto* component = target->GetComponent<scene::TerrainComponent>();
-            if (component == nullptr) continue;
+            if (component == nullptr) {
+                continue;
+            }
             *component = snapshot.component;
             component->heightDirty = true;
             component->splatDirty = true;
             component->materialParamDirty = true;
             component->colliderDirty = true;
         }
-        if (markDirty) markDirty();
+        if (markDirty) {
+            markDirty();
+        }
     };
     auto beforeShared = std::make_shared<std::vector<TerrainSnapshot>>(std::move(before));
     auto afterShared  = std::make_shared<std::vector<TerrainSnapshot>>(std::move(after));
@@ -360,16 +422,20 @@ JsonValue NavMeshSurfaceJson(GameObject& go, const scene::NavMeshSurfaceComponen
     entry.Set("agentHeight", JsonValue(surface.agentHeight));
     entry.Set("maxClimb", JsonValue(surface.maxClimb));
     const char* stateName = "idle";
-    if (surface.bakeState == scene::NavMeshBakeState::Baking)    stateName = "baking";
-    else if (surface.bakeState == scene::NavMeshBakeState::Done) stateName = "done";
+    if (surface.bakeState == scene::NavMeshBakeState::Baking) {
+        stateName = "baking";
+    } else if (surface.bakeState == scene::NavMeshBakeState::Done) {
+        stateName = "done";
+    }
     entry.Set("bakeState", JsonValue(stateName));
     entry.Set("bakeProgress", JsonValue(surface.bakeProgress));
     entry.Set("needsBake", JsonValue(surface.needsBake));
     entry.Set("polygonCount", JsonValue(static_cast<int>(surface.navMesh.Polygons().size())));
     entry.Set("offMeshLinkCount", JsonValue(static_cast<int>(surface.navMesh.OffMeshLinks().size())));
-    /// @note polygonCount=0 だけでは傾斜・障害物・エージェント半径のどれで落ちたか分からないため、内訳を添える。
-    if (!surface.bakeStats.failReason.empty())
+    // polygonCount=0 だけでは傾斜・障害物・エージェント半径のどれで落ちたか分からないため、内訳を添える。
+    if (!surface.bakeStats.failReason.empty()) {
         entry.Set("failReason", JsonValue(surface.bakeStats.failReason));
+    }
     if (surface.bakeStats.cellsX > 0) {
         JsonValue bakeInfo = JsonValue::MakeObject();
         bakeInfo.Set("seconds",     JsonValue(surface.bakeStats.bakeSeconds));
@@ -383,7 +449,7 @@ JsonValue NavMeshSurfaceJson(GameObject& go, const scene::NavMeshSurfaceComponen
         bakeInfo.Set("areaSquareMeters", JsonValue(surface.bakeStats.areaSquareMeters));
         entry.Set("bake", std::move(bakeInfo));
     }
-    /// @note 歩ける範囲そのもの。AI が目的地を選ぶ唯一の手掛かりになる。
+    // 歩ける範囲そのもの。AI が目的地を選ぶ唯一の手掛かりになる。
     if (!surface.navMesh.Polygons().empty()) {
         math::Vector3 boundsMin{ 1e30f, 1e30f, 1e30f };
         math::Vector3 boundsMax{ -1e30f, -1e30f, -1e30f };
@@ -415,17 +481,23 @@ JsonValue NavMeshSurfaceJson(GameObject& go, const scene::NavMeshSurfaceComponen
 Outcome DoNavMeshState(editor::EditorContext& ctx, const JsonValue& payload)
 {
     scene::Scene* activeScene = ctx.activeScene;
-    if (activeScene == nullptr) return Outcome::Err("NO_SCENE", "アクティブシーンがありません");
+    if (activeScene == nullptr) {
+        return Outcome::Err("NO_SCENE", "アクティブシーンがありません");
+    }
     const std::string filterId = StringField(payload, "id");
 
     JsonValue surfaces = JsonValue::MakeArray();
     for (scene::EntityID eid : activeScene->GetEntities<scene::NavMeshSurfaceComponent>()) {
         GameObject* go = activeScene->GetGameObject(eid);
         auto* surface = activeScene->GetComponent<scene::NavMeshSurfaceComponent>(eid);
-        if (go == nullptr || surface == nullptr) continue;
-        if (!filterId.empty() && go->instanceId != filterId) continue;
+        if (go == nullptr || surface == nullptr) {
+            continue;
+        }
+        if (!filterId.empty() && go->instanceId != filterId) {
+            continue;
+        }
         JsonValue entry = NavMeshSurfaceJson(*go, *surface);
-        /// @note 古い NavMesh でも navmesh_find_path は成功を返すため、地形変更後の不整合を stale で明示する。
+        // 古い NavMesh でも navmesh_find_path は成功を返すため、地形変更後の不整合を stale で明示する。
         if (surface->navMesh.IsValid()) {
             const uint64_t current = scene::HashNavMeshBakeSources(*activeScene, eid);
             entry.Set("stale", JsonValue(current != surface->bakedSourceHash));
@@ -433,12 +505,14 @@ Outcome DoNavMeshState(editor::EditorContext& ctx, const JsonValue& payload)
         surfaces.Push(std::move(entry));
     }
 
-    /// @note Agent 側も併せて返す。「経路が引けない」の原因が Surface 側か Agent 設定側かは、両方を並べて初めて切り分けられる (agentTypeId の食い違いが典型)。
+    // Agent 側も併せて返す。「経路が引けない」の原因が Surface 側か Agent 設定側かは、両方を並べて初めて切り分けられる (agentTypeId の食い違いが典型)。
     JsonValue agents = JsonValue::MakeArray();
     for (scene::EntityID eid : activeScene->GetEntities<scene::NavMeshAgentComponent>()) {
         GameObject* go = activeScene->GetGameObject(eid);
         auto* agent = activeScene->GetComponent<scene::NavMeshAgentComponent>(eid);
-        if (go == nullptr || agent == nullptr) continue;
+        if (go == nullptr || agent == nullptr) {
+            continue;
+        }
         JsonValue entry = JsonValue::MakeObject();
         entry.Set("id", JsonValue(go->instanceId));
         entry.Set("name", JsonValue(go->name));
@@ -447,10 +521,15 @@ Outcome DoNavMeshState(editor::EditorContext& ctx, const JsonValue& payload)
         entry.Set("areaMask", JsonValue(agent->areaMask));
         entry.Set("position", VectorToJson(go->transform.worldPosition));
         entry.Set("hasDestination", JsonValue(agent->hasDestination));
-        if (agent->hasDestination) entry.Set("destination", VectorToJson(agent->destination));
+        if (agent->hasDestination) {
+            entry.Set("destination", VectorToJson(agent->destination));
+        }
         const char* agentState = "idle";
-        if (agent->state == scene::NavMeshAgentState::MOVING)                agentState = "moving";
-        else if (agent->state == scene::NavMeshAgentState::TRAVERSING_LINK)  agentState = "traversingLink";
+        if (agent->state == scene::NavMeshAgentState::MOVING) {
+            agentState = "moving";
+        } else if (agent->state == scene::NavMeshAgentState::TRAVERSING_LINK) {
+            agentState = "traversingLink";
+        }
         entry.Set("state", JsonValue(agentState));
         entry.Set("pathWaypoints", JsonValue(static_cast<int>(agent->path.size())));
         entry.Set("currentWaypoint", JsonValue(static_cast<int>(agent->currentWaypoint)));
@@ -477,14 +556,24 @@ scene::NavMeshSurfaceComponent* ResolveNavMeshSurface(scene::Scene& activeScene,
     for (scene::EntityID eid : activeScene.GetEntities<scene::NavMeshSurfaceComponent>()) {
         GameObject* go = activeScene.GetGameObject(eid);
         auto* surface = activeScene.GetComponent<scene::NavMeshSurfaceComponent>(eid);
-        if (go == nullptr || surface == nullptr) continue;
-        if (!nodeId.empty()) {
-            if (go->instanceId != nodeId) continue;
-        } else {
-            if (!surface->enabled || surface->agentTypeId != agentTypeId) continue;
-            if (!surface->navMesh.IsValid()) continue;
+        if (go == nullptr || surface == nullptr) {
+            continue;
         }
-        if (outGo != nullptr) *outGo = go;
+        if (!nodeId.empty()) {
+            if (go->instanceId != nodeId) {
+                continue;
+            }
+        } else {
+            if (!surface->enabled || surface->agentTypeId != agentTypeId) {
+                continue;
+            }
+            if (!surface->navMesh.IsValid()) {
+                continue;
+            }
+        }
+        if (outGo != nullptr) {
+            *outGo = go;
+        }
         return surface;
     }
     return nullptr;
@@ -495,26 +584,36 @@ scene::NavMeshSurfaceComponent* ResolveNavMeshSurface(scene::Scene& activeScene,
 Outcome DoNavMeshPath(editor::EditorContext& ctx, const JsonValue& payload)
 {
     scene::Scene* activeScene = ctx.activeScene;
-    if (activeScene == nullptr) return Outcome::Err("NO_SCENE", "アクティブシーンがありません");
+    if (activeScene == nullptr) {
+        return Outcome::Err("NO_SCENE", "アクティブシーンがありません");
+    }
 
     math::Vector3 from;
     math::Vector3 to;
-    /// @note from は座標でも Agent の NodeId でも指定できる (「今いる場所から」が最も多い問い合わせ)。
+    // from は座標でも Agent の NodeId でも指定できる (「今いる場所から」が最も多い問い合わせ)。
     const std::string fromNodeId = StringField(payload, "fromId");
     int agentTypeId = 0;
     int areaMask = -1;
-    if (const JsonValue* v = payload.Find("agentTypeId"); v != nullptr && v->IsNumber())
+    if (const JsonValue* v = payload.Find("agentTypeId"); v != nullptr && v->IsNumber()) {
         agentTypeId = v->AsInt();
-    if (const JsonValue* v = payload.Find("areaMask"); v != nullptr && v->IsNumber())
+    }
+    if (const JsonValue* v = payload.Find("areaMask"); v != nullptr && v->IsNumber()) {
         areaMask = v->AsInt();
+    }
     if (!fromNodeId.empty()) {
         GameObject* fromGo = activeScene->FindByGuid(fromNodeId);
-        if (fromGo == nullptr) return Outcome::Err("NODE_NOT_FOUND", "fromId が見つかりません: " + fromNodeId);
+        if (fromGo == nullptr) {
+            return Outcome::Err("NODE_NOT_FOUND", "fromId が見つかりません: " + fromNodeId);
+        }
         from = fromGo->transform.worldPosition;
-        /// @note Agent があればその agentTypeId / areaMask を既定として引き継ぐ。
+        // Agent があればその agentTypeId / areaMask を既定として引き継ぐ。
         if (auto* agent = fromGo->GetComponent<scene::NavMeshAgentComponent>()) {
-            if (payload.Find("agentTypeId") == nullptr) agentTypeId = agent->agentTypeId;
-            if (payload.Find("areaMask") == nullptr)    areaMask = agent->areaMask;
+            if (payload.Find("agentTypeId") == nullptr) {
+                agentTypeId = agent->agentTypeId;
+            }
+            if (payload.Find("areaMask") == nullptr) {
+                areaMask = agent->areaMask;
+            }
         }
     } else if (!ReadVec3(payload, "from", from)) {
         return Outcome::Err("BAD_ARG", "from ([x,y,z]) または fromId が必要です");
@@ -522,7 +621,9 @@ Outcome DoNavMeshPath(editor::EditorContext& ctx, const JsonValue& payload)
     const std::string toNodeId = StringField(payload, "toId");
     if (!toNodeId.empty()) {
         GameObject* toGo = activeScene->FindByGuid(toNodeId);
-        if (toGo == nullptr) return Outcome::Err("NODE_NOT_FOUND", "toId が見つかりません: " + toNodeId);
+        if (toGo == nullptr) {
+            return Outcome::Err("NODE_NOT_FOUND", "toId が見つかりません: " + toNodeId);
+        }
         to = toGo->transform.worldPosition;
     } else if (!ReadVec3(payload, "to", to)) {
         return Outcome::Err("BAD_ARG", "to ([x,y,z]) または toId が必要です");
@@ -535,8 +636,9 @@ Outcome DoNavMeshPath(editor::EditorContext& ctx, const JsonValue& payload)
         return Outcome::Err("NO_NAVMESH",
             "agentTypeId=" + std::to_string(agentTypeId) + " に対応するベイク済み NavMesh Surface がありません");
     }
-    if (!surface->navMesh.IsValid())
+    if (!surface->navMesh.IsValid()) {
         return Outcome::Err("NAVMESH_NOT_BAKED", "NavMesh が未ベイクです。navmesh_bake を実行してください");
+    }
 
     const scene::NavMesh& navMesh = surface->navMesh;
     const int startPoly = scene::FindNearestPolygon(navMesh, from);
@@ -560,7 +662,7 @@ Outcome DoNavMeshPath(editor::EditorContext& ctx, const JsonValue& payload)
     std::vector<int> polyPath;
     if (!scene::FindPolygonPath(navMesh, startPoly, goalPoly, polyPath, areaMask, surface->areaCosts, agentTypeId)) {
         result.Set("found", JsonValue(false));
-        /// @note 到達不能とエリアマスクによる遮断は A* からは区別できない。areaMask を返すので -1 で引き直せば切り分けられる。
+        // 到達不能とエリアマスクによる遮断は A* からは区別できない。areaMask を返すので -1 で引き直せば切り分けられる。
         result.Set("reason", JsonValue("NO_PATH"));
         return Outcome::Ok(std::move(result));
     }
@@ -570,14 +672,16 @@ Outcome DoNavMeshPath(editor::EditorContext& ctx, const JsonValue& payload)
     float length = 0.0f;
     for (size_t i = 0; i < corners.size(); ++i) {
         cornerArray.Push(VectorToJson(corners[i]));
-        if (i > 0) length += (corners[i] - corners[i - 1]).Length();
+        if (i > 0) {
+            length += (corners[i] - corners[i - 1]).Length();
+        }
     }
     result.Set("found", JsonValue(true));
     result.Set("corners", std::move(cornerArray));
     result.Set("cornerCount", JsonValue(static_cast<int>(corners.size())));
     result.Set("polygonCount", JsonValue(static_cast<int>(polyPath.size())));
     result.Set("length", JsonValue(length));
-    /// @note 直線距離との比。大きいほど遠回り = 障害物か穴を迂回している。
+    // 直線距離との比。大きいほど遠回り = 障害物か穴を迂回している。
     const float straight = (to - from).Length();
     result.Set("straightDistance", JsonValue(straight));
     result.Set("detourRatio", JsonValue(straight > 0.0001f ? length / straight : 1.0f));
@@ -588,24 +692,33 @@ Outcome DoNavMeshPath(editor::EditorContext& ctx, const JsonValue& payload)
 Outcome DoNavMeshSample(editor::EditorContext& ctx, const JsonValue& payload)
 {
     scene::Scene* activeScene = ctx.activeScene;
-    if (activeScene == nullptr) return Outcome::Err("NO_SCENE", "アクティブシーンがありません");
+    if (activeScene == nullptr) {
+        return Outcome::Err("NO_SCENE", "アクティブシーンがありません");
+    }
     const JsonValue* points = payload.Find("points");
-    if (points == nullptr || !points->IsArray() || points->AsArray().empty())
+    if (points == nullptr || !points->IsArray() || points->AsArray().empty()) {
         return Outcome::Err("BAD_ARG", "points ([[x,y,z], ...]) が必要です");
-    if (points->AsArray().size() > 256) return Outcome::Err("BAD_ARG", "points は 256 点までです");
+    }
+    if (points->AsArray().size() > 256) {
+        return Outcome::Err("BAD_ARG", "points は 256 点までです");
+    }
 
     int agentTypeId = 0;
-    if (const JsonValue* v = payload.Find("agentTypeId"); v != nullptr && v->IsNumber())
+    if (const JsonValue* v = payload.Find("agentTypeId"); v != nullptr && v->IsNumber()) {
         agentTypeId = v->AsInt();
+    }
     GameObject* surfaceGo = nullptr;
     scene::NavMeshSurfaceComponent* surface =
         ResolveNavMeshSurface(*activeScene, StringField(payload, "surfaceId"), agentTypeId, &surfaceGo);
-    if (surface == nullptr || !surface->navMesh.IsValid())
+    if (surface == nullptr || !surface->navMesh.IsValid()) {
         return Outcome::Err("NO_NAVMESH", "ベイク済み NavMesh Surface がありません");
+    }
 
     JsonValue samples = JsonValue::MakeArray();
     for (const JsonValue& pointValue : points->AsArray()) {
-        if (!pointValue.IsArray() || pointValue.AsArray().size() < 3) continue;
+        if (!pointValue.IsArray() || pointValue.AsArray().size() < 3) {
+            continue;
+        }
         const auto& array = pointValue.AsArray();
         const math::Vector3 query{
             static_cast<float>(array[0].AsNumber()),
@@ -625,7 +738,7 @@ Outcome DoNavMeshSample(editor::EditorContext& ctx, const JsonValue& payload)
         sample.Set("onNavMesh", JsonValue(inside));
         sample.Set("polygon", JsonValue(polygon));
         sample.Set("areaType", JsonValue(surface->navMesh.Polygons()[static_cast<size_t>(polygon)].areaType));
-        /// @note 面の外なら最近傍ポリゴンへ寄せた点を返す。Agent を置き直す座標としてそのまま使える。
+        // 面の外なら最近傍ポリゴンへ寄せた点を返す。Agent を置き直す座標としてそのまま使える。
         sample.Set("nearest", VectorToJson({ query.x, height <= -1e6f ? query.y : height, query.z }));
         if (!inside) {
             sample.Set("distanceXZ", JsonValue(std::sqrt(
@@ -648,9 +761,11 @@ Outcome DoNavMeshSample(editor::EditorContext& ctx, const JsonValue& payload)
 Outcome DoEnvironmentInspect(editor::EditorContext& ctx)
 {
     scene::Scene* activeScene = ctx.activeScene;
-    if (activeScene == nullptr) return Outcome::Err("NO_SCENE", "アクティブシーンがありません");
+    if (activeScene == nullptr) {
+        return Outcome::Err("NO_SCENE", "アクティブシーンがありません");
+    }
 
-    /// @note 対象は ComponentCategory::Environment 登録型すべて。名前表を書くと新規コンポーネントが AI から見えなくなる。
+    // 対象は ComponentCategory::Environment 登録型すべて。名前表を書くと新規コンポーネントが AI から見えなくなる。
     std::unordered_set<std::string> environmentTypes;
     scene::ForEachRegisteredComponent([&]<typename T, typename Reg>() {
         if constexpr (Reg::category == scene::ComponentCategory::Environment
@@ -666,10 +781,16 @@ Outcome DoEnvironmentInspect(editor::EditorContext& ctx)
         JsonValue matched = JsonValue::MakeArray();
         for (const JsonValue& component : components.AsArray()) {
             const JsonValue* typeValue = component.Find("type");
-            if (typeValue == nullptr || !typeValue->IsString()) continue;
-            if (environmentTypes.count(typeValue->AsString()) != 0) matched.Push(component);
+            if (typeValue == nullptr || !typeValue->IsString()) {
+                continue;
+            }
+            if (environmentTypes.count(typeValue->AsString()) != 0) {
+                matched.Push(component);
+            }
         }
-        if (matched.AsArray().empty()) continue;
+        if (matched.AsArray().empty()) {
+            continue;
+        }
         JsonValue entry = JsonValue::MakeObject();
         entry.Set("id", JsonValue(go->instanceId));
         entry.Set("name", JsonValue(go->name));
@@ -679,12 +800,14 @@ Outcome DoEnvironmentInspect(editor::EditorContext& ctx)
         nodes.Push(std::move(entry));
     }
 
-    /// @note ライトは環境の一部だが数が多いので、種別と強度だけの要約にする。
+    // ライトは環境の一部だが数が多いので、種別と強度だけの要約にする。
     JsonValue lights = JsonValue::MakeArray();
     for (scene::EntityID eid : activeScene->GetEntities<scene::LightComponent>()) {
         GameObject* go = activeScene->GetGameObject(eid);
         auto* light = activeScene->GetComponent<scene::LightComponent>(eid);
-        if (go == nullptr || light == nullptr) continue;
+        if (go == nullptr || light == nullptr) {
+            continue;
+        }
         JsonValue entry = JsonValue::MakeObject();
         entry.Set("id", JsonValue(go->instanceId));
         entry.Set("name", JsonValue(go->name));
@@ -711,15 +834,21 @@ Outcome DoEnvironmentInspect(editor::EditorContext& ctx)
 Outcome DoAudioInspect(editor::EditorContext& ctx, const JsonValue& payload)
 {
     scene::Scene* activeScene = ctx.activeScene;
-    if (activeScene == nullptr) return Outcome::Err("NO_SCENE", "アクティブシーンがありません");
+    if (activeScene == nullptr) {
+        return Outcome::Err("NO_SCENE", "アクティブシーンがありません");
+    }
     const std::string filterId = StringField(payload, "id");
 
     JsonValue sources = JsonValue::MakeArray();
     for (scene::EntityID eid : activeScene->GetEntities<scene::AudioSourceComponent>()) {
         GameObject* go = activeScene->GetGameObject(eid);
         auto* source = activeScene->GetComponent<scene::AudioSourceComponent>(eid);
-        if (go == nullptr || source == nullptr) continue;
-        if (!filterId.empty() && go->instanceId != filterId) continue;
+        if (go == nullptr || source == nullptr) {
+            continue;
+        }
+        if (!filterId.empty() && go->instanceId != filterId) {
+            continue;
+        }
         JsonValue entry = JsonValue::MakeObject();
         entry.Set("id", JsonValue(go->instanceId));
         entry.Set("name", JsonValue(go->name));
@@ -729,7 +858,7 @@ Outcome DoAudioInspect(editor::EditorContext& ctx, const JsonValue& payload)
         JsonReadReflector reader(true);
         source->Reflect(reader);
         entry.Set("fields", reader.Result());
-        /// @note 再生状態は保存対象でなく Reflect に載らないため、runtime として明示的に足す。
+        // 再生状態は保存対象でなく Reflect に載らないため、runtime として明示的に足す。
         JsonValue runtime = JsonValue::MakeObject();
         runtime.Set("playing", JsonValue(source->m_isPlaying));
         runtime.Set("paused", JsonValue(source->m_isPaused));
@@ -742,7 +871,9 @@ Outcome DoAudioInspect(editor::EditorContext& ctx, const JsonValue& payload)
     JsonValue listeners = JsonValue::MakeArray();
     for (scene::EntityID eid : activeScene->GetEntities<scene::AudioListenerComponent>()) {
         GameObject* go = activeScene->GetGameObject(eid);
-        if (go == nullptr) continue;
+        if (go == nullptr) {
+            continue;
+        }
         JsonValue entry = JsonValue::MakeObject();
         entry.Set("id", JsonValue(go->instanceId));
         entry.Set("name", JsonValue(go->name));
@@ -752,7 +883,7 @@ Outcome DoAudioInspect(editor::EditorContext& ctx, const JsonValue& payload)
         listeners.Push(std::move(entry));
     }
 
-    /// @note AudioSource の busName が指せる名前の一覧。未知の名前はエラーにならず Master へ落ちるだけになる。
+    // AudioSource の busName が指せる名前の一覧。未知の名前はエラーにならず Master へ落ちるだけになる。
     JsonValue buses = JsonValue::MakeArray();
     int voiceLimit   = 0;
     int activeVoices = 0;
@@ -765,7 +896,7 @@ Outcome DoAudioInspect(editor::EditorContext& ctx, const JsonValue& payload)
             entry.Set("parent", JsonValue(desc.parent));
             entry.Set("volume", JsonValue(desc.volume));
             entry.Set("lowPassCutoff", JsonValue(desc.lowPassCutoff));
-            /// @note AudioReverbZone が効くのは reverb=true のバスへ出している音だけ。
+            // AudioReverbZone が効くのは reverb=true のバスへ出している音だけ。
             entry.Set("reverb", JsonValue(desc.reverb));
             buses.Push(std::move(entry));
         }
@@ -777,12 +908,13 @@ Outcome DoAudioInspect(editor::EditorContext& ctx, const JsonValue& payload)
     result.Set("listenerCount", JsonValue(static_cast<int>(listeners.AsArray().size())));
     result.Set("listeners", std::move(listeners));
     result.Set("buses", std::move(buses));
-    /// @note 同時発音の上限に張り付いていると、優先度の低い音から畳まれて鳴らなくなる。
+    // 同時発音の上限に張り付いていると、優先度の低い音から畳まれて鳴らなくなる。
     result.Set("voiceLimit", JsonValue(voiceLimit));
     result.Set("activeVoices", JsonValue(activeVoices));
-    /// @note 3D 減衰は Listener が無いと成立しない。「音が聞こえない」の最頻出原因なので明示する。
-    if (listeners.AsArray().empty())
+    // 3D 減衰は Listener が無いと成立しない。「音が聞こえない」の最頻出原因なので明示する。
+    if (listeners.AsArray().empty()) {
         result.Set("warning", JsonValue("AudioListener がシーンにありません (3D 音の距離減衰が効きません)"));
+    }
     return Outcome::Ok(std::move(result));
 }
 
@@ -801,7 +933,9 @@ JsonValue UIElementJson(GameObject& go)
     JsonValue children = JsonValue::MakeArray();
     for (int i = 0; i < go.GetChildCount(); ++i) {
         GameObject* child = go.GetChild(i);
-        if (child == nullptr || child->IsRuntimeGenerated()) continue;
+        if (child == nullptr || child->IsRuntimeGenerated()) {
+            continue;
+        }
         children.Push(UIElementJson(*child));
     }
     entry.Set("children", std::move(children));
@@ -811,26 +945,33 @@ JsonValue UIElementJson(GameObject& go)
 Outcome DoUIInspect(editor::EditorContext& ctx, const JsonValue& payload)
 {
     scene::Scene* activeScene = ctx.activeScene;
-    if (activeScene == nullptr) return Outcome::Err("NO_SCENE", "アクティブシーンがありません");
+    if (activeScene == nullptr) {
+        return Outcome::Err("NO_SCENE", "アクティブシーンがありません");
+    }
     const std::string filterId = StringField(payload, "id");
 
     JsonValue canvases = JsonValue::MakeArray();
     for (scene::EntityID eid : activeScene->GetEntities<scene::UICanvas>()) {
         GameObject* go = activeScene->GetGameObject(eid);
-        if (go == nullptr) continue;
-        if (!filterId.empty() && go->instanceId != filterId) continue;
+        if (go == nullptr) {
+            continue;
+        }
+        if (!filterId.empty() && go->instanceId != filterId) {
+            continue;
+        }
         canvases.Push(UIElementJson(*go));
     }
 
     JsonValue result = JsonValue::MakeObject();
     result.Set("count", JsonValue(static_cast<int>(canvases.AsArray().size())));
     result.Set("canvases", std::move(canvases));
-    /// @note 編集対象として選ばれている Canvas。UIViewport の操作対象と AI の対象を一致させる。
+    // 編集対象として選ばれている Canvas。UIViewport の操作対象と AI の対象を一致させる。
     if (ctx.activeUICanvas.IsValid()) {
-        if (GameObject* activeCanvas = activeScene->GetGameObject(ctx.activeUICanvas))
+        if (GameObject* activeCanvas = activeScene->GetGameObject(ctx.activeUICanvas)) {
             result.Set("activeCanvasId", JsonValue(activeCanvas->instanceId));
+        }
     }
-    /// @note UI は Game View の解像度で座標が決まるので、基準の画面サイズも返す。
+    // UI は Game View の解像度で座標が決まるので、基準の画面サイズも返す。
     JsonValue viewport = JsonValue::MakeObject();
     viewport.Set("width", JsonValue(ctx.gameViewportWidth));
     viewport.Set("height", JsonValue(ctx.gameViewportHeight));
@@ -843,22 +984,30 @@ std::unique_ptr<ICommand> BuildTerrainBrushCommand([[maybe_unused]] editor::Edit
     [[maybe_unused]] std::shared_ptr<std::string> createdSink, [[maybe_unused]] JsonValue* detailSink)
 {
     scene::Scene* scene = ctx.activeScene;
-    if (scene == nullptr) { err = Outcome::Err("NO_SCENE", "アクティブシーンがありません"); return nullptr; }
+    if (scene == nullptr) {
+        err = Outcome::Err("NO_SCENE", "アクティブシーンがありません");
+        return nullptr;
+    }
     [[maybe_unused]] const auto markDirty = [&ctx]() { if (ctx.markSceneDirty) ctx.markSceneDirty(); };
 
-    /// @name Terrain: ブラシ操作
-    /// @note マウスドラッグを持たない AI のため、ストローク 1 回分を 1 コマンドとして受ける。iterations は押し続けた回数相当 (Smooth/Flatten は 1 回で収束しない)。
+    // Terrain: ブラシ操作
+    // マウスドラッグを持たない AI のため、ストローク 1 回分を 1 コマンドとして受ける。iterations は押し続けた回数相当 (Smooth/Flatten は 1 回で収束しない)。
     if (type == "terrain.sculpt" || type == "terrain.paint") {
         math::Vector3 center;
         if (!ReadVec3(payload, "position", center)) {
-            err = Outcome::Err("BAD_ARG", "position ([x,y,z] ワールド座標) が必要です"); return nullptr;
+            err = Outcome::Err("BAD_ARG", "position ([x,y,z] ワールド座標) が必要です");
+            return nullptr;
         }
         TerrainBrush brush;
         std::string brushError;
-        if (!ReadTerrainBrush(payload, brush, brushError)) { err = Outcome::Err("BAD_ARG", brushError); return nullptr; }
+        if (!ReadTerrainBrush(payload, brush, brushError)) {
+            err = Outcome::Err("BAD_ARG", brushError);
+            return nullptr;
+        }
         int iterations = 1;
-        if (const JsonValue* v = payload.Find("iterations"); v != nullptr && v->IsNumber())
+        if (const JsonValue* v = payload.Find("iterations"); v != nullptr && v->IsNumber()) {
             iterations = std::clamp(v->AsInt(), 1, 64);
+        }
 
         const std::string restrictTo = StringField(payload, "id");
         std::vector<TerrainHit> hits = CollectTerrainsUnderBrush(*scene, center, brush.radius, restrictTo);
@@ -875,24 +1024,36 @@ std::unique_ptr<ICommand> BuildTerrainBrushCommand([[maybe_unused]] editor::Edit
         int paintLayer = 0;
         if (isSculpt) {
             const std::string op = LowerAscii(StringField(payload, "op"));
-            if (op.empty() || op == "raise")   sculptOp = TerrainSculptOp::Raise;
-            else if (op == "lower")            sculptOp = TerrainSculptOp::Lower;
-            else if (op == "smooth")           sculptOp = TerrainSculptOp::Smooth;
-            else if (op == "flatten")          sculptOp = TerrainSculptOp::Flatten;
-            else if (op == "stamp")            sculptOp = TerrainSculptOp::Stamp;
-            else if (op == "noise")            sculptOp = TerrainSculptOp::Noise;
-            else if (op == "thermalerosion")   sculptOp = TerrainSculptOp::ThermalErosion;
-            else if (op == "hydraulicerosion") sculptOp = TerrainSculptOp::HydraulicErosion;
-            else if (op == "terrace")          sculptOp = TerrainSculptOp::Terrace;
-            else {
+            if (op.empty() || op == "raise") {
+                sculptOp = TerrainSculptOp::Raise;
+            } else if (op == "lower") {
+                sculptOp = TerrainSculptOp::Lower;
+            } else if (op == "smooth") {
+                sculptOp = TerrainSculptOp::Smooth;
+            } else if (op == "flatten") {
+                sculptOp = TerrainSculptOp::Flatten;
+            } else if (op == "stamp") {
+                sculptOp = TerrainSculptOp::Stamp;
+            } else if (op == "noise") {
+                sculptOp = TerrainSculptOp::Noise;
+            } else if (op == "thermalerosion") {
+                sculptOp = TerrainSculptOp::ThermalErosion;
+            } else if (op == "hydraulicerosion") {
+                sculptOp = TerrainSculptOp::HydraulicErosion;
+            } else if (op == "terrace") {
+                sculptOp = TerrainSculptOp::Terrace;
+            } else {
                 err = Outcome::Err("BAD_ARG",
                     "op は raise/lower/smooth/flatten/stamp/noise/thermalErosion/hydraulicErosion/terrace です");
                 return nullptr;
             }
             std::string paramError;
-            if (!ReadTerrainSculptParams(payload, brush, paramError)) { err = Outcome::Err("BAD_ARG", paramError); return nullptr; }
+            if (!ReadTerrainSculptParams(payload, brush, paramError)) {
+                err = Outcome::Err("BAD_ARG", paramError);
+                return nullptr;
+            }
             if (sculptOp == TerrainSculptOp::Flatten) {
-                /// @note 対話ツールは最初にクリックした高さを基準にする。AI にはクリックが無いため、明示指定が無ければブラシ中心の現在高さを基準にする (同じ意味論)。
+                // 対話ツールは最初にクリックした高さを基準にする。AI にはクリックが無いため、明示指定が無ければブラシ中心の現在高さを基準にする (同じ意味論)。
                 if (const JsonValue* v = payload.Find("targetHeight"); v != nullptr && v->IsNumber()) {
                     flattenTarget = static_cast<float>(v->AsNumber());
                 } else {
@@ -902,7 +1063,7 @@ std::unique_ptr<ICommand> BuildTerrainBrushCommand([[maybe_unused]] editor::Edit
             }
         } else {
             const JsonValue* layerValue = payload.Find("layer");
-            /// @note 層数は Terrain ごとに可変。番号の範囲は基準になる先頭の Terrain で決める。
+            // 層数は Terrain ごとに可変。番号の範囲は基準になる先頭の Terrain で決める。
             const int layerCount = hits.front().terrain->LayerCount();
             if (layerCount <= 0) {
                 err = Outcome::Err("NO_LAYER", "Terrain に層がありません。terrain_set_layer_material で layer=0 を追加してください");
@@ -910,7 +1071,8 @@ std::unique_ptr<ICommand> BuildTerrainBrushCommand([[maybe_unused]] editor::Edit
             }
             const std::string layerRange = "0〜" + std::to_string(layerCount - 1);
             if (layerValue == nullptr || !layerValue->IsNumber()) {
-                err = Outcome::Err("BAD_ARG", "layer (" + layerRange + ") が必要です"); return nullptr;
+                err = Outcome::Err("BAD_ARG", "layer (" + layerRange + ") が必要です");
+                return nullptr;
             }
             paintLayer = layerValue->AsInt();
             if (paintLayer < 0 || paintLayer >= layerCount) {
@@ -920,11 +1082,11 @@ std::unique_ptr<ICommand> BuildTerrainBrushCommand([[maybe_unused]] editor::Edit
             }
         }
 
-        /// @note Paint は Terrain ごとに塗る層を解決する。隣接 Terrain は layerMaterials の並びが異なり得るため、同じ index を塗ると別マテリアルへ塗ってしまう (TerrainTool と同じ規則)。
+        // Paint は Terrain ごとに塗る層を解決する。隣接 Terrain は layerMaterials の並びが異なり得るため、同じ index を塗ると別マテリアルへ塗ってしまう (TerrainTool と同じ規則)。
         const std::string sourceMaterial = isSculpt ? std::string{}
             : hits.front().terrain->layerMaterials[static_cast<size_t>(paintLayer)];
 
-        /// @note before/after を先に作り、コマンドはスナップショットの入れ替えだけを行う。
+        // before/after を先に作り、コマンドはスナップショットの入れ替えだけを行う。
         std::vector<TerrainSnapshot> before;
         std::vector<TerrainSnapshot> after;
         std::vector<std::string> touched;
@@ -934,16 +1096,20 @@ std::unique_ptr<ICommand> BuildTerrainBrushCommand([[maybe_unused]] editor::Edit
             int layerForThisTerrain = paintLayer;
             if (!isSculpt && hit.terrain != hits.front().terrain) {
                 layerForThisTerrain = ResolvePaintLayerForTerrain(*hit.terrain, sourceMaterial, paintLayer);
-                /// @note 対応する層が無い Terrain には塗らない。
-                if (layerForThisTerrain < 0) continue;
+                // 対応する層が無い Terrain には塗らない。
+                if (layerForThisTerrain < 0) {
+                    continue;
+                }
             }
             before.push_back({ hit.go->instanceId, *hit.terrain });
             scene::TerrainComponent edited = *hit.terrain;
-            /// @note 反復番号を strokeStep に渡す。侵食の乱数が人の長押しと同じ列になる。
+            // 反復番号を strokeStep に渡す。侵食の乱数が人の長押しと同じ列になる。
             for (int i = 0; i < iterations; ++i) {
                 if (isSculpt) ApplyTerrainSculpt(edited, hit.local, brush, sculptOp, flattenTarget, 1.0f,
                                                  static_cast<std::uint32_t>(i));
-                else          ApplyTerrainPaint(edited, hit.local, brush, layerForThisTerrain, 1.0f);
+                else {
+                    ApplyTerrainPaint(edited, hit.local, brush, layerForThisTerrain, 1.0f);
+                }
             }
             after.push_back({ hit.go->instanceId, std::move(edited) });
             touched.push_back(hit.go->instanceId);
@@ -955,38 +1121,47 @@ std::unique_ptr<ICommand> BuildTerrainBrushCommand([[maybe_unused]] editor::Edit
 
         if (detailSink != nullptr) {
             JsonValue terrainIds = JsonValue::MakeArray();
-            for (const std::string& touchedId : touched) terrainIds.Push(JsonValue(touchedId));
+            for (const std::string& touchedId : touched) {
+                terrainIds.Push(JsonValue(touchedId));
+            }
             detailSink->Set("terrains", std::move(terrainIds));
             detailSink->Set("iterations", JsonValue(iterations));
-            if (isSculpt && sculptOp == TerrainSculptOp::Flatten)
+            if (isSculpt && sculptOp == TerrainSculptOp::Flatten) {
                 detailSink->Set("targetHeight", JsonValue(flattenTarget));
+            }
         }
         return MakeTerrainEditCommand(scene, isSculpt ? "AI: Sculpt Terrain" : "AI: Paint Terrain",
                                       std::move(before), std::move(after), markDirty);
     }
 
-    /// @name Terrain: 坂
-    /// @note 人の Ramp ツールは «押した点から離した点まで» の 1 ストロークで 1 回だけ当てる。AI も両端を渡して 1 回で済ませる。
+    // Terrain: 坂
+    // 人の Ramp ツールは «押した点から離した点まで» の 1 ストロークで 1 回だけ当てる。AI も両端を渡して 1 回で済ませる。
     /// @see Docs/design/terrain-layers.md
     if (type == "terrain.ramp") {
         math::Vector3 start;
         math::Vector3 end;
         if (!ReadVec3(payload, "start", start) || !ReadVec3(payload, "end", end)) {
-            err = Outcome::Err("BAD_ARG", "start と end ([x,y,z] ワールド座標) が必要です"); return nullptr;
+            err = Outcome::Err("BAD_ARG", "start と end ([x,y,z] ワールド座標) が必要です");
+            return nullptr;
         }
         TerrainBrush brush;
         std::string brushError;
-        if (!ReadTerrainBrush(payload, brush, brushError)) { err = Outcome::Err("BAD_ARG", brushError); return nullptr; }
+        if (!ReadTerrainBrush(payload, brush, brushError)) {
+            err = Outcome::Err("BAD_ARG", brushError);
+            return nullptr;
+        }
         const math::Vector3 delta = end - start;
         const float horizontalLength = std::sqrt(delta.x * delta.x + delta.z * delta.z);
         if (!(horizontalLength > 0.001f)) {
-            err = Outcome::Err("BAD_ARG", "start と end が水平方向に同じ位置です (坂の向きが決まりません)"); return nullptr;
+            err = Outcome::Err("BAD_ARG", "start と end が水平方向に同じ位置です (坂の向きが決まりません)");
+            return nullptr;
         }
         if (horizontalLength > 5000.0f) {
-            err = Outcome::Err("BAD_ARG", "start と end の水平距離は 5000 m 以下で指定してください"); return nullptr;
+            err = Outcome::Err("BAD_ARG", "start と end の水平距離は 5000 m 以下で指定してください");
+            return nullptr;
         }
 
-        /// @note 線分を包む円 (中点 + 半長 + radius) で重なる Terrain を拾う。多めに拾っても坂の外は変わらない。
+        // 線分を包む円 (中点 + 半長 + radius) で重なる Terrain を拾う。多めに拾っても坂の外は変わらない。
         const math::Vector3 middle = (start + end) * 0.5f;
         const std::string restrictTo = StringField(payload, "id");
         std::vector<TerrainHit> hits =
@@ -1018,22 +1193,28 @@ std::unique_ptr<ICommand> BuildTerrainBrushCommand([[maybe_unused]] editor::Edit
         return MakeTerrainEditCommand(scene, "AI: Ramp Terrain", std::move(before), std::move(after), markDirty);
     }
 
-    /// @name Terrain: 穴
-    /// @note 穴は三角形を作らないことで表すので、描画・物理・NavMesh が同じ holeData を読む。掘った後は navmesh.bake が要る。
+    // Terrain: 穴
+    // 穴は三角形を作らないことで表すので、描画・物理・NavMesh が同じ holeData を読む。掘った後は navmesh.bake が要る。
     if (type == "terrain.hole") {
         math::Vector3 center;
         if (!ReadVec3(payload, "position", center)) {
-            err = Outcome::Err("BAD_ARG", "position ([x,y,z] ワールド座標) が必要です"); return nullptr;
+            err = Outcome::Err("BAD_ARG", "position ([x,y,z] ワールド座標) が必要です");
+            return nullptr;
         }
         TerrainBrush brush;
-        if (const JsonValue* v = payload.Find("radius"); v != nullptr && v->IsNumber())
+        if (const JsonValue* v = payload.Find("radius"); v != nullptr && v->IsNumber()) {
             brush.radius = static_cast<float>(v->AsNumber());
+        }
         if (!(brush.radius > 0.0f) || brush.radius > 500.0f) {
-            err = Outcome::Err("BAD_ARG", "radius は 0 より大きく 500 以下で指定してください"); return nullptr;
+            err = Outcome::Err("BAD_ARG", "radius は 0 より大きく 500 以下で指定してください");
+            return nullptr;
         }
         bool erase = false;
         if (const JsonValue* v = payload.Find("erase"); v != nullptr) {
-            if (!v->IsBool()) { err = Outcome::Err("BAD_ARG", "erase は true / false で指定してください"); return nullptr; }
+            if (!v->IsBool()) {
+                err = Outcome::Err("BAD_ARG", "erase は true / false で指定してください");
+                return nullptr;
+            }
             erase = v->AsBool();
         }
 
@@ -1051,7 +1232,9 @@ std::unique_ptr<ICommand> BuildTerrainBrushCommand([[maybe_unused]] editor::Edit
         JsonValue terrainIds = JsonValue::MakeArray();
         for (const TerrainHit& hit : hits) {
             scene::TerrainComponent edited = *hit.terrain;
-            if (!ApplyTerrainHole(edited, hit.local, brush, !erase)) continue;
+            if (!ApplyTerrainHole(edited, hit.local, brush, !erase)) {
+                continue;
+            }
             before.push_back({ hit.go->instanceId, *hit.terrain });
             after.push_back({ hit.go->instanceId, std::move(edited) });
             terrainIds.Push(JsonValue(hit.go->instanceId));
@@ -1079,17 +1262,26 @@ std::unique_ptr<ICommand> BuildTerrainLayerMaterialCommand([[maybe_unused]] edit
     [[maybe_unused]] std::shared_ptr<std::string> createdSink, [[maybe_unused]] JsonValue* detailSink)
 {
     scene::Scene* scene = ctx.activeScene;
-    if (scene == nullptr) { err = Outcome::Err("NO_SCENE", "アクティブシーンがありません"); return nullptr; }
+    if (scene == nullptr) {
+        err = Outcome::Err("NO_SCENE", "アクティブシーンがありません");
+        return nullptr;
+    }
     [[maybe_unused]] const auto markDirty = [&ctx]() { if (ctx.markSceneDirty) ctx.markSceneDirty(); };
 
-    /// @note Terrain レイヤーへ .mat を割り当てる。Paint 前にレイヤーの中身を決めないと「塗ったのに見た目が変わらない (レイヤーが空)」になる。
+    // Terrain レイヤーへ .mat を割り当てる。Paint 前にレイヤーの中身を決めないと「塗ったのに見た目が変わらない (レイヤーが空)」になる。
     if (type == "terrain.setLayerMaterial") {
         const std::string id = StringField(payload, "id");
         GameObject* go = scene->FindByGuid(id);
-        if (go == nullptr) { err = Outcome::Err("NODE_NOT_FOUND", "NodeId が見つかりません: " + id); return nullptr; }
+        if (go == nullptr) {
+            err = Outcome::Err("NODE_NOT_FOUND", "NodeId が見つかりません: " + id);
+            return nullptr;
+        }
         auto* terrain = go->GetComponent<scene::TerrainComponent>();
-        if (terrain == nullptr) { err = Outcome::Err("NOT_PRESENT", "TerrainComponent が装着されていません"); return nullptr; }
-        /// @note layer == 層数 は末尾への追加。Undo は追加した層を消す (差し替えなら旧 .mat へ戻す)。
+        if (terrain == nullptr) {
+            err = Outcome::Err("NOT_PRESENT", "TerrainComponent が装着されていません");
+            return nullptr;
+        }
+        // layer == 層数 は末尾への追加。Undo は追加した層を消す (差し替えなら旧 .mat へ戻す)。
         const int layerCount = terrain->LayerCount();
         const std::string layerRange = "0〜" + std::to_string(layerCount);
         const JsonValue* layerValue = payload.Find("layer");
@@ -1113,11 +1305,13 @@ std::unique_ptr<ICommand> BuildTerrainLayerMaterialCommand([[maybe_unused]] edit
             std::string relative;
             if (!ResolveProjectFile(ctx, materialPath, resolved, relative)
                 || LowerAscii(resolved.extension().string()) != ".mat") {
-                err = Outcome::Err("BAD_PATH", "material は projectRoot 配下の .mat で指定してください"); return nullptr;
+                err = Outcome::Err("BAD_PATH", "material は projectRoot 配下の .mat で指定してください");
+                return nullptr;
             }
             std::error_code ec;
             if (!std::filesystem::is_regular_file(resolved, ec)) {
-                err = Outcome::Err("MATERIAL_NOT_FOUND", "マテリアルが見つかりません: " + relative); return nullptr;
+                err = Outcome::Err("MATERIAL_NOT_FOUND", "マテリアルが見つかりません: " + relative);
+                return nullptr;
             }
         }
         const std::string oldMaterial = appends ? std::string{} : terrain->layerMaterials[static_cast<size_t>(layer)];
@@ -1128,15 +1322,20 @@ std::unique_ptr<ICommand> BuildTerrainLayerMaterialCommand([[maybe_unused]] edit
         return std::make_unique<LambdaCommand>(appends ? "AI: Add Terrain Layer" : "AI: Set Terrain Layer Material",
             [scene, id, layer, materialPath, markDirty]() {
                 if (GameObject* g = scene->FindByGuid(id))
-                    if (auto* t = g->GetComponent<scene::TerrainComponent>()) t->SetLayerMaterial(layer, materialPath);
+                    if (auto* t = g->GetComponent<scene::TerrainComponent>()) {
+                        t->SetLayerMaterial(layer, materialPath);
+                    }
                 markDirty();
             },
             [scene, id, layer, appends, oldMaterial, markDirty]() {
                 if (GameObject* g = scene->FindByGuid(id)) {
                     if (auto* t = g->GetComponent<scene::TerrainComponent>()) {
-                        /// @note 追加の取り消しは «末尾がまだこの層» のときだけ消す。後続の編集で並びが変わっていたら触らない。
-                        if (!appends)                              t->SetLayerMaterial(layer, oldMaterial);
-                        else if (t->LayerCount() == layer + 1)     t->RemoveLayer(layer);
+                        // 追加の取り消しは «末尾がまだこの層» のときだけ消す。後続の編集で並びが変わっていたら触らない。
+                        if (!appends) {
+                            t->SetLayerMaterial(layer, oldMaterial);
+                        } else if (t->LayerCount() == layer + 1) {
+                            t->RemoveLayer(layer);
+                        }
                     }
                 }
                 markDirty();
@@ -1152,20 +1351,29 @@ std::unique_ptr<ICommand> BuildNavMeshBakeCommand([[maybe_unused]] editor::Edito
     [[maybe_unused]] std::shared_ptr<std::string> createdSink, [[maybe_unused]] JsonValue* detailSink)
 {
     scene::Scene* scene = ctx.activeScene;
-    if (scene == nullptr) { err = Outcome::Err("NO_SCENE", "アクティブシーンがありません"); return nullptr; }
+    if (scene == nullptr) {
+        err = Outcome::Err("NO_SCENE", "アクティブシーンがありません");
+        return nullptr;
+    }
     [[maybe_unused]] const auto markDirty = [&ctx]() { if (ctx.markSceneDirty) ctx.markSceneDirty(); };
 
-    /// @name NavMesh: 再ベイク要求
-    /// @note 地形を彫った直後の NavMesh は古い形のままで、経路を引くと壁を通り抜ける経路が返る。sculpt の後は必ずこれを通す運用にする。
+    // NavMesh: 再ベイク要求
+    // 地形を彫った直後の NavMesh は古い形のままで、経路を引くと壁を通り抜ける経路が返る。sculpt の後は必ずこれを通す運用にする。
     if (type == "navmesh.bake") {
         const std::string id = StringField(payload, "id");
         std::vector<std::string> targets;
         for (scene::EntityID eid : scene->GetEntities<scene::NavMeshSurfaceComponent>()) {
             GameObject* surfaceGo = scene->GetGameObject(eid);
             auto* surface = scene->GetComponent<scene::NavMeshSurfaceComponent>(eid);
-            if (surfaceGo == nullptr || surface == nullptr) continue;
-            if (!id.empty() && surfaceGo->instanceId != id) continue;
-            if (id.empty() && !surface->enabled) continue;
+            if (surfaceGo == nullptr || surface == nullptr) {
+                continue;
+            }
+            if (!id.empty() && surfaceGo->instanceId != id) {
+                continue;
+            }
+            if (id.empty() && !surface->enabled) {
+                continue;
+            }
             targets.push_back(surfaceGo->instanceId);
         }
         if (targets.empty()) {
@@ -1176,18 +1384,22 @@ std::unique_ptr<ICommand> BuildNavMeshBakeCommand([[maybe_unused]] editor::Edito
         }
         if (detailSink != nullptr) {
             JsonValue surfaceIds = JsonValue::MakeArray();
-            for (const std::string& target : targets) surfaceIds.Push(JsonValue(target));
+            for (const std::string& target : targets) {
+                surfaceIds.Push(JsonValue(target));
+            }
             detailSink->Set("surfaces", std::move(surfaceIds));
-            /// @note ベイクはバックグラウンドスレッドで走る。完了は navmesh_get_state で確認させる。
+            // ベイクはバックグラウンドスレッドで走る。完了は navmesh_get_state で確認させる。
             detailSink->Set("async", JsonValue(true));
             detailSink->Set("poll", JsonValue("navmesh_get_state で bakeState=done を確認してください"));
         }
         auto targetsShared = std::make_shared<std::vector<std::string>>(std::move(targets));
-        /// @note Undo はベイク要求を取り消せない (結果は Terrain/Collider から再生成されるキャッシュでシーンにも保存されない)。履歴に残すのは AI が操作列を追えるようにするため。
+        // Undo はベイク要求を取り消せない (結果は Terrain/Collider から再生成されるキャッシュでシーンにも保存されない)。履歴に残すのは AI が操作列を追えるようにするため。
         auto request = [scene, targetsShared]() {
             for (const std::string& target : *targetsShared) {
                 if (GameObject* g = scene->FindByGuid(target))
-                    if (auto* surface = g->GetComponent<scene::NavMeshSurfaceComponent>()) surface->needsBake = true;
+                    if (auto* surface = g->GetComponent<scene::NavMeshSurfaceComponent>()) {
+                        surface->needsBake = true;
+                    }
             }
         };
         return std::make_unique<LambdaCommand>("AI: Bake NavMesh", request, request);
@@ -1202,35 +1414,55 @@ std::unique_ptr<ICommand> BuildAudioControlCommand([[maybe_unused]] editor::Edit
     [[maybe_unused]] std::shared_ptr<std::string> createdSink, [[maybe_unused]] JsonValue* detailSink)
 {
     scene::Scene* scene = ctx.activeScene;
-    if (scene == nullptr) { err = Outcome::Err("NO_SCENE", "アクティブシーンがありません"); return nullptr; }
+    if (scene == nullptr) {
+        err = Outcome::Err("NO_SCENE", "アクティブシーンがありません");
+        return nullptr;
+    }
     [[maybe_unused]] const auto markDirty = [&ctx]() { if (ctx.markSceneDirty) ctx.markSceneDirty(); };
 
-    /// @name Audio: 再生制御
-    /// @note AudioSource は pending フラグを立てると AudioSystem が次フレームに実行する。Undo 可能にするのは run_transaction で束ねたときも戻せるようにするため。
+    // Audio: 再生制御
+    // AudioSource は pending フラグを立てると AudioSystem が次フレームに実行する。Undo 可能にするのは run_transaction で束ねたときも戻せるようにするため。
     if (type == "audio.control") {
         const std::string id = StringField(payload, "id");
         GameObject* go = scene->FindByGuid(id);
-        if (go == nullptr) { err = Outcome::Err("NODE_NOT_FOUND", "NodeId が見つかりません: " + id); return nullptr; }
+        if (go == nullptr) {
+            err = Outcome::Err("NODE_NOT_FOUND", "NodeId が見つかりません: " + id);
+            return nullptr;
+        }
         auto* source = go->GetComponent<scene::AudioSourceComponent>();
-        if (source == nullptr) { err = Outcome::Err("NOT_PRESENT", "AudioSourceComponent が装着されていません"); return nullptr; }
+        if (source == nullptr) {
+            err = Outcome::Err("NOT_PRESENT", "AudioSourceComponent が装着されていません");
+            return nullptr;
+        }
         const std::string action = LowerAscii(StringField(payload, "action"));
         if (action != "play" && action != "stop" && action != "pause" && action != "resume") {
-            err = Outcome::Err("BAD_ARG", "action は play / stop / pause / resume です"); return nullptr;
+            err = Outcome::Err("BAD_ARG", "action は play / stop / pause / resume です");
+            return nullptr;
         }
         if (action == "play" && source->clipPath.empty()) {
-            err = Outcome::Err("NO_CLIP", "clipPath が空です (component_set で設定してください)"); return nullptr;
+            err = Outcome::Err("NO_CLIP", "clipPath が空です (component_set で設定してください)");
+            return nullptr;
         }
         auto request = [scene, id](const std::string& requestedAction) {
             GameObject* g = scene->FindByGuid(id);
-            if (g == nullptr) return;
+            if (g == nullptr) {
+                return;
+            }
             auto* audio = g->GetComponent<scene::AudioSourceComponent>();
-            if (audio == nullptr) return;
-            if (requestedAction == "play")        audio->m_pendingPlay = true;
-            else if (requestedAction == "stop")   audio->m_pendingStop = true;
-            else if (requestedAction == "pause")  audio->m_pendingPause = true;
-            else if (requestedAction == "resume") audio->m_pendingPlay = true;
+            if (audio == nullptr) {
+                return;
+            }
+            if (requestedAction == "play") {
+                audio->m_pendingPlay = true;
+            } else if (requestedAction == "stop") {
+                audio->m_pendingStop = true;
+            } else if (requestedAction == "pause") {
+                audio->m_pendingPause = true;
+            } else if (requestedAction == "resume") {
+                audio->m_pendingPlay = true;
+            }
         };
-        /// @note 取り消し方向は再生なら停止・それ以外は再生。元の再生状態へ戻す。
+        // 取り消し方向は再生なら停止・それ以外は再生。元の再生状態へ戻す。
         const std::string undoAction = (action == "play" || action == "resume") ? "stop"
             : (source->m_isPlaying ? "play" : "stop");
         return std::make_unique<LambdaCommand>("AI: Audio Control",

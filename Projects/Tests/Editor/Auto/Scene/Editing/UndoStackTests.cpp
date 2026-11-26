@@ -68,7 +68,7 @@ TEST(UndoStack, ExecuteRunsTheCommandAndRecordsIt)
 /// @brief Push records without running.
 TEST(UndoStack, PushRecordsWithoutRunning)
 {
-    /// @note Push は «すでに適用済み» の操作を履歴へ載せる入口。ここで実行してしまうと二重適用になる。
+    // Push は «すでに適用済み» の操作を履歴へ載せる入口。ここで実行してしまうと二重適用になる。
     UndoStack stack;
     int value = 0;
     stack.Push(Assign(value, 5, 0));
@@ -107,12 +107,12 @@ TEST(UndoStack, ExtraUndoOrRedoIsIgnored)
     stack.Execute(Assign(value, 1, 0));
 
     stack.Undo();
-    /// @note もう戻れない
+    // もう戻れない
     stack.Undo();
     EXPECT_EQ(value, 0);
 
     stack.Redo();
-    /// @note もう進めない
+    // もう進めない
     stack.Redo();
     EXPECT_EQ(value, 1);
 }
@@ -120,7 +120,7 @@ TEST(UndoStack, ExtraUndoOrRedoIsIgnored)
 /// @brief New work after undo discards the redo branch.
 TEST(UndoStack, NewWorkAfterUndoDiscardsTheRedoBranch)
 {
-    /// @note 線形履歴。戻ってから別の操作をしたら、やり直せた側は消える。
+    // 線形履歴。戻ってから別の操作をしたら、やり直せた側は消える。
     UndoStack stack;
     std::vector<std::string> log;
     stack.Execute(Trace(log, "a"));
@@ -210,14 +210,14 @@ TEST(UndoStack, ClearDropsEverything)
     EXPECT_EQ(stack.GetHistorySize(), 0u);
     EXPECT_FALSE(stack.CanUndo());
     EXPECT_FALSE(stack.CanRedo());
-    /// @note 履歴を捨てるだけで、状態は戻さない
+    // 履歴を捨てるだけで、状態は戻さない
     EXPECT_EQ(value, 1);
 }
 
 /// @brief Recording disabled still applies but keeps no history.
 TEST(UndoStack, RecordingDisabledStillAppliesButKeepsNoHistory)
 {
-    /// @note Play 中の編集はランタイム側の変更なので、履歴に残すと «停止後に戻せてしまう»。
+    // Play 中の編集はランタイム側の変更なので、履歴に残すと «停止後に戻せてしまう»。
     UndoStack stack;
     int value = 0;
     stack.SetRecordingEnabled(false);
@@ -247,7 +247,7 @@ TEST(UndoStack, RecordingDisabledSuppressesUndoOfEarlierWork)
 /// @brief Revision advances on recorded work.
 TEST(UndoStack, RevisionAdvancesOnRecordedWork)
 {
-    /// @note Revision は «保存が要るか» の判定に使われる。記録が増えたら必ず動く必要がある。
+    // Revision は «保存が要るか» の判定に使われる。記録が増えたら必ず動く必要がある。
     UndoStack stack;
     int value = 0;
     const std::size_t before = stack.GetRevision();
@@ -265,7 +265,7 @@ TEST(UndoStack, DropsTheOldestEntryBeyondTheHistoryLimit)
         stack.Execute(Trace(log, "cmd" + std::to_string(i)));
 
     EXPECT_EQ(stack.GetHistorySize(), UndoStack::MAX_HISTORY);
-    /// @note 最新側が残る。いちばん古い "cmd0" は押し出されている。
+    // 最新側が残る。いちばん古い "cmd0" は押し出されている。
     EXPECT_EQ(stack.GetHistory().front().description, "cmd5");
     EXPECT_EQ(stack.GetUndoDescription(),
               "cmd" + std::to_string(UndoStack::MAX_HISTORY + 4));
@@ -274,7 +274,7 @@ TEST(UndoStack, DropsTheOldestEntryBeyondTheHistoryLimit)
 /// @brief Composite undoes in reverse order.
 TEST(UndoStack, CompositeUndoesInReverseOrder)
 {
-    /// @note 親作成 → 子作成 の複合なら、戻すときは 子 → 親 でなければ破棄が壊れる。
+    // 親作成 → 子作成 の複合なら、戻すときは 子 → 親 でなければ破棄が壊れる。
     std::vector<std::string> log;
     auto composite = std::make_unique<CompositeCommand>("group");
     composite->Add(Trace(log, "parent"));

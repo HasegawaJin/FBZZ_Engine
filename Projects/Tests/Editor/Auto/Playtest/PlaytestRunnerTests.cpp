@@ -259,7 +259,7 @@ TEST_F(PlaytestRunnerTest, FramesStepWaitsExactlyThatManyTicks)
     const int ticks = RunToEnd(runner, bus);
 
     EXPECT_EQ(runner.State(), PlaytestState::PASSED);
-    /// @note 1 Tick 目で frames を受け、続く 5 Tick を待ち、7 Tick 目で log を実行して終わる。
+    // 1 Tick 目で frames を受け、続く 5 Tick を待ち、7 Tick 目で log を実行して終わる。
     EXPECT_EQ(ticks, 7);
 }
 
@@ -395,7 +395,7 @@ TEST_F(PlaytestRunnerTest, BusStepCanExpectASpecificError)
 /// @brief Bus query result is kept in the report.
 TEST_F(PlaytestRunnerTest, BusQueryResultIsKeptInTheReport)
 {
-    /// @note 計測値 (profiler.snapshot 等) をシナリオから取り出すには、query の応答が報告に残る必要がある。command の応答は残さない。
+    // 計測値 (profiler.snapshot 等) をシナリオから取り出すには、query の応答が報告に残る必要がある。command の応答は残さない。
     PlaytestRunner runner;
     FakeBus bus;
     ASSERT_TRUE(Start(runner, R"({"steps":[

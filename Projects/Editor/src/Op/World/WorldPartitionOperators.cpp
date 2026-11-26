@@ -82,7 +82,7 @@ std::vector<OpParam> PreviewParameters()
     };
 }
 
-} /// @note namespace
+} // namespace
 
 void RegisterWorldPartitionOperators(OperatorRegistry& registry)
 {
@@ -97,7 +97,9 @@ void RegisterWorldPartitionOperators(OperatorRegistry& registry)
         operation.kind = kind;
         operation.params = std::move(parameters);
         operation.exec = std::move(execute);
-        if (kind == OpKind::Mutation) operation.undoLabel = id;
+        if (kind == OpKind::Mutation) {
+            operation.undoLabel = id;
+        }
         operation.poll = [kind, streaming, needsScene](const OpContext& context, const OpArgs&) {
             const bool projectReady = !context.ctx.projectRoot.empty() && !context.ctx.managedBuildBusy
                 && (!context.ctx.playMode || !context.ctx.playMode->HasPendingRestore());
@@ -208,4 +210,4 @@ void RegisterWorldPartitionOperators(OperatorRegistry& registry)
         }, ControlWorldStreaming, true);
 }
 
-} /// @note namespace fbzz::editor
+} // namespace fbzz::editor

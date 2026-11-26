@@ -36,12 +36,17 @@ public:
     [[nodiscard]] const std::string& Error() const { return m_error; }
     void Field(const char* name, scene::EntityID& value) override
     {
-        if (m_entityResolver) Store(PersistentKey(name), ResolveEntity(value));
+        if (m_entityResolver) {
+            Store(PersistentKey(name), ResolveEntity(value));
+        }
     }
     void RefField(const char* name, scene::EntityRef& value, const char* typeName) override
     {
-        if (!value.guid.empty()) Store(PersistentKey(name), ResolveObject({value.guid, value.id, value.sceneGeneration}));
-        else if (m_entityResolver) Store(PersistentKey(name), ResolveEntity(value.id, typeName));
+        if (!value.guid.empty()) {
+            Store(PersistentKey(name), ResolveObject({value.guid, value.id, value.sceneGeneration}));
+        } else if (m_entityResolver) {
+            Store(PersistentKey(name), ResolveEntity(value.id, typeName));
+        }
     }
     void Field(const char* name, scene::EntityRef& value) override
     {
@@ -62,13 +67,17 @@ public:
     void ObjectReferenceListField(const char* name, std::vector<scene::ScriptObjectReference>& values) override
     {
         JsonValue array = JsonValue::MakeArray();
-        for (const auto& value : values) array.Push(ResolveObject(value));
+        for (const auto& value : values) {
+            array.Push(ResolveObject(value));
+        }
         Store(PersistentKey(name), std::move(array));
     }
 
     void Field(const char* name, input::KeyCode& value) override
     {
-        if (m_observations) Store(PersistentKey(name), JsonValue(static_cast<int>(value)));
+        if (m_observations) {
+            Store(PersistentKey(name), JsonValue(static_cast<int>(value)));
+        }
     }
     void Field(const char* name, scene::ParticleCurve&) override { Unsupported(name, "particleCurve"); }
     void Field(const char* name, scene::ParticleGradient&) override { Unsupported(name, "particleGradient"); }
@@ -96,44 +105,57 @@ public:
     void ListField(const char* name, std::vector<float>& values) override
     {
         JsonValue array = JsonValue::MakeArray();
-        for (float value : values) array.Push(JsonValue(static_cast<double>(value)));
+        for (float value : values) {
+            array.Push(JsonValue(static_cast<double>(value)));
+        }
         Store(PersistentKey(name), std::move(array));
     }
     void ListField(const char* name, std::vector<int>& values) override
     {
         JsonValue array = JsonValue::MakeArray();
-        for (int value : values) array.Push(JsonValue(value));
+        for (int value : values) {
+            array.Push(JsonValue(value));
+        }
         Store(PersistentKey(name), std::move(array));
     }
     void ListField(const char* name, std::vector<bool>& values) override
     {
         JsonValue array = JsonValue::MakeArray();
-        for (bool value : values) array.Push(JsonValue(value));
+        for (bool value : values) {
+            array.Push(JsonValue(value));
+        }
         Store(PersistentKey(name), std::move(array));
     }
     void ListField(const char* name, std::vector<std::string>& values) override
     {
         JsonValue array = JsonValue::MakeArray();
-        for (const auto& value : values) array.Push(JsonValue(value));
+        for (const auto& value : values) {
+            array.Push(JsonValue(value));
+        }
         Store(PersistentKey(name), std::move(array));
     }
     void ListField(const char* name, std::vector<math::Vector2>& values) override
     {
         JsonValue array = JsonValue::MakeArray();
-        for (const auto& value : values) array.Push(MakeVec({ value.x, value.y }));
+        for (const auto& value : values) {
+            array.Push(MakeVec({ value.x, value.y }));
+        }
         Store(PersistentKey(name), std::move(array));
     }
     void ListField(const char* name, std::vector<math::Vector3>& values) override
     {
         JsonValue array = JsonValue::MakeArray();
-        for (const auto& value : values) array.Push(MakeVec({ value.x, value.y, value.z }));
+        for (const auto& value : values) {
+            array.Push(MakeVec({ value.x, value.y, value.z }));
+        }
         Store(PersistentKey(name), std::move(array));
     }
     void ListField(const char* name, std::vector<math::Vector4>& values) override
     {
         JsonValue array = JsonValue::MakeArray();
-        for (const auto& value : values)
+        for (const auto& value : values) {
             array.Push(MakeVec({ value.x, value.y, value.z, value.w }));
+        }
         Store(PersistentKey(name), std::move(array));
     }
     void ListField(const char* name, std::vector<scene::EntityRef>& values) override
@@ -152,8 +174,9 @@ public:
         for (auto& value : values) {
             JsonReadReflector child(m_observations, m_entityResolver, m_objectResolver);
             child.AssetField("value", value, type);
-            if (const JsonValue* asset = child.Result().Find("value"))
+            if (const JsonValue* asset = child.Result().Find("value")) {
                 array.Push(*asset);
+            }
         }
         Store(PersistentKey(name), std::move(array));
     }
@@ -169,7 +192,9 @@ public:
 
     void EndObject() override
     {
-        if (m_pending.empty()) return;
+        if (m_pending.empty()) {
+            return;
+        }
         auto entry = std::move(m_pending.back());
         m_pending.pop_back();
         Store(std::move(entry.first), std::move(entry.second));
@@ -184,26 +209,31 @@ public:
     void BeginObjectElement(std::size_t index) override
     {
         (void)index;
-        /// @note 配列要素はキーを持たない。空キーで積み、EndObjectElement で配列へ Push する。
+        // 配列要素はキーを持たない。空キーで積み、EndObjectElement で配列へ Push する。
         m_pending.emplace_back(std::string{}, JsonValue::MakeObject());
     }
 
     void EndObjectElement() override
     {
-        if (m_pending.empty()) return;
+        if (m_pending.empty()) {
+            return;
+        }
         auto entry = std::move(m_pending.back());
         m_pending.pop_back();
-        if (!m_pendingLists.empty())
+        if (!m_pendingLists.empty()) {
             m_pendingLists.back().second.Push(std::move(entry.second));
+        }
     }
 
     std::size_t EndObjectList() override
     {
-        if (m_pendingLists.empty()) return NO_REMOVE;
+        if (m_pendingLists.empty()) {
+            return NO_REMOVE;
+        }
         auto entry = std::move(m_pendingLists.back());
         m_pendingLists.pop_back();
         Store(std::move(entry.first), std::move(entry.second));
-        /// @note 観測専用のリフレクタは要素を削除しない
+        // 観測専用のリフレクタは要素を削除しない
         return NO_REMOVE;
     }
 
@@ -214,23 +244,41 @@ public:
         if (value.value) {
             JsonReadReflector child(m_observations, m_entityResolver, m_objectResolver);
             value.value->Reflect(child);
-            if (!child.Error().empty()) m_error = child.Error();
+            if (!child.Error().empty()) {
+                m_error = child.Error();
+            }
             reference.Set("fields", child.Result());
         }
         Store(PersistentKey(name), std::move(reference));
     }
 
     /// @note Readonly (計算値) も AI の観測材料として含める。
-    void Readonly(const char* name, const std::string& v) override { if (m_observations) Store(PersistentKey(name), JsonValue(v)); }
-    void Readonly(const char* name, float v) override { if (m_observations) Store(PersistentKey(name), JsonValue(static_cast<double>(v))); }
-    void Readonly(const char* name, int v) override { if (m_observations) Store(PersistentKey(name), JsonValue(v)); }
+    void Readonly(const char* name, const std::string& v) override {
+        if (m_observations) {
+            Store(PersistentKey(name), JsonValue(v));
+        }
+    }
+    void Readonly(const char* name, float v) override {
+        if (m_observations) {
+            Store(PersistentKey(name), JsonValue(static_cast<double>(v)));
+        }
+    }
+    void Readonly(const char* name, int v) override {
+        if (m_observations) {
+            Store(PersistentKey(name), JsonValue(v));
+        }
+    }
     /// @}
 
 private:
     JsonValue ResolveObject(const scene::ScriptObjectReference& reference) const
     {
-        if (reference.guid.empty()) return JsonValue{};
-        if (m_objectResolver) return m_objectResolver(reference);
+        if (reference.guid.empty()) {
+            return JsonValue{};
+        }
+        if (m_objectResolver) {
+            return m_objectResolver(reference);
+        }
         JsonValue value = JsonValue::MakeObject();
         value.Set("guid", JsonValue(reference.guid));
         value.Set("expectedType", JsonValue("GameObject"));
@@ -239,7 +287,9 @@ private:
     }
     void Unsupported(const char* name, const char* type)
     {
-        if (!m_observations) return;
+        if (!m_observations) {
+            return;
+        }
         JsonValue value = JsonValue::MakeObject();
         value.Set("status", JsonValue("unsupported"));
         value.Set("type", JsonValue(type));
@@ -247,7 +297,9 @@ private:
     }
     JsonValue ResolveEntity(scene::EntityID id, const char* typeName = "") const
     {
-        if (m_entityResolver) return m_entityResolver(id, typeName);
+        if (m_entityResolver) {
+            return m_entityResolver(id, typeName);
+        }
         JsonValue value = JsonValue::MakeArray();
         value.Push(JsonValue(static_cast<int64_t>(id.index)));
         value.Push(JsonValue(static_cast<int64_t>(id.generation)));
@@ -255,8 +307,9 @@ private:
     }
     void Store(std::string key, JsonValue value)
     {
-        if (m_observations && Current().Find(key) != nullptr)
+        if (m_observations && Current().Find(key) != nullptr) {
             m_error = "Duplicate script field: " + key;
+        }
         Current().Set(std::move(key), std::move(value));
     }
     bool m_observations = false;
@@ -267,7 +320,9 @@ private:
     static JsonValue MakeVec(std::initializer_list<float> components)
     {
         JsonValue array = JsonValue::MakeArray();
-        for (const float c : components) array.Push(JsonValue(static_cast<double>(c)));
+        for (const float c : components) {
+            array.Push(JsonValue(static_cast<double>(c)));
+        }
         return array;
     }
 
@@ -279,8 +334,7 @@ private:
 
     JsonValue m_result = JsonValue::MakeObject();
 
-    /// @note 構築中の入れ子オブジェクト (キー, 値)。配列要素はキーが空。
-    std::vector<std::pair<std::string, JsonValue>> m_pending;
+    std::vector<std::pair<std::string, JsonValue>> m_pending; ///< 構築中の入れ子オブジェクト (キー, 値)。配列要素はキーが空。
     std::vector<std::pair<std::string, JsonValue>> m_pendingLists;
 };
 
@@ -421,7 +475,9 @@ public:
 
     void EndObject() override
     {
-        if (m_pending.empty()) return;
+        if (m_pending.empty()) {
+            return;
+        }
         auto entry = std::move(m_pending.back());
         m_pending.pop_back();
 
@@ -432,7 +488,7 @@ public:
 
     std::size_t BeginObjectList(const char* name, std::size_t count) override
     {
-        /// @note 配列は「要素 1 個ぶんのスキーマ」だけを記述する。AI に渡すのは編集契約であって値ではなく、全要素を列挙しても同じ構造が繰り返されるだけでトークンを浪費するため。
+        // 配列は「要素 1 個ぶんのスキーマ」だけを記述する。AI に渡すのは編集契約であって値ではなく、全要素を列挙しても同じ構造が繰り返されるだけでトークンを浪費するため。
         m_scopeFields.push_back(MakeField(name, "objectList", JsonValue::MakeArray()));
         m_scopeGroups.push_back(m_group);
         m_pending.emplace_back(PersistentKey(name), JsonValue::MakeArray());
@@ -443,36 +499,50 @@ public:
 
     void BeginObjectElement(std::size_t index) override
     {
-        /// @note 先頭要素のスキーマだけを収集し、以降は捨てる。
+        // 先頭要素のスキーマだけを収集し、以降は捨てる。
         const bool capture = !m_listElementCaptured.empty()
             && !m_listElementCaptured.back() && index == 0;
         m_captureDepth.push_back(capture);
-        if (!capture) m_suppress += 1;
+        if (!capture) {
+            m_suppress += 1;
+        }
     }
 
     void EndObjectElement() override
     {
-        if (m_captureDepth.empty()) return;
+        if (m_captureDepth.empty()) {
+            return;
+        }
         const bool captured = m_captureDepth.back();
         m_captureDepth.pop_back();
         if (captured) {
-            if (!m_listElementCaptured.empty()) m_listElementCaptured.back() = true;
+            if (!m_listElementCaptured.empty()) {
+                m_listElementCaptured.back() = true;
+            }
         } else if (m_suppress > 0) {
             m_suppress -= 1;
-            /// @note 捨てたスキーマを溜め込まない (長い配列でメモリが膨らむのを防ぐ)。
-            if (m_suppress == 0) m_discard = JsonValue::MakeArray();
+            // 捨てたスキーマを溜め込まない (長い配列でメモリが膨らむのを防ぐ)。
+            if (m_suppress == 0) {
+                m_discard = JsonValue::MakeArray();
+            }
         }
     }
 
     std::size_t EndObjectList() override
     {
-        if (m_pending.empty()) return NO_REMOVE;
+        if (m_pending.empty()) {
+            return NO_REMOVE;
+        }
         auto entry = std::move(m_pending.back());
         m_pending.pop_back();
 
         const std::size_t count = m_listCounts.empty() ? 0u : m_listCounts.back();
-        if (!m_listCounts.empty())          m_listCounts.pop_back();
-        if (!m_listElementCaptured.empty()) m_listElementCaptured.pop_back();
+        if (!m_listCounts.empty()) {
+            m_listCounts.pop_back();
+        }
+        if (!m_listElementCaptured.empty()) {
+            m_listElementCaptured.pop_back();
+        }
 
         JsonValue field = FinishScope();
         field.Set("count", JsonValue(static_cast<int>(count)));
@@ -484,8 +554,9 @@ public:
     {
         JsonValue field = MakeField(name, "reference", JsonValue(value.type));
         JsonValue types = JsonValue::MakeArray();
-        for (const auto& typeName : scene::ScriptSerializableFactory::RegisteredTypeNames())
+        for (const auto& typeName : scene::ScriptSerializableFactory::RegisteredTypeNames()) {
             types.Push(JsonValue(typeName));
+        }
         field.Set("types", std::move(types));
         if (value.value) {
             JsonCatalogReflector child(m_includeDefaults);
@@ -509,7 +580,9 @@ public:
     {
         JsonValue field = MakeField(name, "int", JsonValue(v));
         JsonValue enumLabels = JsonValue::MakeArray();
-        for (const char* label : labels) enumLabels.Push(JsonValue(label != nullptr ? label : ""));
+        for (const char* label : labels) {
+            enumLabels.Push(JsonValue(label != nullptr ? label : ""));
+        }
         field.Set("enumLabels", std::move(enumLabels));
         JsonValue range = JsonValue::MakeObject();
         range.Set("min", JsonValue(0));
@@ -521,14 +594,16 @@ public:
     void Flags(const char* name, int& v, std::span<const char* const> labels) override
     {
         Enum(name, v, labels);
-        if (!CurrentFields().AsArray().empty())
+        if (!CurrentFields().AsArray().empty()) {
             CurrentFields().AsArray().back().Set("flags", JsonValue(true));
+        }
     }
 
     void Tooltip(const char* text) override
     {
-        if (!CurrentFields().AsArray().empty() && text != nullptr && text[0] != '\0')
+        if (!CurrentFields().AsArray().empty() && text != nullptr && text[0] != '\0') {
             CurrentFields().AsArray().back().Set("description", JsonValue(text));
+        }
     }
 
     void Group(const char* label) override
@@ -573,7 +648,9 @@ private:
     static JsonValue MakeVec(std::initializer_list<float> components)
     {
         JsonValue array = JsonValue::MakeArray();
-        for (const float component : components) array.Push(JsonValue(static_cast<double>(component)));
+        for (const float component : components) {
+            array.Push(JsonValue(static_cast<double>(component)));
+        }
         return array;
     }
 
@@ -583,17 +660,26 @@ private:
         field.Set("name", JsonValue(PersistentKey(name)));
         field.Set("displayName", JsonValue(DisplayName(name)));
         field.Set("type", JsonValue(type));
-        if (stored && m_includeDefaults) field.Set("default", std::move(defaultValue));
+        if (stored && m_includeDefaults) {
+            field.Set("default", std::move(defaultValue));
+        }
         field.Set("stored", JsonValue(stored));
         field.Set("role", JsonValue(stored ? "configuration" : "observation"));
-        if (!m_group.empty()) field.Set("group", JsonValue(m_group));
+        if (!m_group.empty()) {
+            field.Set("group", JsonValue(m_group));
+        }
         field.Set("visible", JsonValue(FieldVisible()));
         field.Set("enabled", JsonValue(stored && FieldEnabled()));
         field.Set("readOnly", JsonValue(!stored || FieldReadOnly()));
-        if (HasFieldMin()) field.Set("minimum", JsonValue(static_cast<double>(FieldMin())));
-        if (FieldStep() > 0.0f) field.Set("step", JsonValue(static_cast<double>(FieldStep())));
-        if (!FileExtensions().empty())
+        if (HasFieldMin()) {
+            field.Set("minimum", JsonValue(static_cast<double>(FieldMin())));
+        }
+        if (FieldStep() > 0.0f) {
+            field.Set("step", JsonValue(static_cast<double>(FieldStep())));
+        }
+        if (!FileExtensions().empty()) {
             field.Set("fileExtensions", JsonValue(FileExtensions()));
+        }
         return field;
     }
 
@@ -609,7 +695,9 @@ private:
         if (m_includeDefaults) {
             JsonReadReflector reader;
             reader.ListField("value", values);
-            if (const JsonValue* value = reader.Result().Find("value")) defaults = *value;
+            if (const JsonValue* value = reader.Result().Find("value")) {
+                defaults = *value;
+            }
         }
         AddList(name, elementType, values.size(), std::move(defaults));
     }
@@ -637,18 +725,18 @@ private:
     /// @note 抑制中 (配列の 2 要素目以降) は捨てるためのスクラッチを返す。
     JsonValue& CurrentFields()
     {
-        if (m_suppress > 0) return m_discard;
+        if (m_suppress > 0) {
+            return m_discard;
+        }
         return m_pending.empty() ? m_fields : m_pending.back().second;
     }
 
     JsonValue   m_fields = JsonValue::MakeArray();
     std::string m_group;
 
-    /// @note 構築中の入れ子スキーマ (フィールド名, フィールド配列)
-    std::vector<std::pair<std::string, JsonValue>> m_pending;
+    std::vector<std::pair<std::string, JsonValue>> m_pending; ///< 構築中の入れ子スキーマ (フィールド名, フィールド配列)
 
-    /// @note 配列は先頭要素のスキーマだけを採る。2 要素目以降はここへ捨てる。
-    JsonValue m_discard = JsonValue::MakeArray();
+    JsonValue m_discard = JsonValue::MakeArray(); ///< 配列は先頭要素のスキーマだけを採る。2 要素目以降はここへ捨てる。
     int       m_suppress = 0;
 
     std::vector<bool>        m_listElementCaptured;
@@ -669,21 +757,34 @@ public:
 
     void ObjectReferenceField(const char* name, scene::ScriptObjectReference& value) override
     {
-        if (!Match(name)) return;
+        if (!Match(name)) {
+            return;
+        }
         scene::ScriptObjectReference candidate;
-        if (!ReadObjectReference(m_value, candidate)) { TypeError("null or object {guid: nonempty GameObject identifier}"); return; }
+        if (!ReadObjectReference(m_value, candidate)) {
+            TypeError("null or object {guid: nonempty GameObject identifier}");
+            return;
+        }
         value = std::move(candidate);
         m_applied = true;
     }
     void ObjectReferenceListField(const char* name, std::vector<scene::ScriptObjectReference>& values) override
     {
-        if (!Match(name)) return;
-        if (!m_value.IsArray()) { TypeError("array of null or {guid}"); return; }
+        if (!Match(name)) {
+            return;
+        }
+        if (!m_value.IsArray()) {
+            TypeError("array of null or {guid}");
+            return;
+        }
         std::vector<scene::ScriptObjectReference> candidate;
         candidate.reserve(m_value.AsArray().size());
         for (const JsonValue& item : m_value.AsArray()) {
             scene::ScriptObjectReference reference;
-            if (!ReadObjectReference(item, reference)) { TypeError("array of null or {guid}"); return; }
+            if (!ReadObjectReference(item, reference)) {
+                TypeError("array of null or {guid}");
+                return;
+            }
             candidate.push_back(std::move(reference));
         }
         values = std::move(candidate);
@@ -692,57 +793,120 @@ public:
 
     void Field(const char* name, float& v) override
     {
-        if (!Match(name)) return;
-        if (m_value.IsNumber()) { v = static_cast<float>(m_value.AsNumber()); m_applied = true; }
-        else TypeError("number");
+        if (!Match(name)) {
+            return;
+        }
+        if (m_value.IsNumber()) {
+            v = static_cast<float>(m_value.AsNumber());
+            m_applied = true;
+        } else {
+            TypeError("number");
+        }
     }
     void Field(const char* name, int& v) override
     {
-        if (!Match(name)) return;
-        if (m_value.IsNumber()) { v = m_value.AsInt(); m_applied = true; }
-        else TypeError("number");
+        if (!Match(name)) {
+            return;
+        }
+        if (m_value.IsNumber()) {
+            v = m_value.AsInt();
+            m_applied = true;
+        } else {
+            TypeError("number");
+        }
     }
     void Field(const char* name, bool& v) override
     {
-        if (!Match(name)) return;
-        if (m_value.IsBool()) { v = m_value.AsBool(); m_applied = true; }
-        else TypeError("boolean");
+        if (!Match(name)) {
+            return;
+        }
+        if (m_value.IsBool()) {
+            v = m_value.AsBool();
+            m_applied = true;
+        } else {
+            TypeError("boolean");
+        }
     }
     void Field(const char* name, math::Vector2& v) override
     {
-        if (!Match(name)) return;
+        if (!Match(name)) {
+            return;
+        }
         float c[4];
-        if (ReadNumbers(2, c)) { v.x = c[0]; v.y = c[1]; m_applied = true; } else TypeError("array[2]");
+        if (ReadNumbers(2, c)) {
+            v.x = c[0];
+            v.y = c[1];
+            m_applied = true;
+        } else {
+            TypeError("array[2]");
+        }
     }
     void Field(const char* name, math::Vector3& v) override
     {
-        if (!Match(name)) return;
+        if (!Match(name)) {
+            return;
+        }
         float c[4];
-        if (ReadNumbers(3, c)) { v.x = c[0]; v.y = c[1]; v.z = c[2]; m_applied = true; } else TypeError("array[3]");
+        if (ReadNumbers(3, c)) {
+            v.x = c[0];
+            v.y = c[1];
+            v.z = c[2];
+            m_applied = true;
+        } else {
+            TypeError("array[3]");
+        }
     }
     void Field(const char* name, math::Vector4& v) override
     {
-        if (!Match(name)) return;
+        if (!Match(name)) {
+            return;
+        }
         float c[4];
-        if (ReadNumbers(4, c)) { v.x = c[0]; v.y = c[1]; v.z = c[2]; v.w = c[3]; m_applied = true; } else TypeError("array[4]");
+        if (ReadNumbers(4, c)) {
+            v.x = c[0];
+            v.y = c[1];
+            v.z = c[2];
+            v.w = c[3];
+            m_applied = true;
+        } else {
+            TypeError("array[4]");
+        }
     }
     void Field(const char* name, std::string& v) override
     {
-        if (!Match(name)) return;
-        if (m_value.IsString()) { v = m_value.AsString(); m_applied = true; }
-        else TypeError("string");
+        if (!Match(name)) {
+            return;
+        }
+        if (m_value.IsString()) {
+            v = m_value.AsString();
+            m_applied = true;
+        } else {
+            TypeError("string");
+        }
     }
     void Field(const char* name, math::Quaternion& v) override
     {
-        if (!Match(name)) return;
+        if (!Match(name)) {
+            return;
+        }
         float c[4];
-        if (ReadNumbers(4, c)) { v.x = c[0]; v.y = c[1]; v.z = c[2]; v.w = c[3]; m_applied = true; } else TypeError("array[4]");
+        if (ReadNumbers(4, c)) {
+            v.x = c[0];
+            v.y = c[1];
+            v.z = c[2];
+            v.w = c[3];
+            m_applied = true;
+        } else {
+            TypeError("array[4]");
+        }
     }
     void AssetField(const char* name,
                     scene::ScriptAssetReference& value,
                     scene::ScriptAssetType) override
     {
-        if (!Match(name)) return;
+        if (!Match(name)) {
+            return;
+        }
         if (m_value.IsString()) {
             value.SetPath(m_value.AsString());
             m_applied = true;
@@ -758,28 +922,47 @@ public:
             suppliedGuid = true;
         }
         if (const JsonValue* path = m_value.Find("path"); path && path->IsString()) {
-            if (suppliedGuid) value.path = path->AsString();
-            else value.SetPath(path->AsString());
+            if (suppliedGuid) {
+                value.path = path->AsString();
+            } else {
+                value.SetPath(path->AsString());
+            }
         }
         m_applied = true;
     }
     void ListField(const char* name, std::vector<float>& values) override
     {
-        if (!Match(name)) return;
-        if (!ReadNumberList(values)) TypeError("number array");
+        if (!Match(name)) {
+            return;
+        }
+        if (!ReadNumberList(values)) {
+            TypeError("number array");
+        }
     }
     void ListField(const char* name, std::vector<int>& values) override
     {
-        if (!Match(name)) return;
-        if (!ReadIntegerList(values)) TypeError("integer array");
+        if (!Match(name)) {
+            return;
+        }
+        if (!ReadIntegerList(values)) {
+            TypeError("integer array");
+        }
     }
     void ListField(const char* name, std::vector<bool>& values) override
     {
-        if (!Match(name)) return;
-        if (!m_value.IsArray()) { TypeError("boolean array"); return; }
+        if (!Match(name)) {
+            return;
+        }
+        if (!m_value.IsArray()) {
+            TypeError("boolean array");
+            return;
+        }
         std::vector<bool> result;
         for (const auto& item : m_value.AsArray()) {
-            if (!item.IsBool()) { TypeError("boolean array"); return; }
+            if (!item.IsBool()) {
+                TypeError("boolean array");
+                return;
+            }
             result.push_back(item.AsBool());
         }
         values = std::move(result);
@@ -787,11 +970,19 @@ public:
     }
     void ListField(const char* name, std::vector<std::string>& values) override
     {
-        if (!Match(name)) return;
-        if (!m_value.IsArray()) { TypeError("string array"); return; }
+        if (!Match(name)) {
+            return;
+        }
+        if (!m_value.IsArray()) {
+            TypeError("string array");
+            return;
+        }
         std::vector<std::string> result;
         for (const auto& item : m_value.AsArray()) {
-            if (!item.IsString()) { TypeError("string array"); return; }
+            if (!item.IsString()) {
+                TypeError("string array");
+                return;
+            }
             result.push_back(item.AsString());
         }
         values = std::move(result);
@@ -799,23 +990,40 @@ public:
     }
     void ListField(const char* name, std::vector<math::Vector2>& values) override
     {
-        if (!Match(name)) return;
-        if (!ReadVectorList(values, 2)) TypeError("vector2 array");
+        if (!Match(name)) {
+            return;
+        }
+        if (!ReadVectorList(values, 2)) {
+            TypeError("vector2 array");
+        }
     }
     void ListField(const char* name, std::vector<math::Vector3>& values) override
     {
-        if (!Match(name)) return;
-        if (!ReadVectorList(values, 3)) TypeError("vector3 array");
+        if (!Match(name)) {
+            return;
+        }
+        if (!ReadVectorList(values, 3)) {
+            TypeError("vector3 array");
+        }
     }
     void ListField(const char* name, std::vector<math::Vector4>& values) override
     {
-        if (!Match(name)) return;
-        if (!ReadVectorList(values, 4)) TypeError("vector4 array");
+        if (!Match(name)) {
+            return;
+        }
+        if (!ReadVectorList(values, 4)) {
+            TypeError("vector4 array");
+        }
     }
     void ListField(const char* name, std::vector<scene::EntityRef>& values) override
     {
-        if (!Match(name)) return;
-        if (!m_value.IsArray()) { TypeError("entity reference array"); return; }
+        if (!Match(name)) {
+            return;
+        }
+        if (!m_value.IsArray()) {
+            TypeError("entity reference array");
+            return;
+        }
         std::vector<scene::EntityRef> result;
         for (const auto& item : m_value.AsArray()) {
             if (!item.IsArray() || item.AsArray().size() < 2 ||
@@ -835,8 +1043,13 @@ public:
                         std::vector<scene::ScriptAssetReference>& values,
                         scene::ScriptAssetType) override
     {
-        if (!Match(name)) return;
-        if (!m_value.IsArray()) { TypeError("asset array"); return; }
+        if (!Match(name)) {
+            return;
+        }
+        if (!m_value.IsArray()) {
+            TypeError("asset array");
+            return;
+        }
         std::vector<scene::ScriptAssetReference> result;
         for (const auto& item : m_value.AsArray()) {
             scene::ScriptAssetReference asset;
@@ -850,8 +1063,11 @@ public:
                     suppliedGuid = true;
                 }
                 if (const JsonValue* path = item.Find("path"); path && path->IsString()) {
-                    if (suppliedGuid) asset.path = path->AsString();
-                    else asset.SetPath(path->AsString());
+                    if (suppliedGuid) {
+                        asset.path = path->AsString();
+                    } else {
+                        asset.SetPath(path->AsString());
+                    }
                 }
             } else {
                 TypeError("asset array");
@@ -881,7 +1097,7 @@ public:
     std::size_t BeginObjectList(const char* name, std::size_t count) override
     {
         EnterSegment(PersistentKey(name));
-        /// @note AI からの要素数変更は別コマンドで扱う
+        // AI からの要素数変更は別コマンドで扱う
         return count;
     }
 
@@ -901,41 +1117,55 @@ public:
     {
         const std::string key = PersistentKey(name);
         if (m_target == key && m_value.IsObject()) {
-            if (const JsonValue* type = m_value.Find("type"); type && type->IsString())
+            if (const JsonValue* type = m_value.Find("type"); type && type->IsString()) {
                 value.SetType(type->AsString());
+            }
             m_applied = true;
             return;
         }
-        if (value.value)
+        if (value.value) {
             ApplyNested(name, [&](JsonWriteReflector& child) { value.value->Reflect(child); });
+        }
     }
 
     void FloatRange(const char* name, float& v, float min, float max) override
     {
-        if (!Match(name)) return;
+        if (!Match(name)) {
+            return;
+        }
         if (m_value.IsNumber()) {
             v = std::clamp(static_cast<float>(m_value.AsNumber()), min, max);
             m_applied = true;
-        } else TypeError("number");
+        } else {
+            TypeError("number");
+        }
     }
 
     void IntRange(const char* name, int& v, int min, int max) override
     {
-        if (!Match(name)) return;
+        if (!Match(name)) {
+            return;
+        }
         if (m_value.IsNumber()) {
             v = std::clamp(m_value.AsInt(), min, max);
             m_applied = true;
-        } else TypeError("number");
+        } else {
+            TypeError("number");
+        }
     }
 
     void Enum(const char* name, int& v, std::span<const char* const> labels) override
     {
-        if (!Match(name)) return;
+        if (!Match(name)) {
+            return;
+        }
         if (m_value.IsNumber()) {
             const int maxValue = labels.empty() ? 0 : static_cast<int>(labels.size() - 1);
             v = std::clamp(m_value.AsInt(), 0, maxValue);
             m_applied = true;
-        } else TypeError("number");
+        } else {
+            TypeError("number");
+        }
     }
     /// @}
 
@@ -943,10 +1173,14 @@ private:
     /// @note Scene の instanceId は Asset / 型 GUID と別形式であり、欠損した既存識別子も文字列のまま保持する。
     static bool ReadObjectReference(const JsonValue& source, scene::ScriptObjectReference& result)
     {
-        if (source.IsNull()) return true;
+        if (source.IsNull()) {
+            return true;
+        }
         const JsonValue* guid = source.Find("guid");
         if (!guid || !guid->IsString() || guid->AsString().empty() || guid->AsString().find('\0') != std::string::npos ||
-            std::all_of(guid->AsString().begin(), guid->AsString().end(), [](unsigned char value) { return value <= ' '; })) return false;
+            std::all_of(guid->AsString().begin(), guid->AsString().end(), [](unsigned char value) { return value <= ' '; })) {
+            return false;
+        }
         result.guid = guid->AsString();
         result.id = scene::EntityID::INVALID;
         return true;
@@ -955,7 +1189,9 @@ private:
     void ApplyNested(const char* name, Callback callback)
     {
         const std::string prefix = std::string(PersistentKey(name)) + ".";
-        if (!m_target.starts_with(prefix)) return;
+        if (!m_target.starts_with(prefix)) {
+            return;
+        }
         JsonWriteReflector child(m_target.substr(prefix.size()), m_value);
         callback(child);
         m_applied = child.m_applied;
@@ -969,13 +1205,18 @@ private:
         m_segmentStack.push_back(m_target);
 
         const std::string prefix = segment + ".";
-        if (m_target.starts_with(prefix)) m_target = m_target.substr(prefix.size());
-        else                              m_target.clear();
+        if (m_target.starts_with(prefix)) {
+            m_target = m_target.substr(prefix.size());
+        } else {
+            m_target.clear();
+        }
     }
 
     void LeaveSegment()
     {
-        if (m_segmentStack.empty()) return;
+        if (m_segmentStack.empty()) {
+            return;
+        }
         m_target = std::move(m_segmentStack.back());
         m_segmentStack.pop_back();
     }
@@ -984,10 +1225,14 @@ private:
 
     bool ReadNumberList(std::vector<float>& values)
     {
-        if (!m_value.IsArray()) return false;
+        if (!m_value.IsArray()) {
+            return false;
+        }
         std::vector<float> result;
         for (const auto& item : m_value.AsArray()) {
-            if (!item.IsNumber()) return false;
+            if (!item.IsNumber()) {
+                return false;
+            }
             result.push_back(static_cast<float>(item.AsNumber()));
         }
         values = std::move(result);
@@ -997,10 +1242,14 @@ private:
 
     bool ReadIntegerList(std::vector<int>& values)
     {
-        if (!m_value.IsArray()) return false;
+        if (!m_value.IsArray()) {
+            return false;
+        }
         std::vector<int> result;
         for (const auto& item : m_value.AsArray()) {
-            if (!item.IsNumber()) return false;
+            if (!item.IsNumber()) {
+                return false;
+            }
             result.push_back(item.AsInt());
         }
         values = std::move(result);
@@ -1010,11 +1259,15 @@ private:
 
     bool ReadVectorList(std::vector<math::Vector2>& values, int)
     {
-        if (!m_value.IsArray()) return false;
+        if (!m_value.IsArray()) {
+            return false;
+        }
         std::vector<math::Vector2> result;
         for (const auto& item : m_value.AsArray()) {
             float components[4];
-            if (!ReadNumbersFrom(item, 2, components)) return false;
+            if (!ReadNumbersFrom(item, 2, components)) {
+                return false;
+            }
             result.push_back({ components[0], components[1] });
         }
         values = std::move(result);
@@ -1024,11 +1277,15 @@ private:
 
     bool ReadVectorList(std::vector<math::Vector3>& values, int)
     {
-        if (!m_value.IsArray()) return false;
+        if (!m_value.IsArray()) {
+            return false;
+        }
         std::vector<math::Vector3> result;
         for (const auto& item : m_value.AsArray()) {
             float components[4];
-            if (!ReadNumbersFrom(item, 3, components)) return false;
+            if (!ReadNumbersFrom(item, 3, components)) {
+                return false;
+            }
             result.push_back({ components[0], components[1], components[2] });
         }
         values = std::move(result);
@@ -1038,11 +1295,15 @@ private:
 
     bool ReadVectorList(std::vector<math::Vector4>& values, int)
     {
-        if (!m_value.IsArray()) return false;
+        if (!m_value.IsArray()) {
+            return false;
+        }
         std::vector<math::Vector4> result;
         for (const auto& item : m_value.AsArray()) {
             float components[4];
-            if (!ReadNumbersFrom(item, 4, components)) return false;
+            if (!ReadNumbersFrom(item, 4, components)) {
+                return false;
+            }
             result.push_back({ components[0], components[1], components[2], components[3] });
         }
         values = std::move(result);
@@ -1052,11 +1313,14 @@ private:
 
     static bool ReadNumbersFrom(const JsonValue& value, int count, float out[4])
     {
-        if (!value.IsArray() || static_cast<int>(value.AsArray().size()) < count)
+        if (!value.IsArray() || static_cast<int>(value.AsArray().size()) < count) {
             return false;
+        }
         for (int i = 0; i < count; ++i) {
             const JsonValue& element = value.AsArray()[static_cast<std::size_t>(i)];
-            if (!element.IsNumber()) return false;
+            if (!element.IsNumber()) {
+                return false;
+            }
             out[i] = static_cast<float>(element.AsNumber());
         }
         return true;
@@ -1064,7 +1328,9 @@ private:
 
     bool Match(const char* name)
     {
-        if (m_applied || !m_error.empty()) return false;
+        if (m_applied || !m_error.empty()) {
+            return false;
+        }
         if (m_target == PersistentKey(name)) {
             if (FieldReadOnly()) {
                 m_error = "field '" + m_target + "' is read-only";
@@ -1078,12 +1344,18 @@ private:
     /// @note JsonValue 配列の先頭 count 要素を数値として out[0..count) へ読む。要素不足・非数値なら false。
     bool ReadNumbers(int count, float out[4]) const
     {
-        if (!m_value.IsArray()) return false;
+        if (!m_value.IsArray()) {
+            return false;
+        }
         const auto& array = m_value.AsArray();
-        if (static_cast<int>(array.size()) < count) return false;
+        if (static_cast<int>(array.size()) < count) {
+            return false;
+        }
         for (int i = 0; i < count; ++i) {
             const JsonValue& element = array[static_cast<std::size_t>(i)];
-            if (!element.IsNumber()) return false;
+            if (!element.IsNumber()) {
+                return false;
+            }
             out[i] = static_cast<float>(element.AsNumber());
         }
         return true;
@@ -1100,4 +1372,4 @@ private:
     std::string      m_error;
 };
 
-} /// @note namespace fbzz::editor::ai
+} // namespace fbzz::editor::ai

@@ -34,13 +34,17 @@ namespace fbzz::editor {
 void EditorApp::RefreshPaletteAssetIndex()
 {
     m_paletteAssetPaths.clear();
-    if (m_ctx.projectRoot.empty()) return;
+    if (m_ctx.projectRoot.empty()) {
+        return;
+    }
 
     const std::filesystem::path assetsDir =
         util::FileSystem::PathFromUtf8(m_ctx.projectRoot) / L"Assets";
-    if (!util::FileSystem::Exists(assetsDir)) return;
+    if (!util::FileSystem::Exists(assetsDir)) {
+        return;
+    }
 
-    /// @note ユーザーが「開きたい」主要アセットのみ索引する。中間/生成物 (.meta 等) はノイズなので除外。
+    // ユーザーが「開きたい」主要アセットのみ索引する。中間/生成物 (.meta 等) はノイズなので除外。
     static const std::unordered_set<std::string> kIncludeExt = {
         ".scene", ".prefab", ".mat", ".fbx", ".obj", ".gltf", ".glb",
         ".png", ".jpg", ".jpeg", ".tga", ".dds", ".hdr",
@@ -52,10 +56,14 @@ void EditorApp::RefreshPaletteAssetIndex()
     for (const auto& p : util::FileSystem::ListFilesRecursive(assetsDir)) {
         const std::string ext = util::StringUtils::ToLower(
             util::FileSystem::PathToUtf8(p.extension()));
-        if (kIncludeExt.find(ext) == kIncludeExt.end()) continue;
+        if (kIncludeExt.find(ext) == kIncludeExt.end()) {
+            continue;
+        }
         m_paletteAssetPaths.push_back(util::FileSystem::PathToUtf8(p));
-        /// @note 暴走防止の上限
-        if (m_paletteAssetPaths.size() >= 5000) break;
+        // 暴走防止の上限
+        if (m_paletteAssetPaths.size() >= 5000) {
+            break;
+        }
     }
 }
 
@@ -63,18 +71,18 @@ void EditorApp::DrawCommandPalette(EditorContext& ctx)
 {
     constexpr const char* kPopupId = "##command_palette";
 
-    /// @note ホットキー / メニューからの起動要求を受けてポップアップを開く。
+    // ホットキー / メニューからの起動要求を受けてポップアップを開く。
     if (m_commandPaletteOpen) {
         m_commandPaletteOpen = false;
         m_commandPaletteQuery[0] = '\0';
         m_commandPaletteSel = -1;
         m_commandPaletteFocus = true;
-        /// @note 開いた瞬間のアセット一覧をスナップショット
+        // 開いた瞬間のアセット一覧をスナップショット
         RefreshPaletteAssetIndex();
         ImGui::OpenPopup(kPopupId);
     }
 
-    /// @note 画面上部中央に配置する。
+    // 画面上部中央に配置する。
     const ImGuiViewport* vp = ImGui::GetMainViewport();
     ImGui::SetNextWindowPos(
         { vp->WorkPos.x + vp->WorkSize.x * 0.5f, vp->WorkPos.y + vp->WorkSize.y * 0.22f },
@@ -82,12 +90,13 @@ void EditorApp::DrawCommandPalette(EditorContext& ctx)
     const float paletteWidth = std::min(vp->WorkSize.x * 0.94f, ImGui::GetFontSize() * 40.0f);
     ImGui::SetNextWindowSize({ paletteWidth, 0.0f }, ImGuiCond_Always);
 
-    if (!ImGui::BeginPopup(kPopupId, ImGuiWindowFlags_NoMove))
+    if (!ImGui::BeginPopup(kPopupId, ImGuiWindowFlags_NoMove)) {
         return;
+    }
 
-    /// @name コマンド一覧を毎フレーム構築する
-    /// @note パネル表示状態や検索クエリ由来の動的要素が混ざるため開いている間に作り直す。
-    ///       「操作」自体の正本は OperatorRegistry で、ここでは列挙するだけ。
+    // コマンド一覧を毎フレーム構築する
+    // パネル表示状態や検索クエリ由来の動的要素が混ざるため開いている間に作り直す。
+    // 「操作」自体の正本は OperatorRegistry で、ここでは列挙するだけ。
     /// @see Docs/design/editor-operator-model.md
     struct Command {
         std::string           category;
@@ -99,11 +108,13 @@ void EditorApp::DrawCommandPalette(EditorContext& ctx)
     std::vector<Command> cmds;
     const auto add = [&](const char* cat, std::string label,
                          std::function<void()> fn, bool enabled = true, std::string context = {}) {
-        if (!context.empty() && (context.back() == '/' || context.back() == '\\')) context.pop_back();
+        if (!context.empty() && (context.back() == '/' || context.back() == '\\')) {
+            context.pop_back();
+        }
         cmds.push_back({ cat, std::move(label), std::move(fn), enabled, std::move(context) });
     };
 
-    /// @note クエリが空のときは Recent Scenes を先頭に提示し、素早い再オープンを可能にする。
+    // クエリが空のときは Recent Scenes を先頭に提示し、素早い再オープンを可能にする。
     if (m_commandPaletteQuery[0] == '\0') {
         for (const std::string& sp : m_settings.recentScenes) {
             const bool exists = util::FileSystem::Exists(sp);
@@ -112,22 +123,26 @@ void EditorApp::DrawCommandPalette(EditorContext& ctx)
         }
     }
 
-    /// @name 登録済みの操作
-    /// @note 表示名・分類・実行可否・実体はすべてレジストリ側にある。
-    ///       ここに操作を書き足すことはない (足すなら BuiltinOperators.cpp へ)。
+    // 登録済みの操作
+    // 表示名・分類・実行可否・実体はすべてレジストリ側にある。
+    // ここに操作を書き足すことはない (足すなら BuiltinOperators.cpp へ)。
     {
         const OpContext opContext = MakeOpContext();
-        /// @note パレットは引数を渡せないので、poll も引数なしで評価する。
-        ///       対象を引数で指定する操作は「選択中のもの」を暗黙の対象として判定される。
+        // パレットは引数を渡せないので、poll も引数なしで評価する。
+        // 対象を引数で指定する操作は「選択中のもの」を暗黙の対象として判定される。
         const OpArgs noArgs;
         for (const EditorOperator& op : m_operators.All()) {
-            /// @note Query は状態を読むだけで、パレットから実行する意味がない (AI 用)。
-            if (op.kind == OpKind::Query) continue;
-            if (op.id == "panel.focus" || op.id == "panel.set_visible") continue;
+            // Query は状態を読むだけで、パレットから実行する意味がない (AI 用)。
+            if (op.kind == OpKind::Query) {
+                continue;
+            }
+            if (op.id == "panel.focus" || op.id == "panel.set_visible") {
+                continue;
+            }
 
-            /// @note 必須引数を持つ操作は、値を決めずに並べても押した瞬間 BAD_ARG になる。
-            ///       ただし必須引数が 1 つで値が enumValues に宣言されている排他選択は、
-            ///       値ごとに 1 行へ展開すれば普通の操作として扱えるため例外にする。
+            // 必須引数を持つ操作は、値を決めずに並べても押した瞬間 BAD_ARG になる。
+            // ただし必須引数が 1 つで値が enumValues に宣言されている排他選択は、
+            // 値ごとに 1 行へ展開すれば普通の操作として扱えるため例外にする。
             const std::vector<OpParam>& params = op.params;
             const bool singleEnumParam =
                 params.size() >= 1 && params[0].required && !params[0].enumValues.empty()
@@ -154,7 +169,9 @@ void EditorApp::DrawCommandPalette(EditorContext& ctx)
 
             const bool hasRequiredParam = std::any_of(
                 params.begin(), params.end(), [](const OpParam& p) { return p.required; });
-            if (hasRequiredParam) continue;
+            if (hasRequiredParam) {
+                continue;
+            }
 
             const std::string id = op.id;
             add(op.category.c_str(), op.label,
@@ -163,7 +180,7 @@ void EditorApp::DrawCommandPalette(EditorContext& ctx)
         }
     }
 
-    /// @note パネル操作は登録済み ID の投影。前面化と非表示を分け、表示済みの背面タブへも一度で到達する。
+    // パネル操作は登録済み ID の投影。前面化と非表示を分け、表示済みの背面タブへも一度で到達する。
     for (const auto& group : BuildPanelMenu(m_panels)) {
         for (const auto& entry : group.entries) {
             const IPanel* panel = entry.panel;
@@ -186,7 +203,7 @@ void EditorApp::DrawCommandPalette(EditorContext& ctx)
         }
     }
 
-    /// @name 検索欄
+    // 検索欄
     if (m_commandPaletteFocus) {
         ImGui::SetKeyboardFocusHere();
         m_commandPaletteFocus = false;
@@ -198,22 +215,26 @@ void EditorApp::DrawCommandPalette(EditorContext& ctx)
         m_commandPaletteQuery, sizeof(m_commandPaletteQuery),
         ImGuiInputTextFlags_EnterReturnsTrue);
 
-    /// @note フィルタ (部分一致・大小無視)。ラベルとカテゴリの両方を対象にする。
+    // フィルタ (部分一致・大小無視)。ラベルとカテゴリの両方を対象にする。
     const std::string query = m_commandPaletteQuery;
 
-    /// @name Go to Anything: クエリ入力時のみアセット / GameObject を動的に候補追加する
-    /// @note 空クエリで全アセット/全オブジェクトを並べると膨大になるため、絞り込み時だけ列挙する。
+    // Go to Anything: クエリ入力時のみアセット / GameObject を動的に候補追加する
+    // 空クエリで全アセット/全オブジェクトを並べると膨大になるため、絞り込み時だけ列挙する。
     if (!query.empty()) {
         const bool pathQuery = query.find_first_of("/\\") != std::string::npos;
-        /// @note アセット (ファイル名の部分一致)。開き方の振り分けは asset.open が持つ。
-        ///       同じ振り分けを複数箇所へ書き写すと拡張子ごとに抜けが出るため、
-        ///       operator へ一本化して足すと全経路へ同時に効くようにする。
+        // アセット (ファイル名の部分一致)。開き方の振り分けは asset.open が持つ。
+        // 同じ振り分けを複数箇所へ書き写すと拡張子ごとに抜けが出るため、
+        // operator へ一本化して足すと全経路へ同時に効くようにする。
         int assetHits = 0;
         for (const std::string& path : m_paletteAssetPaths) {
-            /// @note 候補が溢れないよう上限を設ける
-            if (assetHits >= 50) break;
+            // 候補が溢れないよう上限を設ける
+            if (assetHits >= 50) {
+                break;
+            }
             const std::string name = util::FileSystem::GetFilename(path);
-            if (!util::StringUtils::ContainsCI(pathQuery ? path : name, query)) continue;
+            if (!util::StringUtils::ContainsCI(pathQuery ? path : name, query)) {
+                continue;
+            }
             ++assetHits;
             add("Asset", name, [this, path] {
                 OpArgs args;
@@ -221,24 +242,31 @@ void EditorApp::DrawCommandPalette(EditorContext& ctx)
                 InvokeOperator("asset.open", args);
             }, true, util::FileSystem::GetDirectory(path));
         }
-        /// @note GameObject (名前の部分一致)。選択してビューをフォーカスする。
+        // GameObject (名前の部分一致)。選択してビューをフォーカスする。
         if (ctx.activeScene) {
             int goHits = 0;
             for (auto& go : ctx.activeScene->GameObjects()) {
-                if (goHits >= 50) break;
-                if (!pathQuery && !util::StringUtils::ContainsCI(go.name, query)) continue;
+                if (goHits >= 50) {
+                    break;
+                }
+                if (!pathQuery && !util::StringUtils::ContainsCI(go.name, query)) {
+                    continue;
+                }
                 std::string parentPath;
-                for (auto* parent = go.GetParent(); parent; parent = parent->GetParent())
+                for (auto* parent = go.GetParent(); parent; parent = parent->GetParent()) {
                     parentPath = parent->name + (parentPath.empty() ? "" : "/" + parentPath);
+                }
                 const std::string objectPath = parentPath.empty() ? go.name : parentPath + "/" + go.name;
-                if (pathQuery && !util::StringUtils::ContainsCI(objectPath, query)) continue;
+                if (pathQuery && !util::StringUtils::ContainsCI(objectPath, query)) {
+                    continue;
+                }
                 ++goHits;
                 const scene::EntityID id = go.GetID();
                 const math::Vector3   wp = go.transform.worldPosition;
                 add("Object", go.name, [id, wp, &ctx] {
                     SelectEntity(ctx, id);
                     ctx.focusTargetPosition    = wp;
-                    /// @note バウンズ不明時は既定距離フォーカス
+                    // バウンズ不明時は既定距離フォーカス
                     ctx.focusTargetRadius      = 0.0f;
                     ctx.requestFocusOnSelected = true;
                 }, true, std::move(parentPath));
@@ -249,23 +277,26 @@ void EditorApp::DrawCommandPalette(EditorContext& ctx)
     std::vector<int> filtered;
     filtered.reserve(cmds.size());
     for (int i = 0; i < static_cast<int>(cmds.size()); ++i) {
-        /// @note 原文と訳の両方に当てる。日本語表示中でも英語の操作名で引けること ──
-        ///       資料もログも英語で、覚えているのが "Frame Selected" のときに引けないと、
-        ///       パレットは «知っている名前で呼ぶ» 道具でなくなる。
+        // 原文と訳の両方に当てる。日本語表示中でも英語の操作名で引けること ──
+        // 資料もログも英語で、覚えているのが "Frame Selected" のときに引けないと、
+        // パレットは «知っている名前で呼ぶ» 道具でなくなる。
         if (query.empty()
             || util::StringUtils::ContainsCI(cmds[i].label, query)
             || util::StringUtils::ContainsCI(LOCT(cmds[i].label.c_str()), query)
             || util::StringUtils::ContainsCI(cmds[i].category, query)
             || util::StringUtils::ContainsCI(cmds[i].context + "/" + cmds[i].label, query)
-            || util::StringUtils::ContainsCI(LOCT(cmds[i].category.c_str()), query))
+            || util::StringUtils::ContainsCI(LOCT(cmds[i].category.c_str()), query)) {
             filtered.push_back(i);
+        }
     }
 
-    /// @note 選択インデックスをクランプし、上下キーで移動する。
+    // 選択インデックスをクランプし、上下キーで移動する。
     const int resultCount = static_cast<int>(filtered.size());
     const auto moveSelection = [&](int direction) {
         int row = m_commandPaletteSel;
-        if (row < 0 && direction < 0) row = 0;
+        if (row < 0 && direction < 0) {
+            row = 0;
+        }
         for (int i = 0; i < resultCount; ++i) {
             row = (row + direction + resultCount) % resultCount;
             if (cmds[filtered[row]].enabled) {
@@ -279,43 +310,52 @@ void EditorApp::DrawCommandPalette(EditorContext& ctx)
     const bool down = ImGui::IsKeyPressed(ImGuiKey_DownArrow);
     if (query != previousQuery || m_commandPaletteSel >= resultCount) {
         m_commandPaletteSel = -1;
-        if (!query.empty()) moveSelection(1);
+        if (!query.empty()) {
+            moveSelection(1);
+        }
     } else if (down || up) {
         moveSelection(down ? 1 : -1);
     }
 
-    /// @note 実行ヘルパー。
+    // 実行ヘルパー。
     const auto runSelected = [&]() {
-        if (m_commandPaletteSel < 0 || m_commandPaletteSel >= static_cast<int>(filtered.size()))
+        if (m_commandPaletteSel < 0 || m_commandPaletteSel >= static_cast<int>(filtered.size())) {
             return;
+        }
         const Command& c = cmds[filtered[m_commandPaletteSel]];
-        if (!c.enabled || !c.action) return;
+        if (!c.enabled || !c.action) {
+            return;
+        }
         c.action();
         ImGui::CloseCurrentPopup();
     };
 
     ImGui::Separator();
 
-    /// @name 結果リスト
+    // 結果リスト
     const float listH = std::min(vp->WorkSize.y * 0.55f, ImGui::GetTextLineHeightWithSpacing() * 12.0f);
     ImGui::BeginChild("##cmd_list", { 0.0f, listH }, false);
     for (int row = 0; row < static_cast<int>(filtered.size()); ++row) {
         const Command& c = cmds[filtered[row]];
         const bool selected = (row == m_commandPaletteSel);
         ImGui::PushID(row);
-        if (!c.enabled) ImGui::BeginDisabled();
+        if (!c.enabled) {
+            ImGui::BeginDisabled();
+        }
 
-        /// @note "カテゴリ  ラベル" を 1 行で表示。選択行は Selectable のハイライトで示す。
-        ///       桁を "%-8s" で揃えないのは、空白詰めがバイト数基準で効くため。1 文字 3 バイトの
-        ///       日本語では詰め幅がずれるので、文字数でなく px で列幅を決めて言語非依存にする。
+        // "カテゴリ  ラベル" を 1 行で表示。選択行は Selectable のハイライトで示す。
+        // 桁を "%-8s" で揃えないのは、空白詰めがバイト数基準で効くため。1 文字 3 バイトの
+        // 日本語では詰め幅がずれるので、文字数でなく px で列幅を決めて言語非依存にする。
         const float catWidth = ImGui::GetFontSize() * 5.5f;
         const float gap      = ImGui::GetFontSize() * 0.6f;
         const ImVec2 rowPos  = ImGui::GetCursorScreenPos();
 
-        /// @note 当たり判定は行全体。文字は上から重ねて描く。
+        // 当たり判定は行全体。文字は上から重ねて描く。
         if (ImGui::Selectable("##row", selected)) {
             m_commandPaletteSel = row;
-            if (c.enabled && c.action) c.action();
+            if (c.enabled && c.action) {
+                c.action();
+            }
             ImGui::CloseCurrentPopup();
         }
 
@@ -334,25 +374,36 @@ void EditorApp::DrawCommandPalette(EditorContext& ctx)
         const auto displayLabel = widgets::ElideToWidth(label.c_str(), labelWidth);
         drawList->AddText({ rowPos.x + catWidth + gap, rowPos.y }, labelColor, displayLabel.c_str());
         if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled) && (!c.enabled || displayLabel != label)) {
-            if (c.enabled) ImGui::SetTooltip("%s", label.c_str());
-            else ImGui::SetTooltip("%s\n%s", label.c_str(), LOCT("Unavailable with the current selection or mode."));
+            if (c.enabled) {
+                ImGui::SetTooltip("%s", label.c_str());
+            } else {
+                ImGui::SetTooltip("%s\n%s", label.c_str(), LOCT("Unavailable with the current selection or mode."));
+            }
         }
-        if (!c.enabled) ImGui::EndDisabled();
+        if (!c.enabled) {
+            ImGui::EndDisabled();
+        }
 
-        /// @note 選択行が見えるようスクロール追従する。
-        if (selected && (up || down || query != previousQuery))
+        // 選択行が見えるようスクロール追従する。
+        if (selected && (up || down || query != previousQuery)) {
             ImGui::SetScrollHereY(0.5f);
+        }
         ImGui::PopID();
     }
-    if (filtered.empty())
+    if (filtered.empty()) {
         ImGui::TextDisabled("  %s", LOCT("No matching commands"));
+    }
     ImGui::EndChild();
 
-    /// @note Enter (入力欄でも) で選択実行、Esc で閉じる。
-    if (entered) runSelected();
-    if (ImGui::IsKeyPressed(ImGuiKey_Escape)) ImGui::CloseCurrentPopup();
+    // Enter (入力欄でも) で選択実行、Esc で閉じる。
+    if (entered) {
+        runSelected();
+    }
+    if (ImGui::IsKeyPressed(ImGuiKey_Escape)) {
+        ImGui::CloseCurrentPopup();
+    }
 
     ImGui::EndPopup();
 }
 
-} /// @note namespace fbzz::editor
+} // namespace fbzz::editor

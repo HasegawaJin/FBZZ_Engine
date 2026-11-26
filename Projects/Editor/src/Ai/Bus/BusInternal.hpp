@@ -28,11 +28,18 @@ using scene::EntityID;
 
 /// @brief ハンドラーの結果。ok=false なら code / message がエラー応答になる。
 struct Outcome {
-    bool        ok = false;
-    JsonValue   result;
-    std::string code;
-    std::string message;
-    static Outcome Ok(JsonValue value) { Outcome outcome; outcome.ok = true; outcome.result = std::move(value); return outcome; }
+    bool        ok = false; ///< 処理が成功し、応答に result を使えるか。
+    JsonValue   result;     ///< 成功時にクライアントへ返す値。
+    std::string code;       ///< 失敗の種類を識別するエラーコード。
+    std::string message;    ///< 失敗の理由をクライアントに伝える説明。
+
+    static Outcome Ok(JsonValue value)
+    {
+        Outcome outcome;
+        outcome.ok = true;
+        outcome.result = std::move(value);
+        return outcome;
+    }
     static Outcome Err(std::string errorCode, std::string errorMessage)
     {
         Outcome outcome;
@@ -43,44 +50,48 @@ struct Outcome {
 };
 
 /// @brief コンポーネント名で引いた型の状態。
-struct TypeInfo { bool known = false; bool present = false; bool addable = false; bool reflectable = false; };
+struct TypeInfo {
+    bool known = false;       ///< コンポーネント名が既知の型として解決されたか。
+    bool present = false;     ///< 対象の GameObject がこの型のコンポーネントを持つか。
+    bool addable = false;     ///< 登録上追加が許可され、既定構築とムーブが可能な型か。
+    bool reflectable = false; ///< リフレクションを通してフィールドを扱えるか。
+};
 
-/// @note Receipts belong to one dispatcher and authorize only the unchanged top history entry.
+/// @brief 検証済みの編集を元に戻す際に、所有者・シーン・Undo 履歴の先頭が一致するかを照合する記録。
 struct ReliabilityReceipt {
-    std::string owner;
-    std::string id;
-    std::string label;
-    JsonValue afterGuard;
-    JsonValue beforeSnapshot;
-    scene::Scene* scene = nullptr;
-    bool rolledBack = false;
+    std::string owner;             ///< 編集を要求した所有者の識別子。
+    std::string id;                ///< 呼び出し側がロールバックで指定する記録の識別子。
+    std::string label;             ///< Undo 履歴の先頭と照合する複合コマンド名。
+    JsonValue afterGuard;          ///< 編集後の状態が保持されているかを照合する値。
+    JsonValue beforeSnapshot;      ///< Undo 後に復元を確かめるための編集前のスナップショット。
+    scene::Scene* scene = nullptr; ///< 編集対象だったシーンへの非所有参照。
+    bool rolledBack = false;       ///< この記録の編集が既に取り消されたか。
 };
 
 /// @brief Dispatcher がフレームごとに更新し、ハンドラーが読む状態。
 struct BusState {
-    renderer::ResourceHandle<renderer::RenderTargetTag> sceneViewportRT{};
-    renderer::ResourceHandle<renderer::RenderTargetTag> gameViewportRT{};
-    std::vector<ReliabilityReceipt> reliabilityReceipts;
+    renderer::ResourceHandle<renderer::RenderTargetTag> sceneViewportRT{}; ///< シーンビューの描画先を指すハンドル。
+    renderer::ResourceHandle<renderer::RenderTargetTag> gameViewportRT{};  ///< ゲームビューの描画先を指すハンドル。
+    std::vector<ReliabilityReceipt> reliabilityReceipts;                   ///< このディスパッチャーで保持する直近の検証済み編集。
 };
 
 class BusHandlerTable;
 
 /// @brief 1 要求ぶんの呼び出し文脈。
 struct BusCall {
-    editor::EditorContext& ctx;
-    const std::string&     type;
-    const JsonValue&       payload;
-    bool                   dryRun = false;
-    BusState&              state;
-    /// @note editor.transaction と editor.bus.list だけが表そのものを引く。
-    const BusHandlerTable& table;
+    editor::EditorContext& ctx;            ///< 操作対象のエディターとアクティブなシーン。
+    const std::string&     type;           ///< ハンドラーを引く要求の型名。
+    const JsonValue&       payload;        ///< 呼び出し側から受け取った引数。
+    bool                   dryRun = false; ///< 変更を適用せずに事前検証する要求か。
+    BusState&              state;          ///< 複数の要求にまたがってディスパッチャーが保持する状態。
+    const BusHandlerTable& table;          ///< トランザクション内の要求の解決と操作一覧の取得に使う登録表。
 };
 
 /// @brief Query / 直接実行 Command の処理。dryRun の扱いはハンドラーが持つ。
 using CommandFn = Outcome (*)(BusCall& call);
 /// @brief Undo 可能な Command を組み立てる。適用 (UndoStack::Execute) と dryRun は Dispatcher が行う。
-/// @param createdSink 作ったノードの instanceId を書く先。応答の id になる。
-/// @param detailSink  適用前に分かる副作用 (改名・上限の引き上げ等) を書く先。null 可。
+/// @param[out] createdSink 作ったノードの instanceId を書く先。応答の id になる。
+/// @param[out] detailSink 適用前に分かる副作用 (改名・上限の引き上げ等) を書く先。null 可。
 /// @return 失敗時は nullptr と err。
 using BuilderFn = std::unique_ptr<ICommand> (*)(editor::EditorContext& ctx, const std::string& type,
                                                 const JsonValue& payload, Outcome& err,
@@ -89,12 +100,11 @@ using BuilderFn = std::unique_ptr<ICommand> (*)(editor::EditorContext& ctx, cons
 enum class BusKind { QUERY, COMMAND, BUILDER };
 
 struct BusHandlerEntry {
-    std::string type;
-    BusKind     kind = BusKind::QUERY;
-    CommandFn   handler = nullptr;
-    /// @note COMMAND でも transaction へ混ぜられるものは builder を併せ持つ (fluid.set 等)。
-    BuilderFn   builder = nullptr;
-    bool        returnsCreatedId = false;
+    std::string type;                     ///< 要求と照合する登録名。
+    BusKind     kind = BusKind::QUERY;     ///< 照会・直接実行・コマンド構築の区分。
+    CommandFn   handler = nullptr;        ///< 照会または直接実行に使う関数。
+    BuilderFn   builder = nullptr;        ///< Undo 用コマンドの構築関数。トランザクションに対応する直接実行にも設定する。
+    bool        returnsCreatedId = false; ///< 生成したノードの ID を応答に含めるか。
 };
 
 /// @brief 型名 → ハンドラーの表。
@@ -111,7 +121,7 @@ public:
 
 private:
     void Add(BusHandlerEntry entry);
-    std::vector<BusHandlerEntry> m_entries;
+    std::vector<BusHandlerEntry> m_entries; ///< この表に登録済みの操作と呼び出し先。
 };
 
 /// @name 領域ごとの登録。Dispatcher のコンストラクタが順に呼ぶ。
@@ -169,4 +179,4 @@ bool ResolveProjectFile(const editor::EditorContext& ctx, const std::string& req
 [[nodiscard]] bool IsImplicitSingleSprite(const std::string& texturePath, const std::string& token);
 /// @}
 
-} /// @note namespace fbzz::editor::ai::bus
+} // namespace fbzz::editor::ai::bus

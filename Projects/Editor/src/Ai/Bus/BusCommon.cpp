@@ -43,9 +43,13 @@ std::string StringField(const JsonValue& obj, const char* key)
 bool ReadVec3(const JsonValue& obj, const char* key, math::Vector3& out)
 {
     const JsonValue* v = obj.Find(key);
-    if (v == nullptr || !v->IsArray() || v->AsArray().size() != 3) return false;
+    if (v == nullptr || !v->IsArray() || v->AsArray().size() != 3) {
+        return false;
+    }
     const auto& a = v->AsArray();
-    if (!a[0].IsNumber() || !a[1].IsNumber() || !a[2].IsNumber()) return false;
+    if (!a[0].IsNumber() || !a[1].IsNumber() || !a[2].IsNumber()) {
+        return false;
+    }
     out = { static_cast<float>(a[0].AsNumber()), static_cast<float>(a[1].AsNumber()), static_cast<float>(a[2].AsNumber()) };
     return true;
 }
@@ -57,7 +61,9 @@ bool IsPublicComponentName(std::string_view componentName)
     bool known = false;
     scene::ForEachRegisteredComponent([&]<typename T, typename Reg>() {
         if constexpr (Reg::inspectorMode != scene::ComponentInspectorMode::Hidden) {
-            if (std::string_view(Reg::serializedName) == componentName) known = true;
+            if (std::string_view(Reg::serializedName) == componentName) {
+                known = true;
+            }
         }
     });
     return known;
@@ -67,13 +73,21 @@ TypeInfo InspectComponentType(GameObject& go, const std::string& comp)
 {
     TypeInfo info;
     scene::ForEachRegisteredComponent([&]<typename T, typename Reg>() {
-        if (info.known) return;
-        if (std::string_view(Reg::serializedName) != comp) return;
+        if (info.known) {
+            return;
+        }
+        if (std::string_view(Reg::serializedName) != comp) {
+            return;
+        }
         info.known = true;
         info.present = (go.GetComponent<T>() != nullptr);
-        /// @note AddComponent は値渡し (move) するため、既定構築かつ move 可能な型のみ追加可能とみなす。
-        if constexpr (Reg::addable && std::is_default_constructible_v<T> && std::is_move_constructible_v<T>) info.addable = true;
-        if constexpr (requires(T& c, scene::IReflector& r) { c.Reflect(r); }) info.reflectable = true;
+        // AddComponent は値渡し (move) するため、既定構築かつ move 可能な型のみ追加可能とみなす。
+        if constexpr (Reg::addable && std::is_default_constructible_v<T> && std::is_move_constructible_v<T>) {
+            info.addable = true;
+        }
+        if constexpr (requires(T& c, scene::IReflector& r) { c.Reflect(r); }) {
+            info.reflectable = true;
+        }
     });
     return info;
 }
@@ -81,9 +95,13 @@ TypeInfo InspectComponentType(GameObject& go, const std::string& comp)
 void AddComponentByName(GameObject& go, const std::string& comp)
 {
     scene::ForEachRegisteredComponent([&]<typename T, typename Reg>() {
-        if (std::string_view(Reg::serializedName) != comp) return;
+        if (std::string_view(Reg::serializedName) != comp) {
+            return;
+        }
         if constexpr (std::is_default_constructible_v<T> && std::is_move_constructible_v<T>) {
-            if (go.GetComponent<T>() == nullptr) go.AddComponent<T>(T{});
+            if (go.GetComponent<T>() == nullptr) {
+                go.AddComponent<T>(T{});
+            }
         }
     });
 }
@@ -91,7 +109,9 @@ void AddComponentByName(GameObject& go, const std::string& comp)
 void RemoveComponentByName(GameObject& go, const std::string& comp)
 {
     scene::ForEachRegisteredComponent([&]<typename T, typename Reg>() {
-        if (std::string_view(Reg::serializedName) != comp) return;
+        if (std::string_view(Reg::serializedName) != comp) {
+            return;
+        }
         go.RemoveComponent<T>();
     });
 }
@@ -102,8 +122,12 @@ std::optional<JsonValue> ReadComponentFields(GameObject& go, const std::string& 
 {
     std::optional<JsonValue> result;
     scene::ForEachRegisteredComponent([&]<typename T, typename Reg>() {
-        if (result.has_value()) return;
-        if (std::string_view(Reg::serializedName) != comp) return;
+        if (result.has_value()) {
+            return;
+        }
+        if (std::string_view(Reg::serializedName) != comp) {
+            return;
+        }
         if constexpr (requires(T& c, scene::IReflector& r) { c.Reflect(r); }) {
             if (T* component = go.GetComponent<T>()) {
                 JsonReadReflector reader(true);
@@ -123,15 +147,23 @@ bool WriteComponentField(GameObject& go, const std::string& comp, const std::str
     bool applied = false;
     std::string error;
     scene::ForEachRegisteredComponent([&]<typename T, typename Reg>() {
-        if (applied || !error.empty()) return;
-        if (std::string_view(Reg::serializedName) != comp) return;
+        if (applied || !error.empty()) {
+            return;
+        }
+        if (std::string_view(Reg::serializedName) != comp) {
+            return;
+        }
         if constexpr (requires(T& c, scene::IReflector& r) { c.Reflect(r); }) {
             if (T* component = go.GetComponent<T>()) {
                 JsonWriteReflector writer(field, value);
                 component->Reflect(writer);
-                if (writer.Applied()) applied = true;
-                else if (!writer.Error().empty()) error = writer.Error();
-                else error = "field '" + field + "' が見つかりません";
+                if (writer.Applied()) {
+                    applied = true;
+                } else if (!writer.Error().empty()) {
+                    error = writer.Error();
+                } else {
+                    error = "field '" + field + "' が見つかりません";
+                }
             }
         }
     });
@@ -146,7 +178,7 @@ JsonValue SnapshotComponents(GameObject& go, bool observations)
     JsonValue array = JsonValue::MakeArray();
     scene::ForEachRegisteredComponent([&]<typename T, typename Reg>() {
         if constexpr (Reg::inspectorMode == scene::ComponentInspectorMode::Hidden) {
-            /// @note Bone / ScriptComponent 等の内部型は公開しない。
+            // Bone / ScriptComponent 等の内部型は公開しない。
             return;
         } else {
             if (T* component = go.GetComponent<T>()) {
@@ -178,7 +210,9 @@ std::string LowerAscii(std::string value)
 /// @note Outcome はこの翻訳単位に閉じた型なので、境界で 1 度だけ変換する。
 Outcome FromBridge(OperatorBridgeResult bridge)
 {
-    if (bridge.ok) return Outcome::Ok(std::move(bridge.result));
+    if (bridge.ok) {
+        return Outcome::Ok(std::move(bridge.result));
+    }
     return Outcome::Err(std::move(bridge.code), std::move(bridge.message));
 }
 
@@ -196,12 +230,22 @@ Outcome DryRunPreview(const std::string& type)
 bool CompatibleJsonType(const JsonValue& a, const JsonValue& b)
 {
     const auto category = [](const JsonValue& v) {
-        if (v.IsNumber()) return 0;
-        if (v.IsBool())   return 1;
-        if (v.IsString()) return 2;
-        if (v.IsArray())  return 3;
-        if (v.IsObject()) return 4;
-        /// @note 上記いずれでもなければ null。
+        if (v.IsNumber()) {
+            return 0;
+        }
+        if (v.IsBool()) {
+            return 1;
+        }
+        if (v.IsString()) {
+            return 2;
+        }
+        if (v.IsArray()) {
+            return 3;
+        }
+        if (v.IsObject()) {
+            return 4;
+        }
+        // 上記いずれでもなければ null。
         return 5;
     };
     return category(a) == category(b);
@@ -211,7 +255,9 @@ bool ResolveProjectFile(const editor::EditorContext& ctx, const std::string& req
                         std::filesystem::path& outPath, std::string& outRelative)
 {
     namespace fs = std::filesystem;
-    if (ctx.projectRoot.empty() || requested.empty()) return false;
+    if (ctx.projectRoot.empty() || requested.empty()) {
+        return false;
+    }
     std::error_code ec;
     const fs::path root = fs::weakly_canonical(fs::path(ctx.projectRoot), ec);
     if (ec || root.empty()) {
@@ -223,7 +269,7 @@ bool ResolveProjectFile(const editor::EditorContext& ctx, const std::string& req
         FBZZ_LOG_WARN("Project path resolution failed: requested=%s error=%s", requested.c_str(), ec.message().c_str());
         return false;
     }
-    /// @note 既存リンクは解決済み。未作成の出力先を再び filesystem へ問い合わせない。
+    // 既存リンクは解決済み。未作成の出力先を再び filesystem へ問い合わせない。
     const fs::path relative = candidate.lexically_relative(root);
     if (relative.empty() || relative.is_absolute() || relative.begin()->generic_string() == "..") {
         FBZZ_LOG_WARN("Project path is outside root: root=%s candidate=%s relative=%s", root.generic_string().c_str(), candidate.generic_string().c_str(), relative.generic_string().c_str());
@@ -236,8 +282,12 @@ bool ResolveProjectFile(const editor::EditorContext& ctx, const std::string& req
 
 const char* PlayStateName(const editor::PlayModeController& playMode)
 {
-    if (playMode.IsPlaying()) return "playing";
-    if (playMode.IsPaused()) return "paused";
+    if (playMode.IsPlaying()) {
+        return "playing";
+    }
+    if (playMode.IsPaused()) {
+        return "paused";
+    }
     return "editor";
 }
 
@@ -264,7 +314,9 @@ JsonValue MatrixToJson(const math::Matrix4& matrix)
 {
     JsonValue result = JsonValue::MakeArray();
     for (int row = 0; row < 4; ++row) {
-        for (int column = 0; column < 4; ++column) result.Push(JsonValue(matrix.m[row][column]));
+        for (int column = 0; column < 4; ++column) {
+            result.Push(JsonValue(matrix.m[row][column]));
+        }
     }
     return result;
 }
@@ -272,19 +324,25 @@ JsonValue MatrixToJson(const math::Matrix4& matrix)
 int VirtualKeyFromName(std::string name)
 {
     name = LowerAscii(std::move(name));
-    /// @note "#<仮想キーコード>" は入力の記録 (InputRecorder) が名前の無いキーに使う形。
+    // "#<仮想キーコード>" は入力の記録 (InputRecorder) が名前の無いキーに使う形。
     if (name.size() >= 2 && name[0] == '#') {
         int code = 0;
         for (size_t index = 1; index < name.size(); ++index) {
-            if (!std::isdigit(static_cast<unsigned char>(name[index]))) return -1;
+            if (!std::isdigit(static_cast<unsigned char>(name[index]))) {
+                return -1;
+            }
             code = code * 10 + (name[index] - '0');
-            if (code > 255) return -1;
+            if (code > 255) {
+                return -1;
+            }
         }
         return code;
     }
     if (name.size() == 1) {
         const unsigned char character = static_cast<unsigned char>(name[0]);
-        if (std::isalnum(character)) return static_cast<int>(std::toupper(character));
+        if (std::isalnum(character)) {
+            return static_cast<int>(std::toupper(character));
+        }
     }
     static const std::unordered_map<std::string, int> keys = {
         { "space", VK_SPACE }, { "enter", VK_RETURN }, { "escape", VK_ESCAPE },
@@ -298,4 +356,4 @@ int VirtualKeyFromName(std::string name)
     return iterator != keys.end() ? iterator->second : -1;
 }
 
-} /// @note namespace fbzz::editor::ai::bus
+} // namespace fbzz::editor::ai::bus

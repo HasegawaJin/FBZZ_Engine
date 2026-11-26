@@ -13,4 +13,4 @@ class OperatorRegistry;
 void RegisterWaterfallFluidOperators(OperatorRegistry& registry);
 void PollWaterfallFluidBake(EditorContext& ctx);
 [[nodiscard]] std::string WaterfallFluidBakeStatus(std::string_view node);
-} /// @note namespace fbzz::editor
+} // namespace fbzz::editor

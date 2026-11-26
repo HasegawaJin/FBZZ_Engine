@@ -78,16 +78,22 @@ bool Same(const math::Vector4& a, const math::Vector4& b)
 /// @note 扱い (PartInvalidation の fieldsDiffer) にしておけば startTime から解き直して足りる。
 bool Same(const fluid::FluidAmount& a, const fluid::FluidAmount& b)
 {
-    if (a.keys.size() != b.keys.size()) return false;
+    if (a.keys.size() != b.keys.size()) {
+        return false;
+    }
     for (std::size_t i = 0; i < a.keys.size(); ++i)
-        if (!Same(a.keys[i].time, b.keys[i].time) || !Same(a.keys[i].scale, b.keys[i].scale)) return false;
+        if (!Same(a.keys[i].time, b.keys[i].time) || !Same(a.keys[i].scale, b.keys[i].scale)) {
+            return false;
+        }
     return true;
 }
 
 bool Same(const fluid::FluidColorRamp& a, const fluid::FluidColorRamp& b)
 {
     for (std::size_t i = 0; i < a.stops.size(); ++i)
-        if (!Same(a.stops[i].color, b.stops[i].color) || !Same(a.stops[i].position, b.stops[i].position)) return false;
+        if (!Same(a.stops[i].color, b.stops[i].color) || !Same(a.stops[i].position, b.stops[i].position)) {
+            return false;
+        }
     return true;
 }
 
@@ -150,7 +156,9 @@ bool ColliderDiffers(const fluid::FluidCollider& a, const fluid::FluidCollider& 
 /// @note «1 つ前のキー» から先の道筋が変わる。先頭を変えると先頭より前 (端のキーで止まっている間) も変わる。
 float MotionInfluenceStart(const fluid::FluidMotion& a, const fluid::FluidMotion& b)
 {
-    if (a.inheritVelocity != b.inheritVelocity) return kAlways;
+    if (a.inheritVelocity != b.inheritVelocity) {
+        return kAlways;
+    }
     const std::size_t common = (std::min)(a.keys.size(), b.keys.size());
     std::size_t first = common;
     for (std::size_t i = 0; i < common; ++i) {
@@ -159,12 +167,20 @@ float MotionInfluenceStart(const fluid::FluidMotion& a, const fluid::FluidMotion
             break;
         }
     }
-    if (first == common && a.keys.size() == b.keys.size()) return kNever;
-    if (first == 0) return kAlways;
-    /// @note 昇順が崩れたキー (編集途中) でも取りこぼさないよう、以降のキーの最小を取る。
+    if (first == common && a.keys.size() == b.keys.size()) {
+        return kNever;
+    }
+    if (first == 0) {
+        return kAlways;
+    }
+    // 昇順が崩れたキー (編集途中) でも取りこぼさないよう、以降のキーの最小を取る。
     float start = kNever;
-    for (std::size_t i = first - 1; i < a.keys.size(); ++i) start = (std::min)(start, a.keys[i].time);
-    for (std::size_t i = first - 1; i < b.keys.size(); ++i) start = (std::min)(start, b.keys[i].time);
+    for (std::size_t i = first - 1; i < a.keys.size(); ++i) {
+        start = (std::min)(start, a.keys[i].time);
+    }
+    for (std::size_t i = first - 1; i < b.keys.size(); ++i) {
+        start = (std::min)(start, b.keys[i].time);
+    }
     return start;
 }
 
@@ -173,13 +189,21 @@ float MotionInfluenceStart(const fluid::FluidMotion& a, const fluid::FluidMotion
 template <class Part>
 float PartInvalidation(const Part& a, const Part& b, bool fieldsDiffer)
 {
-    if (!a.enabled && !b.enabled) return kNever;
-    if (a.enabled != b.enabled) return kAlways;
+    if (!a.enabled && !b.enabled) {
+        return kNever;
+    }
+    if (a.enabled != b.enabled) {
+        return kAlways;
+    }
     const float start = (std::min)(a.startTime, b.startTime);
-    if (fieldsDiffer) return start;
+    if (fieldsDiffer) {
+        return start;
+    }
     const float motion = MotionInfluenceStart(a.motion, b.motion);
-    if (motion == kNever) return kNever;
-    /// @note 居ない間 (startTime より前) の姿は解きに効かない。
+    if (motion == kNever) {
+        return kNever;
+    }
+    // 居ない間 (startTime より前) の姿は解きに効かない。
     return (std::max)(start, motion);
 }
 
@@ -216,8 +240,12 @@ bool LookDiffers(const fluid::FluidRecipe& before, const fluid::FluidRecipe& aft
 /// @note どちらかが解き直しを求めていれば、早い方を取る。
 float CombineInvalidation(float a, float b)
 {
-    if (a < 0.0f) return b;
-    if (b < 0.0f) return a;
+    if (a < 0.0f) {
+        return b;
+    }
+    if (b < 0.0f) {
+        return a;
+    }
     return (std::min)(a, b);
 }
 
@@ -225,7 +253,9 @@ float CombineInvalidation(float a, float b)
 
 FluidShading EffectiveShading(const fluid::FluidRecipe& recipe)
 {
-    if (recipe.kind == FluidKind::Liquid) return FluidShading::Liquid;
+    if (recipe.kind == FluidKind::Liquid) {
+        return FluidShading::Liquid;
+    }
     return recipe.render.shading == FluidShading::Liquid ? FluidShading::Smoke : recipe.render.shading;
 }
 
@@ -256,7 +286,9 @@ struct PreviewScale {
 /// @note 画面に出す一辺 [画素] に見合う画像の一辺。
 int ImageSideFor(float viewSide, int cap)
 {
-    if (!(viewSide > 0.0f)) return kBaseImage;
+    if (!(viewSide > 0.0f)) {
+        return kBaseImage;
+    }
     const float clamped = (std::min)(viewSide, kMaxViewSide);
     const int steps = static_cast<int>(std::ceil(clamped / static_cast<float>(kImageStep)));
     return std::clamp(steps * kImageStep, kBaseImage, cap);
@@ -265,7 +297,7 @@ int ImageSideFor(float viewSide, int cap)
 PreviewScale ScaleFor(const fluid::FluidRecipe& normalized, FluidPreviewQuality quality, int frameCount,
                       float viewSide)
 {
-    /// @note 利用者が Auto より粗い格子を指定していれば、それより細かくはしない (焼きより細かいプレビューは嘘になる)。
+    // 利用者が Auto より粗い格子を指定していれば、それより細かくはしない (焼きより細かいプレビューは嘘になる)。
     const int resolved = fluid::ResolveGasResolution(normalized);
     PreviewScale scale;
     switch (quality) {
@@ -276,14 +308,14 @@ PreviewScale ScaleFor(const fluid::FluidRecipe& normalized, FluidPreviewQuality 
         scale = { (std::min)(resolved, kNormalGrid), ImageSideFor(viewSide, kNormalMaxImage) };
         break;
     case FluidPreviewQuality::Final:
-        /// @note Final は «焼きと同じコマの大きさ» を下回らない。画面がそれより大きいときだけ上限まで足す
-        /// @note       (プレビューの画素数は焼きのコマの大きさとは別物なので、超えて構わない)。
+        // Final は «焼きと同じコマの大きさ» を下回らない。画面がそれより大きいときだけ上限まで足す
+        // (プレビューの画素数は焼きのコマの大きさとは別物なので、超えて構わない)。
         scale = { (std::min)(resolved, kFinalMaxGrid),
                   (std::max)((std::min)(normalized.output.frameSize, kFinalMaxImage),
                              ImageSideFor(viewSide, kFinalMaxImage)) };
         break;
     }
-    /// @note 1 画素 = float4 (motion は捨てて持つ)。コマ数が多いときだけ解像度を落として予算に収める。
+    // 1 画素 = float4 (motion は捨てて持つ)。コマ数が多いときだけ解像度を落として予算に収める。
     const double perFrame = static_cast<double>(kImageBudgetBytes)
                           / (static_cast<double>((std::max)(frameCount, 1)) * 4.0 * sizeof(float));
     const int budgetSide = static_cast<int>(std::floor(std::sqrt(perFrame)));
@@ -295,21 +327,25 @@ PreviewScale ScaleFor(const fluid::FluidRecipe& normalized, FluidPreviewQuality 
 std::size_t EstimateSnapshotBytes(const fluid::FluidRecipe& normalized, int grid)
 {
     if (normalized.kind == FluidKind::Gas) {
-        /// @note 場 (密度・温度・燃料・色・速度 3・圧力・発散・膨張) + 作業領域 (前の速度 3・scratch 3・curl 4・
-        /// @note       固体の速度 3・細部の座標 4) でおよそ 30 本 + 固体フラグ。
+        // 場 (密度・温度・燃料・色・速度 3・圧力・発散・膨張) + 作業領域 (前の速度 3・scratch 3・curl 4・
+        // 固体の速度 3・細部の座標 4) でおよそ 30 本 + 固体フラグ。
         const std::size_t cells = static_cast<std::size_t>(grid) * static_cast<std::size_t>(grid);
         std::size_t bytes = cells * (30 * sizeof(float) + 1);
         const std::size_t maskBytes = static_cast<std::size_t>(fluid::kFluidSourceMaskSize)
                                     * static_cast<std::size_t>(fluid::kFluidSourceMaskSize) * sizeof(float);
         for (const fluid::FluidSource& source : normalized.sources)
-            if (source.enabled && source.shape == fluid::FluidSourceShape::Texture) bytes += maskBytes;
+            if (source.enabled && source.shape == fluid::FluidSourceShape::Texture) {
+                bytes += maskBytes;
+            }
         return bytes;
     }
     std::size_t particles = 0;
     for (const fluid::FluidSource& source : normalized.sources)
-        if (source.enabled) particles += static_cast<std::size_t>((std::max)(source.count, 0));
+        if (source.enabled) {
+            particles += static_cast<std::size_t>((std::max)(source.count, 0));
+        }
     particles = (std::min)(particles, static_cast<std::size_t>((std::max)(normalized.liquid.maxParticles, 0)));
-    /// @note 粒子本体 32B + 予測位置・λ・密度・補正・格子の添字 + 近傍リスト (20 近傍ほど)。
+    // 粒子本体 32B + 予測位置・λ・密度・補正・格子の添字 + 近傍リスト (20 近傍ほど)。
     return particles * 192 + (std::size_t{ 64 } << 10);
 }
 
@@ -403,10 +439,13 @@ void SolveStage(const Job& job, Channel& channel)
     int index = 0;
     bool resumed = false;
     if (job.resumeFrom != nullptr) {
-        /// @note 別の入れ物へ復元する: 差し替えを断られたソルバーは部品を途中まで入れ替えた状態かもしれないため、そのまま Reset に回さず丸ごと捨てて空のソルバーから組み直す。
+        // 別の入れ物へ復元する: 差し替えを断られたソルバーは部品を途中まで入れ替えた状態かもしれないため、そのまま Reset に回さず丸ごと捨てて空のソルバーから組み直す。
         Solver restored;
-        if constexpr (kGas) restored = job.resumeFrom->gas;
-        else                restored = job.resumeFrom->liquid;
+        if constexpr (kGas) {
+            restored = job.resumeFrom->gas;
+        } else {
+            restored = job.resumeFrom->liquid;
+        }
         if (!job.replaceOperators || restored.ReplaceOperators(job.recipe)) {
             solver = std::move(restored);
             index = job.resumeIndex;
@@ -415,12 +454,17 @@ void SolveStage(const Job& job, Channel& channel)
     }
     const float stepDt = job.frameDt / static_cast<float>(job.substeps);
     if (!resumed) {
-        if constexpr (kGas) solver.Reset(job.recipe, job.grid, job.grid, 1);
-        else                solver.Reset(job.recipe);
-        /// @note warmup も «普通のコマ» として解く (刻みの正本は FluidStepping)。
+        if constexpr (kGas) {
+            solver.Reset(job.recipe, job.grid, job.grid, 1);
+        } else {
+            solver.Reset(job.recipe);
+        }
+        // warmup も «普通のコマ» として解く (刻みの正本は FluidStepping)。
         for (int i = 0; i < job.warmupFrames; ++i) {
             for (int step = 0; step < job.substeps; ++step) {
-                if (channel.Cancelled()) return;
+                if (channel.Cancelled()) {
+                    return;
+                }
                 solver.Advance(stepDt);
             }
         }
@@ -442,15 +486,22 @@ void SolveStage(const Job& job, Channel& channel)
                 std::shared_ptr<SolverSnapshot> snapshot = std::make_shared<SolverSnapshot>();
                 snapshot->simEpoch = job.simEpoch;
                 snapshot->partEpoch = job.partEpoch;
-                if constexpr (kGas) snapshot->gas = solver;
-                else                snapshot->liquid = solver;
+                if constexpr (kGas) {
+                    snapshot->gas = solver;
+                } else {
+                    snapshot->liquid = solver;
+                }
                 produced.snapshot = std::move(snapshot);
             }
             channel.Push(std::move(produced));
         }
-        if (index >= job.lastIndex) return;
+        if (index >= job.lastIndex) {
+            return;
+        }
         for (int step = 0; step < job.substeps; ++step) {
-            if (channel.Cancelled()) return;
+            if (channel.Cancelled()) {
+                return;
+            }
             solver.Advance(stepDt);
         }
         ++index;
@@ -460,18 +511,26 @@ void SolveStage(const Job& job, Channel& channel)
 void RunJob(const Job& job, Channel& channel)
 {
     for (const auto& [index, snapshot] : job.rerender) {
-        if (channel.Cancelled()) break;
+        if (channel.Cancelled()) {
+            break;
+        }
         Produced produced;
         produced.index = index;
-        if (job.kind == FluidKind::Gas) RenderWith(snapshot->gas, job, produced.image);
-        else                            RenderWith(snapshot->liquid, job, produced.image);
+        if (job.kind == FluidKind::Gas) {
+            RenderWith(snapshot->gas, job, produced.image);
+        } else {
+            RenderWith(snapshot->liquid, job, produced.image);
+        }
         DropMotion(produced.image);
         produced.hasImage = true;
         channel.Push(std::move(produced));
     }
     if (!channel.Cancelled() && job.lastIndex >= 0) {
-        if (job.kind == FluidKind::Gas) SolveStage<fluid::FluidGasSolver>(job, channel);
-        else                            SolveStage<fluid::FluidLiquidSolver>(job, channel);
+        if (job.kind == FluidKind::Gas) {
+            SolveStage<fluid::FluidGasSolver>(job, channel);
+        } else {
+            SolveStage<fluid::FluidLiquidSolver>(job, channel);
+        }
     }
     channel.done.store(true, std::memory_order_release);
 }
@@ -504,7 +563,9 @@ struct Slot {
 
 ImU32 FluidPreviewBackgroundPixel(int x, int y, bool checkerBackground)
 {
-    if (!checkerBackground) return IM_COL32(8, 8, 10, 255);
+    if (!checkerBackground) {
+        return IM_COL32(8, 8, 10, 255);
+    }
     const bool light = (((x / 8) + (y / 8)) & 1) != 0;
     const int channel = light ? 56 : 31;
     return IM_COL32(channel, channel, channel, 255);
@@ -529,23 +590,32 @@ void CompositeFluidPreviewPixel(const float rgba[4], int x, int y, int imageSide
     for (int channel = 0; channel < 3; ++channel) {
         const float source = scene::ParticleSrgbToLinear(rgba[channel]);
         float value = 0.0f;
-        if (premultiplied) value = source + background[channel] * (1.0f - alpha);
-        else if (additive) value = background[channel] + source * alpha;
-        else               value = source * alpha + background[channel] * (1.0f - alpha);
+        if (premultiplied) {
+            value = source + background[channel] * (1.0f - alpha);
+        } else if (additive) {
+            value = background[channel] + source * alpha;
+        } else {
+            value = source * alpha + background[channel] * (1.0f - alpha);
+        }
         outRgb[channel] = scene::ParticleLinearToSrgb(std::clamp(value, 0.0f, 1.0f));
     }
 }
 
 float FluidInvalidationTime(const fluid::FluidRecipe& before, const fluid::FluidRecipe& after)
 {
-    if (before.kind != after.kind || before.seed != after.seed) return 0.0f;
-    /// @note 使っていない側の設定 (気体のときの liquid) は解きにも 2D の描画にも効かない。
+    if (before.kind != after.kind || before.seed != after.seed) {
+        return 0.0f;
+    }
+    // 使っていない側の設定 (気体のときの liquid) は解きにも 2D の描画にも効かない。
     const bool simulationChanged = after.kind == FluidKind::Gas ? GasDiffers(before.gas, after.gas)
                                                                 : LiquidDiffers(before.liquid, after.liquid);
-    if (simulationChanged || OutputDiffers(before.output, after.output)) return 0.0f;
-    if (before.sources.size() != after.sources.size() || before.forces.size() != after.forces.size()
-        || before.colliders.size() != after.colliders.size())
+    if (simulationChanged || OutputDiffers(before.output, after.output)) {
         return 0.0f;
+    }
+    if (before.sources.size() != after.sources.size() || before.forces.size() != after.forces.size()
+        || before.colliders.size() != after.colliders.size()) {
+        return 0.0f;
+    }
 
     float first = kNever;
     for (std::size_t i = 0; i < after.sources.size(); ++i)
@@ -557,8 +627,10 @@ float FluidInvalidationTime(const fluid::FluidRecipe& before, const fluid::Fluid
     for (std::size_t i = 0; i < after.colliders.size(); ++i)
         first = (std::min)(first, PartInvalidation(before.colliders[i], after.colliders[i],
                                                    ColliderDiffers(before.colliders[i], after.colliders[i])));
-    if (first == kNever) return -1.0f;
-    /// @note 部品の時刻はソルバーの時計 (warmup を含む)。プレビューの時計は warmup の後を 0 とする。
+    if (first == kNever) {
+        return -1.0f;
+    }
+    // 部品の時刻はソルバーの時計 (warmup を含む)。プレビューの時計は warmup の後を 0 とする。
     const float warmup = std::clamp(after.output.warmup, 0.0f, kMaxWarmup);
     return (std::max)(first - warmup, 0.0f);
 }
@@ -605,17 +677,23 @@ struct FluidPreviewCache::Impl {
     ~Impl()
     {
         CancelJob();
-        if (worker.joinable()) worker.join();
+        if (worker.joinable()) {
+            worker.join();
+        }
     }
 
     void CancelJob()
     {
-        if (channel != nullptr) channel->cancel.store(true, std::memory_order_relaxed);
+        if (channel != nullptr) {
+            channel->cancel.store(true, std::memory_order_relaxed);
+        }
     }
 
     void Apply(Produced& item)
     {
-        if (item.index < 0 || item.index >= static_cast<int>(slots.size())) return;
+        if (item.index < 0 || item.index >= static_cast<int>(slots.size())) {
+            return;
+        }
         Slot& slot = slots[static_cast<std::size_t>(item.index)];
         if (item.hasImage) {
             slot.image = std::move(item.image);
@@ -624,20 +702,30 @@ struct FluidPreviewCache::Impl {
             slot.shading = jobShading;
             slot.version = nextVersion++;
         }
-        if (item.snapshot != nullptr) slot.snapshot = std::move(item.snapshot);
+        if (item.snapshot != nullptr) {
+            slot.snapshot = std::move(item.snapshot);
+        }
     }
 
     void Drain()
     {
-        if (channel == nullptr) return;
+        if (channel == nullptr) {
+            return;
+        }
         std::vector<Produced> produced = channel->Take();
-        if (jobGeneration != generation) return;
-        for (Produced& item : produced) Apply(item);
+        if (jobGeneration != generation) {
+            return;
+        }
+        for (Produced& item : produced) {
+            Apply(item);
+        }
     }
 
     void ReapFinished()
     {
-        if (!worker.joinable() || channel == nullptr || !channel->done.load(std::memory_order_acquire)) return;
+        if (!worker.joinable() || channel == nullptr || !channel->done.load(std::memory_order_acquire)) {
+            return;
+        }
         worker.join();
         Drain();
         channel.reset();
@@ -646,7 +734,9 @@ struct FluidPreviewCache::Impl {
     void StopWorker()
     {
         CancelJob();
-        if (worker.joinable()) worker.join();
+        if (worker.joinable()) {
+            worker.join();
+        }
         Drain();
         channel.reset();
     }
@@ -674,46 +764,60 @@ struct FluidPreviewCache::Impl {
     void Invalidate(float from, bool lookChanged)
     {
         const bool resolve = from >= 0.0f;
-        if (!resolve && !lookChanged) return;
+        if (!resolve && !lookChanged) {
+            return;
+        }
         Abandon();
         if (resolve) {
-            /// @note 場はそのまま。残したコマの手前の途中経過は «部品を差し替えて続ける» 起点として生かす。
+            // 場はそのまま。残したコマの手前の途中経過は «部品を差し替えて続ける» 起点として生かす。
             ++partEpoch;
-            /// @note 変わり目ちょうどのコマも捨てる (時計の積算誤差で変わった後の刻みを含んでいることがある)。
+            // 変わり目ちょうどのコマも捨てる (時計の積算誤差で変わった後の刻みを含んでいることがある)。
             for (std::size_t i = 0; i < slots.size(); ++i)
-                if (FrameTime(i) >= from - kTimeEpsilon) slots[i] = Slot{};
+                if (FrameTime(i) >= from - kTimeEpsilon) {
+                    slots[i] = Slot{};
+                }
         }
         if (lookChanged)
             for (Slot& slot : slots)
-                if (slot.has) slot.stale = true;
+                if (slot.has) {
+                    slot.stale = true;
+                }
     }
 
     [[nodiscard]] bool HasPendingWork() const
     {
-        if (!hasRecipe) return false;
+        if (!hasRecipe) {
+            return false;
+        }
         return std::any_of(slots.begin(), slots.end(), [](const Slot& slot) { return !slot.has || slot.stale; });
     }
 
     /// @note 今のレシピ・品質・表示の大きさで描く画像の一辺。
     [[nodiscard]] int ImageSide() const
     {
-        if (!hasRecipe) return 0;
+        if (!hasRecipe) {
+            return 0;
+        }
         return ScaleFor(preview, quality, static_cast<int>(slots.size()), viewSide).image;
     }
 
     void StartNextJob()
     {
-        if (!hasRecipe || slots.empty() || worker.joinable()) return;
+        if (!hasRecipe || slots.empty() || worker.joinable()) {
+            return;
+        }
         const int count = static_cast<int>(slots.size());
         const PreviewScale scale = ScaleFor(preview, quality, count, viewSide);
 
-        /// @note 全コマ持てる予算なら毎コマ、超えるなら数コマおきに途中経過を持つ。
+        // 全コマ持てる予算なら毎コマ、超えるなら数コマおきに途中経過を持つ。
         const std::size_t total = EstimateSnapshotBytes(preview, scale.grid) * static_cast<std::size_t>(count);
         const int stride = total <= kSnapshotBudgetBytes
                                ? 1
                                : static_cast<int>((total + kSnapshotBudgetBytes - 1) / kSnapshotBudgetBytes);
         for (int i = 0; i < count; ++i)
-            if (i % stride != 0) slots[static_cast<std::size_t>(i)].snapshot.reset();
+            if (i % stride != 0) {
+                slots[static_cast<std::size_t>(i)].snapshot.reset();
+            }
 
         Job job;
         job.recipe = preview;
@@ -731,17 +835,23 @@ struct FluidPreviewCache::Impl {
         int last = -1;
         for (int i = 0; i < count; ++i) {
             const Slot& slot = slots[static_cast<std::size_t>(i)];
-            if (slot.has && slot.stale && slot.snapshot != nullptr) job.rerender.emplace_back(i, slot.snapshot);
+            if (slot.has && slot.stale && slot.snapshot != nullptr) {
+                job.rerender.emplace_back(i, slot.snapshot);
+            }
             if (needsSolve(slot)) {
-                if (first < 0) first = i;
+                if (first < 0) {
+                    first = i;
+                }
                 last = i;
             }
         }
-        if (job.rerender.empty() && first < 0) return;
+        if (job.rerender.empty() && first < 0) {
+            return;
+        }
 
         if (first >= 0) {
-            /// @note 解き直しの起点は «変わり目の手前で一番新しい途中経過»。残したコマと同じ状態なので、
-            /// @note       そこから続けても残したコマと食い違わない。
+            // 解き直しの起点は «変わり目の手前で一番新しい途中経過»。残したコマと同じ状態なので、
+            // そこから続けても残したコマと食い違わない。
             for (int i = first - 1; i >= 0; --i) {
                 const Slot& slot = slots[static_cast<std::size_t>(i)];
                 if (slot.snapshot != nullptr && slot.snapshot->simEpoch == simEpoch) {
@@ -754,8 +864,8 @@ struct FluidPreviewCache::Impl {
             job.lastIndex = last;
             job.render.assign(static_cast<std::size_t>(count), 0);
             job.keepSnapshot.assign(static_cast<std::size_t>(count), 0);
-            /// @note 起点より前にも印を付ける。続きを解くときは通らないが、差し替えを断られて頭から解き直す
-            /// @note       ことになったら、通りがかりで古い途中経過を取り直せる。
+            // 起点より前にも印を付ける。続きを解くときは通らないが、差し替えを断られて頭から解き直す
+            // ことになったら、通りがかりで古い途中経過を取り直せる。
             for (int i = 0; i <= last; ++i) {
                 const Slot& slot = slots[static_cast<std::size_t>(i)];
                 const bool current = slot.snapshot != nullptr && slot.snapshot->simEpoch == simEpoch
@@ -773,35 +883,48 @@ struct FluidPreviewCache::Impl {
 
     [[nodiscard]] int FindFrame(float time) const
     {
-        if (slots.empty() || !(frameDt > 0.0f)) return -1;
+        if (slots.empty() || !(frameDt > 0.0f)) {
+            return -1;
+        }
         const int count = static_cast<int>(slots.size());
         float position = time / frameDt + 1.0e-3f;
-        if (!std::isfinite(position)) position = 0.0f;
+        if (!std::isfinite(position)) {
+            position = 0.0f;
+        }
         const int index = static_cast<int>(std::floor(std::clamp(position, 0.0f, static_cast<float>(count - 1))));
         for (int i = index; i >= 0; --i)
-            if (slots[static_cast<std::size_t>(i)].has) return i;
+            if (slots[static_cast<std::size_t>(i)].has) {
+                return i;
+            }
         for (int i = index + 1; i < count; ++i)
-            if (slots[static_cast<std::size_t>(i)].has) return i;
+            if (slots[static_cast<std::size_t>(i)].has) {
+                return i;
+            }
         return -1;
     }
 
     void ReleaseTexture(renderer::ResourceManager& manager)
     {
-        /// @note デバイスリセット後の古いハンドルは既に無効。解放すると別の資源を消しかねない。
-        if (texture.handle.IsValid() && texture.resetVersion == manager.GetResetVersion())
+        // デバイスリセット後の古いハンドルは既に無効。解放すると別の資源を消しかねない。
+        if (texture.handle.IsValid() && texture.resetVersion == manager.GetResetVersion()) {
             manager.Release(texture.handle);
+        }
         texture = PreviewTexture{};
         uploadedIndex = -1;
     }
 
     [[nodiscard]] ImTextureID Upload(int index)
     {
-        if (resources == nullptr || imguiRenderer == nullptr || texture.unsupported) return ImTextureID{};
+        if (resources == nullptr || imguiRenderer == nullptr || texture.unsupported) {
+            return ImTextureID{};
+        }
         const Slot& slot = slots[static_cast<std::size_t>(index)];
         const asset::FluidFrameImage& frame = slot.image;
         const std::size_t pixelCount = static_cast<std::size_t>((std::max)(frame.size, 0))
                                      * static_cast<std::size_t>((std::max)(frame.size, 0));
-        if (frame.size <= 0 || frame.rgba.size() < pixelCount * 4) return ImTextureID{};
+        if (frame.size <= 0 || frame.rgba.size() < pixelCount * 4) {
+            return ImTextureID{};
+        }
 
         const std::uint64_t resetVersion = resources->GetResetVersion();
         if (!texture.handle.IsValid() || texture.size != frame.size || texture.resetVersion != resetVersion) {
@@ -809,7 +932,7 @@ struct FluidPreviewCache::Impl {
             const auto size = static_cast<std::uint32_t>(frame.size);
             texture.handle = resources->CreateDynamicTexture(size, size, renderer::DynamicTextureFormat::RGBA8);
             if (!texture.handle.IsValid()) {
-                /// @note 未対応バックエンド。以降は作り直そうとせず、呼び手が FrameAt を矩形で描く。
+                // 未対応バックエンド。以降は作り直そうとせず、呼び手が FrameAt を矩形で描く。
                 texture.unsupported = true;
                 return ImTextureID{};
             }
@@ -817,11 +940,17 @@ struct FluidPreviewCache::Impl {
             texture.resetVersion = resetVersion;
             texture.textureId = imguiRenderer->GetImTextureID(texture.handle, *resources);
         }
-        if (texture.textureId == nullptr) return ImTextureID{};
-        if (uploadedIndex == index && uploadedVersion == slot.version) return widgets::ToImTextureID(texture.textureId);
+        if (texture.textureId == nullptr) {
+            return ImTextureID{};
+        }
+        if (uploadedIndex == index && uploadedVersion == slot.version) {
+            return widgets::ToImTextureID(texture.textureId);
+        }
 
         renderer::ITexture* gpu = resources->Get(texture.handle);
-        if (gpu == nullptr) return ImTextureID{};
+        if (gpu == nullptr) {
+            return ImTextureID{};
+        }
         pixels.resize(pixelCount * 4);
         for (int y = 0; y < frame.size; ++y) {
             for (int x = 0; x < frame.size; ++x) {
@@ -830,13 +959,16 @@ struct FluidPreviewCache::Impl {
                 float color[3];
                 CompositeFluidPreviewPixel(&frame.rgba[pixel * 4], x, y, frame.size, viewSide,
                                            slot.shading, checkerBackground, color);
-                for (int c = 0; c < 3; ++c)
+                for (int c = 0; c < 3; ++c) {
                     pixels[pixel * 4 + static_cast<std::size_t>(c)] = static_cast<std::uint8_t>(color[c] * 255.0f + 0.5f);
+                }
                 pixels[pixel * 4 + 3] = 255;
             }
         }
         const auto size = static_cast<std::uint32_t>(frame.size);
-        if (!gpu->UpdateRegion(0, 0, size, size, pixels.data(), size * 4)) return ImTextureID{};
+        if (!gpu->UpdateRegion(0, 0, size, size, pixels.data(), size * 4)) {
+            return ImTextureID{};
+        }
         uploadedIndex = index;
         uploadedVersion = slot.version;
         return widgets::ToImTextureID(texture.textureId);
@@ -850,10 +982,12 @@ FluidPreviewCache::~FluidPreviewCache() = default;
 void FluidPreviewCache::SetRecipe(const fluid::FluidRecipe& recipe, std::uint64_t revision, float invalidateFrom)
 {
     Impl& s = *m_impl;
-    if (s.hasRecipe && revision == s.revision) return;
+    if (s.hasRecipe && revision == s.revision) {
+        return;
+    }
 
-    /// @note 呼び手の申告と自前の比較の早い方を取る。呼び手はレシピに現れない変化 (発生源の画像ファイルの
-    /// @note       書き換えなど) を知っていることがあり、自前の比較は申告の取りこぼしを拾う。
+    // 呼び手の申告と自前の比較の早い方を取る。呼び手はレシピに現れない変化 (発生源の画像ファイルの
+    // 書き換えなど) を知っていることがあり、自前の比較は申告の取りこぼしを拾う。
     float from = 0.0f;
     bool lookChanged = false;
     const bool first = !s.hasRecipe;
@@ -878,16 +1012,22 @@ void FluidPreviewCache::SetRecipe(const fluid::FluidRecipe& recipe, std::uint64_
 void FluidPreviewCache::SetQuality(FluidPreviewQuality quality)
 {
     Impl& s = *m_impl;
-    if (quality == s.quality) return;
+    if (quality == s.quality) {
+        return;
+    }
     s.quality = quality;
-    if (!s.hasRecipe) return;
-    /// @note 格子が変わると途中経過は使えない (部品の差し替えでは直せない)。絵は解き直しが追いつくまで古いまま見せる。
+    if (!s.hasRecipe) {
+        return;
+    }
+    // 格子が変わると途中経過は使えない (部品の差し替えでは直せない)。絵は解き直しが追いつくまで古いまま見せる。
     s.Abandon();
     ++s.simEpoch;
     ++s.partEpoch;
     for (Slot& slot : s.slots) {
         slot.snapshot.reset();
-        if (slot.has) slot.stale = true;
+        if (slot.has) {
+            slot.stale = true;
+        }
     }
 }
 
@@ -898,7 +1038,9 @@ FluidPreviewQuality FluidPreviewCache::Quality() const
 
 void FluidPreviewCache::SetCheckerBackground(bool enabled)
 {
-    if (m_impl->checkerBackground == enabled) return;
+    if (m_impl->checkerBackground == enabled) {
+        return;
+    }
     m_impl->checkerBackground = enabled;
     m_impl->uploadedIndex = -1;
 }
@@ -907,15 +1049,21 @@ void FluidPreviewCache::SetPreviewSide(float sidePixels)
 {
     Impl& s = *m_impl;
     const float side = sidePixels > 0.0f ? (std::min)(sidePixels, kMaxViewSide) : 0.0f;
-    if (side == s.viewSide) return;
+    if (side == s.viewSide) {
+        return;
+    }
     const int before = s.ImageSide();
     s.viewSide = side;
-    if (!s.hasRecipe || s.ImageSide() == before) return;
-    /// @note 格子は変わらないので途中経過はそのまま通じる。Look の変更と同じく «描き直し» で済み、
-    /// @note       途中経過を捨てられたコマだけが解き直しになる。
+    if (!s.hasRecipe || s.ImageSide() == before) {
+        return;
+    }
+    // 格子は変わらないので途中経過はそのまま通じる。Look の変更と同じく «描き直し» で済み、
+    // 途中経過を捨てられたコマだけが解き直しになる。
     s.Abandon();
     for (Slot& slot : s.slots)
-        if (slot.has) slot.stale = true;
+        if (slot.has) {
+            slot.stale = true;
+        }
 }
 
 void FluidPreviewCache::Tick(renderer::ResourceManager* resources, renderer::IImGuiRenderer* imguiRenderer)
@@ -931,9 +1079,13 @@ void FluidPreviewCache::Tick(renderer::ResourceManager* resources, renderer::IIm
 const asset::FluidFrameImage* FluidPreviewCache::FrameAt(float time, fluid::FluidShading* shading) const
 {
     const int index = m_impl->FindFrame(time);
-    if (index < 0) return nullptr;
+    if (index < 0) {
+        return nullptr;
+    }
     const Slot& slot = m_impl->slots[static_cast<std::size_t>(index)];
-    if (shading != nullptr) *shading = slot.shading;
+    if (shading != nullptr) {
+        *shading = slot.shading;
+    }
     return &slot.image;
 }
 
@@ -945,10 +1097,12 @@ ImTextureID FluidPreviewCache::TextureAt(float time)
 
 float FluidPreviewCache::SolvedUntil() const
 {
-    /// @note コマ i は [i·dt, (i+1)·dt) を受け持つ。全コマ解ければ Duration() に届く。
+    // コマ i は [i·dt, (i+1)·dt) を受け持つ。全コマ解ければ Duration() に届く。
     std::size_t solved = 0;
     for (const Slot& slot : m_impl->slots) {
-        if (!slot.has || slot.stale) break;
+        if (!slot.has || slot.stale) {
+            break;
+        }
         ++solved;
     }
     return static_cast<float>(solved) * m_impl->frameDt;
@@ -978,8 +1132,11 @@ void FluidPreviewCache::Shutdown(renderer::ResourceManager* resources)
 {
     Impl& s = *m_impl;
     s.StopWorker();
-    if (resources != nullptr) s.ReleaseTexture(*resources);
-    else                      s.texture = PreviewTexture{};
+    if (resources != nullptr) {
+        s.ReleaseTexture(*resources);
+    } else {
+        s.texture = PreviewTexture{};
+    }
     s.resources = nullptr;
     s.imguiRenderer = nullptr;
     s.uploadedIndex = -1;

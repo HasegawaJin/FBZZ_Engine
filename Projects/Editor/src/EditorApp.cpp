@@ -218,19 +218,28 @@ bool IsEditorUICanvas(const scene::UICanvas& canvas)
 
 std::string ResolveScenePathForProject(const std::string& projectRoot, const std::string& scenePath)
 {
-    if (scenePath.empty()) return {};
+    if (scenePath.empty()) {
+        return {};
+    }
     const std::filesystem::path rootPath = util::FileSystem::PathFromUtf8(projectRoot);
     std::filesystem::path candidate = util::FileSystem::PathFromUtf8(scenePath);
-    if (!candidate.is_absolute())
+    if (!candidate.is_absolute()) {
         candidate = rootPath / candidate;
+    }
     return util::FileSystem::PathToUtf8(util::FileSystem::MakeAbsolute(candidate));
 }
 
 bool IsScenePathInsideProject(const std::string& projectRoot, const std::string& scenePath)
 {
-    if (projectRoot.empty() || scenePath.empty()) return false;
-    if (util::StringUtils::ToLower(util::FileSystem::GetExtension(scenePath)) != ".scene") return false;
-    if (!util::FileSystem::Exists(scenePath)) return false;
+    if (projectRoot.empty() || scenePath.empty()) {
+        return false;
+    }
+    if (util::StringUtils::ToLower(util::FileSystem::GetExtension(scenePath)) != ".scene") {
+        return false;
+    }
+    if (!util::FileSystem::Exists(scenePath)) {
+        return false;
+    }
 
     const std::filesystem::path rootPath = util::FileSystem::MakeAbsolute(util::FileSystem::PathFromUtf8(projectRoot));
     const std::filesystem::path sceneFs  = util::FileSystem::MakeAbsolute(util::FileSystem::PathFromUtf8(scenePath));
@@ -242,11 +251,16 @@ bool IsScenePathInsideProject(const std::string& projectRoot, const std::string&
 std::filesystem::path SelectedSdkEnvironmentRoot()
 {
     const DWORD size = GetEnvironmentVariableW(L"FBZZ_SDK_ROOT", nullptr, 0);
-    if (size <= 1) return {};
+    if (size <= 1) {
+        return {};
+    }
     std::wstring value(size, L'\0');
     const DWORD written = GetEnvironmentVariableW(L"FBZZ_SDK_ROOT", value.data(), size);
-    if (!written || written >= size) return {};
-    value.resize(written); return std::filesystem::path(value);
+    if (!written || written >= size) {
+        return {};
+    }
+    value.resize(written);
+    return std::filesystem::path(value);
 }
 
 void LoadRuntimeBuildMetadata(EditorContext& ctx, const ManagedSdkBinding& binding)
@@ -254,21 +268,27 @@ void LoadRuntimeBuildMetadata(EditorContext& ctx, const ManagedSdkBinding& bindi
     ctx.engineRoot = util::FileSystem::PathToUtf8(binding.root);
     ctx.projectBuildRoot.clear();
     ctx.standaloneTargetName = "SandboxStandalone";
-    if (ctx.projectRoot.empty()) return;
+    if (ctx.projectRoot.empty()) {
+        return;
+    }
 
     std::string projectText;
-    if (!util::FileSystem::ReadText(ctx.projectRoot + "/.fbzz_proj", projectText))
+    if (!util::FileSystem::ReadText(ctx.projectRoot + "/.fbzz_proj", projectText)) {
         return;
+    }
 
     toml::parse_result result = toml::parse(projectText);
-    if (!result) return;
+    if (!result) {
+        return;
+    }
 
     const toml::table& table = result.table();
     const std::string buildRoot = table["project"]["build_root"].value_or(std::string{});
     if (!buildRoot.empty() && buildRoot.rfind("{{", 0) != 0) {
         std::filesystem::path path = util::FileSystem::PathFromUtf8(buildRoot);
-        if (!path.is_absolute())
+        if (!path.is_absolute()) {
             path = util::FileSystem::PathFromUtf8(ctx.projectRoot) / path;
+        }
         ctx.projectBuildRoot = util::FileSystem::PathToUtf8(path.lexically_normal());
     }
 
@@ -279,15 +299,16 @@ void LoadRuntimeBuildMetadata(EditorContext& ctx, const ManagedSdkBinding& bindi
 
     const std::string targetName = table["project"]["target_name"].value_or(std::string{});
     if (!targetName.empty() && targetName.rfind("{{", 0) != 0) {
-        if (standaloneTarget.empty())
+        if (standaloneTarget.empty()) {
             ctx.standaloneTargetName = targetName + "Standalone";
+        }
         ctx.projectTargetName    = targetName;
     }
 
 
 }
 
-} /// @note namespace
+} // namespace
 
 /// @note  初期化 / 終了
 
@@ -324,7 +345,9 @@ bool EditorApp::StartAiCommandBus()
 
 std::string EditorApp::HandleAiRequest(const std::string& request)
 {
-    if (!m_aiDispatcher) return {};
+    if (!m_aiDispatcher) {
+        return {};
+    }
     return m_aiDispatcher->Handle(request);
 }
 
@@ -354,18 +377,19 @@ bool EditorApp::Init(renderer::IRenderer& renderer, renderer::IImGuiRenderer& im
     m_viewportsEnabled = enableViewports;
     m_runtime.GetSceneManager().SetResourceManager(&resources);
 
-    /// @note ゲーム入力のアクション層は編集中は止め、Play 開始時に PlayModeController が有効化する。
-    /// @note        既定は有効 (Standalone でそのまま遊べる状態) なので、エディタ側で明示的に落とす。
+    // ゲーム入力のアクション層は編集中は止め、Play 開始時に PlayModeController が有効化する。
+    // 既定は有効 (Standalone でそのまま遊べる状態) なので、エディタ側で明示的に落とす。
     input::InputActionMap::SetEnabled(false);
 
-    /// @note Play 中のゲームが display プロキシで窓の形態や解像度を変えても、Editor の窓には
-    /// @note        通さない (Editor は常にウィンドウモード)。要求値は覚えられるので、Option 画面の
-    /// @note        チェックやドロップダウンは Standalone と同じように動く。
+    // Play 中のゲームが display プロキシで窓の形態や解像度を変えても、Editor の窓には
+    // 通さない (Editor は常にウィンドウモード)。要求値は覚えられるので、Option 画面の
+    // チェックやドロップダウンは Standalone と同じように動く。
     core::Application::Get().SetEditorHosted(true);
 
     window.SetWndProcHook([this](HWND h, UINT msg, WPARAM wp, LPARAM lp) -> bool {
-        if (ImGui_ImplWin32_WndProcHandler(h, msg, wp, lp) != 0)
+        if (ImGui_ImplWin32_WndProcHandler(h, msg, wp, lp) != 0) {
             return true;
+        }
         if (msg == WM_CLOSE) {
             RequestExit();
             return true;
@@ -373,11 +397,11 @@ bool EditorApp::Init(renderer::IRenderer& renderer, renderer::IImGuiRenderer& im
         return false;
     });
 
-    /// @name エクスプローラーからの外部ファイル D&D
-    /// @note AssetBrowser 側は EditorContext を読むだけの消費者なので、ここで
-    /// @note        プラットフォーム層と EditorContext を接続する。
-    /// @note        座標: Window はクライアント座標で通知するが、ImGui は Multi-Viewport 有効時に
-    /// @note        OS デスクトップ座標で当たり判定する。ここで screen 空間へ揃える。
+    // エクスプローラーからの外部ファイル D&D
+    // AssetBrowser 側は EditorContext を読むだけの消費者なので、ここで
+    // プラットフォーム層と EditorContext を接続する。
+    // 座標: Window はクライアント座標で通知するが、ImGui は Multi-Viewport 有効時に
+    // OS デスクトップ座標で当たり判定する。ここで screen 空間へ揃える。
     const auto toScreenSpace = [this](int clientX, int clientY, float& outX, float& outY) {
         POINT p{ static_cast<LONG>(clientX), static_cast<LONG>(clientY) };
         ClientToScreen(m_hwnd, &p);
@@ -387,8 +411,10 @@ bool EditorApp::Init(renderer::IRenderer& renderer, renderer::IImGuiRenderer& im
 
     window.SetFileDropCallback(
         [this, toScreenSpace](const std::vector<std::string>& paths, int x, int y) {
-            if (paths.empty()) return;
-            /// @note 同一フレームで複数回ドロップされることはないが、未消費分は失わず連結する。
+            if (paths.empty()) {
+                return;
+            }
+            // 同一フレームで複数回ドロップされることはないが、未消費分は失わず連結する。
             m_ctx.droppedExternalFiles.insert(
                 m_ctx.droppedExternalFiles.end(), paths.begin(), paths.end());
             toScreenSpace(x, y, m_ctx.droppedExternalFilesX, m_ctx.droppedExternalFilesY);
@@ -412,19 +438,19 @@ bool EditorApp::Init(renderer::IRenderer& renderer, renderer::IImGuiRenderer& im
     ImGuizmo::SetImGuiContext(ImGui::GetCurrentContext());
     ImGuiIO& io = ImGui::GetIO();
     io.ConfigFlags |= ImGuiConfigFlags_DockingEnable;
-    /// @note 通常パネルをメイン HWND の外や別モニターへドラッグできるよう、OS Multi-Viewport を有効化する。
+    // 通常パネルをメイン HWND の外や別モニターへドラッグできるよう、OS Multi-Viewport を有効化する。
     io.ConfigFlags |= ImGuiConfigFlags_ViewportsEnable;
     io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
-    /// @note ビューポートの絵は DrawList へ直接描くので ImGui アイテムを持たず、既定 (false) だと
-    /// @note        ゲーム画面全体が «ウィンドウの空き地» になる。Play 中にクリックした瞬間ウィンドウ移動が
-    /// @note        始まり、カーソル中央戻しと共鳴して窓が暴走するため、掴む場所をタイトルバー/タブへ限る。
+    // ビューポートの絵は DrawList へ直接描くので ImGui アイテムを持たず、既定 (false) だと
+    // ゲーム画面全体が «ウィンドウの空き地» になる。Play 中にクリックした瞬間ウィンドウ移動が
+    // 始まり、カーソル中央戻しと共鳴して窓が暴走するため、掴む場所をタイトルバー/タブへ限る。
     io.ConfigWindowsMoveFromTitleBarOnly = true;
-    /// @note IniFilename は OpenProject() で projectRoot が確定してから設定する。Init() 時点
-    /// @note        では projectRoot が空なので nullptr にし、最初の NewFrame() での自動ロードを防ぐ。
+    // IniFilename は OpenProject() で projectRoot が確定してから設定する。Init() 時点
+    // では projectRoot が空なので nullptr にし、最初の NewFrame() での自動ロードを防ぐ。
     io.IniFilename = nullptr;
 
     EditorTheme::Apply();
-    /// @note 追加 OS Window とメイン Window の見た目を連続させ、境界移動時の角丸差をなくす。
+    // 追加 OS Window とメイン Window の見た目を連続させ、境界移動時の角丸差をなくす。
     if ((io.ConfigFlags & ImGuiConfigFlags_ViewportsEnable) != 0) {
         ImGuiStyle& style = ImGui::GetStyle();
         style.WindowRounding = 0.0f;
@@ -454,18 +480,18 @@ bool EditorApp::Init(renderer::IRenderer& renderer, renderer::IImGuiRenderer& im
     auto& application = core::Application::Get();
     m_ctx.memorySystem = &application.GetMemorySystem();
     m_ctx.memoryLeakDiff = &m_memoryLeakDiff;
-    /// @note パネルの OnInit より前に繋ぐ (Volume Flipbook Baker パネルが共有 Baker を使う)。
+    // パネルの OnInit より前に繋ぐ (Volume Flipbook Baker パネルが共有 Baker を使う)。
     m_fluidBake = std::make_unique<FluidBakeService>();
     m_ctx.fluidBake = m_fluidBake.get();
     BindFluidInspectorContext(&m_ctx);
-    /// @note EditorはApplication所有とは別のProjectRuntimeを更新するため、音響を明示的に接続する。
+    // EditorはApplication所有とは別のProjectRuntimeを更新するため、音響を明示的に接続する。
     m_runtime.GetSceneManager().SetAudioManager(application.GetAudioManager());
     m_terrainTool     = std::make_unique<TerrainTool>();
     m_ctx.terrainTool = m_terrainTool.get();
     m_ctx.markSceneDirty  = [this]() { MarkSceneDirty(); };
     m_ctx.requestOpenScene = [this](const std::string& path) { RequestOpenScenePath(path); };
-    /// @note AI (Command Bus) からの入出力はモーダル確認を挟まない実体を直接呼ぶ。
-    /// @note        未保存変更の扱いは EditorBusDispatcher 側が discardUnsaved 引数で判定する。
+    // AI (Command Bus) からの入出力はモーダル確認を挟まない実体を直接呼ぶ。
+    // 未保存変更の扱いは EditorBusDispatcher 側が discardUnsaved 引数で判定する。
     m_ctx.openScenePathImmediate = [this](const std::string& path) { return OpenScenePath(path); };
     m_ctx.saveScenePathImmediate = [this](const std::string& path) {
         return path.empty() ? SaveScene() : SaveScenePath(path);
@@ -473,11 +499,11 @@ bool EditorApp::Init(renderer::IRenderer& renderer, renderer::IImGuiRenderer& im
 
     m_panels.push_back(std::make_unique<SceneHierarchyPanel>());
     m_panels.push_back(std::make_unique<InspectorPanel>());
-    /// @note Animation / Material / VFX を同じ選択導線で確認できる共通プレビュー。
+    // Animation / Material / VFX を同じ選択導線で確認できる共通プレビュー。
     m_panels.push_back(std::make_unique<PreviewPanel>());
     m_panels.push_back(std::make_unique<AnimationMaskPreviewPanel>());
     {
-        /// @note .animcontroller は「開く」操作でこのパネルへ渡す (BehaviorTree と同じ方式)。
+        // .animcontroller は「開く」操作でこのパネルへ渡す (BehaviorTree と同じ方式)。
         auto animationGraph = std::make_unique<AnimationGraphPanel>();
         AnimationGraphPanel* animationGraphPtr = animationGraph.get();
         m_ctx.openAnimationGraph = [animationGraphPtr](const std::string& path) {
@@ -486,8 +512,8 @@ bool EditorApp::Init(renderer::IRenderer& renderer, renderer::IImGuiRenderer& im
         m_panels.push_back(std::move(animationGraph));
     }
     {
-        /// @note .behaviortree はダブルクリックでこのパネルへ渡す。以前は作れるのに
-        /// @note        開く手段が無く、TOML を手書きするしかなかった。
+        // .behaviortree はダブルクリックでこのパネルへ渡す。以前は作れるのに
+        // 開く手段が無く、TOML を手書きするしかなかった。
         auto behaviorTree = std::make_unique<BehaviorTreePanel>();
         BehaviorTreePanel* behaviorTreePtr = behaviorTree.get();
         m_ctx.openBehaviorTree = [behaviorTreePtr](const std::string& path) {
@@ -496,8 +522,8 @@ bool EditorApp::Init(renderer::IRenderer& renderer, renderer::IImGuiRenderer& im
         m_panels.push_back(std::move(behaviorTree));
     }
     {
-        /// @note .synth はダブルクリックでこのパネルへ渡す。Inspector にも同じ値は出るが、
-        /// @note        プリセット / Randomize / 波形プレビューはここにしかない。
+        // .synth はダブルクリックでこのパネルへ渡す。Inspector にも同じ値は出るが、
+        // プリセット / Randomize / 波形プレビューはここにしかない。
         auto sfxEditor = std::make_unique<SfxEditorPanel>();
         SfxEditorPanel* sfxEditorPtr = sfxEditor.get();
         m_ctx.openSfxEditor = [sfxEditorPtr](const std::string& path) {
@@ -506,7 +532,7 @@ bool EditorApp::Init(renderer::IRenderer& renderer, renderer::IImGuiRenderer& im
         m_panels.push_back(std::move(sfxEditor));
     }
     {
-        /// @note .sequence はダブルクリックでこのパネルへ渡す。尺を目で詰める面はここにしかない。
+        // .sequence はダブルクリックでこのパネルへ渡す。尺を目で詰める面はここにしかない。
         auto sequence = std::make_unique<SequencePanel>();
         SequencePanel* sequencePtr = sequence.get();
         m_ctx.openSequence = [sequencePtr](const std::string& path) {
@@ -515,14 +541,14 @@ bool EditorApp::Init(renderer::IRenderer& renderer, renderer::IImGuiRenderer& im
         m_panels.push_back(std::move(sequence));
     }
     {
-        /// @note .fluid は asset.open が ctx.requestOpenFluidEditor に積み、パネル自身が読んで消す。
-        /// @note        未保存の確認をパネルが持つので、SFX Editor のような «開く» 関数は渡さない。
+        // .fluid は asset.open が ctx.requestOpenFluidEditor に積み、パネル自身が読んで消す。
+        // 未保存の確認をパネルが持つので、SFX Editor のような «開く» 関数は渡さない。
         auto fluidEditor = std::make_unique<FluidEditorPanel>();
         m_fluidEditorPanel = fluidEditor.get();
         m_panels.push_back(std::move(fluidEditor));
     }
-    /// @note .vfx はプレハブ編集モードで開き、尺の詰めだけこのパネルが受け持つ。
-    /// @note        アセットを渡す必要は無い (シーン上の VFX ルートを自分で見つける)。
+    // .vfx はプレハブ編集モードで開き、尺の詰めだけこのパネルが受け持つ。
+    // アセットを渡す必要は無い (シーン上の VFX ルートを自分で見つける)。
     m_panels.push_back(std::make_unique<VFXTimelinePanel>());
     {
         auto spriteEditor = std::make_unique<SpriteEditorPanel>();
@@ -532,8 +558,8 @@ bool EditorApp::Init(renderer::IRenderer& renderer, renderer::IImGuiRenderer& im
         };
         m_panels.push_back(std::move(spriteEditor));
     }
-    /// @note VFX Editor は別プロセスで専用 Preview World を所有する。Editor Scene へ Preview
-    /// @note        Entity が混入する経路をプロセス境界で完全に断つため。
+    // VFX Editor は別プロセスで専用 Preview World を所有する。Editor Scene へ Preview
+    // Entity が混入する経路をプロセス境界で完全に断つため。
     {
         auto vp = std::make_unique<ViewportPanel>(ViewportPanel::Kind::Scene);
         m_sceneViewportPanel = vp.get();
@@ -560,12 +586,14 @@ bool EditorApp::Init(renderer::IRenderer& renderer, renderer::IImGuiRenderer& im
         m_buildOutputPanel = buildOutput.get();
         m_panels.push_back(std::move(buildOutput));
     }
-    /// @note Asset Browser は Unity の Project ウィンドウと同じく複数開ける。m_panels は
-    /// @note        描画ループが走査中に push_back すると再配置でポインタが無効化されるため、
-    /// @note        全枚数を最初から作り、2 枚目以降は非表示で常駐させ View > Panels で出し入れする。
+    // Asset Browser は Unity の Project ウィンドウと同じく複数開ける。m_panels は
+    // 描画ループが走査中に push_back すると再配置でポインタが無効化されるため、
+    // 全枚数を最初から作り、2 枚目以降は非表示で常駐させ View > Panels で出し入れする。
     for (std::size_t i = 0; i < AssetBrowserPanel::kMaxInstances; ++i) {
         auto assets = std::make_unique<AssetBrowserPanel>("Assets", i);
-        if (i == 0) m_assetBrowserPanel = assets.get();
+        if (i == 0) {
+            m_assetBrowserPanel = assets.get();
+        }
         m_assetBrowserPanels.push_back(assets.get());
         m_panels.push_back(std::move(assets));
     }
@@ -605,7 +633,9 @@ bool EditorApp::Init(renderer::IRenderer& renderer, renderer::IImGuiRenderer& im
     }
     {
         auto worldAuthoring = std::make_unique<WorldAuthoringPanel>();
-        if (m_sceneViewportPanel) m_sceneViewportPanel->SetWorldAuthoringPanel(*worldAuthoring);
+        if (m_sceneViewportPanel) {
+            m_sceneViewportPanel->SetWorldAuthoringPanel(*worldAuthoring);
+        }
         m_panels.push_back(std::move(worldAuthoring));
     }
     m_panels.push_back(std::make_unique<DependencyViewPanel>());
@@ -640,15 +670,17 @@ bool EditorApp::Init(renderer::IRenderer& renderer, renderer::IImGuiRenderer& im
         panel->OnInit(m_ctx);
     }
 
-    /// @note 操作の登録が先。ホットキーは operator id へキーを割り当てるだけなので、
-    /// @note        レジストリが空だと 1 つも解決できない。
+    // 操作の登録が先。ホットキーは operator id へキーを割り当てるだけなので、
+    // レジストリが空だと 1 つも解決できない。
     RegisterBuiltinOperators();
-    for (auto& panel : m_panels) panel->OnRegisterOperators(m_operators);
+    for (auto& panel : m_panels) {
+        panel->OnRegisterOperators(m_operators);
+    }
     RegisterDefaultHotkeys();
-    /// @note 保存済みオーバーライドの適用は OpenProject()。ここではまだ設定を読んでいない。
+    // 保存済みオーバーライドの適用は OpenProject()。ここではまだ設定を読んでいない。
 
     if (m_viewportsEnabled) {
-        /// @note 初回はパネルのサイズが確定していないため、ウィンドウの寸法で確保する。
+        // 初回はパネルのサイズが確定していないため、ウィンドウの寸法で確保する。
         m_sceneViewportRT = resources.CreateRenderTarget(window.GetWidth(), window.GetHeight());
         m_gameViewportRT  = resources.CreateRenderTarget(window.GetWidth(), window.GetHeight());
     }
@@ -663,25 +695,25 @@ bool EditorApp::Init(renderer::IRenderer& renderer, renderer::IImGuiRenderer& im
         m_gameViewportPanel->resources = &resources;
     }
     if (m_uiViewportPanel) {
-        /// @note UI Viewport は Game View の完成フレームを背景として共有する。UI 専用 RT を
-        /// @note        別描画すると Clear 順や RenderGraph 経路の差で青い空 RT が表示されるため、
-        /// @note        編集用ガイドとギズモだけを ImGui 側で重ねる。
+        // UI Viewport は Game View の完成フレームを背景として共有する。UI 専用 RT を
+        // 別描画すると Clear 順や RenderGraph 経路の差で青い空 RT が表示されるため、
+        // 編集用ガイドとギズモだけを ImGui 側で重ねる。
         m_uiViewportPanel->hdrRT     = m_gameViewportRT;
         m_uiViewportPanel->renderer  = &renderer;
         m_uiViewportPanel->resources = &resources;
     }
 
-    /// @note シーンはここで生成し activeScene にバインドする。
-    /// @note        OpenProject() が activeScene を参照するため Init() で確立しておく必要がある。
+    // シーンはここで生成し activeScene にバインドする。
+    // OpenProject() が activeScene を参照するため Init() で確立しておく必要がある。
     m_scene = std::make_unique<scene::Scene>();
     m_scene->SetResourceManager(m_resources);
     m_ctx.activeScene = m_scene.get();
     m_ctx.editScene   = m_scene.get();
-    /// @note AI(EditorBusDispatcher)のphysicsクエリが参照するProjectRuntimeを共有する。EditorAppが所有。
+    // AI(EditorBusDispatcher)のphysicsクエリが参照するProjectRuntimeを共有する。EditorAppが所有。
     m_ctx.runtime = &m_runtime;
-    /// @note AIのconsole.logsクエリが読むログシンクを共有する。EditorAppが所有。
+    // AIのconsole.logsクエリが読むログシンクを共有する。EditorAppが所有。
     m_ctx.consoleSink = &m_consoleSink;
-    /// @note VFX Preview は編集 Scene と別の SceneManager で駆動し、生成物を Scene 保存・Undo から隔離する。
+    // VFX Preview は編集 Scene と別の SceneManager で駆動し、生成物を Scene 保存・Undo から隔離する。
 
     FBZZ_LOG_INFO("EditorApp init done");
     UpdateWindowTitle();
@@ -697,25 +729,31 @@ void EditorApp::Shutdown()
     }
     m_standalonePlay.Shutdown();
     m_ctx.undoStack = &m_undoStack;
-    m_playMode.Cancel(); m_ctx.activeScene = m_scene.get(); m_ctx.runtime = &m_runtime;
+    m_playMode.Cancel();
+    m_ctx.activeScene = m_scene.get();
+    m_ctx.runtime = &m_runtime;
     m_runtime.SetScriptQuitHandler(nullptr, nullptr);
     m_scriptQuitSceneLifetime = 0;
     m_packageBuild.Cancel();
-    /// @note 接続中の AI ワーカーを Scene / Panel より先に停止し、破棄済み状態への要求を防ぐ。
+    // 接続中の AI ワーカーを Scene / Panel より先に停止し、破棄済み状態への要求を防ぐ。
     StopAiCommandBus();
-    if (m_ctx.waitForModelImports) m_ctx.waitForModelImports();
-    /// @note 正常終了の印。ここまで来なかった起動は次回の OpenProject が異常終了とみなす。
+    if (m_ctx.waitForModelImports) {
+        m_ctx.waitForModelImports();
+    }
+    // 正常終了の印。ここまで来なかった起動は次回の OpenProject が異常終了とみなす。
     ClearSessionLock();
-    /// @note AI が止まった後に、レンダラーと ResourceManager が生きているうちに GPU 資源を返す。
-    if (m_fluidBake) m_fluidBake->Shutdown(m_ctx);
+    // AI が止まった後に、レンダラーと ResourceManager が生きているうちに GPU 資源を返す。
+    if (m_fluidBake) {
+        m_fluidBake->Shutdown(m_ctx);
+    }
     BindFluidInspectorContext(nullptr);
 
-    /// @note Map Mode / Play レイアウトはパネルの visible を一時的に潰す。この直後の Map Mode
-    /// @note        復帰処理で mapEditingMode が落ちるため、判定できるのは今だけ。
+    // Map Mode / Play レイアウトはパネルの visible を一時的に潰す。この直後の Map Mode
+    // 復帰処理で mapEditingMode が落ちるため、判定できるのは今だけ。
     CaptureNormalPanelVisibility();
 
-    /// @note Map Mode の Dock を imgui_layout.ini へ保存すると次回起動も専用配置になる。
-    /// @note        終了経路でも通常 Workspace をメモリから戻してから ImGui を破棄する。
+    // Map Mode の Dock を imgui_layout.ini へ保存すると次回起動も専用配置になる。
+    // 終了経路でも通常 Workspace をメモリから戻してから ImGui を破棄する。
     if (m_ctx.mapEditingMode && !m_normalLayoutIni.empty()) {
         ImGui::GetIO().IniFilename = m_normalIniFilename;
         ImGui::ClearIniSettings();
@@ -724,14 +762,17 @@ void EditorApp::Shutdown()
         m_ctx.mapEditingMode = false;
     }
 
-    /// @note 編集 document と保存 callback は管理 generation の終了前に解放する。パネルの終了処理でも再度安全に解除する。
+    // 編集 document と保存 callback は管理 generation の終了前に解放する。パネルの終了処理でも再度安全に解除する。
     InspectorPanel::ResetPendingDataAssetSaves();
-    if (m_managedScripts) m_managedScripts->Shutdown(m_ctx.activeScene);
+    if (m_managedScripts) {
+        m_managedScripts->Shutdown(m_ctx.activeScene);
+    }
     m_ctx.managedScripts = nullptr;
     m_ctx.managedBuildBusy = false;
 
-    for (auto& panel : m_panels)
+    for (auto& panel : m_panels) {
         panel->OnShutdown();
+    }
     ShutdownAnimationPreview();
 
     CaptureEditorSettingsFromContext();
@@ -754,9 +795,9 @@ void EditorApp::ApplyEditorSettingsToContext(bool loadPanels)
     m_ctx.snapPos     = m_settings.snapPos;
     m_ctx.snapRot     = m_settings.snapRot;
     m_ctx.snapScale   = m_settings.snapScale;
-    /// @note TOML は手で書き換えられ、enum の値を減らした版で保存したファイルも残る。範囲外の
-    /// @note        int を enum へキャストすると switch が既定へ落ちず原因不明の挙動になるため、
-    /// @note        読み口で clamp して潰す。
+    // TOML は手で書き換えられ、enum の値を減らした版で保存したファイルも残る。範囲外の
+    // int を enum へキャストすると switch が既定へ落ちず原因不明の挙動になるため、
+    // 読み口で clamp して潰す。
     m_ctx.gizmoMode          = static_cast<EditorContext::GizmoMode>(std::clamp(m_settings.gizmoMode, 0, 2));
     m_ctx.gizmoSpace         = static_cast<EditorContext::GizmoSpace>(std::clamp(m_settings.gizmoSpace, 0, 1));
     m_ctx.gizmoPivot         = static_cast<EditorContext::GizmoPivot>(std::clamp(m_settings.gizmoPivot, 0, 1));
@@ -809,23 +850,24 @@ void EditorApp::ApplyEditorSettingsToContext(bool loadPanels)
         m_ctx.editorCamera->m_projection  = m_settings.cameraOrthographic
             ? renderer::ProjectionMode::Orthographic
             : renderer::ProjectionMode::Perspective;
-        /// @note Teleport 経由にして DebugCamera の yaw / pitch / pivot まで揃える。
-        /// @note        直書きだけだと、復元直後の 1 回目のオービットで視点が飛ぶ。
+        // Teleport 経由にして DebugCamera の yaw / pitch / pivot まで揃える。
+        // 直書きだけだと、復元直後の 1 回目のオービットで視点が飛ぶ。
         m_debugCamera.Teleport(
             { m_settings.cameraLastPx, m_settings.cameraLastPy, m_settings.cameraLastPz },
             { m_settings.cameraLastRx, m_settings.cameraLastRy, m_settings.cameraLastRz,
               m_settings.cameraLastRw });
     }
     m_ctx.editorUiScale = m_settings.editorUiScale;
-    /// @note ロードしたスケールを即適用
+    // ロードしたスケールを即適用
     EditorTheme::SetUiScale(m_ctx.editorUiScale);
-    /// @note 表示言語。辞書の作り直しだけなので、UI スケールと違ってフォントには触らない
-    /// @note        (EditorTheme が日本語グリフを最初から merge している)。
+    // 表示言語。辞書の作り直しだけなので、UI スケールと違ってフォントには触らない
+    // (EditorTheme が日本語グリフを最初から merge している)。
     loc::SetLanguage(loc::FromId(m_settings.language));
     m_ctx.assetBrowserBookmarks = m_settings.assetBrowserBookmarks;
     m_ctx.assetBrowserFolderColors.clear();
-    for (const auto& [path, color] : m_settings.assetBrowserFolderColors)
+    for (const auto& [path, color] : m_settings.assetBrowserFolderColors) {
         m_ctx.assetBrowserFolderColors.emplace(AssetBrowserFolderKey(path), color);
+    }
     m_ctx.assetBrowserRecentFolderColors.assign(
         m_settings.assetBrowserRecentFolderColors.begin(),
         m_settings.assetBrowserRecentFolderColors.end());
@@ -853,12 +895,15 @@ void EditorApp::ApplyEditorSettingsToContext(bool loadPanels)
         m_terrainTool->SetPaintLayer(m_settings.terrainPaintLayer);
     }
 
-    /// @note 設定を読むのはこの OpenProject なので、適用もここで行う。Init 時点の
-    /// @note        m_settings は既定値のままで、上書きしたキーが戻らない。
-    for (const auto& ov : m_settings.hotkeyOverrides)
+    // 設定を読むのはこの OpenProject なので、適用もここで行う。Init 時点の
+    // m_settings は既定値のままで、上書きしたキーが戻らない。
+    for (const auto& ov : m_settings.hotkeyOverrides) {
         m_hotkeys.Rebind(ov.name, ov.key, ov.ctrl, ov.shift, ov.alt);
+    }
     if (loadPanels) {
-        for (auto& panel : m_panels) panel->OnLoadSettings(m_settings);
+        for (auto& panel : m_panels) {
+            panel->OnLoadSettings(m_settings);
+        }
         RestorePanelVisibility();
         m_ctx.projectSettings.render.showColliders        = m_settings.showColliders;
         m_ctx.projectSettings.render.showUIRects          = m_settings.showUIRects;
@@ -875,9 +920,9 @@ void EditorApp::ApplyEditorSettingsToContext(bool loadPanels)
 
 void EditorApp::CaptureEditorSettingsFromContext()
 {
-    /// @name EditorContext → EditorSettings への書き戻し
-    /// @note パネルは EditorContext のライブ値を直接変更する。ここで書き戻さないと、
-    /// @note        起動時に読んだ初期値がそのまま保存される。
+    // EditorContext → EditorSettings への書き戻し
+    // パネルは EditorContext のライブ値を直接変更する。ここで書き戻さないと、
+    // 起動時に読んだ初期値がそのまま保存される。
     m_settings.showGrid           = m_ctx.showGrid;
     m_settings.gridSize           = m_ctx.gridSize;
     m_settings.snapEnabled = m_ctx.snapEnabled;
@@ -935,22 +980,24 @@ void EditorApp::CaptureEditorSettingsFromContext()
     }
     m_settings.editorUiScale         = m_ctx.editorUiScale;
     m_settings.language              = loc::Id(loc::GetLanguage());
-    /// @note アイコンサイズとツリー幅は AssetBrowserPanel::OnSaveSettings が書く
-    /// @note        (ここでも書くと 2 つの書き手ができ、どちらが勝つか呼び順任せになる)。
+    // アイコンサイズとツリー幅は AssetBrowserPanel::OnSaveSettings が書く
+    // (ここでも書くと 2 つの書き手ができ、どちらが勝つか呼び順任せになる)。
     m_settings.assetBrowserBookmarks = m_ctx.assetBrowserBookmarks;
     m_settings.assetBrowserFolderColors.assign(m_ctx.assetBrowserFolderColors.begin(),
                                                m_ctx.assetBrowserFolderColors.end());
     m_settings.assetBrowserRecentFolderColors.assign(
         m_ctx.assetBrowserRecentFolderColors.begin(), m_ctx.assetBrowserRecentFolderColors.end());
     m_settings.defaultImportOptions  = m_ctx.defaultImportOptions;
-    /// @note ホットキーバインドをオーバーライドとして保存 (デフォルト値でも全件保存して確実に復元)
+    // ホットキーバインドをオーバーライドとして保存 (デフォルト値でも全件保存して確実に復元)
     m_settings.hotkeyOverrides.clear();
     for (const auto& hk : m_hotkeys.GetHotkeys()) {
-        /// @note 説明専用エントリ (マウス操作など) は割り当てを持たないので保存しない。
-        if (hk.infoOnly) continue;
+        // 説明専用エントリ (マウス操作など) は割り当てを持たないので保存しない。
+        if (hk.infoOnly) {
+            continue;
+        }
         EditorSettings::HotkeyOverride ov;
-        /// @note 鍵は operator id を優先する。表示名を鍵にしていると、ラベルを変えた瞬間に
-        /// @note        保存済みのリバインドが誰にも一致せず黙って既定へ戻ってしまう。
+        // 鍵は operator id を優先する。表示名を鍵にしていると、ラベルを変えた瞬間に
+        // 保存済みのリバインドが誰にも一致せず黙って既定へ戻ってしまう。
         ov.name  = hk.operatorId.empty() ? hk.name : hk.operatorId;
         ov.key   = hk.imguiKey;
         ov.ctrl  = hk.ctrl;
@@ -962,9 +1009,13 @@ void EditorApp::CaptureEditorSettingsFromContext()
         const auto& s = m_ctx.cameraBookmarks[i];
         auto& d = m_settings.cameraBookmarks[i];
         d.valid = s.valid;
-        d.px = s.position.x; d.py = s.position.y; d.pz = s.position.z;
-        d.rx = s.rotation.x; d.ry = s.rotation.y;
-        d.rz = s.rotation.z; d.rw = s.rotation.w;
+        d.px = s.position.x;
+        d.py = s.position.y;
+        d.pz = s.position.z;
+        d.rx = s.rotation.x;
+        d.ry = s.rotation.y;
+        d.rz = s.rotation.z;
+        d.rw = s.rotation.w;
     }
     m_settings.mapHierarchyFilter = m_ctx.mapHierarchyFilter;
     m_settings.mapInspectorFilter = m_ctx.mapInspectorFilter;
@@ -980,29 +1031,33 @@ void EditorApp::CaptureEditorSettingsFromContext()
         m_settings.terrainPaintLayer    = m_terrainTool->GetPaintLayer();
     }
 
-    /// @note パネル固有の設定 (Console のフィルター、Asset Browser の表示モード等) を回収する。
-    for (const auto& panel : m_panels)
+    // パネル固有の設定 (Console のフィルター、Asset Browser の表示モード等) を回収する。
+    for (const auto& panel : m_panels) {
         panel->OnSaveSettings(m_settings);
+    }
 
-    /// @note Inspector 折り畳み状態を ImGui StateStorage から回収して設定に書き戻す。
-    /// @note        ImGuiStorage は key → 共用体 (int/float/void*) の平坦な表で型を覚えていないので、
-    /// @note        全件を舐めるとカード本文の高さ (SetFloat) まで 0/1 の int へ潰れる。
-    /// @note        ComponentHeader が名乗り出た ID だけを保存対象にする。
-    /// @note        前回値を土台にするのは、このセッションで一度も表示しなかったカードを落とさないため。
+    // Inspector 折り畳み状態を ImGui StateStorage から回収して設定に書き戻す。
+    // ImGuiStorage は key → 共用体 (int/float/void*) の平坦な表で型を覚えていないので、
+    // 全件を舐めるとカード本文の高さ (SetFloat) まで 0/1 の int へ潰れる。
+    // ComponentHeader が名乗り出た ID だけを保存対象にする。
+    // 前回値を土台にするのは、このセッションで一度も表示しなかったカードを落とさないため。
     if (ImGuiWindow* win = ImGui::FindWindowByName("Inspector")) {
         std::unordered_map<ImGuiID, bool> merged;
-        for (const auto& [key, open] : m_ctx.inspectorSectionState) merged[key] = open;
-        for (const ImGuiID id : widgets::ComponentHeaderStateIds())
+        for (const auto& [key, open] : m_ctx.inspectorSectionState) {
+            merged[key] = open;
+        }
+        for (const ImGuiID id : widgets::ComponentHeaderStateIds()) {
             merged[id] = win->StateStorage.GetInt(id, 0) != 0;
+        }
 
         m_settings.inspectorSectionState.assign(merged.begin(), merged.end());
-        /// @note TOML の差分を安定させる (毎回並びが変わると保存のたびに全行が変更扱いになる)。
+        // TOML の差分を安定させる (毎回並びが変わると保存のたびに全行が変更扱いになる)。
         std::sort(m_settings.inspectorSectionState.begin(),
                   m_settings.inspectorSectionState.end(),
                   [](const auto& a, const auto& b) { return a.first < b.first; });
     }
 
-    /// @note Debug メニュー - レンダリングオーバーレイ
+    // Debug メニュー - レンダリングオーバーレイ
     m_settings.showColliders        = m_ctx.projectSettings.render.showColliders;
     m_settings.showUIRects          = m_ctx.projectSettings.render.showUIRects;
     m_settings.showTerrainCollision = m_ctx.projectSettings.render.showTerrainCollision;
@@ -1016,7 +1071,9 @@ void EditorApp::CaptureEditorSettingsFromContext()
 
 void EditorApp::PersistEditorSettings()
 {
-    if (m_ctx.projectRoot.empty()) return;
+    if (m_ctx.projectRoot.empty()) {
+        return;
+    }
 
     CaptureEditorSettingsFromContext();
     m_settings.Save(m_ctx.projectRoot + "/Assets/EditorConfig/editor_settings.toml",
@@ -1025,7 +1082,9 @@ void EditorApp::PersistEditorSettings()
 
 bool EditorApp::OpenProject(const std::string& projectRoot, const std::string& projectSettingsPath, const std::string& scenePath)
 {
-    if (RejectWhileSceneSaving()) return false;
+    if (RejectWhileSceneSaving()) {
+        return false;
+    }
     if (m_ctx.modelImportBusy && m_ctx.modelImportBusy()) {
         FBZZ_LOG_WARN("Project switch waits for model imports to finish.");
         return false;
@@ -1035,8 +1094,11 @@ bool EditorApp::OpenProject(const std::string& projectRoot, const std::string& p
     scene::ScriptProfiler::SetExecutionMode(false);
     ResetProfilerHistory();
     ResetProfilerWidgets();
-    if (!m_ctx.activeScene || !m_resources) return false;
-    ManagedSdkBinding sdkBinding; std::string sdkDiagnostic;
+    if (!m_ctx.activeScene || !m_resources) {
+        return false;
+    }
+    ManagedSdkBinding sdkBinding;
+    std::string sdkDiagnostic;
     if (!ResolveProjectManagedSdkBinding(ManagedEditorExecutable(), util::FileSystem::PathFromUtf8(projectRoot),
         SelectedSdkEnvironmentRoot(), FBZZ_CMAKE_CONFIG, sdkBinding, sdkDiagnostic)) {
         FBZZ_LOG_ERROR("Editor SDK selection rejected: %s", sdkDiagnostic.c_str());
@@ -1044,9 +1106,11 @@ bool EditorApp::OpenProject(const std::string& projectRoot, const std::string& p
     }
     m_packageBuild.Cancel();
     m_packageBuild.Reset();
-    /// @note 前プロジェクトの編集 document と保存 callback を、管理 runtime と context の切替より先に破棄する。
+    // 前プロジェクトの編集 document と保存 callback を、管理 runtime と context の切替より先に破棄する。
     InspectorPanel::ResetPendingDataAssetSaves();
-    if (m_managedScripts) m_managedScripts->Shutdown(m_ctx.activeScene);
+    if (m_managedScripts) {
+        m_managedScripts->Shutdown(m_ctx.activeScene);
+    }
     m_ctx.managedScripts = nullptr;
 
     m_projectRoot      = projectRoot;
@@ -1054,42 +1118,42 @@ bool EditorApp::OpenProject(const std::string& projectRoot, const std::string& p
     m_ctx.gameViewportLayout = EditorContext::GameViewportLayout::AUTOMATIC;
     m_ctx.editorSceneState.Clear();
 
-    /// @name EditorConfig を Assets/EditorConfig/ からロード
-    /// @note Init() では projectRoot が未確定なのでここで読む。lastScenePath を OpenProject 内で
-    /// @note        参照するため、他の初期化より前に済ませる。
+    // EditorConfig を Assets/EditorConfig/ からロード
+    // Init() では projectRoot が未確定なのでここで読む。lastScenePath を OpenProject 内で
+    // 参照するため、他の初期化より前に済ませる。
     {
         const std::string configDir = projectRoot + "/Assets/EditorConfig";
         util::FileSystem::EnsureDirectory(configDir);
         m_settings.Load(configDir + "/editor_settings.toml", projectRoot);
         m_ctx.inspectorSectionState = m_settings.inspectorSectionState;
 
-        /// @note EditorSettings → EditorContext への全フィールド適用。EditorSettings は TOML の
-        /// @note        raw 値、EditorContext はライブ値を保持し、OpenProject で一括コピー、Shutdown で
-        /// @note        逆方向に書き戻す。
+        // EditorSettings → EditorContext への全フィールド適用。EditorSettings は TOML の
+        // raw 値、EditorContext はライブ値を保持し、OpenProject で一括コピー、Shutdown で
+        // 逆方向に書き戻す。
         ApplyEditorSettingsToContext(false);
 
-        /// @note ImGui レイアウトファイルも同ディレクトリに配置する。io.IniFilename は const
-        /// @note        char* を保持するため、メンバ文字列のアドレスを渡して寿命を保証する。
+        // ImGui レイアウトファイルも同ディレクトリに配置する。io.IniFilename は const
+        // char* を保持するため、メンバ文字列のアドレスを渡して寿命を保証する。
         m_imguiIniPath = configDir + "/imgui_layout.ini";
         ImGui::GetIO().IniFilename = m_imguiIniPath.c_str();
         if (!util::FileSystem::Exists(m_imguiIniPath)) {
-            /// @note LoadIniSettingsFromMemory は SettingsLoaded フラグを立てるため、
-            /// @note        その後の NewFrame() でファイルから上書きされることはない。
+            // LoadIniSettingsFromMemory は SettingsLoaded フラグを立てるため、
+            // その後の NewFrame() でファイルから上書きされることはない。
             ImGui::LoadIniSettingsFromMemory(DEFAULT_IMGUI_LAYOUT);
         }
 
         SceneIO::SetProjectRoot(projectRoot);
     }
 
-    /// @note 参照を失った import 生成物を片付ける。ルートを配ると Asset Browser が未 import の
-    /// @note        走査を始めるため、それより前に孤児を落としておかないと数え直しになる。
+    // 参照を失った import 生成物を片付ける。ルートを配ると Asset Browser が未 import の
+    // 走査を始めるため、それより前に孤児を落としておかないと数え直しになる。
     if (m_settings.sweepOrphanedBakedOnOpen) {
         const auto sweep = asset::AssetDatabase::SweepOrphanedBaked(false);
         if (sweep.aborted) {
             FBZZ_LOG_WARN("EditorApp: baked sweep skipped (%s)", sweep.abortReason.c_str());
         } else if (sweep.removed > 0) {
-            /// @note 生成物と fingerprint はキーが同じ guid。片方だけ残すと «記録はあるのに
-            /// @note        焼き上がりが無い» 状態になり、再インポートの判定が狂う。
+            // 生成物と fingerprint はキーが同じ guid。片方だけ残すと «記録はあるのに
+            // 焼き上がりが無い» 状態になり、再インポートの判定が狂う。
             ImportCacheStore::Forget(sweep.removedGuids);
             Toast::Info("Cleaned " + std::to_string(sweep.removed)
                         + " unused import cache folders ("
@@ -1098,17 +1162,19 @@ bool EditorApp::OpenProject(const std::string& projectRoot, const std::string& p
     }
 
     LoadRuntimeBuildMetadata(m_ctx, sdkBinding);
-    /// @note ルートは開いている枚数ぶん全部に配る。1 枚目だけだと 2 枚目以降が前のプロジェクトの
-    /// @note        Assets を指したままになり、消えたパスを一覧しようとする。
+    // ルートは開いている枚数ぶん全部に配る。1 枚目だけだと 2 枚目以降が前のプロジェクトの
+    // Assets を指したままになり、消えたパスを一覧しようとする。
     if (!m_projectRoot.empty()) {
-        for (AssetBrowserPanel* browser : m_assetBrowserPanels)
+        for (AssetBrowserPanel* browser : m_assetBrowserPanels) {
             browser->SetRootPath(m_projectRoot + "/Assets");
+        }
     }
 
-    /// @note パネル固有の設定を適用する。Asset Browser は前回のフォルダをルート配下かどうかで
-    /// @note        検証するため、SetRootPath より後でないと必ず捨てられる。
-    for (auto& panel : m_panels)
+    // パネル固有の設定を適用する。Asset Browser は前回のフォルダをルート配下かどうかで
+    // 検証するため、SetRootPath より後でないと必ず捨てられる。
+    for (auto& panel : m_panels) {
         panel->OnLoadSettings(m_settings);
+    }
     RestorePanelVisibility();
 
     if (!projectSettingsPath.empty()) {
@@ -1123,8 +1189,8 @@ bool EditorApp::OpenProject(const std::string& projectRoot, const std::string& p
         }
     }
 
-    /// @note Debug メニューのレンダリング設定はエディター個人設定であり projectSettings より
-    /// @note        優先する。projectSettings.Load() の後に上書きし、プロジェクト共有値に左右されない。
+    // Debug メニューのレンダリング設定はエディター個人設定であり projectSettings より
+    // 優先する。projectSettings.Load() の後に上書きし、プロジェクト共有値に左右されない。
     m_ctx.projectSettings.render.showColliders        = m_settings.showColliders;
     m_ctx.projectSettings.render.showUIRects          = m_settings.showUIRects;
     m_ctx.projectSettings.render.showTerrainCollision = m_settings.showTerrainCollision;
@@ -1136,8 +1202,8 @@ bool EditorApp::OpenProject(const std::string& projectRoot, const std::string& p
     m_ctx.projectSettings.render.navMeshDrawDistance  = m_settings.navMeshDrawDistance;
     m_ctx.projectSettings.render.viewMode = static_cast<renderer::ViewMode>(m_settings.viewMode);
 
-    /// @note 上書きの後で «保存済み» を採る。ファイルの本文ではなく今の値を基準にしないと、
-    /// @note        開いただけで (表記揺れ・個人設定の上書きで) 未保存扱いになり即座に書き直す。
+    // 上書きの後で «保存済み» を採る。ファイルの本文ではなく今の値を基準にしないと、
+    // 開いただけで (表記揺れ・個人設定の上書きで) 未保存扱いになり即座に書き直す。
     m_projectSettingsSavedToml = m_ctx.projectSettings.ToToml();
     m_projectSettingsLastToml  = m_projectSettingsSavedToml;
     m_projectSettingsFailedToml.clear();
@@ -1153,8 +1219,8 @@ bool EditorApp::OpenProject(const std::string& projectRoot, const std::string& p
     m_ctx.managedScripts = m_managedScripts.get();
     m_ctx.managedBuildBusy = m_managedScripts->IsBusy();
 
-    /// @note PrefabSerializer は Editor 側にあり Engine から直接呼べないので、実装を注入する。
-    /// @note        PrefabRef::path は "Assets/..." 起点の相対パスなので絶対パスへ直してから渡す。
+    // PrefabSerializer は Editor 側にあり Engine から直接呼べないので、実装を注入する。
+    // PrefabRef::path は "Assets/..." 起点の相対パスなので絶対パスへ直してから渡す。
     const std::string capturedRoot = projectRoot;
     scene::Script::SetPrefabInstantiationCallback([capturedRoot](scene::Scene& s, const std::string& path,
                                                    std::vector<scene::EntityID>& roots) {
@@ -1177,9 +1243,9 @@ bool EditorApp::OpenProject(const std::string& projectRoot, const std::string& p
             FBZZ_LOG_ERROR("Open project scene failed: %s", sceneToOpen.c_str());
             return false;
         }
-        /// @note SceneSerializer はローカル position のみ復元し worldPosition はゼロのまま。
-        /// @note        OnInit の WarmupRenderResources がスケジューラより前に描画するため、
-        /// @note        ここで即時フラッシュしてロード直後の最初のフレームも正しい位置で表示する。
+        // SceneSerializer はローカル position のみ復元し worldPosition はゼロのまま。
+        // OnInit の WarmupRenderResources がスケジューラより前に描画するため、
+        // ここで即時フラッシュしてロード直後の最初のフレームも正しい位置で表示する。
         scene::FlushWorldTransforms(*m_ctx.editScene);
         m_settings.lastScenePath = sceneToOpen;
         m_ctx.currentScenePath   = sceneToOpen;
@@ -1190,7 +1256,7 @@ bool EditorApp::OpenProject(const std::string& projectRoot, const std::string& p
         CaptureCleanScene();
     }
 
-    /// @note 印を書く前に前回の印を見る。書いた後だと毎回 «異常終了» に見える。
+    // 印を書く前に前回の印を見る。書いた後だと毎回 «異常終了» に見える。
     DetectCrashRecovery();
     WriteSessionLock();
 
@@ -1198,10 +1264,10 @@ bool EditorApp::OpenProject(const std::string& projectRoot, const std::string& p
     UpdateWindowTitle();
 
     if (m_ctx.aiCommandBusEnabled && !StartAiCommandBus()) {
-        /// @note プロジェクト自体は開けるため失敗を致命扱いにせず、AI Settings から再試行可能にする。
+        // プロジェクト自体は開けるため失敗を致命扱いにせず、AI Settings から再試行可能にする。
         FBZZ_LOG_ERROR("保存済み設定から AI Command Bus を開始できませんでした");
     } else if (!m_ctx.aiCommandBusEnabled) {
-        /// @note プロジェクト切替で自動開始設定が無効になった場合は、前プロジェクトの待受を残さない。
+        // プロジェクト切替で自動開始設定が無効になった場合は、前プロジェクトの待受を残さない。
         StopAiCommandBus();
     }
 
@@ -1210,9 +1276,9 @@ bool EditorApp::OpenProject(const std::string& projectRoot, const std::string& p
 
 void EditorApp::RebuildEditorUIFromScene()
 {
-    /// @note UI Viewport の編集対象は EditorContext の一時状態であり、.fbzz には保存しない。
-    /// @note        シーン読込直後に Scene 内の UICanvas から復元しないと、初回表示で UI 編集ガイドや
-    /// @note        pick 対象が前シーンの無効 ID のままになり、Canvas をクリックするまで再構築されない。
+    // UI Viewport の編集対象は EditorContext の一時状態であり、.fbzz には保存しない。
+    // シーン読込直後に Scene 内の UICanvas から復元しないと、初回表示で UI 編集ガイドや
+    // pick 対象が前シーンの無効 ID のままになり、Canvas をクリックするまで再構築されない。
     m_ctx.activeUICanvas = scene::EntityID::INVALID;
     if (!m_ctx.activeScene) {
         return;
@@ -1234,11 +1300,13 @@ void EditorApp::RebuildEditorUIFromScene()
 
 void EditorApp::UpdateWindowTitle()
 {
-    if (!m_hwnd) return;
+    if (!m_hwnd) {
+        return;
+    }
 
-    /// @note Prefab 編集モード中は編集対象がシーンではなくアセットなので、タイトルもそちらを出す。
-    /// @note        タイトルバーがシーン名のままだと、編集モードに入っていることを見落として
-    /// @note        「シーンを壊してしまった」と誤解する。
+    // Prefab 編集モード中は編集対象がシーンではなくアセットなので、タイトルもそちらを出す。
+    // タイトルバーがシーン名のままだと、編集モードに入っていることを見落として
+    // 「シーンを壊してしまった」と誤解する。
     const bool inPrefabEdit = m_ctx.InPrefabEditMode();
     const std::string displayName = inPrefabEdit
         ? util::FileSystem::GetFilename(m_ctx.prefabEditPath)
@@ -1247,24 +1315,27 @@ void EditorApp::UpdateWindowTitle()
                : util::FileSystem::GetFilename(m_ctx.currentScenePath));
     const bool dirty = inPrefabEdit ? m_ctx.prefabEditDirty : m_ctx.sceneDirty;
 
-    /// @note Play 中は「開いているシーン」と「走っているシーン」が食い違いうる。遷移したなら
-    /// @note        走っている方の名前も出す。保存先は常に開いている方であることを見失わせない。
+    // Play 中は「開いているシーン」と「走っているシーン」が食い違いうる。遷移したなら
+    // 走っている方の名前も出す。保存先は常に開いている方であることを見失わせない。
     std::string playTag;
     if (const PlayState state = m_playMode.GetState(); state != PlayState::Editor) {
         playTag = (state == PlayState::Paused) ? " [Paused" : " [Playing";
-        if (!m_ctx.playSceneName.empty()) playTag += ": " + m_ctx.playSceneName;
+        if (!m_ctx.playSceneName.empty()) {
+            playTag += ": " + m_ctx.playSceneName;
+        }
         playTag += "]";
     }
 
-    /// @note 変化検知のキーにはモードを含める (同名でもモードが違えば描き直す)。
+    // 変化検知のキーにはモードを含める (同名でもモードが違えば描き直す)。
     const std::string titleKey =
         (inPrefabEdit ? "prefab:" : "scene:") +
         (inPrefabEdit ? m_ctx.prefabEditPath : m_ctx.currentScenePath) + playTag;
 
     if (m_titleInitialized &&
         m_lastTitleDirty     == dirty &&
-        m_lastTitleScenePath == titleKey)
+        m_lastTitleScenePath == titleKey) {
         return;
+    }
 
     m_titleInitialized   = true;
     m_lastTitleDirty     = dirty;
@@ -1273,28 +1344,32 @@ void EditorApp::UpdateWindowTitle()
     std::string title = inPrefabEdit
         ? "FBZZ Editor - [Prefab] " + displayName
         : "FBZZ Editor - " + displayName;
-    if (dirty) title += "*";
+    if (dirty) {
+        title += "*";
+    }
     title += playTag;
-    /// @note 使用中の描画バックエンド (DirectX 11/12) をタイトルに付す。app 起動時に付けた
-    /// @note        タイトルは本メソッドで上書きされるため、ここでも同じタグを付け直す。バックエンド名は
-    /// @note        IRenderer 抽象越しに取得しダウンキャストしない。
-    if (m_ctx.renderer)
+    // 使用中の描画バックエンド (DirectX 11/12) をタイトルに付す。app 起動時に付けた
+    // タイトルは本メソッドで上書きされるため、ここでも同じタグを付け直す。バックエンド名は
+    // IRenderer 抽象越しに取得しダウンキャストしない。
+    if (m_ctx.renderer) {
         title += std::string(" [") + m_ctx.renderer->GetBackendName() + "]";
-    if (m_window)
+    }
+    if (m_window) {
         m_window->SetTitle(util::StringUtils::ToWide(title));
+    }
 }
 
 /// @note  フレーム
 
 void EditorApp::BeginFrame()
 {
-    /// @note Play/Pause 中のランタイム変化を Editor の Undo 履歴へ混入させない。
+    // Play/Pause 中のランタイム変化を Editor の Undo 履歴へ混入させない。
     m_undoStack.SetRecordingEnabled(m_playMode.IsInEditor());
     m_ctx.undoStack = m_playMode.TemporaryUndo() ? m_playMode.TemporaryUndo() : &m_undoStack;
 
-    /// @note Viewport パネルサイズが前フレームで変わった場合は RT を再生成する。
-    /// @note        main ループの「シーン描画」より前に呼ぶことで、RT のサイズが確定した状態で
-    /// @note        シーンをレンダリングでき、リサイズ直後のフレームで古い解像度の画像が表示されるのを防ぐ。
+    // Viewport パネルサイズが前フレームで変わった場合は RT を再生成する。
+    // main ループの「シーン描画」より前に呼ぶことで、RT のサイズが確定した状態で
+    // シーンをレンダリングでき、リサイズ直後のフレームで古い解像度の画像が表示されるのを防ぐ。
     {
         FBZZ_PROFILE_SCOPE("EditorBegin::ResizeViewportRTs");
         ResizeViewportRTsIfNeeded();
@@ -1306,25 +1381,26 @@ void EditorApp::BeginFrame()
         ImGui::NewFrame();
     }
 
-    /// @note Play/Pause の識別色もブランドテーマ側へ集約し、通常時に旧配色を復元しない。
+    // Play/Pause の識別色もブランドテーマ側へ集約し、通常時に旧配色を復元しない。
     EditorTheme::ApplyWorkspaceTint(
         m_playMode.IsPlaying() ? WorkspaceTint::Playing :
         m_playMode.IsPaused()  ? WorkspaceTint::Paused  :
                                  WorkspaceTint::Editor);
 
-    /// @note BeginFrame が作る透明な gizmo ウィンドウをメイン viewport に固定し、独立した OS ウィンドウの生成を防ぐ。
+    // BeginFrame が作る透明な gizmo ウィンドウをメイン viewport に固定し、独立した OS ウィンドウの生成を防ぐ。
     ImGui::SetNextWindowViewport(ImGui::GetMainViewport()->ID);
     ImGuizmo::BeginFrame();
     {
         FBZZ_PROFILE_SCOPE("EditorBegin::Hotkeys");
-        /// @note ドキュメントを編集する面にフォーカスがある間、Ctrl+S はその面のものにする。
-        /// @note        ProcessInput はパネル描画より前に走り SuppressOperatorThisFrame は «次» フレーム
-        /// @note        にしか効かないため、前フレームで確定済みのフォーカス状態をここで先に使う。
+        // ドキュメントを編集する面にフォーカスがある間、Ctrl+S はその面のものにする。
+        // ProcessInput はパネル描画より前に走り SuppressOperatorThisFrame は «次» フレーム
+        // にしか効かないため、前フレームで確定済みのフォーカス状態をここで先に使う。
         constexpr auto localHistory = HotkeyScope::Sequence | HotkeyScope::BehaviorTree;
         constexpr auto localSave = localHistory | HotkeyScope::FluidEditor | HotkeyScope::SpriteEditor;
         if (m_ctx.PanelScopeFocused(localSave) ||
-            (m_ctx.PanelScopeFocused(HotkeyScope::AnimationGraph) && m_ctx.animationControllerEditor))
+            (m_ctx.PanelScopeFocused(HotkeyScope::AnimationGraph) && m_ctx.animationControllerEditor)) {
             m_hotkeys.SuppressOperatorThisFrame("scene.save");
+        }
         if (m_ctx.PanelScopeFocused(localHistory)) {
             m_hotkeys.SuppressOperatorThisFrame("edit.undo");
             m_hotkeys.SuppressOperatorThisFrame("edit.redo");
@@ -1376,9 +1452,9 @@ void EditorApp::BeginFrame()
 
         BuildMenuBar(m_ctx);
         BuildPlayToolbar(m_ctx);
-        /// @note Prefab 編集モードの帯はツールバー直下・DockSpace の上に置く。パネルの中に
-        /// @note        埋めるとレイアウト次第で見えなくなり、「今アセットを直している」という
-        /// @note        一番外してはいけない前提が伝わらない。
+        // Prefab 編集モードの帯はツールバー直下・DockSpace の上に置く。パネルの中に
+        // 埋めるとレイアウト次第で見えなくなり、「今アセットを直している」という
+        // 一番外してはいけない前提が伝わらない。
         DrawPrefabEditBar(m_ctx);
         DrawSceneReloadBar(m_ctx);
         DrawBuildNotificationBar(m_ctx);
@@ -1388,7 +1464,7 @@ void EditorApp::BeginFrame()
         ImGuiID dockId = ImGui::GetID("MainDockSpace");
         ProcessMapEditingModeTransition(static_cast<uint32_t>(dockId));
         ProcessPlayViewportLayoutTransition(static_cast<uint32_t>(dockId));
-        /// @note StatusBar一段分を残してDockSpaceを描き、ドロワーボタンを常に画面下端へ置く。
+        // StatusBar一段分を残してDockSpaceを描き、ドロワーボタンを常に画面下端へ置く。
         const float statusBarHeight = ImGui::GetFrameHeight() + 2.0f;
         ImGui::DockSpace(dockId, { 0.0f, -statusBarHeight },
             ImGuiDockNodeFlags_PassthruCentralNode | ImGuiDockNodeFlags_AutoHideTabBar);
@@ -1396,8 +1472,8 @@ void EditorApp::BeginFrame()
             m_assetBrowserPanel != nullptr ? &m_assetBrowserPanel->visible : nullptr,
             m_consolePanel != nullptr ? &m_consolePanel->visible : nullptr);
 
-        /// @note ModalDialog::OpenPopup は ImGui ウィンドウ (Begin/End) のスコープ内でしか機能しない。
-        /// @note        DockSpaceHost ウィンドウの内側に置くことでその制約を満たす。
+        // ModalDialog::OpenPopup は ImGui ウィンドウ (Begin/End) のスコープ内でしか機能しない。
+        // DockSpaceHost ウィンドウの内側に置くことでその制約を満たす。
         ModalDialog::OnRender();
 
         ImGui::End();
@@ -1406,12 +1482,12 @@ void EditorApp::BeginFrame()
 
 void EditorApp::RenderPanels(EditorContext& ctx)
 {
-    /// @note Play ボタンは BeginFrame 内で状態を変えるため、同じフレームの Panel 描画前にも同期する。
+    // Play ボタンは BeginFrame 内で状態を変えるため、同じフレームの Panel 描画前にも同期する。
     m_undoStack.SetRecordingEnabled(m_playMode.IsInEditor());
 
-    /// @note HotkeyManager の scope 判定に使うフォーカス状態を落とし、パネルに立て直させる。
-    /// @note        非表示のパネルは OnRender が呼ばれず申告できないので、落とさないと
-    /// @note        「閉じたパネルにフォーカスがある」ままキーが効き続ける。
+    // HotkeyManager の scope 判定に使うフォーカス状態を落とし、パネルに立て直させる。
+    // 非表示のパネルは OnRender が呼ばれず申告できないので、落とさないと
+    // 「閉じたパネルにフォーカスがある」ままキーが効き続ける。
     ctx.focusedPanelScope    = HotkeyScope::None;
     ctx.uiViewportFocused   = false;
     ctx.viewportFocused      = false;
@@ -1419,10 +1495,10 @@ void EditorApp::RenderPanels(EditorContext& ctx)
     ctx.gameViewportRectValid = false;
     ctx.gameViewportFocused   = false;
 
-    /// @note Build Output パネルの表示要求を処理する (StatusBar クリック / 失敗通知バーの Show)。
+    // Build Output パネルの表示要求を処理する (StatusBar クリック / 失敗通知バーの Show)。
     if (m_buildOutputPanel) {
         if (ctx.requestFocusBuildError) {
-            /// @note 表示 ON + 最初のエラーへスクロール
+            // 表示 ON + 最初のエラーへスクロール
             m_buildOutputPanel->RequestFocusFirstError();
             ctx.requestFocusBuildError = false;
             ctx.requestOpenBuildOutput = false;
@@ -1435,10 +1511,12 @@ void EditorApp::RenderPanels(EditorContext& ctx)
     }
 
     for (auto& panel : m_panels) {
-        if (!panel->visible) continue;
+        if (!panel->visible) {
+            continue;
+        }
 
-        /// @note RenderPanels 全体の計測だけでは、重いパネルを特定できない。パネル名は Panel
-        /// @note        の生存中有効なため、そのまま Profiler marker として利用する。
+        // RenderPanels 全体の計測だけでは、重いパネルを特定できない。パネル名は Panel
+        // の生存中有効なため、そのまま Profiler marker として利用する。
         const profiler::ProfileScope panelScope(
             profiler::ProfilerMarker(panel->GetWindowName(), "Editor Panels"));
         panel->OnRender(ctx);
@@ -1454,51 +1532,56 @@ void EditorApp::RenderPanels(EditorContext& ctx)
     DrawAutoSaveNotice();
     ProcessCrashRecovery();
 
-    /// @note アセット参照欄 (widgets::AssetPathField) のクリック → 参照先アセットを辿る。
-    /// @note        ・Inspector の表示対象を移す — ここで即座に確定させる
-    /// @note        ・Asset Browser を該当フォルダへ移動して ping する — 次フレームのパネルが消費する
-    /// @note        widgets 層は EditorContext を知らないので要求は静的チャネルに積まれる。
-    /// @note        パネル描画の後に 1 回取り出せば、どのパネルの参照欄から出た要求も同じ経路で届く。
+    // アセット参照欄 (widgets::AssetPathField) のクリック → 参照先アセットを辿る。
+    // ・Inspector の表示対象を移す — ここで即座に確定させる
+    // ・Asset Browser を該当フォルダへ移動して ping する — 次フレームのパネルが消費する
+    // widgets 層は EditorContext を知らないので要求は静的チャネルに積まれる。
+    // パネル描画の後に 1 回取り出せば、どのパネルの参照欄から出た要求も同じ経路で届く。
     if (widgets::AssetRevealRequest reveal; widgets::ConsumeAssetRevealRequest(reveal)) {
-        /// @note Inspector の表示対象の切り替えはここで完結させる。
-        /// @note        Asset Browser へ任せると、非アクティブなタブでは OnRenderContent 自体が
-        /// @note        呼ばれず (Inspector と同じドックノードだと常にこの状態)、一覧へ辿れない参照でも
-        /// @note        選択を書く前に return するため、参照欄をダブルクリックしても何も起きない。
-        /// @note        「参照を辿って中身を見る」は Inspector 単体で成立すべき動線。
+        // Inspector の表示対象の切り替えはここで完結させる。
+        // Asset Browser へ任せると、非アクティブなタブでは OnRenderContent 自体が
+        // 呼ばれず (Inspector と同じドックノードだと常にこの状態)、一覧へ辿れない参照でも
+        // 選択を書く前に return するため、参照欄をダブルクリックしても何も起きない。
+        // 「参照を辿って中身を見る」は Inspector 単体で成立すべき動線。
         if (reveal.selectInInspector) {
-            /// @note Sprite 参照 (`` "<画像>::sprite::<id>" ``) は元画像を Inspector へ出す。
-            /// @note        ParseSpriteReference は false のときも logicalPath へ元の文字列を書くため、
-            /// @note        戻り値を見る必要はない (AssetBrowserPanel::HandleRevealRequest と同じ扱い)。
+            // Sprite 参照 (`` "<画像>::sprite::<id>" ``) は元画像を Inspector へ出す。
+            // ParseSpriteReference は false のときも logicalPath へ元の文字列を書くため、
+            // 戻り値を見る必要はない (AssetBrowserPanel::HandleRevealRequest と同じ扱い)。
             std::string logicalPath;
             std::string spriteToken;
             (void)asset::ParseSpriteReference(reveal.path, logicalPath, spriteToken);
             std::string absolute = util::FileSystem::NormalizePathSeparators(
                 asset::AssetManager::ResolveAssetPath(logicalPath));
-            if (!absolute.empty() && util::FileSystem::Exists(absolute))
+            if (!absolute.empty() && util::FileSystem::Exists(absolute)) {
                 SelectAsset(ctx, std::move(absolute));
+            }
         }
 
         ctx.requestRevealAssetPath   = std::move(reveal.path);
         ctx.requestRevealAssetSelect = reveal.selectInInspector;
         for (auto& panel : m_panels) {
-            if (std::strcmp(panel->GetWindowName(), "Asset Browser") != 0) continue;
-            /// @note 閉じている / 非アクティブなタブに埋もれていると「示した」ことにならないため、
-            /// @note        表示 ON + タブを手前へ出すところまでを 1 操作で済ませる。
+            if (std::strcmp(panel->GetWindowName(), "Asset Browser") != 0) {
+                continue;
+            }
+            // 閉じている / 非アクティブなタブに埋もれていると「示した」ことにならないため、
+            // 表示 ON + タブを手前へ出すところまでを 1 操作で済ませる。
             panel->visible = true;
             ImGui::SetWindowFocus(panel->GetWindowName());
             break;
         }
     }
 
-    /// @name 全パネルの上に重ねるオーバーレイ
-    /// @note パネルより後に描くのは、モーダル的なオーバーレイを最前面に出すため。
+    // 全パネルの上に重ねるオーバーレイ
+    // パネルより後に描くのは、モーダル的なオーバーレイを最前面に出すため。
     DrawCommandPalette(ctx);
     DrawShortcutsOverlay(ctx);
-    /// @note 選択の変化を毎フレーム拾って往復ヒストリへ積む (Alt+←/→ の材料)。
+    // 選択の変化を毎フレーム拾って往復ヒストリへ積む (Alt+←/→ の材料)。
     RecordSelectionHistory();
 
     if (ctx.requestOpenProjectSettings) {
-        if (m_projectSettingsPanel) m_projectSettingsPanel->visible = true;
+        if (m_projectSettingsPanel) {
+            m_projectSettingsPanel->visible = true;
+        }
         ctx.requestOpenProjectSettings = false;
     }
 
@@ -1518,9 +1601,9 @@ void EditorApp::RenderPanels(EditorContext& ctx)
         }
     }
 
-    /// @note requestOpenAnimationGraph は「窓を出す」だけ。どの .animcontroller を開くかは
-    /// @note        ctx.openAnimationGraph(path) で呼び出し元が明示する。ここで兼ねると Inspector が
-    /// @note        渡したパスを selectedAssetPath で上書きしてしまう。
+    // requestOpenAnimationGraph は「窓を出す」だけ。どの .animcontroller を開くかは
+    // ctx.openAnimationGraph(path) で呼び出し元が明示する。ここで兼ねると Inspector が
+    // 渡したパスを selectedAssetPath で上書きしてしまう。
     if (ctx.requestOpenAnimationGraph) {
         ctx.requestOpenAnimationGraph = false;
         for (auto& panel : m_panels) {
@@ -1534,7 +1617,9 @@ void EditorApp::RenderPanels(EditorContext& ctx)
 
     if (ctx.requestOpenBehaviorTree) {
         ctx.requestOpenBehaviorTree = false;
-        if (ctx.openBehaviorTree) ctx.openBehaviorTree(ctx.selectedAssetPath);
+        if (ctx.openBehaviorTree) {
+            ctx.openBehaviorTree(ctx.selectedAssetPath);
+        }
         for (auto& panel : m_panels) {
             if (std::strcmp(panel->GetWindowName(), "Behavior Tree") == 0) {
                 panel->visible = true;
@@ -1544,13 +1629,16 @@ void EditorApp::RenderPanels(EditorContext& ctx)
         }
     }
 
-    /// @note 要求を読んで消すのはパネル自身 (OnBeforeBegin)。ここは閉じていれば開くだけ。
-    if (!ctx.requestOpenFluidEditor.empty() && m_fluidEditorPanel != nullptr && !m_fluidEditorPanel->visible)
+    // 要求を読んで消すのはパネル自身 (OnBeforeBegin)。ここは閉じていれば開くだけ。
+    if (!ctx.requestOpenFluidEditor.empty() && m_fluidEditorPanel != nullptr && !m_fluidEditorPanel->visible) {
         InvokePanelFocus(m_fluidEditorPanel);
+    }
 
     if (ctx.requestOpenSfxEditor) {
         ctx.requestOpenSfxEditor = false;
-        if (ctx.openSfxEditor) ctx.openSfxEditor(ctx.selectedAssetPath);
+        if (ctx.openSfxEditor) {
+            ctx.openSfxEditor(ctx.selectedAssetPath);
+        }
         for (auto& panel : m_panels) {
             if (std::strcmp(panel->GetWindowName(), "SFX Editor") == 0) {
                 panel->visible = true;
@@ -1560,8 +1648,8 @@ void EditorApp::RenderPanels(EditorContext& ctx)
         }
     }
 
-    /// @note requestOpenAnimationGraph と同じく「窓を出す」だけ。どの .sequence を開くかは
-    /// @note        ctx.openSequence(path) で呼び出し元が明示済み。
+    // requestOpenAnimationGraph と同じく「窓を出す」だけ。どの .sequence を開くかは
+    // ctx.openSequence(path) で呼び出し元が明示済み。
     if (ctx.requestOpenSequence) {
         ctx.requestOpenSequence = false;
         for (auto& panel : m_panels) {
@@ -1574,8 +1662,8 @@ void EditorApp::RenderPanels(EditorContext& ctx)
     }
 
 
-    /// @note すべての通常ウィンドウの後に呼ぶことで、オーバーレイが最前面に描画される。
-    /// @note        IsActive() == false のときは何もしないのでパネルのないフレームでも安全。
+    // すべての通常ウィンドウの後に呼ぶことで、オーバーレイが最前面に描画される。
+    // IsActive() == false のときは何もしないのでパネルのないフレームでも安全。
     {
         FBZZ_PROFILE_SCOPE("EditorPanel::TaskOverlay");
         EditorTaskOverlay::Render();
@@ -1590,15 +1678,18 @@ void EditorApp::ProcessMapEditingModeTransition(uint32_t dockId)
         return;
     }
 
-    if (!m_ctx.requestMapEditingModeToggle)
+    if (!m_ctx.requestMapEditingModeToggle) {
         return;
+    }
 
     m_ctx.requestMapEditingModeToggle = false;
-    if (m_ctx.mapEditingMode)
+    if (m_ctx.mapEditingMode) {
         ExitMapEditingMode(dockId);
-    else if (m_playMode.IsInEditor() && m_ctx.activeScene) {
+    } else if (m_playMode.IsInEditor() && m_ctx.activeScene) {
         m_ctx.gameViewportLayout = EditorContext::GameViewportLayout::AUTOMATIC;
-        if (m_playViewportLayoutActive) ExitPlayViewportLayout(dockId);
+        if (m_playViewportLayoutActive) {
+            ExitPlayViewportLayout(dockId);
+        }
         EnterMapEditingMode(dockId);
     }
 }
@@ -1619,8 +1710,9 @@ void EditorApp::ProcessPlayViewportLayoutTransition(uint32_t dockId)
 
 void EditorApp::EnterMapEditingMode(uint32_t dockId)
 {
-    if (m_ctx.mapEditingMode)
+    if (m_ctx.mapEditingMode) {
         return;
+    }
 
     size_t iniSize = 0;
     const char* iniData = ImGui::SaveIniSettingsToMemory(&iniSize);
@@ -1628,12 +1720,14 @@ void EditorApp::EnterMapEditingMode(uint32_t dockId)
 
     m_normalPanelVisibility.clear();
     m_normalPanelVisibility.reserve(m_panels.size());
-    for (const auto& panel : m_panels)
+    for (const auto& panel : m_panels) {
         m_normalPanelVisibility.push_back(panel->visible);
+    }
 
     m_terrainToolWasActive = m_terrainTool && m_terrainTool->IsActive();
-    if (m_terrainTool)
+    if (m_terrainTool) {
         m_terrainToolModeBeforeMap = static_cast<int>(m_terrainTool->GetMode());
+    }
 
     m_ctx.mapEditingMode = true;
     m_normalIniFilename = ImGui::GetIO().IniFilename;
@@ -1655,8 +1749,9 @@ void EditorApp::EnterMapEditingMode(uint32_t dockId)
 
 void EditorApp::ExitMapEditingMode(uint32_t dockId)
 {
-    if (!m_ctx.mapEditingMode)
+    if (!m_ctx.mapEditingMode) {
         return;
+    }
 
     m_ctx.mapEditingMode = false;
     ImGui::GetIO().IniFilename = m_normalIniFilename;
@@ -1667,8 +1762,9 @@ void EditorApp::ExitMapEditingMode(uint32_t dockId)
     }
 
     if (m_normalPanelVisibility.size() == m_panels.size()) {
-        for (size_t index = 0; index < m_panels.size(); ++index)
+        for (size_t index = 0; index < m_panels.size(); ++index) {
             m_panels[index]->visible = m_normalPanelVisibility[index];
+        }
     }
 
     ImGui::DockBuilderRemoveNode(static_cast<ImGuiID>(dockId));
@@ -1681,8 +1777,9 @@ void EditorApp::ExitMapEditingMode(uint32_t dockId)
 
 void EditorApp::EnterPlayViewportLayout(uint32_t dockId)
 {
-    if (m_playViewportLayoutActive)
+    if (m_playViewportLayoutActive) {
         return;
+    }
 
     size_t iniSize = 0;
     const char* iniData = ImGui::SaveIniSettingsToMemory(&iniSize);
@@ -1690,39 +1787,45 @@ void EditorApp::EnterPlayViewportLayout(uint32_t dockId)
 
     m_playPanelVisibility.clear();
     m_playPanelVisibility.reserve(m_panels.size());
-    for (const auto& panel : m_panels)
+    for (const auto& panel : m_panels) {
         m_playPanelVisibility.push_back(panel->visible);
+    }
 
-    /// @note Unity の Maximize On Play に近い挙動として、Play 中だけ Game View を中央 Dock
-    /// @note        全体へ広げる。Stop 時に保存済みレイアウトを復元し、ユーザーの通常レイアウトは変更しない。
+    // Unity の Maximize On Play に近い挙動として、Play 中だけ Game View を中央 Dock
+    // 全体へ広げる。Stop 時に保存済みレイアウトを復元し、ユーザーの通常レイアウトは変更しない。
     m_playViewportLayoutActive = true;
     m_ctx.gameViewportMaximized = true;
     m_playIniFilename = ImGui::GetIO().IniFilename;
     ImGui::GetIO().IniFilename = nullptr;
 
-    for (auto& panel : m_panels)
+    for (auto& panel : m_panels) {
         panel->visible = (panel.get() == m_gameViewportPanel);
+    }
 
-    if (m_gameViewportPanel)
+    if (m_gameViewportPanel) {
         m_gameViewportPanel->visible = true;
-    if (m_playAllowsPhysicalInput && m_ctx.gameViewportLayout == EditorContext::GameViewportLayout::AUTOMATIC)
+    }
+    if (m_playAllowsPhysicalInput && m_ctx.gameViewportLayout == EditorContext::GameViewportLayout::AUTOMATIC) {
         m_ctx.requestGameViewportFocus = true;
+    }
 
     BuildPlayViewportLayout(dockId);
 }
 
 void EditorApp::ExitPlayViewportLayout(uint32_t dockId)
 {
-    if (!m_playViewportLayoutActive)
+    if (!m_playViewportLayoutActive) {
         return;
+    }
 
     m_playViewportLayoutActive = false;
     m_ctx.gameViewportMaximized = false;
     ImGui::GetIO().IniFilename = m_playIniFilename;
 
     if (m_playPanelVisibility.size() == m_panels.size()) {
-        for (size_t index = 0; index < m_panels.size(); ++index)
+        for (size_t index = 0; index < m_panels.size(); ++index) {
             m_panels[index]->visible = m_playPanelVisibility[index];
+        }
     }
 
     ImGui::DockBuilderRemoveNode(static_cast<ImGuiID>(dockId));
@@ -1748,8 +1851,8 @@ void EditorApp::BuildMapEditingLayout(uint32_t dockId)
     ImGuiID inspector = 0;
     ImGuiID assets    = 0;
 
-    /// @note 左カラムを Map Tools(上) と Scene Hierarchy(下) に分割する。
-    /// @note        Map 編集はツールパネルが主役なので、Inspector の裏のタブへ隠れない左カラムへ固定する。
+    // 左カラムを Map Tools(上) と Scene Hierarchy(下) に分割する。
+    // Map 編集はツールパネルが主役なので、Inspector の裏のタブへ隠れない左カラムへ固定する。
     ImGui::DockBuilderSplitNode(
         center, ImGuiDir_Left, 0.18f, &leftCol, &center);
     ImGui::DockBuilderSplitNode(
@@ -1782,9 +1885,11 @@ void EditorApp::UpdatePlayCursorControls()
 {
     const bool playing = !m_playMode.IsInEditor() && !m_playMode.HasPendingRestore();
     if (!playing) {
-        if (m_playCursorApplied) core::Cursor::ResetForEditor();
+        if (m_playCursorApplied) {
+            core::Cursor::ResetForEditor();
+        }
         if (m_playInputPolicyApplied) {
-            /// @note Restore ordinary Editor focus behavior, while a batch host keeps its process policy.
+            // Restore ordinary Editor focus behavior, while a batch host keeps its process policy.
             core::Cursor::SetPhysicalInputAllowed(m_playPreviousPhysicalInputAllowed);
             m_playInputPolicyApplied = false;
         }
@@ -1806,12 +1911,15 @@ void EditorApp::UpdatePlayCursorControls()
         core::Cursor::SetSuppressed(true);
         return;
     }
-    if (firstFrame && m_ctx.playFocusMode != EditorContext::PlayFocusMode::Unfocused)
+    if (firstFrame && m_ctx.playFocusMode != EditorContext::PlayFocusMode::Unfocused) {
         m_playCursorAcquireAttempts = 2;
+    }
     if (m_ctx.gameViewportRectValid) {
         core::Cursor::SetClipRegion(m_ctx.gameViewportOriginX, m_ctx.gameViewportOriginY,
                                    m_ctx.gameViewportWidth, m_ctx.gameViewportHeight);
-    } else core::Cursor::ClearClipRegion();
+    } else {
+        core::Cursor::ClearClipRegion();
+    }
 
     const bool captureRequested = m_ctx.requestGameCursorCapture;
     m_ctx.requestGameCursorCapture = false;
@@ -1825,8 +1933,9 @@ void EditorApp::UpdatePlayCursorControls()
         && input::Input::PhysicalKeyDown(input::KeyCode::F1);
     const auto cursorState = core::Cursor::GetState();
     if (releaseRequested || !cursorState.windowActive || paused || movingWindow
-        || (!firstFrame && cursorState.suspendedReason == core::CursorSuspendReason::RELEASED))
+        || (!firstFrame && cursorState.suspendedReason == core::CursorSuspendReason::RELEASED)) {
         m_playCursorAcquireAttempts = 0;
+    }
 
     core::Cursor::SetSuppressed(freeOverride || paused || !gameFocused
                                || movingWindow || !m_ctx.gameViewportRectValid);
@@ -1847,19 +1956,25 @@ void EditorApp::UpdatePlayCursorControls()
             m_playCursorAcquireAttempts = 0;
         }
     }
-    if (m_playCursorAcquireAttempts > 0) --m_playCursorAcquireAttempts;
+    if (m_playCursorAcquireAttempts > 0) {
+        --m_playCursorAcquireAttempts;
+    }
     core::Cursor::ApplyLock();
     if (releaseRequested || !m_ctx.activeScene || textInput
-        || !input::Input::PhysicalKeyDown(input::KeyCode::ESCAPE)) return;
+        || !input::Input::PhysicalKeyDown(input::KeyCode::ESCAPE)) {
+        return;
+    }
 
-    /// @note Keep the existing Escape release/stop behavior for compatibility; Shift+F1 only releases.
+    // Keep the existing Escape release/stop behavior for compatibility; Shift+F1 only releases.
     if (core::Cursor::IsGameInputOwned() && !core::Cursor::IsSuppressed()
         && core::Cursor::GetRequestedPolicy().CapturesCursor()) {
         core::Cursor::ReleaseGameInput(core::CursorSuspendReason::RELEASED);
         m_playCursorReleased = true;
         return;
     }
-    if (!m_playCursorReleased && m_ctx.playFocusMode != EditorContext::PlayFocusMode::Focused) return;
+    if (!m_playCursorReleased && m_ctx.playFocusMode != EditorContext::PlayFocusMode::Focused) {
+        return;
+    }
     StopPlayMode();
     core::Cursor::ResetForEditor();
     m_playCursorApplied = false;
@@ -1880,32 +1995,43 @@ void EditorApp::ResizeViewportRTsIfNeeded()
 {
     m_sceneViewportRTRecreated = false;
     m_gameViewportRTRecreated  = false;
-    if (!m_viewportsEnabled || !m_renderer) return;
+    if (!m_viewportsEnabled || !m_renderer) {
+        return;
+    }
 
     auto resizeRT = [this](renderer::ResourceHandle<renderer::RenderTargetTag>& rt,
                            ViewportPanel* panel,
                            float width,
                            float height) {
-        /// @note ここで弾くと、一度でも生成に失敗したビューポートは «作り直しの入口» を失い、
-        /// @note        二度と映らなくなる。
-        if (!panel) return false;
+        // ここで弾くと、一度でも生成に失敗したビューポートは «作り直しの入口» を失い、
+        // 二度と映らなくなる。
+        if (!panel) {
+            return false;
+        }
 
         const uint32_t vpW = static_cast<uint32_t>(width);
         const uint32_t vpH = static_cast<uint32_t>(height);
-        if (vpW == 0 || vpH == 0) return false;
+        if (vpW == 0 || vpH == 0) {
+            return false;
+        }
         auto* currentRT = m_resources->Get(rt);
-        if (currentRT && vpW == currentRT->GetWidth() && vpH == currentRT->GetHeight()) return false;
+        if (currentRT && vpW == currentRT->GetWidth() && vpH == currentRT->GetHeight()) {
+            return false;
+        }
 
         const auto created = m_resources->CreateRenderTarget(vpW, vpH);
-        /// @note 生成に失敗したら今の RT を持ち続ける。捨てた上で作れないと絵が消えたまま戻らない。
-        if (!created.IsValid()) return false;
+        // 生成に失敗したら今の RT を持ち続ける。捨てた上で作れないと絵が消えたまま戻らない。
+        if (!created.IsValid()) {
+            return false;
+        }
 
         const auto previousRT = rt;
         rt = created;
-        /// @note ハンドルの上書きだけでは旧 GPU リソースが ResourceManager に残り、
-        /// @note        Dock 操作を繰り返すほど VRAM 使用量と Present 待機が増える。
-        if (previousRT.IsValid())
+        // ハンドルの上書きだけでは旧 GPU リソースが ResourceManager に残り、
+        // Dock 操作を繰り返すほど VRAM 使用量と Present 待機が増える。
+        if (previousRT.IsValid()) {
             m_resources->Release(previousRT);
+        }
         panel->hdrRT = rt;
         return true;
     };
@@ -1914,12 +2040,17 @@ void EditorApp::ResizeViewportRTsIfNeeded()
         resizeRT(m_sceneViewportRT, m_sceneViewportPanel, m_ctx.viewportWidth, m_ctx.viewportHeight);
     m_gameViewportRTRecreated =
         resizeRT(m_gameViewportRT, m_gameViewportPanel, m_ctx.gameViewportWidth, m_ctx.gameViewportHeight);
-    if (m_sceneViewportRTRecreated) m_ctx.viewportCaptureFrames[0] = {};
-    if (m_gameViewportRTRecreated) m_ctx.viewportCaptureFrames[1] = {};
-    /// @note UI Viewport は専用 RT を持たず、Game View の完成済み RT を参照する。
-    /// @note        リサイズ後もパネル側のハンドルを張り直して、古い RT 参照が残らないようにする。
-    if (m_uiViewportPanel)
+    if (m_sceneViewportRTRecreated) {
+        m_ctx.viewportCaptureFrames[0] = {};
+    }
+    if (m_gameViewportRTRecreated) {
+        m_ctx.viewportCaptureFrames[1] = {};
+    }
+    // UI Viewport は専用 RT を持たず、Game View の完成済み RT を参照する。
+    // リサイズ後もパネル側のハンドルを張り直して、古い RT 参照が残らないようにする。
+    if (m_uiViewportPanel) {
         m_uiViewportPanel->hdrRT = m_gameViewportRT;
+    }
 
 }
 
@@ -1927,27 +2058,27 @@ void EditorApp::ResizeViewportRTsIfNeeded()
 
 bool EditorApp::OnInit()
 {
-    /// @note Init() と OpenProject() は app::Run() の前に呼ばれているため、
-    /// @note        ここでは Post-project セットアップだけを担う。
+    // Init() と OpenProject() は app::Run() の前に呼ばれているため、
+    // ここでは Post-project セットアップだけを担う。
     m_runtime.ApplySettings(m_ctx.projectSettings);
     m_runtime.ApplyAdditionalUIContext(m_ctx.projectSettings, m_sceneUICtx);
     m_runtime.BindExternalScene(m_scene.get());
     m_runtime.RegisterScenes(util::FileSystem::PathFromUtf8(m_ctx.projectRoot), *m_resources);
 
-    /// @note OpenProject() 時点では editorCamera が nullptr なので、確定した OnInit() で適用する。
-    /// @note        EditorSettings の既定値は従来のハードコード値 {0,2.5,-8} と一致する。
+    // OpenProject() 時点では editorCamera が nullptr なので、確定した OnInit() で適用する。
+    // EditorSettings の既定値は従来のハードコード値 {0,2.5,-8} と一致する。
     m_debugCamera.camera.m_position = { m_settings.cameraLastPx, m_settings.cameraLastPy, m_settings.cameraLastPz };
     m_debugCamera.camera.m_rotation = { m_settings.cameraLastRx, m_settings.cameraLastRy, m_settings.cameraLastRz, m_settings.cameraLastRw };
     m_debugCamera.camera.m_aspect   = 1920.0f / 1080.0f;
-    /// @note Scene View は広い地形を編集するため、シーン内の CameraComponent の farZ と独立して遠景を映す。
+    // Scene View は広い地形を編集するため、シーン内の CameraComponent の farZ と独立して遠景を映す。
     m_debugCamera.camera.m_far      = renderer::DEFAULT_CAMERA_FAR_Z;
-    /// @note 射影は Teleport の後に直接書く。SetProjection は「見かけの大きさを引き継ぐ」ため
-    /// @note        保存した orthoHeight を上書きしてしまう。復元では保存値をそのまま採用したい。
+    // 射影は Teleport の後に直接書く。SetProjection は「見かけの大きさを引き継ぐ」ため
+    // 保存した orthoHeight を上書きしてしまう。復元では保存値をそのまま採用したい。
     m_debugCamera.camera.m_orthoHeight = m_settings.cameraOrthoHeight;
     m_debugCamera.camera.m_projection  = m_settings.cameraOrthographic
         ? renderer::ProjectionMode::Orthographic
         : renderer::ProjectionMode::Perspective;
-    /// @note 位置・回転を直書きした後なので、pivot / yaw / pitch を実際の姿勢へ合わせ直す。
+    // 位置・回転を直書きした後なので、pivot / yaw / pitch を実際の姿勢へ合わせ直す。
     m_debugCamera.Teleport(m_debugCamera.camera.m_position, m_debugCamera.camera.m_rotation);
     m_ctx.editorCamera = &m_debugCamera.camera;
 
@@ -1972,7 +2103,7 @@ void EditorApp::TickPlaytest()
     namespace fs = std::filesystem;
     if (m_batch.IsEnabled() && !m_batchStarted) {
         m_batchStarted = true;
-        /// @note バッチは人の操作を受けない。保存済み設定で開いた AI のパイプは、起動中の別エディターと名前が衝突するので閉じる。
+        // バッチは人の操作を受けない。保存済み設定で開いた AI のパイプは、起動中の別エディターと名前が衝突するので閉じる。
         StopAiCommandBus();
         const auto failToStart = [this](const std::string& message) {
             FBZZ_LOG_ERROR("[Playtest] %s", message.c_str());
@@ -1980,11 +2111,17 @@ void EditorApp::TickPlaytest()
             core::Application::Get().Quit();
         };
         std::ifstream stream(m_batch.scenarioPath, std::ios::binary);
-        if (!stream) { failToStart("シナリオを開けません: " + m_batch.scenarioPath.generic_string()); return; }
+        if (!stream) {
+            failToStart("シナリオを開けません: " + m_batch.scenarioPath.generic_string());
+            return;
+        }
         const std::string text((std::istreambuf_iterator<char>(stream)), std::istreambuf_iterator<char>());
         std::string error;
         std::optional<ai::JsonValue> scenario = ai::ParseJson(text, &error);
-        if (!scenario.has_value()) { failToStart(m_batch.scenarioPath.generic_string() + ": " + error); return; }
+        if (!scenario.has_value()) {
+            failToStart(m_batch.scenarioPath.generic_string() + ": " + error);
+            return;
+        }
         const fs::path output = m_batch.reportPath.empty()
             ? fs::path(m_projectRoot) / "Library" / "Playtests" / m_batch.scenarioPath.stem().stem()
             : m_batch.reportPath.parent_path();
@@ -1995,8 +2132,12 @@ void EditorApp::TickPlaytest()
         FBZZ_LOG_INFO("[Playtest] 開始: %s", m_batch.scenarioPath.generic_string().c_str());
     }
 
-    if (!m_playtest.IsRunning()) return;
-    if (!m_playtestDispatcher) m_playtestDispatcher = std::make_unique<ai::EditorBusDispatcher>(m_ctx);
+    if (!m_playtest.IsRunning()) {
+        return;
+    }
+    if (!m_playtestDispatcher) {
+        m_playtestDispatcher = std::make_unique<ai::EditorBusDispatcher>(m_ctx);
+    }
     m_playtestDispatcher->SetSceneViewportRT(m_sceneViewportRT);
     m_playtestDispatcher->SetGameViewportRT(m_gameViewportRT);
 
@@ -2038,7 +2179,9 @@ void EditorApp::TickPlaytest()
                                                         static_cast<float>(strength), error);
     };
     hooks.capture = [this](std::string_view view, std::vector<uint8_t>& png) {
-        if (view == "fluidBaked") return fluideditor::CaptureFluidPlayback(m_ctx, png);
+        if (view == "fluidBaked") {
+            return fluideditor::CaptureFluidPlayback(m_ctx, png);
+        }
         const auto target = view == "scene" ? m_sceneViewportRT : m_gameViewportRT;
         uint32_t width = 0;
         uint32_t height = 0;
@@ -2053,8 +2196,9 @@ void EditorApp::TickPlaytest()
         const bool passed = m_playtest.State() == playtest::PlaytestState::PASSED;
         m_batchExitCode = passed ? 0 : 1;
         std::error_code ec;
-        if (!m_batch.reportPath.empty() && fs::weakly_canonical(m_batch.reportPath, ec) != fs::weakly_canonical(m_playtest.ReportPath(), ec))
+        if (!m_batch.reportPath.empty() && fs::weakly_canonical(m_batch.reportPath, ec) != fs::weakly_canonical(m_playtest.ReportPath(), ec)) {
             fs::copy_file(m_playtest.ReportPath(), m_batch.reportPath, fs::copy_options::overwrite_existing, ec);
+        }
         FBZZ_LOG_INFO("[Playtest] %s: %s", passed ? "合格" : "不合格", m_playtest.ReportPath().generic_string().c_str());
         core::Application::Get().Quit();
     }
@@ -2068,27 +2212,29 @@ void EditorApp::OnUpdate(float dt)
     if (m_scriptQuitSceneLifetime) {
         const uint64_t requested = std::exchange(m_scriptQuitSceneLifetime, uint64_t{0});
         scene::Scene* active = ActiveRuntime().GetActiveScene();
-        if (active && active->GetRenderSceneGeneration() == requested && !m_playMode.IsInEditor()) StopPlayMode();
+        if (active && active->GetRenderSceneGeneration() == requested && !m_playMode.IsInEditor()) {
+            StopPlayMode();
+        }
     }
-    /// @note 完成品の書き出しはパネルが閉じた状態やhidden batchでも進める。
+    // 完成品の書き出しはパネルが閉じた状態やhidden batchでも進める。
     m_packageBuild.Tick();
     TickProfilerHistory(m_ctx);
     TickProfilerWidgets(m_ctx);
     BeginFrame();
 
-    /// @note Prefab 編集モードの出入りはシーンの中身を丸ごと差し替える。パネル描画の途中で
-    /// @note        やると、その後のパネルが破棄済みの GameObject を掴むため、フレーム先頭で処理する。
+    // Prefab 編集モードの出入りはシーンの中身を丸ごと差し替える。パネル描画の途中で
+    // やると、その後のパネルが破棄済みの GameObject を掴むため、フレーム先頭で処理する。
     ProcessPrefabEditRequests();
 
-    /// @note アセットの中身を差し替えると、その版を読むパネルと既に読み終えたパネルが
-    /// @note        同じフレームで食い違うため、パネル描画に入る前に済ませる。
+    // アセットの中身を差し替えると、その版を読むパネルと既に読み終えたパネルが
+    // 同じフレームで食い違うため、パネル描画に入る前に済ませる。
     ProcessAssetDiskReloads();
-    /// @note guid → パスの索引をディスクへ追従させる。変化が無いフレームは何もしない。索引は
-    /// @note        人と外部ツールが guid を引くための道具で製品ビルドには要らないため、エディターだけ
-    /// @note        が書き、読み取り専用の配置先へは書きにいかせない。
+    // guid → パスの索引をディスクへ追従させる。変化が無いフレームは何もしない。索引は
+    // 人と外部ツールが guid を引くための道具で製品ビルドには要らないため、エディターだけ
+    // が書き、読み取り専用の配置先へは書きにいかせない。
     asset::AssetDatabase::FlushIndexFile();
-    /// @note シーンを開き直すと、その中で参照されるアセットを新しい版で読み直せる。逆順だと
-    /// @note        「開き直した直後だけ古いアセットを掴む」1 フレームができるため、アセットより後に行う。
+    // シーンを開き直すと、その中で参照されるアセットを新しい版で読み直せる。逆順だと
+    // 「開き直した直後だけ古いアセットを掴む」1 フレームができるため、アセットより後に行う。
     PollSceneSave();
     ProcessSceneDiskReload();
     TickPendingShadowBakePlay();
@@ -2101,40 +2247,53 @@ void EditorApp::OnUpdate(float dt)
         });
     }
 
-    /// @note アクション層の評価後に読むので、このフレームにゲームが見た入力と一致する。
-    /// @note Resolve command-bus Play changes and cursor ownership before gameplay input is read.
+    // アクション層の評価後に読むので、このフレームにゲームが見た入力と一致する。
+    // Resolve command-bus Play changes and cursor ownership before gameplay input is read.
     UpdatePlayCursorControls();
-    if (m_inputRecorder.IsRecording() && !m_playMode.IsInEditor()) m_inputRecorder.Capture();
+    if (m_inputRecorder.IsRecording() && !m_playMode.IsInEditor()) {
+        m_inputRecorder.Capture();
+    }
 
     auto* playMode = m_ctx.playMode;
     if (playMode->HasPendingRestore()) {
         m_ctx.undoStack = &m_undoStack;
         std::vector<std::string> selected;
         if (m_ctx.activeScene) for (const auto id : m_ctx.selectedEntities)
-            if (const auto* object = m_ctx.activeScene->GetGameObject(id)) selected.push_back(object->instanceId);
+            if (const auto* object = m_ctx.activeScene->GetGameObject(id)) {
+                selected.push_back(object->instanceId);
+            }
         if (playMode->ApplyPendingRestore(*m_scene)) {
             m_scriptQuitSceneLifetime = 0;
-            if (m_managedScripts) m_managedScripts->EndPlaySession();
-            m_ctx.activeScene = m_scene.get(); m_ctx.editScene = m_scene.get(); m_ctx.runtime = &m_runtime;
+            if (m_managedScripts) {
+                m_managedScripts->EndPlaySession();
+            }
+            m_ctx.activeScene = m_scene.get();
+            m_ctx.editScene = m_scene.get();
+            m_ctx.runtime = &m_runtime;
             m_undoStack.SetRecordingEnabled(true);
             m_runtime.ActivateScriptRuntime(*m_renderer, static_cast<uint32_t>(m_ctx.gameViewportWidth), static_cast<uint32_t>(m_ctx.gameViewportHeight));
             ClearEntitySelection(m_ctx);
             for (const auto& guid : selected) if (auto* object = m_scene->FindByGuid(guid)) m_ctx.selectedEntities.push_back(object->GetID());
-            m_ctx.playSceneName.clear(); m_memoryLeakDiff.ScheduleCompare(3, "Play -> Stop");
+            m_ctx.playSceneName.clear();
+            m_memoryLeakDiff.ScheduleCompare(3, "Play -> Stop");
         }
     }
-    if (m_ctx.resources != nullptr)
+    if (m_ctx.resources != nullptr) {
         static_cast<void>(m_memoryLeakDiff.Tick(*m_ctx.resources));
+    }
 
-    for (auto& panel : m_panels) panel->OnUpdate(m_ctx, dt);
+    for (auto& panel : m_panels) {
+        panel->OnUpdate(m_ctx, dt);
+    }
 
     if (!playMode->IsPlaying()) {
         m_debugCamera.moveSpeed = m_ctx.cameraSpeed;
         m_debugCamera.mouseSens = m_ctx.cameraSensitivity;
-        if (!ImGui::GetCurrentContext() || m_ctx.controlPointMouseClaimFrame < ImGui::GetFrameCount() - 1)
+        if (!ImGui::GetCurrentContext() || m_ctx.controlPointMouseClaimFrame < ImGui::GetFrameCount() - 1) {
             m_debugCamera.Update(dt, m_ctx.sceneViewportHovered);
+        }
         UpdateFocusAnim(dt);
-        /// @note ナビゲーションギズモが「ピボット固定で視点だけ回す」ために読む。
+        // ナビゲーションギズモが「ピボット固定で視点だけ回す」ために読む。
         m_ctx.editorCameraPivot         = m_debugCamera.Pivot();
         m_ctx.editorCameraFocusDistance = m_debugCamera.FocusDistance();
         m_ctx.editorCameraViewDistance  = m_debugCamera.ViewDistance();
@@ -2144,16 +2303,16 @@ void EditorApp::OnUpdate(float dt)
     m_simulationDt         = stepFrame ? (1.0f / 60.0f) : dt;
 
     if (playMode->IsPlaying()) {
-        /// @note ビューポートリサイズに追従するため毎フレーム更新する。ProjectRuntime が所有
-        /// @note        する ScriptRuntime を更新すれば ScriptProxy 全体へ反映される。
+        // ビューポートリサイズに追従するため毎フレーム更新する。ProjectRuntime が所有
+        // する ScriptRuntime を更新すれば ScriptProxy 全体へ反映される。
         ActiveRuntime().UpdateScriptViewport(
             static_cast<uint32_t>(m_ctx.gameViewportWidth),
             static_cast<uint32_t>(m_ctx.gameViewportHeight));
     }
 
-    /// @note Pause は IsPlaying() が false になるが編集へ戻ったわけではない。同じフラグで渡すと
-    /// @note        ScriptSystem が Pause を編集モードと読み、Play 中の Script のライフサイクルを畳む
-    /// @note        ため、playing は分けて渡す。
+    // Pause は IsPlaying() が false になるが編集へ戻ったわけではない。同じフラグで渡すと
+    // ScriptSystem が Pause を編集モードと読み、Play 中の Script のライフサイクルを畳む
+    // ため、playing は分けて渡す。
     profiler::frame_timeline::End(timelineEditor);
     const profiler::frame_timeline::Scope timelineSimulation(profiler::frame_timeline::Event::SIMULATION);
     scene::Scene* const spatialScene = (!m_playMode.IsInEditor() && ActiveRuntime().GetActiveScene())
@@ -2177,18 +2336,21 @@ void EditorApp::OnLateUpdate(float dt)
 
 void EditorApp::OnRender()
 {
-    if (m_renderPassViewerPanel) m_renderPassViewerPanel->PrepareFrame();
+    if (m_renderPassViewerPanel) {
+        m_renderPassViewerPanel->PrepareFrame();
+    }
     if (auto* rt = m_resources->Get(m_sceneViewportRT))
         m_debugCamera.camera.m_aspect =
             static_cast<float>(rt->GetWidth()) / static_cast<float>(rt->GetHeight());
 
     float gameAspect = m_debugCamera.camera.m_aspect;
-    if (auto* rt = m_resources->Get(m_gameViewportRT))
+    if (auto* rt = m_resources->Get(m_gameViewportRT)) {
         gameAspect = static_cast<float>(rt->GetWidth()) / static_cast<float>(rt->GetHeight());
+    }
 
-    /// @note Play 中に LoadScene が発生すると m_scene は遷移前のシーンのままになる。カメラ解決・
-    /// @note        カリングマスク計算は新シーンのコンポーネントを参照する必要があるため、Play 中は
-    /// @note        SceneManager::GetActive() を優先する。
+    // Play 中に LoadScene が発生すると m_scene は遷移前のシーンのままになる。カメラ解決・
+    // カリングマスク計算は新シーンのコンポーネントを参照する必要があるため、Play 中は
+    // SceneManager::GetActive() を優先する。
     scene::Scene* const resolveScene     = (!m_playMode.IsInEditor() && ActiveRuntime().GetActiveScene())
                                               ? ActiveRuntime().GetActiveScene() : m_scene.get();
     std::string gameCameraId;
@@ -2198,27 +2360,27 @@ void EditorApp::OnRender()
     m_renderer->BeginFrame();
     fluideditor::RenderFluidPlaybackCapture(m_ctx);
 
-    /// @note 実際に画面へ出ているビューポートだけを描く。Scene View と Game View はそれぞれ
-    /// @note        フル描画 (Shadow / GBuffer / ライティング / ポスト一式) なので、両方回すと素で 2 倍になる。
-    /// @note        WasContentRendered() はパネル描画がこの後なので 1 フレーム遅れ。visible と併せて見れば、
-    /// @note        閉じた瞬間はその場で止まり、開き直したときは待たずに描き始められる。
+    // 実際に画面へ出ているビューポートだけを描く。Scene View と Game View はそれぞれ
+    // フル描画 (Shadow / GBuffer / ライティング / ポスト一式) なので、両方回すと素で 2 倍になる。
+    // WasContentRendered() はパネル描画がこの後なので 1 フレーム遅れ。visible と併せて見れば、
+    // 閉じた瞬間はその場で止まり、開き直したときは待たずに描き始められる。
     const auto isViewportShowing = [](const ViewportPanel* panel) {
         return panel != nullptr && panel->visible && panel->WasContentRendered();
     };
-    /// @note AI が RT を読み出す間は表示状態に関わらず描き続ける (キャプチャが古い絵を掴まないように)。
+    // AI が RT を読み出す間は表示状態に関わらず描き続ける (キャプチャが古い絵を掴まないように)。
     const bool aiViewportCaptureActive = m_ctx.aiViewportRenderUntilFrame != 0
         && Time::frameCount <= m_ctx.aiViewportRenderUntilFrame;
 
-    /// @note 新しい RT の中身は未定義で、DX12 では解放待ちの領域を使い回すため «少し前の絵» が
-    /// @note        残る。WasContentRendered() は 1 フレーム遅れて寸法変化時に false になりうるため、
-    /// @note        そのフレームを飛ばすとパネルが未初期化の RT を貼り、止まった絵と重なって出る。
+    // 新しい RT の中身は未定義で、DX12 では解放待ちの領域を使い回すため «少し前の絵» が
+    // 残る。WasContentRendered() は 1 フレーム遅れて寸法変化時に false になりうるため、
+    // そのフレームを飛ばすとパネルが未初期化の RT を貼り、止まった絵と重なって出る。
     const bool fluidPlaybackCapture = m_playtest.IsFluidPlaybackCaptureStep();
     const bool needSceneView = m_viewportsEnabled && !fluidPlaybackCapture
         && (isViewportShowing(m_sceneViewportPanel) || aiViewportCaptureActive
             || m_sceneViewportRTRecreated
             || (m_renderPassViewerPanel && m_renderPassViewerPanel->CaptureForView(false)));
-    /// @note Game View の RT は UI Viewport が背景として共有する (m_uiViewportPanel->hdrRT = m_gameViewportRT)。
-    /// @note        どちらか一方でも出ていれば描かないと、UI 編集画面が止まった絵のままになる。
+    // Game View の RT は UI Viewport が背景として共有する (m_uiViewportPanel->hdrRT = m_gameViewportRT)。
+    // どちらか一方でも出ていれば描かないと、UI 編集画面が止まった絵のままになる。
     const bool needGameView = m_viewportsEnabled && !fluidPlaybackCapture
         && (isViewportShowing(m_gameViewportPanel)
             || isViewportShowing(m_uiViewportPanel)
@@ -2227,48 +2389,56 @@ void EditorApp::OnRender()
             || m_gameViewportRTRecreated
             || (m_renderPassViewerPanel && m_renderPassViewerPanel->CaptureForView(true)));
 
-    if ((needSceneView || needGameView) && !m_surfacePatchPlans)
+    if ((needSceneView || needGameView) && !m_surfacePatchPlans) {
         m_surfacePatchPlans = std::make_shared<renderer::SurfacePatchSelectionCacheOwner>();
+    }
     scene::RenderFrameGeometryCache frameGeometry;
     auto* sharedGeometry = needSceneView && needGameView ? &frameGeometry : nullptr;
-    if (needSceneView)
+    if (needSceneView) {
         RenderSceneView(gameCamera, gameCullingMask, sharedGeometry);
-    if (needGameView)
+    }
+    if (needGameView) {
         RenderGameView(gameCamera, gameCullingMask, gameCameraId, sharedGeometry);
+    }
 
-    /// @note 3D の焼きは Dispatch と読み戻しを伴うのでフレーム内で回す (DX12 はフレーム外を捨てる)。
-    /// @note        パネルの開閉に関わらず毎フレーム進める。Baker が触った RT は直後のバックバッファ設定で戻る。
-    if (m_fluidBake) m_fluidBake->Tick(m_ctx);
+    // 3D の焼きは Dispatch と読み戻しを伴うのでフレーム内で回す (DX12 はフレーム外を捨てる)。
+    // パネルの開閉に関わらず毎フレーム進める。Baker が触った RT は直後のバックバッファ設定で戻る。
+    if (m_fluidBake) {
+        m_fluidBake->Tick(m_ctx);
+    }
     PollWaterfallFluidBake(m_ctx);
-    for (auto& panel : m_panels) panel->OnRenderFrame(m_ctx);
+    for (auto& panel : m_panels) {
+        panel->OnRenderFrame(m_ctx);
+    }
 
     m_renderer->SetRenderTarget({}, *m_resources);
     m_renderer->Clear({ 0.02f, 0.02f, 0.02f, 1.0f });
 
-    /// @note Play 中に LoadScene でシーン遷移が発生すると SceneManager が新シーンを所有し、
-    /// @note        m_scene は遷移前の古いシーンのままになる。パネル描画は遷移後シーンを参照する
-    /// @note        必要があるため GetActive() で解決する。
+    // Play 中に LoadScene でシーン遷移が発生すると SceneManager が新シーンを所有し、
+    // m_scene は遷移前の古いシーンのままになる。パネル描画は遷移後シーンを参照する
+    // 必要があるため GetActive() で解決する。
     {
         scene::Scene* const nextActive = !m_playMode.IsInEditor()
             ? ActiveRuntime().GetActiveScene()
             : m_scene.get();
-        /// @note シーン遷移を検知したら旧シーンの EntityID を持つ selectedEntities をクリアする。
-        /// @note        遷移後シーンで同じ index を持つ別 Entity が選択状態に見えるのを防ぐため。
-        if (nextActive != m_ctx.activeScene)
+        // シーン遷移を検知したら旧シーンの EntityID を持つ selectedEntities をクリアする。
+        // 遷移後シーンで同じ index を持つ別 Entity が選択状態に見えるのを防ぐため。
+        if (nextActive != m_ctx.activeScene) {
             ClearEntitySelection(m_ctx);
+        }
         m_ctx.activeScene = nextActive;
-        /// @note 遷移してもドキュメントは開いたままなので、走っているシーン名は別に見せる。
-        /// @note        これが出ていない限り、保存先は currentScenePath のまま動いていない。
+        // 遷移してもドキュメントは開いたままなので、走っているシーン名は別に見せる。
+        // これが出ていない限り、保存先は currentScenePath のまま動いていない。
         m_ctx.playSceneName = m_playMode.IsInEditor()
             ? std::string{}
             : ActiveRuntime().ActiveSceneName();
-        /// @note Play / Pause の切り替えと Play 中の遷移はイベントを持たないので、ここで叩く。
-        /// @note        UpdateWindowTitle は前回と同じ内容なら何もしない。
+        // Play / Pause の切り替えと Play 中の遷移はイベントを持たないので、ここで叩く。
+        // UpdateWindowTitle は前回と同じ内容なら何もしない。
         UpdateWindowTitle();
     }
-    /// @note Animation Preview はウィンドウが閉じていても選択対象と再生時刻を保持する。Preview
-    /// @note        パネルの OnRenderContent だけに任せると、非表示タブや Inspector の初回表示では
-    /// @note        選択変化を拾えず、再アタッチするまでプレビューが更新されない。
+    // Animation Preview はウィンドウが閉じていても選択対象と再生時刻を保持する。Preview
+    // パネルの OnRenderContent だけに任せると、非表示タブや Inspector の初回表示では
+    // 選択変化を拾えず、再アタッチするまでプレビューが更新されない。
     TickAnimationPreview(m_ctx);
     RenderPanels(m_ctx);
     ProcessAnimationPreviewRequests(m_ctx);
@@ -2285,16 +2455,16 @@ void EditorApp::OnShutdown()
     m_playMode.Cancel();
     ResetProfilerHistory();
     ResetProfilerWidgets();
-    /// @note 窓を閉じて中断されたシナリオも «不合格» のレポートを残し、ロックステップを解く。
+    // 窓を閉じて中断されたシナリオも «不合格» のレポートを残し、ロックステップを解く。
     m_playtest.Cancel("エディターが終了した");
     m_playtestDispatcher.reset();
     fluideditor::ShutdownFluidPlaybackCapture(m_ctx);
-    /// @note FreeLibrary より前に全スクリプトの OnDestroy と destructor を DLL コードが
-    /// @note        有効なうちに実行する。ProjectRuntime::Shutdown は Editor 外部 Scene と、Play 中の
-    /// @note        シーン遷移で残った Manager 所有 Scene の両方を破棄する。
+    // FreeLibrary より前に全スクリプトの OnDestroy と destructor を DLL コードが
+    // 有効なうちに実行する。ProjectRuntime::Shutdown は Editor 外部 Scene と、Play 中の
+    // シーン遷移で残った Manager 所有 Scene の両方を破棄する。
     m_runtime.Shutdown();
     core::Application::Get().SetActiveRenderSettings(nullptr);
-    /// @note Unload(nullptr) で DestroyAllScripts をスキップする (Clear() 済みのため)
+    // Unload(nullptr) で DestroyAllScripts をスキップする (Clear() 済みのため)
     m_ctx.activeScene = nullptr;
     m_ctx.editScene   = nullptr;
     Shutdown();
@@ -2304,9 +2474,9 @@ void EditorApp::OnShutdown()
 
 void EditorApp::WarmupRenderResources()
 {
-    /// @note RenderSystem は初回呼び出しで shader/PSO/shadow map/GBuffer などを lazy initialize
-    /// @note        する。その負荷を最初の可視フレームに乗せると起動直後だけ FPS が大きく落ちるため、
-    /// @note        メインループ開始前に 1 回描画してリソースを先行生成する。
+    // RenderSystem は初回呼び出しで shader/PSO/shadow map/GBuffer などを lazy initialize
+    // する。その負荷を最初の可視フレームに乗せると起動直後だけ FPS が大きく落ちるため、
+    // メインループ開始前に 1 回描画してリソースを先行生成する。
     m_renderer->BeginFrame();
 
     const auto sceneRT = m_sceneViewportRT;
@@ -2328,9 +2498,9 @@ void EditorApp::WarmupRenderResources()
         const scene::CameraCullingSettings warmupSceneViewCulling{};
         renderer::Camera warmupCamera = m_debugCamera.camera;
         warmupCamera.m_backgroundColor = scene::ResolveGameBackgroundColor(*m_scene);
-        /// @note 温めたいのは «本番で使うシェーダーと PSO»。nullptr を渡すと既定 (Forward) の
-        /// @note        組み合わせが作られ、Deferred+ のプロジェクトでは 1 つも当たらず、最初の
-        /// @note        可視フレームで結局作り直す。
+        // 温めたいのは «本番で使うシェーダーと PSO»。nullptr を渡すと既定 (Forward) の
+        // 組み合わせが作られ、Deferred+ のプロジェクトでは 1 つも当たらず、最初の
+        // 可視フレームで結局作り直す。
         renderer::RenderSettings warmupSettings;
         (void)asset::ResolveRenderPipelineSettings(m_ctx.projectSettings.render,
             m_ctx.projectSettings.renderPipelineAssetPath, warmupSettings);
@@ -2360,7 +2530,7 @@ void EditorApp::WarmupRenderResources()
         uiOptions.viewportHeight = h;
         uiOptions.targetView    = scene::UIRenderTargetView::GameViewport;
         uiOptions.context       = &ActiveRuntime().GetGameUIContext();
-        /// @note 本番の Game View と同じ設定で温める (RenderGameView と同じく診断表示を外す)。
+        // 本番の Game View と同じ設定で温める (RenderGameView と同じく診断表示を外す)。
         renderer::RenderSettings gameRenderSettings;
         (void)asset::ResolveRenderPipelineSettings(m_ctx.projectSettings.render,
             m_ctx.projectSettings.renderPipelineAssetPath, gameRenderSettings);
@@ -2381,7 +2551,7 @@ void EditorApp::UpdateFocusAnim(float dt)
     constexpr float kFocusAnimDuration = 0.30f;
     constexpr float kFocusDist         = 5.0f;
 
-    /// @note 射影の切り替えはカメラ位置も動かすため、Teleport や補間より先に確定させる。
+    // 射影の切り替えはカメラ位置も動かすため、Teleport や補間より先に確定させる。
     if (m_ctx.requestCameraProjection) {
         m_ctx.requestCameraProjection = false;
         m_debugCamera.SetProjection(m_ctx.cameraProjection);
@@ -2401,8 +2571,8 @@ void EditorApp::UpdateFocusAnim(float dt)
         const math::Vector3 camDir = (dist > 0.01f)
             ? dir * (1.0f / dist)
             : math::Vector3{ 0.0f, 0.5f, -1.0f }.Normalized();
-        /// @note Unity の Frame Selected と同様、対象バウンズの大きさに応じてカメラ距離を
-        /// @note        変える。半径 0 (バウンズ不明) は従来の固定距離。
+        // Unity の Frame Selected と同様、対象バウンズの大きさに応じてカメラ距離を
+        // 変える。半径 0 (バウンズ不明) は従来の固定距離。
         const float focusDist = (std::max)(kFocusDist, m_ctx.focusTargetRadius * 2.2f);
         m_ctx.focusTargetRadius = 0.0f;
         m_focusAnim.active   = true;
@@ -2467,10 +2637,12 @@ void PublishCaptureFrame(EditorContext& ctx, RenderCaptureFrame capture)
         return;
     }
     capture.passes.reserve(snapshot.passTimings.size());
-    for (const auto& pass : snapshot.passTimings) capture.passes.push_back(pass.first);
+    for (const auto& pass : snapshot.passTimings) {
+        capture.passes.push_back(pass.first);
+    }
     destination = std::move(capture);
 }
-} /// @note namespace
+} // namespace
 
 void EditorApp::RenderSceneView(const renderer::Camera&, fbzz::LayerMask,
                                 scene::RenderFrameGeometryCache* frameGeometry)
@@ -2489,17 +2661,20 @@ void EditorApp::RenderSceneView(const renderer::Camera&, fbzz::LayerMask,
         sceneRenderSettings.CopyDebugVisualizationFrom(m_ctx.projectSettings.render);
     }
     sceneRenderSettings.selectedObjects.clear();
-    /// @note 親を選んだら子孫も選択へ展開する。輪郭と «選択中だけ» の診断表示が同じ集合を見る。
+    // 親を選んだら子孫も選択へ展開する。輪郭と «選択中だけ» の診断表示が同じ集合を見る。
     const auto appendHierarchy = [&](auto&& self, scene::GameObject& object) -> void {
         const scene::EntityID id = object.GetID();
         sceneRenderSettings.selectedObjects.push_back({ id.index, id.generation });
         for (int childIndex = 0; childIndex < object.GetChildCount(); ++childIndex)
-            if (auto* child = object.GetChild(childIndex)) self(self, *child);
+            if (auto* child = object.GetChild(childIndex)) {
+                self(self, *child);
+            }
     };
     if (m_ctx.activeScene != nullptr) {
         for (const scene::EntityID id : m_ctx.selectedEntities)
-            if (auto* selected = m_ctx.activeScene->GetGameObject(id))
+            if (auto* selected = m_ctx.activeScene->GetGameObject(id)) {
                 appendHierarchy(appendHierarchy, *selected);
+            }
     }
 
     {
@@ -2533,17 +2708,19 @@ void EditorApp::RenderSceneView(const renderer::Camera&, fbzz::LayerMask,
         sceneRenderSettings.showVFXPaths      = m_ctx.showVFXPaths;
         sceneRenderSettings.showTerrainBounds = m_ctx.showTerrainBounds;
         sceneRenderSettings.showLODBounds     = m_ctx.showLODBounds;
-        /// @note NavMesh は Play 中も Scene View で出せる (経路の穴を実行中に確かめるため)。Game View は Strip で消える。
-        /// @note Play 中の LoadScene 後は m_scene が遷移前のままなので、実行中シーンを描く。
+        // NavMesh は Play 中も Scene View で出せる (経路の穴を実行中に確かめるため)。Game View は Strip で消える。
+        // Play 中の LoadScene 後は m_scene が遷移前のままなので、実行中シーンを描く。
         scene::Scene* const sceneViewScene = (!m_playMode.IsInEditor() && ActiveRuntime().GetActiveScene())
             ? ActiveRuntime().GetActiveScene() : m_scene.get();
-        /// @note ゲームカメラのカリング設定は持ち込まない。オクルージョンだけ Overlays から切り替える。
+        // ゲームカメラのカリング設定は持ち込まない。オクルージョンだけ Overlays から切り替える。
         scene::CameraCullingSettings sceneViewCulling{};
         sceneViewCulling.occlusionCulling = m_ctx.sceneViewOcclusionCulling;
-        /// @note 背景色だけはゲームカメラから借りる。発光や UI の色決めが本番と同じ背景で成立するように。
+        // 背景色だけはゲームカメラから借りる。発光や UI の色決めが本番と同じ背景で成立するように。
         renderer::Camera sceneViewCamera = m_debugCamera.camera;
         sceneViewCamera.m_backgroundColor = scene::ResolveGameBackgroundColor(*sceneViewScene);
-        if (m_ctx.terrainTool) uiOptions.instancePreviews = m_ctx.terrainTool->PaintPreviewInputs(*sceneViewScene);
+        if (m_ctx.terrainTool) {
+            uiOptions.instancePreviews = m_ctx.terrainTool->PaintPreviewInputs(*sceneViewScene);
+        }
         std::vector<scene::ScriptDebugDrawCommand> spatialDebugCommands;
         BuildSpatialDebugOverlay(m_ctx, *sceneViewScene, sceneRT.id, sceneRT.gen,
             m_resources->FrameStamp(), spatialDebugCommands, sceneRenderSettings.shadowEnabled);
@@ -2557,7 +2734,9 @@ void EditorApp::RenderSceneView(const renderer::Camera&, fbzz::LayerMask,
                          m_renderPassViewerPanel ? m_renderPassViewerPanel->CaptureForView(false) : nullptr,
                          frameGeometry, m_surfacePatchPlans);
         PublishCaptureFrame(m_ctx, std::move(captureFrame));
-        if (m_ctx.showStats && m_sceneViewportPanel) m_sceneViewportPanel->CaptureStats();
+        if (m_ctx.showStats && m_sceneViewportPanel) {
+            m_sceneViewportPanel->CaptureStats();
+        }
     }
 }
 
@@ -2567,14 +2746,18 @@ void EditorApp::RenderGameView(const renderer::Camera& gameCamera, fbzz::LayerMa
 {
     FBZZ_PROFILE_SCOPE("EditorApp::RenderGameView");
     const auto gameRT = m_gameViewportRT;
-    if (!gameRT.IsValid()) return;
+    if (!gameRT.IsValid()) {
+        return;
+    }
 
-    /// @note Play 中に LoadScene でシーン遷移すると SceneManager が新シーンを所有するため、
-    /// @note        m_scene (遷移前) ではなく GetActive() を参照してゲームビューに正しいシーンを描く。
+    // Play 中に LoadScene でシーン遷移すると SceneManager が新シーンを所有するため、
+    // m_scene (遷移前) ではなく GetActive() を参照してゲームビューに正しいシーンを描く。
     scene::Scene* renderScene = !m_playMode.IsInEditor()
         ? ActiveRuntime().GetActiveScene()
         : m_scene.get();
-    if (!renderScene) return;
+    if (!renderScene) {
+        return;
+    }
 
     m_renderer->SetRenderTarget(gameRT, *m_resources);
     m_renderer->Clear({ 0.02f, 0.02f, 0.05f, 1.0f });
@@ -2584,8 +2767,8 @@ void EditorApp::RenderGameView(const renderer::Camera& gameCamera, fbzz::LayerMa
         w = static_cast<float>(rt->GetWidth());
         h = static_cast<float>(rt->GetHeight());
     }
-    /// @note ゲームビューポート外のクリック (Inspector 等) が UIButton に届かないよう、
-    /// @note        マウスがビューポート矩形内にあるときだけ mousePressed を渡す。
+    // ゲームビューポート外のクリック (Inspector 等) が UIButton に届かないよう、
+    // マウスがビューポート矩形内にあるときだけ mousePressed を渡す。
     const ImVec2 mousePos = ImGui::GetIO().MousePos;
     const float relX = mousePos.x - m_ctx.gameViewportOriginX;
     const float relY = mousePos.y - m_ctx.gameViewportOriginY;
@@ -2600,7 +2783,7 @@ void EditorApp::RenderGameView(const renderer::Camera& gameCamera, fbzz::LayerMa
     uiOptions.gameplayInput      = !m_playMode.IsInEditor();
     uiOptions.targetView         = scene::UIRenderTargetView::GameViewport;
     uiOptions.context            = &ActiveRuntime().GetGameUIContext();
-    /// @note Debug メニューの診断表示は Scene View 専用。Game View はゲームの見た目だけを描く。
+    // Debug メニューの診断表示は Scene View 専用。Game View はゲームの見た目だけを描く。
     renderer::RenderSettings gameRenderSettings;
     if (m_playMode.IsInEditor()) {
         (void)asset::ResolveRenderPipelineSettings(m_ctx.projectSettings.render,
@@ -2618,7 +2801,9 @@ void EditorApp::RenderGameView(const renderer::Camera& gameCamera, fbzz::LayerMa
                          m_renderPassViewerPanel ? m_renderPassViewerPanel->CaptureForView(true) : nullptr,
                          frameGeometry, m_surfacePatchPlans);
     PublishCaptureFrame(m_ctx, std::move(captureFrame));
-    if (m_ctx.showStats && m_gameViewportPanel) m_gameViewportPanel->CaptureStats();
+    if (m_ctx.showStats && m_gameViewportPanel) {
+        m_gameViewportPanel->CaptureStats();
+    }
 }
 
-} /// @note namespace fbzz::editor
+} // namespace fbzz::editor

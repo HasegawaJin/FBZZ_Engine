@@ -16,7 +16,8 @@ namespace fbzz::editor {
 /// @note albedo のアトラスにグリッドを重ねて見せ、コマ範囲・再生モード・生成ツールを 1 か所で扱う。
 /// @note Columns/Rows/Start/End はずれてもエラーにならず見た目だけがおかしくなる値。プレビューは
 /// @note       ParticlePass と同じ EvaluateFlipbookFrame() を使うため、ここで見えたコマがそのままゲームに出る。
-/// @param resources / imguiRenderer アトラスの表示に使う。null なら数値の編集だけ出す
+/// @param[in,out] resources アトラスの参照解決とテクスチャの読み込みに使う。null ならアトラスを表示しない。
+/// @param[in,out] imguiRenderer アトラスの描画用テクスチャ ID を取得する。null ならアトラスを表示しない。
 /// @return 値を変更したら true (呼び出し側が dirty 登録と保存を行う)
 bool DrawFlipbookInspector(asset::MaterialAssetAuthoring& material, const std::string& projectRoot,
                            renderer::ResourceManager* resources,
@@ -28,4 +29,4 @@ void InvalidateFlipbookAtlasPreview();
 /// @note 同じ接頭辞・拡張子の連番を数値順に並べる。失敗理由はerrorへ返す。
 std::vector<std::string> CollectFlipbookSequenceFrames(const std::string& firstFramePath, std::string& error);
 
-} /// @note namespace fbzz::editor
+} // namespace fbzz::editor

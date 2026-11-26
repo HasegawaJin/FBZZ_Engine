@@ -100,7 +100,7 @@ TEST_F(SceneDirtyTrackerTest, DetectsAnActiveToggle)
 /// @brief Goes clean again after capturing the new state.
 TEST_F(SceneDirtyTrackerTest, GoesCleanAgainAfterCapturingTheNewState)
 {
-    /// @note 保存したら «今の姿» が新しい基準になる。ここが効かないと保存後も促され続ける。
+    // 保存したら «今の姿» が新しい基準になる。ここが効かないと保存後も促され続ける。
     scene::Scene scene;
     SceneDirtyTracker tracker;
     tracker.CaptureClean(scene);
@@ -115,7 +115,7 @@ TEST_F(SceneDirtyTrackerTest, GoesCleanAgainAfterCapturingTheNewState)
 /// @brief Returns to clean when the edit is undone.
 TEST_F(SceneDirtyTrackerTest, ReturnsToCleanWhenTheEditIsUndone)
 {
-    /// @note 追加して消せば元の姿。Undo で戻したのに «変更あり» のままだと嘘になる。
+    // 追加して消せば元の姿。Undo で戻したのに «変更あり» のままだと嘘になる。
     scene::Scene scene;
     scene.CreateGameObject("Keep");
     SceneDirtyTracker tracker;
@@ -144,9 +144,9 @@ TEST_F(SceneDirtyTrackerTest, MarkDirtyForcesTheFlagWithoutLookingAtTheScene)
 /// @brief Evaluate overrides a manual mark when the scene is unchanged.
 TEST_F(SceneDirtyTrackerTest, EvaluateOverridesAManualMarkWhenTheSceneIsUnchanged)
 {
-    /// @note MarkDirty はシリアライズに出ない変更を拾う逃げ道だが、次の Evaluate で
-    ///       «中身は同じ» と判定されれば取り消される。この性質を知らずに MarkDirty だけに
-    ///       頼ると、保存を促す機会を落とす。
+    // MarkDirty はシリアライズに出ない変更を拾う逃げ道だが、次の Evaluate で
+    // «中身は同じ» と判定されれば取り消される。この性質を知らずに MarkDirty だけに
+    // 頼ると、保存を促す機会を落とす。
     scene::Scene scene;
     SceneDirtyTracker tracker;
     tracker.CaptureClean(scene);
@@ -167,14 +167,14 @@ TEST_F(SceneDirtyTrackerTest, ResetForgetsTheBaseline)
     tracker.Reset();
 
     EXPECT_FALSE(tracker.IsDirty());
-    /// @note 基準が無いので、次の Evaluate は «今の姿» を基準として取り直す。
+    // 基準が無いので、次の Evaluate は «今の姿» を基準として取り直す。
     EXPECT_FALSE(tracker.Evaluate(scene));
 }
 
 /// @brief Checks evaluate without a baseline adopts the current scene.
 TEST_F(SceneDirtyTrackerTest, EvaluateWithoutABaselineAdoptsTheCurrentScene)
 {
-    /// @note 基準を取らないまま呼ばれても «変更あり» と言わない。開いた直後がこれ。
+    // 基準を取らないまま呼ばれても «変更あり» と言わない。開いた直後がこれ。
     scene::Scene scene;
     scene.CreateGameObject("Player");
 

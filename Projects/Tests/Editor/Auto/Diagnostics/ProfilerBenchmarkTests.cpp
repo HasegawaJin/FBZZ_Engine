@@ -585,7 +585,9 @@ TEST_F(ProfilerBenchmarkTest, KeepsMergedCpuSeriesAcrossThousandsOfFramesDescrip
         while (captures.frames.size() > 240) captures.frames.pop_front();
         captures.frozen = serial % 257 < 17;
         if (!captures.frozen || !captures.selected) captures.selected = frame;
-        if (serial % 23 != 0 && serial != 2048) continue;
+        if (serial % 23 != 0 && serial != 2048) {
+            continue;
+        }
         editor::detail::ProjectSelectedHistory(captures, projected.cursor, size_t{60},
             [&](const editor::PerformanceCapture& capture) {
                 const auto tree = editor::detail::BuildRecordedProfTree(capture);

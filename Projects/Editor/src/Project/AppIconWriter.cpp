@@ -117,7 +117,9 @@ std::vector<IconResourceId> ExistingIcons(const std::filesystem::path& exePath)
 {
     std::vector<IconResourceId> icons;
     HMODULE module = LoadLibraryExW(exePath.c_str(), nullptr, LOAD_LIBRARY_AS_DATAFILE);
-    if (!module) return icons;
+    if (!module) {
+        return icons;
+    }
     EnumResourceNamesW(module, RtIcon(), CollectIconName, reinterpret_cast<LONG_PTR>(&icons));
     FreeLibrary(module);
     return icons;
@@ -187,10 +189,12 @@ IconBitmap ResizeIconBilinear(const IconBitmap& src, int dstW, int dstH)
     };
 
     for (int y = 0; y < dstH; ++y) {
-        int y0 = 0, y1 = 0; float ty = 0.0f;
+        int y0 = 0, y1 = 0;
+        float ty = 0.0f;
         axis(y, dstH, src.height, y0, y1, ty);
         for (int x = 0; x < dstW; ++x) {
-            int x0 = 0, x1 = 0; float tx = 0.0f;
+            int x0 = 0, x1 = 0;
+            float tx = 0.0f;
             axis(x, dstW, src.width, x0, x1, tx);
 
             float r = 0.0f, g = 0.0f, b = 0.0f, a = 0.0f;
@@ -235,7 +239,9 @@ IconBitmap FitIconToSquare(const IconBitmap& src, int side)
     IconBitmap scaled = (w <= src.width && h <= src.height)
         ? ResizeIconBox(src, w, h)
         : ResizeIconBilinear(src, w, h);
-    if (w == side && h == side) return scaled;
+    if (w == side && h == side) {
+        return scaled;
+    }
 
     IconBitmap out;
     out.width  = side;
@@ -264,7 +270,7 @@ std::vector<std::uint8_t> EncodeIconDib(const IconBitmap& img)
     BITMAPINFOHEADER header{};
     header.biSize        = sizeof(BITMAPINFOHEADER);
     header.biWidth       = img.width;
-    /// @note 2 倍にする: アイコンの DIB は「XOR (絵) + AND (マスク)」の 2 枚分の高さを書く約束。
+    // 2 倍にする: アイコンの DIB は「XOR (絵) + AND (マスク)」の 2 枚分の高さを書く約束。
     header.biHeight      = img.height * 2;
     header.biPlanes      = 1;
     header.biBitCount    = 32;
@@ -274,7 +280,7 @@ std::vector<std::uint8_t> EncodeIconDib(const IconBitmap& img)
 
     std::uint8_t* pixels = out.data() + sizeof(BITMAPINFOHEADER);
     for (int y = 0; y < img.height; ++y) {
-        /// @note DIB の行は下から上。
+        // DIB の行は下から上。
         const std::uint8_t* srcRow =
             &img.rgba[static_cast<std::size_t>(img.height - 1 - y) * img.width * 4];
         std::uint8_t* dstRow = pixels + static_cast<std::size_t>(y) * img.width * 4;
@@ -285,7 +291,7 @@ std::vector<std::uint8_t> EncodeIconDib(const IconBitmap& img)
             dstRow[x * 4 + 3] = srcRow[x * 4 + 3];
         }
     }
-    /// @note AND マスクは 0 のまま。32bpp では可視判定にアルファが使われる。
+    // AND マスクは 0 のまま。32bpp では可視判定にアルファが使われる。
     return out;
 }
 
@@ -366,7 +372,9 @@ bool AppIconWriter::Inspect(const std::filesystem::path& imagePath,
 
     if (IsIcoPath(imagePath)) {
         std::vector<IconEntry> entries;
-        if (!SplitIcoFile(fileBytes, entries, outError)) return false;
+        if (!SplitIcoFile(fileBytes, entries, outError)) {
+            return false;
+        }
         out.isIco = true;
         for (const IconEntry& entry : entries) {
             out.width  = std::max(out.width, entry.width);
@@ -396,10 +404,14 @@ bool AppIconWriter::Apply(const std::filesystem::path& imagePath,
 
     std::vector<IconEntry> entries;
     if (IsIcoPath(imagePath)) {
-        if (!SplitIcoFile(fileBytes, entries, outError)) return false;
+        if (!SplitIcoFile(fileBytes, entries, outError)) {
+            return false;
+        }
     } else {
         IconBitmap decoded;
-        if (!DecodeIconImage(fileBytes, decoded, outError)) return false;
+        if (!DecodeIconImage(fileBytes, decoded, outError)) {
+            return false;
+        }
 
         for (int side : kAppIconSizes) {
             IconEntry entry;
@@ -410,14 +422,15 @@ bool AppIconWriter::Apply(const std::filesystem::path& imagePath,
         }
     }
 
-    if (entries.size() > static_cast<std::size_t>(kMaxIconEntries))
+    if (entries.size() > static_cast<std::size_t>(kMaxIconEntries)) {
         entries.resize(static_cast<std::size_t>(kMaxIconEntries));
+    }
 
-    /// @note 掃除する相手は更新を開ける前に数え上げる (LOAD_LIBRARY_AS_DATAFILE が
-    ///       exe を掴んだままだと BeginUpdateResource が弾かれる)。
+    // 掃除する相手は更新を開ける前に数え上げる (LOAD_LIBRARY_AS_DATAFILE が
+    // exe を掴んだままだと BeginUpdateResource が弾かれる)。
     const std::vector<IconResourceId> stale = ExistingIcons(exePath);
 
-    /// @note 全消しにしない: 第 2 引数 TRUE は exe の既存リソースをすべて捨て DPI 対応マニフェストまで落ちるため、自分が書いたアイコンだけを消して書き直す。
+    // 全消しにしない: 第 2 引数 TRUE は exe の既存リソースをすべて捨て DPI 対応マニフェストまで落ちるため、自分が書いたアイコンだけを消して書き直す。
     HANDLE update = BeginUpdateResourceW(exePath.c_str(), FALSE);
     if (!update) {
         outError = LastErrorText("BeginUpdateResource failed");
@@ -426,14 +439,14 @@ bool AppIconWriter::Apply(const std::filesystem::path& imagePath,
 
     const WORD language = MAKELANGID(LANG_NEUTRAL, SUBLANG_NEUTRAL);
     const auto fail = [&update](std::string reason, std::string& sink) {
-        /// @note 破棄
+        // 破棄
         EndUpdateResourceW(update, TRUE);
         sink = std::move(reason);
         return false;
     };
 
-    /// @note 前回より多いサイズの置き去りを消す。持っている物だけ消す: 無い RT_ICON へ削除を出すと、
-    ///       以降この更新ハンドルへの書き込みが全て ERROR_INTERNAL_ERROR (1359) を返す。アイコン無しの exe (典型的な対象) は 1 回目の空振りで全部落ちる。
+    // 前回より多いサイズの置き去りを消す。持っている物だけ消す: 無い RT_ICON へ削除を出すと、
+    // 以降この更新ハンドルへの書き込みが全て ERROR_INTERNAL_ERROR (1359) を返す。アイコン無しの exe (典型的な対象) は 1 回目の空振りで全部落ちる。
     for (const IconResourceId& icon : stale) {
         if (!UpdateResourceW(update, RtIcon(), MAKEINTRESOURCEW(icon.id), icon.language,
                              nullptr, 0)) {
@@ -457,7 +470,7 @@ bool AppIconWriter::Apply(const std::filesystem::path& imagePath,
         }
 
         IconGroupEntry row{};
-        /// @note 256 は 0 で表す (1 バイトに収まらないため)。
+        // 256 は 0 で表す (1 バイトに収まらないため)。
         row.width      = static_cast<std::uint8_t>(entry.width  >= 256 ? 0 : entry.width);
         row.height     = static_cast<std::uint8_t>(entry.height >= 256 ? 0 : entry.height);
         row.colorCount = 0;

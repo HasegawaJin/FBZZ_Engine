@@ -17,7 +17,7 @@ public:
 private:
     void OnRenderContent(EditorContext& ctx) override;
 
-    std::size_t m_lastRevision = static_cast<std::size_t>(-1);
+    std::size_t m_lastRevision = static_cast<std::size_t>(-1); ///< 履歴一覧を最後に表示した時点の UndoStack リビジョン。差分があれば表示位置を更新する。
 };
 
 } // namespace fbzz::editor

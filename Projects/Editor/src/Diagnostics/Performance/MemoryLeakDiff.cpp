@@ -33,12 +33,13 @@ std::string FormatBytes(std::size_t bytes)
     char buffer[32]{};
     constexpr double KB = 1024.0;
     constexpr double MB = 1024.0 * 1024.0;
-    if (bytes >= static_cast<std::size_t>(MB))
+    if (bytes >= static_cast<std::size_t>(MB)) {
         std::snprintf(buffer, sizeof(buffer), "%.2f MB", static_cast<double>(bytes) / MB);
-    else if (bytes >= static_cast<std::size_t>(KB))
+    } else if (bytes >= static_cast<std::size_t>(KB)) {
         std::snprintf(buffer, sizeof(buffer), "%.2f KB", static_cast<double>(bytes) / KB);
-    else
+    } else {
         std::snprintf(buffer, sizeof(buffer), "%zu B", bytes);
+    }
     return buffer;
 }
 
@@ -50,8 +51,9 @@ void AppendReportRows(std::string& out, const MemoryLeakReport& report)
                   static_cast<long long>(report.totalCountDelta),
                   report.liveCount);
     out += line;
-    if (report.rows.empty())
+    if (report.rows.empty()) {
         out += "  (no origin grew since the baseline)\n";
+    }
     for (const MemoryLeakRow& row : report.rows) {
         std::snprintf(line, sizeof(line), "  +%lld (%zu -> %zu)  %+lld bytes  %s  %s\n",
                       static_cast<long long>(row.countDelta), row.baseCount, row.nowCount,
@@ -98,8 +100,9 @@ void MemoryLeakDiff::CaptureBaseline(const renderer::ResourceManager& resources,
     m_baseline      = Collect(resources);
     m_baselineLabel = std::move(label);
     m_baselineCount = 0;
-    for (const auto& entry : m_baseline)
+    for (const auto& entry : m_baseline) {
         m_baselineCount += entry.second.count;
+    }
     m_hasBaseline = true;
 }
 
@@ -113,7 +116,9 @@ void MemoryLeakDiff::ClearBaseline()
 
 void MemoryLeakDiff::CaptureSessionBaselineIfAbsent(const renderer::ResourceManager& resources)
 {
-    if (m_hasSession) return;
+    if (m_hasSession) {
+        return;
+    }
     m_session    = Collect(resources);
     m_hasSession = true;
     m_cycleCount = 0;
@@ -132,7 +137,9 @@ void MemoryLeakDiff::ClearSessionBaseline()
 
 MemoryLeakReport MemoryLeakDiff::CompareSession(const renderer::ResourceManager& resources) const
 {
-    if (!m_hasSession) return {};
+    if (!m_hasSession) {
+        return {};
+    }
     MemoryLeakReport report = CompareTo(m_session, resources);
     report.label = "since first Play";
     return report;
@@ -140,7 +147,9 @@ MemoryLeakReport MemoryLeakDiff::CompareSession(const renderer::ResourceManager&
 
 MemoryLeakReport MemoryLeakDiff::Compare(const renderer::ResourceManager& resources) const
 {
-    if (!m_hasBaseline) return {};
+    if (!m_hasBaseline) {
+        return {};
+    }
     MemoryLeakReport report = CompareTo(m_baseline, resources);
     report.label = m_baselineLabel;
     return report;
@@ -170,8 +179,9 @@ MemoryLeakReport MemoryLeakDiff::CompareTo(const Buckets& baseline,
 
         const auto it = baseline.find(entry.first);
         const std::size_t before = (it == baseline.end()) ? 0 : it->second.count;
-        if (bucket.count <= before)
+        if (bucket.count <= before) {
             continue;
+        }
 
         const std::size_t beforeBytes = (it == baseline.end()) ? 0 : it->second.bytes;
         MemoryLeakRow row;
@@ -184,16 +194,17 @@ MemoryLeakReport MemoryLeakDiff::CompareTo(const Buckets& baseline,
         report.rows.push_back(std::move(row));
     }
 
-    /// @note 減った行。基準側から引くのは、丸ごと消えた発生位置が now に居ないため。
-    ///       本数が同じでもバイト数だけ減る行がある (RT の張り直し) ので、どちらかが
-    ///       減っていれば載せる。
+    // 減った行。基準側から引くのは、丸ごと消えた発生位置が now に居ないため。
+    // 本数が同じでもバイト数だけ減る行がある (RT の張り直し) ので、どちらかが
+    // 減っていれば載せる。
     for (const auto& entry : baseline) {
         const Bucket& bucket = entry.second;
         const auto it = now.find(entry.first);
         const std::size_t after      = (it == now.end()) ? 0 : it->second.count;
         const std::size_t afterBytes = (it == now.end()) ? 0 : it->second.bytes;
-        if (after >= bucket.count && afterBytes >= bucket.bytes)
+        if (after >= bucket.count && afterBytes >= bucket.bytes) {
             continue;
+        }
 
         MemoryLeakRow row;
         row.origin        = bucket.origin;
@@ -209,15 +220,19 @@ MemoryLeakReport MemoryLeakDiff::CompareTo(const Buckets& baseline,
     report.totalCountDelta = nowCount - baseCount;
     report.liveCount       = static_cast<std::size_t>(nowCount);
 
-    /// @note バイト数が同じ行が並ぶ (0 バイト計上のリソース) ので、本数を第 2 キーにする。
+    // バイト数が同じ行が並ぶ (0 バイト計上のリソース) ので、本数を第 2 キーにする。
     std::sort(report.rows.begin(), report.rows.end(),
               [](const MemoryLeakRow& a, const MemoryLeakRow& b) {
-                  if (a.bytesDelta != b.bytesDelta) return a.bytesDelta > b.bytesDelta;
+                  if (a.bytesDelta != b.bytesDelta) {
+                      return a.bytesDelta > b.bytesDelta;
+                  }
                   return a.countDelta > b.countDelta;
               });
     std::sort(report.shrunkRows.begin(), report.shrunkRows.end(),
               [](const MemoryLeakRow& a, const MemoryLeakRow& b) {
-                  if (a.bytesDelta != b.bytesDelta) return a.bytesDelta < b.bytesDelta;
+                  if (a.bytesDelta != b.bytesDelta) {
+                      return a.bytesDelta < b.bytesDelta;
+                  }
                   return a.countDelta < b.countDelta;
               });
     return report;
@@ -230,27 +245,31 @@ void MemoryLeakDiff::SetPinnedReport(MemoryLeakReport report)
 
 void MemoryLeakDiff::ScheduleCompare(int frames, std::string label)
 {
-    if (!m_hasBaseline)
+    if (!m_hasBaseline) {
         return;
+    }
     m_pendingFrames = (frames > 0) ? frames : 1;
     m_pendingLabel  = std::move(label);
 }
 
 bool MemoryLeakDiff::Tick(const renderer::ResourceManager& resources)
 {
-    if (m_pendingFrames <= 0)
+    if (m_pendingFrames <= 0) {
         return false;
-    if (--m_pendingFrames > 0)
+    }
+    if (--m_pendingFrames > 0) {
         return false;
+    }
 
     MemoryLeakReport report = Compare(resources);
-    if (!m_pendingLabel.empty())
+    if (!m_pendingLabel.empty()) {
         report.label = m_pendingLabel;
+    }
     m_pendingLabel.clear();
     LogReport(report);
 
-    /// @note 累計も並べて出す。1 往復ぶんが «初回だけ» なのか «毎回» なのかは、
-    ///       前の往復からどれだけ動いたかを見ないと分からない。
+    // 累計も並べて出す。1 往復ぶんが «初回だけ» なのか «毎回» なのかは、
+    // 前の往復からどれだけ動いたかを見ないと分からない。
     if (m_hasSession) {
         ++m_cycleCount;
         MemoryLeakReport session = CompareSession(resources);
@@ -267,10 +286,11 @@ bool MemoryLeakDiff::Tick(const renderer::ResourceManager& resources)
                           m_cycleCount,
                           static_cast<long long>(m_lastCycleBytesDelta),
                           static_cast<long long>(m_lastCycleCountDelta));
-            /// @note 2 往復目以降で «まだ増えている» ものだけがリーク候補。初回の充填は
-            ///       1 往復目で終わるので、ここに残り続ける行を疑えばよい。
-            if (m_cycleCount >= 2)
+            // 2 往復目以降で «まだ増えている» ものだけがリーク候補。初回の充填は
+            // 1 往復目で終わるので、ここに残り続ける行を疑えばよい。
+            if (m_cycleCount >= 2) {
                 LogReport(session, 8);
+            }
         }
     }
 
@@ -298,7 +318,9 @@ std::vector<MemoryLeakGroup> SummarizeLiveResources(const renderer::ResourceMana
         group.bytes += info.size;
     }
     std::sort(groups.begin(), groups.end(), [](const MemoryLeakGroup& a, const MemoryLeakGroup& b) {
-        if (a.count != b.count) return a.count > b.count;
+        if (a.count != b.count) {
+            return a.count > b.count;
+        }
         return a.bytes > b.bytes;
     });
     return groups;
@@ -322,7 +344,7 @@ std::string FormatMemoryReport(const renderer::ResourceManager& resources,
                   totalCount, FormatBytes(totalBytes).c_str());
     out += line;
 
-    /// @note 全件出す: 貼り付け先で «上位だけ» を切るのは読み手にもできるが、落ちた行は取り戻せないためこちらでは間引かない。
+    // 全件出す: 貼り付け先で «上位だけ» を切るのは読み手にもできるが、落ちた行は取り戻せないためこちらでは間引かない。
     out += "-- live by origin (count desc) --\n";
     for (const MemoryLeakGroup& group : groups) {
         std::snprintf(line, sizeof(line), "x%-5zu %-26s %-10s %s\n",
@@ -348,7 +370,7 @@ std::string FormatMemoryReport(const renderer::ResourceManager& resources,
         AppendReportRows(out, pinned);
     }
 
-    /// @note 累計。キャッシュの初回充填とリークを分けるのはこちら。
+    // 累計。キャッシュの初回充填とリークを分けるのはこちら。
     if (diff.HasSessionBaseline()) {
         const MemoryLeakReport session = diff.CompareSession(resources);
         const int cycles = diff.GetCycleCount();
@@ -367,11 +389,12 @@ std::string FormatMemoryReport(const renderer::ResourceManager& resources,
 
 void MemoryLeakDiff::LogReport(const MemoryLeakReport& report, std::size_t maxRows)
 {
-    if (!report.valid)
+    if (!report.valid) {
         return;
+    }
 
-    /// @note 判定は MemoryLeakReport::Grew() に寄せる。行があることを条件にすると、
-    ///       本数が元に戻った往復でも警告が出て Console が埋まり、本物が埋もれる。
+    // 判定は MemoryLeakReport::Grew() に寄せる。行があることを条件にすると、
+    // 本数が元に戻った往復でも警告が出て Console が埋まり、本物が埋もれる。
     if (!report.Grew()) {
         FBZZ_LOG_INFO("MemoryLeakDiff [%s]: no renderer resource growth "
                       "(%+lld bytes / %+lld resources, live %zu)",
@@ -402,7 +425,7 @@ void MemoryLeakDiff::LogReport(const MemoryLeakReport& report, std::size_t maxRo
     if (report.rows.size() > rowCount)
         FBZZ_LOG_WARN("  ... %zu more origins", report.rows.size() - rowCount);
 
-    /// @note 合計が負なら「増えた行」だけでは読めない。返した側の上位も並べて釣り合わせる。
+    // 合計が負なら「増えた行」だけでは読めない。返した側の上位も並べて釣り合わせる。
     if (report.totalBytesDelta < 0 && !report.shrunkRows.empty()) {
         constexpr std::size_t kShrunkRows = 3;
         const std::size_t shrunkCount = (std::min)(report.shrunkRows.size(), kShrunkRows);

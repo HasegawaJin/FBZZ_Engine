@@ -36,18 +36,24 @@ void AppendString(std::string_view value, std::string& output)
 
 bool AppendNumber(double value, std::string& output)
 {
-    if (!std::isfinite(value)) return false;
+    if (!std::isfinite(value)) {
+        return false;
+    }
     std::array<char, 64> buffer{};
     const auto result = std::to_chars(buffer.data(), buffer.data() + buffer.size(), value,
         std::chars_format::general, std::numeric_limits<double>::max_digits10);
-    if (result.ec != std::errc{}) return false;
+    if (result.ec != std::errc{}) {
+        return false;
+    }
     output.append(buffer.data(), result.ptr);
     return true;
 }
 
 bool AppendValue(const OpData& value, std::string& output, std::size_t depth)
 {
-    if (depth > 32) return false;
+    if (depth > 32) {
+        return false;
+    }
     switch (value.GetType()) {
     case OpData::Type::Null: output += "null"; return true;
     case OpData::Type::Bool: output += value.AsBool() ? "true" : "false"; return true;
@@ -57,11 +63,17 @@ bool AppendValue(const OpData& value, std::string& output, std::size_t depth)
     case OpData::Type::Vec3: {
         const math::Vector3 vector = value.AsVec3();
         output += '[';
-        if (!AppendNumber(vector.x, output)) return false;
+        if (!AppendNumber(vector.x, output)) {
+            return false;
+        }
         output += ',';
-        if (!AppendNumber(vector.y, output)) return false;
+        if (!AppendNumber(vector.y, output)) {
+            return false;
+        }
         output += ',';
-        if (!AppendNumber(vector.z, output)) return false;
+        if (!AppendNumber(vector.z, output)) {
+            return false;
+        }
         output += ']';
         return true;
     }
@@ -69,28 +81,38 @@ bool AppendValue(const OpData& value, std::string& output, std::size_t depth)
         output += '[';
         bool first = true;
         for (const OpData& item : value.AsArray()) {
-            if (!first) output += ',';
+            if (!first) {
+                output += ',';
+            }
             first = false;
-            if (!AppendValue(item, output, depth + 1)) return false;
+            if (!AppendValue(item, output, depth + 1)) {
+                return false;
+            }
         }
         output += ']';
         return true;
     }
     case OpData::Type::Object: {
-        /// @note 同一の要求はキーの入力順に依存しない文字列表現へ揃える。
+        // 同一の要求はキーの入力順に依存しない文字列表現へ揃える。
         std::vector<const OpData::Member*> members;
-        for (const OpData::Member& member : value.AsObject()) members.push_back(&member);
+        for (const OpData::Member& member : value.AsObject()) {
+            members.push_back(&member);
+        }
         std::sort(members.begin(), members.end(), [](const auto* left, const auto* right) {
             return left->first < right->first;
         });
         output += '{';
         bool first = true;
         for (const OpData::Member* member : members) {
-            if (!first) output += ',';
+            if (!first) {
+                output += ',';
+            }
             first = false;
             AppendString(member->first, output);
             output += ':';
-            if (!AppendValue(member->second, output, depth + 1)) return false;
+            if (!AppendValue(member->second, output, depth + 1)) {
+                return false;
+            }
         }
         output += '}';
         return true;
@@ -99,14 +121,16 @@ bool AppendValue(const OpData& value, std::string& output, std::size_t depth)
     return false;
 }
 
-} /// @note namespace
+} // namespace
 
 bool WriteOpDataJson(const OpData& value, std::string& output)
 {
     std::string result;
-    if (!AppendValue(value, result, 0)) return false;
+    if (!AppendValue(value, result, 0)) {
+        return false;
+    }
     output = std::move(result);
     return true;
 }
 
-} /// @note namespace fbzz::editor
+} // namespace fbzz::editor

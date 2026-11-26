@@ -89,7 +89,7 @@ enum class LightPreset {
 
 /// 照明リグの向きと露出。
 struct Rig {
-    LightPreset preset   = LightPreset::Studio;
+    LightPreset preset   = LightPreset::Studio; ///< プレビューに使うキー、フィル、リムなどの照明プリセット。
     float       yaw      = 0.0f; ///< リグ全体の水平回転 [rad]
     float       pitch    = 0.0f; ///< リグ全体の垂直回転 [rad]
     float       exposure = 1.0f; ///< 全ライトとアンビエントに掛かる倍率
@@ -100,19 +100,19 @@ struct Rig {
 /// 既定値は AssetBrowser のサムネイルと同じ 3/4 視点。
 /// (半径 0.5 の球で position = center + (-1.06, +0.64, -1.45) になる)
 struct Orbit {
-    float yaw      = -2.51034f;
-    float pitch    = 0.342295f;
-    float distance = 3.8135f;
+    float yaw      = -2.51034f; ///< 被写体のまわりを回るカメラの方位角 [rad]。
+    float pitch    = 0.342295f; ///< 被写体の中心を基準にしたカメラの仰角 [rad]。
+    float distance = 3.8135f; ///< カメラと被写体の中心の距離。被写体の境界半径に対する倍率。
 };
 
 /// .mat 1 件ぶんの GPU 側キャッシュ。シェーダーを差し替えたら作り直す。
 struct GpuData {
-    std::string                                                shaderPath;
-    renderer::ResourceHandle<renderer::ShaderTag>              shader;
-    renderer::ResourceHandle<renderer::ConstantBufferTag>      materialCB;
-    std::vector<renderer::ResourceHandle<renderer::TextureTag>> textures;
-    std::vector<std::uint8_t>                                  paramData;
-    std::uint32_t                                              parallaxDepthOffset = UINT32_MAX;
+    std::string                                                shaderPath; ///< GPU プレビューにロードしたマテリアルシェーダーのパス。
+    renderer::ResourceHandle<renderer::ShaderTag>              shader; ///< マテリアルプレビューに使うシェーダーハンドル。
+    renderer::ResourceHandle<renderer::ConstantBufferTag>      materialCB; ///< プレビュー用に作成したマテリアル定数バッファのハンドル。
+    std::vector<renderer::ResourceHandle<renderer::TextureTag>> textures; ///< マテリアルのテクスチャスロット順に並ぶハンドル。
+    std::vector<std::uint8_t>                                  paramData; ///< 定数バッファへ転送するために組み立てたマテリアルパラメーターのバイト列。
+    std::uint32_t                                              parallaxDepthOffset = UINT32_MAX; ///< 視差の深さを格納する paramData のバイトオフセット。対象外は UINT32_MAX。
 };
 
 
@@ -164,37 +164,37 @@ void ResetGpuData(GpuData& gpu, renderer::ResourceManager* resources);
 
 
 struct RenderDesc {
-    math::Matrix4 world = math::Matrix4::Identity();
-    renderer::ResourceHandle<renderer::RenderTargetTag> target;
-    const renderer::Mesh*       mesh     = nullptr;
-    Flavor                      flavor   = Flavor::Surface;
+    math::Matrix4 world = math::Matrix4::Identity(); ///< 表示するモデルのローカル座標をワールド座標へ移す行列。
+    renderer::ResourceHandle<renderer::RenderTargetTag> target; ///< プレビューを出力する借用レンダーターゲットのハンドル。
+    const renderer::Mesh*       mesh     = nullptr; ///< プレビューに描く借用メッシュ。専用ジオメトリを使う場合は null 可。
+    Flavor                      flavor   = Flavor::Surface; ///< プレビューで必要となる頂点形式と描画パスの種類。
     /// @note This owned, actually const value copy survives renderer callback edits and nested preview draws.
-    std::shared_ptr<const asset::MaterialAssetAuthoring> material;
+    std::shared_ptr<const asset::MaterialAssetAuthoring> material; ///< 描画中の再入や編集から分離したマテリアル値の共有スナップショット。
     /// null なら fallbackColor / fallbackTexture を Lit.hlsl で焼く (メッシュサムネイル用)。
-    const GpuData*              gpu      = nullptr;
+    const GpuData*              gpu      = nullptr; ///< 描画中に借りる GPU キャッシュ。null なら代表色とテクスチャを使用する。
 
-    renderer::ResourceHandle<renderer::TextureTag> fallbackTexture;
-    math::Vector4 fallbackColor{ 0.74f, 0.78f, 0.84f, 1.0f };
+    renderer::ResourceHandle<renderer::TextureTag> fallbackTexture; ///< 通常のマテリアル描画を利用できない場合の代表テクスチャ。
+    math::Vector4 fallbackColor{ 0.74f, 0.78f, 0.84f, 1.0f }; ///< 通常のマテリアル描画を利用できない場合に使う色。
 
-    Channel channel = Channel::Shaded;
-    bool    showParallax = true;
-    Rig     rig{};
-    Orbit   orbit{};
+    Channel channel = Channel::Shaded; ///< プレビューへ出力するマテリアル情報。
+    bool    showParallax = true; ///< 材質の視差効果をプレビューへ適用するか。
+    Rig     rig{}; ///< この描画でマテリアルを照らすライトリグの設定。
+    Orbit   orbit{}; ///< この描画のプレビューカメラの軌道設定。
 
     /// false で RT を消さずに重ね描きする (.fbx のサブメッシュ合成)。
-    bool          clear          = true;
-    math::Vector3 overrideCenter{};
+    bool          clear          = true; ///< プレビューの描画先を最初にクリアするか。サブメッシュの合成では維持する。
+    math::Vector3 overrideCenter{}; ///< overrideRadius が有効な場合に軌道カメラが見る被写体の中心。
     float         overrideRadius = -1.0f; ///< < 0 でメッシュ境界を使う
     float         time           = 0.0f;  ///< Water の波・Fiber の突風 [秒]
 
     /// @name Fiber のときだけ使う
     /// @note 既定値は FiberComponent の既定と同じ。風は +X 方向のワールド [m/s]。
     /// @{
-    FiberMode fiberMode        = FiberMode::Shell;
+    FiberMode fiberMode        = FiberMode::Shell; ///< プレビューで描く繊維の方式。
     int       fiberShellCount  = 16;  ///< @brief FiberComponent::m_shellCount の既定と揃える
-    float     fiberWind        = 0.0f;
-    float     fiberBladeDensity = 400.0f;
-    float     fiberBladeWidth  = 0.015f;
+    float     fiberWind        = 0.0f; ///< 繊維に与える +X 方向の風速 [m/s]。
+    float     fiberBladeDensity = 400.0f; ///< Blade モードで生成する繊維の密度。
+    float     fiberBladeWidth  = 0.015f; ///< Blade モードで表示する繊維の幅 [m]。
     /// @}
 };
 
@@ -202,4 +202,4 @@ struct RenderDesc {
                           renderer::ResourceManager& resources,
                           const RenderDesc& desc);
 
-} /// @note namespace fbzz::editor::matpreview
+} // namespace fbzz::editor::matpreview

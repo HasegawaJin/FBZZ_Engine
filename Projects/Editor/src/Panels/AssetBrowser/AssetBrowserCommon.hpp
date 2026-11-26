@@ -68,4 +68,4 @@ std::string ToAssetDragPayloadPath(const std::string& path, const EditorContext&
 /// @note ImGui payload の終端を検証して、安全に ASSET_PATH 文字列を取り出す。
 bool ReadAssetDragPayload(const ImGuiPayload* payload, std::string& outPath);
 
-} /// @note namespace fbzz::editor
+} // namespace fbzz::editor

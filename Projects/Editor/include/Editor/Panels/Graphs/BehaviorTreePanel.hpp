@@ -73,31 +73,31 @@ private:
     /// 選択中のエージェントに割り当てられた木なら、その実行状態を返す。
     [[nodiscard]] const scene::BehaviorTreeComponent* FindRuntime(EditorContext& ctx) const;
 
-    GraphCanvas m_graphCanvas;
+    GraphCanvas m_graphCanvas; ///< ノードとリンクを描き、クリックやドラッグの入力を処理するキャンバス。
 
-    fbzz::ai::BehaviorTreeAsset m_asset;
-    std::string m_path;
-    std::string m_requestedPath;
-    bool m_dirty = false;
-    std::string m_error;
-    std::vector<fbzz::ai::BTWarning> m_warnings;
+    fbzz::ai::BehaviorTreeAsset m_asset; ///< パネルで編集中の Behavior Tree ドキュメント。
+    std::string m_path; ///< 現在開いている Behavior Tree のファイルパス。
+    std::string m_requestedPath; ///< 次回のパネル更新時に開くよう要求された Behavior Tree のファイルパス。
+    bool m_dirty = false; ///< 現在編集中の Behavior Tree に、ファイルへ保存していない変更があるか。
+    std::string m_error; ///< Behavior Tree の読み込み、検証または保存に失敗した理由。
+    std::vector<fbzz::ai::BTWarning> m_warnings; ///< 現在の Behavior Tree の検証で見つかった警告。
 
     /// スナップショット Undo。木は最大でも数十ノードなので丸ごと持って問題ない
     /// (VFXEditorSession と同じ方式。LambdaCommand 方式より復元の取りこぼしが無い)。
-    std::vector<fbzz::ai::BehaviorTreeAsset> m_undoStack;
-    std::vector<fbzz::ai::BehaviorTreeAsset> m_redoStack;
+    std::vector<fbzz::ai::BehaviorTreeAsset> m_undoStack; ///< 編集前の Behavior Tree を復元するためのスナップショット履歴。
+    std::vector<fbzz::ai::BehaviorTreeAsset> m_redoStack; ///< Undo した操作を再適用するための Behavior Tree の控え。
 
-    int m_selectedNode = 0;
-    int m_paletteParent = 0;
-    float m_paletteGridX = 0.0f;
-    float m_paletteGridY = 0.0f;
-    bool m_openPalette = false;
+    int m_selectedNode = 0; ///< グラフで現在選択しているノードの ID。
+    int m_paletteParent = 0; ///< ノード作成パレットで指定した新しいノードの親 ID。
+    float m_paletteGridX = 0.0f; ///< ノード作成パレットから追加するノードのグリッド X 座標。
+    float m_paletteGridY = 0.0f; ///< ノード作成パレットから追加するノードのグリッド Y 座標。
+    bool m_openPalette = false; ///< 次回の描画時にノード作成パレットを開く要求。
     /// Inspector のアセット欄が要求する projectRoot。描画開始時に一度だけ写す
     /// (DrawInspector は EditorContext を受け取らないため)。
-    std::string m_projectRoot;
-    std::string m_status;
-    bool m_showBlackboard = true;
+    std::string m_projectRoot; ///< Behavior Tree の参照パスを解決するためのプロジェクトルート。
+    std::string m_status; ///< 直近のグラフ編集操作の結果を表示する文言。
+    bool m_showBlackboard = true; ///< Behavior Tree の Blackboard 変数欄を表示するか。
     /// @}
 };
 
-} /// @note namespace fbzz::editor
+} // namespace fbzz::editor

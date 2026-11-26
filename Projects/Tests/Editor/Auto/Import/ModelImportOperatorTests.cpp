@@ -155,7 +155,7 @@ TEST_F(ModelImportOperatorTest, ImportCompletesWithoutOpeningAPanelAndPublishesO
     ASSERT_NE(job, nullptr);
     editor::OpArgs args;
     args.Set("job", job->AsInt());
-    /// @note 通常のShutdownが投入済み処理をjoinするため、sleepや時計で完了を推測しない。
+    // 通常のShutdownが投入済み処理をjoinするため、sleepや時計で完了を推測しない。
     TaskSystem::Shutdown();
 
     const auto completed = Invoke("asset.model.status", args);

@@ -31,7 +31,9 @@ bool Finite(const math::Vector3& value)
 bool Bounds(const math::Vector3& low, const math::Vector3& high,
     math::Vector3& center, math::Vector3& halfExtents)
 {
-    if (!Finite(low) || !Finite(high) || low.x > high.x || low.y > high.y || low.z > high.z) return false;
+    if (!Finite(low) || !Finite(high) || low.x > high.x || low.y > high.y || low.z > high.z) {
+        return false;
+    }
     center = low * 0.5f + high * 0.5f;
     halfExtents = high * 0.5f - low * 0.5f;
     return Finite(center) && Finite(halfExtents);
@@ -62,7 +64,10 @@ struct CommandSink {
         scene::ScriptDebugDrawCommand command;
         command.type = scene::ScriptDebugDrawType::Box;
         command.color = color;
-        if (!Bounds(low, high, command.a, command.halfExtents)) { ++invalidBounds; return; }
+        if (!Bounds(low, high, command.a, command.halfExtents)) {
+            ++invalidBounds;
+            return;
+        }
         (void)Push(command);
     }
 
@@ -73,7 +78,10 @@ struct CommandSink {
         command.color = CANDIDATE_COLOR;
         math::Vector3 ignored;
         if (!Bounds(pair.boundsA.min, pair.boundsA.max, command.a, ignored)
-            || !Bounds(pair.boundsB.min, pair.boundsB.max, command.b, ignored)) { ++invalidBounds; return; }
+            || !Bounds(pair.boundsB.min, pair.boundsB.max, command.b, ignored)) {
+            ++invalidBounds;
+            return;
+        }
         (void)Push(command);
     }
 
@@ -81,8 +89,12 @@ struct CommandSink {
     {
         result.drawCommands = commands.size() - start;
         result.status += " | drawn " + std::to_string(result.drawCommands);
-        if (budgetLimited) result.status += " | DRAW BUDGET TRUNCATED";
-        if (invalidBounds) result.status += " | invalid bounds skipped " + std::to_string(invalidBounds);
+        if (budgetLimited) {
+            result.status += " | DRAW BUDGET TRUNCATED";
+        }
+        if (invalidBounds) {
+            result.status += " | invalid bounds skipped " + std::to_string(invalidBounds);
+        }
     }
 };
 
@@ -100,14 +112,17 @@ const char* Availability(renderer::RenderBvhDebugAvailability value)
     }
     return "Unknown snapshot availability";
 }
-} /// @note namespace
+} // namespace
 
 SpatialDebugOverlayResult BuildRenderBvhDebugCommands(const renderer::RenderBvhDebugSnapshot& snapshot,
     const SpatialDebugTargetSettings& settings, const SpatialDebugOverlayContext& context,
     std::vector<scene::ScriptDebugDrawCommand>& commands)
 {
     SpatialDebugOverlayResult result;
-    if (!settings.CapturesHierarchy()) { result.status = "OFF"; return result; }
+    if (!settings.CapturesHierarchy()) {
+        result.status = "OFF";
+        return result;
+    }
     if (!context.shadowQueriesEnabled) {
         result.status = "No production shadow query: shadows disabled in Scene View";
         return result;
@@ -115,14 +130,17 @@ SpatialDebugOverlayResult BuildRenderBvhDebugCommands(const renderer::RenderBvhD
     if (!context.sceneGeneration || snapshot.sceneGeneration != context.sceneGeneration
         || !context.outputId || snapshot.viewOutputId != context.outputId
         || snapshot.viewOutputGeneration != context.outputGeneration) {
-        result.status = "Waiting: scene/view snapshot identity mismatch"; return result;
+        result.status = "Waiting: scene/view snapshot identity mismatch";
+        return result;
     }
     if (snapshot.availability != renderer::RenderBvhDebugAvailability::READY) {
-        result.status = Availability(snapshot.availability); return result;
+        result.status = Availability(snapshot.availability);
+        return result;
     }
     if (!snapshot.snapshotSerial || snapshot.contextFrameStamp > context.currentResourceFrameStamp
         || context.currentResourceFrameStamp - snapshot.contextFrameStamp > 2) {
-        result.status = "Waiting: stale shadow-query snapshot"; return result;
+        result.status = "Waiting: stale shadow-query snapshot";
+        return result;
     }
     if (settings.selectedOnly && !snapshot.selectedFound) {
         result.status = snapshot.selectedLookupTruncated ? "Selected lookup budget reached"
@@ -135,10 +153,14 @@ SpatialDebugOverlayResult BuildRenderBvhDebugCommands(const renderer::RenderBvhD
     CommandSink sink{commands, settings};
     std::size_t staticNodes = 0, dynamicNodes = 0;
     for (const auto& node : snapshot.nodes) {
-        if (sink.budgetLimited) break;
+        if (sink.budgetLimited) {
+            break;
+        }
         if (node.depth < static_cast<uint32_t>(std::max(0, settings.minDepth))
             || node.depth > static_cast<uint32_t>(std::max(0, settings.maxDepth))
-            || (settings.selectedOnly && !node.selectedPath)) continue;
+            || (settings.selectedOnly && !node.selectedPath)) {
+            continue;
+        }
         const bool isStatic = node.partition == renderer::RenderBvhDebugPartition::STATIC;
         isStatic ? ++staticNodes : ++dynamicNodes;
         math::Vector4 color = isStatic ? STATIC_COLOR : DYNAMIC_COLOR;
@@ -151,8 +173,12 @@ SpatialDebugOverlayResult BuildRenderBvhDebugCommands(const renderer::RenderBvhD
         sink.Box(node.low, node.high, color);
     }
     result.status += " | examined partitions static " + std::to_string(staticNodes) + " dynamic " + std::to_string(dynamicNodes);
-    if (snapshot.selectedLookupTruncated) result.status += " | Selected lookup budget reached";
-    if (snapshot.truncated) result.status += " | SNAPSHOT TRUNCATED";
+    if (snapshot.selectedLookupTruncated) {
+        result.status += " | Selected lookup budget reached";
+    }
+    if (snapshot.truncated) {
+        result.status += " | SNAPSHOT TRUNCATED";
+    }
     sink.Finish(result);
     return result;
 }
@@ -162,14 +188,19 @@ SpatialDebugOverlayResult BuildPhysicsSpatialDebugCommands(const scene::PhysicsS
     std::vector<scene::ScriptDebugDrawCommand>& commands)
 {
     SpatialDebugOverlayResult result;
-    if (!settings.AnyCapture()) { result.status = "OFF"; return result; }
+    if (!settings.AnyCapture()) {
+        result.status = "OFF";
+        return result;
+    }
     if (!context.sceneGeneration || snapshot.sceneGeneration != context.sceneGeneration
         || !context.expectedPhysicsRevision || snapshot.revision != context.expectedPhysicsRevision || !snapshot.physics) {
-        result.status = "Waiting: scene/request Physics snapshot identity mismatch"; return result;
+        result.status = "Waiting: scene/request Physics snapshot identity mismatch";
+        return result;
     }
     const auto& broadphase = *snapshot.physics;
     if (!broadphase.worldEpoch || !broadphase.sequence || !broadphase.request.enabled) {
-        result.status = "Waiting for a completed Physics step"; return result;
+        result.status = "Waiting for a completed Physics step";
+        return result;
     }
     if (settings.selectedOnly && !broadphase.selectionValid) {
         result.status = broadphase.workLimitReached ? "Selected collider lookup budget reached"
@@ -182,33 +213,46 @@ SpatialDebugOverlayResult BuildPhysicsSpatialDebugCommands(const scene::PhysicsS
     if (settings.CapturesHierarchy()) {
         if (broadphase.structure == physics::BroadPhaseDebugStructure::BVH) {
             for (const auto& node : broadphase.nodes) {
-                if (sink.budgetLimited) break;
+                if (sink.budgetLimited) {
+                    break;
+                }
                 if (node.depth < static_cast<uint32_t>(std::max(0, settings.minDepth))
-                    || node.depth > static_cast<uint32_t>(std::max(0, settings.maxDepth))) continue;
+                    || node.depth > static_cast<uint32_t>(std::max(0, settings.maxDepth))) {
+                    continue;
+                }
                 sink.Box(node.bounds.min, node.bounds.max, UNOBSERVED_COLOR);
             }
-        } else if (broadphase.structure == physics::BroadPhaseDebugStructure::BRUTE_FORCE)
+        } else if (broadphase.structure == physics::BroadPhaseDebugStructure::BRUTE_FORCE) {
             result.status += " | BVH unavailable: production brute-force broadphase";
-        else if (broadphase.structure == physics::BroadPhaseDebugStructure::EMPTY)
+        } else if (broadphase.structure == physics::BroadPhaseDebugStructure::EMPTY) {
             result.status += " | broadphase empty";
-        else result.status += " | BVH unavailable";
+        } else {
+            result.status += " | BVH unavailable";
+        }
     }
     if (settings.CapturesProxyBounds()) {
         for (const auto& proxy : broadphase.proxies) {
-            if (sink.budgetLimited) break;
+            if (sink.budgetLimited) {
+                break;
+            }
             sink.Box(proxy.bounds.min, proxy.bounds.max, proxy.isStatic ? STATIC_COLOR : DYNAMIC_COLOR);
         }
     }
     if (settings.CapturesCandidatePairs()) {
         if (broadphase.candidatePairsAvailable) {
             for (const auto& pair : broadphase.pairs) {
-                if (sink.budgetLimited) break;
+                if (sink.budgetLimited) {
+                    break;
+                }
                 sink.Pair(pair);
             }
-        } else result.status += " | candidate pairs unavailable: no observed broadphase pass";
+        } else {
+            result.status += " | candidate pairs unavailable: no observed broadphase pass";
+        }
     }
-    if (broadphase.nodesTruncated || broadphase.proxiesTruncated || broadphase.pairsTruncated || broadphase.workLimitReached)
+    if (broadphase.nodesTruncated || broadphase.proxiesTruncated || broadphase.pairsTruncated || broadphase.workLimitReached) {
         result.status += " | SNAPSHOT TRUNCATED";
+    }
     sink.Finish(result);
     return result;
 }
@@ -236,8 +280,9 @@ void UpdateSpatialDebugRequests(EditorContext& ctx, scene::Scene* activeScene, b
     state.render.Clamp();
     state.physics.Clamp();
     scene::EntityID selected;
-    if (activeScene && !ctx.selectedEntities.empty() && activeScene->GetGameObject(ctx.selectedEntities.front()))
+    if (activeScene && !ctx.selectedEntities.empty() && activeScene->GetGameObject(ctx.selectedEntities.front())) {
         selected = ctx.selectedEntities.front();
+    }
     renderer::RenderBvhDebugRequest render;
     render.enabled = generation && outputId && state.render.CapturesHierarchy();
     render.sceneGeneration = generation;
@@ -309,7 +354,9 @@ void BuildSpatialDebugOverlay(EditorContext& ctx, const scene::Scene& activeScen
                 state.renderStatus = result.status;
                 state.renderTraversalStatusAvailable = result.traversalStatusAvailable;
                 state.renderDrawCommands = result.drawCommands;
-            } else state.renderStatus = "Waiting for enabled shadow light / completed shadow query";
+            } else {
+                state.renderStatus = "Waiting for enabled shadow light / completed shadow query";
+            }
         }
     }
     if (state.physics.AnyCapture() && state.captureRuntimeActive) {
@@ -318,9 +365,10 @@ void BuildSpatialDebugOverlay(EditorContext& ctx, const scene::Scene& activeScen
             const auto result = BuildPhysicsSpatialDebugCommands(*snapshot, state.physics, context, commands);
             state.physicsStatus = result.status;
             state.physicsDrawCommands = result.drawCommands;
+        } else {
+            state.physicsStatus = "Waiting for a completed Physics step";
         }
-        else state.physicsStatus = "Waiting for a completed Physics step";
     }
 }
 
-} /// @note namespace fbzz::editor
+} // namespace fbzz::editor

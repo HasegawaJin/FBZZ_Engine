@@ -32,17 +32,39 @@ namespace {
 
 const char* PrimaryMaterialLabel(std::string_view name)
 {
-    if (name == "albedo") return "Base Color";
-    if (name == "metallic") return "Metallic";
-    if (name == "roughness") return "Roughness";
-    if (name == "normalStrength") return "Normal Strength";
-    if (name == "occlusionStrength") return "Occlusion Strength";
-    if (name == "emissiveColor") return "Emission Color";
-    if (name == "emissiveScale") return "Emission Strength";
-    if (name == "alphaCutoff") return "Alpha Cutoff";
-    if (name == "uvTiling") return "UV Tiling";
-    if (name == "uvOffset") return "UV Offset";
-    if (name == "parallaxDepth") return "Parallax Depth (cm)";
+    if (name == "albedo") {
+        return "Base Color";
+    }
+    if (name == "metallic") {
+        return "Metallic";
+    }
+    if (name == "roughness") {
+        return "Roughness";
+    }
+    if (name == "normalStrength") {
+        return "Normal Strength";
+    }
+    if (name == "occlusionStrength") {
+        return "Occlusion Strength";
+    }
+    if (name == "emissiveColor") {
+        return "Emission Color";
+    }
+    if (name == "emissiveScale") {
+        return "Emission Strength";
+    }
+    if (name == "alphaCutoff") {
+        return "Alpha Cutoff";
+    }
+    if (name == "uvTiling") {
+        return "UV Tiling";
+    }
+    if (name == "uvOffset") {
+        return "UV Offset";
+    }
+    if (name == "parallaxDepth") {
+        return "Parallax Depth (cm)";
+    }
     return nullptr;
 }
 
@@ -59,22 +81,32 @@ bool DrawFloatMaterialValues(const char* label, std::string_view name, float* va
         const bool changed = property::DragFloat(label, &centimetres, 0.1f, 0.0f, 20.0f,
             "%.1f", ImGuiSliderFlags_AlwaysClamp);
         ImGui::SetItemTooltip("Maximum recess. Zero disables parallax.");
-        if (changed) values[0] = centimetres * 0.01f;
+        if (changed) {
+            values[0] = centimetres * 0.01f;
+        }
         return changed;
     }
-    if (count == 1) return property::DragFloat(label, values, 0.01f);
-    if (count == 3 && IsMaterialColor(name))
+    if (count == 1) {
+        return property::DragFloat(label, values, 0.01f);
+    }
+    if (count == 3 && IsMaterialColor(name)) {
         return property::ColorEdit3(label, values, ImGuiColorEditFlags_HDR | ImGuiColorEditFlags_Float);
-    if (count == 4 && IsMaterialColor(name))
+    }
+    if (count == 4 && IsMaterialColor(name)) {
         return property::ColorEdit4(label, values, ImGuiColorEditFlags_HDR | ImGuiColorEditFlags_Float);
+    }
     return widgets::DragAxes(label, values, count, 0.01f);
 }
 
 void DrawMaterialTextureSlots(asset::MaterialAssetAuthoring& material,
     const renderer::ShaderDescriptor* descriptor, const std::string& projectRoot, bool fallbackSlots)
 {
-    if ((!descriptor || descriptor->textures.empty()) && !fallbackSlots) return;
-    if (!ImGui::CollapsingHeader("Textures", ImGuiTreeNodeFlags_DefaultOpen)) return;
+    if ((!descriptor || descriptor->textures.empty()) && !fallbackSlots) {
+        return;
+    }
+    if (!ImGui::CollapsingHeader("Textures", ImGuiTreeNodeFlags_DefaultOpen)) {
+        return;
+    }
 
     static constexpr const char* LABELS[] = {
         "Albedo", "Normal", "Metallic", "Emission", "Occlusion", "tex5", "tex6", "tex7"
@@ -85,22 +117,31 @@ void DrawMaterialTextureSlots(asset::MaterialAssetAuthoring& material,
         const char* key = renderer::kMaterialTextureSlots[slot].key;
         const auto it = material.textures.find(key);
         std::string path = it != material.textures.end() ? it->second : std::string{};
-        /// @note Sprite UV は Auto メッシュの albedo だけが受け取る。
+        // Sprite UV は Auto メッシュの albedo だけが受け取る。
         const char* filter = slot == 0 && material.renderPath == asset::RenderPath::Auto && fallbackSlots
             ? widgets::kSpriteAssetFilter : widgets::kTextureAssetFilter;
         const char* label = slot == 5 && parallax ? "Height Map" : LABELS[slot];
         const bool changed = widgets::TextureSlotField(label, path, filter, projectRoot);
-        if (slot == 5 && parallax) ImGui::SetItemTooltip("Linear red channel. White is the surface and black is the deepest recess.");
+        if (slot == 5 && parallax) {
+            ImGui::SetItemTooltip("Linear red channel. White is the surface and black is the deepest recess.");
+        }
         if (changed) {
-            if (path.empty()) material.textures.erase(key);
-            else material.textures[key] = std::move(path);
+            if (path.empty()) {
+                material.textures.erase(key);
+            } else {
+                material.textures[key] = std::move(path);
+            }
         }
     };
     if (descriptor && !descriptor->textures.empty()) {
         for (const auto& texture : descriptor->textures)
-            if (texture.slot < renderer::kMaterialTextureSlotCount) draw(texture.slot);
+            if (texture.slot < renderer::kMaterialTextureSlotCount) {
+                draw(texture.slot);
+            }
     } else {
-        for (uint32_t slot = 0; slot < 5; ++slot) draw(slot);
+        for (uint32_t slot = 0; slot < 5; ++slot) {
+            draw(slot);
+        }
     }
 }
 
@@ -115,7 +156,9 @@ void DrawReflectedMaterialParam(asset::MaterialAssetAuthoring& material, const r
     const bool simple = variable.rows == 1 && !variable.elements && variable.varClass != renderer::ShaderVarClass::Matrix;
     const auto defaultValue = [&](uint32_t index) {
         const uint64_t offset = variable.ValueOffset(index);
-        if (offset + sizeof(uint32_t) > defaults.size()) return 0.0;
+        if (offset + sizeof(uint32_t) > defaults.size()) {
+            return 0.0;
+        }
         if (variable.varType == renderer::ShaderVarType::Float) {
             float value = 0.0f;
             std::memcpy(&value, defaults.data() + offset, sizeof(value));
@@ -128,21 +171,30 @@ void DrawReflectedMaterialParam(asset::MaterialAssetAuthoring& material, const r
     std::vector<double> values;
     values.reserve(count);
     if (const auto it = material.integerParams.find(variable.name); it != material.integerParams.end()) {
-        for (const auto value : it->second) values.push_back(static_cast<double>(value));
+        for (const auto value : it->second) {
+            values.push_back(static_cast<double>(value));
+        }
     } else if (const auto* stored = asset::FindMaterialParam(material, variable.name)) {
         values.assign(stored->begin(), stored->end());
     }
-    /// @note 旧 .mat の短い float ベクトルは描画時と同じく既定値で残りの成分を埋める。
+    // 旧 .mat の短い float ベクトルは描画時と同じく既定値で残りの成分を埋める。
     if (values.empty() || (simple && variable.varType == renderer::ShaderVarType::Float && values.size() < count))
-        while (values.size() < count) values.push_back(defaultValue(static_cast<uint32_t>(values.size())));
+        while (values.size() < count) {
+            values.push_back(defaultValue(static_cast<uint32_t>(values.size())));
+        }
 
     ImGui::PushID(variable.name.c_str());
     bool changed = false;
     if (!asset::ValidateMaterialValues(variable, values)) {
         ImGui::TextDisabled("%s: Invalid value/count (expected %u)", label, count);
-        if (!ImGui::SmallButton("Reset to Default")) { ImGui::PopID(); return; }
+        if (!ImGui::SmallButton("Reset to Default")) {
+            ImGui::PopID();
+            return;
+        }
         values.resize(count);
-        for (uint32_t i = 0; i < count; ++i) values[i] = defaultValue(i);
+        for (uint32_t i = 0; i < count; ++i) {
+            values[i] = defaultValue(i);
+        }
         changed = true;
     }
     if (simple && variable.varType == renderer::ShaderVarType::Float) {
@@ -189,10 +241,14 @@ void DrawReflectedMaterialParam(asset::MaterialAssetAuthoring& material, const r
             }
             ImGui::PopID();
         }
-        if (!simple || count != 1) ImGui::TreePop();
+        if (!simple || count != 1) {
+            ImGui::TreePop();
+        }
     }
     ImGui::PopID();
-    if (!changed || !asset::ValidateMaterialValues(variable, values)) return;
+    if (!changed || !asset::ValidateMaterialValues(variable, values)) {
+        return;
+    }
     if (variable.varType == renderer::ShaderVarType::Float) {
         auto& floats = material.params[variable.name];
         floats.resize(count);
@@ -218,15 +274,18 @@ void DrawShaderParameters(asset::MaterialAssetAuthoring& material, const rendere
             }
             for (const auto& variable : descriptor->vars) {
                 const char* label = standardPbr ? PrimaryMaterialLabel(variable.name) : nullptr;
-                if (primary == (label != nullptr))
+                if (primary == (label != nullptr)) {
                     DrawReflectedMaterialParam(material, variable, label ? label : variable.name.c_str(), defaults);
+                }
             }
         };
-        if (standardPbr && ImGui::CollapsingHeader("Surface", ImGuiTreeNodeFlags_DefaultOpen))
+        if (standardPbr && ImGui::CollapsingHeader("Surface", ImGuiTreeNodeFlags_DefaultOpen)) {
             drawGroup(true);
+        }
         if (ImGui::CollapsingHeader(standardPbr ? "Advanced Shader Parameters" : "Shader Parameters",
-                standardPbr ? ImGuiTreeNodeFlags_None : ImGuiTreeNodeFlags_DefaultOpen))
+                standardPbr ? ImGuiTreeNodeFlags_None : ImGuiTreeNodeFlags_DefaultOpen)) {
             drawGroup(false);
+        }
     } else if (!descriptor) {
         ImGui::TextDisabled("Shader reflection unavailable.");
     }
@@ -241,9 +300,13 @@ void DrawStoredMaterialParameters(asset::MaterialAssetAuthoring& material, const
             || std::any_of(material.integerParams.begin(), material.integerParams.end(), unreflected))
         && ImGui::CollapsingHeader("Stored Parameters", descriptor ? ImGuiTreeNodeFlags_None : ImGuiTreeNodeFlags_DefaultOpen)) {
         for (const auto& entry : material.integerParams)
-            if (unreflected(entry)) ImGui::TextDisabled("%s: reflection unavailable (%zu values)", entry.first.c_str(), entry.second.size());
+            if (unreflected(entry)) {
+                ImGui::TextDisabled("%s: reflection unavailable (%zu values)", entry.first.c_str(), entry.second.size());
+            }
         for (auto& entry : material.params) {
-            if (!unreflected(entry) || entry.second.empty()) continue;
+            if (!unreflected(entry) || entry.second.empty()) {
+                continue;
+            }
             const auto& name = entry.first;
             auto& values = entry.second;
             ImGui::PushID(name.c_str());
@@ -265,10 +328,11 @@ void DrawStoredMaterialParameters(asset::MaterialAssetAuthoring& material, const
 void DrawWaterMaterialAuthoring(asset::MaterialAssetAuthoring& material,
     const renderer::ShaderDescriptor* descriptor, const std::string& projectRoot, bool sharedGeometry)
 {
-    if (sharedGeometry)
+    if (sharedGeometry) {
         ImGui::TextDisabled("Water: shared geometry / CPU sampling contract active.");
-    else
+    } else {
         ImGui::TextWrapped("Water fallback: shared geometry and legacy appearance. The shader needs water_surface_v1 + water_v1 to use project appearance.");
+    }
 
     const auto legacyField = [descriptor](const char* name, uint32_t offset, uint8_t columns) {
         const auto* variable = descriptor ? descriptor->FindVar(name) : nullptr;
@@ -277,7 +341,7 @@ void DrawWaterMaterialAuthoring(asset::MaterialAssetAuthoring& material,
             && variable->rows == 1 && variable->columns == columns && variable->elements == 0
             && variable->offset == offset && variable->size == static_cast<uint32_t>(columns) * sizeof(float);
     };
-    /// @note レガシー外観はファイル名ではなく既存の定数バッファ契約から識別する。
+    // レガシー外観はファイル名ではなく既存の定数バッファ契約から識別する。
     const bool legacyAppearance = descriptor && descriptor->cbufferSize == 48 && descriptor->vars.size() == 6
         && legacyField("rimGlowStrength", 0, 1) && legacyField("minShallowAlpha", 4, 1)
         && legacyField("specularStrength", 8, 1) && legacyField("skyReflectTint", 16, 3)
@@ -289,17 +353,21 @@ void DrawWaterMaterialAuthoring(asset::MaterialAssetAuthoring& material,
     }
     DrawMaterialTextureSlots(material, descriptor, projectRoot, false);
     DrawShaderParameters(material, descriptor, false);
-    if (ImGui::CollapsingHeader("Water Services / Legacy Appearance"))
+    if (ImGui::CollapsingHeader("Water Services / Legacy Appearance")) {
         DrawWaterMaterialInspector(material);
+    }
 }
 
 void DrawMaterialRenderSettings(asset::MaterialAssetAuthoring& material)
 {
-    if (!ImGui::CollapsingHeader("Render Settings")) return;
+    if (!ImGui::CollapsingHeader("Render Settings")) {
+        return;
+    }
     static constexpr const char* BLEND_NAMES[] = { "Opaque", "Alpha Blend", "Additive", "Premultiplied" };
     int blendIndex = static_cast<int>(material.blendMode);
-    if (property::Combo("Blend", &blendIndex, BLEND_NAMES, IM_ARRAYSIZE(BLEND_NAMES)))
+    if (property::Combo("Blend", &blendIndex, BLEND_NAMES, IM_ARRAYSIZE(BLEND_NAMES))) {
         material.blendMode = static_cast<renderer::BlendMode>(blendIndex);
+    }
     property::Checkbox("Double Sided", &material.doubleSided);
     property::DragInt("Render Queue", &material.renderQueue, 1.0f, 0, 5000);
     property::DragInt("Depth Bias", &material.depthBias, 0.25f, -1024, 1024);
@@ -308,13 +376,15 @@ void DrawMaterialRenderSettings(asset::MaterialAssetAuthoring& material)
     static constexpr const char* USAGE_NAMES[] = { "Auto", "Particle", "Trail", "UI", "Decal", "Post Process" };
     static_assert(IM_ARRAYSIZE(USAGE_NAMES) == static_cast<int>(asset::RenderPath::PostProcess) + 1);
     int usageIndex = static_cast<int>(material.renderPath);
-    if (property::Combo("Material Usage", &usageIndex, USAGE_NAMES, IM_ARRAYSIZE(USAGE_NAMES)))
+    if (property::Combo("Material Usage", &usageIndex, USAGE_NAMES, IM_ARRAYSIZE(USAGE_NAMES))) {
         material.renderPath = static_cast<asset::RenderPath>(usageIndex);
+    }
     ImGui::SetItemTooltip("Forward / Deferred is set in Project Settings.");
     static constexpr const char* MESH_TYPES[] = { "Any", "Surface", "Skinned" };
     int meshType = static_cast<int>(material.meshType);
-    if (property::Combo("Mesh Type", &meshType, MESH_TYPES, IM_ARRAYSIZE(MESH_TYPES)))
+    if (property::Combo("Mesh Type", &meshType, MESH_TYPES, IM_ARRAYSIZE(MESH_TYPES))) {
         material.meshType = static_cast<asset::MeshType>(meshType);
+    }
 }
 
 std::vector<float>& EnsureFloatParam(asset::MaterialAssetAuthoring& mat, const char* key, size_t count, std::initializer_list<float> defaults)
@@ -324,7 +394,9 @@ std::vector<float>& EnsureFloatParam(asset::MaterialAssetAuthoring& mat, const c
         values.assign(count, 0.0f);
         size_t i = 0;
         for (float value : defaults) {
-            if (i >= count) break;
+            if (i >= count) {
+                break;
+            }
             values[i++] = value;
         }
     }
@@ -336,8 +408,9 @@ std::array<float, Count> ReadFloatParam(const asset::MaterialAssetAuthoring& mat
                                       std::array<float, Count> values)
 {
     const auto it = mat.params.find(key);
-    if (it != mat.params.end() && it->second.size() == Count)
+    if (it != mat.params.end() && it->second.size() == Count) {
         std::copy(it->second.begin(), it->second.end(), values.begin());
+    }
     return values;
 }
 
@@ -384,16 +457,19 @@ bool DrawMaterialBoolFloat(asset::MaterialAssetAuthoring& mat, const char* label
 
 void Tooltip(const char* text)
 {
-    if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayShort))
+    if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayShort)) {
         ImGui::SetTooltip("%s", text);
+    }
 }
 
-} /// @note namespace
+} // namespace
 
 static bool DrawSolidDielectricMaterialInspector(asset::MaterialAssetAuthoring& material)
 {
     if (!asset::ResolveShaderCapabilities(material.shaderPath).IsStandardPbr()
-        && material.dielectric.transmission == 0) return false;
+        && material.dielectric.transmission == 0) {
+        return false;
+    }
     ImGui::SeparatorText("Dielectric");
     auto& dielectric = material.dielectric;
     bool enabled = dielectric.transmission != 0;
@@ -401,7 +477,7 @@ static bool DrawSolidDielectricMaterialInspector(asset::MaterialAssetAuthoring& 
     if (changed) {
         dielectric.transmission = enabled ? 1.0f : 0.0f;
         if (enabled) {
-            /// @note alpha は被覆だけ。閉じた境界の屈折は固体 BSDF が担当する。
+            // alpha は被覆だけ。閉じた境界の屈折は固体 BSDF が担当する。
             material.blendMode = renderer::BlendMode::OPAQUE_BLEND;
             material.depthWrite = true;
             material.doubleSided = false;
@@ -417,7 +493,7 @@ static bool DrawSolidDielectricMaterialInspector(asset::MaterialAssetAuthoring& 
         const bool thinChanged = property::Checkbox("Thin Walled", &dielectric.thinWalled);
         changed |= thinChanged;
         if (thinChanged && dielectric.thinWalled) {
-            /// @note 厚みゼロの初期 BSDF は滑面・無吸収に限定し、固体の距離吸収を持ち込まない。
+            // 厚みゼロの初期 BSDF は滑面・無吸収に限定し、固体の距離吸収を持ち込まない。
             EnsureFloatParam(material, "roughness", 1, {0})[0] = 0;
             dielectric.attenuationColor = {1, 1, 1};
         }
@@ -443,7 +519,9 @@ void DrawMaterialAuthoringFields(asset::MaterialAssetAuthoring& material,
         if (resources) {
             const auto shader = resources->LoadShader(material.shaderPath.empty()
                 ? "Assets/Shaders/Material/Surface/Fallback.hlsl" : material.shaderPath);
-            if (const auto* loadedShader = resources->Get(shader)) descriptor = loadedShader->GetDescriptor();
+            if (const auto* loadedShader = resources->Get(shader)) {
+                descriptor = loadedShader->GetDescriptor();
+            }
         }
         const auto* reflection = descriptor ? &*descriptor : nullptr;
         if (capabilities.surface == renderer::ShaderSurfaceContract::WATER
@@ -468,8 +546,8 @@ bool DrawMaterialTextureField(asset::MaterialAssetAuthoring& mat, const char* la
     ImGui::PushID(key);
     ImGui::TextUnformatted(label);
 
-    /// @note サムネイルは入力欄の左に置く。Unity の Material Inspector と同じ並びにして、
-    /// @note «どの絵を入れたか» をパスの読み合わせなしで確かめられるようにする。
+    // サムネイルは入力欄の左に置く。Unity の Material Inspector と同じ並びにして、
+    // «どの絵を入れたか» をパスの読み合わせなしで確かめられるようにする。
     const ImGuiStyle& style = ImGui::GetStyle();
     const float thumbSize = widgets::TextureThumbnailSize();
     const float rowTopY   = ImGui::GetCursorPosY();
@@ -477,14 +555,14 @@ bool DrawMaterialTextureField(asset::MaterialAssetAuthoring& mat, const char* la
     ImGui::SameLine(0.0f, style.ItemSpacing.x);
     ImGui::SetCursorPosY(rowTopY + (thumbSize - ImGui::GetFrameHeight()) * 0.5f);
 
-    /// @note 入力欄のスナップショットはサムネイルへのドロップより後に取る。
-    /// @note 先に取ると、落とした直後の 1 フレームだけ古いパスが欄に出る。
+    // 入力欄のスナップショットはサムネイルへのドロップより後に取る。
+    // 先に取ると、落とした直後の 1 フレームだけ古いパスが欄に出る。
     char buf[512];
     std::snprintf(buf, sizeof(buf), "%s", path.c_str());
 
-    /// @note ラベルを独立行に出し、入力欄は ## ID だけで描く。InputText の可視ラベルに
-    /// @note 幅 -1 を指定すると ImGui の «入力欄 + 右側ラベル» レイアウトと衝突し、
-    /// @note Inspector の狭い列で Terrain / Water の長いパスが潰れて読めなくなる。
+    // ラベルを独立行に出し、入力欄は ## ID だけで描く。InputText の可視ラベルに
+    // 幅 -1 を指定すると ImGui の «入力欄 + 右側ラベル» レイアウトと衝突し、
+    // Inspector の狭い列で Terrain / Water の長いパスが潰れて読めなくなる。
     const float clearWidth = path.empty()
         ? 0.0f
         : ImGui::CalcTextSize("Clear").x + style.FramePadding.x * 2.0f + style.ItemInnerSpacing.x;
@@ -508,12 +586,15 @@ bool DrawMaterialTextureField(asset::MaterialAssetAuthoring& mat, const char* la
         }
     }
 
-    /// @note 行の高さはサムネイルが決める。欄を縦中央へ下げた分だけ次の行が食い込む。
+    // 行の高さはサムネイルが決める。欄を縦中央へ下げた分だけ次の行が食い込む。
     ImGui::SetCursorPosY(rowTopY + thumbSize + style.ItemSpacing.y);
     ImGui::PopID();
     if (changed) {
-        if (path.empty()) mat.textures.erase(key);
-        else mat.textures[key] = std::move(path);
+        if (path.empty()) {
+            mat.textures.erase(key);
+        } else {
+            mat.textures[key] = std::move(path);
+        }
     }
     return changed;
 }
@@ -536,7 +617,7 @@ TerrainLayerDirtyFlags DrawTerrainLayerMaterialInspector(asset::MaterialAssetAut
         flags.paramDirty |= DrawMaterialFloat(mat, "Roughness",        "roughness",       0.8f, 0.01f, 0.0f,  1.0f);
         flags.paramDirty |= DrawMaterialFloat(mat, "Ambient Occlusion","ambientOcclusion",1.0f, 0.01f, 0.0f,  1.0f);
     }
-    /// @note 未設定の表示値は TerrainRenderPass の既定値に合わせる。
+    // 未設定の表示値は TerrainRenderPass の既定値に合わせる。
     /// @see Docs/design/terrain-layers.md
     if (ImGui::CollapsingHeader("Blending & Projection")) {
         /// @see https://www.gamedeveloper.com/programming/advanced-terrain-texture-splatting
@@ -570,7 +651,7 @@ TerrainLayerDirtyFlags DrawTerrainLayerMaterialInspector(asset::MaterialAssetAut
 bool DrawWaterMaterialInspector(asset::MaterialAssetAuthoring& mat)
 {
     using namespace scene::water_keys;
-    /// @note 未設定の表示値は WaterRenderPass / CausticsPass / WaterSystem の既定値に合わせる。
+    // 未設定の表示値は WaterRenderPass / CausticsPass / WaterSystem の既定値に合わせる。
     bool dirty = false;
 
     ImGui::SeparatorText("Surface");
@@ -606,7 +687,7 @@ bool DrawWaterMaterialInspector(asset::MaterialAssetAuthoring& mat)
             Tooltip("正で向こう側から届く光を強め、0で全方向に均等に散らします。");
             ImGui::TextDisabled("水面の色・不透明度・Subsurface・Rimは光学係数から決まります。");
 
-            /// @note Water Depth の所属判定を通ったカメラだけに水中設定を渡す。
+            // Water Depth の所属判定を通ったカメラだけに水中設定を渡す。
             ImGui::SeparatorText("Underwater Light");
             ImGui::TextDisabled("水中判定には Water Component の有限な Water Depth が必要です。Spline / Zone は局所水深を使います。");
             const auto readUnderwaterParam = [&mat](const char* key, float fallback, float minimum, float maximum) {
@@ -721,4 +802,4 @@ bool DrawWaterMaterialInspector(asset::MaterialAssetAuthoring& mat)
     return dirty;
 }
 
-} /// @note namespace fbzz::editor
+} // namespace fbzz::editor

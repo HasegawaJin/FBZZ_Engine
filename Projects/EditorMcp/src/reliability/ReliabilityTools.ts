@@ -129,7 +129,7 @@ export class ReliabilitySession {
         if (!plan || plan.expiresAt <= this.now()) throw new Error('Plan expired or was consumed; observe and plan again.');
         let release = false;
         try { return await this.control.RunWithLease(this.owner, token, plan.targets, async () => this.control.RunExclusive(this.owner, plan.label, async () => {
-            /// @note Consume before dispatch; ambiguous transport failures must never trigger a mutation replay.
+            // 送信前にプランを消費し、通信が失敗して結果が不明でも同じ変更を再送しない。
             this.plans.delete(planId);
             try {
                 const result = AsRecord(await this.bus.Command({ t: 'editor.checked', owner: this.owner, receipt: plan.receipt, guard: plan.guard, label: plan.label, cmds: plan.cmds }, false));
@@ -192,7 +192,7 @@ export class ReliabilitySession {
                 else checks.errors = Check('success', 'No new errors in the complete Editor log cursor range.');
             }
             const observationGuard = observation.guard;
-            /// @note Save/reload may intentionally move history; use finalize's returned guard only after it completed.
+            // 保存と再読込で履歴の位置が変わることがあるため、完了後に返ったガードを使う。
             const expectedGuard = AsRecord(finalized.observation).guard ?? known.guard;
             checks.state = observationGuard && Fingerprint(observationGuard) === Fingerprint(expectedGuard)
                 ? Check('success', 'Native guard still matches this operation.') : Check('failure', 'Scene or history changed; receipt verification is conflicted.');

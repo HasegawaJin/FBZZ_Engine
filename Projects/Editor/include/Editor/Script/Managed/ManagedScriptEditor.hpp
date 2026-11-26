@@ -170,30 +170,24 @@ private:
     std::unique_ptr<Compiler> m_compiler;
     std::unique_ptr<IManagedSourceWatcher> m_sourceWatcher;
     std::unique_ptr<ManagedScriptPublicationState> m_publication;
-    /// @note 監視側が最後に読み終えたソースの状態。ビルド中にも次の編集がここに届く。
-    ManagedSourceSnapshot m_sourceSnapshot;
-    /// @note ビルドを開始した時点のソース。完了時の状態と比べて再ビルドの要否を判断する。
-    ManagedSourceSnapshot m_compileSnapshot;
+    ManagedSourceSnapshot m_sourceSnapshot; ///< 監視側が最後に読み終えたソースの状態。ビルド中にも次の編集がここに届く。
+    ManagedSourceSnapshot m_compileSnapshot; ///< ビルドを開始した時点のソース。完了時の状態と比べて再ビルドの要否を判断する。
     std::filesystem::path m_projectRoot;
     std::filesystem::path m_engineRoot;
-    /// @note コンパイラーと監視側に同じ入力を渡すための C# プロジェクトファイルのパス。
-    std::filesystem::path m_project;
+    std::filesystem::path m_project; ///< コンパイラーと監視側に同じ入力を渡すための C# プロジェクトファイルのパス。
     std::filesystem::path m_agentBuild;
     std::filesystem::path m_hostDirectory;
     std::string m_configuration;
     std::filesystem::path m_outputRoot;
     std::filesystem::path m_buildOutput;
-    /// @note コンパイル済みで、シーンへの適用を待っている DLL のパス。
-    std::filesystem::path m_pendingAssembly;
+    std::filesystem::path m_pendingAssembly; ///< コンパイル済みで、シーンへの適用を待っている DLL のパス。
     std::filesystem::path m_appliedAssemblyDirectory;
     std::filesystem::path m_previousAssemblyDirectory;
-    /// @note Play を止めたときに編集時の DLL に戻せるよう、再生開始時の場所を退避する。
-    std::filesystem::path m_parkedAssemblyDirectory;
+    std::filesystem::path m_parkedAssemblyDirectory; ///< Play を止めたときに編集時の DLL に戻せるよう、再生開始時の場所を退避する。
     std::filesystem::path m_latestPlayAssemblyDirectory;
     bool m_playSession = false;
     uint64_t m_parkedAppliedGeneration = 0;
-    /// @note このエディターが所有する世代のディレクトリを記録し、古い出力の片付けをその範囲に限る。
-    std::vector<std::filesystem::path> m_ownedGenerations;
+    std::vector<std::filesystem::path> m_ownedGenerations; ///< このエディターが所有する世代のディレクトリを記録し、古い出力の片付けをその範囲に限る。
     std::future<std::vector<std::filesystem::path>> m_generationCleanup;
     std::future<bool> m_generationOwnershipSave;
     std::uint64_t m_observedFingerprint = 0;
@@ -206,13 +200,11 @@ private:
     std::string m_pendingRequestId;
     std::string m_availabilityDiagnostic = "C# build service is not initialized";
     std::string m_sourceRequestId;
-    /// @note 明示的なビルド要求より後に監視側が読み直したことを確認するための版番号。
-    std::uint64_t m_sourceRequestRevision = 0;
+    std::uint64_t m_sourceRequestRevision = 0; ///< 明示的なビルド要求より後に監視側が読み直したことを確認するための版番号。
     std::uint64_t m_startVerificationRevision = 0;
     std::uint64_t m_metadataVerificationRevision = 0;
     std::uint64_t m_metadataSourceFingerprint = 0;
-    /// @note 連続したファイル保存をひとつのビルドにまとめるための残り待ち時間（秒）。
-    float m_debounceSeconds = 0.0f;
+    float m_debounceSeconds = 0.0f; ///< 連続したファイル保存をひとつのビルドにまとめるための残り待ち時間（秒）。
     float m_applyRetrySeconds = 0.0f;
     float m_discoverySeconds = 0.0f;
     float m_cleanupSeconds = 0.0f;
@@ -223,4 +215,4 @@ private:
     bool m_initialSourcePending = false;
 };
 
-} /// @note namespace fbzz::editor
+} // namespace fbzz::editor

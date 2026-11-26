@@ -42,7 +42,7 @@ void DrawTextureChecker(ImDrawList* drawList, ImVec2 origin, float side)
     drawList->PopClipRect();
 }
 
-} /// @note namespace
+} // namespace
 
 void TexturePreviewView::Draw(EditorContext& ctx,
                               std::string_view sourcePath,
@@ -85,7 +85,7 @@ void TexturePreviewView::Draw(EditorContext& ctx,
         if (!exists) {
             m_texture = {};
         } else if (changed) {
-            /// @note 同じパスを参照する材質とサムネイルのハンドルも最新画像へ差し替える。
+            // 同じパスを参照する材質とサムネイルのハンドルも最新画像へ差し替える。
             m_texture = ctx.resources->ReloadTexture(m_sourcePath);
         } else if (firstCheck || (m_texture.IsValid() && !ctx.resources->Get(m_texture))) {
             m_texture = ctx.resources->LoadTexture(m_sourcePath);
@@ -130,4 +130,4 @@ void TexturePreviewView::Draw(EditorContext& ctx,
                       IM_COL32(95, 100, 112, 230), 4.0f, 0, 1.0f);
 }
 
-} /// @note namespace fbzz::editor
+} // namespace fbzz::editor

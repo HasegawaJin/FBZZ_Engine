@@ -103,7 +103,9 @@ void ExpectRegisteredHandlersRespond(EditorBusDispatcher& dispatcher, bool comma
         const auto& name = type->AsString();
         const bool query = kind->AsString() == "query";
         ASSERT_TRUE(query || kind->AsString() == "command" || kind->AsString() == "undoable") << name;
-        if (commandsOnly && query) continue;
+        if (commandsOnly && query) {
+            continue;
+        }
         ++exercised;
 
         SCOPED_TRACE(name);
@@ -178,7 +180,7 @@ TEST_F(SceneMaterialValidationTest, ResolvesBuiltInMaterialAndReportsMissingGuid
 /// @brief Survives every command without a scene.
 TEST_F(EditorBusDispatcherTest, SurvivesEveryCommandWithoutAScene)
 {
-    /// @note 本題。1 つでもガードが抜けていれば、ここでプロセスごと落ちる。
+    // 本題。1 つでもガードが抜けていれば、ここでプロセスごと落ちる。
     EditorBusDispatcher dispatcher(Context());
     ASSERT_EQ(Context().activeScene, nullptr);
 
@@ -195,8 +197,8 @@ TEST_F(EditorBusDispatcherTest, SurvivesEveryCommandAsADryRunCommand)
 /// @brief Survives every command with a scene attached.
 TEST_F(EditorBusDispatcherTest, SurvivesEveryCommandWithASceneAttached)
 {
-    /// @note シーンが «有る» 側も通す。無い側だけ守っても、シーンはあるが中身が空という
-    /// @note       状態 (開いた直後・遷移直後) で落ちれば同じこと。
+    // シーンが «有る» 側も通す。無い側だけ守っても、シーンはあるが中身が空という
+    // 状態 (開いた直後・遷移直後) で落ちれば同じこと。
     scene::Scene& scene = AttachScene();
     scene.CreateGameObject("Player");
 
@@ -207,7 +209,7 @@ TEST_F(EditorBusDispatcherTest, SurvivesEveryCommandWithASceneAttached)
 /// @brief Survives every command on an empty scene.
 TEST_F(EditorBusDispatcherTest, SurvivesEveryCommandOnAnEmptyScene)
 {
-    /// @note GameObject が 1 つも無いシーン。«先頭を取る» 類の実装がここで落ちる。
+    // GameObject が 1 つも無いシーン。«先頭を取る» 類の実装がここで落ちる。
     AttachScene();
 
     EditorBusDispatcher dispatcher(Context());
@@ -217,7 +219,7 @@ TEST_F(EditorBusDispatcherTest, SurvivesEveryCommandOnAnEmptyScene)
 /// @brief Survives when the scene is detached mid session.
 TEST_F(EditorBusDispatcherTest, SurvivesWhenTheSceneIsDetachedMidSession)
 {
-    /// @note Play 中の LoadScene が起こす順序。繋がった状態で一度使ってから切れる。
+    // Play 中の LoadScene が起こす順序。繋がった状態で一度使ってから切れる。
     scene::Scene& scene = AttachScene();
     scene.CreateGameObject("Player");
 
@@ -250,8 +252,8 @@ TEST_F(EditorBusDispatcherTest, ReportsAnErrorForAnUnknownCommand)
 /// @brief Answers even when the line is not JSON.
 TEST_F(EditorBusDispatcherTest, AnswersEvenWhenTheLineIsNotJson)
 {
-    /// @note 相関 id を取り出せなくても «壊れている» ことは返す。黙ると送信側は
-    /// @note       timeout まで固まり、しかも «届いていない» のか «壊れていた» のか分からない。
+    // 相関 id を取り出せなくても «壊れている» ことは返す。黙ると送信側は
+    // timeout まで固まり、しかも «届いていない» のか «壊れていた» のか分からない。
     EditorBusDispatcher dispatcher(Context());
 
     const std::string response = dispatcher.Handle("this is not json {{{");
@@ -267,7 +269,7 @@ TEST_F(EditorBusDispatcherTest, AnswersEvenWhenTheLineIsNotJson)
 /// @brief Stays silent on a blank line.
 TEST_F(EditorBusDispatcherTest, StaysSilentOnABlankLine)
 {
-    /// @note 空行は NDJSON の区切りとして正常。要求ではないのでエラーを返さない。
+    // 空行は NDJSON の区切りとして正常。要求ではないのでエラーを返さない。
     EditorBusDispatcher dispatcher(Context());
 
     EXPECT_TRUE(dispatcher.Handle("").empty());
@@ -278,14 +280,14 @@ TEST_F(EditorBusDispatcherTest, StaysSilentOnABlankLine)
 /// @brief Answers with an error when the ID is readable.
 TEST_F(EditorBusDispatcherTest, AnswersWithAnErrorWhenTheIdIsReadable)
 {
-    /// @note エンベロープが壊れていても、id が読めればそれを載せて «誰への失敗か» を言う。
-    /// @note       読めない場合 (上のテスト) は id 空で返す。相関できるかの差だけで、
-    /// @note       どちらも «応答は返す» 側に倒す。
+    // エンベロープが壊れていても、id が読めればそれを載せて «誰への失敗か» を言う。
+    // 読めない場合 (上のテスト) は id 空で返す。相関できるかの差だけで、
+    // どちらも «応答は返す» 側に倒す。
     EditorBusDispatcher dispatcher(Context());
 
     JsonValue root = JsonValue::MakeObject();
     root.Set("id", JsonValue("test-1"));
-    /// @note protocol と payload が無い
+    // protocol と payload が無い
     root.Set("kind", JsonValue("query"));
 
     const std::string response = dispatcher.Handle(SerializeJson(root));
@@ -300,7 +302,7 @@ TEST_F(EditorBusDispatcherTest, AnswersWithAnErrorWhenTheIdIsReadable)
 /// @brief Keeps working after a failed request.
 TEST_F(EditorBusDispatcherTest, KeepsWorkingAfterAFailedRequest)
 {
-    /// @note 1 回の失敗で内部状態が壊れると、以降 «何を送っても落ちる» になる。
+    // 1 回の失敗で内部状態が壊れると、以降 «何を送っても落ちる» になる。
     EditorBusDispatcher dispatcher(Context());
 
     dispatcher.Handle("garbage");
@@ -312,7 +314,7 @@ TEST_F(EditorBusDispatcherTest, KeepsWorkingAfterAFailedRequest)
 /// @brief Handles the same query repeatedly.
 TEST_F(EditorBusDispatcherTest, HandlesTheSameQueryRepeatedly)
 {
-    /// @note MCP は同じ問い合わせを繰り返す。呼ぶたびに状態が積み上がらないこと。
+    // MCP は同じ問い合わせを繰り返す。呼ぶたびに状態が積み上がらないこと。
     EditorBusDispatcher dispatcher(Context());
 
     for (int i = 0; i < 5; ++i)
@@ -322,12 +324,12 @@ TEST_F(EditorBusDispatcherTest, HandlesTheSameQueryRepeatedly)
 /// @brief Accepts a query carrying extra fields.
 TEST_F(EditorBusDispatcherTest, AcceptsAQueryCarryingExtraFields)
 {
-    /// @note 送信側が新しい項目を足しても、古いエディターが落ちてはいけない。
+    // 送信側が新しい項目を足しても、古いエディターが落ちてはいけない。
     EditorBusDispatcher dispatcher(Context());
 
     JsonValue payload = JsonValue::MakeObject();
     payload.Set("t", JsonValue("editor.catalog"));
-    /// @note 文字列を期待している所へ数値
+    // 文字列を期待している所へ数値
     payload.Set("id", JsonValue(12345));
     payload.Set("futureField", JsonValue(true));
     payload.Set("nested", JsonValue::MakeArray());
@@ -457,7 +459,7 @@ TEST_F(EditorBusFluidTest, SetChangesANestedKeyAndUndoRestoresIt)
     gas.Set("buoyancy", JsonValue(3.25));
     JsonValue fields = JsonValue::MakeObject();
     fields.Set("gas", std::move(gas));
-    /// @note ドット区切りでも同じ場所を指す。
+    // ドット区切りでも同じ場所を指す。
     fields.Set("render.opacity", JsonValue(7.5));
     JsonValue payload = FluidPayload("fluid.set", kSmokePath);
     payload.Set("fields", std::move(fields));
@@ -486,7 +488,7 @@ TEST_F(EditorBusFluidTest, SetReportsUnknownKeysAndWritesNothing)
     ASSERT_TRUE(IsOk(Send(FluidPayload("fluid.create", kSmokePath))));
     const float original = LoadRecipe(kSmokePath).gas.buoyancy;
 
-    /// @note 正しいキーが混ざっていても書かない。一部だけ効くと AI は効かなかった方を見落とす。
+    // 正しいキーが混ざっていても書かない。一部だけ効くと AI は効かなかった方を見落とす。
     JsonValue gas = JsonValue::MakeObject();
     gas.Set("buoyancy", JsonValue(9.0));
     gas.Set("noSuchKey", JsonValue(1));
@@ -518,7 +520,7 @@ TEST_F(EditorBusFluidTest, CreateRefusesToOverwriteUnlessAsked)
     ASSERT_TRUE(IsOk(replaced)) << SerializeJson(replaced);
     EXPECT_TRUE(replaced.Find("result")->Find("overwrote")->AsBool());
 
-    /// @note 上書きの Undo は消すのではなく前の中身へ戻す。
+    // 上書きの Undo は消すのではなく前の中身へ戻す。
     const float fireBuoyancy = asset::MakeFluidPreset(asset::FluidPreset::Fire).gas.buoyancy;
     EXPECT_FLOAT_EQ(LoadRecipe(kSmokePath).gas.buoyancy, fireBuoyancy);
     m_undo.Undo();
@@ -545,13 +547,13 @@ TEST_F(EditorBusFluidTest, BakeAndPreviewNeedTheService)
     EXPECT_EQ(ErrorCode(Send(FluidPayload("fluid.bake", kSmokePath))), "SERVICE_UNAVAILABLE");
     EXPECT_EQ(ErrorCode(Send(FluidPayload("fluid.preview", kSmokePath))), "SERVICE_UNAVAILABLE");
 
-    /// @note 焼けないと分かっているなら .fluid も書かない (成功に見えて何も出ないのを防ぐ)。
+    // 焼けないと分かっているなら .fluid も書かない (成功に見えて何も出ないのを防ぐ)。
     JsonValue effect = FluidPayload("fluid.createEffect", "");
     effect.Set("name", JsonValue("Puff"));
     EXPECT_EQ(ErrorCode(Send(effect)), "SERVICE_UNAVAILABLE");
     EXPECT_FALSE(std::filesystem::exists(File("Assets/VFX/Fluid/Puff.fluid")));
 
-    /// @note 焼かないなら窓口が無くても作れる。
+    // 焼かないなら窓口が無くても作れる。
     effect.Set("bake", JsonValue(false));
     const JsonValue created = Send(effect);
     ASSERT_TRUE(IsOk(created)) << SerializeJson(created);
@@ -576,7 +578,7 @@ TEST_F(EditorBusFluidTest, TransactionRefusesBakeButAcceptsEdits)
 {
     ASSERT_TRUE(IsOk(Send(FluidPayload("fluid.create", kSmokePath))));
 
-    /// @note 焼きは Undo できないので、まとめて戻す transaction には入れさせない。
+    // 焼きは Undo できないので、まとめて戻す transaction には入れさせない。
     JsonValue bakeCmds = JsonValue::MakeArray();
     bakeCmds.Push(FluidPayload("fluid.bake", kSmokePath));
     JsonValue bakeTransaction = JsonValue::MakeObject();
@@ -599,7 +601,7 @@ TEST_F(EditorBusFluidTest, TransactionRefusesBakeButAcceptsEdits)
     ASSERT_TRUE(IsOk(response)) << SerializeJson(response);
     EXPECT_FLOAT_EQ(LoadRecipe(kSmokePath).gas.buoyancy, 2.5f);
 
-    /// @note 部品の追加も Undo できるファイル書き込みなので transaction に入れられる。
+    // 部品の追加も Undo できるファイル書き込みなので transaction に入れられる。
     JsonValue add = FluidPayload("fluid.addOperator", kSmokePath);
     add.Set("list", JsonValue("force"));
     JsonValue addCmds = JsonValue::MakeArray();
@@ -626,9 +628,13 @@ JsonValue OperatorPayload(const std::string& type, const std::string& list)
 
 bool ArrayHasString(const JsonValue* array, const std::string& wanted)
 {
-    if (array == nullptr || !array->IsArray()) return false;
+    if (array == nullptr || !array->IsArray()) {
+        return false;
+    }
     for (const JsonValue& item : array->AsArray())
-        if (item.IsString() && item.AsString() == wanted) return true;
+        if (item.IsString() && item.AsString() == wanted) {
+            return true;
+        }
     return false;
 }
 
@@ -640,7 +646,7 @@ TEST_F(EditorBusFluidTest, AddOperatorInsertsATypedPartAndUndoRemovesIt)
     ASSERT_TRUE(IsOk(Send(FluidPayload("fluid.create", kSmokePath))));
     const std::size_t before = LoadRecipe(kSmokePath).sources.size();
 
-    /// @note ラベルは大文字小文字を問わない。fields は新しい部品 1 つぶんの部分指定。
+    // ラベルは大文字小文字を問わない。fields は新しい部品 1 つぶんの部分指定。
     JsonValue payload = OperatorPayload("fluid.addOperator", "source");
     payload.Set("type", JsonValue("Cone"));
     payload.Set("index", JsonValue(0));
@@ -668,7 +674,7 @@ TEST_F(EditorBusFluidTest, AddOperatorInsertsATypedPartAndUndoRemovesIt)
     m_undo.Redo();
     EXPECT_EQ(LoadRecipe(kSmokePath).sources[0].shape, fluid::FluidSourceShape::Cone);
 
-    /// @note 力の種類もラベルで選べる (TOML と同じ綴り)。
+    // 力の種類もラベルで選べる (TOML と同じ綴り)。
     JsonValue force = OperatorPayload("fluid.addOperator", "force");
     force.Set("type", JsonValue("VORTEX"));
     ASSERT_TRUE(IsOk(Send(force)));
@@ -688,7 +694,7 @@ TEST_F(EditorBusFluidTest, RemoveAndMoveOperatorsAreUndoable)
     const std::size_t count = original.sources.size();
     ASSERT_GE(count, 2u);
 
-    /// @note 末尾 (ring) を先頭へ。
+    // 末尾 (ring) を先頭へ。
     JsonValue move = OperatorPayload("fluid.moveOperator", "source");
     move.Set("from", JsonValue(static_cast<int>(count - 1)));
     move.Set("to", JsonValue(0));
@@ -715,7 +721,7 @@ TEST_F(EditorBusFluidTest, RemoveAndMoveOperatorsAreUndoable)
     ASSERT_EQ(restored.sources.size(), count);
     EXPECT_EQ(restored.sources[count - 2].shape, fluid::FluidSourceShape::Box);
 
-    /// @note 範囲外は何も書かずに BAD_ARG。
+    // 範囲外は何も書かずに BAD_ARG。
     remove.Set("index", JsonValue(static_cast<int>(count)));
     EXPECT_EQ(ErrorCode(Send(remove)), "BAD_ARG");
     move.Set("from", JsonValue(static_cast<int>(count)));
@@ -733,7 +739,7 @@ TEST_F(EditorBusFluidTest, AddOperatorRejectsUnknownListsTypesAndAFullList)
     badType.Set("type", JsonValue("tornado"));
     EXPECT_EQ(ErrorCode(Send(badType)), "BAD_ARG");
 
-    /// @note 配列ごと渡すと上限で切り詰め、何を落としたかを返す。
+    // 配列ごと渡すと上限で切り詰め、何を落としたかを返す。
     JsonValue many = JsonValue::MakeArray();
     for (int i = 0; i < fluid::kMaxFluidForces + 2; ++i) many.Push(JsonValue::MakeObject());
     JsonValue fields = JsonValue::MakeObject();
@@ -806,14 +812,14 @@ TEST_F(EditorBusFluidTest, SchemaListsTheFieldsOfEachOperatorType)
     EXPECT_TRUE(ArrayHasString(shapes, "texture"));
     EXPECT_TRUE(ArrayHasString(shapes, "capsule"));
     EXPECT_TRUE(ArrayHasString(shapes, "cylinder"));
-    /// @note カプセルは芯の軸を direction で持つ形。種類ごとの一覧にその項目が見えていること。
+    // カプセルは芯の軸を direction で持つ形。種類ごとの一覧にその項目が見えていること。
     const JsonValue* capsule = source->Find("fields")->Find("capsule");
     ASSERT_NE(capsule, nullptr);
     EXPECT_TRUE(ArrayHasString(capsule, "direction")) << SerializeJson(*capsule);
     const JsonValue* textureShape = source->Find("fields")->Find("texture");
     ASSERT_NE(textureShape, nullptr);
     EXPECT_TRUE(ArrayHasString(textureShape, "texture")) << SerializeJson(*textureShape);
-    /// @note cone は向きを持つ形。種類ごとの一覧にその項目が見えていること。
+    // cone は向きを持つ形。種類ごとの一覧にその項目が見えていること。
     const JsonValue* cone = source->Find("fields")->Find("cone");
     ASSERT_NE(cone, nullptr);
     EXPECT_FALSE(cone->AsArray().empty());
@@ -838,11 +844,11 @@ TEST_F(EditorBusFluidTest, SchemaListsTheFieldsOfEachOperatorType)
     EXPECT_EQ(colliderShapes->AsArray().size(), 5u);
     for (const char* shape : { "sphere", "box", "plane", "capsule", "cylinder" })
         EXPECT_TRUE(ArrayHasString(colliderShapes, shape)) << shape;
-    /// @note plane は法線 (direction) で向きが決まる形。
+    // plane は法線 (direction) で向きが決まる形。
     const JsonValue* plane = collider->Find("fields")->Find("plane");
     ASSERT_NE(plane, nullptr);
     EXPECT_TRUE(ArrayHasString(plane, "direction")) << SerializeJson(*plane);
-    /// @note カプセルは芯の軸 (direction) と大きさ (size) の両方を持つ。
+    // カプセルは芯の軸 (direction) と大きさ (size) の両方を持つ。
     const JsonValue* capsuleCollider = collider->Find("fields")->Find("capsule");
     ASSERT_NE(capsuleCollider, nullptr);
     EXPECT_TRUE(ArrayHasString(capsuleCollider, "direction")) << SerializeJson(*capsuleCollider);
@@ -884,7 +890,7 @@ TEST_F(EditorBusFluidTest, CollidersCanBeAddedMovedAndRemovedWithUndo)
     m_undo.Redo();
     ASSERT_EQ(LoadRecipe(kSmokePath).colliders.size(), before + 1);
 
-    /// @note 末尾に box を足して先頭へ回す。
+    // 末尾に box を足して先頭へ回す。
     JsonValue box = OperatorPayload("fluid.addOperator", "collider");
     box.Set("type", JsonValue("box"));
     ASSERT_TRUE(IsOk(Send(box)));
@@ -923,7 +929,7 @@ TEST_F(EditorBusFluidTest, ColliderListStopsAtItsLimitAndTakesShapeLabels)
     EXPECT_EQ(ErrorCode(full), "OPERATOR_LIMIT");
     EXPECT_EQ(LoadRecipe(kSmokePath).colliders.size(), limit);
 
-    /// @note 形のラベルは TOML と同じ綴りで、保存するときは添字になる。
+    // 形のラベルは TOML と同じ綴りで、保存するときは添字になる。
     JsonValue fields = JsonValue::MakeObject();
     fields.Set("collider.0.shape", JsonValue("plane"));
     JsonValue set = FluidPayload("fluid.set", kSmokePath);
@@ -933,7 +939,7 @@ TEST_F(EditorBusFluidTest, ColliderListStopsAtItsLimitAndTakesShapeLabels)
     EXPECT_TRUE(ArrayHasString(response.Find("result")->Find("changed"), "collider.0.shape"));
     EXPECT_EQ(LoadRecipe(kSmokePath).colliders[0].shape, fluid::FluidColliderShape::Plane);
 
-    /// @note 配列ごと渡すと上限で切り詰めて clamped に載る。
+    // 配列ごと渡すと上限で切り詰めて clamped に載る。
     JsonValue many = JsonValue::MakeArray();
     for (std::size_t i = 0; i < limit + 3; ++i) many.Push(JsonValue::MakeObject());
     JsonValue arrayFields = JsonValue::MakeObject();
@@ -951,7 +957,7 @@ TEST_F(EditorBusFluidTest, TextureSourceWithAMissingImageIsWrittenWithAWarning)
 {
     ASSERT_TRUE(IsOk(Send(FluidPayload("fluid.create", kSmokePath))));
 
-    /// @note 画像は後から置くことがあるので、無くても書いて warnings で知らせる。
+    // 画像は後から置くことがあるので、無くても書いて warnings で知らせる。
     JsonValue payload = OperatorPayload("fluid.addOperator", "source");
     payload.Set("type", JsonValue("texture"));
     JsonValue fields = JsonValue::MakeObject();
@@ -970,7 +976,7 @@ TEST_F(EditorBusFluidTest, TextureSourceWithAMissingImageIsWrittenWithAWarning)
     EXPECT_EQ(recipe.sources[index].shape, fluid::FluidSourceShape::Texture);
     EXPECT_EQ(recipe.sources[index].texture, "Assets/Textures/Missing.png");
 
-    /// @note 置いた画像を指せば warnings は出ない (中身は見ず、在るかだけを見る)。
+    // 置いた画像を指せば warnings は出ない (中身は見ず、在るかだけを見る)。
     std::filesystem::create_directories(File("Assets/Textures"));
     { std::ofstream(File("Assets/Textures/Logo.png"), std::ios::binary) << "png"; }
     JsonValue found = JsonValue::MakeObject();
@@ -982,7 +988,7 @@ TEST_F(EditorBusFluidTest, TextureSourceWithAMissingImageIsWrittenWithAWarning)
     EXPECT_EQ(updated.Find("result")->Find("warnings"), nullptr) << SerializeJson(updated);
     EXPECT_EQ(LoadRecipe(kSmokePath).sources[index].texture, "Assets/Textures/Logo.png");
 
-    /// @note projectRoot の外は書かない。
+    // projectRoot の外は書かない。
     JsonValue outside = JsonValue::MakeObject();
     outside.Set("source." + std::to_string(index) + ".texture", JsonValue("../Outside.png"));
     JsonValue escape = FluidPayload("fluid.set", kSmokePath);
@@ -997,7 +1003,7 @@ TEST_F(EditorBusFluidTest, SetWritesPerSourceColorKeyAndTheAlbedoRamp)
     ASSERT_TRUE(IsOk(Send(FluidPayload("fluid.create", kSmokePath))));
     ASSERT_TRUE(IsOk(Send(OperatorPayload("fluid.addOperator", "source"))));
 
-    /// @note Undo が直前の状態へ戻すことを見たいので開始状態はテスト自身で決める。プリセット既定に頼ると、絵を派手にした (煙を 2 色にした) だけでここが落ちる。
+    // Undo が直前の状態へ戻すことを見たいので開始状態はテスト自身で決める。プリセット既定に頼ると、絵を派手にした (煙を 2 色にした) だけでここが落ちる。
     {
         JsonValue off = JsonValue::MakeObject();
         off.Set("render.use_albedo_ramp", JsonValue(false));
@@ -1007,7 +1013,7 @@ TEST_F(EditorBusFluidTest, SetWritesPerSourceColorKeyAndTheAlbedoRamp)
         ASSERT_FALSE(LoadRecipe(kSmokePath).render.useAlbedoRamp);
     }
 
-    /// @note 発生源ごとの色は «鍵 + ランプ» の 2 か所。どちらかが書けないと AI は色を塗り分けられない。
+    // 発生源ごとの色は «鍵 + ランプ» の 2 か所。どちらかが書けないと AI は色を塗り分けられない。
     JsonValue red = JsonValue::MakeArray();
     for (double v : { 1.0, 0.0, 0.0 }) red.Push(JsonValue(v));
     JsonValue fields = JsonValue::MakeObject();
@@ -1033,7 +1039,7 @@ TEST_F(EditorBusFluidTest, SetWritesPerSourceColorKeyAndTheAlbedoRamp)
     m_undo.Undo();
     EXPECT_FALSE(LoadRecipe(kSmokePath).render.useAlbedoRamp);
 
-    /// @note color_key はどの形の発生源にも効く項目としてスキーマに載る。
+    // color_key はどの形の発生源にも効く項目としてスキーマに載る。
     const JsonValue schema = Send(FluidPayload("fluid.schema", ""), "query");
     ASSERT_TRUE(IsOk(schema)) << SerializeJson(schema);
     const JsonValue* sphere = schema.Find("result")->Find("operators")->Find("source")->Find("fields")->Find("sphere");
@@ -1171,16 +1177,22 @@ protected:
         Context().currentScenePath = File("Assets/Scenes/Reliability.scene").generic_string();
         Context().saveScenePathImmediate = [this](const std::string& requested) {
             m_hostCalls.push_back("save");
-            if (m_failSave) return false;
+            if (m_failSave) {
+                return false;
+            }
             const std::string path = requested.empty() ? Context().currentScenePath : requested;
-            if (!Context().editScene || !editor::SceneIO::Save(*Context().editScene, path)) return false;
+            if (!Context().editScene || !editor::SceneIO::Save(*Context().editScene, path)) {
+                return false;
+            }
             Context().currentScenePath = path;
             if (m_clearDirtyAfterSave) Context().sceneDirty = false;
             return true;
         };
         Context().openScenePathImmediate = [this](const std::string& path) {
             m_hostCalls.push_back("reload");
-            if (!Context().editScene || !editor::SceneIO::Load(*Context().editScene, path)) return false;
+            if (!Context().editScene || !editor::SceneIO::Load(*Context().editScene, path)) {
+                return false;
+            }
             if (m_changeReloadedName) {
                 if (auto* node = Context().editScene->FindByGuid(m_reloadNode)) node->name = "Changed by host";
             }
@@ -1574,7 +1586,7 @@ TEST_F(EditorBusReliabilityTest, VerifiesTheFinalBatchValueAndRestoresTheInitial
 TEST_F(EditorBusReliabilityTest, NormalizesUuidCaseForCheckedBatchDeduplicationAndRollback)
 {
     auto& node = AttachScene().CreateGameObject("Original");
-    /// @note A fixed persisted UUID makes letter-case coverage independent of randomly generated identifiers.
+    // A fixed persisted UUID makes letter-case coverage independent of randomly generated identifiers.
     constexpr const char* CANONICAL_ID = "01234567-89ab-4cde-8f01-23456789abcd";
     constexpr const char* UPPERCASE_ID = "01234567-89AB-4CDE-8F01-23456789ABCD";
     node.instanceId = CANONICAL_ID;
@@ -1674,7 +1686,7 @@ TEST_F(EditorBusReliabilityTest, RejectsFractionalLayerBeforeApplyingAnyBatchCom
     auto& node = AttachScene().CreateGameObject("Original");
     JsonValue layer = ReliablePayload("node.setLayer");
     layer.Set("id", JsonValue(node.instanceId));
-    /// @note 不正な後続 Command は、先行する有効な変更も適用する前に拒否する。
+    // 不正な後続 Command は、先行する有効な変更も適用する前に拒否する。
     layer.Set("layer", JsonValue(1.75));
 
     const JsonValue response = Send(Checked(CurrentGuard(), { RenamePayload(node.instanceId, "Partial"), layer }));
@@ -1693,7 +1705,7 @@ TEST_F(EditorBusReliabilityTest, RollsBackItsOwnBatchWhenNativeReadbackDiffersFr
     JsonValue layer = ReliablePayload("node.setLayer");
     layer.Set("id", JsonValue(node.instanceId));
     layer.Set("layer", JsonValue(7));
-    /// @note 正当な入力の適用後に host callback が値を変えても、読み返しで検出し batch 全体を戻す。
+    // 正当な入力の適用後に host callback が値を変えても、読み返しで検出し batch 全体を戻す。
     Context().markSceneDirty = [this, &node]() {
         Context().sceneDirty = true;
         if (node.name == "Partial") node.name = "Changed by host";
@@ -2112,7 +2124,7 @@ TEST_F(EditorBusProfilerSnapshotTest, WarnsAboutAnAbortedCaptureEvenWhenNoSample
 {
     profiler::Profiler::BeginFrame();
     profiler::Profiler::BeginScope(profiler::ProfilerMarker("unfinished", "McpContract"));
-    /// @note Ending the application frame closes the public scope as aborted; no private Profiler state is injected.
+    // Ending the application frame closes the public scope as aborted; no private Profiler state is injected.
     profiler::Profiler::EndFrame();
     ASSERT_TRUE(profiler::Profiler::GetSnapshot().available);
     ASSERT_FALSE(profiler::Profiler::GetSnapshot().complete);

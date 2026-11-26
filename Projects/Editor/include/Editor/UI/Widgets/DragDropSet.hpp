@@ -14,8 +14,8 @@
 namespace fbzz::editor::dragdrop {
 
 /// @brief GameObject のドラッグ元が毎フレーム呼ぶ。
-/// @param grabbed payload に載せた 1 件。
-/// @param selection 現在の選択。grabbed を含むときだけ選択全体を運ぶ (Unity と同じ)。
+/// @param[in] grabbed payload に載せた 1 件。
+/// @param[in] selection 現在の選択。grabbed を含むときだけ選択全体を運ぶ (Unity と同じ)。
 void SetEntityDrag(scene::EntityID grabbed, const std::vector<scene::EntityID>& selection);
 
 /// @brief payload の 1 件から、実際に運んでいる GameObject 一式を引く。
@@ -23,8 +23,8 @@ void SetEntityDrag(scene::EntityID grabbed, const std::vector<scene::EntityID>& 
 [[nodiscard]] std::vector<scene::EntityID> DraggedEntities(scene::EntityID payloadId);
 
 /// @brief アセットのドラッグ元が毎フレーム呼ぶ。
-/// @param grabbedPayload payload に載せたパス (ToAssetDragPayloadPath 済み)。
-/// @param paths 運ぶ全パス (payload と同じ形式)。grabbedPayload を含まなければ無視する。
+/// @param[in] grabbedPayload payload に載せたパス (ToAssetDragPayloadPath 済み)。
+/// @param[in] paths 運ぶ全パス (payload と同じ形式)。grabbedPayload を含まなければ無視する。
 void SetAssetDrag(const std::string& grabbedPayload, std::vector<std::string> paths);
 
 /// @brief payload のパスから、実際に運んでいるアセット一式を引く。

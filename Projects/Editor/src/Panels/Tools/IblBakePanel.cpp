@@ -34,26 +34,30 @@ bool BrowseForFolder(std::string& outPath)
     bi.hwndOwner = GetForegroundWindow();
     bi.ulFlags   = BIF_RETURNONLYFSDIRS | BIF_NEWDIALOGSTYLE;
     PIDLIST_ABSOLUTE pidl = SHBrowseForFolderW(&bi);
-    if (!pidl) return false;
+    if (!pidl) {
+        return false;
+    }
 
     wchar_t path[MAX_PATH]{};
     SHGetPathFromIDListW(pidl, path);
     CoTaskMemFree(pidl);
 
-    /// @note wchar_t → UTF-8
+    // wchar_t → UTF-8
     const int size = WideCharToMultiByte(CP_UTF8, 0, path, -1, nullptr, 0, nullptr, nullptr);
-    if (size <= 0) return false;
+    if (size <= 0) {
+        return false;
+    }
     outPath.assign(static_cast<size_t>(size - 1), '\0');
     WideCharToMultiByte(CP_UTF8, 0, path, -1, outPath.data(), size, nullptr, nullptr);
     return true;
 }
 
-} /// @note namespace
+} // namespace
 
 void IblBakePanel::OnRenderContent(EditorContext& ctx)
 {
     ImGui::BeginDisabled(m_status == Status::Baking);
-    /// @name HDRI ファイル
+    // HDRI ファイル
     ImGui::Text("HDRI File (.hdr / .exr)");
     ImGui::SetNextItemWidth(ImGui::GetContentRegionAvail().x - 88.0f);
     ImGui::InputText("##hdriPath", m_hdriPath.data(), m_hdriPath.size());
@@ -68,78 +72,85 @@ void IblBakePanel::OnRenderContent(EditorContext& ctx)
                 chosen))
         {
             snprintf(m_hdriPath.data(), m_hdriPath.size(), "%s", chosen.c_str());
-            /// @note ステータスをリセット
+            // ステータスをリセット
             m_status    = Status::Idle;
             m_statusMsg = "";
         }
     }
     ImGui::Spacing();
 
-    /// @name 出力ディレクトリ
+    // 出力ディレクトリ
     ImGui::Text("Output Directory");
     ImGui::SetNextItemWidth(ImGui::GetContentRegionAvail().x - 88.0f);
     ImGui::InputText("##outDir", m_outputDir.data(), m_outputDir.size());
     ImGui::SameLine();
     if (ImGui::Button("Browse##dir")) {
         std::string chosen;
-        if (BrowseForFolder(chosen))
+        if (BrowseForFolder(chosen)) {
             snprintf(m_outputDir.data(), m_outputDir.size(), "%s", chosen.c_str());
+        }
     }
     ImGui::Spacing();
 
-    /// @name ベース名
+    // ベース名
     ImGui::Text("Base Name");
     ImGui::SetNextItemWidth(200.0f);
     ImGui::InputText("##baseName", m_baseName.data(), m_baseName.size());
-    if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayShort))
+    if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayShort)) {
         ImGui::SetTooltip("例: \"sky\" → sky.ibl / sky_env.dds / sky_irr.dds / sky_prefilter.dds / sky_brdf.dds");
+    }
 
     ImGui::Separator();
 
-    /// @name 詳細設定
+    // 詳細設定
     if (ImGui::CollapsingHeader("Advanced Settings")) {
         static const char* s_cubeSizeLabels[] = { "512", "1024", "2048", "4096" };
         static const int   s_cubeSizeVals[]   = { 512, 1024, 2048, 4096 };
         static const char* s_irrSizeLabels[]  = { "16", "32", "64" };
         static const int   s_irrSizeVals[]    = { 16, 32, 64 };
 
-        /// @note Env Cubemap サイズ
+        // Env Cubemap サイズ
         {
-            /// @note デフォルト 2048
+            // デフォルト 2048
             int sel = 2;
             for (int i = 0; i < 4; ++i) if (s_cubeSizeVals[i] == m_envCubemapSize) sel = i;
             ImGui::SetNextItemWidth(100.0f);
-            if (property::Combo("Env Cubemap Size", &sel, s_cubeSizeLabels, 4))
+            if (property::Combo("Env Cubemap Size", &sel, s_cubeSizeLabels, 4)) {
                 m_envCubemapSize = s_cubeSizeVals[sel];
+            }
         }
-        /// @note Irradiance サイズ
+        // Irradiance サイズ
         {
-            /// @note デフォルト 32
+            // デフォルト 32
             int sel = 1;
             for (int i = 0; i < 3; ++i) if (s_irrSizeVals[i] == m_irradianceSize) sel = i;
             ImGui::SetNextItemWidth(100.0f);
-            if (property::Combo("Irradiance Size", &sel, s_irrSizeLabels, 3))
+            if (property::Combo("Irradiance Size", &sel, s_irrSizeLabels, 3)) {
                 m_irradianceSize = s_irrSizeVals[sel];
+            }
         }
-        /// @note Prefiltered サイズ
+        // Prefiltered サイズ
         {
-            /// @note デフォルト 512
+            // デフォルト 512
             int sel = 1;
             for (int i = 0; i < 4; ++i) if (s_cubeSizeVals[i] == m_prefilteredSize) sel = i;
             ImGui::SetNextItemWidth(100.0f);
-            if (property::Combo("Prefiltered Size", &sel, s_cubeSizeLabels, 4))
+            if (property::Combo("Prefiltered Size", &sel, s_cubeSizeLabels, 4)) {
                 m_prefilteredSize = s_cubeSizeVals[sel];
+            }
         }
         ImGui::SetNextItemWidth(100.0f);
         property::DragInt("Prefiltered Mips", &m_prefilteredMips, 1.0f, 3, 8);
-        if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayShort))
+        if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayShort)) {
             ImGui::SetTooltip("Mip 0 = roughness 0 (mirror), Mip N-1 = roughness 1 (diffuse-like)");
+        }
         ImGui::SetNextItemWidth(100.0f);
         property::DragInt("BRDF LUT Size", &m_brdfLutSize, 1.0f, 128, 512);
         ImGui::SetNextItemWidth(100.0f);
         property::DragInt("Sample Count",  &m_sampleCount, 4.0f, 256, 4096);
-        if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayShort))
+        if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayShort)) {
             ImGui::SetTooltip("GGX 重点サンプリング数。大きいほど高品質だがベイクが遅くなる");
+        }
     }
 
     ImGui::Separator();
@@ -147,7 +158,7 @@ void IblBakePanel::OnRenderContent(EditorContext& ctx)
 
     ImGui::EndDisabled();
 
-    /// @name ベイクボタン
+    // ベイクボタン
     const bool canBake = m_hdriPath[0] != '\0'
                       && m_outputDir[0] != '\0'
                       && m_baseName[0]  != '\0'
@@ -169,11 +180,13 @@ void IblBakePanel::OnRenderContent(EditorContext& ctx)
             progress < 0 ? LOCT("Cancelling...") : progress >= SAVE_PROGRESS ? LOCT("Saving files...")
             : progress >= 25 ? LOCT("Baking IBL...") : LOCT("Preparing HDRI..."));
         ImGui::BeginDisabled(progress < 0 || progress >= SAVE_PROGRESS);
-        if (ImGui::Button(LOCT("Cancel"))) (void)InvokeOperator(ctx, "ibl.cancel");
+        if (ImGui::Button(LOCT("Cancel"))) {
+            (void)InvokeOperator(ctx, "ibl.cancel");
+        }
         ImGui::EndDisabled();
     }
 
-    /// @note ステータス表示
+    // ステータス表示
     if (!m_statusMsg.empty()) {
         ImGui::SameLine();
         const ImVec4 green = ImVec4(0.3f, 1.0f, 0.3f, 1.0f);
@@ -206,7 +219,9 @@ void IblBakePanel::StartBake(EditorContext& ctx)
     input.reportProgress = [this](int progress) {
         int observed = m_progress.load();
         while (observed >= 0) {
-            if (m_progress.compare_exchange_weak(observed, progress)) return true;
+            if (m_progress.compare_exchange_weak(observed, progress)) {
+                return true;
+            }
         }
         return false;
     };
@@ -216,9 +231,13 @@ void IblBakePanel::StartBake(EditorContext& ctx)
         path = std::string(m_hdriPath.data()), directory = std::string(m_outputDir.data()),
         name = std::string(m_baseName.data())]() mutable {
         BakeResult result;
-        if (!input.reportProgress(5)) return result;
+        if (!input.reportProgress(5)) {
+            return result;
+        }
         HdriPixels pixels = HdriLoader::Load(path);
-        if (!input.reportProgress(18)) return result;
+        if (!input.reportProgress(18)) {
+            return result;
+        }
         if (!pixels.IsValid()) {
             result.message = "Could not read the HDRI file.";
             return result;
@@ -245,10 +264,14 @@ bool IblBakePanel::CancelBake()
         m_statusMsg = LOCT("IBL bake cancelled.");
         return true;
     }
-    if (m_status != Status::Baking) return false;
+    if (m_status != Status::Baking) {
+        return false;
+    }
     int observed = m_progress.load();
     while (observed >= 0 && observed < SAVE_PROGRESS) {
-        if (m_progress.compare_exchange_weak(observed, -1)) return true;
+        if (m_progress.compare_exchange_weak(observed, -1)) {
+            return true;
+        }
     }
     return false;
 }
@@ -266,7 +289,7 @@ void IblBakePanel::FinishBake(EditorContext& ctx, const BakeResult& result)
         return;
     }
 
-    /// @note 描画リソースの更新は Editor フレームで行う。
+    // 描画リソースの更新は Editor フレームで行う。
     if (ctx.resources) {
         ctx.resources->ReloadTexture(result.output.envCubemapPath);
         ctx.resources->ReloadTexture(result.output.irradiancePath);
@@ -282,7 +305,9 @@ void IblBakePanel::FinishBake(EditorContext& ctx, const BakeResult& result)
 void IblBakePanel::OnShutdown()
 {
     (void)CancelBake();
-    if (m_bake.valid()) m_bake.wait();
+    if (m_bake.valid()) {
+        m_bake.wait();
+    }
 }
 
-} /// @note namespace fbzz::editor
+} // namespace fbzz::editor

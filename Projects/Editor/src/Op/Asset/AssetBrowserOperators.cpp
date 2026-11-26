@@ -57,20 +57,27 @@ struct ColorFolder {
 
 std::optional<ColorFolder> ResolveColorFolder(const EditorContext& ctx, const std::string& input)
 {
-    if (ctx.projectRoot.empty() || input.empty() || input.find('\0') != std::string::npos)
+    if (ctx.projectRoot.empty() || input.empty() || input.find('\0') != std::string::npos) {
         return std::nullopt;
+    }
     const auto project = FileSystem::PathFromUtf8(ctx.projectRoot);
     auto path = FileSystem::PathFromUtf8(input);
     if (!path.is_absolute()) {
-        if (path.has_root_path()) return std::nullopt;
+        if (path.has_root_path()) {
+            return std::nullopt;
+        }
         path = project / path;
     }
     const auto absolute = FileSystem::NormalizePathSeparators(FileSystem::PathToUtf8(path.lexically_normal()));
     path = FileSystem::PathFromUtf8(absolute);
     std::error_code error;
-    if (!fs::is_directory(path, error)) return std::nullopt;
+    if (!fs::is_directory(path, error)) {
+        return std::nullopt;
+    }
     const auto canonicalPath = fs::canonical(path, error);
-    if (error) return std::nullopt;
+    if (error) {
+        return std::nullopt;
+    }
 
     const auto assetsRoot = FileSystem::PathToUtf8((project / "Assets").lexically_normal());
     std::string root = assetsRoot;
@@ -79,30 +86,39 @@ std::optional<ColorFolder> ResolveColorFolder(const EditorContext& ctx, const st
         const auto mount = std::find_if(mounts.begin(), mounts.end(), [&](const AssetMount& entry) {
             return FileSystem::IsChildPathText(absolute, entry.path);
         });
-        if (mount == mounts.end()) return std::nullopt;
+        if (mount == mounts.end()) {
+            return std::nullopt;
+        }
         root = mount->path;
     }
 
     const auto canonicalRoot = fs::canonical(FileSystem::PathFromUtf8(root), error);
     if (error || !FileSystem::IsChildPathText(FileSystem::PathToUtf8(canonicalPath),
-                                              FileSystem::PathToUtf8(canonicalRoot)))
+                                              FileSystem::PathToUtf8(canonicalRoot))) {
         return std::nullopt;
+    }
 
-    /// @note 非表示のフォルダの配下も一覧とツリーから到達できない。
+    // 非表示のフォルダの配下も一覧とツリーから到達できない。
     for (auto current = path; !FileSystem::SamePathText(FileSystem::PathToUtf8(current), root);
          current = current.parent_path()) {
-        if (!IsVisibleAssetBrowserFolder(FileSystem::PathToUtf8(current))) return std::nullopt;
+        if (!IsVisibleAssetBrowserFolder(FileSystem::PathToUtf8(current))) {
+            return std::nullopt;
+        }
     }
     return ColorFolder{std::move(path), canonicalPath};
 }
 
 std::optional<std::uint32_t> ParseFolderColor(const std::string& text)
 {
-    if (text.size() != 7 || text.front() != '#') return std::nullopt;
+    if (text.size() != 7 || text.front() != '#') {
+        return std::nullopt;
+    }
     unsigned rgb = 0;
     const char* end = text.data() + text.size();
     const auto parsed = std::from_chars(text.data() + 1, end, rgb, 16);
-    if (parsed.ec != std::errc{} || parsed.ptr != end) return std::nullopt;
+    if (parsed.ec != std::errc{} || parsed.ptr != end) {
+        return std::nullopt;
+    }
     return IM_COL32((rgb >> 16) & 0xFFu, (rgb >> 8) & 0xFFu, rgb & 0xFFu, 255u);
 }
 
@@ -110,15 +126,21 @@ std::vector<std::string> CollectColorFolders(const ColorFolder& folder, bool rec
                                              std::error_code& error)
 {
     std::vector<std::string> keys{AssetBrowserFolderKey(FileSystem::PathToUtf8(folder.path))};
-    if (!recursive) return keys;
+    if (!recursive) {
+        return keys;
+    }
     for (fs::recursive_directory_iterator entry(folder.path, error);
          !error && entry != fs::recursive_directory_iterator{}; entry.increment(error)) {
         const bool isDirectory = entry->is_directory(error);
-        if (error) break;
-        if (!isDirectory) continue;
+        if (error) {
+            break;
+        }
+        if (!isDirectory) {
+            continue;
+        }
         const auto path = FileSystem::PathToUtf8(entry->path());
         if (IsVisibleAssetBrowserFolder(path)) {
-            /// @note ジャンクションやシンボリックリンクから別の枝や祖先へ再帰しない。
+            // ジャンクションやシンボリックリンクから別の枝や祖先へ再帰しない。
             const auto canonical = fs::canonical(entry->path(), error);
             const auto expected = folder.canonicalPath / entry->path().lexically_relative(folder.path);
             if (!error && FileSystem::SamePathText(FileSystem::PathToUtf8(canonical),
@@ -128,7 +150,9 @@ std::vector<std::string> CollectColorFolders(const ColorFolder& folder, bool rec
             }
         }
         entry.disable_recursion_pending();
-        if (error) break;
+        if (error) {
+            break;
+        }
     }
     return keys;
 }
@@ -136,11 +160,15 @@ std::vector<std::string> CollectColorFolders(const ColorFolder& folder, bool rec
 bool RememberFolderColor(EditorContext& ctx, std::uint32_t color)
 {
     auto& recent = ctx.assetBrowserRecentFolderColors;
-    if (!recent.empty() && recent.front() == color) return false;
+    if (!recent.empty() && recent.front() == color) {
+        return false;
+    }
     std::erase(recent, color);
     recent.insert(recent.begin(), color);
     constexpr std::size_t MAX_RECENT_COLORS = 8;
-    if (recent.size() > MAX_RECENT_COLORS) recent.resize(MAX_RECENT_COLORS);
+    if (recent.size() > MAX_RECENT_COLORS) {
+        recent.resize(MAX_RECENT_COLORS);
+    }
     return true;
 }
 
@@ -149,14 +177,18 @@ OpResult UpdateFolderColor(EditorContext& ctx, const ColorFolder& folder,
 {
     std::error_code error;
     const auto keys = CollectColorFolders(folder, recursive, error);
-    if (error) return OpResult::Err("FOLDER_READ_FAILED", "サブフォルダを列挙できませんでした。");
+    if (error) {
+        return OpResult::Err("FOLDER_READ_FAILED", "サブフォルダを列挙できませんでした。");
+    }
 
     auto& colors = ctx.assetBrowserFolderColors;
     int changedCount = 0;
     for (const auto& key : keys) {
         if (color) {
             const auto found = colors.find(key);
-            if (found != colors.end() && found->second == *color) continue;
+            if (found != colors.end() && found->second == *color) {
+                continue;
+            }
             colors.insert_or_assign(key, *color);
             ++changedCount;
         } else if (colors.erase(key) != 0) {
@@ -165,7 +197,9 @@ OpResult UpdateFolderColor(EditorContext& ctx, const ColorFolder& folder,
     }
     const bool recentChanged = color && RememberFolderColor(ctx, *color);
     const bool changed = changedCount > 0 || recentChanged;
-    if (changed) ctx.requestEditorSettingsSave = true;
+    if (changed) {
+        ctx.requestEditorSettingsSave = true;
+    }
     auto data = OpData::MakeObject();
     data.Set("path", OpData(FileSystem::PathToUtf8(folder.path)));
     data.Set("color", color ? OpData(FormatAssetBrowserFolderColor(*color)) : OpData{});
@@ -188,22 +222,30 @@ void RegisterFolderColorOperators(OperatorRegistry& registry)
         op.desc = inspect ? "フォルダの色を #RRGGBB または未設定 (null) で返す。"
                          : "Asset Browser のフォルダ色設定を変更して保存する。";
         op.params = { AssetPathParam("Assets/ 以下のプロジェクト相対パス、または Asset Browser 内の絶対パス") };
-        if (set)
+        if (set) {
             op.params.push_back({"color", OpParamType::String, "不透明な RGB 色 (#RRGGBB)", true});
-        if (!inspect)
+        }
+        if (!inspect) {
             op.params.push_back({"recursive", OpParamType::Bool, "表示対象のサブフォルダにも適用する", false, false});
+        }
         op.poll = [set](const OpContext& context, const OpArgs& args) {
-            if (args.Empty()) return !context.ctx.projectRoot.empty();
+            if (args.Empty()) {
+                return !context.ctx.projectRoot.empty();
+            }
             return (!set || ParseFolderColor(args.GetString("color")).has_value()) &&
                 ResolveColorFolder(context.ctx, args.GetString("path")).has_value();
         };
         op.exec = [inspect, set](OpContext& context, const OpArgs& args) {
             auto& ctx = context.ctx;
             const auto folder = ResolveColorFolder(ctx, args.GetString("path"));
-            if (!folder) return OpResult::Err("BAD_PATH", "Asset Browser に表示できるフォルダを指定してください。");
+            if (!folder) {
+                return OpResult::Err("BAD_PATH", "Asset Browser に表示できるフォルダを指定してください。");
+            }
             if (!inspect) {
                 const auto color = set ? ParseFolderColor(args.GetString("color")) : std::nullopt;
-                if (set && !color) return OpResult::Err("BAD_COLOR", "#RRGGBB で色を指定してください。");
+                if (set && !color) {
+                    return OpResult::Err("BAD_COLOR", "#RRGGBB で色を指定してください。");
+                }
                 return UpdateFolderColor(ctx, *folder, color, args.GetBool("recursive"));
             }
             const auto path = FileSystem::PathToUtf8(folder->path);
@@ -219,7 +261,7 @@ void RegisterFolderColorOperators(OperatorRegistry& registry)
 }
 
 /// @brief プロジェクト直下に C# Script 用プロジェクトが一つだけあるか確認する。
-/// @param projectRoot ゲームプロジェクトのルート。
+/// @param[in] projectRoot ゲームプロジェクトのルート。
 /// @return `<Project>.Scripts.csproj` が一つだけなら true。
 bool HasSingleManagedProject(const std::string& projectRoot)
 {
@@ -228,13 +270,14 @@ bool HasSingleManagedProject(const std::string& projectRoot)
     for (std::filesystem::directory_iterator iterator(projectRoot, error);
          !error && iterator != std::filesystem::directory_iterator(); iterator.increment(error)) {
         const std::filesystem::path path = iterator->path();
-        if (path.extension() == ".csproj" && path.stem().wstring().ends_with(L".Scripts"))
+        if (path.extension() == ".csproj" && path.stem().wstring().ends_with(L".Scripts")) {
             ++count;
+        }
     }
     return !error && count == 1;
 }
 
-} /// @note namespace
+} // namespace
 
 void RegisterAssetBrowserOperators(OperatorRegistry& registry)
 {
@@ -274,8 +317,9 @@ void RegisterAssetBrowserOperators(OperatorRegistry& registry)
                     "Exactly one <Project>.Scripts.csproj is required; use the SDK ManagedStarter to set it up.");
             const std::string scriptsDir = context.ctx.projectRoot + "/Assets/Scripts";
             const std::string path = ScriptCodeGen::CreateCSharpClass(name, scriptsDir, kind);
-            if (path.empty())
+            if (path.empty()) {
                 return OpResult::Err("CREATE_FAILED", "C# source could not be created; the name may already exist.");
+            }
 
             context.ctx.requestAssetBrowserRefresh = true;
             context.ctx.requestRevealAssetPath = path;
@@ -342,4 +386,4 @@ void RegisterAssetBrowserOperators(OperatorRegistry& registry)
 
 }
 
-} /// @note namespace fbzz::editor
+} // namespace fbzz::editor

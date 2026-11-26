@@ -58,11 +58,13 @@ void RemoveStaged()
     std::error_code ignored;
     std::filesystem::remove(g_bake.staged, ignored);
 }
-} /// @note namespace
+} // namespace
 
 std::string WaterfallFluidBakeStatus(std::string_view node)
 {
-    if (g_bake.node != node) return {};
+    if (g_bake.node != node) {
+        return {};
+    }
     if (g_bake.result.valid())
         return g_bake.progress->cancel.load() ? "Canceling 3D fluid bake..."
             : "Baking 3D fluid: " + std::to_string(g_bake.progress->percent.load()) + "%";
@@ -71,14 +73,22 @@ std::string WaterfallFluidBakeStatus(std::string_view node)
 
 void PollWaterfallFluidBake(EditorContext& ctx)
 {
-    if (!g_bake.result.valid()) return;
+    if (!g_bake.result.valid()) {
+        return;
+    }
     const bool sameScene = CanAuthor(ctx) && ctx.activeScene == g_bake.scene && ctx.projectRoot == g_bake.project
         && ctx.activeScene->GetRenderSceneGeneration() == g_bake.generation;
-    if (!sameScene) g_bake.progress->cancel.store(true);
-    if (g_bake.result.wait_for(std::chrono::seconds(0)) != std::future_status::ready) return;
+    if (!sameScene) {
+        g_bake.progress->cancel.store(true);
+    }
+    if (g_bake.result.wait_for(std::chrono::seconds(0)) != std::future_status::ready) {
+        return;
+    }
     g_bake.status = g_bake.result.get();
     if (g_bake.progress->cancel.load() || !g_bake.status.empty()) {
-        if (g_bake.status.empty()) g_bake.status = "Bake canceled.";
+        if (g_bake.status.empty()) {
+            g_bake.status = "Bake canceled.";
+        }
         RemoveStaged();
         return;
     }
@@ -124,7 +134,9 @@ void PollWaterfallFluidBake(EditorContext& ctx)
             return false;
         }
         component->fluidClip = value;
-        if (context->markSceneDirty) context->markSceneDirty();
+        if (context->markSceneDirty) {
+            context->markSceneDirty();
+        }
         return true;
     };
     const auto previous = waterfall->fluidClip;
@@ -156,20 +168,31 @@ void RegisterWaterfallFluidOperators(OperatorRegistry& registry)
         node.required = false;
         op.params.push_back(std::move(node));
         op.poll = [action](const OpContext& context, const OpArgs& args) {
-            if (!context.ctx.activeScene || (action != "status" && !CanAuthor(context.ctx))) return false;
+            if (!context.ctx.activeScene || (action != "status" && !CanAuthor(context.ctx))) {
+                return false;
+            }
             auto* owner = ResolveNode(context.ctx, args);
-            if (!owner || !owner->GetComponent<scene::WaterfallComponent>()) return false;
-            if (action == "status") return true;
-            if (action == "cancel") return g_bake.result.valid() && g_bake.node == owner->instanceId;
+            if (!owner || !owner->GetComponent<scene::WaterfallComponent>()) {
+                return false;
+            }
+            if (action == "status") {
+                return true;
+            }
+            if (action == "cancel") {
+                return g_bake.result.valid() && g_bake.node == owner->instanceId;
+            }
             return !g_bake.result.valid();
         };
         op.exec = [action](OpContext& context, const OpArgs& args) {
             auto& ctx = context.ctx;
-            if (!ctx.activeScene || (action != "status" && !CanAuthor(ctx)))
+            if (!ctx.activeScene || (action != "status" && !CanAuthor(ctx))) {
                 return OpResult::Err("NO_EDIT_SCENE", "Open the edit scene before baking.");
+            }
             auto* owner = ResolveNode(ctx, args);
             auto* waterfall = owner ? owner->GetComponent<scene::WaterfallComponent>() : nullptr;
-            if (!waterfall) return OpResult::Err("NO_WATERFALL", "Select a Waterfall component.");
+            if (!waterfall) {
+                return OpResult::Err("NO_WATERFALL", "Select a Waterfall component.");
+            }
             if (action == "status") {
                 OpData data = OpData::MakeObject();
                 data.Set("bake", OpData(WaterfallFluidBakeStatus(owner->instanceId)));
@@ -178,10 +201,14 @@ void RegisterWaterfallFluidOperators(OperatorRegistry& registry)
                 return OpResult::Data(std::move(data));
             }
             if (action == "cancel") {
-                if (g_bake.result.valid() && g_bake.node == owner->instanceId) g_bake.progress->cancel.store(true);
+                if (g_bake.result.valid() && g_bake.node == owner->instanceId) {
+                    g_bake.progress->cancel.store(true);
+                }
                 return OpResult{};
             }
-            if (g_bake.result.valid()) return OpResult::Err("WATERFALL_BUSY", "A waterfall bake is running.");
+            if (g_bake.result.valid()) {
+                return OpResult::Err("WATERFALL_BUSY", "A waterfall bake is running.");
+            }
 
             asset::WaterfallFluidBakeInput input;
             std::string error;
@@ -195,8 +222,9 @@ void RegisterWaterfallFluidOperators(OperatorRegistry& registry)
             job.progress = std::make_shared<Progress>();
             job.assetName = "Waterfall-" + asset::AssetDatabase::GenerateGuid() + ".wfall";
             const auto stage = util::FileSystem::PathFromUtf8(ctx.projectRoot) / "Library" / "WaterfallBake";
-            if (!util::FileSystem::EnsureDirectory(stage))
+            if (!util::FileSystem::EnsureDirectory(stage)) {
                 return OpResult::Err("WATERFALL_STAGE", "Could not create the waterfall bake staging directory.");
+            }
             job.staged = stage / job.assetName;
             job.project = ctx.projectRoot;
             job.node = owner->instanceId;
@@ -215,4 +243,4 @@ void RegisterWaterfallFluidOperators(OperatorRegistry& registry)
         registry.Register(std::move(op));
     }
 }
-} /// @note namespace fbzz::editor
+} // namespace fbzz::editor

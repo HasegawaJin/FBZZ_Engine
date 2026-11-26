@@ -36,4 +36,4 @@ constexpr bool HasScope(HotkeyScope set, HotkeyScope test)
     return (static_cast<std::uint32_t>(set) & static_cast<std::uint32_t>(test)) != 0;
 }
 
-} /// @note namespace fbzz::editor
+} // namespace fbzz::editor

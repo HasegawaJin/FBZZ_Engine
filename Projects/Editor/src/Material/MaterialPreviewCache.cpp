@@ -62,12 +62,18 @@ bool ParticleValuesEqual(const asset::ParticleMaterialSettings& a,
 
 bool ParameterValuesEqual(const asset::MaterialAssetAuthoring& a, const asset::MaterialAssetAuthoring& b)
 {
-    if (a.params.size() != b.params.size()) return false;
+    if (a.params.size() != b.params.size()) {
+        return false;
+    }
     for (const auto& [name, values] : a.params) {
         const auto found = b.params.find(name);
-        if (found == b.params.end() || found->second.size() != values.size()) return false;
+        if (found == b.params.end() || found->second.size() != values.size()) {
+            return false;
+        }
         for (std::size_t index = 0; index < values.size(); ++index)
-            if (FloatBits(values[index]) != FloatBits(found->second[index])) return false;
+            if (FloatBits(values[index]) != FloatBits(found->second[index])) {
+                return false;
+            }
     }
     return true;
 }
@@ -111,7 +117,9 @@ PreviewFrameKey MakePreviewFrameKey(std::uint64_t sourceRevision, const RenderDe
 
 bool UsesPreviewTime(Flavor flavor, bool animate)
 {
-    if (!animate) return false;
+    if (!animate) {
+        return false;
+    }
     return flavor == Flavor::Water || flavor == Flavor::Fiber
         || flavor == Flavor::Trail || flavor == Flavor::PostProcess;
 }

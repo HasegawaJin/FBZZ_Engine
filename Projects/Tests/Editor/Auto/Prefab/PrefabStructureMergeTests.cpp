@@ -37,9 +37,13 @@ toml::table Document(std::initializer_list<toml::table> objects)
 const toml::table* FindObject(const toml::table& document, const std::string& id)
 {
     const auto* objects = document["gameobjects"].as_array();
-    if (!objects) return nullptr;
+    if (!objects) {
+        return nullptr;
+    }
     for (const auto& object : *objects)
-        if (const auto* table = object.as_table(); table && (*table)["instanceId"].value_or(std::string{}) == id) return table;
+        if (const auto* table = object.as_table(); table && (*table)["instanceId"].value_or(std::string{}) == id) {
+            return table;
+        }
     return nullptr;
 }
 

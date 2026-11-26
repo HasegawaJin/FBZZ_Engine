@@ -27,7 +27,9 @@ void RegisterGameViewportOperators(OperatorRegistry& registry)
                   "layoutは入力やOSフォーカスを取得せず現在の配置だけを最大化/復元する。";
         if (configure) {
             OpParam aspect{"aspect", OpParamType::String, "画面比率プリセット", false, {}};
-            for (const auto& option : GAME_VIEWPORT_ASPECT_OPTIONS) aspect.enumValues.emplace_back(option.key);
+            for (const auto& option : GAME_VIEWPORT_ASPECT_OPTIONS) {
+                aspect.enumValues.emplace_back(option.key);
+            }
             op.params.push_back(std::move(aspect));
             OpParam focus{"playFocusMode", OpParamType::String, "次回Playの表示方法", false, {}};
             focus.enumValues.assign(PLAY_FOCUS_KEYS.begin(), PLAY_FOCUS_KEYS.end());
@@ -43,8 +45,12 @@ void RegisterGameViewportOperators(OperatorRegistry& registry)
             op.params.push_back(std::move(layout));
         }
         op.poll = [configure](const OpContext& context, const OpArgs& args) {
-            if (configure && args.Has("layout") && context.ctx.mapEditingMode) return false;
-            if (!configure || (!args.Has("playFocusMode") && !args.Has("executionMode"))) return true;
+            if (configure && args.Has("layout") && context.ctx.mapEditingMode) {
+                return false;
+            }
+            if (!configure || (!args.Has("playFocusMode") && !args.Has("executionMode"))) {
+                return true;
+            }
             return (!context.ctx.playMode || context.ctx.playMode->IsInEditor())
                 && (!context.ctx.standalonePlay || !context.ctx.standalonePlay->IsActive());
         };
@@ -77,7 +83,9 @@ void RegisterGameViewportOperators(OperatorRegistry& registry)
                     ctx.gameViewportLayout = layout == "maximized" ? EditorContext::GameViewportLayout::MAXIMIZED
                         : layout == "normal" ? EditorContext::GameViewportLayout::NORMAL : EditorContext::GameViewportLayout::AUTOMATIC;
                 }
-                if (persist) ctx.requestEditorSettingsSave = true;
+                if (persist) {
+                    ctx.requestEditorSettingsSave = true;
+                }
             }
             auto data = OpData::MakeObject();
             const auto aspectIndex = std::clamp(static_cast<int>(ctx.gameViewportAspect), 0,
@@ -97,4 +105,4 @@ void RegisterGameViewportOperators(OperatorRegistry& registry)
         registry.Register(std::move(op));
     }
 }
-} /// @note namespace fbzz::editor
+} // namespace fbzz::editor

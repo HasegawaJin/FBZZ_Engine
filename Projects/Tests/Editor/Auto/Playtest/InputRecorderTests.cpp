@@ -44,8 +44,12 @@ const JsonValue* FindKeyEvent(const JsonValue& events, const std::string& key, b
 {
     for (const JsonValue& event : events.AsArray()) {
         const JsonValue* inject = event.Find("inject");
-        if (inject == nullptr || inject->Find("kind")->AsString() != "key") continue;
-        if (inject->Find("key")->AsString() == key && inject->Find("pressed")->AsBool() == pressed) return &event;
+        if (inject == nullptr || inject->Find("kind")->AsString() != "key") {
+            continue;
+        }
+        if (inject->Find("key")->AsString() == key && inject->Find("pressed")->AsBool() == pressed) {
+            return &event;
+        }
     }
     return nullptr;
 }

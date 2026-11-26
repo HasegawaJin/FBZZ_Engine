@@ -20,11 +20,13 @@ void DrawNavigationInspectors(scene::GameObject* go, EditorContext& ctx, std::an
         [](scene::NavMeshSurfaceComponent& surface, EditorContext&) {
             static constexpr const char* kCollectNames[] = { "This Object", "Volume" };
             int collectIdx = static_cast<int>(surface.collectObjects);
-            if (property::Combo("Collect Objects", &collectIdx, kCollectNames, 2))
+            if (property::Combo("Collect Objects", &collectIdx, kCollectNames, 2)) {
                 surface.collectObjects = static_cast<scene::NavMeshCollectObjects>(collectIdx);
+            }
 
-            if (surface.collectObjects == scene::NavMeshCollectObjects::Volume)
+            if (surface.collectObjects == scene::NavMeshCollectObjects::Volume) {
                 widgets::DragVec3("Size", surface.size, 0.5f);
+            }
 
             property::DragInt("Agent Type ID", &surface.agentTypeId, 1, 0, 31);
             property::DragFloat("Cell Size", &surface.cellSize, 0.05f, 0.1f, 10.0f);
@@ -54,10 +56,15 @@ void DrawNavigationInspectors(scene::GameObject* go, EditorContext& ctx, std::an
             ImGui::Spacing();
             const bool isBaking = (surface.bakeState == scene::NavMeshBakeState::Baking);
             const bool isQueued = surface.needsBake;
-            if (isBaking || isQueued) ImGui::BeginDisabled();
-            if (ImGui::Button("Bake NavMesh"))
+            if (isBaking || isQueued) {
+                ImGui::BeginDisabled();
+            }
+            if (ImGui::Button("Bake NavMesh")) {
                 surface.needsBake = true;
-            if (isBaking || isQueued) ImGui::EndDisabled();
+            }
+            if (isBaking || isQueued) {
+                ImGui::EndDisabled();
+            }
             ImGui::SameLine();
 
             if (surface.needsBake) {
@@ -87,8 +94,9 @@ void DrawNavigationInspectors(scene::GameObject* go, EditorContext& ctx, std::an
         [](scene::NavMeshModifierComponent& modifier, EditorContext&) {
             static constexpr const char* kModeNames[] = { "Not Walkable", "Walkable" };
             int modeIdx = static_cast<int>(modifier.mode);
-            if (property::Combo("Mode", &modeIdx, kModeNames, 2))
+            if (property::Combo("Mode", &modeIdx, kModeNames, 2)) {
                 modifier.mode = static_cast<scene::NavMeshModifierMode>(modeIdx);
+            }
             if (modifier.mode == scene::NavMeshModifierMode::NotWalkable) {
                 ImGui::TextDisabled("Carves a hole in the NavMesh using this GameObject's Collider.");
             } else {
@@ -115,19 +123,24 @@ void DrawNavigationInspectors(scene::GameObject* go, EditorContext& ctx, std::an
                     if (sc) {
                         for (scene::EntityID sid : sc->GetEntities<scene::NavMeshSurfaceComponent>()) {
                             auto* surf = sc->GetComponent<scene::NavMeshSurfaceComponent>(sid);
-                            if (!surf || !surf->navMesh.IsValid()) continue;
-                            if (surf->agentTypeId != agent.agentTypeId) continue;
+                            if (!surf || !surf->navMesh.IsValid()) {
+                                continue;
+                            }
+                            if (surf->agentTypeId != agent.agentTypeId) {
+                                continue;
+                            }
                             const float y = surf->navMesh.SampleHeight(go->transform.worldPosition);
                             if (y > -1e6f) {
                                 float colliderOffset = 0.0f;
-                                if (const auto* cap = go->GetComponent<scene::CapsuleColliderComponent>())
+                                if (const auto* cap = go->GetComponent<scene::CapsuleColliderComponent>()) {
                                     colliderOffset = cap->halfHeight + cap->radius - cap->center.y;
-                                else if (const auto* cyl = go->GetComponent<scene::CylinderColliderComponent>())
+                                } else if (const auto* cyl = go->GetComponent<scene::CylinderColliderComponent>()) {
                                     colliderOffset = cyl->halfHeight - cyl->center.y;
-                                else if (const auto* box = go->GetComponent<scene::BoxColliderComponent>())
+                                } else if (const auto* box = go->GetComponent<scene::BoxColliderComponent>()) {
                                     colliderOffset = box->size.y * 0.5f - box->center.y;
-                                else if (const auto* sph = go->GetComponent<scene::SphereColliderComponent>())
+                                } else if (const auto* sph = go->GetComponent<scene::SphereColliderComponent>()) {
                                     colliderOffset = sph->radius - sph->center.y;
+                                }
                                 const float snapY = y + colliderOffset;
                                 go->transform.worldPosition.y = snapY;
                                 if (auto* parent = go->GetParent()) {
@@ -138,7 +151,9 @@ void DrawNavigationInspectors(scene::GameObject* go, EditorContext& ctx, std::an
                                 } else {
                                     go->transform.position.y = snapY;
                                 }
-                                if (ctx.markSceneDirty) ctx.markSceneDirty();
+                                if (ctx.markSceneDirty) {
+                                    ctx.markSceneDirty();
+                                }
                             }
                             break;
                         }
@@ -152,10 +167,12 @@ void DrawNavigationInspectors(scene::GameObject* go, EditorContext& ctx, std::an
             property::DragInt("Area Mask",            &agent.areaMask, 1, -1, 0x7fffffff);
 
             ImGui::Spacing();
-            if (agent.target.IsAssigned())
+            if (agent.target.IsAssigned()) {
                 widgets::ReadOnlyText("Target Follow", "active");
-            if (agent.isStuck)
+            }
+            if (agent.isStuck) {
                 widgets::ColoredText("Stuck! (path recalculated)", { 1.0f, 0.35f, 0.25f, 1.0f });
+            }
             const char* stateLabel =
                 (agent.state == scene::NavMeshAgentState::TRAVERSING_LINK) ? "Traversing Link" :
                 (agent.state == scene::NavMeshAgentState::MOVING)          ? (agent.isStopped ? "Paused" : "Moving") :
@@ -168,12 +185,18 @@ void DrawNavigationInspectors(scene::GameObject* go, EditorContext& ctx, std::an
                 widgets::ReadOnlyText("Remaining Distance", distBuf);
 
                 if (agent.isStopped) {
-                    if (ImGui::Button("Resume")) agent.isStopped = false;
+                    if (ImGui::Button("Resume")) {
+                        agent.isStopped = false;
+                    }
                 } else {
-                    if (ImGui::Button("Pause")) agent.isStopped = true;
+                    if (ImGui::Button("Pause")) {
+                        agent.isStopped = true;
+                    }
                 }
                 ImGui::SameLine();
-                if (ImGui::Button("Cancel Path")) agent.Stop();
+                if (ImGui::Button("Cancel Path")) {
+                    agent.Stop();
+                }
             }
         });
 
@@ -181,14 +204,15 @@ void DrawNavigationInspectors(scene::GameObject* go, EditorContext& ctx, std::an
         [go](scene::NavMeshPatrolComponent& patrol, EditorContext&) {
             int modeIdx = static_cast<int>(patrol.mode);
             static constexpr const char* kModeNames[] = { "Loop", "Ping-Pong" };
-            if (property::Combo("Mode", &modeIdx, kModeNames, 2))
+            if (property::Combo("Mode", &modeIdx, kModeNames, 2)) {
                 patrol.mode = static_cast<scene::NavMeshPatrolComponent::Mode>(modeIdx);
+            }
             property::DragFloat("Wait Time (s)", &patrol.waitTime, 0.05f, 0.0f, 60.0f);
 
             ImGui::Spacing();
             ImGui::TextDisabled("%zu waypoints", patrol.waypoints.size());
 
-            /// @note Per-waypoint データ表示切り替え
+            // Per-waypoint データ表示切り替え
             static bool showPerWaypoint = false;
             property::Checkbox("Per-Waypoint Settings", &showPerWaypoint);
 
@@ -196,15 +220,20 @@ void DrawNavigationInspectors(scene::GameObject* go, EditorContext& ctx, std::an
             for (size_t i = 0; i < patrol.waypoints.size(); ++i) {
                 ImGui::PushID(static_cast<int>(i));
                 const bool isCurrent = (i == patrol.currentIndex);
-                if (isCurrent) ImGui::TextColored({ 1.0f, 0.85f, 0.1f, 1.0f }, "%zu", i);
-                else           ImGui::Text("%zu", i);
+                if (isCurrent) {
+                    ImGui::TextColored({ 1.0f, 0.85f, 0.1f, 1.0f }, "%zu", i);
+                } else {
+                    ImGui::Text("%zu", i);
+                }
                 ImGui::SameLine();
                 widgets::DragVec3("##wp", patrol.waypoints[i], 0.1f);
                 ImGui::SameLine();
-                if (ImGui::Button("X")) removeIndex = static_cast<int>(i);
+                if (ImGui::Button("X")) {
+                    removeIndex = static_cast<int>(i);
+                }
 
                 if (showPerWaypoint) {
-                    /// @note waypointWaitTimes を waypoints と同サイズに揃える
+                    // waypointWaitTimes を waypoints と同サイズに揃える
                     patrol.waypointWaitTimes.resize(patrol.waypoints.size(), 0.0f);
                     patrol.waypointSpeeds.resize(patrol.waypoints.size(), 0.0f);
                     ImGui::Indent();
@@ -217,14 +246,17 @@ void DrawNavigationInspectors(scene::GameObject* go, EditorContext& ctx, std::an
             }
             if (removeIndex >= 0) {
                 patrol.waypoints.erase(patrol.waypoints.begin() + removeIndex);
-                if (removeIndex < static_cast<int>(patrol.waypointWaitTimes.size()))
+                if (removeIndex < static_cast<int>(patrol.waypointWaitTimes.size())) {
                     patrol.waypointWaitTimes.erase(patrol.waypointWaitTimes.begin() + removeIndex);
-                if (removeIndex < static_cast<int>(patrol.waypointSpeeds.size()))
+                }
+                if (removeIndex < static_cast<int>(patrol.waypointSpeeds.size())) {
                     patrol.waypointSpeeds.erase(patrol.waypointSpeeds.begin() + removeIndex);
+                }
             }
 
-            if (go && ImGui::Button("+ Add Waypoint (here)"))
+            if (go && ImGui::Button("+ Add Waypoint (here)")) {
                 patrol.waypoints.push_back(go->transform.worldPosition);
+            }
             ImGui::SameLine();
             if (ImGui::Button("Clear All")) {
                 patrol.waypoints.clear();
@@ -252,12 +284,14 @@ void DrawNavigationInspectors(scene::GameObject* go, EditorContext& ctx, std::an
             property::DragFloat("View Angle (deg)", &sensor.viewAngleDeg, 1.0f, 1.0f, 360.0f);
             char tagBuf[128];
             std::snprintf(tagBuf, sizeof(tagBuf), "%s", sensor.targetTag.c_str());
-            if (property::InputText("Target Tag", tagBuf, sizeof(tagBuf)))
+            if (property::InputText("Target Tag", tagBuf, sizeof(tagBuf))) {
                 sensor.targetTag = tagBuf;
+            }
             property::Checkbox("Use Line of Sight", &sensor.useLineOfSight);
             property::Checkbox("Auto Chase", &sensor.autoChase);
-            if (sensor.autoChase)
+            if (sensor.autoChase) {
                 property::DragFloat("Chase Repath Interval", &sensor.chaseRepathInterval, 0.02f, 0.05f, 5.0f);
+            }
             property::DragFloat("Memory Time (s)",   &sensor.memoryTime,      0.05f, 0.0f, 30.0f);
             property::DragFloat("Scan Interval (s)", &sensor.scanInterval,    0.01f, 0.0f, 2.0f);
             property::DragFloat("Height Threshold",  &sensor.heightThreshold, 0.1f,  0.0f, 50.0f);
@@ -277,4 +311,4 @@ void DrawNavigationInspectors(scene::GameObject* go, EditorContext& ctx, std::an
         });
 }
 
-} /// @note namespace fbzz::editor
+} // namespace fbzz::editor

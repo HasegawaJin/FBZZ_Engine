@@ -28,4 +28,4 @@ namespace fbzz::editor {
 /// @note GUID は現在の索引から解決する。未登録なら空文字列で、古いヒント先へ保存しない。
 [[nodiscard]] std::string ToProjectAssetDiskPath(std::string_view projectRoot, std::string_view assetPath);
 
-} /// @note namespace fbzz::editor
+} // namespace fbzz::editor

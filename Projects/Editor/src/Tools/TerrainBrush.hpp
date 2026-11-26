@@ -22,7 +22,7 @@ float SampleTerrainPatchNoise(float worldX, float worldZ, float scale, std::uint
 /// @brief ブラシ中心からの距離に対する減衰カーブ。
 enum class TerrainFalloff : std::uint8_t {
     Linear,
-    Smooth,   ///< @note smoothstep。
+    Smooth,   ///< smoothstep。
     Gaussian,
 };
 
@@ -30,13 +30,13 @@ enum class TerrainFalloff : std::uint8_t {
 /// @note 保存済み int 値と AI バスの op 名を変えないため、追加は必ず末尾へ置く。
 enum class TerrainSculptOp : std::uint8_t {
     Raise,
-    Lower,            ///< @note 基準面より下へ掘れる。
-    Smooth,           ///< @note 周囲 4 近傍を使う。
+    Lower,            ///< 基準面より下へ掘れる。
+    Smooth,           ///< 周囲 4 近傍を使う。
     Flatten,
-    Stamp,            ///< @note height = max(h, weight)。
-    Noise,            ///< @note fBm 値ノイズを加算する。
-    ThermalErosion,   ///< @note 安息角を超えた斜面を崩す。
-    HydraulicErosion, ///< @note 水滴が削って運び、低い所へ置く。
+    Stamp,            ///< height = max(h, weight)。
+    Noise,            ///< fBm 値ノイズを加算する。
+    ThermalErosion,   ///< 安息角を超えた斜面を崩す。
+    HydraulicErosion, ///< 水滴が削って運び、低い所へ置く。
     Terrace,
 };
 
@@ -46,13 +46,13 @@ struct TerrainBrush {
     float          strength = 0.05f;
     TerrainFalloff falloff  = TerrainFalloff::Smooth;
 
-    float         noiseScale       = 8.0f;  ///< @note 最も粗いオクターブの周期 [m]。
-    int           noiseOctaves     = 4;     ///< @note [1, 8]。
-    std::uint32_t seed             = 1;     ///< @note Noise / HydraulicErosion の乱数の種。
-    float         terraceStep      = 2.0f;  ///< @note 段の高さ [m]。
-    float         terraceSharpness = 0.5f;  ///< @note 0 = 変化なし、1 = 垂直な段。
-    float         talusDegrees     = 35.0f; ///< @note これより急な斜面を崩す [度]。
-    int           erosionDroplets  = 48;    ///< @note 1 回の適用で落とす水滴の数。
+    float         noiseScale       = 8.0f;  ///< 最も粗いオクターブの周期 [m]。
+    int           noiseOctaves     = 4;     ///< [1, 8]。
+    std::uint32_t seed             = 1;     ///< Noise / HydraulicErosion の乱数の種。
+    float         terraceStep      = 2.0f;  ///< 段の高さ [m]。
+    float         terraceSharpness = 0.5f;  ///< 0 = 変化なし、1 = 垂直な段。
+    float         talusDegrees     = 35.0f; ///< これより急な斜面を崩す [度]。
+    int           erosionDroplets  = 48;    ///< 1 回の適用で落とす水滴の数。
 };
 
 /// @brief ワールド座標を Terrain の heightData が使うローカル座標へ変換する。
@@ -78,10 +78,10 @@ int ResolvePaintLayerForTerrain(const scene::TerrainComponent& terrain,
                                 int                            preferredLayer);
 
 /// @brief ブラシを heightData へ適用する。
-/// @param hitLocal Terrain ローカル座標。
-/// @param flattenTargetWorldHeight Flatten のときだけ使う基準高さ（ローカル Y [m]）。
-/// @param dt 押し続けた時間に比例して効く対話ツールの意味論を保つための秒数。
-/// @param strokeStep 同じストローク内で何回目の適用か。HydraulicErosion の乱数を回ごとに変える。
+/// @param[in] hitLocal Terrain ローカル座標。
+/// @param[in] flattenTargetWorldHeight Flatten のときだけ使う基準高さ（ローカル Y [m]）。
+/// @param[in] dt 押し続けた時間に比例して効く対話ツールの意味論を保つための秒数。
+/// @param[in] strokeStep 同じストローク内で何回目の適用か。HydraulicErosion の乱数を回ごとに変える。
 /// @return 高さが変わった頂点を含む矩形。変更がなければ空。
 /// @note 描画・コライダーの失効は呼び出し側の責務。
 /// @see https://history.siggraph.org/learning/the-synthesis-and-rendering-of-eroded-fractal-terrains-by-musgrave-kolb-and-mace/
@@ -95,7 +95,7 @@ scene::TerrainHeightRegion ApplyTerrainSculpt(scene::TerrainComponent& terrain,
                         std::uint32_t            strokeStep = 0);
 
 /// @brief ブラシでスプラットを layerIndex へ寄せる (terrain_splat::BlendToward)。
-/// @param layerIndex Terrain ごとに解決済みの番号 [0, LayerCount)。範囲外なら何もしない。
+/// @param[in] layerIndex Terrain ごとに解決済みの番号 [0, LayerCount)。範囲外なら何もしない。
 /// @note 呼び出し後に TerrainComponent::RequestSplatRebuild() を立てるのは呼び出し側の責務。
 /// @return 変更されたスプラット頂点を囲む格子範囲。
 scene::TerrainHeightRegion ApplyTerrainPaint(scene::TerrainComponent& terrain,
@@ -105,7 +105,8 @@ scene::TerrainHeightRegion ApplyTerrainPaint(scene::TerrainComponent& terrain,
                        float                    dt);
 
 /// @brief 始点から終点へ線形に傾く坂を作る。線分から radius 以内をフォールオフ付きで寄せる。
-/// @param startLocal / endLocal Terrain ローカル座標。y が坂の両端の高さ [m]。
+/// @param[in] startLocal 坂の始点を Terrain ローカル座標で指定する。Y は高さ [m]。
+/// @param[in] endLocal 坂の終点を Terrain ローカル座標で指定する。Y は高さ [m]。
 /// @note 1 ストロークに 1 回だけ呼ぶ (dt を掛けない)。strength = 1 で線分上は坂の高さに一致する。
 /// @return 高さが変わった頂点を含む矩形。変更がなければ空。
 scene::TerrainHeightRegion ApplyTerrainRamp(scene::TerrainComponent& terrain,
@@ -114,7 +115,7 @@ scene::TerrainHeightRegion ApplyTerrainRamp(scene::TerrainComponent& terrain,
                       const TerrainBrush&      brush);
 
 /// @brief セル中心がブラシ円に入るセルの穴を立てる / 消す。
-/// @param edited 変更セルを囲む頂点範囲を加算する。不要なら null。
+/// @param[in,out] edited 変更セルを囲む頂点範囲を加算する。不要なら null。
 /// @return 1 セルでも変化したか。
 /// @note 呼び出し後に TerrainComponent::RequestHoleRebuild() を立てるのは呼び出し側の責務。
 bool ApplyTerrainHole(scene::TerrainComponent& terrain,
@@ -123,4 +124,4 @@ bool ApplyTerrainHole(scene::TerrainComponent& terrain,
                       bool                     hole,
                       scene::TerrainHeightRegion* edited = nullptr);
 
-} /// @note namespace fbzz::editor
+} // namespace fbzz::editor

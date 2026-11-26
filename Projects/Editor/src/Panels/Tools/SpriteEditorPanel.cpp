@@ -61,13 +61,15 @@ void DrawCheckerboard(ImDrawList* drawList, ImVec2 min, ImVec2 max)
 /// @note Sprite 設定変更後、同じ Texture を参照する UIImage の UV / 9-slice 再解決を要求する。
 void InvalidateSpriteUsers(EditorContext& ctx, const std::string& editedTexturePath)
 {
-    if (!ctx.activeScene) return;
+    if (!ctx.activeScene) {
+        return;
+    }
     const std::filesystem::path editedTexture =
         util::FileSystem::PathFromUtf8(editedTexturePath).lexically_normal();
     for (auto [image] : ctx.activeScene->View<scene::UIImage>()) {
         std::string texturePath;
         std::string spriteToken;
-        /// @note 状態別スプライトで差し替え中なら、今描いている絵のほうを見る。
+        // 状態別スプライトで差し替え中なら、今描いている絵のほうを見る。
         (void)asset::ParseSpriteReference(
             image.EffectiveTexturePath(), texturePath, spriteToken);
         const std::filesystem::path resolvedTexture = util::FileSystem::PathFromUtf8(
@@ -82,7 +84,7 @@ void InvalidateSpriteUsers(EditorContext& ctx, const std::string& editedTextureP
     }
 }
 
-} /// @note namespace
+} // namespace
 
 /// @note 初回表示を Sprite Sheet 全体と右下プロパティを同時に扱える実用サイズで開く。
 void SpriteEditorPanel::OnBeforeBegin(EditorContext&)
@@ -125,13 +127,17 @@ bool SpriteEditorPanel::OpenWorkingCopy(const std::string& metaPath)
         m_status = "Apply or Revert the Inspector Import Settings before opening this Texture.";
         return false;
     }
-    if (m_metaPath == metaPath) return true;
+    if (m_metaPath == metaPath) {
+        return true;
+    }
     const auto previousMeta = m_metaPath;
     const auto previousTexture = m_texturePath;
     m_metaPath = metaPath;
     m_texturePath = metaPath.ends_with(".meta")
         ? metaPath.substr(0, metaPath.size() - 5) : metaPath;
-    if (LoadWorkingCopy()) return true;
+    if (LoadWorkingCopy()) {
+        return true;
+    }
     m_metaPath = previousMeta;
     m_texturePath = previousTexture;
     return false;
@@ -199,7 +205,7 @@ bool SpriteEditorPanel::Apply(EditorContext& ctx)
         asset::SpriteRect& sprite = persisted.settings.sprites.front();
         if (sprite.x == 0 && sprite.y == 0
             && sprite.width == m_textureWidth && sprite.height == m_textureHeight) {
-            /// @note Single の全面 Sprite は 0 サイズ表現へ戻し、元画像差し替え後も全面追従させる。
+            // Single の全面 Sprite は 0 サイズ表現へ戻し、元画像差し替え後も全面追従させる。
             sprite.width = 0;
             sprite.height = 0;
         }
@@ -225,7 +231,9 @@ bool SpriteEditorPanel::Revert()
 {
     auto queued = m_pendingUndoSettings.extract(m_metaPath);
     if (!LoadWorkingCopy()) {
-        if (!queued.empty()) m_pendingUndoSettings.insert(std::move(queued));
+        if (!queued.empty()) {
+            m_pendingUndoSettings.insert(std::move(queued));
+        }
         return false;
     }
     m_status = "Reverted.";
@@ -234,14 +242,18 @@ bool SpriteEditorPanel::Revert()
 
 bool SpriteEditorPanel::LoadTextureDimensions(EditorContext& ctx)
 {
-    if (!ctx.resources) return false;
+    if (!ctx.resources) {
+        return false;
+    }
     const auto resetVersion = ctx.resources->GetResetVersion();
     if (!m_texture.IsValid() || m_textureResetVersion != resetVersion) {
         m_texture = ctx.resources->LoadTexture(m_texturePath);
         m_textureResetVersion = resetVersion;
     }
     const auto* texture = ctx.resources->Get(m_texture);
-    if (!texture) return false;
+    if (!texture) {
+        return false;
+    }
     m_textureWidth = texture->GetWidth();
     m_textureHeight = texture->GetHeight();
     return m_textureWidth > 0 && m_textureHeight > 0;
@@ -250,8 +262,12 @@ bool SpriteEditorPanel::LoadTextureDimensions(EditorContext& ctx)
 void SpriteEditorPanel::ExpandFullSpriteRects()
 {
     for (auto& sprite : m_working.settings.sprites) {
-        if (sprite.width == 0) sprite.width = m_textureWidth - std::min(sprite.x, m_textureWidth);
-        if (sprite.height == 0) sprite.height = m_textureHeight - std::min(sprite.y, m_textureHeight);
+        if (sprite.width == 0) {
+            sprite.width = m_textureWidth - std::min(sprite.x, m_textureWidth);
+        }
+        if (sprite.height == 0) {
+            sprite.height = m_textureHeight - std::min(sprite.y, m_textureHeight);
+        }
     }
 }
 
@@ -282,8 +298,8 @@ void SpriteEditorPanel::PushUndoSnapshot(
             return;
         }
 
-        /// @note 別 Texture の履歴も失わず保持し、次に対象を開いた時に未適用作業コピーとして復元する。
-        /// @note       ディスクへ即時保存すると Inspector の未適用値を上書きするため、Apply までは分離する。
+        // 別 Texture の履歴も失わず保持し、次に対象を開いた時に未適用作業コピーとして復元する。
+        // ディスクへ即時保存すると Inspector の未適用値を上書きするため、Apply までは分離する。
         m_pendingUndoSettings[targetMetaPath] = settings;
         m_status = "Undo/Redo changes queued for another Sprite asset.";
     };
@@ -367,7 +383,9 @@ void SpriteEditorPanel::TrimSelected(uint32_t textureWidth, uint32_t textureHeig
     }
 
     auto& sprite = m_working.settings.sprites[static_cast<std::size_t>(m_selected)];
-    if (!spriteslice::Trim(m_texturePath, sprite, m_status, textureWidth, textureHeight)) return;
+    if (!spriteslice::Trim(m_texturePath, sprite, m_status, textureWidth, textureHeight)) {
+        return;
+    }
     m_undoDescription = "Trim SpriteRect";
     m_dirty = true;
     m_status = "Trimmed selected SpriteRect.";
@@ -416,10 +434,12 @@ void SpriteEditorPanel::RefreshReferrerCount(const EditorContext& ctx)
 {
     m_referrerCount = 0;
     m_referrerFileCount = 0;
-    if (ctx.projectRoot.empty()) return;
+    if (ctx.projectRoot.empty()) {
+        return;
+    }
 
-    /// @note ID は .scene / .prefab / .mat のほか、スクリプトへ文字列で埋め込まれることもある
-    /// @note       (KeyIcons.hpp のような生成表)。テキストとして開けるものは全部見る。
+    // ID は .scene / .prefab / .mat のほか、スクリプトへ文字列で埋め込まれることもある
+    // (KeyIcons.hpp のような生成表)。テキストとして開けるものは全部見る。
     static const std::vector<std::string> kTextExtensions = {
         ".scene", ".prefab", ".mat", ".animcontroller", ".vfx", ".sequence",
         ".fzdata", ".toml", ".json", ".hpp", ".cpp", ".terrain"
@@ -427,8 +447,12 @@ void SpriteEditorPanel::RefreshReferrerCount(const EditorContext& ctx)
     std::vector<std::string> ids;
     ids.reserve(m_working.settings.sprites.size());
     for (const asset::SpriteRect& sprite : m_working.settings.sprites)
-        if (!sprite.id.empty()) ids.push_back(sprite.id);
-    if (ids.empty()) return;
+        if (!sprite.id.empty()) {
+            ids.push_back(sprite.id);
+        }
+    if (ids.empty()) {
+        return;
+    }
 
     std::error_code ec;
     const std::filesystem::path assetsRoot =
@@ -436,19 +460,32 @@ void SpriteEditorPanel::RefreshReferrerCount(const EditorContext& ctx)
     for (std::filesystem::recursive_directory_iterator
              it(assetsRoot, std::filesystem::directory_options::skip_permission_denied, ec), end;
          it != end; it.increment(ec)) {
-        if (ec) { ec.clear(); continue; }
-        if (!it->is_regular_file(ec)) continue;
+        if (ec) {
+            ec.clear();
+            continue;
+        }
+        if (!it->is_regular_file(ec)) {
+            continue;
+        }
         const std::string ext = util::StringUtils::ToLower(
             util::FileSystem::PathToUtf8(it->path().extension()));
         if (std::find(kTextExtensions.begin(), kTextExtensions.end(), ext)
-            == kTextExtensions.end()) continue;
-        if (it->file_size(ec) > 8u * 1024u * 1024u) continue;
+            == kTextExtensions.end()) {
+            continue;
+        }
+        if (it->file_size(ec) > 8u * 1024u * 1024u) {
+            continue;
+        }
 
         std::string text;
-        if (!util::FileSystem::ReadText(util::FileSystem::PathToUtf8(it->path()), text)) continue;
+        if (!util::FileSystem::ReadText(util::FileSystem::PathToUtf8(it->path()), text)) {
+            continue;
+        }
         int hits = 0;
         for (const std::string& id : ids)
-            if (text.find(id) != std::string::npos) ++hits;
+            if (text.find(id) != std::string::npos) {
+                ++hits;
+            }
         if (hits > 0) {
             m_referrerCount += hits;
             ++m_referrerFileCount;
@@ -458,10 +495,13 @@ void SpriteEditorPanel::RefreshReferrerCount(const EditorContext& ctx)
 
 void SpriteEditorPanel::RenameAll(const std::string& prefix, int startIndex)
 {
-    if (m_working.settings.sprites.empty()) return;
+    if (m_working.settings.sprites.empty()) {
+        return;
+    }
     int index = startIndex;
-    for (asset::SpriteRect& sprite : m_working.settings.sprites)
+    for (asset::SpriteRect& sprite : m_working.settings.sprites) {
         sprite.name = prefix + std::to_string(index++);
+    }
     m_undoDescription = "Rename Sprites";
     m_dirty = true;
     m_status = "Renamed " + std::to_string(m_working.settings.sprites.size()) + " Sprites.";
@@ -657,7 +697,7 @@ void SpriteEditorPanel::DrawCanvas(EditorContext& ctx, void* textureId,
                           toScreen(static_cast<float>(sprite.x) + width, static_cast<float>(sprite.y) + height) };
     };
 
-    /// @note Unity と同様に Grid Slice の設定変更を確定前から Texture 上へプレビューする。
+    // Unity と同様に Grid Slice の設定変更を確定前から Texture 上へプレビューする。
     if (m_slicePopupOpen && m_sliceType != SliceType::Automatic) {
         const int offsetX =
             std::clamp(m_sliceOffsetX, 0, static_cast<int>(textureWidth) - 1);
@@ -763,7 +803,9 @@ void SpriteEditorPanel::DrawCanvas(EditorContext& ctx, void* textureId,
             m_createPreview.y = static_cast<uint32_t>(textureMouse.y);
             const bool insideImage = mouse.x >= imageMin.x && mouse.x <= imageMax.x
                 && mouse.y >= imageMin.y && mouse.y <= imageMax.y;
-            if (insideImage) m_dragMode = DragMode::Create;
+            if (insideImage) {
+                m_dragMode = DragMode::Create;
+            }
         } else {
             m_selected = hitIndex;
             asset::SpriteRect& sprite =
@@ -807,10 +849,15 @@ void SpriteEditorPanel::DrawCanvas(EditorContext& ctx, void* textureId,
                 const float db = std::abs(mouse.y - borderBottom);
                 const float nearest = std::min({ dl, dr, dt, db });
                 if (nearest <= HANDLE) {
-                    if (nearest == dl) m_dragMode = DragMode::BorderLeft;
-                    else if (nearest == dr) m_dragMode = DragMode::BorderRight;
-                    else if (nearest == dt) m_dragMode = DragMode::BorderTop;
-                    else m_dragMode = DragMode::BorderBottom;
+                    if (nearest == dl) {
+                        m_dragMode = DragMode::BorderLeft;
+                    } else if (nearest == dr) {
+                        m_dragMode = DragMode::BorderRight;
+                    } else if (nearest == dt) {
+                        m_dragMode = DragMode::BorderTop;
+                    } else {
+                        m_dragMode = DragMode::BorderBottom;
+                    }
                 } else if (mouse.x >= rectMin.x && mouse.x <= rectMax.x
                     && mouse.y >= rectMin.y && mouse.y <= rectMax.y) {
                     m_dragMode = DragMode::Move;
@@ -901,8 +948,12 @@ void SpriteEditorPanel::DrawCanvas(EditorContext& ctx, void* textureId,
                     || m_dragMode == DragMode::ResizeBottomRight) {
                     bottom = current.y;
                 }
-                if (right < left) std::swap(right, left);
-                if (bottom < top) std::swap(bottom, top);
+                if (right < left) {
+                    std::swap(right, left);
+                }
+                if (bottom < top) {
+                    std::swap(bottom, top);
+                }
                 sprite.x = static_cast<uint32_t>(std::clamp(left, 0.0f, static_cast<float>(textureWidth - 1)));
                 sprite.y = static_cast<uint32_t>(std::clamp(top, 0.0f, static_cast<float>(textureHeight - 1)));
                 sprite.width = static_cast<uint32_t>(std::max(1.0f, std::min(right, static_cast<float>(textureWidth)) - sprite.x));
@@ -912,26 +963,27 @@ void SpriteEditorPanel::DrawCanvas(EditorContext& ctx, void* textureId,
         }
     }
 
-    if (m_dragMode == DragMode::Move)
+    if (m_dragMode == DragMode::Move) {
         ImGui::SetMouseCursor(ImGuiMouseCursor_ResizeAll);
-    else if (m_dragMode == DragMode::ResizeLeft
-        || m_dragMode == DragMode::ResizeRight)
+    } else if (m_dragMode == DragMode::ResizeLeft
+        || m_dragMode == DragMode::ResizeRight) {
         ImGui::SetMouseCursor(ImGuiMouseCursor_ResizeEW);
-    else if (m_dragMode == DragMode::ResizeTop
-        || m_dragMode == DragMode::ResizeBottom)
+    } else if (m_dragMode == DragMode::ResizeTop
+        || m_dragMode == DragMode::ResizeBottom) {
         ImGui::SetMouseCursor(ImGuiMouseCursor_ResizeNS);
-    else if (m_dragMode == DragMode::ResizeTopLeft
-        || m_dragMode == DragMode::ResizeBottomRight)
+    } else if (m_dragMode == DragMode::ResizeTopLeft
+        || m_dragMode == DragMode::ResizeBottomRight) {
         ImGui::SetMouseCursor(ImGuiMouseCursor_ResizeNWSE);
-    else if (m_dragMode == DragMode::ResizeTopRight
-        || m_dragMode == DragMode::ResizeBottomLeft)
+    } else if (m_dragMode == DragMode::ResizeTopRight
+        || m_dragMode == DragMode::ResizeBottomLeft) {
         ImGui::SetMouseCursor(ImGuiMouseCursor_ResizeNESW);
-    else if (m_dragMode == DragMode::Pivot
+    } else if (m_dragMode == DragMode::Pivot
         || m_dragMode == DragMode::BorderLeft
         || m_dragMode == DragMode::BorderTop
         || m_dragMode == DragMode::BorderRight
-        || m_dragMode == DragMode::BorderBottom)
+        || m_dragMode == DragMode::BorderBottom) {
         ImGui::SetMouseCursor(ImGuiMouseCursor_Hand);
+    }
 
     if (m_dragMode != DragMode::None && ImGui::IsMouseReleased(ImGuiMouseButton_Left)) {
         if (m_dragMode == DragMode::Create
@@ -1040,7 +1092,7 @@ void SpriteEditorPanel::OnRenderContent(EditorContext& ctx)
     }
     const uint32_t textureWidth = m_textureWidth;
     const uint32_t textureHeight = m_textureHeight;
-    /// @note width/height=0 はSingle Spriteの「Texture全体」表現なので、視覚編集用作業コピーだけ実寸へ展開する。
+    // width/height=0 はSingle Spriteの「Texture全体」表現なので、視覚編集用作業コピーだけ実寸へ展開する。
     ExpandFullSpriteRects();
     const asset::TextureImportSettings settingsBeforeRender = m_working.settings;
     const ValidationResult validation = Validate(textureWidth, textureHeight);
@@ -1048,7 +1100,7 @@ void SpriteEditorPanel::OnRenderContent(EditorContext& ctx)
         && ImGui::Shortcut(ImGuiMod_Ctrl | ImGuiKey_S);
     bool revertedThisFrame = false;
 
-    /// @note Unity Sprite Editor と同じ順序で、左に Sprite Rect 操作、右に表示・保存操作を置く。
+    // Unity Sprite Editor と同じ順序で、左に Sprite Rect 操作、右に表示・保存操作を置く。
     bool openSlicePopup = false;
     ImGui::BeginChild(
         "##sprite_toolbar", { 0.0f, 38.0f }, false,
@@ -1070,9 +1122,15 @@ void SpriteEditorPanel::OnRenderContent(EditorContext& ctx)
     ImGui::SameLine();
     const bool hasSelection = m_selected >= 0
         && m_selected < static_cast<int>(m_working.settings.sprites.size());
-    if (!hasSelection) ImGui::BeginDisabled();
-    if (ImGui::Button("Trim")) TrimSelected(textureWidth, textureHeight);
-    if (!hasSelection) ImGui::EndDisabled();
+    if (!hasSelection) {
+        ImGui::BeginDisabled();
+    }
+    if (ImGui::Button("Trim")) {
+        TrimSelected(textureWidth, textureHeight);
+    }
+    if (!hasSelection) {
+        ImGui::EndDisabled();
+    }
     ImGui::SameLine();
     if (ImGui::Button("Frame All")) {
         FrameAll();
@@ -1094,19 +1152,31 @@ void SpriteEditorPanel::OnRenderContent(EditorContext& ctx)
     ImGui::SetNextItemWidth(110.0f);
     ImGui::SliderFloat("##Zoom", &m_zoom, 0.1f, 16.0f, "%.2fx",
                        ImGuiSliderFlags_Logarithmic);
-    if (ImGui::IsItemHovered()) ImGui::SetTooltip("Zoom");
+    if (ImGui::IsItemHovered()) {
+        ImGui::SetTooltip("Zoom");
+    }
     ImGui::SameLine();
-    if (!m_dirty) ImGui::BeginDisabled();
+    if (!m_dirty) {
+        ImGui::BeginDisabled();
+    }
     if (ImGui::Button("Revert")) {
         Revert();
         revertedThisFrame = true;
     }
-    if (!m_dirty) ImGui::EndDisabled();
+    if (!m_dirty) {
+        ImGui::EndDisabled();
+    }
     ImGui::SameLine();
-    if (!validation.valid || !m_dirty) ImGui::BeginDisabled();
+    if (!validation.valid || !m_dirty) {
+        ImGui::BeginDisabled();
+    }
     const bool applyClicked = ImGui::Button("Apply");
-    if (!validation.valid || !m_dirty) ImGui::EndDisabled();
-    if (validation.valid && (applyClicked || applyShortcut)) Apply(ctx);
+    if (!validation.valid || !m_dirty) {
+        ImGui::EndDisabled();
+    }
+    if (validation.valid && (applyClicked || applyShortcut)) {
+        Apply(ctx);
+    }
     ImGui::EndChild();
 
     if (openRenamePopup) {
@@ -1128,7 +1198,7 @@ void SpriteEditorPanel::OnRenderContent(EditorContext& ctx)
         ImGui::TextDisabled("%s%d, %s%d, …",
                             m_renamePrefix, m_renameStartIndex,
                             m_renamePrefix, m_renameStartIndex + 1);
-        /// @note ID は変えないので、既存の参照は名前を付け直しても切れない。
+        // ID は変えないので、既存の参照は名前を付け直しても切れない。
         ImGui::TextDisabled("ID は変わりません (既存の参照はそのまま)");
         ImGui::Separator();
         if (ImGui::Button("Rename", { 100.0f, 0.0f })) {
@@ -1138,7 +1208,9 @@ void SpriteEditorPanel::OnRenderContent(EditorContext& ctx)
         ImGui::EndPopup();
     }
 
-    if (openSlicePopup) ImGui::OpenPopup("##slice_popup");
+    if (openSlicePopup) {
+        ImGui::OpenPopup("##slice_popup");
+    }
     ImGui::SetNextWindowSize({ 370.0f, 0.0f }, ImGuiCond_Appearing);
     if (ImGui::BeginPopup("##slice_popup")) {
         m_slicePopupOpen = true;
@@ -1149,19 +1221,21 @@ void SpriteEditorPanel::OnRenderContent(EditorContext& ctx)
         };
         int sliceType = static_cast<int>(m_sliceType);
         ImGui::SetNextItemWidth(210.0f);
-        if (ImGui::Combo("Type", &sliceType, kSliceTypeNames, 3))
+        if (ImGui::Combo("Type", &sliceType, kSliceTypeNames, 3)) {
             m_sliceType = static_cast<SliceType>(sliceType);
+        }
 
         static constexpr const char* kExistingModeNames[] = {
             "Delete Existing", "Smart", "Safe"
         };
         int existingMode = static_cast<int>(m_sliceExistingMode);
         ImGui::SetNextItemWidth(210.0f);
-        if (ImGui::Combo("Method", &existingMode, kExistingModeNames, 3))
+        if (ImGui::Combo("Method", &existingMode, kExistingModeNames, 3)) {
             m_sliceExistingMode = static_cast<SliceExistingMode>(existingMode);
+        }
 
-        /// @note Delete Existing だけは既存の ID を全部捨てる。何が壊れるかをここで言う。
-        /// @note       Smart / Safe は重なりで ID を引き継ぐので、既存の参照は生き残る。
+        // Delete Existing だけは既存の ID を全部捨てる。何が壊れるかをここで言う。
+        // Smart / Safe は重なりで ID を引き継ぐので、既存の参照は生き残る。
         if (m_sliceExistingMode == SliceExistingMode::DeleteExisting) {
             if (m_referrerCount > 0) {
                 ImGui::TextColored({ 1.0f, 0.45f, 0.3f, 1.0f },
@@ -1175,11 +1249,13 @@ void SpriteEditorPanel::OnRenderContent(EditorContext& ctx)
 
         if (m_sliceType == SliceType::CellCount) {
             ImGui::SetNextItemWidth(210.0f);
-            if (ImGui::InputInt("Column", &m_gridColumns, 1, 10))
+            if (ImGui::InputInt("Column", &m_gridColumns, 1, 10)) {
                 m_gridColumns = std::clamp(m_gridColumns, 1, 256);
+            }
             ImGui::SetNextItemWidth(210.0f);
-            if (ImGui::InputInt("Row", &m_gridRows, 1, 10))
+            if (ImGui::InputInt("Row", &m_gridRows, 1, 10)) {
                 m_gridRows = std::clamp(m_gridRows, 1, 256);
+            }
         } else if (m_sliceType == SliceType::CellSize) {
             ImGui::SetNextItemWidth(210.0f);
             if (ImGui::InputInt("Pixel Size X", &m_cellWidth, 1, 16))
@@ -1193,17 +1269,21 @@ void SpriteEditorPanel::OnRenderContent(EditorContext& ctx)
 
         if (m_sliceType != SliceType::Automatic) {
             ImGui::SetNextItemWidth(210.0f);
-            if (ImGui::InputInt("Offset X", &m_sliceOffsetX, 1, 10))
+            if (ImGui::InputInt("Offset X", &m_sliceOffsetX, 1, 10)) {
                 m_sliceOffsetX = std::max(0, m_sliceOffsetX);
+            }
             ImGui::SetNextItemWidth(210.0f);
-            if (ImGui::InputInt("Offset Y", &m_sliceOffsetY, 1, 10))
+            if (ImGui::InputInt("Offset Y", &m_sliceOffsetY, 1, 10)) {
                 m_sliceOffsetY = std::max(0, m_sliceOffsetY);
+            }
             ImGui::SetNextItemWidth(210.0f);
-            if (ImGui::InputInt("Padding X", &m_slicePaddingX, 1, 10))
+            if (ImGui::InputInt("Padding X", &m_slicePaddingX, 1, 10)) {
                 m_slicePaddingX = std::max(0, m_slicePaddingX);
+            }
             ImGui::SetNextItemWidth(210.0f);
-            if (ImGui::InputInt("Padding Y", &m_slicePaddingY, 1, 10))
+            if (ImGui::InputInt("Padding Y", &m_slicePaddingY, 1, 10)) {
                 m_slicePaddingY = std::max(0, m_slicePaddingY);
+            }
             ImGui::Checkbox("Keep Empty Rects", &m_keepEmptyRects);
         }
 
@@ -1232,10 +1312,11 @@ void SpriteEditorPanel::OnRenderContent(EditorContext& ctx)
         }
         ImGui::Separator();
         if (ImGui::Button("Slice", { 100.0f, 0.0f })) {
-            if (m_sliceType == SliceType::Automatic)
+            if (m_sliceType == SliceType::Automatic) {
                 AutoTrim(textureWidth, textureHeight);
-            else
+            } else {
                 SliceGrid(textureWidth, textureHeight);
+            }
             m_slicePopupOpen = false;
             ImGui::CloseCurrentPopup();
         }
@@ -1257,8 +1338,9 @@ void SpriteEditorPanel::OnRenderContent(EditorContext& ctx)
         m_zoom = 1.0f;
         m_pan = {};
     }
-    if (!ImGui::IsAnyItemActive() && ImGui::IsKeyPressed(ImGuiKey_Escape))
+    if (!ImGui::IsAnyItemActive() && ImGui::IsKeyPressed(ImGuiKey_Escape)) {
         m_selected = -1;
+    }
 
     DrawCanvas(ctx, textureId, textureWidth, textureHeight);
 
@@ -1276,4 +1358,4 @@ void SpriteEditorPanel::OnRenderContent(EditorContext& ctx)
     }
 }
 
-} /// @note namespace fbzz::editor
+} // namespace fbzz::editor

@@ -26,15 +26,19 @@ toml::array Vec3ToArr(const math::Vector3& v)
 toml::array Vec4ToArr(const math::Vector4& v)
 {
     toml::array a;
-    a.push_back((double)v.x); a.push_back((double)v.y);
-    a.push_back((double)v.z); a.push_back((double)v.w);
+    a.push_back((double)v.x);
+    a.push_back((double)v.y);
+    a.push_back((double)v.z);
+    a.push_back((double)v.w);
     return a;
 }
 toml::array QuatToArr(const math::Quaternion& q)
 {
     toml::array a;
-    a.push_back((double)q.x); a.push_back((double)q.y);
-    a.push_back((double)q.z); a.push_back((double)q.w);
+    a.push_back((double)q.x);
+    a.push_back((double)q.y);
+    a.push_back((double)q.z);
+    a.push_back((double)q.w);
     return a;
 }
 
@@ -43,7 +47,9 @@ toml::array QuatToArr(const math::Quaternion& q)
 ///       「壊す操作」になってしまうため。
 float ArrAt(const toml::array* arr, std::size_t i, float fallback)
 {
-    if (!arr || i >= arr->size()) return fallback;
+    if (!arr || i >= arr->size()) {
+        return fallback;
+    }
     return static_cast<float>((*arr)[i].value_or(static_cast<double>(fallback)));
 }
 
@@ -98,43 +104,57 @@ public:
     void ListField(const char* name, std::vector<float>& values) override
     {
         toml::array array;
-        for (float value : values) array.push_back(static_cast<double>(value));
+        for (float value : values) {
+            array.push_back(static_cast<double>(value));
+        }
         Current().insert_or_assign(PersistentKey(name), std::move(array));
     }
     void ListField(const char* name, std::vector<int>& values) override
     {
         toml::array array;
-        for (int value : values) array.push_back(static_cast<int64_t>(value));
+        for (int value : values) {
+            array.push_back(static_cast<int64_t>(value));
+        }
         Current().insert_or_assign(PersistentKey(name), std::move(array));
     }
     void ListField(const char* name, std::vector<bool>& values) override
     {
         toml::array array;
-        for (bool value : values) array.push_back(value);
+        for (bool value : values) {
+            array.push_back(value);
+        }
         Current().insert_or_assign(PersistentKey(name), std::move(array));
     }
     void ListField(const char* name, std::vector<std::string>& values) override
     {
         toml::array array;
-        for (const auto& value : values) array.push_back(value);
+        for (const auto& value : values) {
+            array.push_back(value);
+        }
         Current().insert_or_assign(PersistentKey(name), std::move(array));
     }
     void ListField(const char* name, std::vector<math::Vector2>& values) override
     {
         toml::array array;
-        for (const auto& value : values) array.push_back(Vec2ToArr(value));
+        for (const auto& value : values) {
+            array.push_back(Vec2ToArr(value));
+        }
         Current().insert_or_assign(PersistentKey(name), std::move(array));
     }
     void ListField(const char* name, std::vector<math::Vector3>& values) override
     {
         toml::array array;
-        for (const auto& value : values) array.push_back(Vec3ToArr(value));
+        for (const auto& value : values) {
+            array.push_back(Vec3ToArr(value));
+        }
         Current().insert_or_assign(PersistentKey(name), std::move(array));
     }
     void ListField(const char* name, std::vector<math::Vector4>& values) override
     {
         toml::array array;
-        for (const auto& value : values) array.push_back(Vec4ToArr(value));
+        for (const auto& value : values) {
+            array.push_back(Vec4ToArr(value));
+        }
         Current().insert_or_assign(PersistentKey(name), std::move(array));
     }
     void ListField(const char* name, std::vector<scene::EntityRef>& values) override
@@ -176,7 +196,9 @@ public:
 
     void EndObject() override
     {
-        if (m_stack.size() > 1) m_stack.pop_back();
+        if (m_stack.size() > 1) {
+            m_stack.pop_back();
+        }
     }
 
     std::size_t BeginObjectList(const char* name, std::size_t count) override
@@ -191,7 +213,10 @@ public:
     {
         (void)index;
         toml::array* array = m_listStack.empty() ? nullptr : m_listStack.back();
-        if (!array) { m_stack.push_back(&Current()); return; }
+        if (!array) {
+            m_stack.push_back(&Current());
+            return;
+        }
 
         array->push_back(toml::table{});
         toml::table* element = array->back().as_table();
@@ -202,7 +227,9 @@ public:
 
     std::size_t EndObjectList() override
     {
-        if (!m_listStack.empty()) m_listStack.pop_back();
+        if (!m_listStack.empty()) {
+            m_listStack.pop_back();
+        }
         return NO_REMOVE;
     }
 
@@ -216,7 +243,9 @@ public:
             value.value->Reflect(child);
         } else if (!value.preservedFieldsToml.empty()) {
             toml::parse_result parsed = toml::parse(value.preservedFieldsToml);
-            if (parsed) fields = std::move(parsed.table());
+            if (parsed) {
+                fields = std::move(parsed.table());
+            }
         }
         reference.insert("fields", std::move(fields));
         Current().insert_or_assign(PersistentKey(name), std::move(reference));
@@ -236,18 +265,21 @@ public:
 
     void Field(const char* name, float& v) override
     {
-        if (const toml::node* node = FindNode(name))
+        if (const toml::node* node = FindNode(name)) {
             v = static_cast<float>(node->value_or(static_cast<double>(v)));
+        }
     }
     void Field(const char* name, int& v) override
     {
-        if (const toml::node* node = FindNode(name))
+        if (const toml::node* node = FindNode(name)) {
             v = static_cast<int>(node->value_or(static_cast<int64_t>(v)));
+        }
     }
     void Field(const char* name, bool& v) override
     {
-        if (const toml::node* node = FindNode(name))
+        if (const toml::node* node = FindNode(name)) {
             v = node->value_or(v);
+        }
     }
     void Field(const char* name, math::Vector2& v) override
     {
@@ -266,8 +298,9 @@ public:
     }
     void Field(const char* name, std::string& v) override
     {
-        if (const toml::node* node = FindNode(name))
+        if (const toml::node* node = FindNode(name)) {
             v = node->value_or(v);
+        }
     }
     void Field(const char* name, math::Quaternion& v) override
     {
@@ -276,32 +309,39 @@ public:
     }
     void Field(const char* name, scene::ParticleCurve& v) override
     {
-        if (const toml::table* table = Current())
+        if (const toml::table* table = Current()) {
             asset::DeserializeParticleCurve(*table, PersistentKey(name), v);
+        }
     }
     void Field(const char* name, scene::ParticleGradient& v) override
     {
-        if (const toml::table* table = Current())
+        if (const toml::table* table = Current()) {
             asset::DeserializeParticleGradient(*table, PersistentKey(name), v);
+        }
     }
     void Field(const char* name, scene::EntityID& v) override
     {
         const auto* a = FindArray(name);
-        if (!a || a->size() < 2) return;
+        if (!a || a->size() < 2) {
+            return;
+        }
         v.index      = static_cast<decltype(v.index)>((*a)[0].value_or<int64_t>(v.index));
         v.generation = static_cast<decltype(v.generation)>((*a)[1].value_or<int64_t>(v.generation));
     }
     void Field(const char* name, input::KeyCode& v) override
     {
-        if (const toml::node* node = FindNode(name))
+        if (const toml::node* node = FindNode(name)) {
             v = static_cast<input::KeyCode>(node->value_or(static_cast<int64_t>(v)));
+        }
     }
     void AssetField(const char* name,
                     scene::ScriptAssetReference& v,
                     scene::ScriptAssetType) override
     {
         const toml::node* node = FindNode(name);
-        if (!node) return;
+        if (!node) {
+            return;
+        }
         if (const toml::table* assetRef = node->as_table()) {
             v.guid = (*assetRef)["guid"].value_or(std::string{});
             v.path = (*assetRef)["path"].value_or(std::string{});
@@ -311,32 +351,36 @@ public:
     {
         if (const auto* array = FindArray(name)) {
             values.clear();
-            for (const auto& node : *array)
+            for (const auto& node : *array) {
                 values.push_back(static_cast<float>(node.value_or(0.0)));
+            }
         }
     }
     void ListField(const char* name, std::vector<int>& values) override
     {
         if (const auto* array = FindArray(name)) {
             values.clear();
-            for (const auto& node : *array)
+            for (const auto& node : *array) {
                 values.push_back(static_cast<int>(node.value_or(int64_t{0})));
+            }
         }
     }
     void ListField(const char* name, std::vector<bool>& values) override
     {
         if (const auto* array = FindArray(name)) {
             values.clear();
-            for (const auto& node : *array)
+            for (const auto& node : *array) {
                 values.push_back(node.value_or(false));
+            }
         }
     }
     void ListField(const char* name, std::vector<std::string>& values) override
     {
         if (const auto* array = FindArray(name)) {
             values.clear();
-            for (const auto& node : *array)
+            for (const auto& node : *array) {
                 values.push_back(node.value_or(std::string{}));
+            }
         }
     }
     void ListField(const char* name, std::vector<math::Vector2>& values) override
@@ -374,7 +418,9 @@ public:
     void ListField(const char* name, std::vector<scene::EntityRef>& values) override
     {
         const toml::array* array = FindArray(name);
-        if (!array) return;
+        if (!array) {
+            return;
+        }
         values.clear();
         for (const auto& node : *array) {
             scene::EntityRef value;
@@ -393,7 +439,9 @@ public:
                         scene::ScriptAssetType) override
     {
         const toml::array* array = FindArray(name);
-        if (!array) return;
+        if (!array) {
+            return;
+        }
         values.clear();
         for (const auto& node : *array) {
             scene::ScriptAssetReference value;
@@ -410,14 +458,16 @@ public:
     void BeginObject(const char* name) override
     {
         const toml::node* node = FindNode(name);
-        /// @note 見つからなければ nullptr を積む (欠損スコープ)。
-        ///       スコープ対は必ず EndObject と釣り合わせる必要があるため、早期 return しない。
+        // 見つからなければ nullptr を積む (欠損スコープ)。
+        // スコープ対は必ず EndObject と釣り合わせる必要があるため、早期 return しない。
         m_stack.push_back(node ? node->as_table() : nullptr);
     }
 
     void EndObject() override
     {
-        if (m_stack.size() > 1) m_stack.pop_back();
+        if (m_stack.size() > 1) {
+            m_stack.pop_back();
+        }
     }
 
     std::size_t BeginObjectList(const char* name, std::size_t count) override
@@ -431,7 +481,10 @@ public:
     void BeginObjectElement(std::size_t index) override
     {
         const toml::array* array = m_listStack.empty() ? nullptr : m_listStack.back();
-        if (!array || index >= array->size()) { m_stack.push_back(nullptr); return; }
+        if (!array || index >= array->size()) {
+            m_stack.push_back(nullptr);
+            return;
+        }
         m_stack.push_back(array->at(index).as_table());
     }
 
@@ -439,7 +492,9 @@ public:
 
     std::size_t EndObjectList() override
     {
-        if (!m_listStack.empty()) m_listStack.pop_back();
+        if (!m_listStack.empty()) {
+            m_listStack.pop_back();
+        }
         return NO_REMOVE;
     }
 
@@ -447,7 +502,9 @@ public:
     {
         const toml::node* node = FindNode(name);
         const toml::table* reference = node ? node->as_table() : nullptr;
-        if (!reference) return;
+        if (!reference) {
+            return;
+        }
         const std::string type = (*reference)["type"].value_or(std::string{});
         const toml::table* fields = (*reference)["fields"].as_table();
         if (!value.SetType(type)) {
@@ -472,11 +529,14 @@ private:
     [[nodiscard]] const toml::node* FindNode(const char* fallback) const
     {
         const toml::table* table = Current();
-        /// @note 欠損スコープの内側
-        if (!table) return nullptr;
+        // 欠損スコープの内側
+        if (!table) {
+            return nullptr;
+        }
 
-        if (const toml::node* node = table->get(PersistentKey(fallback)))
+        if (const toml::node* node = table->get(PersistentKey(fallback))) {
             return node;
+        }
         return nullptr;
     }
 
@@ -505,11 +565,15 @@ std::string CaptureScriptSnapshot(scene::Script& script)
 
 bool ApplyScriptSnapshot(scene::Script& script, const std::string& snapshot)
 {
-    /// @note 空スナップショットは「フィールドを持たないスクリプト」なので成功扱い。
-    if (snapshot.empty()) return true;
+    // 空スナップショットは「フィールドを持たないスクリプト」なので成功扱い。
+    if (snapshot.empty()) {
+        return true;
+    }
 
     toml::parse_result parsed = toml::parse(snapshot);
-    if (!parsed) return false;
+    if (!parsed) {
+        return false;
+    }
 
     SnapshotReader reader(parsed.table());
     script.Reflect(reader);

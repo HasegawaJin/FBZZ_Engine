@@ -36,38 +36,59 @@ std::string MakeUniqueName(const std::vector<asset::SpriteRect>& sprites,
         return std::any_of(sprites.begin(), sprites.end(),
             [&name](const asset::SpriteRect& sprite) { return sprite.name == name; });
     };
-    if (!taken(requested)) return requested;
+    if (!taken(requested)) {
+        return requested;
+    }
     for (int suffix = 1; ; ++suffix) {
         const std::string candidate = requested + "_" + std::to_string(suffix);
-        if (!taken(candidate)) return candidate;
+        if (!taken(candidate)) {
+            return candidate;
+        }
     }
 }
 
-} /// @note namespace
+} // namespace
 
 bool Trim(const std::string& imagePath, asset::SpriteRect& sprite, std::string& error, uint32_t maxWidth, uint32_t maxHeight)
 {
     int width = 0, height = 0, channels = 0;
     std::unique_ptr<stbi_uc, decltype(&stbi_image_free)> pixels(stbi_load(imagePath.c_str(), &width, &height, &channels, 4), stbi_image_free);
-    if (!pixels || width <= 0 || height <= 0) { error = "Trim could not decode this image."; return false; }
+    if (!pixels || width <= 0 || height <= 0) {
+        error = "Trim could not decode this image.";
+        return false;
+    }
     const auto limitX = maxWidth == 0 ? static_cast<uint32_t>(width) : (std::min)(maxWidth, static_cast<uint32_t>(width));
     const auto limitY = maxHeight == 0 ? static_cast<uint32_t>(height) : (std::min)(maxHeight, static_cast<uint32_t>(height));
     const auto left = (std::min)(sprite.x, limitX), top = (std::min)(sprite.y, limitY);
     const auto right = sprite.width == 0 ? limitX : static_cast<uint32_t>((std::min)(static_cast<std::uint64_t>(sprite.x) + sprite.width, static_cast<std::uint64_t>(limitX)));
     const auto bottom = sprite.height == 0 ? limitY : static_cast<uint32_t>((std::min)(static_cast<std::uint64_t>(sprite.y) + sprite.height, static_cast<std::uint64_t>(limitY)));
-    uint32_t minX = right, minY = bottom, maxX = left, maxY = top; bool found = false;
+    uint32_t minX = right, minY = bottom, maxX = left, maxY = top;
+    bool found = false;
     for (auto y = top; y < bottom; ++y) for (auto x = left; x < right; ++x) {
         const auto offset = (static_cast<std::size_t>(y) * static_cast<std::size_t>(width) + x) * 4;
-        if (pixels.get()[offset + 3] <= kAlphaThreshold) continue;
-        minX = (std::min)(minX, x); minY = (std::min)(minY, y); maxX = (std::max)(maxX, x); maxY = (std::max)(maxY, y); found = true;
+        if (pixels.get()[offset + 3] <= kAlphaThreshold) {
+            continue;
+        }
+        minX = (std::min)(minX, x);
+        minY = (std::min)(minY, y);
+        maxX = (std::max)(maxX, x);
+        maxY = (std::max)(maxY, y);
+        found = true;
     }
-    if (!found) { error = "Trim found no visible pixels inside the selected SpriteRect."; return false; }
-    sprite.x = minX; sprite.y = minY; sprite.width = maxX - minX + 1; sprite.height = maxY - minY + 1;
+    if (!found) {
+        error = "Trim found no visible pixels inside the selected SpriteRect.";
+        return false;
+    }
+    sprite.x = minX;
+    sprite.y = minY;
+    sprite.width = maxX - minX + 1;
+    sprite.height = maxY - minY + 1;
     sprite.borderLeft = (std::min)(sprite.borderLeft, static_cast<float>(sprite.width));
     sprite.borderRight = (std::min)(sprite.borderRight, static_cast<float>(sprite.width) - sprite.borderLeft);
     sprite.borderTop = (std::min)(sprite.borderTop, static_cast<float>(sprite.height));
     sprite.borderBottom = (std::min)(sprite.borderBottom, static_cast<float>(sprite.height) - sprite.borderTop);
-    error.clear(); return true;
+    error.clear();
+    return true;
 }
 
 Result GenerateGrid(const std::string& imagePath,
@@ -109,7 +130,7 @@ Result GenerateGrid(const std::string& imagePath,
             (static_cast<int>(textureHeight) - offsetY + paddingY) / (cellHeight + paddingY));
     }
 
-    /// @note 空セルを捨てるときだけ画素が要る。捨てないなら復号そのものを省く。
+    // 空セルを捨てるときだけ画素が要る。捨てないなら復号そのものを省く。
     int decodedWidth = 0;
     int decodedHeight = 0;
     int decodedChannels = 0;
@@ -118,13 +139,17 @@ Result GenerateGrid(const std::string& imagePath,
         : stbi_load(imagePath.c_str(), &decodedWidth, &decodedHeight, &decodedChannels, 4);
 
     const auto hasVisiblePixels = [&](const asset::SpriteRect& rect) {
-        if (decodedPixels == nullptr || decodedWidth <= 0 || decodedHeight <= 0) return true;
+        if (decodedPixels == nullptr || decodedWidth <= 0 || decodedHeight <= 0) {
+            return true;
+        }
         const uint32_t maxX = std::min<uint32_t>(rect.x + rect.width,  static_cast<uint32_t>(decodedWidth));
         const uint32_t maxY = std::min<uint32_t>(rect.y + rect.height, static_cast<uint32_t>(decodedHeight));
         for (uint32_t y = rect.y; y < maxY; ++y) {
             for (uint32_t x = rect.x; x < maxX; ++x) {
                 const size_t pixel = (static_cast<size_t>(y) * decodedWidth + x) * 4;
-                if (decodedPixels[pixel + 3] > kAlphaThreshold) return true;
+                if (decodedPixels[pixel + 3] > kAlphaThreshold) {
+                    return true;
+                }
             }
         }
         return false;
@@ -140,8 +165,9 @@ Result GenerateGrid(const std::string& imagePath,
             const int y = params.byCellCount
                 ? offsetY + (countUsableHeight * row) / rows + paddingY * row
                 : offsetY + row * (cellHeight + paddingY);
-            if (x >= static_cast<int>(textureWidth) || y >= static_cast<int>(textureHeight))
+            if (x >= static_cast<int>(textureWidth) || y >= static_cast<int>(textureHeight)) {
                 continue;
+            }
             const int generatedWidth = params.byCellCount
                 ? (countUsableWidth * (column + 1)) / columns - (countUsableWidth * column) / columns
                 : cellWidth;
@@ -158,14 +184,18 @@ Result GenerateGrid(const std::string& imagePath,
             sprite.height = std::min<uint32_t>(static_cast<uint32_t>(generatedHeight), textureHeight - sprite.y);
             sprite.pivotX = std::clamp(params.pivotX, 0.0f, 1.0f);
             sprite.pivotY = std::clamp(params.pivotY, 0.0f, 1.0f);
-            if (params.keepEmptyRects || hasVisiblePixels(sprite))
+            if (params.keepEmptyRects || hasVisiblePixels(sprite)) {
                 result.sprites.push_back(std::move(sprite));
+            }
         }
     }
-    if (decodedPixels) stbi_image_free(decodedPixels);
+    if (decodedPixels) {
+        stbi_image_free(decodedPixels);
+    }
 
-    if (result.sprites.empty())
+    if (result.sprites.empty()) {
         result.error = "Slice produced no rectangles.";
+    }
     return result;
 }
 
@@ -177,7 +207,9 @@ Result GenerateAutoTrim(const std::string& imagePath, const AutoTrimParams& para
     int channels = 0;
     stbi_uc* pixels = stbi_load(imagePath.c_str(), &width, &height, &channels, 4);
     if (pixels == nullptr || width <= 0 || height <= 0) {
-        if (pixels) stbi_image_free(pixels);
+        if (pixels) {
+            stbi_image_free(pixels);
+        }
         result.error = "Automatic Slice could not decode this image.";
         return result;
     }
@@ -191,7 +223,9 @@ Result GenerateAutoTrim(const std::string& imagePath, const AutoTrimParams& para
         for (int seedX = 0; seedX < width; ++seedX) {
             const size_t seed = static_cast<size_t>(seedY) * static_cast<size_t>(width)
                 + static_cast<size_t>(seedX);
-            if (visited[seed] || pixels[seed * 4 + 3] <= kAlphaThreshold) continue;
+            if (visited[seed] || pixels[seed * 4 + 3] <= kAlphaThreshold) {
+                continue;
+            }
 
             int minX = seedX;
             int minY = seedY;
@@ -210,10 +244,14 @@ Result GenerateAutoTrim(const std::string& imagePath, const AutoTrimParams& para
                 for (int direction = 0; direction < 4; ++direction) {
                     const int nx = x + DX[direction];
                     const int ny = y + DY[direction];
-                    if (nx < 0 || ny < 0 || nx >= width || ny >= height) continue;
+                    if (nx < 0 || ny < 0 || nx >= width || ny >= height) {
+                        continue;
+                    }
                     const size_t next = static_cast<size_t>(ny) * static_cast<size_t>(width)
                         + static_cast<size_t>(nx);
-                    if (visited[next] || pixels[next * 4 + 3] <= kAlphaThreshold) continue;
+                    if (visited[next] || pixels[next * 4 + 3] <= kAlphaThreshold) {
+                        continue;
+                    }
                     visited[next] = 1;
                     pending.push({ nx, ny });
                 }
@@ -233,8 +271,9 @@ Result GenerateAutoTrim(const std::string& imagePath, const AutoTrimParams& para
     }
     stbi_image_free(pixels);
 
-    if (result.sprites.empty())
+    if (result.sprites.empty()) {
         result.error = "Automatic Slice found no visible alpha islands.";
+    }
     return result;
 }
 
@@ -243,8 +282,12 @@ std::vector<asset::SpriteRect> MergeIntoExisting(
     std::vector<asset::SpriteRect> generated,
     ExistingMode mode, int* outReusedCount)
 {
-    if (outReusedCount != nullptr) *outReusedCount = 0;
-    if (mode == ExistingMode::DeleteExisting) return generated;
+    if (outReusedCount != nullptr) {
+        *outReusedCount = 0;
+    }
+    if (mode == ExistingMode::DeleteExisting) {
+        return generated;
+    }
 
     std::vector<asset::SpriteRect> merged = existing;
     for (asset::SpriteRect& candidate : generated) {
@@ -262,9 +305,11 @@ std::vector<asset::SpriteRect> MergeIntoExisting(
             merged.push_back(std::move(candidate));
             continue;
         }
-        if (outReusedCount != nullptr) ++(*outReusedCount);
-        /// @note Smart は矩形だけ合わせ直す。ID・名前・pivot・Border は人が詰めた «この絵のための値»
-        /// @note       なので残す。切り直しは «位置がずれた» の修正でしかなく、既定値上書きだと当たりが静かにずれる。
+        if (outReusedCount != nullptr) {
+            ++(*outReusedCount);
+        }
+        // Smart は矩形だけ合わせ直す。ID・名前・pivot・Border は人が詰めた «この絵のための値»
+        // なので残す。切り直しは «位置がずれた» の修正でしかなく、既定値上書きだと当たりが静かにずれる。
         if (mode == ExistingMode::Smart) {
             asset::SpriteRect& target = merged[static_cast<size_t>(bestIndex)];
             target.x      = candidate.x;
@@ -276,4 +321,4 @@ std::vector<asset::SpriteRect> MergeIntoExisting(
     return merged;
 }
 
-} /// @note namespace fbzz::editor::spriteslice
+} // namespace fbzz::editor::spriteslice

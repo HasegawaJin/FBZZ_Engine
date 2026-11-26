@@ -29,13 +29,13 @@ private:
     /// @note       Sink の世代とフィルタ条件が変わったときだけ再構築し、この配列を ImGuiListClipper で間引き描画する。
     struct Row {
         /// @note ConsoleSink::GetEntries() 内の代表エントリ
-        std::size_t    entryIndex = 0;
+        std::size_t    entryIndex = 0; ///< 元のログ一覧で表示代表にするエントリーの添字。
         /// @note ConsoleSink の通し番号。行の再構築やリングバッファの押し出しを跨いでも
         /// @note       同じログ行を指し続けるため、選択はこの値で持つ (添字だと 1 行ずれる)。
-        std::uint64_t  sequence   = 0;
+        std::uint64_t  sequence   = 0; ///< 代表ログを後で選び直すための一意な通し番号。
         /// @note 集約された件数 (Collapse OFF なら常に 1)
-        int            count      = 1;
-        core::LogLevel level      = core::LogLevel::INFO;
+        int            count      = 1; ///< 同じ内容をまとめて表示する場合に数えた件数。
+        core::LogLevel level      = core::LogLevel::INFO; ///< この行のログレベル。
     };
 
     void OnRenderContent(EditorContext& ctx) override;
@@ -70,49 +70,48 @@ private:
     [[nodiscard]] std::string SelectedText() const;
     void CopySelection() const;
 
-    ConsoleSink& m_sink;
+    ConsoleSink& m_sink; ///< ログを保持する EditorApp 所有の出力先を借りる。
 
-    bool m_showDebug   = false;
-    bool m_showInfo    = true;
-    bool m_showWarn    = true;
-    bool m_showError   = true;
-    bool m_autoScroll  = true;
-    bool m_collapse    = false;
-    bool m_clearOnPlay = false;
-    bool m_showDetail  = true;
-    /// @note 詳細ペインが占める高さの比率。スプリッタで動かし、設定へ持ち越す。
-    float m_detailRatio = 0.30f;
-    std::array<char, 256> m_filterBuf = {};
-    std::string m_visibleLogText;
+    bool m_showDebug   = false; ///< Debug レベルをログ一覧に表示するか。
+    bool m_showInfo    = true; ///< Info レベルをログ一覧に表示するか。
+    bool m_showWarn    = true; ///< Warning レベルをログ一覧に表示するか。
+    bool m_showError   = true; ///< Error レベルをログ一覧に表示するか。
+    bool m_autoScroll  = true; ///< 新しいログが届いたら一覧を末尾へ送るか。
+    bool m_collapse    = false; ///< 本文などが一致するログを一行にまとめるか。
+    bool m_clearOnPlay = false; ///< Play 開始時にログを消去するか。
+    bool m_showDetail  = true; ///< 選択したログの詳細欄を表示するか。
+    float m_detailRatio = 0.30f; ///< 詳細ペインが占める高さの比率。スプリッタで動かし、設定へ持ち越す。
+    std::array<char, 256> m_filterBuf = {}; ///< コンソールのログ検索欄で編集中の文字列。
+    std::string m_visibleLogText; ///< 表示中の複数ログをまとめてコピーするための本文。
     /// @note 詳細ペインへ渡す本文。InputTextMultiline は非 const バッファを要求するため、
     /// @note 表示中の行が変わったときだけ詰め直して使い回す。
     /// @note 折り返しは幅に依存するので、行が変わったときとペイン幅が動いたときだけ詰め直す。
-    std::string   m_detailText;
-    std::uint64_t m_detailTextSequence = 0;
-    float         m_detailTextWidth    = 0.0f;
+    std::string   m_detailText; ///< 詳細ペインに表示する折り返し済みのログ本文。
+    std::uint64_t m_detailTextSequence = 0; ///< m_detailText を作ったときに選択していたログの通し番号。
+    float         m_detailTextWidth    = 0.0f; ///< 詳細欄の本文を折り返したときの有効幅 [px]。
     /// @}
 
     /// @name 表示キャッシュ (RebuildRows が更新する)
     /// @{
-    std::vector<Row> m_rows;
-    std::uint64_t    m_cachedRevision = ~0ull;  ///< @note 未構築を表す番兵
-    std::string      m_cachedFilter;
-    bool             m_cachedShowDebug = false;
-    bool             m_cachedShowInfo  = false;
-    bool             m_cachedShowWarn  = false;
-    bool             m_cachedShowError = false;
-    bool             m_cachedCollapse  = false;
+    std::vector<Row> m_rows; ///< 現在の検索条件と集約オプションで表示するログ行。
+    std::uint64_t    m_cachedRevision = ~0ull;  ///< 未構築を表す番兵
+    std::string      m_cachedFilter; ///< m_rows を組み立てたときの検索語。
+    bool             m_cachedShowDebug = false; ///< m_rows を組み立てたときの Debug 表示条件。
+    bool             m_cachedShowInfo  = false; ///< m_rows を組み立てたときの Info 表示条件。
+    bool             m_cachedShowWarn  = false; ///< m_rows を組み立てたときの Warning 表示条件。
+    bool             m_cachedShowError = false; ///< m_rows を組み立てたときの Error 表示条件。
+    bool             m_cachedCollapse  = false; ///< m_rows を組み立てたときに同じログをまとめていたか。
     /// @note フィルタ前の総数 (ツールバーのトグルに出す件数)。添字は LogLevel の値。
     /// @note 以前は W / E だけを数えて別の場所に出しており、「INFO が何件あるのか」が分からなかった。
-    std::array<int, 4> m_levelCounts = {};
+    std::array<int, 4> m_levelCounts = {}; ///< Console に表示するログレベル別の件数。
 
     /// @note 選択中の行 (ConsoleSink の通し番号)。0 は「無し」を表す番兵で、
     /// @note ConsoleSink の採番が 1 始まりなので実在の行とぶつからない。
-    std::unordered_set<std::uint64_t> m_selection;
-    std::uint64_t m_anchorSequence = 0;  ///< @note Shift 範囲の起点。Shift クリックでは動かさない
-    std::uint64_t m_detailSequence = 0;  ///< @note 詳細ペインに出す行 (最後に触った行)
-    bool m_wasInEditor = true;   ///< @note Clear on Play のエッジ検出用
+    std::unordered_set<std::uint64_t> m_selection; ///< 現在選択しているログ行の通し番号の集合。
+    std::uint64_t m_anchorSequence = 0;  ///< Shift 範囲の起点。Shift クリックでは動かさない
+    std::uint64_t m_detailSequence = 0;  ///< 詳細ペインに出す行 (最後に触った行)
+    bool m_wasInEditor = true;   ///< Clear on Play のエッジ検出用
     /// @}
 };
 
-} /// @note namespace fbzz::editor
+} // namespace fbzz::editor

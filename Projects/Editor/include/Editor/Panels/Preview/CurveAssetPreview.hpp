@@ -14,4 +14,4 @@ void DrawCurve(ImDrawList* draw, const scene::ParticleCurve& curve, ImVec2 origi
 /// @brief オーサリング色を透明度が見える市松模様の上に描く。
 void DrawGradient(ImDrawList* draw, const scene::ParticleGradient& gradient, ImVec2 origin, ImVec2 size);
 
-} /// @note namespace fbzz::editor::curvepreview
+} // namespace fbzz::editor::curvepreview

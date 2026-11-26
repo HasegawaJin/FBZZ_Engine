@@ -39,17 +39,16 @@ private:
     void EnsureWaveform(const EditorContext& ctx);
     bool DrawParameters(EditorContext& ctx);
 
-    std::string m_requestedPath;
+    std::string m_requestedPath; ///< 次に SFX Editor で開く .synth ファイルのパス。
 
-    std::vector<float> m_waveform;
-    uint64_t           m_waveformSpecHash = 0;
-    bool               m_waveformValid    = false;
-    float              m_durationSeconds  = 0.0f;
-    size_t             m_sampleCount      = 0;
+    std::vector<float> m_waveform; ///< 合成した効果音をグラフ表示するための波形サンプル。
+    uint64_t           m_waveformSpecHash = 0; ///< 波形を生成したときの合成設定のハッシュ。
+    bool               m_waveformValid    = false; ///< 編集中の合成設定に対応する波形表示データを構築済みか。
+    float              m_durationSeconds  = 0.0f; ///< 最後に合成した効果音の再生時間 [s]。
+    size_t             m_sampleCount      = 0; ///< 最後に合成した効果音のサンプル数。
 
-    bool m_autoPreview = true;
-    /// @note 値が変わったが、まだ鳴らしていない。操作を離してから 1 度だけ鳴らす。
-    bool m_previewPending = false;
+    bool m_autoPreview = true; ///< 合成設定を変更した後で効果音を自動的に試聴するか。
+    bool m_previewPending = false; ///< 値が変わったが、まだ鳴らしていない。操作を離してから 1 度だけ鳴らす。
 };
 
-} /// @note namespace fbzz::editor
+} // namespace fbzz::editor

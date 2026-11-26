@@ -33,4 +33,4 @@ void CollectTerrainPcgBounds(const scene::GameObject&, const scene::TerrainCompo
 [[nodiscard]] OpResult BuildWorldHlod(OpContext&, const OpArgs&);
 [[nodiscard]] OpResult InspectWorldStreaming(OpContext&, const OpArgs&);
 [[nodiscard]] OpResult ControlWorldStreaming(OpContext&, const OpArgs&);
-} /// @note namespace fbzz::editor
+} // namespace fbzz::editor

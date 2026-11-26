@@ -54,4 +54,4 @@ void RequestAnimationMaskPreview(std::string_view maskPath, std::string_view mod
 /// @note Animation Mask Preview Panel の本文を描画する。
 void DrawAnimationMaskPreviewPanelContent(EditorContext& ctx);
 
-} /// @note namespace fbzz::editor
+} // namespace fbzz::editor

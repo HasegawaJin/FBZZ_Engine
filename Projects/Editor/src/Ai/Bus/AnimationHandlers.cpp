@@ -40,7 +40,9 @@ scene::AnimatorComponent* FindAnimator(editor::EditorContext& ctx, const JsonVal
         return nullptr;
     }
     scene::AnimatorComponent* animator = go->GetComponent<scene::AnimatorComponent>();
-    if (animator == nullptr) error = Outcome::Err("NOT_PRESENT", "AnimatorComponent が装着されていません");
+    if (animator == nullptr) {
+        error = Outcome::Err("NOT_PRESENT", "AnimatorComponent が装着されていません");
+    }
     return animator;
 }
 
@@ -48,7 +50,9 @@ Outcome DoAnimationState(editor::EditorContext& ctx, const JsonValue& payload)
 {
     Outcome error;
     scene::AnimatorComponent* animator = FindAnimator(ctx, payload, error);
-    if (animator == nullptr) return error;
+    if (animator == nullptr) {
+        return error;
+    }
     JsonValue clips = JsonValue::MakeArray();
     for (size_t index = 0; index < animator->ClipCount(); ++index) {
         const auto& clip = animator->ClipAt(index);
@@ -83,14 +87,18 @@ Outcome DoAnimationPose(editor::EditorContext& ctx, const JsonValue& payload)
 {
     Outcome error;
     scene::AnimatorComponent* animator = FindAnimator(ctx, payload, error);
-    if (animator == nullptr) return error;
+    if (animator == nullptr) {
+        return error;
+    }
     const std::string id = StringField(payload, "id");
     GameObject* go = ctx.activeScene->FindByGuid(id);
     scene::SkinnedMeshRenderer* renderer = go->GetComponent<scene::SkinnedMeshRenderer>();
     if (renderer == nullptr) {
         for (int index = 0; index < go->GetChildCount(); ++index) {
             GameObject* child = go->GetChild(index);
-            if (child != nullptr && (renderer = child->GetComponent<scene::SkinnedMeshRenderer>()) != nullptr) break;
+            if (child != nullptr && (renderer = child->GetComponent<scene::SkinnedMeshRenderer>()) != nullptr) {
+                break;
+            }
         }
     }
     if (renderer == nullptr || renderer->model == nullptr || renderer->model->skeleton == nullptr) {
@@ -125,7 +133,9 @@ Outcome DoAnimationControl(editor::EditorContext& ctx, const JsonValue& payload,
 {
     Outcome error;
     scene::AnimatorComponent* animator = FindAnimator(ctx, payload, error);
-    if (animator == nullptr) return error;
+    if (animator == nullptr) {
+        return error;
+    }
     const std::string action = StringField(payload, "action");
     const std::string stateName = StringField(payload, "state");
     const JsonValue* timeValue = payload.Find("time");
@@ -141,9 +151,13 @@ Outcome DoAnimationControl(editor::EditorContext& ctx, const JsonValue& payload,
         const auto iterator = std::find_if(animator->states.begin(), animator->states.end(), [&](const scene::AnimationState& state) {
             return state.name == stateName;
         });
-        if (iterator == animator->states.end()) return Outcome::Err("STATE_NOT_FOUND", "Animator state が見つかりません: " + stateName);
+        if (iterator == animator->states.end()) {
+            return Outcome::Err("STATE_NOT_FOUND", "Animator state が見つかりません: " + stateName);
+        }
     }
-    if (dryRun) return DryRunPreview("animation.control:" + action);
+    if (dryRun) {
+        return DryRunPreview("animation.control:" + action);
+    }
 
     if (!stateName.empty()) {
         animator->currentStateName = stateName;
@@ -153,9 +167,11 @@ Outcome DoAnimationControl(editor::EditorContext& ctx, const JsonValue& payload,
         animator->blendWeight = 0.0f;
     }
 
-    if (action == "play") animator->playing = true;
-    else if (action == "pause") animator->playing = false;
-    else if (action == "stop") {
+    if (action == "play") {
+        animator->playing = true;
+    } else if (action == "pause") {
+        animator->playing = false;
+    } else if (action == "stop") {
         animator->playing = false;
         animator->stateTime = 0.0f;
     } else if (action == "seek") {
@@ -180,7 +196,10 @@ Outcome DoAnimationControl(editor::EditorContext& ctx, const JsonValue& payload,
                 }
                 if (clip == nullptr && !state.clipName.empty()) {
                     for (const auto& candidate : animator->Clips()) {
-                        if (candidate.name == state.clipName) { clip = &candidate; break; }
+                        if (candidate.name == state.clipName) {
+                            clip = &candidate;
+                            break;
+                        }
                     }
                 }
                 if (clip == nullptr && state.clipIndex >= 0
@@ -188,10 +207,14 @@ Outcome DoAnimationControl(editor::EditorContext& ctx, const JsonValue& payload,
                     clip = &animator->ClipAt(static_cast<size_t>(state.clipIndex));
                 }
             }
-            if (clip == nullptr || clip->frameRate <= 0.0f) return Outcome::Err("CLIP_NOT_READY", "frame seek にはロード済み clip が必要です");
+            if (clip == nullptr || clip->frameRate <= 0.0f) {
+                return Outcome::Err("CLIP_NOT_READY", "frame seek にはロード済み clip が必要です");
+            }
             seconds = static_cast<float>(frameValue->AsNumber()) / clip->frameRate;
         }
-        if (seconds < 0.0f) return Outcome::Err("BAD_ARG", "seek には time または frame が必要です");
+        if (seconds < 0.0f) {
+            return Outcome::Err("BAD_ARG", "seek には time または frame が必要です");
+        }
         animator->stateTime = seconds;
     }
     return DoAnimationState(ctx, payload);
@@ -227,12 +250,30 @@ const char* AnimatorConditionOpName(scene::ConditionOp op)
 /// @brief AnimatorConditionOpName の逆変換。未知文字列は false を返す。
 bool ParseConditionOp(const std::string& name, scene::ConditionOp& out)
 {
-    if (name == "greater")  { out = scene::ConditionOp::Greater;  return true; }
-    if (name == "less")     { out = scene::ConditionOp::Less;     return true; }
-    if (name == "equal")    { out = scene::ConditionOp::Equal;    return true; }
-    if (name == "notEqual") { out = scene::ConditionOp::NotEqual; return true; }
-    if (name == "true")     { out = scene::ConditionOp::True;     return true; }
-    if (name == "false")    { out = scene::ConditionOp::False;    return true; }
+    if (name == "greater") {
+        out = scene::ConditionOp::Greater;
+        return true;
+    }
+    if (name == "less") {
+        out = scene::ConditionOp::Less;
+        return true;
+    }
+    if (name == "equal") {
+        out = scene::ConditionOp::Equal;
+        return true;
+    }
+    if (name == "notEqual") {
+        out = scene::ConditionOp::NotEqual;
+        return true;
+    }
+    if (name == "true") {
+        out = scene::ConditionOp::True;
+        return true;
+    }
+    if (name == "false") {
+        out = scene::ConditionOp::False;
+        return true;
+    }
     return false;
 }
 
@@ -297,7 +338,7 @@ JsonValue AnimationLayerToJson(const scene::AnimationLayer& layer)
     entry.Set("maskPath", JsonValue(layer.mask.path));
     entry.Set("maskLoaded", JsonValue(layer.mask.loaded));
 
-    /// @note 独自ステートマシンの有無で、どちらの再生方式かが決まる。
+    // 独自ステートマシンの有無で、どちらの再生方式かが決まる。
     entry.Set("hasOwnStateMachine", JsonValue(!layer.states.empty()));
     entry.Set("stateCount", JsonValue(static_cast<int>(layer.states.size())));
     entry.Set("defaultState", JsonValue(layer.defaultStateName));
@@ -331,13 +372,16 @@ bool ResolveAvatarMaskPath(editor::EditorContext& ctx, const JsonValue& payload,
                            std::string& outAbsPath, Outcome& error)
 {
     const std::string path = StringField(payload, "path");
-    if (path.empty()) { error = Outcome::Err("BAD_ARG", "path が必要です"); return false; }
+    if (path.empty()) {
+        error = Outcome::Err("BAD_ARG", "path が必要です");
+        return false;
+    }
     const std::string lower = util::StringUtils::ToLower(util::FileSystem::GetExtension(path));
     if (lower != ".mask") {
         error = Outcome::Err("BAD_ARG", "path は .mask である必要があります: " + path);
         return false;
     }
-    /// @note "Assets/..." 相対も絶対も受ける。projectRoot 配下へ閉じ込める。
+    // "Assets/..." 相対も絶対も受ける。projectRoot 配下へ閉じ込める。
     outAbsPath = util::FileSystem::IsChildPathText(path, ctx.projectRoot)
         ? path
         : util::FileSystem::PathToUtf8(
@@ -370,10 +414,13 @@ Outcome DoAvatarMaskGet(editor::EditorContext& ctx, const JsonValue& payload)
 {
     std::string absPath;
     Outcome error;
-    if (!ResolveAvatarMaskPath(ctx, payload, absPath, error)) return error;
+    if (!ResolveAvatarMaskPath(ctx, payload, absPath, error)) {
+        return error;
+    }
     asset::AvatarMaskAsset mask;
-    if (!asset::LoadAvatarMaskAsset(absPath, mask))
+    if (!asset::LoadAvatarMaskAsset(absPath, mask)) {
         return Outcome::Err("NOT_FOUND", "マスクを読み込めません: " + absPath);
+    }
     return Outcome::Ok(AvatarMaskToJson(mask, StringField(payload, "path")));
 }
 
@@ -383,12 +430,15 @@ Outcome DoAvatarMaskWrite(editor::EditorContext& ctx, const JsonValue& payload, 
 {
     std::string absPath;
     Outcome error;
-    if (!ResolveAvatarMaskPath(ctx, payload, absPath, error)) return error;
+    if (!ResolveAvatarMaskPath(ctx, payload, absPath, error)) {
+        return error;
+    }
 
     const std::string action = StringField(payload, "action");
     static constexpr const char* kActions = "create/setBone/removeBone/clear/setDefaultInclude";
-    if (action.empty())
+    if (action.empty()) {
         return Outcome::Err("BAD_ARG", std::string("action が必要です: ") + kActions);
+    }
 
     const bool exists = util::FileSystem::Exists(absPath);
     if (action == "create") {
@@ -402,60 +452,80 @@ Outcome DoAvatarMaskWrite(editor::EditorContext& ctx, const JsonValue& payload, 
 
     asset::AvatarMaskAsset mask;
     if (exists && action != "create") {
-        if (!asset::LoadAvatarMaskAsset(absPath, mask))
+        if (!asset::LoadAvatarMaskAsset(absPath, mask)) {
             return Outcome::Err("LOAD_FAILED", "マスクを読み込めません: " + absPath);
+        }
     }
 
     if (action == "create") {
         mask = asset::AvatarMaskAsset{};
         mask.name = util::FileSystem::GetFilename(absPath);
-        if (const JsonValue* v = payload.Find("name"); v && v->IsString()) mask.name = v->AsString();
-        if (const JsonValue* v = payload.Find("defaultInclude"); v && v->IsBool())
+        if (const JsonValue* v = payload.Find("name"); v && v->IsString()) {
+            mask.name = v->AsString();
+        }
+        if (const JsonValue* v = payload.Find("defaultInclude"); v && v->IsBool()) {
             mask.defaultInclude = v->AsBool();
-        if (const JsonValue* v = payload.Find("skeletonSourcePath"); v && v->IsString())
+        }
+        if (const JsonValue* v = payload.Find("skeletonSourcePath"); v && v->IsString()) {
             mask.skeletonSourcePath = v->AsString();
+        }
     } else if (action == "setDefaultInclude") {
         const JsonValue* v = payload.Find("defaultInclude");
-        if (v == nullptr || !v->IsBool())
+        if (v == nullptr || !v->IsBool()) {
             return Outcome::Err("BAD_ARG", "defaultInclude (真偽) が必要です");
+        }
         mask.defaultInclude = v->AsBool();
     } else if (action == "clear") {
         mask.entries.clear();
     } else if (action == "setBone" || action == "removeBone") {
         const std::string bone = StringField(payload, "bone");
-        if (bone.empty()) return Outcome::Err("BAD_ARG", "bone が必要です");
+        if (bone.empty()) {
+            return Outcome::Err("BAD_ARG", "bone が必要です");
+        }
 
         auto it = std::find_if(mask.entries.begin(), mask.entries.end(),
             [&](const asset::AvatarMaskEntry& e) { return e.bonePath == bone; });
 
         if (action == "removeBone") {
-            if (it == mask.entries.end())
+            if (it == mask.entries.end()) {
                 return Outcome::Err("BONE_NOT_FOUND", "エントリが見つかりません: " + bone);
+            }
             mask.entries.erase(it);
         } else {
-            /// @note setBone は upsert。既存があれば指定キーだけ更新する。
+            // setBone は upsert。既存があれば指定キーだけ更新する。
             asset::AvatarMaskEntry prototype;
-            if (it != mask.entries.end()) prototype = *it;
+            if (it != mask.entries.end()) {
+                prototype = *it;
+            }
             prototype.bonePath = bone;
-            if (const JsonValue* v = payload.Find("weight"); v && v->IsNumber())
+            if (const JsonValue* v = payload.Find("weight"); v && v->IsNumber()) {
                 prototype.weight = std::clamp(static_cast<float>(v->AsNumber()), 0.0f, 1.0f);
-            if (const JsonValue* v = payload.Find("includeChildren"); v && v->IsBool())
+            }
+            if (const JsonValue* v = payload.Find("includeChildren"); v && v->IsBool()) {
                 prototype.includeChildren = v->AsBool();
-            if (const JsonValue* v = payload.Find("blendDepth"); v && v->IsNumber())
+            }
+            if (const JsonValue* v = payload.Find("blendDepth"); v && v->IsNumber()) {
                 prototype.blendDepth = (std::max)(0, v->AsInt());
-            if (it != mask.entries.end()) *it = prototype;
-            else mask.entries.push_back(std::move(prototype));
+            }
+            if (it != mask.entries.end()) {
+                *it = prototype;
+            } else {
+                mask.entries.push_back(std::move(prototype));
+            }
         }
     } else {
         return Outcome::Err("BAD_ARG", std::string("未知の action: ") + action +
                                        " (" + kActions + ")");
     }
 
-    if (dryRun) return DryRunPreview("avatarMask." + action);
+    if (dryRun) {
+        return DryRunPreview("avatarMask." + action);
+    }
 
     util::FileSystem::EnsureDirectory(util::FileSystem::GetDirectory(absPath));
-    if (!asset::SaveAvatarMaskAsset(absPath, mask))
+    if (!asset::SaveAvatarMaskAsset(absPath, mask)) {
         return Outcome::Err("SAVE_FAILED", "マスクを保存できません: " + absPath);
+    }
     ctx.requestAssetBrowserRefresh = true;
     return Outcome::Ok(AvatarMaskToJson(mask, StringField(payload, "path")));
 }
@@ -465,15 +535,18 @@ Outcome DoAnimationGraph(editor::EditorContext& ctx, const JsonValue& payload)
 {
     Outcome error;
     scene::AnimatorComponent* animator = FindAnimator(ctx, payload, error);
-    if (animator == nullptr) return error;
+    if (animator == nullptr) {
+        return error;
+    }
 
-    /// @note layer 指定があれば、そのレイヤーの独自ステートマシンを返す。省略で Base Layer。
+    // layer 指定があれば、そのレイヤーの独自ステートマシンを返す。省略で Base Layer。
     const std::string layerName = StringField(payload, "layer");
     const scene::AnimationLayer* targetLayer = nullptr;
     if (!layerName.empty()) {
         targetLayer = animator->FindLayer(layerName);
-        if (targetLayer == nullptr)
+        if (targetLayer == nullptr) {
             return Outcome::Err("LAYER_NOT_FOUND", "レイヤーが見つかりません: " + layerName);
+        }
     }
 
     const std::vector<scene::AnimationState>& targetStates =
@@ -494,10 +567,11 @@ Outcome DoAnimationGraph(editor::EditorContext& ctx, const JsonValue& payload)
         parameters.Push(std::move(entry));
     }
 
-    /// @note 実効デフォルトステート名 (未指定時は先頭)。Entry リンクの解決規則と一致させる。
+    // 実効デフォルトステート名 (未指定時は先頭)。Entry リンクの解決規則と一致させる。
     std::string defaultState = targetDefaultName;
-    if (defaultState.empty() && !targetStates.empty())
+    if (defaultState.empty() && !targetStates.empty()) {
         defaultState = targetStates.front().name;
+    }
 
     JsonValue states = JsonValue::MakeArray();
     for (const auto& state : targetStates) {
@@ -511,7 +585,7 @@ Outcome DoAnimationGraph(editor::EditorContext& ctx, const JsonValue& payload)
         entry.Set("ikWeight", JsonValue(state.ikWeight));
         entry.Set("isDefault", JsonValue(state.name == defaultState));
         entry.Set("isCurrent", JsonValue(state.name == targetCurrentName));
-        /// @note BlendTree は駆動パラメーターとモーション数を要約表示する。
+        // BlendTree は駆動パラメーターとモーション数を要約表示する。
         if (state.mode == scene::AnimationStateMode::BlendTree1D) {
             entry.Set("blendParameter", JsonValue(state.blendTree1D.paramName));
             entry.Set("motionCount", JsonValue(static_cast<int>(state.blendTree1D.motions.size())));
@@ -521,25 +595,28 @@ Outcome DoAnimationGraph(editor::EditorContext& ctx, const JsonValue& payload)
             entry.Set("motionCount", JsonValue(static_cast<int>(state.blendTree2D.motions.size())));
         }
         JsonValue transitions = JsonValue::MakeArray();
-        for (const auto& transition : state.transitions)
+        for (const auto& transition : state.transitions) {
             transitions.Push(TransitionToJson(transition));
+        }
         entry.Set("transitions", std::move(transitions));
         states.Push(std::move(entry));
     }
 
     JsonValue anyStateTransitions = JsonValue::MakeArray();
-    for (const auto& transition : targetAnyState)
+    for (const auto& transition : targetAnyState) {
         anyStateTransitions.Push(TransitionToJson(transition));
+    }
 
-    /// @note layers はどのグラフを見ているかに関わらず常に返す。Base Layer を見に来て他レイヤーの存在を見落とすことを 1 回の問い合わせで防ぐ。
+    // layers はどのグラフを見ているかに関わらず常に返す。Base Layer を見に来て他レイヤーの存在を見落とすことを 1 回の問い合わせで防ぐ。
     JsonValue layers = JsonValue::MakeArray();
-    for (const auto& layer : animator->layers)
+    for (const auto& layer : animator->layers) {
         layers.Push(AnimationLayerToJson(layer));
+    }
 
     JsonValue result = JsonValue::MakeObject();
     result.Set("id", JsonValue(StringField(payload, "id")));
     result.Set("controllerPath", JsonValue(animator->controllerPath));
-    /// @note どのグラフを返したか。空なら Base Layer。
+    // どのグラフを返したか。空なら Base Layer。
     result.Set("layer", JsonValue(layerName));
     result.Set("defaultState", JsonValue(defaultState));
     result.Set("currentState", JsonValue(targetCurrentName));
@@ -561,38 +638,51 @@ Outcome DoAnimationSetParameter(editor::EditorContext& ctx, const JsonValue& pay
 {
     Outcome error;
     scene::AnimatorComponent* animator = FindAnimator(ctx, payload, error);
-    if (animator == nullptr) return error;
+    if (animator == nullptr) {
+        return error;
+    }
 
     const std::string name = StringField(payload, "name");
-    if (name.empty()) return Outcome::Err("BAD_ARG", "パラメーター name が必要です");
+    if (name.empty()) {
+        return Outcome::Err("BAD_ARG", "パラメーター name が必要です");
+    }
 
     scene::AnimatorParameter* param = nullptr;
     for (auto& candidate : animator->parameters)
-        if (candidate.name == name) { param = &candidate; break; }
-    if (param == nullptr)
+        if (candidate.name == name) {
+            param = &candidate;
+            break;
+        }
+    if (param == nullptr) {
         return Outcome::Err("PARAM_NOT_FOUND", "Animator パラメーターが見つかりません: " + name);
+    }
 
     const JsonValue* valueField = payload.Find("value");
 
-    /// @note 型ごとの入力検証。Trigger だけは value 省略で「発火」を許可する。
+    // 型ごとの入力検証。Trigger だけは value 省略で「発火」を許可する。
     switch (param->type) {
     case scene::ParamType::Float:
     case scene::ParamType::Int:
-        if (valueField == nullptr || !valueField->IsNumber())
+        if (valueField == nullptr || !valueField->IsNumber()) {
             return Outcome::Err("BAD_ARG", "数値 value が必要です (" + std::string(AnimatorParamTypeName(param->type)) + ")");
+        }
         break;
     case scene::ParamType::Bool:
-        if (valueField == nullptr || !valueField->IsBool())
+        if (valueField == nullptr || !valueField->IsBool()) {
             return Outcome::Err("BAD_ARG", "真偽 value が必要です (bool)");
+        }
         break;
     case scene::ParamType::Trigger:
-        /// @note 省略 = 発火 (true)。明示指定は bool のみ許可する (false でリセット可能)。
-        if (valueField != nullptr && !valueField->IsBool())
+        // 省略 = 発火 (true)。明示指定は bool のみ許可する (false でリセット可能)。
+        if (valueField != nullptr && !valueField->IsBool()) {
             return Outcome::Err("BAD_ARG", "trigger の value は真偽のみ指定できます");
+        }
         break;
     }
 
-    if (dryRun) return DryRunPreview("animation.setParameter:" + name);
+    if (dryRun) {
+        return DryRunPreview("animation.setParameter:" + name);
+    }
 
     switch (param->type) {
     case scene::ParamType::Float:   param->floatValue = static_cast<float>(valueField->AsNumber()); break;
@@ -615,23 +705,34 @@ Outcome DoAnimationBlendTree(editor::EditorContext& ctx, const JsonValue& payloa
 {
     Outcome error;
     scene::AnimatorComponent* animator = FindAnimator(ctx, payload, error);
-    if (animator == nullptr) return error;
+    if (animator == nullptr) {
+        return error;
+    }
 
     const std::string stateName = StringField(payload, "state");
-    if (stateName.empty()) return Outcome::Err("BAD_ARG", "state 名が必要です");
+    if (stateName.empty()) {
+        return Outcome::Err("BAD_ARG", "state 名が必要です");
+    }
 
     const scene::AnimationState* state = nullptr;
     for (const auto& candidate : animator->states)
-        if (candidate.name == stateName) { state = &candidate; break; }
-    if (state == nullptr)
+        if (candidate.name == stateName) {
+            state = &candidate;
+            break;
+        }
+    if (state == nullptr) {
         return Outcome::Err("STATE_NOT_FOUND", "Animator state が見つかりません: " + stateName);
-    if (state->mode == scene::AnimationStateMode::Clip)
+    }
+    if (state->mode == scene::AnimationStateMode::Clip) {
         return Outcome::Err("NOT_BLEND_TREE", "このステートは BlendTree ではありません (mode=clip): " + stateName);
+    }
 
-    /// @note 直近フレームの clipName→weight を引けるようにする (Motion への逆引き用)。
+    // 直近フレームの clipName→weight を引けるようにする (Motion への逆引き用)。
     auto runtimeWeight = [&](const std::string& clipName) -> const float* {
         for (const auto& entry : animator->currentBlendWeights)
-            if (entry.first == clipName) return &entry.second;
+            if (entry.first == clipName) {
+                return &entry.second;
+            }
         return nullptr;
     };
 
@@ -648,8 +749,9 @@ Outcome DoAnimationBlendTree(editor::EditorContext& ctx, const JsonValue& payloa
         }
         entry.Set("speed", JsonValue(motion.speed));
         entry.Set("ikWeight", JsonValue(motion.ikWeight));
-        if (const float* weight = runtimeWeight(motion.clipName))
+        if (const float* weight = runtimeWeight(motion.clipName)) {
             entry.Set("runtimeWeight", JsonValue(*weight));
+        }
         return entry;
     };
 
@@ -666,7 +768,9 @@ Outcome DoAnimationBlendTree(editor::EditorContext& ctx, const JsonValue& payloa
         result.Set("parameterValue", JsonValue(animator->GetFloat(tree.paramName)));
         result.Set("dampTime", JsonValue(tree.dampTime));
         result.Set("syncNormalizedTime", JsonValue(tree.syncNormalizedTime));
-        for (const auto& motion : tree.motions) motions.Push(motionToJson(motion, false));
+        for (const auto& motion : tree.motions) {
+            motions.Push(motionToJson(motion, false));
+        }
     } else {
         const auto& tree = state->blendTree2D;
         result.Set("parameterX", JsonValue(tree.paramX));
@@ -678,7 +782,9 @@ Outcome DoAnimationBlendTree(editor::EditorContext& ctx, const JsonValue& payloa
                 ? "simpleDirectional" : "freeformCartesian"));
         result.Set("dampTime", JsonValue(tree.dampTime));
         result.Set("syncNormalizedTime", JsonValue(tree.syncNormalizedTime));
-        for (const auto& motion : tree.motions) motions.Push(motionToJson(motion, true));
+        for (const auto& motion : tree.motions) {
+            motions.Push(motionToJson(motion, true));
+        }
     }
     result.Set("motions", std::move(motions));
     return Outcome::Ok(std::move(result));
@@ -695,14 +801,18 @@ std::unique_ptr<ICommand> MakeAnimatorEditCommand(
     auto beforeStates = std::make_shared<std::vector<scene::AnimationState>>();
     auto beforeAny = std::make_shared<std::vector<scene::AnimationTransition>>();
     auto beforeParams = std::make_shared<std::vector<scene::AnimatorParameter>>();
-    /// @note layers もスナップショット対象に含める。レイヤーは独自のステートマシン・マスク参照・加算設定を持つ編集対象なので、含めないとレイヤー操作だけ Undo が効かなくなる。
+    // layers もスナップショット対象に含める。レイヤーは独自のステートマシン・マスク参照・加算設定を持つ編集対象なので、含めないとレイヤー操作だけ Undo が効かなくなる。
     auto beforeLayers = std::make_shared<std::vector<scene::AnimationLayer>>();
     return std::make_unique<LambdaCommand>(description,
         [scene, id, edit, beforeStates, beforeAny, beforeParams, beforeLayers, markDirty]() {
             GameObject* g = scene->FindByGuid(id);
-            if (!g) return;
+            if (!g) {
+                return;
+            }
             scene::AnimatorComponent* a = g->GetComponent<scene::AnimatorComponent>();
-            if (!a) return;
+            if (!a) {
+                return;
+            }
             *beforeStates = a->states;
             *beforeAny = a->anyStateTransitions;
             *beforeParams = a->parameters;
@@ -712,9 +822,13 @@ std::unique_ptr<ICommand> MakeAnimatorEditCommand(
         },
         [scene, id, beforeStates, beforeAny, beforeParams, beforeLayers, markDirty]() {
             GameObject* g = scene->FindByGuid(id);
-            if (!g) return;
+            if (!g) {
+                return;
+            }
             scene::AnimatorComponent* a = g->GetComponent<scene::AnimatorComponent>();
-            if (!a) return;
+            if (!a) {
+                return;
+            }
             a->states = *beforeStates;
             a->anyStateTransitions = *beforeAny;
             a->parameters = *beforeParams;
@@ -738,10 +852,13 @@ struct AnimatorGraphTarget {
 AnimatorGraphTarget ResolveGraphTarget(scene::AnimatorComponent& animator,
                                        const std::string& layerName)
 {
-    if (layerName.empty())
+    if (layerName.empty()) {
         return { &animator.states, &animator.anyStateTransitions, &animator.defaultStateName };
+    }
     scene::AnimationLayer* layer = animator.FindLayer(layerName);
-    if (!layer) return {};
+    if (!layer) {
+        return {};
+    }
     return { &layer->states, &layer->anyStateTransitions, &layer->defaultStateName };
 }
 
@@ -754,21 +871,25 @@ struct AnimatorGraphRefs {
     [[nodiscard]] std::vector<scene::AnimationState>& StatesRef() const
     {
         if (!layerName.empty())
-            if (scene::AnimationLayer* l = animator.FindLayer(layerName)) return l->states;
+            if (scene::AnimationLayer* l = animator.FindLayer(layerName)) {
+                return l->states;
+            }
         return animator.states;
     }
     [[nodiscard]] std::vector<scene::AnimationTransition>& AnyRef() const
     {
         if (!layerName.empty())
-            if (scene::AnimationLayer* l = animator.FindLayer(layerName))
+            if (scene::AnimationLayer* l = animator.FindLayer(layerName)) {
                 return l->anyStateTransitions;
+            }
         return animator.anyStateTransitions;
     }
     [[nodiscard]] std::string& DefaultRef() const
     {
         if (!layerName.empty())
-            if (scene::AnimationLayer* l = animator.FindLayer(layerName))
+            if (scene::AnimationLayer* l = animator.FindLayer(layerName)) {
                 return l->defaultStateName;
+            }
         return animator.defaultStateName;
     }
 };
@@ -781,17 +902,32 @@ AnimatorGraphRefs GRAPH(scene::AnimatorComponent& animator, const std::string& l
 /// @brief AnimationStateModeName の逆変換。未知文字列は false。
 bool ParseAnimationStateMode(const std::string& name, scene::AnimationStateMode& out)
 {
-    if (name == "clip")        { out = scene::AnimationStateMode::Clip;        return true; }
-    if (name == "blendTree1D") { out = scene::AnimationStateMode::BlendTree1D; return true; }
-    if (name == "blendTree2D") { out = scene::AnimationStateMode::BlendTree2D; return true; }
+    if (name == "clip") {
+        out = scene::AnimationStateMode::Clip;
+        return true;
+    }
+    if (name == "blendTree1D") {
+        out = scene::AnimationStateMode::BlendTree1D;
+        return true;
+    }
+    if (name == "blendTree2D") {
+        out = scene::AnimationStateMode::BlendTree2D;
+        return true;
+    }
     return false;
 }
 
 /// @brief BlendTree2D の座標解釈方式を文字列から解く。未知文字列は false。
 bool ParseBlendTree2DType(const std::string& name, scene::BlendTree2DType& out)
 {
-    if (name == "simpleDirectional") { out = scene::BlendTree2DType::SimpleDirectional; return true; }
-    if (name == "freeformCartesian") { out = scene::BlendTree2DType::FreeformCartesian; return true; }
+    if (name == "simpleDirectional") {
+        out = scene::BlendTree2DType::SimpleDirectional;
+        return true;
+    }
+    if (name == "freeformCartesian") {
+        out = scene::BlendTree2DType::FreeformCartesian;
+        return true;
+    }
     return false;
 }
 
@@ -800,15 +936,27 @@ void RenameAnimatorState(scene::AnimatorComponent& animator,
                          const std::string& oldName, const std::string& newName)
 {
     for (auto& state : animator.states) {
-        if (state.name == oldName) state.name = newName;
+        if (state.name == oldName) {
+            state.name = newName;
+        }
         for (auto& transition : state.transitions)
-            if (transition.toStateName == oldName) transition.toStateName = newName;
+            if (transition.toStateName == oldName) {
+                transition.toStateName = newName;
+            }
     }
     for (auto& transition : animator.anyStateTransitions)
-        if (transition.toStateName == oldName) transition.toStateName = newName;
-    if (animator.defaultStateName == oldName) animator.defaultStateName = newName;
-    if (animator.currentStateName == oldName) animator.currentStateName = newName;
-    if (animator.blendToState == oldName) animator.blendToState = newName;
+        if (transition.toStateName == oldName) {
+            transition.toStateName = newName;
+        }
+    if (animator.defaultStateName == oldName) {
+        animator.defaultStateName = newName;
+    }
+    if (animator.currentStateName == oldName) {
+        animator.currentStateName = newName;
+    }
+    if (animator.blendToState == oldName) {
+        animator.blendToState = newName;
+    }
 }
 
 std::unique_ptr<ICommand> BuildAnimatorGraphCommand([[maybe_unused]] editor::EditorContext& ctx, [[maybe_unused]] const std::string& type,
@@ -816,11 +964,14 @@ std::unique_ptr<ICommand> BuildAnimatorGraphCommand([[maybe_unused]] editor::Edi
     [[maybe_unused]] std::shared_ptr<std::string> createdSink, [[maybe_unused]] JsonValue* detailSink)
 {
     scene::Scene* scene = ctx.activeScene;
-    if (scene == nullptr) { err = Outcome::Err("NO_SCENE", "アクティブシーンがありません"); return nullptr; }
+    if (scene == nullptr) {
+        err = Outcome::Err("NO_SCENE", "アクティブシーンがありません");
+        return nullptr;
+    }
     [[maybe_unused]] const auto markDirty = [&ctx]() { if (ctx.markSceneDirty) ctx.markSceneDirty(); };
 
-    /// @name Animator ステートマシンの構造編集 (Undo 対応)
-    /// @note すべて MakeAnimatorEditCommand 経由で states/anyState/parameters をスナップショット復元する。
+    // Animator ステートマシンの構造編集 (Undo 対応)
+    // すべて MakeAnimatorEditCommand 経由で states/anyState/parameters をスナップショット復元する。
     if (type == "animation.addTransition" || type == "animation.setCondition" ||
         type == "animation.removeTransition" ||
         type == "animation.addState" || type == "animation.setState" ||
@@ -830,11 +981,17 @@ std::unique_ptr<ICommand> BuildAnimatorGraphCommand([[maybe_unused]] editor::Edi
         type == "animation.addParameter" || type == "animation.removeParameter") {
         const std::string id = StringField(payload, "id");
         GameObject* go = scene->FindByGuid(id);
-        if (go == nullptr) { err = Outcome::Err("NODE_NOT_FOUND", "NodeId が見つかりません: " + id); return nullptr; }
+        if (go == nullptr) {
+            err = Outcome::Err("NODE_NOT_FOUND", "NodeId が見つかりません: " + id);
+            return nullptr;
+        }
         scene::AnimatorComponent* animator = go->GetComponent<scene::AnimatorComponent>();
-        if (animator == nullptr) { err = Outcome::Err("NOT_PRESENT", "AnimatorComponent が装着されていません"); return nullptr; }
+        if (animator == nullptr) {
+            err = Outcome::Err("NOT_PRESENT", "AnimatorComponent が装着されていません");
+            return nullptr;
+        }
 
-        /// @note レイヤー指定 (省略で Base Layer)。上半身レイヤー等に独自の遷移グラフを組めるよう、編集操作がどのグラフに対するものかを選べるようにする。
+        // レイヤー指定 (省略で Base Layer)。上半身レイヤー等に独自の遷移グラフを組めるよう、編集操作がどのグラフに対するものかを選べるようにする。
         const std::string layerName = StringField(payload, "layer");
         const AnimatorGraphTarget graphTarget = ResolveGraphTarget(*animator, layerName);
         if (graphTarget.states == nullptr) {
@@ -844,42 +1001,66 @@ std::unique_ptr<ICommand> BuildAnimatorGraphCommand([[maybe_unused]] editor::Edi
 
         auto findStateIndex = [&](const std::string& name) -> int {
             for (int i = 0; i < static_cast<int>((*graphTarget.states).size()); ++i)
-                if ((*graphTarget.states)[static_cast<size_t>(i)].name == name) return i;
+                if ((*graphTarget.states)[static_cast<size_t>(i)].name == name) {
+                    return i;
+                }
             return -1;
         };
 
-        /// @name パラメーター CRUD
+        // パラメーター CRUD
         if (type == "animation.addParameter") {
             const std::string name = StringField(payload, "name");
-            if (name.empty()) { err = Outcome::Err("BAD_ARG", "パラメーター name が必要です"); return nullptr; }
+            if (name.empty()) {
+                err = Outcome::Err("BAD_ARG", "パラメーター name が必要です");
+                return nullptr;
+            }
             const bool duplicate = std::any_of(animator->parameters.begin(), animator->parameters.end(),
                 [&](const scene::AnimatorParameter& p) { return p.name == name; });
-            if (duplicate) { err = Outcome::Err("DUPLICATE_PARAM", "同名のパラメーターが既に存在します: " + name); return nullptr; }
+            if (duplicate) {
+                err = Outcome::Err("DUPLICATE_PARAM", "同名のパラメーターが既に存在します: " + name);
+                return nullptr;
+            }
 
             scene::AnimatorParameter prototype;
             prototype.name = name;
-            /// @note type 省略時は float。value 省略時は型ごとの既定 (0 / false)。
+            // type 省略時は float。value 省略時は型ごとの既定 (0 / false)。
             const std::string typeName = StringField(payload, "type");
             if (!typeName.empty()) {
-                if (typeName == "float")        prototype.type = scene::ParamType::Float;
-                else if (typeName == "int")     prototype.type = scene::ParamType::Int;
-                else if (typeName == "bool")    prototype.type = scene::ParamType::Bool;
-                else if (typeName == "trigger") prototype.type = scene::ParamType::Trigger;
-                else { err = Outcome::Err("BAD_ARG", "type は float/int/bool/trigger のいずれかです"); return nullptr; }
+                if (typeName == "float") {
+                    prototype.type = scene::ParamType::Float;
+                } else if (typeName == "int") {
+                    prototype.type = scene::ParamType::Int;
+                } else if (typeName == "bool") {
+                    prototype.type = scene::ParamType::Bool;
+                } else if (typeName == "trigger") {
+                    prototype.type = scene::ParamType::Trigger;
+                } else {
+                    err = Outcome::Err("BAD_ARG", "type は float/int/bool/trigger のいずれかです");
+                    return nullptr;
+                }
             }
             if (const JsonValue* v = payload.Find("value"); v != nullptr) {
                 switch (prototype.type) {
                 case scene::ParamType::Float:
-                    if (!v->IsNumber()) { err = Outcome::Err("BAD_ARG", "float の value は数値です"); return nullptr; }
+                    if (!v->IsNumber()) {
+                        err = Outcome::Err("BAD_ARG", "float の value は数値です");
+                        return nullptr;
+                    }
                     prototype.floatValue = static_cast<float>(v->AsNumber());
                     break;
                 case scene::ParamType::Int:
-                    if (!v->IsNumber()) { err = Outcome::Err("BAD_ARG", "int の value は数値です"); return nullptr; }
+                    if (!v->IsNumber()) {
+                        err = Outcome::Err("BAD_ARG", "int の value は数値です");
+                        return nullptr;
+                    }
                     prototype.intValue = v->AsInt();
                     break;
                 case scene::ParamType::Bool:
                 case scene::ParamType::Trigger:
-                    if (!v->IsBool()) { err = Outcome::Err("BAD_ARG", "bool/trigger の value は真偽です"); return nullptr; }
+                    if (!v->IsBool()) {
+                        err = Outcome::Err("BAD_ARG", "bool/trigger の value は真偽です");
+                        return nullptr;
+                    }
                     prototype.boolValue = v->AsBool();
                     break;
                 }
@@ -890,11 +1071,17 @@ std::unique_ptr<ICommand> BuildAnimatorGraphCommand([[maybe_unused]] editor::Edi
 
         if (type == "animation.removeParameter") {
             const std::string name = StringField(payload, "name");
-            if (name.empty()) { err = Outcome::Err("BAD_ARG", "パラメーター name が必要です"); return nullptr; }
+            if (name.empty()) {
+                err = Outcome::Err("BAD_ARG", "パラメーター name が必要です");
+                return nullptr;
+            }
             const bool exists = std::any_of(animator->parameters.begin(), animator->parameters.end(),
                 [&](const scene::AnimatorParameter& p) { return p.name == name; });
-            if (!exists) { err = Outcome::Err("PARAM_NOT_FOUND", "パラメーターが見つかりません: " + name); return nullptr; }
-            /// @note このパラメーターを参照する遷移条件は残す (Unity/本エディター同様)。無効参照は発火しないだけで壊れず、Undo で丸ごと戻せるため cascade 削除しない。
+            if (!exists) {
+                err = Outcome::Err("PARAM_NOT_FOUND", "パラメーターが見つかりません: " + name);
+                return nullptr;
+            }
+            // このパラメーターを参照する遷移条件は残す (Unity/本エディター同様)。無効参照は発火しないだけで壊れず、Undo で丸ごと戻せるため cascade 削除しない。
             return MakeAnimatorEditCommand(scene, id, "AI: Remove Animator Parameter", markDirty,
                 [name](scene::AnimatorComponent& a) {
                     a.parameters.erase(
@@ -904,14 +1091,20 @@ std::unique_ptr<ICommand> BuildAnimatorGraphCommand([[maybe_unused]] editor::Edi
                 });
         }
 
-        /// @name ステート削除 (参照の遷移も掃除)
+        // ステート削除 (参照の遷移も掃除)
         if (type == "animation.removeState") {
             const std::string stateName = StringField(payload, "state");
-            if (stateName.empty()) { err = Outcome::Err("BAD_ARG", "対象 state 名が必要です"); return nullptr; }
-            if (findStateIndex(stateName) < 0) { err = Outcome::Err("STATE_NOT_FOUND", "ステートが見つかりません: " + stateName); return nullptr; }
+            if (stateName.empty()) {
+                err = Outcome::Err("BAD_ARG", "対象 state 名が必要です");
+                return nullptr;
+            }
+            if (findStateIndex(stateName) < 0) {
+                err = Outcome::Err("STATE_NOT_FOUND", "ステートが見つかりません: " + stateName);
+                return nullptr;
+            }
             return MakeAnimatorEditCommand(scene, id, "AI: Remove Animator State", markDirty,
                 [stateName, layerName](scene::AnimatorComponent& a) {
-                    /// @note 対象ステートを消し、他ステート/AnyState からの遷移参照も除去する (パネルの DeleteState 相当)。
+                    // 対象ステートを消し、他ステート/AnyState からの遷移参照も除去する (パネルの DeleteState 相当)。
                     GRAPH(a, layerName).StatesRef().erase(
                         std::remove_if(GRAPH(a, layerName).StatesRef().begin(), GRAPH(a, layerName).StatesRef().end(),
                             [&](const scene::AnimationState& s) { return s.name == stateName; }),
@@ -931,69 +1124,114 @@ std::unique_ptr<ICommand> BuildAnimatorGraphCommand([[maybe_unused]] editor::Edi
                 });
         }
 
-        /// @name ステート追加
+        // ステート追加
         if (type == "animation.addState") {
             const std::string name = StringField(payload, "name");
-            if (name.empty()) { err = Outcome::Err("BAD_ARG", "ステート name が必要です"); return nullptr; }
-            if (findStateIndex(name) >= 0) { err = Outcome::Err("DUPLICATE_STATE", "同名のステートが既に存在します: " + name); return nullptr; }
+            if (name.empty()) {
+                err = Outcome::Err("BAD_ARG", "ステート name が必要です");
+                return nullptr;
+            }
+            if (findStateIndex(name) >= 0) {
+                err = Outcome::Err("DUPLICATE_STATE", "同名のステートが既に存在します: " + name);
+                return nullptr;
+            }
 
             scene::AnimationState prototype;
             prototype.name = name;
             if (const JsonValue* v = payload.Find("mode"); v != nullptr && v->IsString()) {
                 if (!ParseAnimationStateMode(v->AsString(), prototype.mode)) {
-                    err = Outcome::Err("BAD_ARG", "mode は clip/blendTree1D/blendTree2D のいずれかです"); return nullptr;
+                    err = Outcome::Err("BAD_ARG", "mode は clip/blendTree1D/blendTree2D のいずれかです");
+                    return nullptr;
                 }
             }
-            if (const JsonValue* v = payload.Find("sourcePath"); v != nullptr && v->IsString()) prototype.sourcePath = v->AsString();
-            if (const JsonValue* v = payload.Find("clipName"); v != nullptr && v->IsString()) prototype.clipName = v->AsString();
-            if (const JsonValue* v = payload.Find("clipIndex"); v != nullptr && v->IsNumber()) prototype.clipIndex = v->AsInt();
-            if (const JsonValue* v = payload.Find("speed"); v != nullptr && v->IsNumber()) prototype.speed = static_cast<float>(v->AsNumber());
-            if (const JsonValue* v = payload.Find("loop"); v != nullptr && v->IsBool()) prototype.loop = v->AsBool();
-            if (const JsonValue* v = payload.Find("ikWeight"); v != nullptr && v->IsNumber()) prototype.ikWeight = static_cast<float>(v->AsNumber());
-            if (const JsonValue* v = payload.Find("blendParameter"); v != nullptr && v->IsString()) prototype.blendTree1D.paramName = v->AsString();
-            if (const JsonValue* v = payload.Find("blendParameterX"); v != nullptr && v->IsString()) prototype.blendTree2D.paramX = v->AsString();
-            if (const JsonValue* v = payload.Find("blendParameterY"); v != nullptr && v->IsString()) prototype.blendTree2D.paramY = v->AsString();
+            if (const JsonValue* v = payload.Find("sourcePath"); v != nullptr && v->IsString()) {
+                prototype.sourcePath = v->AsString();
+            }
+            if (const JsonValue* v = payload.Find("clipName"); v != nullptr && v->IsString()) {
+                prototype.clipName = v->AsString();
+            }
+            if (const JsonValue* v = payload.Find("clipIndex"); v != nullptr && v->IsNumber()) {
+                prototype.clipIndex = v->AsInt();
+            }
+            if (const JsonValue* v = payload.Find("speed"); v != nullptr && v->IsNumber()) {
+                prototype.speed = static_cast<float>(v->AsNumber());
+            }
+            if (const JsonValue* v = payload.Find("loop"); v != nullptr && v->IsBool()) {
+                prototype.loop = v->AsBool();
+            }
+            if (const JsonValue* v = payload.Find("ikWeight"); v != nullptr && v->IsNumber()) {
+                prototype.ikWeight = static_cast<float>(v->AsNumber());
+            }
+            if (const JsonValue* v = payload.Find("blendParameter"); v != nullptr && v->IsString()) {
+                prototype.blendTree1D.paramName = v->AsString();
+            }
+            if (const JsonValue* v = payload.Find("blendParameterX"); v != nullptr && v->IsString()) {
+                prototype.blendTree2D.paramX = v->AsString();
+            }
+            if (const JsonValue* v = payload.Find("blendParameterY"); v != nullptr && v->IsString()) {
+                prototype.blendTree2D.paramY = v->AsString();
+            }
             bool setAsDefault = false;
-            if (const JsonValue* v = payload.Find("setAsDefault"); v != nullptr && v->IsBool()) setAsDefault = v->AsBool();
+            if (const JsonValue* v = payload.Find("setAsDefault"); v != nullptr && v->IsBool()) {
+                setAsDefault = v->AsBool();
+            }
 
             return MakeAnimatorEditCommand(scene, id, "AI: Add Animator State", markDirty,
                 [prototype, setAsDefault, layerName](scene::AnimatorComponent& a) {
                     GRAPH(a, layerName).StatesRef().push_back(prototype);
-                    /// @note Unity 同様、最初のステートや明示指定時はデフォルトにする。
+                    // Unity 同様、最初のステートや明示指定時はデフォルトにする。
                     if (setAsDefault || GRAPH(a, layerName).DefaultRef().empty())
                         GRAPH(a, layerName).DefaultRef() = prototype.name;
                 });
         }
 
-        /// @name ステート更新 (rename は参照追従)
+        // ステート更新 (rename は参照追従)
         if (type == "animation.setState") {
             const std::string stateName = StringField(payload, "state");
-            if (stateName.empty()) { err = Outcome::Err("BAD_ARG", "対象 state 名が必要です"); return nullptr; }
+            if (stateName.empty()) {
+                err = Outcome::Err("BAD_ARG", "対象 state 名が必要です");
+                return nullptr;
+            }
             const int stateIndex = findStateIndex(stateName);
-            if (stateIndex < 0) { err = Outcome::Err("STATE_NOT_FOUND", "ステートが見つかりません: " + stateName); return nullptr; }
+            if (stateIndex < 0) {
+                err = Outcome::Err("STATE_NOT_FOUND", "ステートが見つかりません: " + stateName);
+                return nullptr;
+            }
 
-            /// @note rename 検証: 新名は空不可、他ステートと衝突不可。
+            // rename 検証: 新名は空不可、他ステートと衝突不可。
             std::string newName;
             if (const JsonValue* v = payload.Find("name"); v != nullptr && v->IsString()) {
                 newName = v->AsString();
-                if (newName.empty()) { err = Outcome::Err("BAD_ARG", "name は空にできません"); return nullptr; }
+                if (newName.empty()) {
+                    err = Outcome::Err("BAD_ARG", "name は空にできません");
+                    return nullptr;
+                }
                 const int existing = findStateIndex(newName);
-                if (existing >= 0 && existing != stateIndex) { err = Outcome::Err("DUPLICATE_STATE", "同名のステートが既に存在します: " + newName); return nullptr; }
+                if (existing >= 0 && existing != stateIndex) {
+                    err = Outcome::Err("DUPLICATE_STATE", "同名のステートが既に存在します: " + newName);
+                    return nullptr;
+                }
             }
-            /// @note mode / 2Dtype は build 時にパース検証する。
+            // mode / 2Dtype は build 時にパース検証する。
             bool hasMode = false;
             scene::AnimationStateMode mode = scene::AnimationStateMode::Clip;
             if (const JsonValue* v = payload.Find("mode"); v != nullptr && v->IsString()) {
-                if (!ParseAnimationStateMode(v->AsString(), mode)) { err = Outcome::Err("BAD_ARG", "mode は clip/blendTree1D/blendTree2D のいずれかです"); return nullptr; }
+                if (!ParseAnimationStateMode(v->AsString(), mode)) {
+                    err = Outcome::Err("BAD_ARG", "mode は clip/blendTree1D/blendTree2D のいずれかです");
+                    return nullptr;
+                }
                 hasMode = true;
             }
             bool hasBlend2DType = false;
             scene::BlendTree2DType blend2DType = scene::BlendTree2DType::SimpleDirectional;
             if (const JsonValue* v = payload.Find("blend2DType"); v != nullptr && v->IsString()) {
-                if (!ParseBlendTree2DType(v->AsString(), blend2DType)) { err = Outcome::Err("BAD_ARG", "blend2DType は simpleDirectional/freeformCartesian のいずれかです"); return nullptr; }
+                if (!ParseBlendTree2DType(v->AsString(), blend2DType)) {
+                    err = Outcome::Err("BAD_ARG", "blend2DType は simpleDirectional/freeformCartesian のいずれかです");
+                    return nullptr;
+                }
                 hasBlend2DType = true;
             }
-            /// @note 変更内容を JSON からそのまま持ち回すために payload を複製して束縛する。
+            // 変更内容を JSON からそのまま持ち回すために payload を複製して束縛する。
             auto captured = std::make_shared<JsonValue>(payload);
             const bool setAsDefault = [&]() {
                 const JsonValue* v = payload.Find("setAsDefault");
@@ -1005,39 +1243,74 @@ std::unique_ptr<ICommand> BuildAnimatorGraphCommand([[maybe_unused]] editor::Edi
                 (scene::AnimatorComponent& a) {
                     int index = -1;
                     for (int i = 0; i < static_cast<int>(GRAPH(a, layerName).StatesRef().size()); ++i)
-                        if (GRAPH(a, layerName).StatesRef()[static_cast<size_t>(i)].name == stateName) { index = i; break; }
-                    if (index < 0) return;
+                        if (GRAPH(a, layerName).StatesRef()[static_cast<size_t>(i)].name == stateName) {
+                            index = i;
+                            break;
+                        }
+                    if (index < 0) {
+                        return;
+                    }
                     scene::AnimationState& s = GRAPH(a, layerName).StatesRef()[static_cast<size_t>(index)];
                     const JsonValue& p = *captured;
-                    if (hasMode) s.mode = mode;
-                    if (const JsonValue* v = p.Find("sourcePath"); v != nullptr && v->IsString()) s.sourcePath = v->AsString();
-                    if (const JsonValue* v = p.Find("clipName"); v != nullptr && v->IsString()) s.clipName = v->AsString();
-                    if (const JsonValue* v = p.Find("clipIndex"); v != nullptr && v->IsNumber()) s.clipIndex = v->AsInt();
-                    if (const JsonValue* v = p.Find("speed"); v != nullptr && v->IsNumber()) s.speed = static_cast<float>(v->AsNumber());
-                    if (const JsonValue* v = p.Find("loop"); v != nullptr && v->IsBool()) s.loop = v->AsBool();
-                    if (const JsonValue* v = p.Find("ikWeight"); v != nullptr && v->IsNumber()) s.ikWeight = static_cast<float>(v->AsNumber());
-                    if (const JsonValue* v = p.Find("blendParameter"); v != nullptr && v->IsString()) s.blendTree1D.paramName = v->AsString();
-                    if (const JsonValue* v = p.Find("blendParameterX"); v != nullptr && v->IsString()) s.blendTree2D.paramX = v->AsString();
-                    if (const JsonValue* v = p.Find("blendParameterY"); v != nullptr && v->IsString()) s.blendTree2D.paramY = v->AsString();
-                    if (hasBlend2DType) s.blendTree2D.type = blend2DType;
+                    if (hasMode) {
+                        s.mode = mode;
+                    }
+                    if (const JsonValue* v = p.Find("sourcePath"); v != nullptr && v->IsString()) {
+                        s.sourcePath = v->AsString();
+                    }
+                    if (const JsonValue* v = p.Find("clipName"); v != nullptr && v->IsString()) {
+                        s.clipName = v->AsString();
+                    }
+                    if (const JsonValue* v = p.Find("clipIndex"); v != nullptr && v->IsNumber()) {
+                        s.clipIndex = v->AsInt();
+                    }
+                    if (const JsonValue* v = p.Find("speed"); v != nullptr && v->IsNumber()) {
+                        s.speed = static_cast<float>(v->AsNumber());
+                    }
+                    if (const JsonValue* v = p.Find("loop"); v != nullptr && v->IsBool()) {
+                        s.loop = v->AsBool();
+                    }
+                    if (const JsonValue* v = p.Find("ikWeight"); v != nullptr && v->IsNumber()) {
+                        s.ikWeight = static_cast<float>(v->AsNumber());
+                    }
+                    if (const JsonValue* v = p.Find("blendParameter"); v != nullptr && v->IsString()) {
+                        s.blendTree1D.paramName = v->AsString();
+                    }
+                    if (const JsonValue* v = p.Find("blendParameterX"); v != nullptr && v->IsString()) {
+                        s.blendTree2D.paramX = v->AsString();
+                    }
+                    if (const JsonValue* v = p.Find("blendParameterY"); v != nullptr && v->IsString()) {
+                        s.blendTree2D.paramY = v->AsString();
+                    }
+                    if (hasBlend2DType) {
+                        s.blendTree2D.type = blend2DType;
+                    }
                     if (setAsDefault) GRAPH(a, layerName).DefaultRef() = s.name;
-                    /// @note rename は参照追従のため最後に行う (s は無効になり得るので name 取得後)。
-                    if (!newName.empty() && newName != stateName)
+                    // rename は参照追従のため最後に行う (s は無効になり得るので name 取得後)。
+                    if (!newName.empty() && newName != stateName) {
                         RenameAnimatorState(a, stateName, newName);
+                    }
                 });
         }
 
-        /// @name BlendTree Motion 追加・更新・削除
+        // BlendTree Motion 追加・更新・削除
         if (type == "animation.addMotion" || type == "animation.setMotion" ||
             type == "animation.removeMotion") {
             const std::string stateName = StringField(payload, "state");
-            if (stateName.empty()) { err = Outcome::Err("BAD_ARG", "対象 state 名が必要です"); return nullptr; }
+            if (stateName.empty()) {
+                err = Outcome::Err("BAD_ARG", "対象 state 名が必要です");
+                return nullptr;
+            }
             const int stateIndex = findStateIndex(stateName);
-            if (stateIndex < 0) { err = Outcome::Err("STATE_NOT_FOUND", "ステートが見つかりません: " + stateName); return nullptr; }
+            if (stateIndex < 0) {
+                err = Outcome::Err("STATE_NOT_FOUND", "ステートが見つかりません: " + stateName);
+                return nullptr;
+            }
             const scene::AnimationState& state = (*graphTarget.states)[static_cast<size_t>(stateIndex)];
             const bool is2D = state.mode == scene::AnimationStateMode::BlendTree2D;
             if (state.mode != scene::AnimationStateMode::BlendTree1D && !is2D) {
-                err = Outcome::Err("NOT_BLEND_TREE", "このステートは BlendTree ではありません: " + stateName); return nullptr;
+                err = Outcome::Err("NOT_BLEND_TREE", "このステートは BlendTree ではありません: " + stateName);
+                return nullptr;
             }
             const std::vector<scene::BlendTreeMotion>& motions =
                 is2D ? state.blendTree2D.motions : state.blendTree1D.motions;
@@ -1047,9 +1320,15 @@ std::unique_ptr<ICommand> BuildAnimatorGraphCommand([[maybe_unused]] editor::Edi
             int motionIndex = -1;
             if (!isAdd) {
                 const JsonValue* motionIndexField = payload.Find("motionIndex");
-                if (motionIndexField == nullptr || !motionIndexField->IsNumber()) { err = Outcome::Err("BAD_ARG", "motionIndex が必要です"); return nullptr; }
+                if (motionIndexField == nullptr || !motionIndexField->IsNumber()) {
+                    err = Outcome::Err("BAD_ARG", "motionIndex が必要です");
+                    return nullptr;
+                }
                 motionIndex = motionIndexField->AsInt();
-                if (motionIndex < 0 || motionIndex >= static_cast<int>(motions.size())) { err = Outcome::Err("MOTION_NOT_FOUND", "motionIndex が範囲外です"); return nullptr; }
+                if (motionIndex < 0 || motionIndex >= static_cast<int>(motions.size())) {
+                    err = Outcome::Err("MOTION_NOT_FOUND", "motionIndex が範囲外です");
+                    return nullptr;
+                }
             }
             auto captured = std::make_shared<JsonValue>(payload);
 
@@ -1059,15 +1338,21 @@ std::unique_ptr<ICommand> BuildAnimatorGraphCommand([[maybe_unused]] editor::Edi
                 [stateName, is2D, isAdd, isRemove, motionIndex, captured, layerName](scene::AnimatorComponent& a) {
                     int index = -1;
                     for (int i = 0; i < static_cast<int>(GRAPH(a, layerName).StatesRef().size()); ++i)
-                        if (GRAPH(a, layerName).StatesRef()[static_cast<size_t>(i)].name == stateName) { index = i; break; }
-                    if (index < 0) return;
+                        if (GRAPH(a, layerName).StatesRef()[static_cast<size_t>(i)].name == stateName) {
+                            index = i;
+                            break;
+                        }
+                    if (index < 0) {
+                        return;
+                    }
                     scene::AnimationState& s = GRAPH(a, layerName).StatesRef()[static_cast<size_t>(index)];
                     std::vector<scene::BlendTreeMotion>& motionList =
                         is2D ? s.blendTree2D.motions : s.blendTree1D.motions;
 
                     if (isRemove) {
-                        if (motionIndex >= 0 && motionIndex < static_cast<int>(motionList.size()))
+                        if (motionIndex >= 0 && motionIndex < static_cast<int>(motionList.size())) {
                             motionList.erase(motionList.begin() + motionIndex);
+                        }
                         return;
                     }
 
@@ -1076,23 +1361,43 @@ std::unique_ptr<ICommand> BuildAnimatorGraphCommand([[maybe_unused]] editor::Edi
                     if (isAdd) {
                         motion = &added;
                     } else {
-                        if (motionIndex < 0 || motionIndex >= static_cast<int>(motionList.size())) return;
+                        if (motionIndex < 0 || motionIndex >= static_cast<int>(motionList.size())) {
+                            return;
+                        }
                         motion = &motionList[static_cast<size_t>(motionIndex)];
                     }
                     const JsonValue& p = *captured;
-                    if (const JsonValue* v = p.Find("sourcePath"); v != nullptr && v->IsString()) motion->sourcePath = v->AsString();
-                    if (const JsonValue* v = p.Find("clipName"); v != nullptr && v->IsString()) motion->clipName = v->AsString();
-                    if (const JsonValue* v = p.Find("clipIndex"); v != nullptr && v->IsNumber()) motion->clipIndex = v->AsInt();
-                    if (const JsonValue* v = p.Find("threshold"); v != nullptr && v->IsNumber()) motion->threshold = static_cast<float>(v->AsNumber());
-                    if (const JsonValue* v = p.Find("posX"); v != nullptr && v->IsNumber()) motion->posX = static_cast<float>(v->AsNumber());
-                    if (const JsonValue* v = p.Find("posY"); v != nullptr && v->IsNumber()) motion->posY = static_cast<float>(v->AsNumber());
-                    if (const JsonValue* v = p.Find("speed"); v != nullptr && v->IsNumber()) motion->speed = static_cast<float>(v->AsNumber());
-                    if (const JsonValue* v = p.Find("ikWeight"); v != nullptr && v->IsNumber()) motion->ikWeight = static_cast<float>(v->AsNumber());
-                    if (isAdd) motionList.push_back(added);
+                    if (const JsonValue* v = p.Find("sourcePath"); v != nullptr && v->IsString()) {
+                        motion->sourcePath = v->AsString();
+                    }
+                    if (const JsonValue* v = p.Find("clipName"); v != nullptr && v->IsString()) {
+                        motion->clipName = v->AsString();
+                    }
+                    if (const JsonValue* v = p.Find("clipIndex"); v != nullptr && v->IsNumber()) {
+                        motion->clipIndex = v->AsInt();
+                    }
+                    if (const JsonValue* v = p.Find("threshold"); v != nullptr && v->IsNumber()) {
+                        motion->threshold = static_cast<float>(v->AsNumber());
+                    }
+                    if (const JsonValue* v = p.Find("posX"); v != nullptr && v->IsNumber()) {
+                        motion->posX = static_cast<float>(v->AsNumber());
+                    }
+                    if (const JsonValue* v = p.Find("posY"); v != nullptr && v->IsNumber()) {
+                        motion->posY = static_cast<float>(v->AsNumber());
+                    }
+                    if (const JsonValue* v = p.Find("speed"); v != nullptr && v->IsNumber()) {
+                        motion->speed = static_cast<float>(v->AsNumber());
+                    }
+                    if (const JsonValue* v = p.Find("ikWeight"); v != nullptr && v->IsNumber()) {
+                        motion->ikWeight = static_cast<float>(v->AsNumber());
+                    }
+                    if (isAdd) {
+                        motionList.push_back(added);
+                    }
                 });
         }
 
-        /// @note from 省略 = Any State 遷移。指定時はそのステートの transitions を対象にする。
+        // from 省略 = Any State 遷移。指定時はそのステートの transitions を対象にする。
         const JsonValue* fromField = payload.Find("from");
         const bool isAnyState = (fromField == nullptr) || !fromField->IsString()
             || fromField->AsString().empty() || fromField->AsString() == "AnyState";
@@ -1100,102 +1405,150 @@ std::unique_ptr<ICommand> BuildAnimatorGraphCommand([[maybe_unused]] editor::Edi
         int fromIndex = -1;
         if (!isAnyState) {
             fromIndex = findStateIndex(fromName);
-            if (fromIndex < 0) { err = Outcome::Err("STATE_NOT_FOUND", "from ステートが見つかりません: " + fromName); return nullptr; }
+            if (fromIndex < 0) {
+                err = Outcome::Err("STATE_NOT_FOUND", "from ステートが見つかりません: " + fromName);
+                return nullptr;
+            }
         }
 
-        /// @note 対象の transitions ベクトルを返す (build 時の検証用。実行時は再解決する)。
+        // 対象の transitions ベクトルを返す (build 時の検証用。実行時は再解決する)。
         auto sourceTransitions = [&]() -> std::vector<scene::AnimationTransition>& {
             return isAnyState ? (*graphTarget.anyState)
                               : (*graphTarget.states)[static_cast<size_t>(fromIndex)].transitions;
         };
 
-        /// @name 遷移削除
+        // 遷移削除
         if (type == "animation.removeTransition") {
             const JsonValue* transitionIndexField = payload.Find("transitionIndex");
-            if (transitionIndexField == nullptr || !transitionIndexField->IsNumber()) { err = Outcome::Err("BAD_ARG", "transitionIndex が必要です"); return nullptr; }
+            if (transitionIndexField == nullptr || !transitionIndexField->IsNumber()) {
+                err = Outcome::Err("BAD_ARG", "transitionIndex が必要です");
+                return nullptr;
+            }
             const int transitionIndex = transitionIndexField->AsInt();
-            if (transitionIndex < 0 || transitionIndex >= static_cast<int>(sourceTransitions().size())) { err = Outcome::Err("TRANSITION_NOT_FOUND", "transitionIndex が範囲外です"); return nullptr; }
+            if (transitionIndex < 0 || transitionIndex >= static_cast<int>(sourceTransitions().size())) {
+                err = Outcome::Err("TRANSITION_NOT_FOUND", "transitionIndex が範囲外です");
+                return nullptr;
+            }
             return MakeAnimatorEditCommand(scene, id, "AI: Remove Animator Transition", markDirty,
                 [isAnyState, fromName, transitionIndex, layerName](scene::AnimatorComponent& a) {
                     std::vector<scene::AnimationTransition>* transitions = nullptr;
-                    if (isAnyState) transitions = &GRAPH(a, layerName).AnyRef();
-                    else for (auto& s : GRAPH(a, layerName).StatesRef()) if (s.name == fromName) { transitions = &s.transitions; break; }
-                    if (transitions == nullptr || transitionIndex >= static_cast<int>(transitions->size())) return;
+                    if (isAnyState) {
+                        transitions = &GRAPH(a, layerName).AnyRef();
+                    } else for (auto& s : GRAPH(a, layerName).StatesRef()) if (s.name == fromName) { transitions = &s.transitions; break; }
+                    if (transitions == nullptr || transitionIndex >= static_cast<int>(transitions->size())) {
+                        return;
+                    }
                     transitions->erase(transitions->begin() + transitionIndex);
                 });
         }
 
         if (type == "animation.addTransition") {
             const std::string toName = StringField(payload, "to");
-            if (toName.empty()) { err = Outcome::Err("BAD_ARG", "to ステート名が必要です"); return nullptr; }
-            if (findStateIndex(toName) < 0) { err = Outcome::Err("STATE_NOT_FOUND", "to ステートが見つかりません: " + toName); return nullptr; }
+            if (toName.empty()) {
+                err = Outcome::Err("BAD_ARG", "to ステート名が必要です");
+                return nullptr;
+            }
+            if (findStateIndex(toName) < 0) {
+                err = Outcome::Err("STATE_NOT_FOUND", "to ステートが見つかりません: " + toName);
+                return nullptr;
+            }
             for (const auto& existing : sourceTransitions())
-                if (existing.toStateName == toName) { err = Outcome::Err("DUPLICATE_TRANSITION", "同じ遷移先が既に存在します: " + toName); return nullptr; }
+                if (existing.toStateName == toName) {
+                    err = Outcome::Err("DUPLICATE_TRANSITION", "同じ遷移先が既に存在します: " + toName);
+                    return nullptr;
+                }
 
-            /// @note 任意の初期設定を build 時に検証しておく。
+            // 任意の初期設定を build 時に検証しておく。
             scene::AnimationTransition prototype;
             prototype.toStateName = toName;
-            if (const JsonValue* v = payload.Find("hasExitTime"); v != nullptr && v->IsBool()) prototype.hasExitTime = v->AsBool();
-            if (const JsonValue* v = payload.Find("exitTime"); v != nullptr && v->IsNumber()) prototype.exitTime = static_cast<float>(v->AsNumber());
-            if (const JsonValue* v = payload.Find("fixedDuration"); v != nullptr && v->IsBool()) prototype.fixedDuration = v->AsBool();
-            if (const JsonValue* v = payload.Find("transitionDuration"); v != nullptr && v->IsNumber()) prototype.transitionDuration = static_cast<float>(v->AsNumber());
-            if (const JsonValue* v = payload.Find("interruptActiveBlend"); v != nullptr && v->IsBool()) prototype.interruptActiveBlend = v->AsBool();
+            if (const JsonValue* v = payload.Find("hasExitTime"); v != nullptr && v->IsBool()) {
+                prototype.hasExitTime = v->AsBool();
+            }
+            if (const JsonValue* v = payload.Find("exitTime"); v != nullptr && v->IsNumber()) {
+                prototype.exitTime = static_cast<float>(v->AsNumber());
+            }
+            if (const JsonValue* v = payload.Find("fixedDuration"); v != nullptr && v->IsBool()) {
+                prototype.fixedDuration = v->AsBool();
+            }
+            if (const JsonValue* v = payload.Find("transitionDuration"); v != nullptr && v->IsNumber()) {
+                prototype.transitionDuration = static_cast<float>(v->AsNumber());
+            }
+            if (const JsonValue* v = payload.Find("interruptActiveBlend"); v != nullptr && v->IsBool()) {
+                prototype.interruptActiveBlend = v->AsBool();
+            }
 
             return MakeAnimatorEditCommand(scene, id, "AI: Add Animator Transition", markDirty,
                 [isAnyState, fromName, prototype, layerName](scene::AnimatorComponent& a) {
-                    if (isAnyState) { GRAPH(a, layerName).AnyRef().push_back(prototype); }
-                    else {
+                    if (isAnyState) {
+                        GRAPH(a, layerName).AnyRef().push_back(prototype);
+                    } else {
                         for (auto& s : GRAPH(a, layerName).StatesRef())
-                            if (s.name == fromName) { s.transitions.push_back(prototype); break; }
+                            if (s.name == fromName) {
+                                s.transitions.push_back(prototype);
+                                break;
+                            }
                     }
                 });
         }
 
-        /// @note animation.setCondition: 指定 transition の conditions を add/update/remove/clear する。
+        // animation.setCondition: 指定 transition の conditions を add/update/remove/clear する。
         const JsonValue* transitionIndexField = payload.Find("transitionIndex");
         if (transitionIndexField == nullptr || !transitionIndexField->IsNumber()) {
-            err = Outcome::Err("BAD_ARG", "transitionIndex が必要です"); return nullptr;
+            err = Outcome::Err("BAD_ARG", "transitionIndex が必要です");
+            return nullptr;
         }
         const int transitionIndex = transitionIndexField->AsInt();
         if (transitionIndex < 0 || transitionIndex >= static_cast<int>(sourceTransitions().size())) {
-            err = Outcome::Err("TRANSITION_NOT_FOUND", "transitionIndex が範囲外です"); return nullptr;
+            err = Outcome::Err("TRANSITION_NOT_FOUND", "transitionIndex が範囲外です");
+            return nullptr;
         }
         const std::string action = StringField(payload, "action");
         if (action != "add" && action != "update" && action != "remove" && action != "clear") {
-            err = Outcome::Err("BAD_ARG", "action は add/update/remove/clear のいずれかです"); return nullptr;
+            err = Outcome::Err("BAD_ARG", "action は add/update/remove/clear のいずれかです");
+            return nullptr;
         }
 
         scene::AnimationTransition& targetTransition = sourceTransitions()[static_cast<size_t>(transitionIndex)];
 
-        /// @note add / update は条件の中身を build 時に検証する。
+        // add / update は条件の中身を build 時に検証する。
         scene::AnimatorCondition prototype;
         int conditionIndex = -1;
         if (action == "add" || action == "update") {
             const std::string paramName = StringField(payload, "parameter");
-            if (paramName.empty()) { err = Outcome::Err("BAD_ARG", "parameter 名が必要です"); return nullptr; }
+            if (paramName.empty()) {
+                err = Outcome::Err("BAD_ARG", "parameter 名が必要です");
+                return nullptr;
+            }
             const bool paramExists = std::any_of(animator->parameters.begin(), animator->parameters.end(),
                 [&](const scene::AnimatorParameter& p) { return p.name == paramName; });
-            if (!paramExists) { err = Outcome::Err("PARAM_NOT_FOUND", "パラメーターが見つかりません: " + paramName); return nullptr; }
+            if (!paramExists) {
+                err = Outcome::Err("PARAM_NOT_FOUND", "パラメーターが見つかりません: " + paramName);
+                return nullptr;
+            }
             scene::ConditionOp op = scene::ConditionOp::Greater;
             if (!ParseConditionOp(StringField(payload, "op"), op)) {
-                err = Outcome::Err("BAD_ARG", "op は greater/less/equal/notEqual/true/false のいずれかです"); return nullptr;
+                err = Outcome::Err("BAD_ARG", "op は greater/less/equal/notEqual/true/false のいずれかです");
+                return nullptr;
             }
             prototype.paramName = paramName;
             prototype.op = op;
             if (ConditionOpUsesThreshold(op)) {
                 const JsonValue* thresholdField = payload.Find("threshold");
-                if (thresholdField != nullptr && thresholdField->IsNumber())
+                if (thresholdField != nullptr && thresholdField->IsNumber()) {
                     prototype.threshold = static_cast<float>(thresholdField->AsNumber());
+                }
             }
         }
         if (action == "update" || action == "remove") {
             const JsonValue* conditionIndexField = payload.Find("conditionIndex");
             if (conditionIndexField == nullptr || !conditionIndexField->IsNumber()) {
-                err = Outcome::Err("BAD_ARG", "conditionIndex が必要です"); return nullptr;
+                err = Outcome::Err("BAD_ARG", "conditionIndex が必要です");
+                return nullptr;
             }
             conditionIndex = conditionIndexField->AsInt();
             if (conditionIndex < 0 || conditionIndex >= static_cast<int>(targetTransition.conditions.size())) {
-                err = Outcome::Err("CONDITION_NOT_FOUND", "conditionIndex が範囲外です"); return nullptr;
+                err = Outcome::Err("CONDITION_NOT_FOUND", "conditionIndex が範囲外です");
+                return nullptr;
             }
         }
 
@@ -1203,18 +1556,25 @@ std::unique_ptr<ICommand> BuildAnimatorGraphCommand([[maybe_unused]] editor::Edi
             [isAnyState, fromName, transitionIndex, action, prototype, conditionIndex, layerName]
             (scene::AnimatorComponent& a) {
                 std::vector<scene::AnimationTransition>* transitions = nullptr;
-                if (isAnyState) transitions = &GRAPH(a, layerName).AnyRef();
-                else for (auto& s : GRAPH(a, layerName).StatesRef()) if (s.name == fromName) { transitions = &s.transitions; break; }
-                if (transitions == nullptr || transitionIndex >= static_cast<int>(transitions->size())) return;
+                if (isAnyState) {
+                    transitions = &GRAPH(a, layerName).AnyRef();
+                } else for (auto& s : GRAPH(a, layerName).StatesRef()) if (s.name == fromName) { transitions = &s.transitions; break; }
+                if (transitions == nullptr || transitionIndex >= static_cast<int>(transitions->size())) {
+                    return;
+                }
                 auto& conditions = (*transitions)[static_cast<size_t>(transitionIndex)].conditions;
-                if (action == "add") conditions.push_back(prototype);
-                else if (action == "clear") conditions.clear();
-                else if (action == "remove") {
-                    if (conditionIndex < static_cast<int>(conditions.size()))
+                if (action == "add") {
+                    conditions.push_back(prototype);
+                } else if (action == "clear") {
+                    conditions.clear();
+                } else if (action == "remove") {
+                    if (conditionIndex < static_cast<int>(conditions.size())) {
                         conditions.erase(conditions.begin() + conditionIndex);
+                    }
                 } else if (action == "update") {
-                    if (conditionIndex < static_cast<int>(conditions.size()))
+                    if (conditionIndex < static_cast<int>(conditions.size())) {
                         conditions[static_cast<size_t>(conditionIndex)] = prototype;
+                    }
                 }
             });
     }
@@ -1228,59 +1588,88 @@ std::unique_ptr<ICommand> BuildAnimatorLayerCommand([[maybe_unused]] editor::Edi
     [[maybe_unused]] std::shared_ptr<std::string> createdSink, [[maybe_unused]] JsonValue* detailSink)
 {
     scene::Scene* scene = ctx.activeScene;
-    if (scene == nullptr) { err = Outcome::Err("NO_SCENE", "アクティブシーンがありません"); return nullptr; }
+    if (scene == nullptr) {
+        err = Outcome::Err("NO_SCENE", "アクティブシーンがありません");
+        return nullptr;
+    }
     [[maybe_unused]] const auto markDirty = [&ctx]() { if (ctx.markSceneDirty) ctx.markSceneDirty(); };
 
-    /// @name Animator レイヤーと Slot (上半身 / 下半身の出し分け)
-    /// @note レイヤーを作れないと animation.addState 等の layer 指定が使えない。レイヤー CRUD と Slot 再生をここに揃え、MCP から一連の操作を完結させる。
+    // Animator レイヤーと Slot (上半身 / 下半身の出し分け)
+    // レイヤーを作れないと animation.addState 等の layer 指定が使えない。レイヤー CRUD と Slot 再生をここに揃え、MCP から一連の操作を完結させる。
     if (type == "animation.addLayer" || type == "animation.setLayer" ||
         type == "animation.removeLayer" ||
         type == "animation.playSlot" || type == "animation.stopSlot") {
         const std::string id = StringField(payload, "id");
         GameObject* go = scene->FindByGuid(id);
-        if (go == nullptr) { err = Outcome::Err("NODE_NOT_FOUND", "NodeId が見つかりません: " + id); return nullptr; }
+        if (go == nullptr) {
+            err = Outcome::Err("NODE_NOT_FOUND", "NodeId が見つかりません: " + id);
+            return nullptr;
+        }
         scene::AnimatorComponent* animator = go->GetComponent<scene::AnimatorComponent>();
-        if (animator == nullptr) { err = Outcome::Err("NOT_PRESENT", "AnimatorComponent が装着されていません"); return nullptr; }
+        if (animator == nullptr) {
+            err = Outcome::Err("NOT_PRESENT", "AnimatorComponent が装着されていません");
+            return nullptr;
+        }
 
         const auto parseLayerMode = [&](const std::string& name, scene::AnimationLayerMode& out) {
-            if (name == "override") { out = scene::AnimationLayerMode::Override; return true; }
-            if (name == "additive") { out = scene::AnimationLayerMode::Additive; return true; }
+            if (name == "override") {
+                out = scene::AnimationLayerMode::Override;
+                return true;
+            }
+            if (name == "additive") {
+                out = scene::AnimationLayerMode::Additive;
+                return true;
+            }
             return false;
         };
 
         if (type == "animation.addLayer") {
             const std::string name = StringField(payload, "name");
-            if (name.empty()) { err = Outcome::Err("BAD_ARG", "レイヤー name が必要です"); return nullptr; }
+            if (name.empty()) {
+                err = Outcome::Err("BAD_ARG", "レイヤー name が必要です");
+                return nullptr;
+            }
             if (animator->FindLayer(name) != nullptr) {
                 err = Outcome::Err("DUPLICATE_LAYER", "同名のレイヤーが既に存在します: " + name);
                 return nullptr;
             }
             scene::AnimationLayer prototype;
             prototype.name = name;
-            if (const JsonValue* v = payload.Find("weight"); v && v->IsNumber())
+            if (const JsonValue* v = payload.Find("weight"); v && v->IsNumber()) {
                 prototype.weight = std::clamp(static_cast<float>(v->AsNumber()), 0.0f, 1.0f);
+            }
             if (const JsonValue* v = payload.Find("mode"); v && v->IsString()) {
                 if (!parseLayerMode(v->AsString(), prototype.mode)) {
                     err = Outcome::Err("BAD_ARG", "mode は override/additive のいずれかです");
                     return nullptr;
                 }
             }
-            if (const JsonValue* v = payload.Find("enabled"); v && v->IsBool()) prototype.enabled = v->AsBool();
-            if (const JsonValue* v = payload.Find("maskPath"); v && v->IsString()) prototype.mask.path = v->AsString();
-            if (const JsonValue* v = payload.Find("additiveSourcePath"); v && v->IsString())
+            if (const JsonValue* v = payload.Find("enabled"); v && v->IsBool()) {
+                prototype.enabled = v->AsBool();
+            }
+            if (const JsonValue* v = payload.Find("maskPath"); v && v->IsString()) {
+                prototype.mask.path = v->AsString();
+            }
+            if (const JsonValue* v = payload.Find("additiveSourcePath"); v && v->IsString()) {
                 prototype.additiveReference.sourcePath = v->AsString();
-            if (const JsonValue* v = payload.Find("additiveClipName"); v && v->IsString())
+            }
+            if (const JsonValue* v = payload.Find("additiveClipName"); v && v->IsString()) {
                 prototype.additiveReference.clipName = v->AsString();
-            if (const JsonValue* v = payload.Find("additiveTime"); v && v->IsNumber())
+            }
+            if (const JsonValue* v = payload.Find("additiveTime"); v && v->IsNumber()) {
                 prototype.additiveReference.time = static_cast<float>(v->AsNumber());
+            }
 
             return MakeAnimatorEditCommand(scene, id, "AI: Add Animator Layer", markDirty,
                 [prototype](scene::AnimatorComponent& a) { a.layers.push_back(prototype); });
         }
 
-        /// @note 以降は既存レイヤーを対象にする。
+        // 以降は既存レイヤーを対象にする。
         const std::string layerName = StringField(payload, "layer");
-        if (layerName.empty()) { err = Outcome::Err("BAD_ARG", "対象 layer 名が必要です"); return nullptr; }
+        if (layerName.empty()) {
+            err = Outcome::Err("BAD_ARG", "対象 layer 名が必要です");
+            return nullptr;
+        }
         if (animator->FindLayer(layerName) == nullptr) {
             err = Outcome::Err("LAYER_NOT_FOUND", "レイヤーが見つかりません: " + layerName);
             return nullptr;
@@ -1297,11 +1686,14 @@ std::unique_ptr<ICommand> BuildAnimatorLayerCommand([[maybe_unused]] editor::Edi
         }
 
         if (type == "animation.setLayer") {
-            /// @note rename 検証: 空不可・他レイヤーと衝突不可。
+            // rename 検証: 空不可・他レイヤーと衝突不可。
             std::string newName;
             if (const JsonValue* v = payload.Find("name"); v && v->IsString()) {
                 newName = v->AsString();
-                if (newName.empty()) { err = Outcome::Err("BAD_ARG", "name は空にできません"); return nullptr; }
+                if (newName.empty()) {
+                    err = Outcome::Err("BAD_ARG", "name は空にできません");
+                    return nullptr;
+                }
                 if (newName != layerName && animator->FindLayer(newName) != nullptr) {
                     err = Outcome::Err("DUPLICATE_LAYER", "同名のレイヤーが既に存在します: " + newName);
                     return nullptr;
@@ -1316,7 +1708,7 @@ std::unique_ptr<ICommand> BuildAnimatorLayerCommand([[maybe_unused]] editor::Edi
                 }
                 hasMode = true;
             }
-            /// @note 部分更新: 指定されたキーだけを書き換える。
+            // 部分更新: 指定されたキーだけを書き換える。
             const JsonValue* weightValue   = payload.Find("weight");
             const JsonValue* enabledValue  = payload.Find("enabled");
             const JsonValue* maskValue     = payload.Find("maskPath");
@@ -1345,25 +1737,43 @@ std::unique_ptr<ICommand> BuildAnimatorLayerCommand([[maybe_unused]] editor::Edi
             return MakeAnimatorEditCommand(scene, id, "AI: Set Animator Layer", markDirty,
                 [=](scene::AnimatorComponent& a) {
                     scene::AnimationLayer* l = a.FindLayer(layerName);
-                    if (l == nullptr) return;
-                    if (hasWeight)  l->weight = weight;
-                    if (hasEnabled) l->enabled = enabled;
-                    if (hasMode)    l->mode = mode;
+                    if (l == nullptr) {
+                        return;
+                    }
+                    if (hasWeight) {
+                        l->weight = weight;
+                    }
+                    if (hasEnabled) {
+                        l->enabled = enabled;
+                    }
+                    if (hasMode) {
+                        l->mode = mode;
+                    }
                     if (hasMask) {
                         l->mask.path = maskPath;
-                        /// @note 次フレームの AnimatorSystem に読み直させる。
+                        // 次フレームの AnimatorSystem に読み直させる。
                         l->mask.Invalidate();
                     }
-                    if (hasDefault) l->defaultStateName = defaultStateName;
-                    if (hasAddSrc)  l->additiveReference.sourcePath = addSrc;
-                    if (hasAddClip) l->additiveReference.clipName = addClip;
-                    if (hasAddTime) l->additiveReference.time = addTime;
-                    if (!newName.empty()) l->name = newName;
+                    if (hasDefault) {
+                        l->defaultStateName = defaultStateName;
+                    }
+                    if (hasAddSrc) {
+                        l->additiveReference.sourcePath = addSrc;
+                    }
+                    if (hasAddClip) {
+                        l->additiveReference.clipName = addClip;
+                    }
+                    if (hasAddTime) {
+                        l->additiveReference.time = addTime;
+                    }
+                    if (!newName.empty()) {
+                        l->name = newName;
+                    }
                 });
         }
 
-        /// @name Slot
-        /// @note Slot はランタイム状態だが、他の編集と同じ Command 経路に載せる。dryRun 判定と Undo への積み込みを呼び出し側へ任せられる。
+        // Slot
+        // Slot はランタイム状態だが、他の編集と同じ Command 経路に載せる。dryRun 判定と Undo への積み込みを呼び出し側へ任せられる。
         if (type == "animation.playSlot") {
             const std::string sourcePath = StringField(payload, "sourcePath");
             const std::string clipName   = StringField(payload, "clipName");
@@ -1373,10 +1783,18 @@ std::unique_ptr<ICommand> BuildAnimatorLayerCommand([[maybe_unused]] editor::Edi
             }
             float fadeIn = 0.15f, fadeOut = 0.15f, slotSpeed = 1.0f;
             bool  slotLoop = false;
-            if (const JsonValue* v = payload.Find("fadeIn"); v && v->IsNumber())  fadeIn = static_cast<float>(v->AsNumber());
-            if (const JsonValue* v = payload.Find("fadeOut"); v && v->IsNumber()) fadeOut = static_cast<float>(v->AsNumber());
-            if (const JsonValue* v = payload.Find("speed"); v && v->IsNumber())   slotSpeed = static_cast<float>(v->AsNumber());
-            if (const JsonValue* v = payload.Find("loop"); v && v->IsBool())      slotLoop = v->AsBool();
+            if (const JsonValue* v = payload.Find("fadeIn"); v && v->IsNumber()) {
+                fadeIn = static_cast<float>(v->AsNumber());
+            }
+            if (const JsonValue* v = payload.Find("fadeOut"); v && v->IsNumber()) {
+                fadeOut = static_cast<float>(v->AsNumber());
+            }
+            if (const JsonValue* v = payload.Find("speed"); v && v->IsNumber()) {
+                slotSpeed = static_cast<float>(v->AsNumber());
+            }
+            if (const JsonValue* v = payload.Find("loop"); v && v->IsBool()) {
+                slotLoop = v->AsBool();
+            }
             return MakeAnimatorEditCommand(scene, id, "AI: Play Animator Slot", markDirty,
                 [=](scene::AnimatorComponent& a) {
                     a.PlaySlot(layerName, sourcePath, clipName, fadeIn, fadeOut, slotSpeed, slotLoop);
@@ -1385,8 +1803,9 @@ std::unique_ptr<ICommand> BuildAnimatorLayerCommand([[maybe_unused]] editor::Edi
 
         if (type == "animation.stopSlot") {
             float fadeOut = -1.0f;
-            if (const JsonValue* v = payload.Find("fadeOut"); v && v->IsNumber())
+            if (const JsonValue* v = payload.Find("fadeOut"); v && v->IsNumber()) {
                 fadeOut = static_cast<float>(v->AsNumber());
+            }
             return MakeAnimatorEditCommand(scene, id, "AI: Stop Animator Slot", markDirty,
                 [layerName, fadeOut](scene::AnimatorComponent& a) {
                     a.StopSlot(layerName, fadeOut);
@@ -1397,7 +1816,7 @@ std::unique_ptr<ICommand> BuildAnimatorLayerCommand([[maybe_unused]] editor::Edi
     err = Outcome::Err("UNSUPPORTED", "この Command は transaction 内で使用できません: " + type);
     return nullptr;
 }
-} /// @note namespace
+} // namespace
 
 void RegisterAnimationHandlers(BusHandlerTable& table)
 {
@@ -1409,7 +1828,7 @@ void RegisterAnimationHandlers(BusHandlerTable& table)
 
     table.AddCommand("animation.control", [](BusCall& call) { return DoAnimationControl(call.ctx, call.payload, call.dryRun); });
     table.AddCommand("animation.setParameter", [](BusCall& call) { return DoAnimationSetParameter(call.ctx, call.payload, call.dryRun); });
-    /// @note Avatar Mask はアセットファイル操作。シーンの UndoStack には載せない。
+    // Avatar Mask はアセットファイル操作。シーンの UndoStack には載せない。
     table.AddCommand("avatarMask.write", [](BusCall& call) { return DoAvatarMaskWrite(call.ctx, call.payload, call.dryRun); });
 
     for (const char* type : { "animation.addTransition", "animation.setCondition", "animation.removeTransition",
@@ -1424,4 +1843,4 @@ void RegisterAnimationHandlers(BusHandlerTable& table)
     }
 }
 
-} /// @note namespace fbzz::editor::ai::bus
+} // namespace fbzz::editor::ai::bus

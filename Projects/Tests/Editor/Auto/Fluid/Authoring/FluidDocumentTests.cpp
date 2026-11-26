@@ -166,7 +166,7 @@ TEST_F(FluidDocumentTest, EditPushesOneUndoAndUndoRestores)
     EXPECT_EQ(m_undo.GetHistorySize(), 1u);
     EXPECT_EQ(m_undo.GetUndoDescription(), "Set Buoyancy");
 
-    /// @note 何も変えない Edit は積まない (履歴が «何も起きない Undo» で埋まる)。
+    // 何も変えない Edit は積まない (履歴が «何も起きない Undo» で埋まる)。
     EXPECT_FALSE(doc.Edit(Context(), "No-op", [](fluid::FluidRecipe&) {}));
     EXPECT_EQ(m_undo.GetHistorySize(), 1u);
 
@@ -201,7 +201,7 @@ TEST_F(FluidDocumentTest, CommitGroupsChangesWhileAnItemIsActive)
     ScopedImGuiContext imgui;
     fluid::FluidRecipe working = doc.Recipe();
 
-    /// @note ドラッグ中の 3 フレーム: 値は毎フレーム取り込むが、Undo はまだ積まない。
+    // ドラッグ中の 3 フレーム: 値は毎フレーム取り込むが、Undo はまだ積まない。
     imgui.SetItemActive(true);
     for (const float value : { 2.0f, 2.5f, 3.0f }) {
         working.gas.buoyancy = value;
@@ -211,17 +211,17 @@ TEST_F(FluidDocumentTest, CommitGroupsChangesWhileAnItemIsActive)
     EXPECT_EQ(m_undo.GetHistorySize(), 0u);
     EXPECT_TRUE(doc.IsDirty());
 
-    /// @note 押したままで値が来ないフレームも積まない。
+    // 押したままで値が来ないフレームも積まない。
     doc.Commit(Context(), "Drag Buoyancy", doc.Recipe(), false);
     EXPECT_EQ(m_undo.GetHistorySize(), 0u);
 
-    /// @note 手を離したフレームで 1 つ積む。
+    // 手を離したフレームで 1 つ積む。
     imgui.SetItemActive(false);
     doc.Commit(Context(), "Drag Buoyancy", doc.Recipe(), false);
     ASSERT_EQ(m_undo.GetHistorySize(), 1u);
     EXPECT_EQ(m_undo.GetUndoDescription(), "Drag Buoyancy");
 
-    /// @note 操作中でない変更 (チェックボックス) はその場で 1 つ。
+    // 操作中でない変更 (チェックボックス) はその場で 1 つ。
     working = doc.Recipe();
     working.gas.floor = !working.gas.floor;
     doc.Commit(Context(), "Toggle Floor", working, true);
@@ -378,7 +378,7 @@ TEST_F(FluidDocumentTest, ExternalChangeConflictsWhenDirty)
     ASSERT_TRUE(doc.HasExternalConflict());
     EXPECT_FLOAT_EQ(doc.Recipe().gas.buoyancy, 3.5f);
 
-    /// @note 手元を残す: 衝突は下り、次の Save がディスクを上書きする。
+    // 手元を残す: 衝突は下り、次の Save がディスクを上書きする。
     doc.KeepLocal();
     EXPECT_FALSE(doc.HasExternalConflict());
     EXPECT_TRUE(doc.IsDirty());
@@ -387,7 +387,7 @@ TEST_F(FluidDocumentTest, ExternalChangeConflictsWhenDirty)
     ASSERT_TRUE(doc.Save(Context(), error)) << error;
     EXPECT_FLOAT_EQ(LoadRecipe(path).gas.buoyancy, 3.5f);
 
-    /// @note もう一度外から書かれたら、今度はディスクで置き換える。
+    // もう一度外から書かれたら、今度はディスクで置き換える。
     SetBuoyancy(doc, Context(), 2.0f);
     external.gas.buoyancy = 5.0f;
     WriteExternally(path, external);
@@ -431,7 +431,7 @@ TEST_F(FluidDocumentTest, PreviewRecipeHonoursHideAndSolo)
     EXPECT_TRUE(preview.sources[0].enabled);
     EXPECT_FALSE(preview.sources[1].enabled);
     EXPECT_TRUE(preview.sources[2].enabled);
-    /// @note 表示の切り替えはレシピ本体に触らない (保存・焼きには効かない)。
+    // 表示の切り替えはレシピ本体に触らない (保存・焼きには効かない)。
     EXPECT_TRUE(doc.Recipe().sources[1].enabled);
     EXPECT_FALSE(doc.IsDirty());
 
@@ -440,7 +440,7 @@ TEST_F(FluidDocumentTest, PreviewRecipeHonoursHideAndSolo)
     preview = doc.PreviewRecipe();
     EXPECT_TRUE(preview.forces[0].enabled);
     EXPECT_FALSE(preview.forces[1].enabled);
-    /// @note ソロは同じリストだけに効く。
+    // ソロは同じリストだけに効く。
     EXPECT_TRUE(preview.sources[0].enabled);
     EXPECT_FALSE(preview.sources[1].enabled);
 

@@ -55,7 +55,7 @@ TEST(TerrainBrushWeightTest, IsFullStrengthAtTheCentre)
 /// @brief Is zero at and beyond the edge.
 TEST(TerrainBrushWeightTest, IsZeroAtAndBeyondTheEdge)
 {
-    /// @note 縁で 0 にならないと、塗った範囲の外周に段差が残る。
+    // 縁で 0 にならないと、塗った範囲の外周に段差が残る。
     for (const auto falloff : { TerrainFalloff::Linear, TerrainFalloff::Smooth,
                                 TerrainFalloff::Gaussian }) {
         const TerrainBrush brush = MakeBrush(5.0f, falloff);
@@ -93,13 +93,13 @@ TEST(TerrainBrushWeightTest, LinearFallsOffProportionally)
 /// @brief Smooth is flat at both ends.
 TEST(TerrainBrushWeightTest, SmoothIsFlatAtBothEnds)
 {
-    /// @note smoothstep の要点は端の傾きが 0 になること。中心と縁で «急に変わらない»。
+    // smoothstep の要点は端の傾きが 0 になること。中心と縁で «急に変わらない»。
     const TerrainBrush brush = MakeBrush(10.0f, TerrainFalloff::Smooth);
 
-    /// @note 中間は 0.5
+    // 中間は 0.5
     EXPECT_NEAR(TerrainBrushWeight(brush, 5.0f), 0.5f, kEps);
 
-    /// @note 中心付近の落ち込みは線形より緩い。
+    // 中心付近の落ち込みは線形より緩い。
     EXPECT_GT(TerrainBrushWeight(brush, 1.0f),
               TerrainBrushWeight(MakeBrush(10.0f, TerrainFalloff::Linear), 1.0f));
 }
@@ -107,7 +107,7 @@ TEST(TerrainBrushWeightTest, SmoothIsFlatAtBothEnds)
 /// @brief Gaussian keeps a thin tail at the edge.
 TEST(TerrainBrushWeightTest, GaussianKeepsAThinTailAtTheEdge)
 {
-    /// @note exp(-3) ≒ 0.0498。縁を «0 にする» 側の打ち切りが効いていることも同時に見る。
+    // exp(-3) ≒ 0.0498。縁を «0 にする» 側の打ち切りが効いていることも同時に見る。
     const TerrainBrush brush = MakeBrush(10.0f, TerrainFalloff::Gaussian);
 
     EXPECT_NEAR(TerrainBrushWeight(brush, 9.99f), 0.0498f, 1e-3f);
@@ -117,7 +117,7 @@ TEST(TerrainBrushWeightTest, GaussianKeepsAThinTailAtTheEdge)
 /// @brief Scales with the radius.
 TEST(TerrainBrushWeightTest, ScalesWithTheRadius)
 {
-    /// @note 同じ «相対位置» なら半径が変わっても重みは同じ。
+    // 同じ «相対位置» なら半径が変わっても重みは同じ。
     const float small = TerrainBrushWeight(MakeBrush(2.0f,  TerrainFalloff::Linear), 1.0f);
     const float large = TerrainBrushWeight(MakeBrush(20.0f, TerrainFalloff::Linear), 10.0f);
 
@@ -127,7 +127,7 @@ TEST(TerrainBrushWeightTest, ScalesWithTheRadius)
 /// @brief Is zero for a degenerate radius.
 TEST(TerrainBrushWeightTest, IsZeroForADegenerateRadius)
 {
-    /// @note 半径 0 で 1.0 を返すと、1 点だけ無限に盛り上がる。
+    // 半径 0 で 1.0 を返すと、1 点だけ無限に盛り上がる。
     EXPECT_FLOAT_EQ(TerrainBrushWeight(MakeBrush(0.0f, TerrainFalloff::Linear), 0.0f), 0.0f);
     EXPECT_FLOAT_EQ(TerrainBrushWeight(MakeBrush(-1.0f, TerrainFalloff::Smooth), 0.0f), 0.0f);
 }
@@ -176,7 +176,7 @@ TEST(TerrainTransform, SubtractsTheTerrainPosition)
 /// @brief Round-trips through local and back.
 TEST(TerrainTransform, RoundTripsThroughLocalAndBack)
 {
-    /// @note 片道でもずれると «クリックした場所と盛り上がる場所» が食い違う。
+    // 片道でもずれると «クリックした場所と盛り上がる場所» が食い違う。
     scene::Transform transform;
     transform.worldPosition = { 7.0f, 2.0f, -3.0f };
     transform.worldRotation =
@@ -241,7 +241,9 @@ float MaxNeighbourDifference(const scene::TerrainComponent& terrain)
                 for (int dx = -1; dx <= 1; ++dx) {
                     const int nx = x + dx;
                     const int nz = z + dz;
-                    if (nx < 0 || nz < 0 || nx >= terrain.columns || nz >= terrain.rows) continue;
+                    if (nx < 0 || nz < 0 || nx >= terrain.columns || nz >= terrain.rows) {
+                        continue;
+                    }
                     const float a = terrain.heightData[static_cast<size_t>(z) * terrain.columns + x];
                     const float b = terrain.heightData[static_cast<size_t>(nz) * terrain.columns + nx];
                     maxDiff = std::max(maxDiff, std::abs(a - b));
@@ -320,7 +322,7 @@ TEST_F(TerrainBrushKernelTest, TerraceWithFullSharpnessSnapsHeightsToSteps)
     constexpr float kStepMeters = 2.0f;
     for (int z = 0; z < terrain.rows; ++z)
         for (int x = 0; x < terrain.columns; ++x) {
-            /// @note 段の中の位置 f は 0.4 以下に置く。f^9 の残りが段の高さの 0.03% 未満に収まる。
+            // 段の中の位置 f は 0.4 以下に置く。f^9 の残りが段の高さの 0.03% 未満に収まる。
             const float fraction = 0.1f * static_cast<float>((x + z) % 5);
             HeightAt(terrain, x, z) = (static_cast<float>(x % 3) + fraction) * kStepMeters / terrain.maxHeight;
         }
@@ -357,7 +359,7 @@ TEST_F(TerrainBrushKernelTest, ThermalErosionReducesTheSteepestSlopeOfASpike)
     float sumAfter = 0.0f;
     for (float h : terrain.heightData) sumAfter += h;
     EXPECT_LT(MaxNeighbourDifference(terrain), slopeBefore * 0.5f);
-    /// @note 崩した土は近傍へ移すだけなので、総量は保たれる。
+    // 崩した土は近傍へ移すだけなので、総量は保たれる。
     EXPECT_NEAR(sumAfter, sumBefore, testkit::kLooseTolerance);
 }
 
@@ -407,7 +409,7 @@ TEST_F(TerrainBrushKernelTest, RampProducesAMonotonicProfileAlongTheSegment)
     EXPECT_NEAR(HeightAt(terrain, 8, 8),  0.25f, testkit::kTolerance);
     for (int x = 3; x <= 14; ++x)
         EXPECT_GT(HeightAt(terrain, x, 8), HeightAt(terrain, x - 1, 8)) << "x=" << x;
-    /// @note 線分から radius 以上離れた頂点は変えない。
+    // 線分から radius 以上離れた頂点は変えない。
     EXPECT_FLOAT_EQ(HeightAt(terrain, 8, 11), 0.0f);
 }
 

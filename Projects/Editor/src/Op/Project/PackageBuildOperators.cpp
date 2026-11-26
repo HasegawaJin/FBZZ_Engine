@@ -15,22 +15,43 @@ namespace {
 bool CandidateSettings(const PackageBuildService& service, const OpArgs& args, BuildSettings& settings, std::string& reason)
 {
     settings = service.Settings();
-    if (args.Has("outputDirectory")) settings.outputDirectory = args.GetString("outputDirectory");
-    if (args.Has("productName")) settings.productName = args.GetString("productName");
-    if (args.Has("version")) settings.version = args.GetString("version");
-    if (args.Has("iconPath")) settings.iconPath = args.GetString("iconPath");
-    if (args.Has("developmentBuild")) settings.developmentBuild = args.GetBool("developmentBuild");
-    if (args.Has("stripEditorAssets")) settings.stripEditorAssets = args.GetBool("stripEditorAssets");
+    if (args.Has("outputDirectory")) {
+        settings.outputDirectory = args.GetString("outputDirectory");
+    }
+    if (args.Has("productName")) {
+        settings.productName = args.GetString("productName");
+    }
+    if (args.Has("version")) {
+        settings.version = args.GetString("version");
+    }
+    if (args.Has("iconPath")) {
+        settings.iconPath = args.GetString("iconPath");
+    }
+    if (args.Has("developmentBuild")) {
+        settings.developmentBuild = args.GetBool("developmentBuild");
+    }
+    if (args.Has("stripEditorAssets")) {
+        settings.stripEditorAssets = args.GetBool("stripEditorAssets");
+    }
     if (const OpData* scenes = args.GetData("scenes")) {
-        if (!scenes->IsArray()) { reason = "scenes must be an array of path/enabled objects."; return false; }
+        if (!scenes->IsArray()) {
+            reason = "scenes must be an array of path/enabled objects.";
+            return false;
+        }
         settings.scenes.clear();
         for (const OpData& entry : scenes->AsArray()) {
             const OpData* path = entry.Find("path");
             const OpData* enabled = entry.Find("enabled");
             if (!entry.IsObject() || !path || !path->IsString() || path->AsString().empty()
-                || (enabled && !enabled->IsBool())) { reason = "Every scene requires a nonempty path and optional boolean enabled."; return false; }
+                || (enabled && !enabled->IsBool())) {
+                reason = "Every scene requires a nonempty path and optional boolean enabled.";
+                return false;
+            }
             for (const auto& member : entry.AsObject()) {
-                if (member.first != "path" && member.first != "enabled") { reason = "Unknown scene setting: " + member.first; return false; }
+                if (member.first != "path" && member.first != "enabled") {
+                    reason = "Unknown scene setting: " + member.first;
+                    return false;
+                }
             }
             settings.scenes.push_back({ path->AsString(), !enabled || enabled->AsBool() });
         }
@@ -71,7 +92,7 @@ OpData DescribeSettings(const BuildSettings& settings)
     return data;
 }
 
-} /// @note namespace
+} // namespace
 
 void RegisterPackageBuildOperators(OperatorRegistry& registry)
 {
@@ -101,7 +122,9 @@ void RegisterPackageBuildOperators(OperatorRegistry& registry)
         auto& service = *ctx.packageBuild;
         BuildSettings after;
         std::string reason;
-        if (!CandidateSettings(service, args, after, reason)) return OpResult::Err("BAD_ARG", reason);
+        if (!CandidateSettings(service, args, after, reason)) {
+            return OpResult::Err("BAD_ARG", reason);
+        }
         const auto before = service.Settings();
         const auto project = ctx.projectRoot;
         const auto apply = [&ctx, project](const BuildSettings& value, std::string& error) {
@@ -114,7 +137,9 @@ void RegisterPackageBuildOperators(OperatorRegistry& registry)
             ctx.requestEditorSettingsSave = true;
             return true;
         };
-        if (!apply(after, reason)) return OpResult::Err("BUILD_SETTINGS_FAILED", reason);
+        if (!apply(after, reason)) {
+            return OpResult::Err("BUILD_SETTINGS_FAILED", reason);
+        }
         auto result = OpResult::Data(DescribeSettings(after));
         result.command = std::make_unique<CheckedLambdaCommand>("Edit Build Settings",
             [apply, after](std::string& error) { return apply(after, error); },
@@ -132,10 +157,14 @@ void RegisterPackageBuildOperators(OperatorRegistry& registry)
     check.params = SettingsParams();
     check.exec = [](OpContext& context, const OpArgs& args) {
         PackageBuildService* service = context.ctx.packageBuild;
-        if (!service) return OpResult::Err("NO_PACKAGE_SERVICE", "Package build service is unavailable.");
+        if (!service) {
+            return OpResult::Err("NO_PACKAGE_SERVICE", "Package build service is unavailable.");
+        }
         BuildSettings settings;
         std::string reason;
-        if (!CandidateSettings(*service, args, settings, reason)) return OpResult::Err("BAD_ARG", reason);
+        if (!CandidateSettings(*service, args, settings, reason)) {
+            return OpResult::Err("BAD_ARG", reason);
+        }
         service->RefreshChecks(context.ctx, settings);
         OpData data = service->CheckStatus();
         std::string code;
@@ -162,11 +191,15 @@ void RegisterPackageBuildOperators(OperatorRegistry& registry)
     };
     start.exec = [](OpContext& context, const OpArgs& args) {
         PackageBuildService* service = context.ctx.packageBuild;
-        if (!service) return OpResult::Err("NO_PACKAGE_SERVICE", "Package build service is unavailable.");
+        if (!service) {
+            return OpResult::Err("NO_PACKAGE_SERVICE", "Package build service is unavailable.");
+        }
         std::string code;
         std::string reason;
         BuildSettings settings;
-        if (!CandidateSettings(*service, args, settings, reason)) return OpResult::Err("BAD_ARG", reason);
+        if (!CandidateSettings(*service, args, settings, reason)) {
+            return OpResult::Err("BAD_ARG", reason);
+        }
         if (!service->Start(context.ctx, settings, args.GetBool("runAfterBuild"), code, reason)) {
             OpResult result = OpResult::Err(code, reason);
             result.data = service->CheckStatus();
@@ -187,9 +220,12 @@ void RegisterPackageBuildOperators(OperatorRegistry& registry)
     status.params = { { "packageRequestId", OpParamType::String, "Optional exact current request ID; a replaced or reset request is not the newest request.", false, {} } };
     status.exec = [](OpContext& context, const OpArgs& args) {
         PackageBuildService* service = context.ctx.packageBuild;
-        if (!service) return OpResult::Err("NO_PACKAGE_SERVICE", "Package build service is unavailable.");
-        if (args.Has("packageRequestId") && args.GetString("packageRequestId") != service->RequestId())
+        if (!service) {
+            return OpResult::Err("NO_PACKAGE_SERVICE", "Package build service is unavailable.");
+        }
+        if (args.Has("packageRequestId") && args.GetString("packageRequestId") != service->RequestId()) {
             return OpResult::Err("PACKAGE_REQUEST_NOT_FOUND", "The package request is no longer the current request.");
+        }
         return OpResult::Data(service->Status());
     };
     registry.Register(std::move(status));
@@ -204,12 +240,13 @@ void RegisterPackageBuildOperators(OperatorRegistry& registry)
     cancel.poll = [](const OpContext& context, const OpArgs&) { return context.ctx.packageBuild && context.ctx.packageBuild->IsRunning(); };
     cancel.exec = [](OpContext& context, const OpArgs& args) {
         PackageBuildService* service = context.ctx.packageBuild;
-        if (args.Has("packageRequestId") && args.GetString("packageRequestId") != service->RequestId())
+        if (args.Has("packageRequestId") && args.GetString("packageRequestId") != service->RequestId()) {
             return OpResult::Err("PACKAGE_REQUEST_NOT_FOUND", "The package request is no longer the current request.");
+        }
         service->Cancel();
         return OpResult::Data(service->Status());
     };
     registry.Register(std::move(cancel));
 }
 
-} /// @note namespace fbzz::editor
+} // namespace fbzz::editor

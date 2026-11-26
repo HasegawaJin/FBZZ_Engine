@@ -59,7 +59,7 @@ protected:
         io.IniFilename = nullptr;
         io.DisplaySize = {800.0f, 600.0f};
         io.DeltaTime = 1.0f / 60.0f;
-        /// @note 一つのFrameで指定したmouse/keyの組を同時に適用し、別種イベントのtrickleによるframe遅延を除く。
+        // 一つのFrameで指定したmouse/keyの組を同時に適用し、別種イベントのtrickleによるframe遅延を除く。
         io.ConfigInputTrickleEventQueue = false;
         unsigned char* pixels = nullptr;
         int width = 0;
@@ -118,9 +118,14 @@ protected:
         }
         const bool overlayHovered = includeOverlay
             && editor::DrawControlPointOverlay(Context(), {0.0f, 0.0f}, {800.0f, 600.0f}, editable, blocked);
-        if (overlayCaptured) *overlayCaptured = overlayHovered;
+        if (overlayCaptured) {
+            *overlayCaptured = overlayHovered;
+        }
+
+        // 回転や拡縮は、点の選択を処理する前に選択済みのギズモへ渡す。
+        const bool canUseViewportGizmo = editable && !blocked && !overlayHovered;
         bool transformGizmoDrawnBeforePoints = false;
-        if (editable && !blocked && !overlayHovered && editor::HasTargetPointSelection(Context())
+        if (canUseViewportGizmo && editor::HasTargetPointSelection(Context())
             && Context().gizmoMode != editor::EditorContext::GizmoMode::Translate) {
             editor::DrawGizmo(Context(), {0.0f, 0.0f}, {800.0f, 600.0f},
                 m_lastGizmoOp, m_lastGizmoMode, m_prevGizmoOver, m_prevGizmoUsing);
@@ -129,14 +134,21 @@ protected:
         const int verticesBeforePoints = ImGui::GetWindowDrawList()->VtxBuffer.Size;
         const bool claimed = m_tool.Update(Context(), {0.0f, 0.0f}, {800.0f, 600.0f},
             editable, blocked || overlayHovered, true);
-        if (pointDrawVertices)
+        if (pointDrawVertices) {
             *pointDrawVertices = ImGui::GetWindowDrawList()->VtxBuffer.Size - verticesBeforePoints;
-        if (editable && !blocked && !overlayHovered && !transformGizmoDrawnBeforePoints && !claimed
-            && (!editor::HasTargetPointSelection(Context())
+        }
+
+        // 点が入力を取らなかった場合は、更新後の選択を使って通常のギズモを描く。
+        const bool canDrawAfterPoints = canUseViewportGizmo && !transformGizmoDrawnBeforePoints && !claimed;
+        if (canDrawAfterPoints) {
+            const bool allowGizmo = !editor::HasTargetPointSelection(Context())
                 || Context().gizmoMode != editor::EditorContext::GizmoMode::Translate
-                || m_prevGizmoUsing))
-            editor::DrawGizmo(Context(), {0.0f, 0.0f}, {800.0f, 600.0f},
-                m_lastGizmoOp, m_lastGizmoMode, m_prevGizmoOver, m_prevGizmoUsing);
+                || m_prevGizmoUsing;
+            if (allowGizmo) {
+                editor::DrawGizmo(Context(), {0.0f, 0.0f}, {800.0f, 600.0f},
+                    m_lastGizmoOp, m_lastGizmoMode, m_prevGizmoOver, m_prevGizmoUsing);
+            }
+        }
         ImGui::End();
         ImGui::Render();
         return claimed;
@@ -168,10 +180,14 @@ protected:
 
     int BeginGizmoDrag(scene::GameObject& object, bool includeOverlay = false)
     {
-        if (!SelectCenterMarker(object, includeOverlay)) return -1;
+        if (!SelectCenterMarker(object, includeOverlay)) {
+            return -1;
+        }
         for (int offset = 13; offset <= 64; ++offset) {
             Frame(400.0f + static_cast<float>(offset), 300.0f, true, true, false, false, includeOverlay);
-            if (Context().controlPointMouseClaimFrame == ImGui::GetFrameCount()) return offset;
+            if (Context().controlPointMouseClaimFrame == ImGui::GetFrameCount()) {
+                return offset;
+            }
             Frame(400.0f + static_cast<float>(offset), 300.0f, false, true, false, false, includeOverlay);
         }
         return -1;
@@ -186,7 +202,9 @@ protected:
                 const ImVec2 point{400.0f + static_cast<float>(radius) * std::cos(angle),
                                    300.0f + static_cast<float>(radius) * std::sin(angle)};
                 Frame(point.x, point.y, false);
-                if (m_prevGizmoOver) return point;
+                if (m_prevGizmoOver) {
+                    return point;
+                }
             }
         }
         return {-1.0f, -1.0f};

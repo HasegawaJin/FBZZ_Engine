@@ -26,12 +26,12 @@ struct TerrainPaintClearance {
     [[nodiscard]] bool NearestWater(const math::Vector3& position, float radius, math::Vector3& nearest) const;
     [[nodiscard]] float PathDistance(const math::Vector3& position, float radius) const;
 };
-/// @param remainingWork Optional shared budget for contour cells and water outline segments.
-/// @param includeFiniteWaterOutlines Disable when the same world-space outlines were indexed for another tile.
+/// @param[in,out] remainingWork 輪郭セルと水面境界の区間を調べるための共有予算。検査した分を差し引く。null なら無制限。
+/// @param[in] includeFiniteWaterOutlines 同じワールド座標の水面境界を別タイルで索引に登録済みなら false。
 /// @return A result with budgetExceeded is incomplete and must not be used for placement.
 [[nodiscard]] TerrainPaintClearance BuildTerrainPaintClearance(const scene::TerrainComponent& terrain,
     const scene::Transform& transform, const TerrainScatterBrush& region, std::span<const int> excludedLayers,
     std::span<const std::pair<const scene::WaterComponent*, const scene::Transform*>> water, float waterMargin,
     float pathMargin, bool combinePathLayers = false, std::size_t* remainingWork = nullptr,
     bool includeFiniteWaterOutlines = true);
-} /// @note namespace fbzz::editor
+} // namespace fbzz::editor

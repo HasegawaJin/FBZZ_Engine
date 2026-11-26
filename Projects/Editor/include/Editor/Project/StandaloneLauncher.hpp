@@ -13,7 +13,7 @@ namespace fbzz::editor {
 class StandaloneLauncher {
 public:
     /// Build and Run 用: ビルド済みの exe を引数なしで起動する (Standalone 自動検出モード)。
-    /// @param exePath 起動する exe の絶対パス。
+    /// @param[in] exePath 起動する exe の絶対パス。
     static bool LaunchExe(const std::string& exePath, const std::string& workingDir);
 };
 

@@ -49,9 +49,9 @@ function ToInputCommand(input: InputInjection): EditorCommand {
 }
 
 export function RegisterPlaytestQueryTools(server: McpServer, bus: EditorBus): void {
-    /// @note ── 検証ループ (Docs/design/ai-verification-loop.md) ──
-    /// @note 操作の口だけでは «直った» を言えない。シナリオの合否・絵の差分・Editor が実際に
-    /// @note      受け付ける型の一覧を読めて初めて、AI が自分の変更を自分で検証できる。
+    // 検証結果の照会を公開する。手順は Docs/design/ai-verification-loop.md を参照。
+    // 操作の口だけでは «直った» を言えない。シナリオの合否・絵の差分・Editor が実際に
+    // 受け付ける型の一覧を読めて初めて、AI が自分の変更を自分で検証できる。
     server.registerTool('scenario_status', {
         description: 'Playtest シナリオの進捗と結果を返します。state は running / passed / failed / idle。'
             + 'failed のときは failure が最初に落ちた手順の理由、steps が手順ごとの記録、images が絵の比較結果'
@@ -119,7 +119,7 @@ export function RegisterPlaytestCommandTools(server: McpServer, bus: EditorBus, 
         const initialState = await bus.Query({ t: 'editor.state' }) as Record<string, unknown>;
         const initialPlayState = String(initialState.playState ?? 'editor');
 
-        /// @note dry-runでは時系列待機を省略し、全CommandをEditor側のdryRun検証へ通す。
+        // dry-runでは時系列待機を省略し、全CommandをEditor側のdryRun検証へ通す。
         if (dryRun) {
             const previews: unknown[] = [];
             if (startPlay && initialPlayState === 'editor')
@@ -267,7 +267,7 @@ export function RegisterPlaytestCommandTools(server: McpServer, bus: EditorBus, 
         };
     }));
 
-    /// @note ── 検証ループ ──
+    // Editor 側でフレームを進めるシナリオを開始できるようにする。
     server.registerTool('scenario_run', {
         description: 'Playtest シナリオを Editor 側で開始します (すぐ戻ります)。playtest_run (MCP 側で実時間待機する簡易版) と違い、'
             + 'フレーム単位で進むのでビルドの速さに結果が左右されず、ファイルに残して --batch / CI でも同じものを回せます。'

@@ -29,8 +29,14 @@ public:
     bool ApplyPendingRestore(scene::Scene& scene);
     /// @note Shutdown/project switch can dispose Play ownership before unloading script modules.
     void Cancel();
-    void RequestStep() { if (m_state == PlayState::Paused) m_stepRequested = true; }
-    bool ConsumeStep() { if (!m_stepRequested) return false; m_stepRequested = false; return true; }
+    void RequestStep() {
+        if (m_state == PlayState::Paused) {
+            m_stepRequested = true;
+        }
+    }
+    bool ConsumeStep() {
+        if (!m_stepRequested) return false; m_stepRequested = false; return true;
+    }
     PlayState GetState() const { return m_state; }
     bool IsPlaying() const { return m_state == PlayState::Playing; }
     bool IsPaused() const { return m_state == PlayState::Paused; }
@@ -71,4 +77,4 @@ private:
     bool m_restorePending = false;
     bool m_stepRequested = false;
 };
-} /// @note namespace fbzz::editor
+} // namespace fbzz::editor

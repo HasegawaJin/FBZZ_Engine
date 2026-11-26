@@ -24,8 +24,11 @@ struct PixOperatorState {
 PixOperatorState ReadPixOperatorState(const PixOperatorServices& services)
 {
     PixOperatorState state;
-    if (services.readCaptureStatus) state.capture = services.readCaptureStatus();
-    else state.capture.reason = "PIX startup state is unavailable.";
+    if (services.readCaptureStatus) {
+        state.capture = services.readCaptureStatus();
+    } else {
+        state.capture.reason = "PIX startup state is unavailable.";
+    }
     state.directory = state.capture.installedDirectory.empty()
         ? services.defaultInstalledDirectory : state.capture.installedDirectory;
     state.installed = ResolvePixUiExecutable(state.directory, state.executable, state.installationReason);
@@ -45,16 +48,19 @@ OpResult MakePixStatusResult(const PixOperatorState& state)
     data.Set("installationReason", OpData(state.installationReason));
     data.Set("launchArgument", OpData("--pix-capture"));
     std::string reason = state.capture.reason;
-    if (reason.empty() && !state.capture.ready)
+    if (reason.empty() && !state.capture.ready) {
         reason = "GPU capture is not enabled for this session. Start the next DX12 session with --pix-capture.";
+    }
     data.Set("reason", OpData(reason));
     auto result = OpResult::Data(std::move(data));
     result.message = state.capture.ready ? "GPU capture ready." : reason;
-    if (!state.installed) result.message += " " + state.installationReason;
+    if (!state.installed) {
+        result.message += " " + state.installationReason;
+    }
     return result;
 }
 
-} /// @note namespace
+} // namespace
 
 void RegisterPixOperators(OperatorRegistry& registry, PixOperatorServices services)
 {
@@ -81,8 +87,12 @@ void RegisterPixOperators(OperatorRegistry& registry, PixOperatorServices servic
     };
     open.exec = [services](OpContext&, const OpArgs&) {
         const auto state = ReadPixOperatorState(services);
-        if (!state.installed) return OpResult::Err("PIX_NOT_FOUND", state.installationReason);
-        if (!services.launchUi) return OpResult::Err("PIX_LAUNCH_UNAVAILABLE", "PIX UI launch is unavailable.");
+        if (!state.installed) {
+            return OpResult::Err("PIX_NOT_FOUND", state.installationReason);
+        }
+        if (!services.launchUi) {
+            return OpResult::Err("PIX_LAUNCH_UNAVAILABLE", "PIX UI launch is unavailable.");
+        }
         std::string error;
         if (!services.launchUi(state.executable, error)) {
             auto result = OpResult::Err("PIX_LAUNCH_FAILED", error);
@@ -106,4 +116,4 @@ void RegisterPixOperators(OperatorRegistry& registry)
     RegisterPixOperators(registry, std::move(services));
 }
 
-} /// @note namespace fbzz::editor
+} // namespace fbzz::editor

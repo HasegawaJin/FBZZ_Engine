@@ -24,8 +24,8 @@ constexpr float FONT_SIZE = 14.0f;
 
 [[nodiscard]] std::string ResolveBundledFontPath()
 {
-    /// @note Visual Studio から起動すると CWD が build/Debug/... になる場合があり、相対パスだけではバンドルフォントを見つけられないため、
-    ///       現在ディレクトリから親方向へたどり FBZZ_Engine 直下の ThirdParty を探索する。
+    // Visual Studio から起動すると CWD が build/Debug/... になる場合があり、相対パスだけではバンドルフォントを見つけられないため、
+    // 現在ディレクトリから親方向へたどり FBZZ_Engine 直下の ThirdParty を探索する。
     constexpr const char* RELATIVE_FONT_PATH = "ThirdParty/ImGui/misc/fonts/Roboto-Medium.ttf";
 
     std::filesystem::path current = util::FileSystem::GetCurrentDirectory();
@@ -51,7 +51,7 @@ constexpr float FONT_SIZE = 14.0f;
 
 [[nodiscard]] std::string ResolveJapaneseFontPath()
 {
-    /// @note ImGui の bundled fonts は日本語グリフを持たないため、Windows 標準フォントをフォールバックとして merge しログや Console の UTF-8 日本語を表示可能にする。
+    // ImGui の bundled fonts は日本語グリフを持たないため、Windows 標準フォントをフォールバックとして merge しログや Console の UTF-8 日本語を表示可能にする。
     static constexpr const char* CANDIDATES[] = {
         "C:/Windows/Fonts/YuGothM.ttc",
         "C:/Windows/Fonts/meiryo.ttc",
@@ -68,31 +68,35 @@ constexpr float FONT_SIZE = 14.0f;
 
 [[nodiscard]] std::string ResolveIconFontPath()
 {
-    /// @note Windows 11 の Segoe Fluent Icons を第一候補に、10 の Segoe MDL2 Assets へ落とす。
-    ///       どちらも PUA (U+E700〜) に同じ絵を同じ位置で持つので、EditorIcons.hpp の
-    ///       コードポイントはそのまま通る。
+    // Windows 11 の Segoe Fluent Icons を第一候補に、10 の Segoe MDL2 Assets へ落とす。
+    // どちらも PUA (U+E700〜) に同じ絵を同じ位置で持つので、EditorIcons.hpp の
+    // コードポイントはそのまま通る。
     static constexpr const char* CANDIDATES[] = {
         "C:/Windows/Fonts/SegoeIcons.ttf",
         "C:/Windows/Fonts/segmdl2.ttf",
     };
 
     for (const char* path : CANDIDATES) {
-        if (util::FileSystem::Exists(path)) return path;
+        if (util::FileSystem::Exists(path)) {
+            return path;
+        }
     }
     return {};
 }
 
 [[nodiscard]] std::string ResolveHeadingFontPath()
 {
-    /// @note 見出しは本文より «太さ» で差を付ける: 本文の Roboto-Medium に対し Segoe UI Semibold を当て、日本語は游ゴシック Bold を merge する。
-    /// @note 大きさだけで差を付けない: 拡大した Medium は «近づいた本文» にしか見えず、斜めに見たときの «ここが見出し» が立たない。
+    // 見出しは本文より «太さ» で差を付ける: 本文の Roboto-Medium に対し Segoe UI Semibold を当て、日本語は游ゴシック Bold を merge する。
+    // 大きさだけで差を付けない: 拡大した Medium は «近づいた本文» にしか見えず、斜めに見たときの «ここが見出し» が立たない。
     static constexpr const char* CANDIDATES[] = {
         "C:/Windows/Fonts/seguisb.ttf",
         "C:/Windows/Fonts/segoeuib.ttf",
     };
 
     for (const char* path : CANDIDATES) {
-        if (util::FileSystem::Exists(path)) return path;
+        if (util::FileSystem::Exists(path)) {
+            return path;
+        }
     }
     return {};
 }
@@ -105,7 +109,9 @@ constexpr float FONT_SIZE = 14.0f;
     };
 
     for (const char* path : CANDIDATES) {
-        if (util::FileSystem::Exists(path)) return path;
+        if (util::FileSystem::Exists(path)) {
+            return path;
+        }
     }
     return {};
 }
@@ -182,50 +188,50 @@ ImU32 EditorTheme::ColorU32(ThemeColor color, float alpha)
 
 void EditorTheme::Apply()
 {
-    /// @name フォント
-    /// @note デフォルトの ProggyClean は小さく太さがないため、Roboto-Medium (FONT_SIZE px) を基準にし、日本語・記号は Windows 標準フォントを merge して補う。サイズは FONT_SIZE で一元管理。
+    // フォント
+    // デフォルトの ProggyClean は小さく太さがないため、Roboto-Medium (FONT_SIZE px) を基準にし、日本語・記号は Windows 標準フォントを merge して補う。サイズは FONT_SIZE で一元管理。
     ImGuiIO& io = ImGui::GetIO();
     io.Fonts->Clear();
 
-    /// @note ImGui バンドルの Roboto-Medium を使用する。
-    ///       パスは EditorApp が CWD をプロジェクトルートに設定した後に解決される。
+    // ImGui バンドルの Roboto-Medium を使用する。
+    // パスは EditorApp が CWD をプロジェクトルートに設定した後に解決される。
     ImFontConfig cfg;
     cfg.OversampleH = 2;
     cfg.OversampleV = 2;
     cfg.PixelSnapH  = false;
 
-    /// @note ファイルが見つからない場合 AddFontFromFileTTF は nullptr を返す。その状態で Build() するとフォントが空になり ImGui がクラッシュするため、失敗時はデフォルトのビットマップフォントにフォールバックする。
+    // ファイルが見つからない場合 AddFontFromFileTTF は nullptr を返す。その状態で Build() するとフォントが空になり ImGui がクラッシュするため、失敗時はデフォルトのビットマップフォントにフォールバックする。
     const std::string fontPath = ResolveBundledFontPath();
     ImFont* baseFont = nullptr;
     if (!fontPath.empty()) {
         baseFont = io.Fonts->AddFontFromFileTTF(fontPath.c_str(), FONT_SIZE, &cfg);
     }
 
-    /// @note バンドルの Roboto は ASCII/ラテンしか持たないため日本語や一部記号は Windows 標準フォントを merge して補う。範囲が狭いと UI のあちこちで「□ (豆腐)」が出るため、日本語 + ラテン + 主要記号を広めに含める。
+    // バンドルの Roboto は ASCII/ラテンしか持たないため日本語や一部記号は Windows 標準フォントを merge して補う。範囲が狭いと UI のあちこちで「□ (豆腐)」が出るため、日本語 + ラテン + 主要記号を広めに含める。
     const std::string japaneseFontPath = ResolveJapaneseFontPath();
-    /// @note BuildRanges() の結果はアトラス生成 (最初の NewFrame) まで生存させる必要があるため static。本文と見出しの両方が同じ範囲を使うので if の外へ出して 1 度だけ組む。
+    // BuildRanges() の結果はアトラス生成 (最初の NewFrame) まで生存させる必要があるため static。本文と見出しの両方が同じ範囲を使うので if の外へ出して 1 度だけ組む。
     static ImVector<ImWchar> s_glyphRanges;
     if (s_glyphRanges.empty()) {
         ImFontGlyphRangesBuilder builder;
-        /// @note かな・漢字・全角・CJK 句読点
+        // かな・漢字・全角・CJK 句読点
         builder.AddRanges(io.Fonts->GetGlyphRangesJapanese());
-        /// @note Basic Latin + Latin-1
+        // Basic Latin + Latin-1
         builder.AddRanges(io.Fonts->GetGlyphRangesDefault());
-        /// @note UI でよく使う記号 (約物・矢印・幾何形・チェック・丸数字・罫線) を明示追加して豆腐を防ぐ。
+        // UI でよく使う記号 (約物・矢印・幾何形・チェック・丸数字・罫線) を明示追加して豆腐を防ぐ。
         static const ImWchar kSymbols[] = {
-            /// @note 一般約物 (– — ‘ ’ “ ” • … 等)
+            // 一般約物 (– — ‘ ’ “ ” • … 等)
             0x2000, 0x206F,
-            /// @note 矢印
+            // 矢印
             0x2190, 0x21FF,
-            /// @note 数学記号
+            // 数学記号
             0x2200, 0x22FF,
-            /// @note 丸数字・囲み英数字
+            // 丸数字・囲み英数字
             0x2460, 0x24FF,
-            /// @note 罫線
+            // 罫線
             0x2500, 0x257F,
-            /// @note 幾何形 (■ ● ▲ ▼ ◆ □ 等)
+            // 幾何形 (■ ● ▲ ▼ ◆ □ 等)
             0x25A0, 0x25FF,
-            /// @note その他記号・装飾 (★ ☆ ✓ ✗ ⚠ 等)
+            // その他記号・装飾 (★ ☆ ✓ ✗ ⚠ 等)
             0x2600, 0x27BF,
             0,
         };
@@ -245,13 +251,13 @@ void EditorTheme::Apply()
         }
     }
 
-    /// @note 記号フォント (Segoe Fluent Icons / MDL2) を同じ 1 本へ merge する: アイコンはラベルと同じ行に混ぜて置くもので、
-    ///       別フォントで PushFont の押し引きが要ると «付け忘れて豆腐» が必ずどこかで起きるため、本文と同じ字として扱う。
+    // 記号フォント (Segoe Fluent Icons / MDL2) を同じ 1 本へ merge する: アイコンはラベルと同じ行に混ぜて置くもので、
+    // 別フォントで PushFont の押し引きが要ると «付け忘れて豆腐» が必ずどこかで起きるため、本文と同じ字として扱う。
     const std::string iconFontPath = ResolveIconFontPath();
     icons::detail::g_iconFontLoaded = false;
     if (baseFont != nullptr && !iconFontPath.empty()) {
-        /// @note EditorIcons.hpp が使う範囲だけ積む。PUA 全域 (U+E700〜U+F8FF) を積んでも
-        ///       使うのは数十字で、アトラスに載せるだけ無駄になる。
+        // EditorIcons.hpp が使う範囲だけ積む。PUA 全域 (U+E700〜U+F8FF) を積んでも
+        // 使うのは数十字で、アトラスに載せるだけ無駄になる。
         static constexpr ImWchar kIconRanges[] = { 0xE700, 0xE9FF, 0 };
 
         ImFontConfig iconCfg;
@@ -259,7 +265,7 @@ void EditorTheme::Apply()
         iconCfg.OversampleH = 2;
         iconCfg.OversampleV = 2;
         iconCfg.PixelSnapH  = false;
-        /// @note 記号は本文より気持ち小さい方が、文字と並べたときに重さが揃う。
+        // 記号は本文より気持ち小さい方が、文字と並べたときに重さが揃う。
         iconCfg.GlyphMinAdvanceX = FONT_SIZE;
         if (io.Fonts->AddFontFromFileTTF(iconFontPath.c_str(), FONT_SIZE * 0.92f,
                                          &iconCfg, kIconRanges) != nullptr) {
@@ -267,13 +273,13 @@ void EditorTheme::Apply()
         }
     }
 
-    if (!baseFont)
+    if (!baseFont) {
         io.Fonts->AddFontDefault();
-    else
-        /// @note どのウィンドウでも統合フォントを既定にする
+    } else
+        // どのウィンドウでも統合フォントを既定にする
         io.FontDefault = baseFont;
 
-    /// @note 見出し用に、太い書体をもう 1 本だけ積む (本文とは別の ImFont*)。
+    // 見出し用に、太い書体をもう 1 本だけ積む (本文とは別の ImFont*)。
     s_headingFont = nullptr;
     if (const std::string headingPath = ResolveHeadingFontPath(); !headingPath.empty()) {
         ImFontConfig headingCfg;
@@ -282,7 +288,7 @@ void EditorTheme::Apply()
         headingCfg.PixelSnapH  = false;
         s_headingFont = io.Fonts->AddFontFromFileTTF(headingPath.c_str(), FONT_SIZE, &headingCfg);
 
-        /// @note 見出しに日本語が来ても本文へ落ちないよう、太い和文も同じ 1 本へ merge する。
+        // 見出しに日本語が来ても本文へ落ちないよう、太い和文も同じ 1 本へ merge する。
         if (s_headingFont != nullptr) {
             const std::string headingJapanese = ResolveHeadingJapaneseFontPath();
             if (!headingJapanese.empty()) {
@@ -297,20 +303,20 @@ void EditorTheme::Apply()
         }
     }
 
-    /// @name スタイル変数
+    // スタイル変数
     ImGuiStyle& style = ImGui::GetStyle();
 
-    /// @note FBZZ Studio は小さな角丸と明確な面の階層で、ゲーム画面より制作情報を主役にする。
+    // FBZZ Studio は小さな角丸と明確な面の階層で、ゲーム画面より制作情報を主役にする。
     style.FrameRounding     = 5.0f;
     style.GrabRounding      = 5.0f;
     style.PopupRounding     = 7.0f;
     style.ScrollbarRounding = 8.0f;
     style.TabRounding       = 5.0f;
     style.ChildRounding     = 5.0f;
-    /// @note ドックウィンドウは角丸なし
+    // ドックウィンドウは角丸なし
     style.WindowRounding    = 0.0f;
 
-    /// @note クリック領域は確保しながら、プロ向け制作ツールとして高い情報密度を維持する。
+    // クリック領域は確保しながら、プロ向け制作ツールとして高い情報密度を維持する。
     style.FramePadding      = { 7.0f,  4.0f };
     style.ItemSpacing       = { 7.0f,  5.0f };
     style.ItemInnerSpacing  = { 6.0f,  4.0f };
@@ -321,13 +327,13 @@ void EditorTheme::Apply()
     style.GrabMinSize       = 10.0f;
     style.TabCloseButtonMinWidthUnselected = 0.0f;
 
-    /// @note ボーダー: パネル境界線を薄く
+    // ボーダー: パネル境界線を薄く
     style.WindowBorderSize  = 1.0f;
     style.FrameBorderSize   = 0.0f;
     style.PopupBorderSize   = 1.0f;
     style.ChildBorderSize   = 1.0f;
 
-    /// @name カラー
+    // カラー
     ImVec4* c = style.Colors;
 
     c[ImGuiCol_Text]                  = TEXT_MAIN;
@@ -340,96 +346,96 @@ void EditorTheme::Apply()
     c[ImGuiCol_Border]                = BORDER;
     c[ImGuiCol_BorderShadow]          = { 0.0f, 0.0f, 0.0f, 0.0f };
 
-    /// @note 入力ウィジェット (InputText, SliderFloat 等)
+    // 入力ウィジェット (InputText, SliderFloat 等)
     c[ImGuiCol_FrameBg]               = FIELD;
     c[ImGuiCol_FrameBgHovered]        = SURFACE_HOVER;
     c[ImGuiCol_FrameBgActive]         = SURFACE_RAISED;
 
-    /// @note タイトルバー
+    // タイトルバー
     c[ImGuiCol_TitleBg]               = CANVAS;
     c[ImGuiCol_TitleBgActive]         = SURFACE_RAISED;
     c[ImGuiCol_TitleBgCollapsed]      = CANVAS;
 
-    /// @note メニューバー
+    // メニューバー
     c[ImGuiCol_MenuBarBg]             = CANVAS;
 
-    /// @note スクロールバー
+    // スクロールバー
     c[ImGuiCol_ScrollbarBg]           = CANVAS;
     c[ImGuiCol_ScrollbarGrab]         = SURFACE_HOVER;
     c[ImGuiCol_ScrollbarGrabHovered]  = ACCENT;
     c[ImGuiCol_ScrollbarGrabActive]   = ACCENT_ACTIVE;
 
-    /// @note チェックボックス / スライダー
+    // チェックボックス / スライダー
     c[ImGuiCol_CheckMark]             = ACCENT;
     c[ImGuiCol_SliderGrab]            = ACCENT;
     c[ImGuiCol_SliderGrabActive]      = ACCENT_HOVER;
 
-    /// @note ボタン
+    // ボタン
     c[ImGuiCol_Button]                = SURFACE_RAISED;
     c[ImGuiCol_ButtonHovered]         = SURFACE_HOVER;
     c[ImGuiCol_ButtonActive]          = ACCENT_ACTIVE;
 
-    /// @note CollapsingHeader / TreeNode / Selectable のヘッダ
+    // CollapsingHeader / TreeNode / Selectable のヘッダ
     c[ImGuiCol_Header]                = ACCENT_SOFT;
     c[ImGuiCol_HeaderHovered]         = SURFACE_HOVER;
     c[ImGuiCol_HeaderActive]          = ACCENT_ACTIVE;
 
-    /// @note セパレーター
+    // セパレーター
     c[ImGuiCol_Separator]             = BORDER;
     c[ImGuiCol_SeparatorHovered]      = ACCENT;
     c[ImGuiCol_SeparatorActive]       = ACCENT_ACTIVE;
 
-    /// @note リサイズグリップ
+    // リサイズグリップ
     c[ImGuiCol_ResizeGrip]            = ACCENT_SOFT;
     c[ImGuiCol_ResizeGripHovered]     = ACCENT_HOVER;
     c[ImGuiCol_ResizeGripActive]      = ACCENT;
 
-    /// @note タブ (ImGui 1.90.9 以降の命名規則)
+    // タブ (ImGui 1.90.9 以降の命名規則)
     c[ImGuiCol_Tab]                        = CANVAS;
     c[ImGuiCol_TabHovered]                 = SURFACE_HOVER;
-    /// @note 面とアクセント線を分離して文字を読みやすくする
+    // 面とアクセント線を分離して文字を読みやすくする
     c[ImGuiCol_TabSelected]                = SURFACE_RAISED;
     c[ImGuiCol_TabSelectedOverline]        = ACCENT;
     c[ImGuiCol_TabDimmed]                  = CANVAS;
     c[ImGuiCol_TabDimmedSelected]          = SURFACE;
     c[ImGuiCol_TabDimmedSelectedOverline]  = { 0.0f, 0.0f, 0.0f, 0.0f };
 
-    /// @note ドッキング
+    // ドッキング
     c[ImGuiCol_DockingPreview]        = ACCENT_HOVER;
     c[ImGuiCol_DockingEmptyBg]        = CANVAS;
 
-    /// @note テーブル
+    // テーブル
     c[ImGuiCol_TableHeaderBg]         = SURFACE_RAISED;
     c[ImGuiCol_TableBorderStrong]     = BORDER_STRONG;
     c[ImGuiCol_TableBorderLight]      = BORDER;
     c[ImGuiCol_TableRowBg]            = { 0.0f, 0.0f, 0.0f, 0.0f };
     c[ImGuiCol_TableRowBgAlt]         = { 1.0f, 1.0f, 1.0f, 0.03f };
 
-    /// @note プロット
+    // プロット
     c[ImGuiCol_PlotLines]             = ACCENT;
     c[ImGuiCol_PlotLinesHovered]      = ACCENT_HOVER;
     c[ImGuiCol_PlotHistogram]         = ACCENT;
     c[ImGuiCol_PlotHistogramHovered]  = ACCENT_HOVER;
 
-    /// @note テキスト選択
+    // テキスト選択
     c[ImGuiCol_TextSelectedBg]        = ACCENT_SOFT;
 
-    /// @note ドラッグドロップターゲット
+    // ドラッグドロップターゲット
     c[ImGuiCol_DragDropTarget]        = ACCENT_HOVER;
 
-    /// @note ナビゲーションハイライト
+    // ナビゲーションハイライト
     c[ImGuiCol_NavHighlight]          = ACCENT;
     c[ImGuiCol_NavWindowingHighlight] = ACCENT;
     c[ImGuiCol_NavWindowingDimBg]     = { CANVAS.x, CANVAS.y, CANVAS.z, 0.72f };
 
-    /// @note モーダルディム
+    // モーダルディム
     c[ImGuiCol_ModalWindowDimBg]      = { CANVAS.x, CANVAS.y, CANVAS.z, 0.78f };
 
-    /// @note 等倍スタイルを基準として退避。以後 SetUiScale はここからスケールする。
+    // 等倍スタイルを基準として退避。以後 SetUiScale はここからスケールする。
     s_baseStyle    = style;
     s_baseCaptured = true;
     if (s_uiScale != 1.0f)
-        /// @note 設定ロード済みなら再テーマ適用時もスケールを保つ
+        // 設定ロード済みなら再テーマ適用時もスケールを保つ
         SetUiScale(s_uiScale);
 }
 
@@ -457,7 +463,7 @@ void EditorTheme::ApplyWorkspaceTint(WorkspaceTint tint)
 
 void EditorTheme::ApplyImNodes()
 {
-    /// @note ImNodes は ImGuiStyle を自動継承しないため、同じ意味色を専用スロットへ割り当てる。
+    // ImNodes は ImGuiStyle を自動継承しないため、同じ意味色を専用スロットへ割り当てる。
     ImNodes::StyleColorsDark();
     auto& style = ImNodes::GetStyle();
     style.Flags |= ImNodesStyleFlags_GridLinesPrimary;
@@ -495,13 +501,15 @@ void EditorTheme::ApplyImNodes()
 void EditorTheme::SetUiScale(float scale)
 {
     s_uiScale = std::clamp(scale, 0.5f, 2.5f);
-    if (!s_baseCaptured) return;
+    if (!s_baseCaptured) {
+        return;
+    }
 
-    /// @note ScaleAllSizes は現在値に対して乗算するため、毎回基準スタイルへ戻してから掛ける。
+    // ScaleAllSizes は現在値に対して乗算するため、毎回基準スタイルへ戻してから掛ける。
     ImGuiStyle& style = ImGui::GetStyle();
     style = s_baseStyle;
     style.ScaleAllSizes(s_uiScale);
-    /// @note フォントもスケール
+    // フォントもスケール
     ImGui::GetIO().FontGlobalScale = s_uiScale;
 }
 

@@ -13,4 +13,4 @@ namespace fbzz::editor {
 /// @return 未受理なら false で outPath は未変更。空の受理データなら false で空文字列。
 [[nodiscard]] bool ReadAssetPayload(const ImGuiPayload* payload, std::string& outPath);
 
-} /// @note namespace fbzz::editor
+} // namespace fbzz::editor

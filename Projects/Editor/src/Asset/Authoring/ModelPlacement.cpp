@@ -33,17 +33,25 @@ std::string FindImportedMaterialPath(const std::string& modelPath,
                                      const asset::ModelAsset* modelAsset,
                                      int meshIndex)
 {
-    if (!modelAsset || modelAsset->lods.empty() || meshIndex < 0)
+    if (!modelAsset) {
         return {};
+    }
+    if (modelAsset->lods.empty()) {
+        return {};
+    }
 
+    // インポート元の LOD 0 から、選択したサブメッシュが使うマテリアルスロットを求める。
     const auto& submeshes = modelAsset->lods[0].submeshes;
-    if (meshIndex >= static_cast<int>(submeshes.size()))
+    if (meshIndex < 0 || meshIndex >= static_cast<int>(submeshes.size())) {
         return {};
+    }
 
     const uint32_t slotIndex = submeshes[static_cast<size_t>(meshIndex)].materialSlotIndex;
-    if (slotIndex >= modelAsset->materialSlotNames.size())
+    if (slotIndex >= modelAsset->materialSlotNames.size()) {
         return {};
+    }
 
+    // インポーターと同じ出力ディレクトリと重複名の規則で .mat の場所を復元する。
     const bool isFbx =
         asset::IsModelSourcePath(modelPath);
     const std::filesystem::path modelFilePath =
@@ -55,12 +63,14 @@ std::string FindImportedMaterialPath(const std::string& modelPath,
         modelAsset->materialSlotNames[slotIndex], slotIndex);
     uint32_t duplicateCount = 0;
     for (uint32_t i = 0; i < slotIndex; ++i) {
-        if (SanitizeMaterialFileName(modelAsset->materialSlotNames[i], i) == fileStem)
+        if (SanitizeMaterialFileName(modelAsset->materialSlotNames[i], i) == fileStem) {
             ++duplicateCount;
+        }
     }
-    if (duplicateCount > 0)
+    if (duplicateCount > 0) {
         fileStem += "_" + std::to_string(duplicateCount);
-    /// @note Scene にはモデル原本 から導出した論理パスを保存し、.mat の実体は AssetManager が Assets 側または Library/Baked 側から解決する。
+    }
+    // Scene にはモデル原本 から導出した論理パスを保存し、.mat の実体は AssetManager が Assets 側または Library/Baked 側から解決する。
     const std::filesystem::path matFsPath =
         modelDir / "materials" / (fileStem + ".mat");
     const std::string normalized = util::FileSystem::NormalizePathSeparators(
@@ -68,23 +78,27 @@ std::string FindImportedMaterialPath(const std::string& modelPath,
     const std::string lower = util::StringUtils::ToLower(normalized);
     std::string logicalPath = normalized;
     const size_t assetsPos = lower.rfind("/assets/");
-    if (assetsPos != std::string::npos)
+    if (assetsPos != std::string::npos) {
         logicalPath = normalized.substr(assetsPos + 1);
-    else if (lower.starts_with("assets/"))
+    } else if (lower.starts_with("assets/")) {
         logicalPath = normalized;
+    }
 
     if (isFbx) {
-        /// @note FBX はシーンに保存する論理パスであり、実体の .mat は Library/Baked にある。Assets 側の物理パスだけを確認すると現在の隔離配置を見失って常に Fallback.mat へ落ち、D&D 直後のモデルが元材質を失う。
-        if (!util::FileSystem::Exists(asset::AssetManager::ResolveAssetPath(logicalPath)))
+        // FBX はシーンに保存する論理パスであり、実体の .mat は Library/Baked にある。Assets 側の物理パスだけを確認すると現在の隔離配置を見失って常に Fallback.mat へ落ち、D&D 直後のモデルが元材質を失う。
+        if (!util::FileSystem::Exists(asset::AssetManager::ResolveAssetPath(logicalPath))) {
             return {};
+        }
         return logicalPath;
     }
 
-    if (!util::FileSystem::Exists(matFsPath))
+    if (!util::FileSystem::Exists(matFsPath)) {
         return {};
+    }
 
-    if (logicalPath != normalized)
+    if (logicalPath != normalized) {
         return logicalPath;
+    }
     return normalized;
 }
 
@@ -96,7 +110,9 @@ std::string ResolveImportedMaterialPath(const std::string& modelPath,
                                         bool skinned)
 {
     std::string path = FindImportedMaterialPath(modelPath, modelAsset, meshIndex);
-    if (!path.empty()) return path;
+    if (!path.empty()) {
+        return path;
+    }
     return skinned ? "Assets/Materials/Fallback/FallbackSkinned.mat"
                    : "Assets/Materials/Fallback/Fallback.mat";
 }
@@ -108,17 +124,19 @@ std::string ResolveImportedMeshName(const std::string& modelPath,
     if (modelAsset && !modelAsset->lods.empty() && meshIndex >= 0) {
         const auto& submeshes = modelAsset->lods[0].submeshes;
         if (meshIndex < static_cast<int>(submeshes.size()) &&
-            !submeshes[static_cast<size_t>(meshIndex)].name.empty())
+            !submeshes[static_cast<size_t>(meshIndex)].name.empty()) {
             return submeshes[static_cast<size_t>(meshIndex)].name;
+        }
     }
 
-    /// @note v2 以前の .fzasset は名前を持たないため、モデル原本を読んで互換的に補完する。
+    // v2 以前の .fzasset は名前を持たないため、モデル原本を読んで互換的に補完する。
     if (asset::IsModelSourcePath(modelPath)) {
         const FbxScanResult scan =
             FbxImportTool::Scan(asset::AssetManager::ResolveAssetPath(modelPath));
         if (scan.valid && meshIndex >= 0 && meshIndex < static_cast<int>(scan.meshNames.size()) &&
-            !scan.meshNames[static_cast<size_t>(meshIndex)].empty())
+            !scan.meshNames[static_cast<size_t>(meshIndex)].empty()) {
             return scan.meshNames[static_cast<size_t>(meshIndex)];
+        }
     }
 
     return "Mesh_" + std::to_string(meshIndex);
@@ -131,12 +149,16 @@ void LinkBoneToRenderers(std::vector<scene::SkinnedMeshRenderer*>& renderers,
                          const asset::Skeleton& skeleton)
 {
     for (auto* smr : renderers) {
-        if (!smr) continue;
-        if (smr->nodeEntities.size() != skeleton.nodes.size())
+        if (!smr) {
+            continue;
+        }
+        if (smr->nodeEntities.size() != skeleton.nodes.size()) {
             smr->nodeEntities.assign(skeleton.nodes.size(), scene::EntityID::INVALID);
+        }
         smr->nodeEntities[static_cast<size_t>(nodeIndex)] = boneEntity;
-        if (nodeIndex == skeleton.rootNodeIndex)
+        if (nodeIndex == skeleton.rootNodeIndex) {
             smr->skeletonRootEntity = skeletonRootEntity;
+        }
     }
 }
 
@@ -148,15 +170,19 @@ scene::EntityID CreateBoneHierarchyNode(scene::Scene& scene,
                                         int nodeIndex,
                                         std::vector<scene::EntityID>& createdNodes)
 {
-    if (nodeIndex < 0 || nodeIndex >= static_cast<int>(skeleton.nodes.size()))
+    if (nodeIndex < 0 || nodeIndex >= static_cast<int>(skeleton.nodes.size())) {
         return scene::EntityID::INVALID;
+    }
 
-    if (createdNodes[static_cast<size_t>(nodeIndex)] != scene::EntityID::INVALID)
+    if (createdNodes[static_cast<size_t>(nodeIndex)] != scene::EntityID::INVALID) {
         return createdNodes[static_cast<size_t>(nodeIndex)];
+    }
 
     const auto& node = skeleton.nodes[static_cast<size_t>(nodeIndex)];
     auto* created = scene.TryCreateGameObject(node.name.empty() ? "Bone" : node.name);
-    if (!created) return scene::EntityID::INVALID;
+    if (!created) {
+        return scene::EntityID::INVALID;
+    }
     auto& boneObject = *created;
     boneObject.layer = owner.layer;
     boneObject.transform.position = node.bindTranslation;
@@ -180,9 +206,12 @@ scene::EntityID CreateBoneHierarchyNode(scene::Scene& scene,
     LinkBoneToRenderers(renderers, nodeIndex, boneEntity, skeletonRootEntity, skeleton);
 
     for (int childIndex : node.children) {
-        if (childIndex < 0 || childIndex >= static_cast<int>(skeleton.nodes.size())) continue;
-        if (!CreateBoneHierarchyNode(scene, owner, boneObject, renderers, skeleton, childIndex, createdNodes).IsValid())
+        if (childIndex < 0 || childIndex >= static_cast<int>(skeleton.nodes.size())) {
+            continue;
+        }
+        if (!CreateBoneHierarchyNode(scene, owner, boneObject, renderers, skeleton, childIndex, createdNodes).IsValid()) {
             return scene::EntityID::INVALID;
+        }
     }
 
     return boneEntity;
@@ -196,8 +225,9 @@ bool CreateBoneHierarchyForModel(scene::Scene& scene,
                                  std::vector<scene::SkinnedMeshRenderer*>& renderers,
                                  const asset::Model& model)
 {
-    if (!model.skeleton || model.skeleton->nodes.empty() || renderers.empty())
+    if (!model.skeleton || model.skeleton->nodes.empty() || renderers.empty()) {
         return true;
+    }
 
     const asset::Skeleton& skeleton = *model.skeleton;
     std::vector<scene::EntityID> createdNodes(
@@ -207,38 +237,49 @@ bool CreateBoneHierarchyForModel(scene::Scene& scene,
         skeleton.rootNodeIndex < static_cast<int>(skeleton.nodes.size())) {
         const scene::EntityID rootEntity = CreateBoneHierarchyNode(
             scene, owner, boneParent, renderers, skeleton, skeleton.rootNodeIndex, createdNodes);
-        if (!rootEntity.IsValid()) return false;
+        if (!rootEntity.IsValid()) {
+            return false;
+        }
         for (auto* smr : renderers)
-            if (smr) smr->skeletonRootEntity = rootEntity;
+            if (smr) {
+                smr->skeletonRootEntity = rootEntity;
+            }
     }
 
-    /// @note 一部 DCC は rootNodeIndex から到達できない補助ノードを含むため、未生成ノードも parentIndex を見て階層へ接続する。
+    // 一部 DCC は rootNodeIndex から到達できない補助ノードを含むため、未生成ノードも parentIndex を見て階層へ接続する。
     for (int nodeIndex = 0; nodeIndex < static_cast<int>(skeleton.nodes.size()); ++nodeIndex) {
-        if (createdNodes[static_cast<size_t>(nodeIndex)] != scene::EntityID::INVALID)
+        if (createdNodes[static_cast<size_t>(nodeIndex)] != scene::EntityID::INVALID) {
             continue;
+        }
         const int parentIndex = skeleton.nodes[static_cast<size_t>(nodeIndex)].parentIndex;
         scene::GameObject* parent = &boneParent;
         if (parentIndex >= 0) {
             const scene::EntityID parentEntity = CreateBoneHierarchyNode(
                 scene, owner, boneParent, renderers, skeleton, parentIndex, createdNodes);
-            if (parentIndex < static_cast<int>(skeleton.nodes.size()) && !parentEntity.IsValid()) return false;
-            if (auto* parentObject = scene.GetGameObject(parentEntity))
+            if (parentIndex < static_cast<int>(skeleton.nodes.size()) && !parentEntity.IsValid()) {
+                return false;
+            }
+            if (auto* parentObject = scene.GetGameObject(parentEntity)) {
                 parent = parentObject;
+            }
         }
-        if (!CreateBoneHierarchyNode(scene, owner, *parent, renderers, skeleton, nodeIndex, createdNodes).IsValid())
+        if (!CreateBoneHierarchyNode(scene, owner, *parent, renderers, skeleton, nodeIndex, createdNodes).IsValid()) {
             return false;
+        }
     }
     return true;
 }
 
-} /// @note namespace
+} // namespace
 
 scene::EntityID SpawnModelAssetHierarchy(EditorContext& ctx,
                                          const std::string& modelPath,
                                          const math::Vector3* worldPosition,
                                          scene::EntityID parentId)
 {
-    if (!ctx.activeScene) return scene::EntityID::INVALID;
+    if (!ctx.activeScene) {
+        return scene::EntityID::INVALID;
+    }
 
     auto* model = asset::AssetManager::LoadAndGet<asset::Model>(modelPath);
     const auto modelAssetHandle = asset::AssetManager::Load<asset::ModelAsset>(modelPath);
@@ -248,55 +289,73 @@ scene::EntityID SpawnModelAssetHierarchy(EditorContext& ctx,
         return scene::EntityID::INVALID;
     }
 
+    // スキン付きモデルの子は元の DCC ノード単位で数え、その他は描画メッシュ単位で数える。
     const bool anySkinned = [&] {
-        for (const auto& mesh : model->meshes)
-            if (mesh && mesh->isSkinned) return true;
+        for (const auto& mesh : model->meshes) {
+            if (mesh && mesh->isSkinned) {
+                return true;
+            }
+        }
         return false;
     }();
     std::vector<const asset::ModelNode*> meshNodes;
-    if (anySkinned)
-        for (const auto& node : model->nodes)
-            if (node.HasMeshes()) meshNodes.push_back(&node);
-    const std::size_t meshChildren = anySkinned
-        ? (meshNodes.size() > 1 ? meshNodes.size() : 0)
-        : (model->meshes.size() > 1 ? model->meshes.size() : 0);
+    if (anySkinned) {
+        for (const auto& node : model->nodes) {
+            if (node.HasMeshes()) {
+                meshNodes.push_back(&node);
+            }
+        }
+    }
+    const std::size_t meshPartCount = anySkinned ? meshNodes.size() : model->meshes.size();
+    const std::size_t meshChildren = meshPartCount > 1 ? meshPartCount : 0;
     const std::size_t boneCount = anySkinned && model->skeleton ? model->skeleton->nodes.size() : 0;
+
+    // 作成前に容量を確かめる。親とメッシュの分を順に引いて、符号なしの減算で桁あふれしないようにする。
     const std::size_t available = ctx.activeScene->RemainingEntityCapacity();
-    if (available < 1 || meshChildren > available - 1 || boneCount > available - 1 - meshChildren) {
+    const bool fitsMeshHierarchy = available >= 1 && meshChildren <= available - 1;
+    if (!fitsMeshHierarchy || boneCount > available - 1 - meshChildren) {
         FBZZ_LOG_WARN("ModelPlacement: insufficient entity capacity [%s]", modelPath.c_str());
         return scene::EntityID::INVALID;
     }
 
+    // 配置のルートを作り、指定された親と位置に接続してから描画用の子を追加する。
     scene::GameObject* parent = nullptr;
-    if (parentId != scene::EntityID::INVALID)
+    if (parentId != scene::EntityID::INVALID) {
         parent = ctx.activeScene->GetGameObject(parentId);
+    }
 
     const std::string stemName =
         util::FileSystem::PathFromUtf8(modelPath).stem().string();
     auto* created = ctx.activeScene->TryCreateGameObject(stemName.empty() ? "Model" : stemName);
-    if (!created) return scene::EntityID::INVALID;
+    if (!created) {
+        return scene::EntityID::INVALID;
+    }
     auto& root = *created;
-    if (worldPosition)
+    if (worldPosition) {
         root.transform.position = *worldPosition;
-    if (parent)
+    }
+    if (parent) {
         root.SetParent(parent);
+    }
 
     const int meshCount = static_cast<int>(model->meshes.size());
     std::vector<std::string> meshNames;
     meshNames.reserve(static_cast<size_t>(meshCount));
-    for (int meshIndex = 0; meshIndex < meshCount; ++meshIndex)
+    for (int meshIndex = 0; meshIndex < meshCount; ++meshIndex) {
         meshNames.push_back(ResolveImportedMeshName(modelPath, modelAsset, meshIndex));
-    if (meshCount == 1)
+    }
+    if (meshCount == 1) {
         root.name = meshNames[0];
+    }
 
     std::vector<scene::SkinnedMeshRenderer*> skinnedRenderers;
     skinnedRenderers.reserve(static_cast<size_t>(meshCount));
 
     if (anySkinned) {
-        /// @note DCC のノード 1 個 = 1 GameObject (Unity と同じ分割単位)。ノード内のマテリアル分割は、その Renderer の submesh 列 = マテリアルスロット列。
-        /// @note meshes を平坦に 1 個ずつ子へ配らない: Assimp は 1 つの DCC メッシュをマテリアルごとに分割するため、Body に 2 材質が載っているだけで Body が 2 つの GameObject に割れる。ノードで束ねることで階層が DCC のアウトライナと一致し、名前から部位が読める状態を保つ。
-        /// @note Renderer 1 個ぶんを組み立てる。submeshIndices が空なら「モデル全体」。
-        /// @note MaterialComponent を必ず付ける: 空だと GeometryPass が描画をスキップし、D&D した結果がユーザーに見えない状態になるため、既定材を必ず割り当てる。
+        // DCC のノード 1 個 = 1 GameObject (Unity と同じ分割単位)。ノード内のマテリアル分割は、その Renderer の submesh 列 = マテリアルスロット列。
+        // meshes を平坦に 1 個ずつ子へ配らない: Assimp は 1 つの DCC メッシュをマテリアルごとに分割するため、Body に 2 材質が載っているだけで Body が 2 つの GameObject に割れる。ノードで束ねることで階層が DCC のアウトライナと一致し、名前から部位が読める状態を保つ。
+        // Renderer 1 個ぶんを組み立てる。submeshIndices が空なら「モデル全体」。
+        // MaterialComponent を必ず付ける: 空だと GeometryPass が描画をスキップし、D&D した結果がユーザーに見えない状態になるため、既定材を必ず割り当てる。
         auto addSkinnedPart = [&](scene::GameObject& target,
                                   const std::vector<uint32_t>& submeshIndices) {
             scene::SkinnedMeshRenderer smr;
@@ -306,7 +365,7 @@ scene::EntityID SpawnModelAssetHierarchy(EditorContext& ctx,
             skinnedRenderers.push_back(
                 &target.AddComponent<scene::SkinnedMeshRenderer>(std::move(smr)));
 
-            /// @note スロット数は「この Renderer が描く submesh の数」。
+            // スロット数は「この Renderer が描く submesh の数」。
             const size_t slotCount = submeshIndices.empty()
                 ? static_cast<size_t>(meshCount) : submeshIndices.size();
             scene::MaterialComponent mc;
@@ -315,7 +374,9 @@ scene::EntityID SpawnModelAssetHierarchy(EditorContext& ctx,
                 const int meshIndex = submeshIndices.empty()
                     ? static_cast<int>(slot)
                     : static_cast<int>(submeshIndices[slot]);
-                if (meshIndex < 0 || meshIndex >= meshCount) continue;
+                if (meshIndex < 0 || meshIndex >= meshCount) {
+                    continue;
+                }
                 const renderer::Mesh* mesh = model->meshes[static_cast<size_t>(meshIndex)].get();
                 mc.RawSlotAt(slot).SetMaterialPath(ResolveImportedMaterialPath(modelPath, modelAsset, meshIndex,
                                                 mesh && mesh->isSkinned));
@@ -324,11 +385,12 @@ scene::EntityID SpawnModelAssetHierarchy(EditorContext& ctx,
         };
 
         if (meshNodes.size() <= 1) {
-            /// @note ノードが 1 個 (or ノード情報が無い v3 以前のベイク) なら、分ける意味が無い。 root 自身が描画担当になり、従来と同じ 1 GameObject 構成になる。
+            // ノードが 1 個 (or ノード情報が無い v3 以前のベイク) なら、分ける意味が無い。 root 自身が描画担当になり、従来と同じ 1 GameObject 構成になる。
             addSkinnedPart(root, meshNodes.size() == 1
                 ? meshNodes[0]->meshIndices : std::vector<uint32_t>{});
-            if (meshNodes.size() == 1 && !meshNodes[0]->name.empty())
+            if (meshNodes.size() == 1 && !meshNodes[0]->name.empty()) {
                 root.name = meshNodes[0]->name;
+            }
         } else {
             for (const asset::ModelNode* node : meshNodes) {
                 auto* createdChild = ctx.activeScene->TryCreateGameObject(
@@ -340,15 +402,15 @@ scene::EntityID SpawnModelAssetHierarchy(EditorContext& ctx,
                 auto& child = *createdChild;
                 child.layer = root.layer;
                 child.SetParent(root);
-                /// @note ノードの TRS は入れない: スキンド頂点はボーンパレットで変形されるためメッシュノードの変換は描画に使われず、Transform へ入れると二重に掛かる。詳細は `FzModelFormat.hpp` の `FZMODEL_FLAG_NODE_TRANSFORMS_BAKED`。
+                // ノードの TRS は入れない: スキンド頂点はボーンパレットで変形されるためメッシュノードの変換は描画に使われず、Transform へ入れると二重に掛かる。詳細は `FzModelFormat.hpp` の `FZMODEL_FLAG_NODE_TRANSFORMS_BAKED`。
                 addSkinnedPart(child, node->meshIndices);
             }
         }
 
-        /// @note ボーンは root 直下へ (Unity の Armature と同じ位置)。 owner は代表 Renderer — BoneComponent::skinnedMeshEntity がこれを指し、 AnimatorSystem が「どのスケルトンか」を辿る足がかりになる。
+        // ボーンは root 直下へ (Unity の Armature と同じ位置)。 owner は代表 Renderer — BoneComponent::skinnedMeshEntity がこれを指し、 AnimatorSystem が「どのスケルトンか」を辿る足がかりになる。
         scene::GameObject* owner = &root;
         if (!skinnedRenderers.empty() && meshNodes.size() > 1) {
-            /// @note 代表は最初の Renderer が付いた子。
+            // 代表は最初の Renderer が付いた子。
             for (int i = 0; i < root.GetChildCount(); ++i) {
                 scene::GameObject* child = root.GetChild(i);
                 if (child && child->GetComponent<scene::SkinnedMeshRenderer>()) {
@@ -364,7 +426,7 @@ scene::EntityID SpawnModelAssetHierarchy(EditorContext& ctx,
         return root.GetID();
     }
 
-    /// @note 静的モデルは MeshRenderer が 1 メッシュしか持てないため、従来どおり submesh ごとに子 GameObject を作る。
+    // 静的モデルは MeshRenderer が 1 メッシュしか持てないため、従来どおり submesh ごとに子 GameObject を作る。
     auto addStaticRenderer = [&](scene::GameObject& target, int meshIndex) {
         renderer::Mesh* mesh = model->meshes[static_cast<size_t>(meshIndex)].get();
         scene::MeshRenderer mr;
@@ -402,11 +464,12 @@ std::string ResolveOrImportFbxModel(const std::string& fbxAssetPath)
     const fs::path fbxLogical = util::FileSystem::PathFromUtf8(fbxAssetPath);
     const std::string stem = util::FileSystem::PathToUtf8(fbxLogical.stem());
 
-    /// @note インポート済みなら FBX 自身を返す。`Load<Model>` / `Load<ModelAsset>` が Library コンテナへ解決する。
-    if (asset::AssetManager::Load<asset::ModelAsset>(fbxAssetPath).IsValid())
+    // インポート済みなら FBX 自身を返す。`Load<Model>` / `Load<ModelAsset>` が Library コンテナへ解決する。
+    if (asset::AssetManager::Load<asset::ModelAsset>(fbxAssetPath).IsValid()) {
         return fbxAssetPath;
+    }
 
-    /// @note 未インポート: デフォルト設定でその場インポートする (Unity のドロップと同じ体験)。
+    // 未インポート: デフォルト設定でその場インポートする (Unity のドロップと同じ体験)。
     const std::string fbxAbs = asset::AssetManager::ResolveAssetPath(fbxAssetPath);
     if (!util::FileSystem::Exists(fbxAbs)) {
         FBZZ_LOG_WARN("ResolveOrImportFbxModel: fbx not found [%s]", fbxAssetPath.c_str());
@@ -415,25 +478,26 @@ std::string ResolveOrImportFbxModel(const std::string& fbxAssetPath)
     const std::string outputDir = util::FileSystem::PathToUtf8(
         util::FileSystem::PathFromUtf8(fbxAbs).parent_path() / stem);
     FbxImportOptions options{};
-    /// @note .meta を持たない新規 FBX は既定オプションでインポートするため、読み込み失敗は正常系。
+    // .meta を持たない新規 FBX は既定オプションでインポートするため、読み込み失敗は正常系。
     (void)FbxMetaSerializer::LoadOptions(fbxAbs, options);
     FBZZ_LOG_INFO("ResolveOrImportFbxModel: auto-importing [%s]", fbxAssetPath.c_str());
     if (!FbxImportTool::Import(fbxAbs, outputDir, fbxAbs, options)) {
         FBZZ_LOG_ERROR("ResolveOrImportFbxModel: import failed [%s]", fbxAssetPath.c_str());
         return {};
     }
-    /// @note 片方が失敗しても他方は書き切る。fingerprint だけ古いと次回の再インポート判定が狂うため。
+    // 片方が失敗しても他方は書き切る。fingerprint だけ古いと次回の再インポート判定が狂うため。
     const bool optionsSaved = FbxMetaSerializer::SaveOptions(fbxAbs, options);
     const bool cacheSaved   = FbxMetaSerializer::SaveCacheInfo(fbxAbs, options);
     if (!optionsSaved || !cacheSaved) {
         FBZZ_LOG_WARN("ResolveOrImportFbxModel: .meta の更新に失敗 [%s]", fbxAssetPath.c_str());
     }
 
-    /// @note 過去のロード失敗が Null キャッシュされていると新規 fzasset が引けないため掃除する。
+    // 過去のロード失敗が Null キャッシュされていると新規 fzasset が引けないため掃除する。
     asset::AssetManager::FlushFailed();
-    if (asset::AssetManager::Load<asset::ModelAsset>(fbxAssetPath).IsValid())
+    if (asset::AssetManager::Load<asset::ModelAsset>(fbxAssetPath).IsValid()) {
         return fbxAssetPath;
+    }
     return {};
 }
 
-} /// @note namespace fbzz::editor
+} // namespace fbzz::editor

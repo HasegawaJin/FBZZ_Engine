@@ -29,15 +29,17 @@ ContentGlyph FolderGlyph(std::string_view name)
         {"Physics", ContentGlyph::PHYSICS},
     };
     for (const auto &entry : folders)
-        if (util::StringUtils::EqualsCIView(name, entry.name))
+        if (util::StringUtils::EqualsCIView(name, entry.name)) {
             return entry.glyph;
+        }
     return ContentGlyph::NONE;
 }
 
 void DrawContentGlyph(ContentGlyph type, ImVec2 center, float size, ImU32 color)
 {
-    if (type == ContentGlyph::NONE || size <= 0.0f)
+    if (type == ContentGlyph::NONE || size <= 0.0f) {
         return;
+    }
     auto &draw = *ImGui::GetWindowDrawList();
     const float scale = size / 16.0f;
     const float stroke = std::max(1.0f, 1.45f * scale);
@@ -200,19 +202,21 @@ void DrawContentGlyph(ContentGlyph type, ImVec2 center, float size, ImU32 color)
     case ContentGlyph::EYE_OFF:
         draw.AddBezierCubic(point(1, 8), point(4, 1), point(12, 1), point(15, 8), color, stroke, 12);
         draw.AddBezierCubic(point(1, 8), point(4, 15), point(12, 15), point(15, 8), color, stroke, 12);
-        if (type == ContentGlyph::EYE_OFF)
+        if (type == ContentGlyph::EYE_OFF) {
             line(2, 2, 14, 14);
-        else
+        } else {
             solid(8, 8, 2.1f);
+        }
         break;
     case ContentGlyph::ENABLED:
     case ContentGlyph::DISABLED:
         draw.AddBezierCubic(point(5, 3.8f), point(-1, 7), point(2, 14), point(8, 14), color, stroke, 12);
         draw.AddBezierCubic(point(8, 14), point(14, 14), point(17, 7), point(11, 3.8f), color, stroke, 12);
-        if (type == ContentGlyph::ENABLED)
+        if (type == ContentGlyph::ENABLED) {
             line(8, 1, 8, 8);
-        else
+        } else {
             line(2, 2, 14, 14);
+        }
         break;
     case ContentGlyph::LOCK:
     case ContentGlyph::UNLOCK:

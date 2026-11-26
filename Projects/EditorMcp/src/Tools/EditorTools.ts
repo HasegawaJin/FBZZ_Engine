@@ -16,7 +16,7 @@ export function RegisterEditorQueryTools(server: McpServer, bus: EditorBus): voi
         annotations: { readOnlyHint: true, openWorldHint: false },
     }, () => Safely(async () => TextResult(await bus.Query({ t: 'editor.catalog' }))));
 
-    /// @note 操作の引数と実行可否は Editor の登録簿を正本とし、MCP へ個別に複製しない。
+    // 操作の引数と実行可否は Editor の登録簿を正本とし、MCP へ個別に複製しない。
     /// @see Docs/design/EditorDirectApi.md
     server.registerTool('editor_op_list', {
         description: 'Editor に登録された操作 (Operator) の目録を返します。'
@@ -42,7 +42,7 @@ export function RegisterEditorQueryTools(server: McpServer, bus: EditorBus): voi
         ...(includeUnavailable === undefined ? {} : { includeUnavailable }),
     }))));
 
-    /// @note 読み取り側の Operator。invoke (write) と入口を分けてあるので read 権限でも呼べる。
+    // 読み取り側の Operator。invoke (write) と入口を分けてあるので read 権限でも呼べる。
     server.registerTool('editor_op_query', {
         description: 'kind=query の Operator を実行し、結果データを返します。'
             + 'editor_op_list で id と params を調べてから呼びます。'
@@ -191,10 +191,10 @@ export function RegisterEditorQueryTools(server: McpServer, bus: EditorBus): voi
 export function RegisterEditorCommandTools(server: McpServer, bus: EditorBus, permission: PermissionMode): void {
     const { dryRun, run, writeAnnotations } = CreateCommandContext(bus, permission);
 
-    /// @note ── Operator ゲートウェイ ──
-    /// @note editor_op_list で見つけた操作をそのまま実行する。実行可否の判定は Editor 側の
-    /// @note poll が持つので、ホットキーやメニューでグレーアウトされる状況ではここも拒否される
-    /// @note (AI にだけできる操作、という抜け道を作らない)。
+    // Editor の登録簿と同じ実行条件で操作を公開する。
+    // editor_op_list で見つけた操作をそのまま実行する。実行可否の判定は Editor 側の
+    // poll が持つので、ホットキーやメニューでグレーアウトされる状況ではここも拒否される
+    // (AI にだけできる操作、という抜け道を作らない)。
     server.registerTool('editor_op_invoke', {
         description: 'editor_op_list に載っている操作を実行します。'
             + 'メニューやホットキーが呼ぶのと同一の実体を通るため、人が UI で行った場合と結果が一致します。'

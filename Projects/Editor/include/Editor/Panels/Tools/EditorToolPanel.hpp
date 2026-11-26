@@ -23,9 +23,13 @@ protected:
     {
         ImGui::Text("%s", documentName ? documentName : GetEditorType());
         ImGui::SameLine();
-        if (ImGui::Button("Frame Selection")) ImGui::SetTooltip("Viewport focus is available from the active editor tool");
+        if (ImGui::Button("Frame Selection")) {
+            ImGui::SetTooltip("Viewport focus is available from the active editor tool");
+        }
         ImGui::SameLine();
-        if (ImGui::Button("Reset Layout")) ImGui::SetTooltip("Layout reset is handled by the editor workspace");
+        if (ImGui::Button("Reset Layout")) {
+            ImGui::SetTooltip("Layout reset is handled by the editor workspace");
+        }
         ImGui::SameLine();
         ImGui::TextDisabled("Editor: %s", GetEditorType());
     }

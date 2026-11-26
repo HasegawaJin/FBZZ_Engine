@@ -54,4 +54,4 @@ bool DuplicatePart(fluid::FluidRecipe& recipe, FluidSelectionKind list, int inde
 bool RemovePart(fluid::FluidRecipe& recipe, FluidSelectionKind list, int index);
 bool MovePart(fluid::FluidRecipe& recipe, FluidSelectionKind list, int from, int to);
 
-} ///< @note namespace fbzz::editor::fluidui
+} ///< namespace fbzz::editor::fluidui

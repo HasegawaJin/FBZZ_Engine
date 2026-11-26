@@ -22,7 +22,9 @@ protected:
     bool GrowPopulation(scene::Scene& target)
     {
         while (target.GameObjectCount() < 4097)
-            if (!target.TryCreateGameObject("Existing")) return false;
+            if (!target.TryCreateGameObject("Existing")) {
+                return false;
+            }
         return true;
     }
 

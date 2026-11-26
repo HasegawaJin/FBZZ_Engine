@@ -50,12 +50,12 @@ struct LocalPose {
 struct PreviewTarget {
     enum class Mode { None, Clip, Transition };
     Mode mode = Mode::None;
-    std::string modelPath;      ///< @note メッシュとスケルトンの供給元 (.fbx / .asset / .fzasset)
-    std::string clipName;       ///< @note 空 = モデル先頭クリップ
-    std::string animAssetPath;  ///< @note .anim 直接プレビュー時のみ。clipName より優先される
-    std::string toClipName;     ///< @note Transition の遷移先クリップ
-    std::string toSourcePath;   ///< @note 遷移先クリップの供給元 (from と異なる source を許容)
-    std::string toAnimAssetPath; ///< @note 遷移先が外部 .anim の場合の直接参照
+    std::string modelPath;      ///< メッシュとスケルトンの供給元 (.fbx / .asset / .fzasset)
+    std::string clipName;       ///< 空 = モデル先頭クリップ
+    std::string animAssetPath;  ///< .anim 直接プレビュー時のみ。clipName より優先される
+    std::string toClipName;     ///< Transition の遷移先クリップ
+    std::string toSourcePath;   ///< 遷移先クリップの供給元 (from と異なる source を許容)
+    std::string toAnimAssetPath; ///< 遷移先が外部 .anim の場合の直接参照
     float blendSeconds = 0.25f;
     float transitionStartSeconds = 0.0f;
     std::string label;
@@ -117,48 +117,48 @@ struct PreviewSkinningCB {
 
 /// @note 見た目まわりの設定。再生対象が変わっても保たれ、EditorSettings へ往復する。
 struct PreviewViewSettings {
-    bool  showGrid       = true;  ///< @note 床グリッド
-    bool  showGroundRing = true;  ///< @note 接地リング + ルート垂線 (足の高さを読む)
+    bool  showGrid       = true;  ///< 床グリッド
+    bool  showGroundRing = true;  ///< 接地リング + ルート垂線 (足の高さを読む)
     bool  wireframe      = false;
-    bool  showAxisGizmo  = true;  ///< @note 右下の XYZ トライアド
-    int   background     = 0;     ///< @note kPreviewBackgrounds の添字
+    bool  showAxisGizmo  = true;  ///< 右下の XYZ トライアド
+    int   background     = 0;     ///< kPreviewBackgrounds の添字
     float fovY           = 40.0f;
-    float lightYaw       = 0.0f;  ///< @note キーライトの水平回転オフセット (rad)
+    float lightYaw       = 0.0f;  ///< キーライトの水平回転オフセット (rad)
 };
 
 /// @note ルートモーション解析の結果。クリップが変わったときだけ組み直す。
 /// @note 軌跡のポリラインは «どう動いたか» までしか見せない。ロコモーションに要るのは «1 ループで何 m 進み平均何 m/s か» (Blend Tree の閾値) と «ループ端で飛ぶか»・«接地中に足が滑るか» の判定。
 struct RootMotionAnalysis {
     bool  valid = false;
-    int   rootNode = -1;       ///< @note 解析に使った代表ボーン (根元から最初の変形ボーン = 通常 Hips)
+    int   rootNode = -1;       ///< 解析に使った代表ボーン (根元から最初の変形ボーン = 通常 Hips)
     float duration = 0.0f;
-    float bodyHeight = 1.0f;   ///< @note 全ボーンの Y 範囲。しきい値を «身長比» で決めるため
+    float bodyHeight = 1.0f;   ///< 全ボーンの Y 範囲。しきい値を «身長比» で決めるため
 
     /// @note 移動量
-    float pathLength = 0.0f;   ///< @note 水平の経路長 (曲がりも含む実移動)
-    float netDistance = 0.0f;  ///< @note 始点 → 終点の直線距離 (水平)
+    float pathLength = 0.0f;   ///< 水平の経路長 (曲がりも含む実移動)
+    float netDistance = 0.0f;  ///< 始点 → 終点の直線距離 (水平)
     math::Vector3 netDelta = math::Vector3::ZERO;
-    float netTurnDegrees = 0.0f; ///< @note ルートの向きが 1 ループで回る角度
+    float netTurnDegrees = 0.0f; ///< ルートの向きが 1 ループで回る角度
     float averageSpeed = 0.0f;
     float maxSpeed = 0.0f;
-    float verticalRange = 0.0f;  ///< @note 上下動の振れ幅 (bob)
-    bool  inPlace = false;       ///< @note ルートがほぼ動かない = その場再生用クリップ
+    float verticalRange = 0.0f;  ///< 上下動の振れ幅 (bob)
+    bool  inPlace = false;       ///< ルートがほぼ動かない = その場再生用クリップ
 
-    std::vector<float> speedSamples;    ///< @note 水平速度 (m/s)
-    std::vector<float> verticalSamples; ///< @note 垂直速度 (符号付き)
+    std::vector<float> speedSamples;    ///< 水平速度 (m/s)
+    std::vector<float> verticalSamples; ///< 垂直速度 (符号付き)
 
     /// @note ループ整合。ルートボーンは «進む・回る» のが正しいので、この 2 つからは除く。
-    float loopPositionGap = 0.0f;  ///< @note 全ボーンのローカル位置差の RMS
-    float loopRotationGap = 0.0f;  ///< @note 最大の回転差 (degrees)
+    float loopPositionGap = 0.0f;  ///< 全ボーンのローカル位置差の RMS
+    float loopRotationGap = 0.0f;  ///< 最大の回転差 (degrees)
     std::string loopWorstBone;
-    float loopSpeedGap = 0.0f;     ///< @note 先頭と末尾の速度差 (m/s)
+    float loopSpeedGap = 0.0f;     ///< 先頭と末尾の速度差 (m/s)
 
     /// @note 接地と足滑り
     int   footNodes[2] = { -1, -1 };
     std::string footNames[2];
-    float plantedSlide = 0.0f;      ///< @note 接地判定中に足が水平移動した合計距離
-    float plantedSeconds = 0.0f;    ///< @note 接地判定だったサンプル時間の合計 (両足ぶん)
-    float requiredRootSpeed = 0.0f; ///< @note 滑りを打ち消すのに要るルート速度
+    float plantedSlide = 0.0f;      ///< 接地判定中に足が水平移動した合計距離
+    float plantedSeconds = 0.0f;    ///< 接地判定だったサンプル時間の合計 (両足ぶん)
+    float requiredRootSpeed = 0.0f; ///< 滑りを打ち消すのに要るルート速度
 };
 
 struct PreviewState {
@@ -188,14 +188,14 @@ struct PreviewState {
     bool  loop = true;
     float speed = 1.0f;
     float timelineLength = 1.0f;
-    float currentBlendWeight = 0.0f; ///< @note Transition の現在ブレンド率 (UI 表示用)
+    float currentBlendWeight = 0.0f; ///< Transition の現在ブレンド率 (UI 表示用)
     /// @note タイムラインをドラッグ中か。再生ヘッドのつまみを太くするためだけに持つ。
     bool  scrubbing = false;
 
     /// @note カメラ (対象が変わっても維持し、Unity と同じく視点を保つ)
     float yaw = 2.55f;
     float pitch = 0.30f;
-    float distance = -1.0f; ///< @note <0 = 未フレーミング (バウンディングから自動決定)
+    float distance = -1.0f; ///< <0 = 未フレーミング (バウンディングから自動決定)
     math::Vector3 focus = math::Vector3::ZERO;
     bool needsFraming = true;
     /// @note 次フレームでこの位置へ寄る (ボーンフォーカス)。未指定なら bounds 中心。
@@ -211,15 +211,15 @@ struct PreviewState {
     std::string lastRenderIdentity;
     bool lastRenderOk = false;
 
-    bool showMesh = true;       ///< @note Off でスケルトンのみ表示
-    bool showBones = false;     ///< @note ボーンオーバーレイ
-    bool showBoneNames = false; ///< @note ボーン名ラベル
-    bool showTrail = false;     ///< @note 代表ボーンの移動軌跡 (ルートモーション確認)
-    bool showGhost = false;     ///< @note オニオンスキン (前後フレームの残像スケルトン)
-    bool showInfo = false;      ///< @note 時刻 / フレーム / トラック情報オーバーレイ
-    bool showCurves = false;    ///< @note 選択ボーンの位置/回転カーブミニグラフ
-    bool showRootMotion = false; ///< @note 移動量 / 速度グラフ / ループ整合 / 足滑り
-    int  selectedBoneNode = -1; ///< @note クリックで選択中のスケルトンノード index
+    bool showMesh = true;       ///< Off でスケルトンのみ表示
+    bool showBones = false;     ///< ボーンオーバーレイ
+    bool showBoneNames = false; ///< ボーン名ラベル
+    bool showTrail = false;     ///< 代表ボーンの移動軌跡 (ルートモーション確認)
+    bool showGhost = false;     ///< オニオンスキン (前後フレームの残像スケルトン)
+    bool showInfo = false;      ///< 時刻 / フレーム / トラック情報オーバーレイ
+    bool showCurves = false;    ///< 選択ボーンの位置/回転カーブミニグラフ
+    bool showRootMotion = false; ///< 移動量 / 速度グラフ / ループ整合 / 足滑り
+    int  selectedBoneNode = -1; ///< クリックで選択中のスケルトンノード index
 
     /// @note ラベル間引き設定。100+ ボーンモデルで全名を出すと潰れるため、
     /// @note label mode で「選択+ホバー / アニメ有 / 全部」を切り替える。
@@ -229,9 +229,9 @@ struct PreviewState {
     float ghostOffsetSeconds = 0.0f;
 
     /// @note RenderPreviewFrame が毎フレーム更新するオーバーレイ用データ
-    std::vector<math::Vector3> jointPositions;      ///< @note 現在ポーズの各ノード位置 (ワールド)
-    std::vector<math::Vector3> ghostPrevPositions;  ///< @note オニオンスキン (過去側)
-    std::vector<math::Vector3> ghostNextPositions;  ///< @note オニオンスキン (未来側)
+    std::vector<math::Vector3> jointPositions;      ///< 現在ポーズの各ノード位置 (ワールド)
+    std::vector<math::Vector3> ghostPrevPositions;  ///< オニオンスキン (過去側)
+    std::vector<math::Vector3> ghostNextPositions;  ///< オニオンスキン (未来側)
     /// @note 剛体メッシュの描画姿勢をヒットテストでも再利用する。
     /// @note 描画だけをアニメーション後の位置へ移すと、クリック判定がバインド姿勢に残り、Hierarchy と Preview の連動が部位によって外れる。
     std::vector<math::Matrix4> meshPreviewWorlds;
@@ -246,7 +246,7 @@ struct PreviewState {
     AnimationTrackTable tracksA;
     AnimationTrackTable tracksB;
     std::string debugCacheIdentity;
-    std::vector<uint8_t> nodeHasTrack; ///< @note クリップが実際に動かすノードか (トラック有無)
+    std::vector<uint8_t> nodeHasTrack; ///< クリップが実際に動かすノードか (トラック有無)
     std::vector<math::Vector3> trailPoints;
     /// @note 軌跡・接地リングの基準にしている代表ボーン (通常 Hips)。
     int trailNodeIndex = -1;
@@ -256,7 +256,7 @@ struct PreviewState {
     /// @note 選択中ボーンのライブ情報 (RenderPreviewFrame がサンプル)
     LocalPose selectedBonePose;
     bool selectedBoneValid = false;
-    int selectedBoneKeyCounts[3] = { 0, 0, 0 }; ///< @note P / R / S キー数
+    int selectedBoneKeyCounts[3] = { 0, 0, 0 }; ///< P / R / S キー数
 
     /// @note 選択ボーンのカーブグラフ用キャッシュ。ボーンかクリップが変わったときだけ再サンプルする。
     /// @note 毎フレーム全キーを再サンプルするとカーブ描画のためだけに CPU を無駄遣いする。
@@ -264,9 +264,9 @@ struct PreviewState {
     std::string rootMotionCacheKey;
     RootMotionAnalysis rootMotion;
 
-    std::string curveCacheKey;          ///< @note "modelPath|clipName|nodeIndex" で識別
-    std::vector<float> curvePosX, curvePosY, curvePosZ;   ///< @note 正規化前の生値
-    std::vector<float> curveRotX, curveRotY, curveRotZ;   ///< @note オイラー角 (degrees)
+    std::string curveCacheKey;          ///< "modelPath|clipName|nodeIndex" で識別
+    std::vector<float> curvePosX, curvePosY, curvePosZ;   ///< 正規化前の生値
+    std::vector<float> curveRotX, curveRotY, curveRotZ;   ///< オイラー角 (degrees)
     float curvePosMin = 0.0f, curvePosMax = 0.0f;
     float curveRotMin = 0.0f, curveRotMax = 0.0f;
 };
@@ -342,7 +342,7 @@ math::Vector3 QuaternionToEulerDegrees(const math::Quaternion& q);
 std::string   ShortBoneName(const std::string& name);
 
 /// @note 代表ボーン (根元から最初に見つかる変形ボーン) の軌跡をクリップ全長でサンプルする。
-/// @param outTrailNode 採用した代表ボーンのノード index。見つからなければ -1。
+/// @param[out] outTrailNode 採用した代表ボーンのノード index。見つからなければ -1。
 void BuildTrailPoints(const asset::Skeleton& skeleton,
                       const asset::AnimationClip& clip,
                       const AnimationTrackTable& tracks,
@@ -382,9 +382,9 @@ void UpdatePreviewTarget(EditorContext& ctx);
 /// @note 描画 (AnimationPreviewCore.cpp)
 struct PreviewBounds {
     math::Vector3 center = math::Vector3::ZERO;
-    float radius   = 1.0f; ///< @note 外接球半径 (フレーミング用)
-    float minY     = 0.0f; ///< @note 最下端。床グリッドと接地リングを置く高さ
-    float radiusXZ = 1.0f; ///< @note 水平方向の広がり。接地リングの半径
+    float radius   = 1.0f; ///< 外接球半径 (フレーミング用)
+    float minY     = 0.0f; ///< 最下端。床グリッドと接地リングを置く高さ
+    float radiusXZ = 1.0f; ///< 水平方向の広がり。接地リングの半径
 };
 
 bool RenderPreviewFrame(EditorContext& ctx, float displayAspect);

@@ -13,8 +13,8 @@ namespace fbzz::editor {
 class MaterialExporter {
 public:
     /// @brief aiMaterial と元画像を .mat と texturesDir へ書き出す。
-    /// @param fbxDir FBX の配置ディレクトリ。
-    /// @param fbxBaseName 拡張子なしの FBX 名。隣接する .fbm の探索に使う。
+    /// @param[in] fbxDir FBX の配置ディレクトリ。
+    /// @param[in] fbxBaseName 拡張子なしの FBX 名。隣接する .fbm の探索に使う。
     /// @note OpenGL 法線の G 反転は元画像を書き換えず .meta の flip_green で指定する。
     /// @return 成功なら true
     static bool Export(const aiMaterial* material,
@@ -26,4 +26,4 @@ public:
                        bool skinned = false);
 };
 
-} /// @note namespace fbzz::editor
+} // namespace fbzz::editor

@@ -38,7 +38,9 @@ std::string GetEnvVar(const char* name)
 fs::path DesktopConfigPath()
 {
     const std::string appData = GetEnvVar("APPDATA");
-    if (appData.empty()) return {};
+    if (appData.empty()) {
+        return {};
+    }
     return fs::path(appData) / "Claude" / "claude_desktop_config.json";
 }
 
@@ -47,7 +49,9 @@ fs::path ExecutableDir()
 {
     wchar_t buffer[MAX_PATH];
     const DWORD length = GetModuleFileNameW(nullptr, buffer, MAX_PATH);
-    if (length == 0 || length >= MAX_PATH) return {};
+    if (length == 0 || length >= MAX_PATH) {
+        return {};
+    }
     return fs::path(buffer).parent_path();
 }
 
@@ -63,14 +67,20 @@ std::string ResolveMcpStdioPath(const std::string& engineRootHint)
     };
 
     if (!engineRootHint.empty()) {
-        if (std::string found = probe(fs::path(engineRootHint)); !found.empty()) return found;
+        if (std::string found = probe(fs::path(engineRootHint)); !found.empty()) {
+            return found;
+        }
     }
 
     fs::path current = ExecutableDir();
     for (int depth = 0; depth < 10 && !current.empty(); ++depth) {
-        if (std::string found = probe(current); !found.empty()) return found;
+        if (std::string found = probe(current); !found.empty()) {
+            return found;
+        }
         const fs::path parent = current.parent_path();
-        if (parent == current) break;
+        if (parent == current) {
+            break;
+        }
         current = parent;
     }
     return {};
@@ -80,7 +90,9 @@ std::string ResolveMcpStdioPath(const std::string& engineRootHint)
 std::string ReadTextFile(const fs::path& path)
 {
     std::ifstream input(path, std::ios::binary);
-    if (!input) return {};
+    if (!input) {
+        return {};
+    }
     std::ostringstream buffer;
     buffer << input.rdbuf();
     return buffer.str();
@@ -100,7 +112,9 @@ std::vector<fs::path> ClaudeExeCandidates(const std::string& localAppData)
     const fs::path anthropicDir = base / "AnthropicClaude";
     if (fs::exists(anthropicDir, ec) && fs::is_directory(anthropicDir, ec)) {
         for (const auto& entry : fs::directory_iterator(anthropicDir, ec)) {
-            if (ec || !entry.is_directory(ec)) continue;
+            if (ec || !entry.is_directory(ec)) {
+                continue;
+            }
             out.push_back(entry.path() / "claude.exe");
         }
     }
@@ -123,7 +137,9 @@ bool LaunchViaStartApps()
     PROCESS_INFORMATION processInfo{};
     const BOOL created = CreateProcessW(nullptr, command.data(), nullptr, nullptr, FALSE,
                                          CREATE_NO_WINDOW, nullptr, nullptr, &startupInfo, &processInfo);
-    if (!created) return false;
+    if (!created) {
+        return false;
+    }
     CloseHandle(processInfo.hThread);
     CloseHandle(processInfo.hProcess);
     return true;
@@ -136,7 +152,9 @@ bool LaunchViaStartApps()
 DWORD FindRunningClaudeProcessId()
 {
     const HANDLE snapshot = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
-    if (snapshot == INVALID_HANDLE_VALUE) return 0;
+    if (snapshot == INVALID_HANDLE_VALUE) {
+        return 0;
+    }
 
     DWORD foundPid = 0;
     PROCESSENTRY32W entry{};
@@ -165,7 +183,7 @@ BOOL CALLBACK FindTopWindowForProcess(HWND hwnd, LPARAM lParam)
     GetWindowThreadProcessId(hwnd, &windowPid);
     if (windowPid == context->targetPid && IsWindowVisible(hwnd)) {
         context->found = hwnd;
-        /// @note 発見したので列挙を打ち切る
+        // 発見したので列挙を打ち切る
         return FALSE;
     }
     return TRUE;
@@ -177,9 +195,13 @@ bool FocusRunningClaudeWindow(DWORD pid)
     FindWindowContext context;
     context.targetPid = pid;
     EnumWindows(FindTopWindowForProcess, reinterpret_cast<LPARAM>(&context));
-    if (context.found == nullptr) return false;
+    if (context.found == nullptr) {
+        return false;
+    }
 
-    if (IsIconic(context.found)) ShowWindow(context.found, SW_RESTORE);
+    if (IsIconic(context.found)) {
+        ShowWindow(context.found, SW_RESTORE);
+    }
     SetForegroundWindow(context.found);
     return true;
 }
@@ -190,7 +212,7 @@ AiSetupStatus AiSetupService::Inspect(const std::string& engineRootHint)
 {
     AiSetupStatus status;
 
-    /// @note node.exe: Claude クライアントが MCP サーバを spawn するのに必要。
+    // node.exe: Claude クライアントが MCP サーバを spawn するのに必要。
     wchar_t nodePath[MAX_PATH];
     status.nodeFound = SearchPathW(nullptr, L"node.exe", nullptr, MAX_PATH, nodePath, nullptr) > 0;
 
@@ -209,7 +231,9 @@ AiSetupStatus AiSetupService::Inspect(const std::string& engineRootHint)
                 status.desktopRegistered = true;
                 if (const JsonValue* env = entry->Find("env")) {
                     if (const JsonValue* permission = env->Find("FBZZ_MCP_PERMISSION")) {
-                        if (permission->IsString()) status.desktopPermission = permission->AsString();
+                        if (permission->IsString()) {
+                            status.desktopPermission = permission->AsString();
+                        }
                     }
                 }
             }
@@ -232,14 +256,14 @@ bool AiSetupService::RegisterClaudeDesktop(const std::string& stdioJsPath,
         return false;
     }
 
-    /// @note 既存 config を読み、他の MCP サーバ登録を保持したまま fbzz-editor だけ更新する。
+    // 既存 config を読み、他の MCP サーバ登録を保持したまま fbzz-editor だけ更新する。
     JsonValue root = JsonValue::MakeObject();
     std::error_code ec;
     if (fs::exists(configPath, ec)) {
         std::string parseError;
         const std::optional<JsonValue> parsed = ParseJson(ReadTextFile(configPath), &parseError);
         if (!parsed.has_value() || !parsed->IsObject()) {
-            /// @note 解析不能な既存設定を上書きすると他ツールの登録を壊すため、安全側で中止する。
+            // 解析不能な既存設定を上書きすると他ツールの登録を壊すため、安全側で中止する。
             error = "既存の claude_desktop_config.json を解析できないため中止しました: " + parseError;
             return false;
         }
@@ -286,11 +310,11 @@ std::string AiSetupService::BuildClaudeCodeCommand(const std::string& stdioJsPat
 
 bool AiSetupService::LaunchClaudeDesktop(std::string& error)
 {
-    /// @note 0. 既に起動中なら多重起動しない。二重起動は GPUCache フォルダの取り合いで
-    ///       "Unable to move the cache" (ERROR_ACCESS_DENIED) の原因になるため、
-    ///       既存プロセスのウィンドウを前面に出すだけに留める。
+    // 0. 既に起動中なら多重起動しない。二重起動は GPUCache フォルダの取り合いで
+    // "Unable to move the cache" (ERROR_ACCESS_DENIED) の原因になるため、
+    // 既存プロセスのウィンドウを前面に出すだけに留める。
     if (const DWORD runningPid = FindRunningClaudeProcessId(); runningPid != 0) {
-        /// @note 失敗してもタスクバーには存在するので致命的ではない
+        // 失敗してもタスクバーには存在するので致命的ではない
         FocusRunningClaudeWindow(runningPid);
         return true;
     }
@@ -301,18 +325,22 @@ bool AiSetupService::LaunchClaudeDesktop(std::string& error)
         return false;
     }
 
-    /// @note 1. 通常インストーラ版: claude.exe への直接パスが見つかればそれを起動する。
+    // 1. 通常インストーラ版: claude.exe への直接パスが見つかればそれを起動する。
     std::error_code ec;
     for (const fs::path& candidate : ClaudeExeCandidates(localAppData)) {
         if (fs::exists(candidate, ec)) {
             const HINSTANCE result = ShellExecuteW(nullptr, L"open", candidate.c_str(), nullptr, nullptr, SW_SHOWNORMAL);
-            /// @note ShellExecute は 32 以下がエラー
-            if (reinterpret_cast<INT_PTR>(result) > 32) return true;
+            // ShellExecute は 32 以下がエラー
+            if (reinterpret_cast<INT_PTR>(result) > 32) {
+                return true;
+            }
         }
     }
 
-    /// @note 2. Microsoft Store (MSIX) 版などのフォールバック。
-    if (LaunchViaStartApps()) return true;
+    // 2. Microsoft Store (MSIX) 版などのフォールバック。
+    if (LaunchViaStartApps()) {
+        return true;
+    }
 
     error = "Claude Desktop の実行ファイルが見つかりません。手動で起動してください";
     return false;

@@ -38,30 +38,28 @@ protected:
     void OnRenderContent(EditorContext& ctx) override;
 
 private:
-    std::any              m_componentClipboard;
-    const std::type_info* m_componentClipboardType = nullptr;
-    char                  m_addComponentFilter[64] = {};
-    bool                  m_sectionStateRestored = false;
+    std::any              m_componentClipboard; ///< Inspector でコピーしたコンポーネントの値。次の貼り付けで参照する。
+    const std::type_info* m_componentClipboardType = nullptr; ///< コピーしたコンポーネントの実体型。貼り付け先と照合する。
+    char                  m_addComponentFilter[64] = {}; ///< コンポーネント追加ポップアップの検索欄。
+    bool                  m_sectionStateRestored = false; ///< 保存されていたセクション開閉状態を ImGui へ復元済みか。
 
     /// @brief Hierarchy の選択変更から Inspector の対象を固定する。
     /// @note IK Solver の編集中も同じオブジェクトを表示し続ける。
-    bool            m_locked         = false;
-    scene::EntityID m_lockedEntityId = {};
+    bool            m_locked         = false; ///< 選択が変わっても、Inspector の表示対象を固定するか。
+    scene::EntityID m_lockedEntityId = {}; ///< Inspector が表示に固定したシーンエンティティ。
 
     /// @brief アセット Inspector とロック対象の状態。
     /// @note Asset ロックは m_locked と無効な m_lockedEntityId と path の組み合わせで表す。
-    std::string                                          m_inspectedAssetPath;
-    asset::AssetHandle<asset::MaterialAsset>             m_inspectedMat;
+    std::string                                          m_inspectedAssetPath; ///< アセット Inspector が現在表示しているファイルのパス。
+    asset::AssetHandle<asset::MaterialAsset>             m_inspectedMat; ///< 現在表示中のマテリアルアセットの参照ハンドル。
 
     /// @brief .mat Inspector 下部のプレビュー。
     /// @note Preview パネルとは視点と照明を共有しない。
-    MaterialPreviewView m_materialPreview;
-    /// @brief 画像の Inspector 下部プレビュー。
-    TexturePreviewView  m_texturePreview;
-    /// @brief フォントの Inspector 下部プレビュー。
-    FontPreviewView     m_fontPreview;
+    MaterialPreviewView m_materialPreview; ///< Inspector で材質の編集内容を描くパネル所有のプレビュー。
+    TexturePreviewView  m_texturePreview; ///< 画像の Inspector 下部プレビュー。
+    FontPreviewView     m_fontPreview; ///< フォントの Inspector 下部プレビュー。
 
     void DrawAssetInspector(EditorContext& ctx, const std::string& assetPath);
 };
 
-} /// @note namespace fbzz::editor
+} // namespace fbzz::editor

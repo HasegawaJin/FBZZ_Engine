@@ -25,7 +25,9 @@ constexpr float kMotionEpsilon = 0.01f;
 /// log2 輝度 [-8, +8] を kPreviewHistogramBuckets 等分した階級 index。
 int HistogramBucket(float luminance)
 {
-    if (!(luminance > 0.0f)) return 0;
+    if (!(luminance > 0.0f)) {
+        return 0;
+    }
     const float log2Luminance = std::log2(luminance);
     const float normalized = (log2Luminance + 8.0f) / 16.0f;
     return std::clamp(static_cast<int>(normalized * kPreviewHistogramBuckets),
@@ -42,7 +44,9 @@ PreviewMetrics ComputePreviewMetrics(const std::vector<float>& rgba,
 {
     PreviewMetrics metrics;
     const std::size_t pixelCount = static_cast<std::size_t>(width) * height;
-    if (pixelCount == 0 || rgba.size() < pixelCount * 4u) return metrics;
+    if (pixelCount == 0 || rgba.size() < pixelCount * 4u) {
+        return metrics;
+    }
     metrics.width = width;
     metrics.height = height;
 
@@ -64,17 +68,23 @@ PreviewMetrics ComputePreviewMetrics(const std::vector<float>& rgba,
             const float value = Luminance(texel[0], texel[1], texel[2]);
             luminance[index] = value;
             luminanceSum += value;
-            if (value >= 1.0f) ++clippedCount;
-            if (value >= 4.0f) ++blownOutCount;
+            if (value >= 1.0f) {
+                ++clippedCount;
+            }
+            if (value >= 4.0f) {
+                ++blownOutCount;
+            }
             ++histogramCounts[static_cast<std::size_t>(HistogramBucket(value))];
             metrics.luminanceMax = (std::max)(metrics.luminanceMax, value);
 
-            /// @note 背景との差で「何かが描かれた画素」を判定する。アルファではなく色差を見るのは、
-            ///       加算合成のパーティクルが背景のアルファを 1 のまま残すため。
+            // 背景との差で「何かが描かれた画素」を判定する。アルファではなく色差を見るのは、
+            // 加算合成のパーティクルが背景のアルファを 1 のまま残すため。
             const float difference = (std::max)({ std::fabs(texel[0] - background[0]),
                                                   std::fabs(texel[1] - background[1]),
                                                   std::fabs(texel[2] - background[2]) });
-            if (difference <= kCoverageEpsilon) continue;
+            if (difference <= kCoverageEpsilon) {
+                continue;
+            }
             ++coveredCount;
             coveredLuminanceSum += value;
             centroidXSum += x;
@@ -106,7 +116,7 @@ PreviewMetrics ComputePreviewMetrics(const std::vector<float>& rgba,
         metrics.boundsMaxY = static_cast<float>(maxY) / static_cast<float>((std::max)(1u, height - 1u));
     }
 
-    /// @note 上位 1% 点。全体ソートは不要なので nth_element で境界だけ求める。
+    // 上位 1% 点。全体ソートは不要なので nth_element で境界だけ求める。
     {
         std::vector<float> sorted = luminance;
         const std::size_t rank = pixelCount - (std::max)(std::size_t{1}, pixelCount / std::size_t{100});
@@ -120,23 +130,29 @@ PreviewMetrics ComputePreviewMetrics(const std::vector<float>& rgba,
         for (std::size_t index = 0; index < pixelCount; ++index) {
             const float difference = std::fabs(luminance[index] - (*previousLuminance)[index]);
             differenceSum += difference;
-            if (difference > kMotionEpsilon) ++changedCount;
+            if (difference > kMotionEpsilon) {
+                ++changedCount;
+            }
         }
         metrics.hasPrevious   = true;
         metrics.motion        = static_cast<float>(differenceSum / pixels);
         metrics.changedRatio  = static_cast<float>(static_cast<double>(changedCount) / pixels);
     }
 
-    if (outLuminance != nullptr) *outLuminance = std::move(luminance);
+    if (outLuminance != nullptr) {
+        *outLuminance = std::move(luminance);
+    }
     return metrics;
 }
 
 std::vector<std::string> DescribePreviewMetricIssues(const PreviewMetrics& metrics)
 {
     std::vector<std::string> issues;
-    if (metrics.width == 0 || metrics.height == 0) return issues;
+    if (metrics.width == 0 || metrics.height == 0) {
+        return issues;
+    }
 
-    /// @note 何も描かれていない。他の指標は全て意味を失うので、これだけを返して打ち切る。
+    // 何も描かれていない。他の指標は全て意味を失うので、これだけを返して打ち切る。
     if (metrics.coverage < 0.0005f) {
         issues.emplace_back("EMPTY_FRAME: 画にエフェクトがほとんど出ていません "
                             "(coverage < 0.05%)。vfx_runtime_state で起動状態を確認してください");
@@ -161,7 +177,7 @@ std::vector<std::string> DescribePreviewMetricIssues(const PreviewMetrics& metri
         issues.emplace_back("STATIC_FRAME: 前のサンプルからほぼ変化していません。"
                             "その区間はエフェクトが止まって見えます");
     }
-    /// @note 画角ずれ。重心が中央から大きく外れているのは、カメラかエミッター位置のどちらかがずれている。
+    // 画角ずれ。重心が中央から大きく外れているのは、カメラかエミッター位置のどちらかがずれている。
     if (std::fabs(metrics.centroidX - 0.5f) > 0.25f || std::fabs(metrics.centroidY - 0.5f) > 0.25f) {
         issues.emplace_back("OFF_CENTER: 描画の重心が画面中央から大きく外れています。"
                             "camera 引数か emitPosition を見直してください");

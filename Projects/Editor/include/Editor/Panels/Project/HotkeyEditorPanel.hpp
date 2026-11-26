@@ -21,12 +21,11 @@ protected:
     void OnRenderContent(EditorContext& ctx) override;
 
 private:
-    char m_search[128]{};
-    /// @note 空のときは次のキーを待ち受けない。
-    std::string m_rebindTarget;
+    char m_search[128]{}; ///< 登録済みホットキーを名前で絞り込む入力欄。
+    std::string m_rebindTarget; ///< 空のときは次のキーを待ち受けない。
     /// @brief 直前のリバインドで既存の割り当てとぶつかった場合の警告文 (空 = 警告なし)。
     /// @note 競合の理由を表示して別のキーを待つ。
-    std::string m_conflictNote;
+    std::string m_conflictNote; ///< 入力したキーの組み合わせが既存操作と競合する場合の診断。
 };
 
-} /// @note namespace fbzz::editor
+} // namespace fbzz::editor

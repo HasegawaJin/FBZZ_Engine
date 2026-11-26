@@ -32,16 +32,23 @@ void AssetBrowserPanel::ResetAssetPreviewCache(const std::string& path)
     for (const auto& [key, serial] : m_previewAccess) {
         const std::string candidate = util::FileSystem::NormalizePathSeparators(key);
         if (util::FileSystem::SamePathText(candidate, normalized) ||
-            util::FileSystem::IsChildPathText(candidate, normalized) || candidate.starts_with(normalized + "::"))
+            util::FileSystem::IsChildPathText(candidate, normalized) || candidate.starts_with(normalized + "::")) {
             affected.push_back(key);
+        }
     }
-    for (const auto& key : affected) ResetSingleAssetPreviewCache(key);
+    for (const auto& key : affected) {
+        ResetSingleAssetPreviewCache(key);
+    }
     ResetSingleAssetPreviewCache(path);
-    /// @note Cached Prefab/VFX/Terrain images depend on other assets; re-evaluate on dependency changes.
+    // Cached Prefab/VFX/Terrain images depend on other assets; re-evaluate on dependency changes.
     auto releaseDependent = [&](auto& cache) {
         std::vector<std::string> keys;
-        for (const auto& item : cache) keys.push_back(item.first);
-        for (const auto& key : keys) ResetSingleAssetPreviewCache(key);
+        for (const auto& item : cache) {
+            keys.push_back(item.first);
+        }
+        for (const auto& key : keys) {
+            ResetSingleAssetPreviewCache(key);
+        }
     };
     releaseDependent(m_prefabPreviews);
     releaseDependent(m_instanceSetPreviews);
@@ -52,11 +59,15 @@ void AssetBrowserPanel::ResetAssetPreviewCache(const std::string& path)
 bool AssetBrowserPanel::DrawOriginalTypeIcon(ImVec2 origin, float size, const Entry& entry, const ImVec4* folderTint)
 {
     const auto type = entry.isDir ? assetthumbnail::Icon::FOLDER : assetthumbnail::TypeIcon(entry.ext);
-    if (type == assetthumbnail::Icon::NONE || !m_resources || !m_thumbnailGui) return false;
+    if (type == assetthumbnail::Icon::NONE || !m_resources || !m_thumbnailGui) {
+        return false;
+    }
     const auto& sizes = assetthumbnail::ICON_SIZES;
     const float pixels = size * std::max(1.0f, ImGui::GetIO().DisplayFramebufferScale.x);
     size_t scaleIndex = 0;
-    while (scaleIndex + 1 < sizes.size() && sizes[scaleIndex] < pixels) ++scaleIndex;
+    while (scaleIndex + 1 < sizes.size() && sizes[scaleIndex] < pixels) {
+        ++scaleIndex;
+    }
     const size_t index = static_cast<size_t>(type) * sizes.size() + scaleIndex;
     auto& handle = m_typeIcons[index];
     if (!m_typeIconAttempted[index]) {
@@ -64,23 +75,34 @@ bool AssetBrowserPanel::DrawOriginalTypeIcon(ImVec2 origin, float size, const En
         const std::string name = std::string(assetthumbnail::IconName(type)) + std::to_string(sizes[scaleIndex]) + ".png";
         const auto root = util::FileSystem::PathFromUtf8(m_typeIconRoot);
         auto source = util::FileSystem::PathFromUtf8(__FILE__);
-        for (int parent = 0; parent < 6; ++parent) source = source.parent_path();
+        for (int parent = 0; parent < 6; ++parent) {
+            source = source.parent_path();
+        }
         const std::array<std::filesystem::path, 3> roots{
             root / "share/fbzz/Assets/Icons/AssetBrowser", root / "Assets/Icons/AssetBrowser",
             source / "Assets/Icons/AssetBrowser"
         };
         for (const auto& candidate : roots) {
             std::error_code error;
-            if (!std::filesystem::is_regular_file(candidate / name, error)) continue;
+            if (!std::filesystem::is_regular_file(candidate / name, error)) {
+                continue;
+            }
             const auto image = assetthumbnail::Decode(candidate / name);
-            if (image.state == assetthumbnail::State::READY)
+            if (image.state == assetthumbnail::State::READY) {
                 handle = m_resources->CreateTexture(image.rgba.data(), image.width, image.height);
-            if (handle.IsValid()) break;
+            }
+            if (handle.IsValid()) {
+                break;
+            }
         }
     }
-    if (!handle.IsValid()) return false;
+    if (!handle.IsValid()) {
+        return false;
+    }
     void* raw = m_thumbnailGui->GetImTextureID(handle, *m_resources);
-    if (!raw) return false;
+    if (!raw) {
+        return false;
+    }
     const auto id = static_cast<ImTextureID>(std::bit_cast<std::uintptr_t>(raw));
     ImU32 tint = IM_COL32_WHITE;
     if (entry.isDir) tint = folderTint ? ImGui::ColorConvertFloat4ToU32(*folderTint) : IM_COL32(162, 199, 225, 255);
@@ -96,7 +118,9 @@ bool AssetBrowserPanel::DrawOriginalTypeIcon(ImVec2 origin, float size, const En
 void AssetBrowserPanel::DrawAssetPreviewState(ImVec2 origin, float size, const Entry& entry,
                                              assetthumbnail::State state)
 {
-    if (state == assetthumbnail::State::READY) return;
+    if (state == assetthumbnail::State::READY) {
+        return;
+    }
     ImDrawList* draw = ImGui::GetWindowDrawList();
     const float radius = std::clamp(size * 0.13f, 3.0f, 9.0f);
     const ImVec2 center{ origin.x + size - radius - 1, origin.y + size - radius - 1 };
@@ -132,4 +156,4 @@ void AssetBrowserPanel::OnShutdown()
     m_resources = nullptr;
 }
 
-} /// @note namespace fbzz::editor
+} // namespace fbzz::editor

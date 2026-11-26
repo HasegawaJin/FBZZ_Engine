@@ -38,8 +38,9 @@ struct TerrainHistoryBlocks {
             auto block = blockAt(baseline);
             if (!matches(block)) {
                 auto alternate = blockAt(other);
-                if (alternate == block || !matches(alternate))
+                if (alternate == block || !matches(alternate)) {
                     alternate = std::make_shared<Block>(section.begin(), section.end());
+                }
                 block = std::move(alternate);
             }
             blocks.push_back(std::move(block));
@@ -48,13 +49,19 @@ struct TerrainHistoryBlocks {
 
     [[nodiscard]] bool Matches(std::span<const T> values) const
     {
-        if (values.size() != size) return false;
+        if (values.size() != size) {
+            return false;
+        }
         std::size_t offset = 0;
         for (const auto& block : blocks) {
             const auto section = values.subspan(offset, block->size());
             if constexpr (std::is_same_v<T, float>) {
-                if (!TerrainAuthoringHeightsEqual(section, *block)) return false;
-            } else if (std::memcmp(section.data(), block->data(), section.size_bytes()) != 0) return false;
+                if (!TerrainAuthoringHeightsEqual(section, *block)) {
+                    return false;
+                }
+            } else if (std::memcmp(section.data(), block->data(), section.size_bytes()) != 0) {
+                return false;
+            }
             offset += block->size();
         }
         return true;
@@ -64,7 +71,9 @@ struct TerrainHistoryBlocks {
     {
         Block values;
         values.reserve(size);
-        for (const auto& block : blocks) values.insert(values.end(), block->begin(), block->end());
+        for (const auto& block : blocks) {
+            values.insert(values.end(), block->begin(), block->end());
+        }
         return values;
     }
 
@@ -101,4 +110,4 @@ struct TerrainHistorySnapshot {
     [[nodiscard]] scene::TerrainComponent Materialize() const;
 };
 
-} /// @note namespace fbzz::editor
+} // namespace fbzz::editor

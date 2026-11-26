@@ -21,20 +21,26 @@ void UndoHistoryPanel::OnRenderContent(EditorContext& ctx)
 
     UndoStack& stack = *ctx.undoStack;
 
-    /// @note Clear ボタン
+    // Clear ボタン
     const bool canClear = stack.GetHistorySize() > 0;
-    if (!canClear) ImGui::BeginDisabled();
+    if (!canClear) {
+        ImGui::BeginDisabled();
+    }
     if (ImGui::Button(LOCT("Clear History"))) {
         const auto revision = stack.GetRevision();
         ModalDialog::OpenConfirm(LOCT("Clear History"), LOCT("Clear this undo and redo history?"),
             [&ctx, expectedStack = &stack, revision] {
-                if (ctx.undoStack != expectedStack || expectedStack->GetRevision() != revision) return;
+                if (ctx.undoStack != expectedStack || expectedStack->GetRevision() != revision) {
+                    return;
+                }
                 OpArgs args;
                 args.Set("action", std::string("clear"));
                 InvokeOperator(ctx, "edit.history.control", args);
             });
     }
-    if (!canClear) ImGui::EndDisabled();
+    if (!canClear) {
+        ImGui::EndDisabled();
+    }
 
     ImGui::SameLine();
     ImGui::TextDisabled("%zu / %zu", stack.GetCursor(), stack.GetHistorySize());
@@ -44,15 +50,20 @@ void UndoHistoryPanel::OnRenderContent(EditorContext& ctx)
     const auto entries   = stack.GetHistory();
     const std::size_t sz = entries.size();
 
-    /// @note 一番上に「初期状態」エントリ
+    // 一番上に「初期状態」エントリ
     {
         const bool isCurrent = (stack.GetCursor() == 0);
         ImGui::PushStyleColor(ImGuiCol_Text,
             isCurrent ? ImVec4(0.4f, 0.9f, 0.4f, 1.0f) : ImVec4(0.5f, 0.5f, 0.5f, 1.0f));
-        if (ImGui::Selectable("<Initial State>", isCurrent))
-            { OpArgs args; args.Set("action", std::string("jump")); args.Set("index", 0); InvokeOperator(ctx, "edit.history.control", args); }
-        if (isCurrent && stack.GetRevision() != m_lastRevision)
+        if (ImGui::Selectable("<Initial State>", isCurrent)) {
+            OpArgs args;
+            args.Set("action", std::string("jump"));
+            args.Set("index", 0);
+            InvokeOperator(ctx, "edit.history.control", args);
+        }
+        if (isCurrent && stack.GetRevision() != m_lastRevision) {
             ImGui::SetScrollHereY(0.5f);
+        }
         ImGui::PopStyleColor();
     }
 
@@ -62,28 +73,40 @@ void UndoHistoryPanel::OnRenderContent(EditorContext& ctx)
         const bool isApplied = e.applied;
 
         ImVec4 color;
-        /// @note 緑: 現在位置
-        if (isCurrent)      color = { 0.4f, 0.9f, 0.4f, 1.0f };
-        /// @note 白: 適用済み
-        else if (isApplied) color = { 0.85f, 0.85f, 0.85f, 1.0f };
-        /// @note グレー: Redo 側
-        else                color = { 0.45f, 0.45f, 0.45f, 1.0f };
+        // 緑: 現在位置
+        if (isCurrent) {
+            color = { 0.4f, 0.9f, 0.4f, 1.0f };
+        }
+        // 白: 適用済み
+        else if (isApplied) {
+            color = { 0.85f, 0.85f, 0.85f, 1.0f };
+        }
+        // グレー: Redo 側
+        else {
+            color = { 0.45f, 0.45f, 0.45f, 1.0f };
+        }
 
         ImGui::PushStyleColor(ImGuiCol_Text, color);
         char label[256];
         std::snprintf(label, sizeof(label), "%s##hist%zu", e.description.c_str(), i);
-        if (ImGui::Selectable(label, isCurrent))
-            { OpArgs args; args.Set("action", std::string("jump")); args.Set("index", static_cast<int>(i + 1)); InvokeOperator(ctx, "edit.history.control", args); }
+        if (ImGui::Selectable(label, isCurrent)) {
+            OpArgs args;
+            args.Set("action", std::string("jump"));
+            args.Set("index", static_cast<int>(i + 1));
+            InvokeOperator(ctx, "edit.history.control", args);
+        }
         ImGui::PopStyleColor();
 
-        if (isCurrent && stack.GetRevision() != m_lastRevision)
+        if (isCurrent && stack.GetRevision() != m_lastRevision) {
             ImGui::SetScrollHereY(0.5f);
-        if (ImGui::IsItemHovered())
+        }
+        if (ImGui::IsItemHovered()) {
             ImGui::SetTooltip("Jump to this state");
+        }
     }
 
-    /// @note 現在位置が画面外のとき自動スクロール
+    // 現在位置が画面外のとき自動スクロール
     m_lastRevision = stack.GetRevision();
 }
 
-} /// @note namespace fbzz::editor
+} // namespace fbzz::editor

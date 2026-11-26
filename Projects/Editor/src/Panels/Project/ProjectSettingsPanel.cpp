@@ -143,7 +143,9 @@ bool EnumCombo(E& value, const char* const (&labels)[N])
                 value = static_cast<E>(i);
                 changed = true;
             }
-            if (selected) ImGui::SetItemDefaultFocus();
+            if (selected) {
+                ImGui::SetItemDefaultFocus();
+            }
         }
         ImGui::EndCombo();
     }
@@ -171,7 +173,9 @@ bool ConfirmPopup(const char* id, const char* message, const char* confirmLabel)
         }
         ImGui::PopStyleColor();
         ImGui::SameLine();
-        if (ImGui::Button(LOC("Cancel"))) ImGui::CloseCurrentPopup();
+        if (ImGui::Button(LOC("Cancel"))) {
+            ImGui::CloseCurrentPopup();
+        }
         ImGui::EndPopup();
     }
     return confirmed;
@@ -194,38 +198,56 @@ std::vector<PresetEntry> LoadImportPresets(const std::string& presetsDir)
     std::vector<PresetEntry> result;
     namespace fs = std::filesystem;
     const fs::path dir = util::FileSystem::PathFromUtf8(presetsDir);
-    if (!util::FileSystem::Exists(dir)) return result;
+    if (!util::FileSystem::Exists(dir)) {
+        return result;
+    }
     std::error_code ec;
     for (const auto& entry : fs::directory_iterator(dir, ec)) {
-        if (!entry.is_regular_file()) continue;
+        if (!entry.is_regular_file()) {
+            continue;
+        }
         const std::string ext = util::StringUtils::ToLower(
             util::FileSystem::PathToUtf8(entry.path().extension()));
-        if (ext != ".toml") continue;
+        if (ext != ".toml") {
+            continue;
+        }
         std::string text;
-        if (!util::FileSystem::ReadText(util::FileSystem::PathToUtf8(entry.path()), text)) continue;
+        if (!util::FileSystem::ReadText(util::FileSystem::PathToUtf8(entry.path()), text)) {
+            continue;
+        }
         std::istringstream ss(text);
         const auto parsed = toml::parse(ss);
-        if (!parsed) continue;
+        if (!parsed) {
+            continue;
+        }
         PresetEntry p;
         p.name = util::FileSystem::PathToUtf8(entry.path().stem());
         p.path = util::FileSystem::PathToUtf8(entry.path());
         const auto& tbl = parsed.table();
-        if (auto v = tbl["options"]["source_dcc"].value<int64_t>())
+        if (auto v = tbl["options"]["source_dcc"].value<int64_t>()) {
             p.options.sourceDcc = static_cast<FbxSourceDcc>(*v);
-        if (auto v = tbl["options"]["up_axis"].value<int64_t>())
+        }
+        if (auto v = tbl["options"]["up_axis"].value<int64_t>()) {
             p.options.upAxis = static_cast<FbxUpAxis>(*v);
-        if (auto v = tbl["options"]["normal_map_convention"].value<int64_t>())
+        }
+        if (auto v = tbl["options"]["normal_map_convention"].value<int64_t>()) {
             p.options.normalMapConvention = static_cast<NormalMapConvention>(*v);
-        if (auto v = tbl["options"]["unit_scale_multiplier"].value<float>())
+        }
+        if (auto v = tbl["options"]["unit_scale_multiplier"].value<float>()) {
             p.options.unitScaleMultiplier = *v;
-        if (auto v = tbl["options"]["generate_normals"].value<bool>())
+        }
+        if (auto v = tbl["options"]["generate_normals"].value<bool>()) {
             p.options.generateNormals = *v;
-        if (auto v = tbl["options"]["generate_tangents"].value<bool>())
+        }
+        if (auto v = tbl["options"]["generate_tangents"].value<bool>()) {
             p.options.generateTangents = *v;
-        if (auto v = tbl["options"]["generate_tex_descriptors"].value<bool>())
+        }
+        if (auto v = tbl["options"]["generate_tex_descriptors"].value<bool>()) {
             p.options.generateTexDescriptors = *v;
-        if (auto v = tbl["options"]["default_compression"].value<int64_t>())
+        }
+        if (auto v = tbl["options"]["default_compression"].value<int64_t>()) {
             p.options.defaultCompression = static_cast<asset::TextureCompression>(*v);
+        }
         result.push_back(std::move(p));
     }
     std::sort(result.begin(), result.end(),
@@ -263,17 +285,20 @@ bool DrawBindingRow(const input::InputBinding& binding, int index, bool rebindin
     ImGui::Bullet();
     ImGui::SameLine();
 
-    /// @note 待機中の行を目立たせる。対象が分からないと別のバインドを潰す。
-    if (rebinding)
+    // 待機中の行を目立たせる。対象が分からないと別のバインドを潰す。
+    if (rebinding) {
         ImGui::TextColored(EditorTheme::Color(ThemeColor::Warning), "%s", LOCT("< Press an input... (Esc to cancel) >"));
-    else
+    } else {
         ImGui::TextUnformatted(input::InputActionMap::DescribeBinding(binding).c_str());
+    }
 
     const float buttons = ImGui::CalcTextSize(LOCT("Rebind")).x + ImGui::CalcTextSize(LOCT("Remove")).x
                         + ImGui::GetStyle().FramePadding.x * 4.0f + ImGui::GetStyle().ItemSpacing.x;
     ImGui::SameLine();
     ImGui::SetCursorPosX((std::max)(ImGui::GetCursorPosX(), rowRight - buttons));
-    if (ImGui::SmallButton(LOC("Rebind"))) outRebindRequested = true;
+    if (ImGui::SmallButton(LOC("Rebind"))) {
+        outRebindRequested = true;
+    }
     ImGui::SameLine();
     const bool removeRequested = ImGui::SmallButton(LOC("Remove"));
 
@@ -291,18 +316,22 @@ void DrawBindingList(const char* label, std::vector<input::InputBinding>& bindin
     int removeIndex = -1;
     for (int i = 0; i < static_cast<int>(bindings.size()); ++i) {
         bool rebindRequested = false;
-        if (DrawBindingRow(bindings[static_cast<std::size_t>(i)], i, isRebindTarget(i), rebindRequested))
+        if (DrawBindingRow(bindings[static_cast<std::size_t>(i)], i, isRebindTarget(i), rebindRequested)) {
             removeIndex = i;
-        if (rebindRequested) beginRebind(i);
+        }
+        if (rebindRequested) {
+            beginRebind(i);
+        }
     }
     if (removeIndex >= 0) {
         bindings.erase(bindings.begin() + removeIndex);
         outDirty = true;
     }
 
-    /// @note 末尾に足してすぐ待機に入る。空のバインドを置いたままにすると «反応しない行» が残る。
-    if (ImGui::SmallButton(LOC("+ Add Binding")))
+    // 末尾に足してすぐ待機に入る。空のバインドを置いたままにすると «反応しない行» が残る。
+    if (ImGui::SmallButton(LOC("+ Add Binding"))) {
         beginRebind(static_cast<int>(bindings.size()));
+    }
 
     ImGui::Unindent();
 }
@@ -317,7 +346,7 @@ std::string JoinNames(const std::vector<std::string>& names)
     return joined;
 }
 
-} ///< @note namespace
+} ///< namespace
 
 void ProjectSettingsPanel::OnRenderContent(EditorContext& ctx)
 {
@@ -326,7 +355,7 @@ void ProjectSettingsPanel::OnRenderContent(EditorContext& ctx)
         m_undo.active  = false;
         m_undo.changed = false;
     }
-    /// @note 描く前の値を控える。Undo は «掴む前» の値へ戻す必要がある。
+    // 描く前の値を控える。Undo は «掴む前» の値へ戻す必要がある。
     const ProjectSettings beforeDraw = trackUndo ? ctx.projectSettings : ProjectSettings{};
     const ImGuiID activeBefore = ImGui::GetActiveID();
     const std::uint64_t generationBefore = m_editGeneration;
@@ -342,14 +371,18 @@ void ProjectSettingsPanel::OnRenderContent(EditorContext& ctx)
     ImGui::EndChild();
     ImGui::EndChild();
 
-    if (trackUndo) TrackUndo(ctx, beforeDraw, activeBefore, generationBefore);
+    if (trackUndo) {
+        TrackUndo(ctx, beforeDraw, activeBefore, generationBefore);
+    }
     FlushEditorPreferences(ctx);
     TickInputAutoSave(ctx);
 }
 
 void ProjectSettingsPanel::OnShutdown()
 {
-    if (!m_inputDirty || m_inputPath.empty()) return;
+    if (!m_inputDirty || m_inputPath.empty()) {
+        return;
+    }
     if (!input::InputActionMap::SaveToFile(m_inputPath))
         FBZZ_LOG_ERROR("Input: failed to save %s on shutdown", m_inputPath.c_str());
     m_inputDirty = false;
@@ -363,10 +396,13 @@ void ProjectSettingsPanel::TrackUndo(EditorContext& ctx, const ProjectSettings& 
     const bool structuralEdit = m_editGeneration != generationBefore;
 
     auto pushCommand = [&ctx](const ProjectSettings& before, const ProjectSettings& after) {
-        /// @note ProjectSettings に触れない編集 (検索欄・Input・Preferences) で空の履歴を積まない。
-        if (before.ToToml() == after.ToToml()) return;
-        if (auto command = CommitProjectSettingsEdit(ctx, before, after))
+        // ProjectSettings に触れない編集 (検索欄・Input・Preferences) で空の履歴を積まない。
+        if (before.ToToml() == after.ToToml()) {
+            return;
+        }
+        if (auto command = CommitProjectSettingsEdit(ctx, before, after)) {
             ctx.undoStack->Push(std::move(command));
+        }
     };
 
     if (structuralEdit) {
@@ -381,7 +417,9 @@ void ProjectSettingsPanel::TrackUndo(EditorContext& ctx, const ProjectSettings& 
     } else if (m_undo.active && activeAfter == m_undo.activeId) {
         m_undo.changed |= editedThisFrame;
     } else if (m_undo.active && activeAfter != m_undo.activeId) {
-        if (m_undo.changed) pushCommand(m_undo.before, ctx.projectSettings);
+        if (m_undo.changed) {
+            pushCommand(m_undo.before, ctx.projectSettings);
+        }
         m_undo.active  = false;
         m_undo.changed = false;
     } else if (!m_undo.active && editedThisFrame && activeAfter == 0) {
@@ -394,34 +432,42 @@ void ProjectSettingsPanel::DrawSidebar()
     ImGui::BeginChild("##ProjectSettingsSidebar", { SidebarWidth(), 0.0f }, true);
 
     toolbar::SearchField("##search", "Search settings...", m_search, sizeof(m_search));
-    if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayShort))
+    if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayShort)) {
         ImGui::SetTooltip("%s", LOCT("Searches every section by name, description and value names (Ctrl+F)."));
+    }
     ImGui::Spacing();
 
     auto entry = [this](Section section) {
         const SectionInfo& info = Info(section);
         const int hits = m_lastSectionMatches[static_cast<std::size_t>(section)];
         char label[160];
-        if (Searching())
+        if (Searching()) {
             std::snprintf(label, sizeof(label), "%s  (%d)###%s", LOCT(info.name), hits, info.name);
-        else
+        } else {
             std::snprintf(label, sizeof(label), "%s###%s", LOCT(info.name), info.name);
+        }
 
         const bool dim = Searching() && hits == 0;
-        if (dim) ImGui::PushStyleColor(ImGuiCol_Text, EditorTheme::Color(ThemeColor::TextFaint));
-        /// @note 検索中に選ぶと検索を解いてそのセクションへ移る (結果一覧からの «ここへ行く»)。
+        if (dim) {
+            ImGui::PushStyleColor(ImGuiCol_Text, EditorTheme::Color(ThemeColor::TextFaint));
+        }
+        // 検索中に選ぶと検索を解いてそのセクションへ移る (結果一覧からの «ここへ行く»)。
         if (ImGui::Selectable(label, !Searching() && m_currentSection == section)) {
             m_currentSection = section;
             m_search[0] = '\0';
         }
-        if (dim) ImGui::PopStyleColor();
-        if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayNormal))
+        if (dim) {
+            ImGui::PopStyleColor();
+        }
+        if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayNormal)) {
             ImGui::SetTooltip("%s", LOCT(info.description));
+        }
     };
 
     ImGui::TextDisabled("%s", LOCT("PROJECT"));
-    for (int i = 0; i < static_cast<int>(Section::Editor); ++i)
+    for (int i = 0; i < static_cast<int>(Section::Editor); ++i) {
         entry(static_cast<Section>(i));
+    }
 
     ImGui::Spacing();
     ImGui::Separator();
@@ -451,8 +497,11 @@ void ProjectSettingsPanel::DrawSaveStatus(EditorContext& ctx)
         switch (m_inputSaveState) {
         case InputSaveState::Saved:
             StatusDot(ThemeColor::Success);
-            if (m_inputSavedClock.empty()) ImGui::TextDisabled("%s", LOCT("Input bindings are saved"));
-            else ImGui::TextDisabled("%s %s", LOCT("Input bindings saved at"), m_inputSavedClock.c_str());
+            if (m_inputSavedClock.empty()) {
+                ImGui::TextDisabled("%s", LOCT("Input bindings are saved"));
+            } else {
+                ImGui::TextDisabled("%s %s", LOCT("Input bindings saved at"), m_inputSavedClock.c_str());
+            }
             break;
         case InputSaveState::Pending:
             StatusDot(ThemeColor::Warning);
@@ -474,8 +523,11 @@ void ProjectSettingsPanel::DrawSaveStatus(EditorContext& ctx)
         switch (ctx.projectSettingsSaveState) {
         case EditorContext::SettingsSaveState::Saved:
             StatusDot(ThemeColor::Success);
-            if (ctx.projectSettingsSavedClock.empty()) ImGui::TextDisabled("%s", LOCT("All changes are saved"));
-            else ImGui::TextDisabled("%s %s", LOCT("Saved at"), ctx.projectSettingsSavedClock.c_str());
+            if (ctx.projectSettingsSavedClock.empty()) {
+                ImGui::TextDisabled("%s", LOCT("All changes are saved"));
+            } else {
+                ImGui::TextDisabled("%s %s", LOCT("Saved at"), ctx.projectSettingsSavedClock.c_str());
+            }
             break;
         case EditorContext::SettingsSaveState::Pending:
             StatusDot(ThemeColor::Warning);
@@ -485,7 +537,9 @@ void ProjectSettingsPanel::DrawSaveStatus(EditorContext& ctx)
             StatusDot(ThemeColor::Danger);
             ImGui::TextColored(EditorTheme::Color(ThemeColor::Danger), "%s", LOCT("Could not save ProjectSettings.toml"));
             ImGui::SameLine();
-            if (ImGui::SmallButton(LOC("Retry"))) ctx.requestProjectSettingsSave = true;
+            if (ImGui::SmallButton(LOC("Retry"))) {
+                ctx.requestProjectSettingsSave = true;
+            }
             break;
         }
     }
@@ -494,7 +548,7 @@ void ProjectSettingsPanel::DrawSaveStatus(EditorContext& ctx)
         ImGui::SetTooltip("%s\n%s", tooltipPath,
                           LOCT("Changes are saved automatically about a second after you stop editing."));
 
-    /// @note 既定値へ戻す操作は右クリックにしか無いので、存在をここで教える。
+    // 既定値へ戻す操作は右クリックにしか無いので、存在をここで教える。
     const char* hint = LOCT("Right-click a value to reset it");
     const float hintX = lineRight - ImGui::CalcTextSize(hint).x;
     ImGui::SameLine();
@@ -519,7 +573,7 @@ void ProjectSettingsPanel::DrawContent(EditorContext& ctx)
         ImGui::TextDisabled("%s", LOCT(info.description));
         DrawSection(ctx, m_currentSection);
     } else {
-        /// @note 検索中はページ見出しを保留し、当たった行の直前で描く (FlushPendingHeaders)。
+        // 検索中はページ見出しを保留し、当たった行の直前で描く (FlushPendingHeaders)。
         m_matchCount = 0;
         m_sectionMatches.fill(0);
         for (int i = 0; i < static_cast<int>(Section::Count); ++i) {
@@ -536,8 +590,9 @@ void ProjectSettingsPanel::DrawContent(EditorContext& ctx)
         m_lastSectionMatches = m_sectionMatches;
         if (m_matchCount == 0
             && widgets::EmptyState(nullptr, LOCT("No settings match"),
-                                   LOCT("Try a different word, or clear the search."), LOC("Clear Search")))
+                                   LOCT("Try a different word, or clear the search."), LOC("Clear Search"))) {
             m_search[0] = '\0';
+        }
     }
 
     ImGui::Unindent(kMarkerGutter);
@@ -566,10 +621,14 @@ void ProjectSettingsPanel::DrawSection(EditorContext& ctx, Section section)
 
 bool ProjectSettingsPanel::Matches(const char* label, const char* keywords)
 {
-    if (!Searching()) return true;
+    if (!Searching()) {
+        return true;
+    }
     const bool hit = m_pageMatched || m_groupMatched
                   || LabelHits(label, m_search) || ContainsCI(keywords, m_search);
-    if (!hit) return false;
+    if (!hit) {
+        return false;
+    }
     FlushPendingHeaders();
     ++m_matchCount;
     ++m_sectionMatches[static_cast<std::size_t>(m_drawingSection)];
@@ -621,15 +680,18 @@ void ProjectSettingsPanel::FlushPendingHeaders()
 template <class T, class Draw>
 bool ProjectSettingsPanel::Field(const char* label, T& value, const T* def, const char* tooltip, Draw&& draw)
 {
-    if (!Matches(label, tooltip)) return false;
+    if (!Matches(label, tooltip)) {
+        return false;
+    }
 
     const bool modified = def != nullptr && !SameValue(value, *def);
     const float markerX = ImGui::GetCursorScreenPos().x - kMarkerGutter + 1.0f;
 
     const widgets::PropertyRowScope row = widgets::BeginPropertyField(LOCT(label));
     bool changed = draw();
-    if (tooltip != nullptr && ImGui::IsItemHovered(ImGuiHoveredFlags_DelayShort | ImGuiHoveredFlags_AllowWhenDisabled))
+    if (tooltip != nullptr && ImGui::IsItemHovered(ImGuiHoveredFlags_DelayShort | ImGuiHoveredFlags_AllowWhenDisabled)) {
         ImGui::SetTooltip("%s", tooltip);
+    }
     if (def != nullptr && ImGui::BeginPopupContextItem("##fieldMenu")) {
         if (ImGui::MenuItem(LOC("Reset to Default"), nullptr, false, modified)) {
             AssignValue(value, *def);
@@ -640,23 +702,28 @@ bool ProjectSettingsPanel::Field(const char* label, T& value, const T* def, cons
     }
     widgets::EndPropertyField(row);
 
-    /// @note 既定値から変えた行だけ左端に印を付ける。«どこを触ったか» を一覧で拾えるようにする。
+    // 既定値から変えた行だけ左端に印を付ける。«どこを触ったか» を一覧で拾えるようにする。
     if (modified) {
         const float bottom = ImGui::GetCursorScreenPos().y - ImGui::GetStyle().ItemSpacing.y;
         ImGui::GetWindowDrawList()->AddRectFilled(
             { markerX, row.top }, { markerX + 3.0f, bottom },
             EditorTheme::ColorU32(ThemeColor::Accent), 1.5f);
-        if (ImGui::IsMouseHoveringRect({ markerX - 2.0f, row.top }, { markerX + 5.0f, bottom }))
+        if (ImGui::IsMouseHoveringRect({ markerX - 2.0f, row.top }, { markerX + 5.0f, bottom })) {
             ImGui::SetTooltip("%s", LOCT("Changed from the default. Right-click the value to reset it."));
+        }
     }
 
-    if (changed && !m_editingProjectSettings) m_editorPrefsDirty = true;
+    if (changed && !m_editingProjectSettings) {
+        m_editorPrefsDirty = true;
+    }
     return changed;
 }
 
 void ProjectSettingsPanel::InfoRow(const char* label, const char* text)
 {
-    if (!Matches(label)) return;
+    if (!Matches(label)) {
+        return;
+    }
     const widgets::PropertyRowScope row = widgets::BeginPropertyField(LOCT(label));
     ImGui::AlignTextToFramePadding();
     ImGui::TextDisabled("%s", text);
@@ -665,36 +732,49 @@ void ProjectSettingsPanel::InfoRow(const char* label, const char* text)
 
 void ProjectSettingsPanel::MarkStructuralEdit()
 {
-    if (m_editingProjectSettings) ++m_editGeneration;
-    else m_editorPrefsDirty = true;
+    if (m_editingProjectSettings) {
+        ++m_editGeneration;
+    } else {
+        m_editorPrefsDirty = true;
+    }
 }
 
 void ProjectSettingsPanel::FlushEditorPreferences(EditorContext& ctx)
 {
-    /// @note ドラッグ中に毎フレーム editor_settings.toml を書かない。手を離してから 1 回。
-    if (!m_editorPrefsDirty || ImGui::IsAnyItemActive()) return;
+    // ドラッグ中に毎フレーム editor_settings.toml を書かない。手を離してから 1 回。
+    if (!m_editorPrefsDirty || ImGui::IsAnyItemActive()) {
+        return;
+    }
     m_editorPrefsDirty = false;
     ctx.requestEditorSettingsSave = true;
 }
 
 void ProjectSettingsPanel::TickInputAutoSave(EditorContext& ctx)
 {
-    if (m_inputPath.empty()) m_inputPath = InputActionsPath(ctx);
+    if (m_inputPath.empty()) {
+        m_inputPath = InputActionsPath(ctx);
+    }
 
-    /// @note リバインドはパネルの外 (入力の到着) で確定するので、待機が明けた瞬間を変更として数える。
+    // リバインドはパネルの外 (入力の到着) で確定するので、待機が明けた瞬間を変更として数える。
     const bool rebinding = input::InputActionMap::IsRebinding();
     if (m_wasRebinding && !rebinding) {
         m_inputDirty = true;
         m_inputIdle  = 0.0f;
     }
     m_wasRebinding = rebinding;
-    if (!m_inputDirty) return;
-    if (m_inputSaveState == InputSaveState::Failed && m_inputIdle >= kInputSaveDelay) return;
+    if (!m_inputDirty) {
+        return;
+    }
+    if (m_inputSaveState == InputSaveState::Failed && m_inputIdle >= kInputSaveDelay) {
+        return;
+    }
 
     m_inputSaveState = InputSaveState::Pending;
     m_inputIdle += ImGui::GetIO().DeltaTime;
-    /// @note 待機の途中でファイルへ落とすと、次の起動が壊れたバインドで立ち上がる。
-    if (rebinding || ImGui::IsAnyItemActive() || m_inputIdle < kInputSaveDelay) return;
+    // 待機の途中でファイルへ落とすと、次の起動が壊れたバインドで立ち上がる。
+    if (rebinding || ImGui::IsAnyItemActive() || m_inputIdle < kInputSaveDelay) {
+        return;
+    }
 
     if (input::InputActionMap::SaveToFile(m_inputPath)) {
         m_inputDirty = false;
@@ -713,8 +793,9 @@ void ProjectSettingsPanel::DrawApplication(EditorContext& ctx, ProjectSettings& 
     if (BeginGroup("Frame Rate")) {
         if (Field("Target FPS", settings.app.targetFps, &d.app.targetFps,
                   "1 秒あたりの更新回数の上限。0 で無制限 (Editor の描画にも効く)",
-                  [&] { return ImGui::DragInt("##v", &settings.app.targetFps, 1.0f, 0, 360, "%d fps"); }))
+                  [&] { return ImGui::DragInt("##v", &settings.app.targetFps, 1.0f, 0, 360, "%d fps"); })) {
             Time::targetFps = settings.app.targetFps;
+        }
     }
     EndGroup();
 
@@ -736,30 +817,36 @@ void ProjectSettingsPanel::DrawApplication(EditorContext& ctx, ProjectSettings& 
     }
     EndGroup();
 
-    if (BeginGroup("Cursor", false))
+    if (BeginGroup("Cursor", false)) {
         DrawCursor(ctx, settings.cursor);
+    }
     EndGroup();
 }
 
 void ProjectSettingsPanel::DrawCursor(EditorContext& ctx, CursorAppearance& cursor)
 {
-    /// @note 拘束と表示はここに無い。«その画面が今どう遊ばれているか» で決まり、スクリプトが cursor.Push で名乗る。
+    // 拘束と表示はここに無い。«その画面が今どう遊ばれているか» で決まり、スクリプトが cursor.Push で名乗る。
     const CursorAppearance& d = ProjectDefaults().cursor;
     Field("Hardware Cursor", cursor.hardwareCursor, &d.hardwareCursor,
           "OS カーソルの絵を下の画像で差し替える。外すと常に既定の矢印になる (自前で UI に描く場合など)",
           [&] { return ImGui::Checkbox("##v", &cursor.hardwareCursor); });
 
-    if (!cursor.hardwareCursor) ImGui::BeginDisabled();
+    if (!cursor.hardwareCursor) {
+        ImGui::BeginDisabled();
+    }
     for (std::size_t i = 0; i < core::kCursorShapeCount; ++i) {
         const auto shape = static_cast<core::CursorShape>(i);
         const char* name = core::ToString(shape);
-        if (!Matches(name, "cursor image hotspot カーソル 画像")) continue;
+        if (!Matches(name, "cursor image hotspot カーソル 画像")) {
+            continue;
+        }
 
         ImGui::PushID(static_cast<int>(i));
         auto& entry = cursor.shapes[i];
         const widgets::PropertyRowScope row = widgets::BeginPropertyField(name);
-        if (widgets::AssetPathField("##v", entry.path, ".png,.tga,.bmp", ctx.projectRoot))
+        if (widgets::AssetPathField("##v", entry.path, ".png,.tga,.bmp", ctx.projectRoot)) {
             MarkStructuralEdit();
+        }
         widgets::EndPropertyField(row);
 
         if (!entry.path.empty()) {
@@ -769,16 +856,21 @@ void ProjectSettingsPanel::DrawCursor(EditorContext& ctx, CursorAppearance& curs
                 entry.hotspotX = hotspot[0];
                 entry.hotspotY = hotspot[1];
             }
-            if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayShort))
+            if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayShort)) {
                 ImGui::SetTooltip("画像の左上から «実際に指す点» までの画素。矢印なら先端、十字なら中心");
+            }
             widgets::EndPropertyField(hotspotRow);
         }
         ImGui::PopID();
     }
-    if (!cursor.hardwareCursor) ImGui::EndDisabled();
+    if (!cursor.hardwareCursor) {
+        ImGui::EndDisabled();
+    }
 
-    /// @note 編集中に反映しない。Editor ではウィンドウ全体のカーソルが変わり、パネルの上でもゲームの絵が出る。
-    if (!Searching()) ImGui::TextDisabled("%s", LOCT("Images are loaded when Play starts."));
+    // 編集中に反映しない。Editor ではウィンドウ全体のカーソルが変わり、パネルの上でもゲームの絵が出る。
+    if (!Searching()) {
+        ImGui::TextDisabled("%s", LOCT("Images are loaded when Play starts."));
+    }
 }
 
 void ProjectSettingsPanel::DrawPipelineAsset(EditorContext& ctx)
@@ -798,7 +890,9 @@ void ProjectSettingsPanel::DrawPipelineAsset(EditorContext& ctx)
         "RenderPipelineAsset (.fzdata)", [&] {
             return widgets::AssetPathField("##v", reference, ".fzdata", ctx.projectRoot);
         })) {
-        if (reference.empty() && valid) settings.render = resolved;
+        if (reference.empty() && valid) {
+            settings.render = resolved;
+        }
         settings.renderPipelineAssetPath = asset::EncodeGuidRef(reference);
         valid = asset::ResolveRenderPipelineSettings(settings.render,
             settings.renderPipelineAssetPath, resolved);
@@ -846,7 +940,9 @@ void ProjectSettingsPanel::DrawPipelineAsset(EditorContext& ctx)
             }
             ImGui::SameLine();
             if (ImGui::SmallButton(LOC("Detach Asset"))) {
-                if (valid) settings.render = resolved;
+                if (valid) {
+                    settings.render = resolved;
+                }
                 settings.renderPipelineAssetPath.clear();
                 valid = false;
                 m_pipelineAssetError.clear();
@@ -856,12 +952,13 @@ void ProjectSettingsPanel::DrawPipelineAsset(EditorContext& ctx)
     }
     ImGui::EndDisabled();
     if (!Searching()) {
-        if (!m_pipelineAssetError.empty())
+        if (!m_pipelineAssetError.empty()) {
             ImGui::TextWrapped("%s", m_pipelineAssetError.c_str());
-        else if (!settings.renderPipelineAssetPath.empty() && !valid)
+        } else if (!settings.renderPipelineAssetPath.empty() && !valid) {
             ImGui::TextColored(EditorTheme::Color(ThemeColor::Warning), "%s", LOCT("Invalid pipeline asset: inline fallback active"));
-        else
+        } else {
             ImGui::TextDisabled("%s", valid ? LOCT("Pipeline asset active") : LOCT("Inline settings active"));
+        }
     }
     EndGroup();
 }
@@ -902,14 +999,16 @@ void ProjectSettingsPanel::DrawGraphics(EditorContext& ctx, renderer::RenderSett
                   [&] { return EnumCombo(render.modeRequest.pathProfile, kPathProfiles); });
         }
         ImGui::EndDisabled();
-        if (!developerMode && !Searching())
+        if (!developerMode && !Searching()) {
             ImGui::TextWrapped("RT は DeveloperMode 限定の実験機能です。--developer で起動してください。保存済みの要求は保持し、通常起動では Raster を使います。");
+        }
         if (!Searching() && ctx.resources) {
             for (const auto target : { scene::UIRenderTargetView::GameViewport,
                                        scene::UIRenderTargetView::SceneViewport }) {
                 const auto* view = ctx.resources->Rendering().FindView(static_cast<uint32_t>(target) + 1u);
-                if (!view || !view->output.IsValid() || view->nativeWidth == 0 || view->nativeHeight == 0)
+                if (!view || !view->output.IsValid() || view->nativeWidth == 0 || view->nativeHeight == 0) {
                     continue;
+                }
                 const auto& plan = view->renderPlan;
                 const auto modeLabel = [&](renderer::RenderMode mode) {
                     const auto index = static_cast<uint32_t>(mode);
@@ -919,10 +1018,12 @@ void ProjectSettingsPanel::DrawGraphics(EditorContext& ctx, renderer::RenderSett
                     target == scene::UIRenderTargetView::GameViewport ? "Game View" : "Scene View",
                     modeLabel(plan.requestedMode), plan.IsValid() ? modeLabel(plan.effectiveMode) : "描画不可",
                     view->width, view->height);
-                if (plan.fallbackReason != renderer::RenderPlanReason::NONE)
+                if (plan.fallbackReason != renderer::RenderPlanReason::NONE) {
                     ImGui::TextWrapped("%s", renderer::DescribeRenderPlanReason(plan.fallbackReason));
-                if (!plan.IsValid())
+                }
+                if (!plan.IsValid()) {
                     ImGui::TextWrapped("%s", renderer::DescribeRenderPlanReason(plan.failureReason));
+                }
             }
         }
         static const char* const kPipelines[] = { "Forward", "Deferred", "Forward+", "Deferred+" };
@@ -930,7 +1031,7 @@ void ProjectSettingsPanel::DrawGraphics(EditorContext& ctx, renderer::RenderSett
               "描画経路。+ 付きはクラスタ分割でライトを間引く (ライトが多い場面向け)",
               [&] { return EnumCombo(render.pipeline, kPipelines); });
 
-        /// @note 効かない設定は選んだ Pipeline の真下に出す。原因がここなので、Volume 側に出しても直し方が分からない。
+        // 効かない設定は選んだ Pipeline の真下に出す。原因がここなので、Volume 側に出しても直し方が分からない。
         if (!Searching()) {
             if (const auto inert = renderer::CollectInertSettings(render); !inert.empty()) {
                 const ImVec4 warn = EditorTheme::Color(ThemeColor::Warning);
@@ -941,7 +1042,9 @@ void ProjectSettingsPanel::DrawGraphics(EditorContext& ctx, renderer::RenderSett
                     ImGui::TextColored(warn, "%s", issue.label);
                     ImGui::Indent();
                     ImGui::TextDisabled("%s", issue.reason);
-                    if (issue.remedy) ImGui::TextDisabled("-> %s", issue.remedy);
+                    if (issue.remedy) {
+                        ImGui::TextDisabled("-> %s", issue.remedy);
+                    }
                     ImGui::Unindent();
                 }
                 ImGui::Unindent();
@@ -994,11 +1097,12 @@ void ProjectSettingsPanel::DrawGraphics(EditorContext& ctx, renderer::RenderSett
     }
     EndGroup();
 
-    if (BeginGroup("Debug Overlays", false))
+    if (BeginGroup("Debug Overlays", false)) {
         DrawDebugOverlays(inlineRender);
+    }
     EndGroup();
 
-    /// @note Bloom / SSR / TAA などの «ルック» は場所ごとに変わるので、所有者は Post Process Volume に一本化してある。
+    // Bloom / SSR / TAA などの «ルック» は場所ごとに変わるので、所有者は Post Process Volume に一本化してある。
     if (!Searching()) {
         ImGui::Spacing();
         ImGui::TextDisabled("%s", LOCT("Post processing is configured per area with a Post Process Volume and a Post Process Profile (.fzdata)."));
@@ -1011,7 +1115,9 @@ void ProjectSettingsPanel::DrawShadows(renderer::RenderSettings& render)
     Field("Shadows", render.shadowEnabled, &ProjectDefaults().render.shadowEnabled,
           "太陽 (Directional Light) の影を描く",
           [&] { return ImGui::Checkbox("##v", &render.shadowEnabled); });
-    if (!render.shadowEnabled) return;
+    if (!render.shadowEnabled) {
+        return;
+    }
 
     static const uint32_t kResValues[] = { 512u, 1024u, 2048u, 4096u, 8192u };
     static const char* const kResLabels[] = { "512", "1024", "2048", "4096", "8192" };
@@ -1020,8 +1126,12 @@ void ProjectSettingsPanel::DrawShadows(renderer::RenderSettings& render)
           [&] {
               int index = 3;
               for (int i = 0; i < 5; ++i)
-                  if (kResValues[i] == render.shadow.mapResolution) index = i;
-              if (!EnumCombo(index, kResLabels)) return false;
+                  if (kResValues[i] == render.shadow.mapResolution) {
+                      index = i;
+                  }
+              if (!EnumCombo(index, kResLabels)) {
+                  return false;
+              }
               render.shadow.mapResolution = kResValues[index];
               return true;
           });
@@ -1034,7 +1144,9 @@ void ProjectSettingsPanel::DrawShadows(renderer::RenderSettings& render)
           "視錐台を距離で区切り、手前ほど狭い範囲に 1 タイルを割り当てる。同じ解像度のまま近距離の密度だけを上げられる",
           [&] {
               int index = std::clamp(render.shadow.cascadeCount, 1, renderer::kMaxShadowCascades) - 1;
-              if (!EnumCombo(index, kCascadeLabels)) return false;
+              if (!EnumCombo(index, kCascadeLabels)) {
+                  return false;
+              }
               render.shadow.cascadeCount = index + 1;
               return true;
           });
@@ -1048,14 +1160,14 @@ void ProjectSettingsPanel::DrawShadows(renderer::RenderSettings& render)
               [&] { return ImGui::SliderFloat("##v", &render.shadow.cascadeBlend, 0.0f, 0.5f, "%.2f"); });
     }
 
-    /// @note 解像度を上げるより分割数や距離を変える方が効くことが多い。それはこの表を見ないと判断できない。
+    // 解像度を上げるより分割数や距離を変える方が効くことが多い。それはこの表を見ないと判断できない。
     if (Matches("Cascade Texel Density", "cascade texel テクセル 密度")) {
         const int      count    = std::clamp(render.shadow.cascadeCount, 1, renderer::kMaxShadowCascades);
         const uint32_t tileSize = (std::max)(render.shadow.mapResolution / (count > 1 ? 2u : 1u), 1u);
         const float    nearZ    = 0.1f;
         const float    lambda   = std::clamp(render.shadow.cascadeSplitLambda, 0.0f, 1.0f);
         const float    distance = (std::max)(render.shadow.autoFitDistance, 1.0f);
-        /// @note ComputeFrustumSliceSphere と同じ係数 (fovY 60 / aspect 16:9 の代表値)。
+        // ComputeFrustumSliceSphere と同じ係数 (fovY 60 / aspect 16:9 の代表値)。
         constexpr float kSphereFactor = 1.177f;
 
         const widgets::PropertyRowScope row = widgets::BeginPropertyField(LOCT("Cascade Texel Density"));
@@ -1078,7 +1190,9 @@ void ProjectSettingsPanel::DrawShadows(renderer::RenderSettings& render)
     Field("PCF Radius", render.shadow.pcfRadius, &d.pcfRadius, "影の縁のぼかし幅",
           [&] {
               int index = std::clamp(render.shadow.pcfRadius, 0, 3);
-              if (!EnumCombo(index, kPcfLabels)) return false;
+              if (!EnumCombo(index, kPcfLabels)) {
+                  return false;
+              }
               render.shadow.pcfRadius = index;
               return true;
           });
@@ -1094,22 +1208,27 @@ void ProjectSettingsPanel::DrawShadows(renderer::RenderSettings& render)
 
 void ProjectSettingsPanel::DrawPlayerOptionsPreview(EditorContext& ctx, renderer::RenderSettings& render)
 {
-    /// @note 保存されない値を出すのは、効きを Play + スクリプト無しで目で確かめるため。
-    if (!Searching())
+    // 保存されない値を出すのは、効きを Play + スクリプト無しで目で確かめるため。
+    if (!Searching()) {
         ImGui::TextDisabled("%s", LOCT("Values owned by the in-game Options screen. Changes here are not saved."));
+    }
 
     Field("Brightness", render.userBrightness, static_cast<const float*>(nullptr),
           "Option 画面の明るさ。確認用で保存されない",
           [&] { return ImGui::SliderFloat("##v", &render.userBrightness, 0.1f, 4.0f, "%.2f"); });
 
-    /// @note 描画スケールは値が変わるたびに中間 RT を作り直す。ドラッグ中は draft に溜め、離した時点で 1 回だけ反映する。
-    if (!m_renderScaleDragging) m_renderScaleDraft = render.renderScale;
+    // 描画スケールは値が変わるたびに中間 RT を作り直す。ドラッグ中は draft に溜め、離した時点で 1 回だけ反映する。
+    if (!m_renderScaleDragging) {
+        m_renderScaleDraft = render.renderScale;
+    }
     Field("Render Scale", m_renderScaleDraft, static_cast<const float*>(nullptr),
           "内部解像度の倍率。確認用で保存されない",
           [&] {
               ImGui::SliderFloat("##v", &m_renderScaleDraft, renderer::kMinRenderScale, renderer::kMaxRenderScale, "%.2f");
               m_renderScaleDragging = ImGui::IsItemActive();
-              if (!ImGui::IsItemDeactivatedAfterEdit()) return false;
+              if (!ImGui::IsItemDeactivatedAfterEdit()) {
+                  return false;
+              }
               render.renderScale = m_renderScaleDraft;
               return true;
           });
@@ -1159,7 +1278,7 @@ void ProjectSettingsPanel::DrawDebugOverlays(renderer::RenderSettings& render)
           "カスケードを色分けする",
           [&] { return ImGui::Checkbox("##v", &render.shadow.debugVisualizeCascades); });
 
-    /// @note Script Gizmos / Skeleton / IK などはエディター設定が正本で毎フレーム上書きされるので、置き場所だけ案内する。
+    // Script Gizmos / Skeleton / IK などはエディター設定が正本で毎フレーム上書きされるので、置き場所だけ案内する。
     if (!Searching()) {
         ImGui::TextDisabled("%s", LOCT("Scene View only overlays (Script Gizmos, Skeleton, IK, ...): Viewport > Overlays"));
         ImGui::TextDisabled("%s", LOCT("Render Pass Viewer: Debug > Render Pass Viewer"));
@@ -1180,20 +1299,24 @@ void ProjectSettingsPanel::DrawPhysics(ProjectSettings& settings)
     }
     EndGroup();
 
-    if (BeginGroup("Layer Collision Matrix", true, "collision layer matrix 衝突 レイヤー"))
+    if (BeginGroup("Layer Collision Matrix", true, "collision layer matrix 衝突 レイヤー")) {
         DrawCollisionMatrix(settings);
+    }
     EndGroup();
 }
 
 void ProjectSettingsPanel::DrawCollisionMatrix(ProjectSettings& settings)
 {
-    if (!Matches("Layer Collision Matrix", "collision layer matrix 衝突")) return;
+    if (!Matches("Layer Collision Matrix", "collision layer matrix 衝突")) {
+        return;
+    }
 
-    /// @note 名前の付いたレイヤーだけ並べる。32 本すべてだと 1024 マスになり、使っている数本を探せない。
+    // 名前の付いたレイヤーだけ並べる。32 本すべてだと 1024 マスになり、使っている数本を探せない。
     std::vector<int> used;
     for (int i = 0; i < 32; ++i)
-        if (i == Layer::Default || !settings.game.layerNames[static_cast<std::size_t>(i)].empty())
+        if (i == Layer::Default || !settings.game.layerNames[static_cast<std::size_t>(i)].empty()) {
             used.push_back(i);
+        }
 
     if (used.size() < 2) {
         ImGui::TextDisabled("%s", LOCT("Name at least two layers in Tags & Layers to edit the matrix."));
@@ -1201,13 +1324,14 @@ void ProjectSettingsPanel::DrawCollisionMatrix(ProjectSettings& settings)
     }
     ImGui::TextDisabled("%s", LOCT("Unchecked pairs never collide. Triggers are filtered too."));
 
-    /// @note 対称行列なので上三角だけ出す。全面だと同じ組が 2 回現れ、どちらを触ったのか分からない。
+    // 対称行列なので上三角だけ出す。全面だと同じ組が 2 回現れ、どちらを触ったのか分からない。
     if (ImGui::BeginTable("##collisionMatrix", static_cast<int>(used.size()) + 1,
                           ImGuiTableFlags_SizingFixedFit | ImGuiTableFlags_BordersInner
                           | ImGuiTableFlags_RowBg)) {
         ImGui::TableSetupColumn("");
-        for (int column : used)
+        for (int column : used) {
             ImGui::TableSetupColumn(LayerLabel(settings, column).c_str(), ImGuiTableColumnFlags_AngledHeader);
+        }
         ImGui::TableAngledHeadersRow();
         ImGui::TableHeadersRow();
 
@@ -1217,15 +1341,19 @@ void ProjectSettingsPanel::DrawCollisionMatrix(ProjectSettings& settings)
             ImGui::TextUnformatted(LayerLabel(settings, used[row]).c_str());
             for (std::size_t column = 0; column < used.size(); ++column) {
                 ImGui::TableNextColumn();
-                if (column < row) continue;
+                if (column < row) {
+                    continue;
+                }
                 const int a = used[row];
                 const int b = used[column];
                 bool collide = settings.physics.collisionMatrix.CanCollide(a, b);
                 ImGui::PushID(a * 32 + b);
-                if (ImGui::Checkbox("##pair", &collide))
+                if (ImGui::Checkbox("##pair", &collide)) {
                     settings.physics.collisionMatrix.Set(a, b, collide);
-                if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayShort))
+                }
+                if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayShort)) {
                     ImGui::SetTooltip("%s  x  %s", LayerLabel(settings, a).c_str(), LayerLabel(settings, b).c_str());
+                }
                 ImGui::PopID();
             }
         }
@@ -1252,33 +1380,39 @@ void ProjectSettingsPanel::DrawInput(EditorContext& ctx)
                 FBZZ_LOG_WARN("Input: could not read %s; keeping current bindings", m_inputPath.c_str());
             }
         }
-        if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayShort))
+        if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayShort)) {
             ImGui::SetTooltip("Input.inputactions を読み直す。まだ書き出していない変更は捨てる");
+        }
         ImGui::SameLine();
-        if (ImGui::Button(LOC("Reset to Defaults...")))
+        if (ImGui::Button(LOC("Reset to Defaults..."))) {
             ImGui::OpenPopup("##resetInput");
+        }
         if (ConfirmPopup("##resetInput", LOCT("Replace every binding with the engine defaults?"), LOC("Reset"))) {
             input::InputActionMap::LoadDefaults();
             m_inputDirty = true;
             m_inputIdle  = 0.0f;
         }
 
-        /// @note 待機中は他の操作を誤爆させないよう、何を待っているかを明示する。
+        // 待機中は他の操作を誤爆させないよう、何を待っているかを明示する。
         if (input::InputActionMap::IsRebinding()) {
             ImGui::TextColored(EditorTheme::Color(ThemeColor::Warning), "%s",
                                LOCT("Waiting for input. Press the key or button to assign (Esc to cancel)."));
             ImGui::SameLine();
-            if (ImGui::SmallButton(LOC("Cancel"))) input::InputActionMap::CancelRebind();
+            if (ImGui::SmallButton(LOC("Cancel"))) {
+                input::InputActionMap::CancelRebind();
+            }
         }
     }
 
     if (BeginGroup("Preview")) {
-        /// @note アクション層は Play 中だけ有効。そのままでは «Current» 表示もハイライトも常に 0 で、ここで確かめられない。
+        // アクション層は Play 中だけ有効。そのままでは «Current» 表示もハイライトも常に 0 で、ここで確かめられない。
         bool live = input::InputActionMap::IsEnabled();
         Field("Live Preview", live, static_cast<const bool*>(nullptr),
               "バインドの動作を Play せずにこのタブで確かめる。Play の開始・終了で自動的に切り替わる",
               [&] {
-                  if (!ImGui::Checkbox("##v", &live)) return false;
+                  if (!ImGui::Checkbox("##v", &live)) {
+                      return false;
+                  }
                   input::InputActionMap::SetEnabled(live);
                   return true;
               });
@@ -1286,11 +1420,13 @@ void ProjectSettingsPanel::DrawInput(EditorContext& ctx)
     EndGroup();
 
     if (BeginGroup("Connected Gamepads", false, "gamepad pad stick trigger vibration ゲームパッド")) {
-        /// @note 実測値を出す。スティックのドリフト量は個体差があり、デッドゾーンは数値だけでは決められない。
+        // 実測値を出す。スティックのドリフト量は個体差があり、デッドゾーンは数値だけでは決められない。
         if (Matches("Connected Gamepads", "gamepad pad stick trigger vibration ゲームパッド")) {
             bool anyConnected = false;
             for (int pad = 0; pad < input::Gamepad::MAX_PADS; ++pad) {
-                if (!input::Gamepad::IsConnected(pad)) continue;
+                if (!input::Gamepad::IsConnected(pad)) {
+                    continue;
+                }
                 anyConnected = true;
                 ImGui::PushID(pad);
                 ImGui::Text("Pad %d", pad);
@@ -1307,17 +1443,24 @@ void ProjectSettingsPanel::DrawInput(EditorContext& ctx)
                 std::string pressed;
                 for (uint16_t i = 0; i < static_cast<uint16_t>(input::GamepadButton::COUNT); ++i) {
                     const auto button = static_cast<input::GamepadButton>(i);
-                    if (!input::Gamepad::ButtonHeld(button, pad)) continue;
-                    if (!pressed.empty()) pressed += ", ";
+                    if (!input::Gamepad::ButtonHeld(button, pad)) {
+                        continue;
+                    }
+                    if (!pressed.empty()) {
+                        pressed += ", ";
+                    }
                     pressed += input::ToString(button);
                 }
                 ImGui::Text("Buttons    : %s", pressed.empty() ? "-" : pressed.c_str());
-                if (ImGui::SmallButton(LOC("Test Vibration")))
+                if (ImGui::SmallButton(LOC("Test Vibration"))) {
                     input::Gamepad::SetVibration(0.5f, 0.5f, 0.3f, pad);
+                }
                 ImGui::Unindent();
                 ImGui::PopID();
             }
-            if (!anyConnected) ImGui::TextDisabled("%s", LOCT("No gamepads are connected."));
+            if (!anyConnected) {
+                ImGui::TextDisabled("%s", LOCT("No gamepads are connected."));
+            }
         }
     }
     EndGroup();
@@ -1334,7 +1477,9 @@ void ProjectSettingsPanel::DrawInput(EditorContext& ctx)
 void ProjectSettingsPanel::DrawInputAxes(bool& dirty)
 {
     std::vector<std::string> names;
-    for (const input::InputAxis& axis : input::InputActionMap::GetAxes()) names.push_back(axis.name);
+    for (const input::InputAxis& axis : input::InputActionMap::GetAxes()) {
+        names.push_back(axis.name);
+    }
     const std::string keywords = JoinNames(names) + "axis dead zone sensitivity 軸";
 
     if (BeginGroup("Axes", true, keywords.c_str())) {
@@ -1343,14 +1488,20 @@ void ProjectSettingsPanel::DrawInputAxes(bool& dirty)
 
         for (const std::string& name : names) {
             input::InputAxis* axis = input::InputActionMap::FindAxis(name);
-            if (!axis) continue;
+            if (!axis) {
+                continue;
+            }
             const bool groupMatched = m_groupMatched;
-            if (!Matches(name.c_str())) continue;
-            /// @note 軸名で当たったなら中の行も全部出す。
+            if (!Matches(name.c_str())) {
+                continue;
+            }
+            // 軸名で当たったなら中の行も全部出す。
             m_groupMatched = true;
 
             ImGui::PushID(name.c_str());
-            if (Searching()) ImGui::SetNextItemOpen(true, ImGuiCond_Always);
+            if (Searching()) {
+                ImGui::SetNextItemOpen(true, ImGuiCond_Always);
+            }
             if (ImGui::TreeNode(name.c_str())) {
                 dirty |= Field("Dead Zone", axis->deadZone, &kAxisDefaults.deadZone,
                                "この値より小さい入力を 0 とみなす。スティックのドリフト対策",
@@ -1384,7 +1535,9 @@ void ProjectSettingsPanel::DrawInputAxes(bool& dirty)
                     [&](int i) { return input::InputActionMap::IsRebindTarget(name, 2, i); }, dirty);
 
                 ImGui::Spacing();
-                if (ImGui::SmallButton(LOC("Remove Axis"))) axisToRemove = name;
+                if (ImGui::SmallButton(LOC("Remove Axis"))) {
+                    axisToRemove = name;
+                }
                 ImGui::TreePop();
             }
             ImGui::PopID();
@@ -1421,30 +1574,44 @@ void ProjectSettingsPanel::DrawInputAxes(bool& dirty)
 void ProjectSettingsPanel::DrawInputActions(bool& dirty)
 {
     std::vector<std::string> names;
-    for (const input::InputAction& action : input::InputActionMap::GetActions()) names.push_back(action.name);
+    for (const input::InputAction& action : input::InputActionMap::GetActions()) {
+        names.push_back(action.name);
+    }
     const std::string keywords = JoinNames(names) + "action binding アクション";
 
     if (BeginGroup("Actions", true, keywords.c_str())) {
         std::string actionToRemove;
         for (const std::string& name : names) {
             input::InputAction* action = input::InputActionMap::FindAction(name);
-            if (!action) continue;
-            if (!Matches(name.c_str())) continue;
+            if (!action) {
+                continue;
+            }
+            if (!Matches(name.c_str())) {
+                continue;
+            }
 
             ImGui::PushID(name.c_str());
-            /// @note 押下中のアクションは名前を光らせる。動作確認が Play を挟まずにできる。
+            // 押下中のアクションは名前を光らせる。動作確認が Play を挟まずにできる。
             const bool held = input::InputActionMap::GetAction(name);
-            if (held) ImGui::PushStyleColor(ImGuiCol_Text, EditorTheme::Color(ThemeColor::Success));
-            if (Searching()) ImGui::SetNextItemOpen(true, ImGuiCond_Always);
+            if (held) {
+                ImGui::PushStyleColor(ImGuiCol_Text, EditorTheme::Color(ThemeColor::Success));
+            }
+            if (Searching()) {
+                ImGui::SetNextItemOpen(true, ImGuiCond_Always);
+            }
             const bool open = ImGui::TreeNode(name.c_str());
-            if (held) ImGui::PopStyleColor();
+            if (held) {
+                ImGui::PopStyleColor();
+            }
 
             if (open) {
                 DrawBindingList(LOCT("Bindings"), action->bindings,
                     [&](int i) { input::InputActionMap::BeginRebindAction(name, i); },
                     [&](int i) { return input::InputActionMap::IsRebindTarget(name, -1, i); }, dirty);
                 ImGui::Spacing();
-                if (ImGui::SmallButton(LOC("Remove Action"))) actionToRemove = name;
+                if (ImGui::SmallButton(LOC("Remove Action"))) {
+                    actionToRemove = name;
+                }
                 ImGui::TreePop();
             }
             ImGui::PopID();
@@ -1503,7 +1670,9 @@ void ProjectSettingsPanel::DrawAudio(ProjectSettings& settings)
     }
 
     std::vector<std::string> busNames;
-    for (const audio::BusDesc& bus : buses) busNames.push_back(bus.name);
+    for (const audio::BusDesc& bus : buses) {
+        busNames.push_back(bus.name);
+    }
     const std::string busKeywords = JoinNames(busNames) + "bus mixer reverb low-pass バス ミキサー 残響";
 
     if (BeginGroup("Mixer Buses", true, busKeywords.c_str()) && Matches("Mixer Buses", busKeywords.c_str())) {
@@ -1540,7 +1709,7 @@ void ProjectSettingsPanel::DrawAudio(ProjectSettings& settings)
                     dirty |= widgets::InputString("##parent", bus.parent, 64);
                 }
 
-                /// @note Master の音量は上の Master Volume が正本。ここでは触らせない。
+                // Master の音量は上の Master Volume が正本。ここでは触らせない。
                 ImGui::TableNextColumn();
                 ImGui::SetNextItemWidth(-FLT_MIN);
                 if (isMaster) {
@@ -1558,12 +1727,17 @@ void ProjectSettingsPanel::DrawAudio(ProjectSettings& settings)
 
                 ImGui::TableNextColumn();
                 dirty |= ImGui::Checkbox("##reverb", &bus.reverb);
-                if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayShort))
+                if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayShort)) {
                     ImGui::SetTooltip("AudioReverbZone の残響を受ける。切り替えると再生中の音がいったん止まる");
+                }
 
                 ImGui::TableNextColumn();
-                if (!isMaster && ImGui::SmallButton("x")) removeIndex = static_cast<int>(i);
-                if (!isMaster && ImGui::IsItemHovered()) ImGui::SetTooltip("%s", LOCT("Remove bus"));
+                if (!isMaster && ImGui::SmallButton("x")) {
+                    removeIndex = static_cast<int>(i);
+                }
+                if (!isMaster && ImGui::IsItemHovered()) {
+                    ImGui::SetTooltip("%s", LOCT("Remove bus"));
+                }
                 ImGui::PopID();
             }
             ImGui::EndTable();
@@ -1585,18 +1759,22 @@ void ProjectSettingsPanel::DrawAudio(ProjectSettings& settings)
     }
     EndGroup();
 
-    /// @note 音量は耳で合わせる作業なので即座に送る。ただしバス構成の組み直しは再生中の音を止めるので、
-                    /// @note 名前・親・残響が変わったときだけ組み直す。
-    if (!dirty) return;
+    // 音量は耳で合わせる作業なので即座に送る。ただしバス構成の組み直しは再生中の音を止めるので、
+                    // 名前・親・残響が変わったときだけ組み直す。
+    if (!dirty) {
+        return;
+    }
     auto* audioManager = core::Application::Get().GetAudioManager();
-    if (!audioManager) return;
+    if (!audioManager) {
+        return;
+    }
     audioManager->SetVoiceLimit(static_cast<std::size_t>(settings.audio.voiceLimit));
     const std::vector<audio::BusDesc> layout = settings.audio.BuildBusLayout();
     const bool sameGraph =
         layout.size() == audioManager->BusLayout().size() &&
         std::equal(layout.begin(), layout.end(), audioManager->BusLayout().begin(),
                    [](const audio::BusDesc& a, const audio::BusDesc& b) {
-                       /// @note 残響 DSP は submix の生成時にしか差し込めないので、reverb も組み直しの条件に入れる。
+                       // 残響 DSP は submix の生成時にしか差し込めないので、reverb も組み直しの条件に入れる。
                        return a.name == b.name && a.parent == b.parent && a.reverb == b.reverb;
                    });
     if (sameGraph) {
@@ -1611,16 +1789,18 @@ void ProjectSettingsPanel::DrawAudio(ProjectSettings& settings)
 
 void ProjectSettingsPanel::DrawTagsAndLayers(ProjectSettings& settings)
 {
-    /// @note 同居させるのは、どちらも GameObject を分類する ID 表で、新しい敵種別を足すときに両方触るから。
+    // 同居させるのは、どちらも GameObject を分類する ID 表で、新しい敵種別を足すときに両方触るから。
     const std::string tagKeywords = JoinNames(settings.game.tags) + "tag タグ";
-    if (BeginGroup("Tags", true, tagKeywords.c_str()) && Matches("Tag List", tagKeywords.c_str()))
+    if (BeginGroup("Tags", true, tagKeywords.c_str()) && Matches("Tag List", tagKeywords.c_str())) {
         DrawTags(settings);
+    }
     EndGroup();
 
     std::vector<std::string> layerNames(settings.game.layerNames.begin(), settings.game.layerNames.end());
     const std::string layerKeywords = JoinNames(layerNames) + "layer レイヤー";
-    if (BeginGroup("Layers", true, layerKeywords.c_str()) && Matches("Layer List", layerKeywords.c_str()))
+    if (BeginGroup("Layers", true, layerKeywords.c_str()) && Matches("Layer List", layerKeywords.c_str())) {
         DrawLayers(settings);
+    }
     EndGroup();
 }
 
@@ -1639,7 +1819,7 @@ void ProjectSettingsPanel::DrawTags(ProjectSettings& settings)
             ImGui::PushID(i);
             ImGui::TableNextRow();
             ImGui::TableNextColumn();
-            /// @note Untagged は «タグ無し» の意味を持つ予約名なので改名も削除もさせない。
+            // Untagged は «タグ無し» の意味を持つ予約名なので改名も削除もさせない。
             const bool reserved = tags[static_cast<std::size_t>(i)] == "Untagged";
             const bool duplicate = isDuplicate(tags[static_cast<std::size_t>(i)]);
             if (duplicate) {
@@ -1653,10 +1833,14 @@ void ProjectSettingsPanel::DrawTags(ProjectSettings& settings)
             ImGui::EndDisabled();
             if (duplicate) {
                 ImGui::PopStyleColor();
-                if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", LOCT("Another tag has the same name."));
+                if (ImGui::IsItemHovered()) {
+                    ImGui::SetTooltip("%s", LOCT("Another tag has the same name."));
+                }
             }
             ImGui::TableNextColumn();
-            if (!reserved && ImGui::SmallButton(LOC("Remove"))) removeIndex = i;
+            if (!reserved && ImGui::SmallButton(LOC("Remove"))) {
+                removeIndex = i;
+            }
             ImGui::PopID();
         }
         ImGui::EndTable();
@@ -1666,7 +1850,9 @@ void ProjectSettingsPanel::DrawTags(ProjectSettings& settings)
         MarkStructuralEdit();
     }
 
-    if (Searching()) return;
+    if (Searching()) {
+        return;
+    }
 
     const std::string newTag = m_newTag;
     const bool exists = std::find(tags.begin(), tags.end(), newTag) != tags.end();
@@ -1681,12 +1867,14 @@ void ProjectSettingsPanel::DrawTags(ProjectSettings& settings)
         MarkStructuralEdit();
     }
     ImGui::EndDisabled();
-    if (exists && ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled))
+    if (exists && ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled)) {
         ImGui::SetTooltip("%s", LOCT("A tag with this name already exists."));
+    }
 
     ImGui::SameLine();
-    if (ImGui::SmallButton(LOC("Reset to Unity Preset...")))
+    if (ImGui::SmallButton(LOC("Reset to Unity Preset..."))) {
         ImGui::OpenPopup("##resetTags");
+    }
     if (ConfirmPopup("##resetTags", LOCT("Replace all tags with the Unity preset? Custom tags are removed."), LOC("Reset"))) {
         tags = ProjectDefaults().game.tags;
         MarkStructuralEdit();
@@ -1710,18 +1898,23 @@ void ProjectSettingsPanel::DrawLayers(ProjectSettings& settings)
             char buffer[64];
             std::snprintf(buffer, sizeof(buffer), "%s", settings.game.layerNames[static_cast<std::size_t>(i)].c_str());
             ImGui::SetNextItemWidth(-FLT_MIN);
-            if (ImGui::InputTextWithHint("##layer", hint, buffer, sizeof(buffer)))
+            if (ImGui::InputTextWithHint("##layer", hint, buffer, sizeof(buffer))) {
                 settings.game.layerNames[static_cast<std::size_t>(i)] = buffer;
+            }
             ImGui::PopID();
         }
         ImGui::EndTable();
     }
 
-    if (Searching()) return;
+    if (Searching()) {
+        return;
+    }
     ImGui::PushID("layers");
     const bool resetRequested = ImGui::SmallButton(LOC("Reset to Unity Preset..."));
     ImGui::PopID();
-    if (resetRequested) ImGui::OpenPopup("##resetLayers");
+    if (resetRequested) {
+        ImGui::OpenPopup("##resetLayers");
+    }
     if (ConfirmPopup("##resetLayers", LOCT("Replace all layer names with the Unity preset? Scenes keep their layer numbers."), LOC("Reset"))) {
         settings.game.layerNames = {
             "Default", "TransparentFX", "Ignore Raycast", "", "Water", "UI",
@@ -1773,7 +1966,9 @@ void ProjectSettingsPanel::DrawImport(EditorContext& ctx)
             cache.presets = LoadImportPresets(presetsDir);
             cache.loaded  = true;
         }
-        if (ImGui::SmallButton(LOC("Refresh"))) cache.loaded = false;
+        if (ImGui::SmallButton(LOC("Refresh"))) {
+            cache.loaded = false;
+        }
 
         if (cache.presets.empty()) {
             ImGui::TextDisabled("%s", LOCT("No presets in Assets/.import_presets/."));
@@ -1806,11 +2001,16 @@ void ProjectSettingsPanel::DrawImport(EditorContext& ctx)
                     opt = p.options;
                     MarkStructuralEdit();
                 }
-                if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", LOCT("Copy this preset into FBX Defaults above."));
+                if (ImGui::IsItemHovered()) {
+                    ImGui::SetTooltip("%s", LOCT("Copy this preset into FBX Defaults above."));
+                }
                 ImGui::SameLine();
-                if (ImGui::SmallButton(LOC("Delete..."))) ImGui::OpenPopup("##deletePreset");
-                if (ConfirmPopup("##deletePreset", LOCT("Delete this preset file? This cannot be undone."), LOC("Delete")))
+                if (ImGui::SmallButton(LOC("Delete..."))) {
+                    ImGui::OpenPopup("##deletePreset");
+                }
+                if (ConfirmPopup("##deletePreset", LOCT("Delete this preset file? This cannot be undone."), LOC("Delete"))) {
                     deleteIndex = i;
+                }
                 ImGui::PopID();
             }
             ImGui::EndTable();
@@ -1834,7 +2034,9 @@ void ProjectSettingsPanel::DrawImport(EditorContext& ctx)
         static constexpr const char* kExcluded[] = { "_backup", "_old", "_wip", "_ref", "_tmp", "_test", "_unused", "_bak" };
         std::string joined;
         for (const char* suffix : kExcluded) {
-            if (!joined.empty()) joined += "  ";
+            if (!joined.empty()) {
+                joined += "  ";
+            }
             joined += suffix;
         }
         ImGui::TextUnformatted(joined.c_str());
@@ -1855,7 +2057,7 @@ void ProjectSettingsPanel::DrawEditorPreferences(EditorContext& ctx)
                 bool picked = false;
                 if (ImGui::BeginCombo("##v", loc::DisplayName(language))) {
                     for (const loc::Language option : loc::kLanguages) {
-                        /// @note 候補は常にその言語自身の表記で出す。日本語表示のまま «英語» としか出ないと戻し方が分からない。
+                        // 候補は常にその言語自身の表記で出す。日本語表示のまま «英語» としか出ないと戻し方が分からない。
                         if (ImGui::Selectable(loc::DisplayName(option), option == language) && option != language) {
                             language = option;
                             picked = true;
@@ -1865,9 +2067,11 @@ void ProjectSettingsPanel::DrawEditorPreferences(EditorContext& ctx)
                 }
                 return picked;
             });
-        if (changed) loc::SetLanguage(language);
+        if (changed) {
+            loc::SetLanguage(language);
+        }
 
-        /// @note 訳の埋まり具合。無いと «英語のまま» の箇所が訳の欠けか仕組みの不具合か区別できない。
+        // 訳の埋まり具合。無いと «英語のまま» の箇所が訳の欠けか仕組みの不具合か区別できない。
         if (loc::GetLanguage() != loc::Language::English
             && Matches("Translation Coverage", "translation missing untranslated 訳")) {
             char entries[32];
@@ -1883,11 +2087,15 @@ void ProjectSettingsPanel::DrawEditorPreferences(EditorContext& ctx)
                 ImGui::TextDisabled("%s", LOCT("Open the panels you want translated, then add these to Localization_ja.inl."));
                 if (ImGui::SmallButton(LOC("Copy to Clipboard"))) {
                     std::string text;
-                    for (const std::string& key : missing) text += "{ \"" + key + "\", \"\" },\n";
+                    for (const std::string& key : missing) {
+                        text += "{ \"" + key + "\", \"\" },\n";
+                    }
                     ImGui::SetClipboardText(text.c_str());
                 }
                 if (ImGui::BeginChild("##missing", { 0.0f, ImGui::GetTextLineHeightWithSpacing() * 12.0f }, true)) {
-                    for (const std::string& key : missing) ImGui::TextUnformatted(key.c_str());
+                    for (const std::string& key : missing) {
+                        ImGui::TextUnformatted(key.c_str());
+                    }
                 }
                 ImGui::EndChild();
                 ImGui::TreePop();
@@ -1904,14 +2112,15 @@ void ProjectSettingsPanel::DrawEditorPreferences(EditorContext& ctx)
         const int defaultMinutes = (std::max)(1, d.autoSaveIntervalSec / 60);
         if (Field("Interval", minutes, &defaultMinutes,
                   "変更してからこの時間が経つと保存する。直前 10 秒は通知が出て、延期できる",
-                  [&] { return ImGui::SliderInt("##v", &minutes, 1, 60, "%d min"); }))
+                  [&] { return ImGui::SliderInt("##v", &minutes, 1, 60, "%d min"); })) {
             ctx.sceneAutoSaveIntervalSec = minutes * 60;
+        }
 
         if (ctx.sceneAutoSaveEnabled) {
             char next[48];
-            if (ctx.sceneAutoSaveRemainingSec < 0.0f)
+            if (ctx.sceneAutoSaveRemainingSec < 0.0f) {
                 std::snprintf(next, sizeof(next), "%s", LOCT("Not scheduled (no unsaved changes)"));
-            else
+            } else
                 std::snprintf(next, sizeof(next), "%d:%02d",
                               static_cast<int>(ctx.sceneAutoSaveRemainingSec) / 60,
                               static_cast<int>(ctx.sceneAutoSaveRemainingSec) % 60);
@@ -1931,4 +2140,4 @@ void ProjectSettingsPanel::DrawEditorPreferences(EditorContext& ctx)
     EndGroup();
 }
 
-} ///< @note namespace fbzz::editor
+} ///< namespace fbzz::editor

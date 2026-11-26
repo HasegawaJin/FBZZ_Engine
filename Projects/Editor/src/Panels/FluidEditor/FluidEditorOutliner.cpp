@@ -36,7 +36,9 @@ struct RowAction {
 bool OutlinerEnsureListRoom(State& state, FluidSelectionKind list)
 {
     const int count = fluidui::PartCount(state.document.Recipe(), list);
-    if (count < MaxParts(list)) return true;
+    if (count < MaxParts(list)) {
+        return true;
+    }
     char text[160]{};
     std::snprintf(text, sizeof(text), "%s は %d 個までです (先にどれかを削除してください)", ListTitle(list),
                   MaxParts(list));
@@ -48,7 +50,9 @@ void OutlinerCopyPart(State& state, FluidSelectionKind list, int index)
 {
     const FluidDocument& document = state.document;
     const std::string label = fluidui::PartDisplayName(document.Recipe(), list, index);
-    if (label.empty()) return;
+    if (label.empty()) {
+        return;
+    }
     SetFluidPartClipboard(document.Recipe(), list, index);
     SetStatus(state, "コピーしました: " + label, false);
 }
@@ -56,20 +60,30 @@ void OutlinerCopyPart(State& state, FluidSelectionKind list, int index)
 /// @brief 挿した部品の添字を返す (足せなかったら -1)。
 int OutlinerDuplicatePart(EditorContext& ctx, State& state, FluidSelectionKind list, int index)
 {
-    if (index < 0) return -1;
-    if (!OutlinerEnsureListRoom(state, list)) return -1;
+    if (index < 0) {
+        return -1;
+    }
+    if (!OutlinerEnsureListRoom(state, list)) {
+        return -1;
+    }
     FluidDocument& document = state.document;
     const int inserted = index + 1;
     const auto duplicate = [list, index, inserted](fluid::FluidRecipe& recipe) {
-        /// @note 複製は元の直後に入る (FluidRecipeWidgets の DuplicatePart)。
-        if (!fluidui::DuplicatePart(recipe, list, index)) return;
+        // 複製は元の直後に入る (FluidRecipeWidgets の DuplicatePart)。
+        if (!fluidui::DuplicatePart(recipe, list, index)) {
+            return;
+        }
         std::string base;
         VisitPart(recipe, list, inserted, [&base](const auto& part) { base = part.name; });
         const std::string unique = MakeUniqueFluidPartName(recipe, list, base, inserted);
-        if (unique != base) VisitPart(recipe, list, inserted, [&unique](auto& part) { part.name = unique; });
+        if (unique != base) {
+            VisitPart(recipe, list, inserted, [&unique](auto& part) { part.name = unique; });
+        }
     };
     const bool duplicated = document.Edit(ctx, "Duplicate Fluid Part", duplicate);
-    if (!duplicated) return -1;
+    if (!duplicated) {
+        return -1;
+    }
     document.RemapVisibilityAfterInsert(list, inserted);
     document.selection = FluidSelection{ list, inserted };
     ClampSelection(state);
@@ -81,22 +95,26 @@ int OutlinerDuplicatePart(EditorContext& ctx, State& state, FluidSelectionKind l
 int OutlinerPastePart(EditorContext& ctx, State& state, FluidSelectionKind list, int at)
 {
     if (!FluidPartClipboardMatches(list)) {
-        if (!HasFluidPartClipboard())
+        if (!HasFluidPartClipboard()) {
             SetStatus(state, "控えがありません (先に部品を Ctrl+C でコピーしてください)", true);
-        else
+        } else
             SetStatus(state, "種別が違うので貼れません (控えは " + std::string(ListTitle(FluidPartClipboardKind()))
                                  + " の部品です)",
                       true);
         return -1;
     }
-    if (!OutlinerEnsureListRoom(state, list)) return -1;
+    if (!OutlinerEnsureListRoom(state, list)) {
+        return -1;
+    }
     FluidDocument& document = state.document;
     const int count = fluidui::PartCount(document.Recipe(), list);
     const int insertAt = (at < 0 || at > count) ? count : at;
     const bool pasted = document.Edit(ctx, "Paste Fluid Part", [list, insertAt](fluid::FluidRecipe& recipe) {
         (void)PasteFluidPartClipboard(recipe, list, insertAt);
     });
-    if (!pasted) return -1;
+    if (!pasted) {
+        return -1;
+    }
     document.RemapVisibilityAfterInsert(list, insertAt);
     document.selection = FluidSelection{ list, insertAt };
     ClampSelection(state);
@@ -113,15 +131,21 @@ bool ToggleGlyph(const char* id, const char* glyph, bool active, const char* too
     const bool pressed = ImGui::SmallButton(glyph);
     ImGui::PopStyleColor();
     ImGui::PopID();
-    if (tooltip != nullptr) ImGui::SetItemTooltip("%s", tooltip);
+    if (tooltip != nullptr) {
+        ImGui::SetItemTooltip("%s", tooltip);
+    }
     return pressed;
 }
 
 void DrawSectionEntry(State& state, const char* label, FluidSelectionKind kind, const char* tooltip)
 {
     const bool selected = state.document.selection.kind == kind;
-    if (ImGui::Selectable(label, selected)) state.document.selection = FluidSelection{ kind, -1 };
-    if (tooltip != nullptr) ImGui::SetItemTooltip("%s", tooltip);
+    if (ImGui::Selectable(label, selected)) {
+        state.document.selection = FluidSelection{ kind, -1 };
+    }
+    if (tooltip != nullptr) {
+        ImGui::SetItemTooltip("%s", tooltip);
+    }
 }
 
 void DrawPartRow(State& state, FluidSelectionKind list, int index, int count, ImGuiID listId, RowAction& action)
@@ -136,7 +160,9 @@ void DrawPartRow(State& state, FluidSelectionKind list, int index, int count, Im
     const int dragged = widgets::ListRowDragHandle(listId, index, insertAfter);
     if (dragged >= 0 && dragged < count) {
         int destination = insertAfter ? index + 1 : index;
-        if (dragged < destination) --destination;
+        if (dragged < destination) {
+            --destination;
+        }
         destination = (std::max)(0, (std::min)(destination, count - 1));
         if (destination != dragged) {
             action.kind = RowAction::Kind::Move;
@@ -191,22 +217,32 @@ void DrawPartRow(State& state, FluidSelectionKind list, int index, int count, Im
 
     const std::string label = fluidui::PartDisplayName(recipe, list, index) + "##name";
     const bool dimmed = !enabled || !PartShownInPreview(document, list, index);
-    if (dimmed) ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetStyleColorVec4(ImGuiCol_TextDisabled));
+    if (dimmed) {
+        ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetStyleColorVec4(ImGuiCol_TextDisabled));
+    }
     if (ImGui::Selectable(label.c_str(), selected, ImGuiSelectableFlags_AllowDoubleClick)) {
         document.selection = FluidSelection{ list, index };
-        if (ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left)) BeginRename(state, list, index);
+        if (ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left)) {
+            BeginRename(state, list, index);
+        }
     }
-    if (dimmed) ImGui::PopStyleColor();
+    if (dimmed) {
+        ImGui::PopStyleColor();
+    }
 
     if (ImGui::BeginPopupContextItem("##row_context")) {
         document.selection = FluidSelection{ list, index };
-        if (ImGui::MenuItem("Rename", "F2")) BeginRename(state, list, index);
+        if (ImGui::MenuItem("Rename", "F2")) {
+            BeginRename(state, list, index);
+        }
         const bool room = count < MaxParts(list);
         if (ImGui::MenuItem("Duplicate", "Ctrl+D", false, room)) {
             action.kind = RowAction::Kind::Duplicate;
             action.index = index;
         }
-        if (!room) ImGui::SetItemTooltip("%s は %d 個までです", ListTitle(list), MaxParts(list));
+        if (!room) {
+            ImGui::SetItemTooltip("%s は %d 個までです", ListTitle(list), MaxParts(list));
+        }
         if (ImGui::MenuItem("Copy", "Ctrl+C")) {
             action.kind = RowAction::Kind::Copy;
             action.index = index;
@@ -220,7 +256,9 @@ void DrawPartRow(State& state, FluidSelectionKind list, int index, int count, Im
             action.index = index;
             action.to = index + 1;
         }
-        if (!pastable) ImGui::SetItemTooltip("この種別の控えがありません");
+        if (!pastable) {
+            ImGui::SetItemTooltip("この種別の控えがありません");
+        }
         if (ImGui::MenuItem("Delete", "Del")) {
             action.kind = RowAction::Kind::Remove;
             action.index = index;
@@ -248,7 +286,9 @@ void ApplyRowAction(EditorContext& ctx, State& state, FluidSelectionKind list, c
         return;
     case RowAction::Kind::Toggle:
         document.Edit(ctx, "Toggle Fluid Part", [&](fluid::FluidRecipe& recipe) {
-            if (bool* enabled = fluidui::PartEnabled(recipe, list, action.index)) *enabled = action.value;
+            if (bool* enabled = fluidui::PartEnabled(recipe, list, action.index)) {
+                *enabled = action.value;
+            }
         });
         return;
     case RowAction::Kind::Remove: {
@@ -279,9 +319,9 @@ void ApplyRowAction(EditorContext& ctx, State& state, FluidSelectionKind list, c
         if (moved) {
             FixSelectionAfterMove(document.selection, list, action.index, action.to);
             document.RemapVisibilityAfterMove(list, action.index, action.to);
-            /// @note 並べ替えは «解き直し» になる。ノイズの力は «有効な部品を数えた番号» で乱数を引くので、
-            /// @note 順番が変わると同じ設定でも模様が変わる (仕様)。プレビューは Revision の変化で、
-            /// @note hide / solo 側は visibilityGeneration で捨てさせる。
+            // 並べ替えは «解き直し» になる。ノイズの力は «有効な部品を数えた番号» で乱数を引くので、
+            // 順番が変わると同じ設定でも模様が変わる (仕様)。プレビューは Revision の変化で、
+            // hide / solo 側は visibilityGeneration で捨てさせる。
             ++state.visibilityGeneration;
         }
         return;
@@ -321,11 +361,13 @@ void DrawPartList(EditorContext& ctx, State& state, FluidSelectionKind list)
     ImGui::SameLine();
     const float buttonWidth = ImGui::CalcTextSize("+").x + ImGui::GetStyle().FramePadding.x * 2.0f;
     ImGui::SetCursorPosX(ImGui::GetCursorPosX() + (std::max)(0.0f, ImGui::GetContentRegionAvail().x - buttonWidth));
-    if (ImGui::SmallButton("+##add")) ImGui::OpenPopup("add_part");
+    if (ImGui::SmallButton("+##add")) {
+        ImGui::OpenPopup("add_part");
+    }
     ImGui::SetItemTooltip("Add %s", ListTitle(list));
 
     if (ImGui::BeginPopup("add_part")) {
-        /// @note 行が 1 つも無いリストへ貼るための入口。行を右クリックできないので «+» から出す。
+        // 行が 1 つも無いリストへ貼るための入口。行を右クリックできないので «+» から出す。
         if (FluidPartClipboardMatches(list)) {
             const std::string pasteLabel = "Paste \"" + FluidPartClipboardLabel() + "\"##paste";
             if (ImGui::MenuItem(pasteLabel.c_str(), "Ctrl+V", false, count < MaxParts(list))) {
@@ -356,7 +398,9 @@ void DrawPartList(EditorContext& ctx, State& state, FluidSelectionKind list)
             DrawPartRow(state, list, i, count, listId, action);
             ImGui::PopID();
         }
-        if (count == 0) ImGui::TextDisabled("(none — press +)");
+        if (count == 0) {
+            ImGui::TextDisabled("(none — press +)");
+        }
         ImGui::TreePop();
     }
     ImGui::PopID();
@@ -367,20 +411,24 @@ void DrawPartList(EditorContext& ctx, State& state, FluidSelectionKind list)
 /// @brief Ctrl+C / Ctrl+V / Ctrl+D。選んでいる部品 (無ければ控えの種別のリスト) に効く。
 void OutlinerHandleClipboardKeys(EditorContext& ctx, State& state)
 {
-    if (!ctx.PanelScopeFocused(HotkeyScope::FluidEditor)) return;
+    if (!ctx.PanelScopeFocused(HotkeyScope::FluidEditor)) {
+        return;
+    }
 
-    /// @note 全体のホットキー (edit.copy / edit.paste / edit.duplicate) を先に取り上げる。scope は
-    /// @note Scene View | Hierarchy だが Scene View は «ホバーでも効く» 例外があり、3D ビューへ
-    /// @note マウスが乗っただけで Ctrl+C がシーンへ漏れる。効くのは次フレームから (ProcessInput は描画より前)。
+    // 全体のホットキー (edit.copy / edit.paste / edit.duplicate) を先に取り上げる。scope は
+    // Scene View | Hierarchy だが Scene View は «ホバーでも効く» 例外があり、3D ビューへ
+    // マウスが乗っただけで Ctrl+C がシーンへ漏れる。効くのは次フレームから (ProcessInput は描画より前)。
     if (ctx.hotkeyManager != nullptr) {
         ctx.hotkeyManager->SuppressOperatorThisFrame("edit.copy");
         ctx.hotkeyManager->SuppressOperatorThisFrame("edit.paste");
         ctx.hotkeyManager->SuppressOperatorThisFrame("edit.duplicate");
     }
 
-    /// @note リネームや数値欄の入力中は文字の編集として扱う (横取りしない)。
+    // リネームや数値欄の入力中は文字の編集として扱う (横取りしない)。
     const ImGuiIO& io = ImGui::GetIO();
-    if (io.WantTextInput || !io.KeyCtrl || io.KeyShift || io.KeyAlt) return;
+    if (io.WantTextInput || !io.KeyCtrl || io.KeyShift || io.KeyAlt) {
+        return;
+    }
 
     const FluidSelection selection = state.document.selection;
     if (ImGui::IsKeyPressed(ImGuiKey_C, false)) {
@@ -392,7 +440,7 @@ void OutlinerHandleClipboardKeys(EditorContext& ctx, State& state)
         return;
     }
     if (ImGui::IsKeyPressed(ImGuiKey_V, false)) {
-        /// @note 選択が別のリストに居ても、控えの種別のリストへ貼る (種別違いは貼れないため迷わない)。
+        // 選択が別のリストに居ても、控えの種別のリストへ貼る (種別違いは貼れないため迷わない)。
         const bool intoSelection = selection.IsPart() && FluidPartClipboardMatches(selection.kind);
         const FluidSelectionKind list = intoSelection ? selection.kind : FluidPartClipboardKind();
         (void)OutlinerPastePart(ctx, state, list, intoSelection ? selection.index + 1 : -1);
@@ -429,7 +477,7 @@ void DrawOutliner(EditorContext& ctx, State& state)
     ImGui::TextDisabled("Drag the grip to reorder. V = preview visibility, S = solo.");
     ImGui::TextDisabled("Ctrl+D duplicate, Ctrl+C / Ctrl+V copy & paste (across .fluid files).");
 
-    /// @note 部品を描き終えてから読む。リストの描画中に足す・消すと、残りの行が消えた添字を読む。
+    // 部品を描き終えてから読む。リストの描画中に足す・消すと、残りの行が消えた添字を読む。
     OutlinerHandleClipboardKeys(ctx, state);
 }
 

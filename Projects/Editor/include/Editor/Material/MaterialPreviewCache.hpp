@@ -72,4 +72,4 @@ struct PreviewFrameKey {
                                                  bool animate);
 [[nodiscard]] bool UsesPreviewTime(Flavor flavor, bool animate);
 
-} /// @note namespace fbzz::editor::matpreview
+} // namespace fbzz::editor::matpreview

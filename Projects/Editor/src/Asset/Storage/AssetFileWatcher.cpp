@@ -40,7 +40,7 @@ bool AssetFileWatcher::Start(const std::string& rootPath)
 {
     Stop();
 
-    /// @note UTF-8 → wchar_t 変換
+    // UTF-8 → wchar_t 変換
     const std::wstring wpath = util::StringUtils::ToWide(rootPath);
 
     m_native->handle = CreateFileW(
@@ -49,8 +49,8 @@ bool AssetFileWatcher::Start(const std::string& rootPath)
         FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
         nullptr,
         OPEN_EXISTING,
-        /// @note FILE_FLAG_OVERLAPPED で非同期モードにし、スレッドなしでポーリングできる。
-        ///       FILE_FLAG_BACKUP_SEMANTICS はディレクトリをハンドルとして開くために必要。
+        // FILE_FLAG_OVERLAPPED で非同期モードにし、スレッドなしでポーリングできる。
+        // FILE_FLAG_BACKUP_SEMANTICS はディレクトリをハンドルとして開くために必要。
         FILE_FLAG_BACKUP_SEMANTICS | FILE_FLAG_OVERLAPPED,
         nullptr);
 
@@ -71,8 +71,9 @@ bool AssetFileWatcher::Start(const std::string& rootPath)
     }
 
     m_rootPath = util::FileSystem::NormalizePathSeparators(rootPath);
-    if (!m_rootPath.empty() && m_rootPath.back() != '/')
+    if (!m_rootPath.empty() && m_rootPath.back() != '/') {
         m_rootPath += '/';
+    }
 
     IssueNextRead();
     return true;
@@ -80,7 +81,9 @@ bool AssetFileWatcher::Start(const std::string& rootPath)
 
 void AssetFileWatcher::Stop()
 {
-    if (m_native->handle == INVALID_HANDLE_VALUE) return;
+    if (m_native->handle == INVALID_HANDLE_VALUE) {
+        return;
+    }
 
     CancelIo(m_native->handle);
     CloseHandle(m_native->handle);
@@ -100,19 +103,20 @@ void AssetFileWatcher::Stop()
 
 std::vector<AssetFileWatcher::FileEvent> AssetFileWatcher::Poll()
 {
-    if (m_native->handle == INVALID_HANDLE_VALUE || !m_readPending)
+    if (m_native->handle == INVALID_HANDLE_VALUE || !m_readPending) {
         return {};
+    }
 
     DWORD transferred = 0;
-    /// @note bWait = FALSE: 完了していなければ即座に返る
+    // bWait = FALSE: 完了していなければ即座に返る
     if (!GetOverlappedResult(m_native->handle, &m_native->overlapped, &transferred, FALSE))
     {
         const DWORD err = GetLastError();
         if (err == ERROR_IO_INCOMPLETE)
-            /// @note まだ完了していない
+            // まだ完了していない
             return {};
 
-        /// @note バッファオーバーフロー: イベントがあったがバッファが小さすぎた
+        // バッファオーバーフロー: イベントがあったがバッファが小さすぎた
         if (err == ERROR_NOTIFY_ENUM_DIR)
         {
             FBZZ_LOG_WARN("AssetFileWatcher: notification overflow — some events lost");
@@ -128,7 +132,7 @@ std::vector<AssetFileWatcher::FileEvent> AssetFileWatcher::Poll()
         return {};
     }
 
-    /// @note 成功しても転送量 0 は「溜めきれずバッファを捨てた」合図 (ReadDirectoryChangesW の仕様)。
+    // 成功しても転送量 0 は「溜めきれずバッファを捨てた」合図 (ReadDirectoryChangesW の仕様)。
     if (transferred == 0)
     {
         FBZZ_LOG_WARN("AssetFileWatcher: notification buffer discarded — some events lost");
@@ -148,22 +152,22 @@ std::vector<AssetFileWatcher::FileEvent> AssetFileWatcher::Poll()
 void AssetFileWatcher::IssueNextRead()
 {
     constexpr DWORD kFilter =
-        /// @note 追加・削除・リネーム
+        // 追加・削除・リネーム
         FILE_NOTIFY_CHANGE_FILE_NAME  |
         FILE_NOTIFY_CHANGE_DIR_NAME   |
-        /// @note 上書き保存
+        // 上書き保存
         FILE_NOTIFY_CHANGE_LAST_WRITE;
 
     const BOOL ok = ReadDirectoryChangesW(
         m_native->handle,
         m_native->buffer, sizeof(m_native->buffer),
-        /// @note bWatchSubtree: 再帰監視
+        // bWatchSubtree: 再帰監視
         TRUE,
         kFilter,
-        /// @note lpBytesReturned: オーバーラップモードでは使用しない
+        // lpBytesReturned: オーバーラップモードでは使用しない
         nullptr,
         &m_native->overlapped,
-        /// @note lpCompletionRoutine: イベントベースで使う
+        // lpCompletionRoutine: イベントベースで使う
         nullptr);
 
     if (!ok)
@@ -178,14 +182,16 @@ void AssetFileWatcher::IssueNextRead()
 
 void AssetFileWatcher::ParseBuffer(std::uint32_t bytesTransferred)
 {
-    if (bytesTransferred == 0) return;
+    if (bytesTransferred == 0) {
+        return;
+    }
 
     const std::uint8_t* ptr = m_native->buffer;
     for (;;)
     {
         const auto* info = reinterpret_cast<const FILE_NOTIFY_INFORMATION*>(ptr);
 
-        /// @note wchar_t パス → UTF-8 相対パス
+        // wchar_t パス → UTF-8 相対パス
         const std::string relPath = util::FileSystem::NormalizePathSeparators(
             util::StringUtils::ToNarrow(info->FileName, static_cast<int>(info->FileNameLength / sizeof(wchar_t))));
 
@@ -209,7 +215,7 @@ void AssetFileWatcher::ParseBuffer(std::uint32_t bytesTransferred)
             break;
 
         case FILE_ACTION_RENAMED_OLD_NAME:
-            /// @note 次の通知が NEW_NAME のはず。ペアにするために記憶する。
+            // 次の通知が NEW_NAME のはず。ペアにするために記憶する。
             m_pendingRenameOld = relPath;
             break;
 
@@ -223,7 +229,9 @@ void AssetFileWatcher::ParseBuffer(std::uint32_t bytesTransferred)
             break;
         }
 
-        if (info->NextEntryOffset == 0) break;
+        if (info->NextEntryOffset == 0) {
+            break;
+        }
         ptr += info->NextEntryOffset;
     }
 }

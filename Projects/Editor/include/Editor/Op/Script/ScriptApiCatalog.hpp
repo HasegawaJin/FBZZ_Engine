@@ -7,4 +7,4 @@ namespace fbzz::editor {
 class OperatorRegistry;
 /// @note Query の結果 catalogJson は SDK 自身が生成した JSON。ゲーム callback は呼ばない。
 void RegisterScriptApiCatalogOperator(OperatorRegistry& registry);
-} /// @note namespace fbzz::editor
+} // namespace fbzz::editor

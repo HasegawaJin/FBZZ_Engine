@@ -10,4 +10,4 @@ namespace fbzz::editor {
 [[nodiscard]] OpArgs TerrainPaintAssetArguments(const std::string& path, const asset::TerrainPaintAsset& asset);
 [[nodiscard]] std::string TerrainPaintAssetFingerprint(const asset::TerrainPaintAsset& asset);
 void RegisterTerrainPaintAssetOperators(OperatorRegistry& registry);
-} /// @note namespace fbzz::editor
+} // namespace fbzz::editor

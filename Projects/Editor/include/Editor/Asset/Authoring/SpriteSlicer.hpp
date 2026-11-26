@@ -18,7 +18,7 @@ namespace fbzz::editor::spriteslice {
 enum class ExistingMode { DeleteExisting, Smart, Safe };
 
 struct GridParams {
-    bool  byCellCount   = false;  ///< @note true: columns/rows で割る / false: cellWidth/Height で敷く
+    bool  byCellCount   = false;  ///< true: columns/rows で割る / false: cellWidth/Height で敷く
     int   columns       = 1;
     int   rows          = 1;
     int   cellWidth     = 64;
@@ -29,8 +29,8 @@ struct GridParams {
     int   paddingY      = 0;
     float pivotX        = 0.5f;
     float pivotY        = 0.5f;
-    bool  keepEmptyRects = true;  ///< @note false なら不透明ピクセルが 1 つも無いセルを捨てる
-    std::string baseName;         ///< @note 生成名の接頭辞 (末尾に連番が付く)
+    bool  keepEmptyRects = true;  ///< false なら不透明ピクセルが 1 つも無いセルを捨てる
+    std::string baseName;         ///< 生成名の接頭辞 (末尾に連番が付く)
 };
 
 struct AutoTrimParams {
@@ -41,7 +41,7 @@ struct AutoTrimParams {
 
 struct Result {
     std::vector<asset::SpriteRect> sprites;
-    std::string error;  ///< @note 非空なら失敗。そのまま人へ出せる文言
+    std::string error;  ///< 非空なら失敗。そのまま人へ出せる文言
 };
 
 /// @note 等間隔グリッドで矩形を作る。生成物には新しい ID が付く (畳み込みで引き継ぐ)。
@@ -59,10 +59,10 @@ struct Result {
 /// @note 生成結果を既存の一覧へ畳み込む。
 /// @note Smart / Safe は重なった既存矩形の ID・名前・pivot・Border を残すため、保存済みの
 /// @note 参照も手で詰めた pivot も生き残る。動くのは矩形だけ。
-/// @param outReusedCount 既存を再利用した数 (= 切れずに済んだ参照の数)。不要なら nullptr。
+/// @param[out] outReusedCount 既存を再利用した数 (= 切れずに済んだ参照の数)。不要なら nullptr。
 [[nodiscard]] std::vector<asset::SpriteRect> MergeIntoExisting(
     const std::vector<asset::SpriteRect>& existing,
     std::vector<asset::SpriteRect> generated,
     ExistingMode mode, int* outReusedCount = nullptr);
 
-} /// @note namespace fbzz::editor::spriteslice
+} // namespace fbzz::editor::spriteslice

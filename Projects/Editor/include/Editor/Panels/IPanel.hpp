@@ -63,9 +63,9 @@ public:
     void OnRender(EditorContext& ctx)
     {
         OnBeforeBegin(ctx);
-        /// @note タイトルだけを訳す。LOC は "訳###原文" を返すので ImGui の ID は原文のままで、
-        /// @note 保存済みのドッキング配置 (imgui_layout.ini) も、名前で引く
-        /// @note DockBuilderDockWindow / panelVisibility も、言語を切り替えても効き続ける。
+        // タイトルだけを訳す。LOC は "訳###原文" を返すので ImGui の ID は原文のままで、
+        // 保存済みのドッキング配置 (imgui_layout.ini) も、名前で引く
+        // DockBuilderDockWindow / panelVisibility も、言語を切り替えても効き続ける。
         const std::string windowTitle = std::string(LOCT(GetWindowTitle())) + "###" + GetWindowName();
         bool open = ImGui::Begin(windowTitle.c_str(), CanClose() ? &visible : nullptr,
                                  GetWindowFlags());
@@ -79,9 +79,9 @@ public:
 
         m_contentRendered = true;
 
-        /// @note キーの文脈はウィンドウの内側でしか判定できないので、ここで名乗る。
-        /// @note 中身より先に立てるのは、パネル自身のキー処理 (Ctrl+C など) が
-        /// @note 同じフレームのうちに PanelScopeFocused() を読めるようにするため。
+        // キーの文脈はウィンドウの内側でしか判定できないので、ここで名乗る。
+        // 中身より先に立てるのは、パネル自身のキー処理 (Ctrl+C など) が
+        // 同じフレームのうちに PanelScopeFocused() を読めるようにするため。
         if (const HotkeyScope scope = GetHotkeyScope();
             scope != HotkeyScope::None &&
             ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows)) {
@@ -93,7 +93,7 @@ public:
         OnAfterEnd(ctx);
     }
 
-    bool visible = true;
+    bool visible = true; ///< Editor がこのパネルを描画対象として開いているか。
 
     /// @note 直近の OnRender で中身を実際に描いたか。
     /// @note ドッキングされたタブが非アクティブな場合、visible は true のまま ImGui::Begin が false を
@@ -110,8 +110,7 @@ protected:
     virtual void OnAfterEnd(EditorContext& ctx) { (void)ctx; }
 
 private:
-    /// @note 初期値 true: 起動直後の 1 フレーム目からビューポートを描かせる。
-    bool m_contentRendered = true;
+    bool m_contentRendered = true; ///< 初期値 true: 起動直後の 1 フレーム目からビューポートを描かせる。
 };
 
-} /// @note namespace fbzz::editor
+} // namespace fbzz::editor

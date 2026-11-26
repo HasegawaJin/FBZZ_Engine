@@ -39,7 +39,9 @@ bool FileDialog::OpenFile(void* hwnd, const std::vector<FileFilter>& filters,
     ofn.nMaxFile       = MAX_PATH;
     ofn.Flags          = OFN_PATHMUSTEXIST | OFN_FILEMUSTEXIST | OFN_NOCHANGEDIR;
 
-    if (!GetOpenFileNameW(&ofn)) return false;
+    if (!GetOpenFileNameW(&ofn)) {
+        return false;
+    }
     outPath = util::StringUtils::ToNarrow(buf);
     return true;
 }
@@ -58,7 +60,9 @@ bool FileDialog::SaveFile(void* hwnd, const std::vector<FileFilter>& filters,
     ofn.nMaxFile       = MAX_PATH;
     ofn.Flags          = OFN_OVERWRITEPROMPT | OFN_NOCHANGEDIR;
 
-    if (!GetSaveFileNameW(&ofn)) return false;
+    if (!GetSaveFileNameW(&ofn)) {
+        return false;
+    }
     outPath = util::StringUtils::ToNarrow(buf);
     return true;
 }

@@ -208,7 +208,7 @@ TEST_F(EditorIdleWorkTest, HierarchyTreeAndSearchShowTheSameObjectActions)
         ImGui::GetIO().AddMouseButtonEvent(ImGuiMouseButton_Right, true);
         Frame(draw);
         ImGui::GetIO().AddMouseButtonEvent(ImGuiMouseButton_Right, false);
-        /// @note 初回はポップアップの寸法計測中なので、表示が確定した次フレームを読む。
+        // 初回はポップアップの寸法計測中なので、表示が確定した次フレームを読む。
         Frame(draw);
         return Frame(draw);
     };

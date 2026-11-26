@@ -13,4 +13,4 @@ struct TerrainInstanceEdit {
 [[nodiscard]] OpResult CommitTerrainInstanceEdits(EditorContext& context, std::vector<TerrainInstanceEdit> edits, size_t affected);
 [[nodiscard]] bool DecomposeTerrainPlacement(const math::Matrix4& matrix, renderer::InstancePlacement& placement);
 void RegisterTerrainInstanceEditingOperators(OperatorRegistry& registry);
-} /// @note namespace fbzz::editor
+} // namespace fbzz::editor

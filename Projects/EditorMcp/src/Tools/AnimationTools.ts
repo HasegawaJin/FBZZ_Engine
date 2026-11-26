@@ -52,11 +52,11 @@ export function RegisterAnimationQueryTools(server: McpServer, bus: EditorBus): 
 
 
 export function RegisterAnimationCommandTools(server: McpServer, bus: EditorBus, permission: PermissionMode): void {
-    /// @note BlendTree ステートを追加する際の駆動パラメーターと座標系スキーマ (add/set 共通)。
+    // BlendTree ステートを追加する際の駆動パラメーターと座標系スキーマ (add/set 共通)。
     const StateModeSchema = z.enum(['clip', 'blendTree1D', 'blendTree2D']);
-    /// @note ── Animator レイヤー / Slot ────────────────────────────────────────────
-    /// @note 上半身だけ・下半身だけといった部分制御はレイヤーが入口になる。
-    /// @note レイヤーを作る → マスクを割り当てる → そのレイヤーにステートを足す、の順で使う。
+    // Animator のレイヤー名はレイヤー編集と Slot の操作で共通に使う。
+    // 上半身だけ・下半身だけといった部分制御はレイヤーが入口になる。
+    // レイヤーを作る → マスクを割り当てる → そのレイヤーにステートを足す、の順で使う。
     const LayerNameSchema = z.string().min(1).max(128);
 
     const { dryRun, run, writeAnnotations } = CreateCommandContext(bus, permission);
@@ -284,7 +284,7 @@ export function RegisterAnimationCommandTools(server: McpServer, bus: EditorBus,
         ...(ikWeight === undefined ? {} : { ikWeight }),
     }));
 
-    /// @note ── Animator 構造の削除系 + パラメーター CRUD ──
+    // Animator の構造を削除する操作と、パラメーターを追加・削除する操作を登録する。
     server.registerTool('animation_remove_state', {
         description: dryRun
             ? 'Animatorステート削除の入力を検証します。'

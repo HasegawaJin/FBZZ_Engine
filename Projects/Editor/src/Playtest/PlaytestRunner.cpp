@@ -42,7 +42,9 @@ double NumberOf(const JsonValue& object, const char* key, double fallback)
 /// @brief 基準画像名はファイル名として安全な文字だけ許す (シナリオから Tests/Golden の外へ書かせない)。
 bool IsSafeImageName(const std::string& name)
 {
-    if (name.empty() || name.size() > 128 || name.find("..") != std::string::npos) return false;
+    if (name.empty() || name.size() > 128 || name.find("..") != std::string::npos) {
+        return false;
+    }
     return std::all_of(name.begin(), name.end(), [](char character) {
         return (character >= 'a' && character <= 'z') || (character >= 'A' && character <= 'Z')
             || (character >= '0' && character <= '9') || character == '_' || character == '-' || character == '/';
@@ -52,18 +54,26 @@ bool IsSafeImageName(const std::string& name)
 std::optional<JsonValue> ReadJsonFile(const std::filesystem::path& path, std::string& error)
 {
     std::ifstream stream(path, std::ios::binary);
-    if (!stream) { error = "開けない: " + path.generic_string(); return std::nullopt; }
+    if (!stream) {
+        error = "開けない: " + path.generic_string();
+        return std::nullopt;
+    }
     const std::string text((std::istreambuf_iterator<char>(stream)), std::istreambuf_iterator<char>());
     std::string parseError;
     std::optional<JsonValue> value = ai::ParseJson(text, &parseError);
-    if (!value.has_value()) error = path.generic_string() + ": " + parseError;
+    if (!value.has_value()) {
+        error = path.generic_string() + ": " + parseError;
+    }
     return value;
 }
 
 /// @note 文字列展開をせず JSON の型を保つ。保存値を再帰展開しないため循環参照を作らない。
 bool ResolveCaptured(const JsonValue& source, const JsonValue& captures, JsonValue& result, std::string& error, size_t depth = 0)
 {
-    if (depth > 64) { error = "応答参照の深さが上限を超えています"; return false; }
+    if (depth > 64) {
+        error = "応答参照の深さが上限を超えています";
+        return false;
+    }
     if (source.IsObject()) {
         if (const JsonValue* reference = source.Find("$ref")) {
             if (source.AsObject().size() != 1 || !reference->IsString() || reference->AsString().empty()) {
@@ -71,24 +81,33 @@ bool ResolveCaptured(const JsonValue& source, const JsonValue& captures, JsonVal
                 return false;
             }
             const JsonValue* captured = ResolveJsonPath(captures, reference->AsString());
-            if (!captured) { error = "未取得の応答参照: " + reference->AsString(); return false; }
+            if (!captured) {
+                error = "未取得の応答参照: " + reference->AsString();
+                return false;
+            }
             result = *captured;
             return true;
         }
         result = JsonValue::MakeObject();
         for (const auto& [key, value] : source.AsObject()) {
             JsonValue resolved;
-            if (!ResolveCaptured(value, captures, resolved, error, depth + 1)) return false;
+            if (!ResolveCaptured(value, captures, resolved, error, depth + 1)) {
+                return false;
+            }
             result.Set(key, std::move(resolved));
         }
     } else if (source.IsArray()) {
         result = JsonValue::MakeArray();
         for (const JsonValue& value : source.AsArray()) {
             JsonValue resolved;
-            if (!ResolveCaptured(value, captures, resolved, error, depth + 1)) return false;
+            if (!ResolveCaptured(value, captures, resolved, error, depth + 1)) {
+                return false;
+            }
             result.AsArray().push_back(std::move(resolved));
         }
-    } else result = source;
+    } else {
+        result = source;
+    }
     return true;
 }
 
@@ -103,31 +122,48 @@ bool CaptureKey(std::string_view key)
 bool ValidateCapture(const JsonValue& step, std::string& error)
 {
     const JsonValue* capture = step.Find("capture");
-    if (!capture) return true;
+    if (!capture) {
+        return true;
+    }
     if (!capture->IsObject() || capture->AsObject().size() > 64) {
         error = "capture は最大 64 個の保存名と応答パスのオブジェクトです";
         return false;
     }
     for (const auto& [key, path] : capture->AsObject())
-        if (!CaptureKey(key) || !path.IsString()) { error = "capture の保存名または応答パスが不正です"; return false; }
-    if (!StringOf(step, "expectError").empty()) { error = "失敗応答は capture できません"; return false; }
+        if (!CaptureKey(key) || !path.IsString()) {
+            error = "capture の保存名または応答パスが不正です";
+            return false;
+        }
+    if (!StringOf(step, "expectError").empty()) {
+        error = "失敗応答は capture できません";
+        return false;
+    }
     return true;
 }
 
-} /// @note namespace
+} // namespace
 
 bool PlaytestRunner::Start(const JsonValue& scenario, const std::filesystem::path& scenarioPath,
                            const std::filesystem::path& projectRoot, const std::filesystem::path& outputDirectory,
                            PlaytestOptions options, std::string& error)
 {
-    if (IsRunning()) { error = "別の Playtest が実行中です"; return false; }
-    if (!scenario.IsObject()) { error = "シナリオはオブジェクトである必要があります"; return false; }
+    if (IsRunning()) {
+        error = "別の Playtest が実行中です";
+        return false;
+    }
+    if (!scenario.IsObject()) {
+        error = "シナリオはオブジェクトである必要があります";
+        return false;
+    }
     if (const auto* force = scenario.Find("forceViewportRendering"); force && !force->IsBool()) {
         error = "forceViewportRendering は bool が必要です";
         return false;
     }
     const JsonValue* steps = scenario.Find("steps");
-    if (steps == nullptr || !steps->IsArray() || steps->AsArray().empty()) { error = "steps (空でない配列) が必要です"; return false; }
+    if (steps == nullptr || !steps->IsArray() || steps->AsArray().empty()) {
+        error = "steps (空でない配列) が必要です";
+        return false;
+    }
     for (size_t index = 0; index < steps->AsArray().size(); ++index) {
         const JsonValue& step = steps->AsArray()[index];
         if (!step.IsObject() || StringOf(step, "do").empty()) {
@@ -162,16 +198,22 @@ bool PlaytestRunner::Start(const JsonValue& scenario, const std::filesystem::pat
 
 void PlaytestRunner::Cancel(const std::string& reason)
 {
-    if (!IsRunning()) return;
+    if (!IsRunning()) {
+        return;
+    }
     m_failure = reason.empty() ? std::string("キャンセルされました") : reason;
     Finish(PlaytestState::FAILED, nullptr);
 }
 
 bool PlaytestRunner::IsFluidPlaybackCaptureStep() const
 {
-    if (!IsRunning()) return false;
+    if (!IsRunning()) {
+        return false;
+    }
     const JsonValue* steps = m_scenario.Find("steps");
-    if (steps == nullptr || !steps->IsArray() || m_stepIndex >= steps->AsArray().size()) return false;
+    if (steps == nullptr || !steps->IsArray() || m_stepIndex >= steps->AsArray().size()) {
+        return false;
+    }
     const JsonValue& step = steps->AsArray()[m_stepIndex];
     const std::string action = StringOf(step, "do");
     return (action == "capture" || action == "compareImage")
@@ -219,13 +261,24 @@ bool PlaytestRunner::CallBus(const PlaytestHooks& hooks, const char* kind, const
 bool PlaytestRunner::CaptureResult(const JsonValue& step, const JsonValue& result, std::string& error)
 {
     const JsonValue* capture = step.Find("capture");
-    if (!capture) return true;
-    if (!capture->IsObject()) { error = "capture は保存名と応答パスのオブジェクトです"; return false; }
+    if (!capture) {
+        return true;
+    }
+    if (!capture->IsObject()) {
+        error = "capture は保存名と応答パスのオブジェクトです";
+        return false;
+    }
     JsonValue next = m_captures;
     for (const auto& [key, path] : capture->AsObject()) {
-        if (!CaptureKey(key) || !path.IsString()) { error = "capture の保存名または応答パスが不正です"; return false; }
+        if (!CaptureKey(key) || !path.IsString()) {
+            error = "capture の保存名または応答パスが不正です";
+            return false;
+        }
         const JsonValue* value = ResolveJsonPath(result, path.AsString());
-        if (!value) { error = "capture の応答パスがありません: " + path.AsString(); return false; }
+        if (!value) {
+            error = "capture の応答パスがありません: " + path.AsString();
+            return false;
+        }
         next.Set(key, *value);
     }
     if (next.AsObject().size() > 64 || ai::SerializeJson(next).size() > 1024U * 1024U) {
@@ -241,12 +294,17 @@ void PlaytestRunner::RecordStep(bool ok, const std::string& message, const JsonV
     const JsonValue* steps = m_scenario.Find("steps");
     JsonValue entry = JsonValue::MakeObject();
     entry.Set("index", JsonValue(static_cast<double>(m_stepIndex)));
-    if (steps != nullptr && m_stepIndex < steps->AsArray().size())
+    if (steps != nullptr && m_stepIndex < steps->AsArray().size()) {
         entry.Set("do", JsonValue(StringOf(steps->AsArray()[m_stepIndex], "do")));
+    }
     entry.Set("frame", JsonValue(static_cast<double>(m_frame)));
     entry.Set("ok", JsonValue(ok));
-    if (!message.empty()) entry.Set("message", JsonValue(message));
-    if (result != nullptr) entry.Set("result", *result);
+    if (!message.empty()) {
+        entry.Set("message", JsonValue(message));
+    }
+    if (result != nullptr) {
+        entry.Set("result", *result);
+    }
     m_stepLog.Push(std::move(entry));
 }
 
@@ -259,15 +317,18 @@ PlaytestRunner::StepResult PlaytestRunner::Fail(const std::string& message, cons
 
 void PlaytestRunner::Tick(const PlaytestHooks& hooks)
 {
-    if (!IsRunning()) return;
+    if (!IsRunning()) {
+        return;
+    }
     ++m_frame;
     const JsonValue::Array& steps = m_scenario.Find("steps")->AsArray();
-    /// @note Timing scenarios can use the normal viewport layout. Image steps still prepare their own target.
+    // Timing scenarios can use the normal viewport layout. Image steps still prepare their own target.
     const auto* forceViewports = m_scenario.Find("forceViewportRendering");
-    /// @note Fluid の専用 RT を撮る間は、WARP で高価な Scene / Game の描画を起こさない。
+    // Fluid の専用 RT を撮る間は、WARP で高価な Scene / Game の描画を起こさない。
     if ((!forceViewports || forceViewports->AsBool()) && hooks.keepViewportsRendering && m_stepIndex < steps.size()
-        && StringOf(steps[m_stepIndex], "view") != "fluidBaked")
+        && StringOf(steps[m_stepIndex], "view") != "fluidBaked") {
         hooks.keepViewportsRendering();
+    }
 
     if (!m_prepared) {
         m_prepared = true;
@@ -286,26 +347,38 @@ void PlaytestRunner::Tick(const PlaytestHooks& hooks)
                 Finish(PlaytestState::FAILED, &hooks);
                 return;
             }
-            /// @note 開いた直後のフレームはリソースの作り直し中。2 フレーム置いてから手順に入る。
+            // 開いた直後のフレームはリソースの作り直し中。2 フレーム置いてから手順に入る。
             m_waitFrames = 2;
         }
     }
 
-    if (m_waitFrames > 0) { --m_waitFrames; return; }
+    if (m_waitFrames > 0) {
+        --m_waitFrames;
+        return;
+    }
 
     for (size_t executed = 0; executed < kMaxStepsPerFrame && m_stepIndex < steps.size(); ++executed) {
         const StepResult result = RunStep(steps[m_stepIndex], hooks);
-        if (result == StepResult::WAIT) return;
-        if (result == StepResult::FAIL) { Finish(PlaytestState::FAILED, &hooks); return; }
+        if (result == StepResult::WAIT) {
+            return;
+        }
+        if (result == StepResult::FAIL) {
+            Finish(PlaytestState::FAILED, &hooks);
+            return;
+        }
 
         ++m_stepIndex;
         m_stepFrame = 0;
         m_stepPhase = 0;
         m_replayEvents = JsonValue::MakeArray();
         m_replayCursor = 0;
-        if (m_waitFrames > 0) return;
+        if (m_waitFrames > 0) {
+            return;
+        }
     }
-    if (m_stepIndex >= steps.size()) Finish(PlaytestState::PASSED, &hooks);
+    if (m_stepIndex >= steps.size()) {
+        Finish(PlaytestState::PASSED, &hooks);
+    }
 }
 
 PlaytestRunner::StepResult PlaytestRunner::RunStep(const JsonValue& step, const PlaytestHooks& hooks)
@@ -319,22 +392,33 @@ PlaytestRunner::StepResult PlaytestRunner::RunStep(const JsonValue& step, const 
         JsonValue payload = JsonValue::MakeObject();
         payload.Set("t", JsonValue("play.control"));
         payload.Set("action", JsonValue(playAction));
-        if (!CallBus(hooks, "command", payload, result, code, message))
+        if (!CallBus(hooks, "command", payload, result, code, message)) {
             return Fail(std::string("play.control ") + playAction + " 失敗 (" + code + "): " + message);
+        }
         m_waitFrames = settleFrames;
         RecordStep(true, {});
         return StepResult::DONE;
     };
 
-    if (action == "play") return playControl("start", 1);
-    /// @note Stop の復元は次フレームの ApplyPendingRestore で起きる。2 フレーム置いてから次へ進む。
-    if (action == "stop") return playControl("stop", 2);
-    if (action == "pause") return playControl("pause", 0);
-    if (action == "resume") return playControl("resume", 0);
+    if (action == "play") {
+        return playControl("start", 1);
+    }
+    // Stop の復元は次フレームの ApplyPendingRestore で起きる。2 フレーム置いてから次へ進む。
+    if (action == "stop") {
+        return playControl("stop", 2);
+    }
+    if (action == "pause") {
+        return playControl("pause", 0);
+    }
+    if (action == "resume") {
+        return playControl("resume", 0);
+    }
 
     if (action == "frames") {
         const double count = NumberOf(step, "count", 1.0);
-        if (count < 0.0 || count > 1000000.0) return Fail("frames.count が範囲外です");
+        if (count < 0.0 || count > 1000000.0) {
+            return Fail("frames.count が範囲外です");
+        }
         m_waitFrames = static_cast<uint64_t>(count);
         RecordStep(true, {});
         return StepResult::DONE;
@@ -342,18 +426,20 @@ PlaytestRunner::StepResult PlaytestRunner::RunStep(const JsonValue& step, const 
 
     if (action == "waitSeconds") {
         const double seconds = NumberOf(step, "seconds", -1.0);
-        if (!std::isfinite(seconds) || seconds < 0.0 || seconds > 3600.0)
+        if (!std::isfinite(seconds) || seconds < 0.0 || seconds > 3600.0) {
             return Fail("waitSeconds.seconds が範囲外です");
+        }
         const auto now = static_cast<uint64_t>(std::chrono::duration_cast<std::chrono::microseconds>(
             std::chrono::steady_clock::now().time_since_epoch()).count());
         if (m_stepPhase == 0) {
             m_stepFrame = now;
             m_stepPhase = 1;
         }
-        /// @note 描画を継続し、FPS や Time の固定刻み・timeScale に依存せず待つ。
+        // 描画を継続し、FPS や Time の固定刻み・timeScale に依存せず待つ。
         const double elapsed = static_cast<double>(now - m_stepFrame) / 1000000.0;
-        if (elapsed < seconds)
+        if (elapsed < seconds) {
             return StepResult::WAIT;
+        }
         result = JsonValue::MakeObject();
         result.Set("requestedSeconds", JsonValue(seconds));
         result.Set("elapsedSeconds", JsonValue(elapsed));
@@ -371,38 +457,63 @@ PlaytestRunner::StepResult PlaytestRunner::RunStep(const JsonValue& step, const 
         JsonValue payload;
         if (action == "input") {
             const JsonValue* inject = step.Find("inject");
-            if (inject == nullptr || !inject->IsObject()) return Fail("input には inject オブジェクトが必要です");
+            if (inject == nullptr || !inject->IsObject()) {
+                return Fail("input には inject オブジェクトが必要です");
+            }
             payload = *inject;
             payload.Set("t", JsonValue("input.inject"));
         } else {
             const JsonValue* request = step.Find("request");
-            if (request == nullptr || !request->IsObject() || StringOf(*request, "t").empty())
+            if (request == nullptr || !request->IsObject() || StringOf(*request, "t").empty()) {
                 return Fail("bus には t を持つ request が必要です");
+            }
             payload = *request;
         }
         const std::string kind = StringOf(step, "kind", "command");
-        if (kind != "command" && kind != "query") return Fail("kind は command か query です");
-        if (!ValidateCapture(step, message)) return Fail(message);
+        if (kind != "command" && kind != "query") {
+            return Fail("kind は command か query です");
+        }
+        if (!ValidateCapture(step, message)) {
+            return Fail(message);
+        }
         const bool ok = CallBus(hooks, kind.c_str(), payload, result, code, message);
         const std::string expectError = StringOf(step, "expectError");
         if (!expectError.empty()) {
-            if (ok) return Fail(StringOf(payload, "t") + " は " + expectError + " で失敗するはずが成功した");
-            if (code != expectError) return Fail(StringOf(payload, "t") + " の失敗コードが " + code + " (期待 " + expectError + ")");
+            if (ok) {
+                return Fail(StringOf(payload, "t") + " は " + expectError + " で失敗するはずが成功した");
+            }
+            if (code != expectError) {
+                return Fail(StringOf(payload, "t") + " の失敗コードが " + code + " (期待 " + expectError + ")");
+            }
             RecordStep(true, "expected " + code);
             return StepResult::DONE;
         }
-        if (!ok) return Fail(StringOf(payload, "t") + " 失敗 (" + code + "): " + message);
-        if (!CaptureResult(step, result, message)) return Fail("操作は成功しましたが応答保存に失敗しました: " + message, &result);
-        /// @note query と保存対象 command の応答を報告へ残し、次手順に渡した値を追跡できるようにする。
+        if (!ok) {
+            return Fail(StringOf(payload, "t") + " 失敗 (" + code + "): " + message);
+        }
+        if (!CaptureResult(step, result, message)) {
+            return Fail("操作は成功しましたが応答保存に失敗しました: " + message, &result);
+        }
+        // query と保存対象 command の応答を報告へ残し、次手順に渡した値を追跡できるようにする。
         RecordStep(true, {}, kind == "query" || step.Find("capture") ? &result : nullptr);
         return StepResult::DONE;
     }
 
-    if (action == "assert") return RunQueryCondition(step, hooks, false);
-    if (action == "waitUntil") return RunQueryCondition(step, hooks, true);
-    if (action == "replay") return RunReplay(step, hooks);
-    if (action == "capture") return RunCompareImage(step, hooks, true);
-    if (action == "compareImage") return RunCompareImage(step, hooks, false);
+    if (action == "assert") {
+        return RunQueryCondition(step, hooks, false);
+    }
+    if (action == "waitUntil") {
+        return RunQueryCondition(step, hooks, true);
+    }
+    if (action == "replay") {
+        return RunReplay(step, hooks);
+    }
+    if (action == "capture") {
+        return RunCompareImage(step, hooks, true);
+    }
+    if (action == "compareImage") {
+        return RunCompareImage(step, hooks, false);
+    }
 
     return Fail("未知の手順: " + action);
 }
@@ -410,8 +521,9 @@ PlaytestRunner::StepResult PlaytestRunner::RunStep(const JsonValue& step, const 
 PlaytestRunner::StepResult PlaytestRunner::RunQueryCondition(const JsonValue& step, const PlaytestHooks& hooks, bool waiting)
 {
     const JsonValue* query = step.Find("query");
-    if (query == nullptr || !query->IsObject() || StringOf(*query, "t").empty())
+    if (query == nullptr || !query->IsObject() || StringOf(*query, "t").empty()) {
         return Fail("query (t を持つオブジェクト) が必要です");
+    }
     const std::string kind = StringOf(step, "kind", "query");
     const std::string path = StringOf(step, "path");
     const std::string op = StringOf(step, "op", "exists");
@@ -421,30 +533,41 @@ PlaytestRunner::StepResult PlaytestRunner::RunQueryCondition(const JsonValue& st
     std::string message;
     std::string detail;
     bool satisfied = false;
-    if (!ValidateCapture(step, message)) return Fail(message);
+    if (!ValidateCapture(step, message)) {
+        return Fail(message);
+    }
     JsonValue expected;
     const JsonValue* value = step.Find("value");
     if (value) {
-        if (!ResolveCaptured(*value, m_captures, expected, message)) return Fail(message);
+        if (!ResolveCaptured(*value, m_captures, expected, message)) {
+            return Fail(message);
+        }
         value = &expected;
     }
     if (CallBus(hooks, kind.c_str(), *query, result, code, message)) {
         satisfied = EvaluateJsonCondition(ResolveJsonPath(result, path), op, value, detail);
     } else {
-        if (code == "PLAYTEST_REFERENCE") return Fail(message);
+        if (code == "PLAYTEST_REFERENCE") {
+            return Fail(message);
+        }
         detail = StringOf(*query, "t") + " 失敗 (" + code + "): " + message;
     }
 
     if (satisfied) {
-        if (!CaptureResult(step, result, message)) return Fail("条件は成立しましたが応答保存に失敗しました: " + message, &result);
+        if (!CaptureResult(step, result, message)) {
+            return Fail("条件は成立しましたが応答保存に失敗しました: " + message, &result);
+        }
         RecordStep(true, waiting ? "satisfied after " + std::to_string(m_stepFrame) + " frames" : std::string{});
         return StepResult::DONE;
     }
-    if (!waiting) return Fail(StringOf(*query, "t") + " " + path + ": " + detail);
+    if (!waiting) {
+        return Fail(StringOf(*query, "t") + " " + path + ": " + detail);
+    }
 
     const uint64_t timeout = static_cast<uint64_t>(NumberOf(step, "timeoutFrames", static_cast<double>(kDefaultWaitTimeoutFrames)));
-    if (++m_stepFrame > timeout)
+    if (++m_stepFrame > timeout) {
         return Fail("waitUntil が " + std::to_string(timeout) + " フレームで成立しない: " + StringOf(*query, "t") + " " + path + ": " + detail);
+    }
     return StepResult::WAIT;
 }
 
@@ -452,12 +575,18 @@ PlaytestRunner::StepResult PlaytestRunner::RunReplay(const JsonValue& step, cons
 {
     if (m_stepPhase == 0) {
         const std::string file = StringOf(step, "file");
-        if (file.empty()) return Fail("replay には file が必要です");
+        if (file.empty()) {
+            return Fail("replay には file が必要です");
+        }
         std::string error;
         std::optional<JsonValue> recording = ReadJsonFile(m_scenarioDirectory / file, error);
-        if (!recording.has_value()) return Fail("入力列を読めません: " + error);
+        if (!recording.has_value()) {
+            return Fail("入力列を読めません: " + error);
+        }
         const JsonValue* events = recording->Find("events");
-        if (events == nullptr || !events->IsArray()) return Fail("入力列に events がありません: " + file);
+        if (events == nullptr || !events->IsArray()) {
+            return Fail("入力列に events がありません: " + file);
+        }
         m_replayEvents = *events;
         m_replayCursor = 0;
         m_stepFrame = 0;
@@ -468,7 +597,9 @@ PlaytestRunner::StepResult PlaytestRunner::RunReplay(const JsonValue& step, cons
     while (m_replayCursor < events.size()) {
         const JsonValue& event = events[m_replayCursor];
         const double frame = NumberOf(event, "frame", 0.0);
-        if (frame > static_cast<double>(m_stepFrame)) break;
+        if (frame > static_cast<double>(m_stepFrame)) {
+            break;
+        }
         const JsonValue* inject = event.Find("inject");
         if (inject != nullptr && inject->IsObject()) {
             JsonValue payload = *inject;
@@ -476,13 +607,14 @@ PlaytestRunner::StepResult PlaytestRunner::RunReplay(const JsonValue& step, cons
             JsonValue result;
             std::string code;
             std::string message;
-            if (!CallBus(hooks, "command", payload, result, code, message))
+            if (!CallBus(hooks, "command", payload, result, code, message)) {
                 return Fail("replay の注入に失敗 (frame " + std::to_string(static_cast<long long>(frame)) + ", " + code + "): " + message);
+            }
         }
         ++m_replayCursor;
     }
     if (m_replayCursor >= events.size()) {
-        /// @note 押したまま終わった入力を残すと、後続の手順が «押しっぱなし» の世界を観測する。
+        // 押したまま終わった入力を残すと、後続の手順が «押しっぱなし» の世界を観測する。
         JsonValue clear = JsonValue::MakeObject();
         clear.Set("t", JsonValue("input.inject"));
         clear.Set("kind", JsonValue("clear"));
@@ -500,10 +632,13 @@ PlaytestRunner::StepResult PlaytestRunner::RunReplay(const JsonValue& step, cons
 PlaytestRunner::StepResult PlaytestRunner::RunCompareImage(const JsonValue& step, const PlaytestHooks& hooks, bool captureOnly)
 {
     const std::string name = StringOf(step, captureOnly ? "name" : "baseline");
-    if (!IsSafeImageName(name)) return Fail(std::string(captureOnly ? "name" : "baseline") + " は英数字 / _ / - / / のみ: " + name);
+    if (!IsSafeImageName(name)) {
+        return Fail(std::string(captureOnly ? "name" : "baseline") + " は英数字 / _ / - / / のみ: " + name);
+    }
     const std::string view = StringOf(step, "view", "game");
-    if (view != "game" && view != "scene" && view != "fluidBaked")
+    if (view != "game" && view != "scene" && view != "fluidBaked") {
         return Fail("view は game、scene、fluidBaked のいずれかです");
+    }
 
     JsonValue image = JsonValue::MakeObject();
     image.Set("name", JsonValue(name));
@@ -516,13 +651,16 @@ PlaytestRunner::StepResult PlaytestRunner::RunCompareImage(const JsonValue& step
         return StepResult::DONE;
     }
 
-    /// @note RT の中身は撮影を要求したフレームにはまだ描かれていない。描き続けさせてから 2 フレーム置く。
+    // RT の中身は撮影を要求したフレームにはまだ描かれていない。描き続けさせてから 2 フレーム置く。
     if (m_stepPhase == 0) {
         if (view == "fluidBaked") {
-            if (!hooks.prepareFluidPlayback) return Fail("Fluid 再生画面の撮影に対応していません");
+            if (!hooks.prepareFluidPlayback) {
+                return Fail("Fluid 再生画面の撮影に対応していません");
+            }
             std::string error;
-            if (!hooks.prepareFluidPlayback(step, error))
+            if (!hooks.prepareFluidPlayback(step, error)) {
                 return Fail(error.empty() ? "Fluid 再生画面を用意できません" : error);
+            }
         } else if (hooks.keepViewportsRendering) {
             hooks.keepViewportsRendering();
         }
@@ -530,17 +668,25 @@ PlaytestRunner::StepResult PlaytestRunner::RunCompareImage(const JsonValue& step
         m_stepFrame = 2;
         return StepResult::WAIT;
     }
-    if (m_stepFrame > 0 && --m_stepFrame > 0) return StepResult::WAIT;
+    if (m_stepFrame > 0 && --m_stepFrame > 0) {
+        return StepResult::WAIT;
+    }
 
     std::vector<uint8_t> png;
-    if (!hooks.capture || !hooks.capture(view, png) || png.empty()) return Fail(view + " ビューを撮影できません");
+    if (!hooks.capture || !hooks.capture(view, png) || png.empty()) {
+        return Fail(view + " ビューを撮影できません");
+    }
     RgbaImage actual;
-    if (!DecodePng(png, actual)) return Fail("撮影した PNG を解読できません");
+    if (!DecodePng(png, actual)) {
+        return Fail("撮影した PNG を解読できません");
+    }
 
     const std::filesystem::path actualPath = m_outputDirectory / (name + ".actual.png");
     const std::filesystem::path diffPath = m_outputDirectory / (name + ".diff.png");
     const std::filesystem::path baselinePath = m_goldenDirectory / (name + ".png");
-    if (!WriteBinaryFile(actualPath, png)) return Fail("実画像を書けません: " + actualPath.generic_string());
+    if (!WriteBinaryFile(actualPath, png)) {
+        return Fail("実画像を書けません: " + actualPath.generic_string());
+    }
     image.Set("actual", JsonValue(actualPath.generic_string()));
     image.Set("width", JsonValue(static_cast<double>(actual.width)));
     image.Set("height", JsonValue(static_cast<double>(actual.height)));
@@ -548,9 +694,10 @@ PlaytestRunner::StepResult PlaytestRunner::RunCompareImage(const JsonValue& step
     if (view == "fluidBaked" && step.Find("minForegroundPixels") != nullptr) {
         const double minimum = NumberOf(step, "minForegroundPixels", -1.0);
         if (!std::isfinite(minimum) || minimum < 0.0 || std::floor(minimum) != minimum
-            || minimum > static_cast<double>(actual.width) * actual.height)
+            || minimum > static_cast<double>(actual.width) * actual.height) {
             return Fail("minForegroundPixels は画像内の非負整数で指定してください");
-        /// @note 背景だけの撮影を検出する。左上は比較プレビューの背景領域として使う。
+        }
+        // 背景だけの撮影を検出する。左上は比較プレビューの背景領域として使う。
         const auto* background = actual.pixels.data();
         std::size_t foregroundPixels = 0;
         for (std::size_t pixel = 0; pixel < actual.pixels.size(); pixel += 4) {
@@ -577,7 +724,9 @@ PlaytestRunner::StepResult PlaytestRunner::RunCompareImage(const JsonValue& step
 
     image.Set("baseline", JsonValue(baselinePath.generic_string()));
     if (m_options.updateBaselines) {
-        if (!WriteBinaryFile(baselinePath, png)) return Fail("基準画像を書けません: " + baselinePath.generic_string());
+        if (!WriteBinaryFile(baselinePath, png)) {
+            return Fail("基準画像を書けません: " + baselinePath.generic_string());
+        }
         image.Set("status", JsonValue("updated"));
         m_images.Push(std::move(image));
         RecordStep(true, "baseline updated");
@@ -609,15 +758,18 @@ PlaytestRunner::StepResult PlaytestRunner::RunCompareImage(const JsonValue& step
     image.Set("badPixelRatio", JsonValue(diff.badPixelRatio));
     if (diff.badPixels > 0) {
         std::vector<uint8_t> diffPng;
-        if (EncodePng(diff.diff, diffPng) && WriteBinaryFile(diffPath, diffPng))
+        if (EncodePng(diff.diff, diffPng) && WriteBinaryFile(diffPath, diffPng)) {
             image.Set("diff", JsonValue(diffPath.generic_string()));
+        }
     }
     image.Set("status", JsonValue(pass ? "passed" : "failed"));
     m_images.Push(std::move(image));
 
     const std::string summary = "meanDiff=" + std::to_string(diff.meanDiff) + " (max " + std::to_string(maxMeanDiff)
         + "), badPixelRatio=" + std::to_string(diff.badPixelRatio) + " (max " + std::to_string(maxBadPixelRatio) + ")";
-    if (!pass) return Fail("絵が基準画像と違う: " + name + " " + summary);
+    if (!pass) {
+        return Fail("絵が基準画像と違う: " + name + " " + summary);
+    }
     RecordStep(true, summary);
     return StepResult::DONE;
 }
@@ -648,7 +800,9 @@ void PlaytestRunner::Finish(PlaytestState state, const PlaytestHooks* hooks)
     std::error_code ec;
     std::filesystem::create_directories(m_outputDirectory, ec);
     std::ofstream stream(m_reportPath, std::ios::binary | std::ios::trunc);
-    if (stream) stream << ai::SerializeJson(Report()) << '\n';
+    if (stream) {
+        stream << ai::SerializeJson(Report()) << '\n';
+    }
 }
 
 JsonValue PlaytestRunner::Report() const
@@ -663,11 +817,15 @@ JsonValue PlaytestRunner::Report() const
     const JsonValue* steps = m_scenario.Find("steps");
     report.Set("stepIndex", JsonValue(static_cast<double>(m_stepIndex)));
     report.Set("stepCount", JsonValue(static_cast<double>(steps != nullptr ? steps->AsArray().size() : 0)));
-    if (!m_failure.empty()) report.Set("failure", JsonValue(m_failure));
+    if (!m_failure.empty()) {
+        report.Set("failure", JsonValue(m_failure));
+    }
     report.Set("steps", m_stepLog);
     report.Set("images", m_images);
-    if (!m_reportPath.empty()) report.Set("reportPath", JsonValue(m_reportPath.generic_string()));
+    if (!m_reportPath.empty()) {
+        report.Set("reportPath", JsonValue(m_reportPath.generic_string()));
+    }
     return report;
 }
 
-} /// @note namespace fbzz::editor::playtest
+} // namespace fbzz::editor::playtest

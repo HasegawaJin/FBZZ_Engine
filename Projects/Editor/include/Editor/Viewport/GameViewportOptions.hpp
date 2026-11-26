@@ -28,4 +28,4 @@ inline constexpr std::array<GameViewportAspectOption, 13> GAME_VIEWPORT_ASPECT_O
     {"iPhoneLandscape", "iPhone Landscape", 16.0f / 9.0f},
 }};
 inline constexpr std::array<const char*, 3> PLAY_FOCUS_KEYS{{"focused", "maximized", "unfocused"}};
-} /// @note namespace fbzz::editor
+} // namespace fbzz::editor

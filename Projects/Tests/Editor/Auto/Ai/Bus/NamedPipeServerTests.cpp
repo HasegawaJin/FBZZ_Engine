@@ -6,6 +6,7 @@
 #include <Editor/Ai/Bus/NamedPipeServer.hpp>
 #include <array>
 #include <atomic>
+#include <chrono>
 #include <string>
 #include <thread>
 #include <vector>
@@ -38,29 +39,70 @@ protected:
         Fixture::TearDown();
     }
 
-    HANDLE Connect()
+    /// @brief 使用可能なパイプのインスタンスに接続する。
+    /// @param[out] client 接続ハンドル。成功時はフィクスチャが閉じ、失敗時は INVALID_HANDLE_VALUE。
+    /// @return 接続に成功。失敗時は接続番号と Win32 の診断を返す。待機と再試行は合わせて 5 秒まで。
+    ::testing::AssertionResult Connect(HANDLE& client)
     {
-        HANDLE client = CreateFileW(m_name.c_str(), GENERIC_READ | GENERIC_WRITE, 0, nullptr,
-            OPEN_EXISTING, FILE_FLAG_OVERLAPPED, nullptr);
-        if (client == INVALID_HANDLE_VALUE && GetLastError() == ERROR_PIPE_BUSY) {
-            if (WaitNamedPipeW(m_name.c_str(), 5000))
-                client = CreateFileW(m_name.c_str(), GENERIC_READ | GENERIC_WRITE, 0, nullptr,
-                    OPEN_EXISTING, FILE_FLAG_OVERLAPPED, nullptr);
-        }
-        if (client != INVALID_HANDLE_VALUE) m_clients.push_back(client);
-        return client;
+        using Clock = std::chrono::steady_clock;
+        constexpr auto CONNECT_TIMEOUT = std::chrono::seconds{5};
+        const auto deadline = Clock::now() + CONNECT_TIMEOUT;
+        const std::size_t connectionNumber = m_clients.size() + 1;
+        std::size_t attemptCount = 0;
+        DWORD openError = ERROR_SUCCESS;
+        DWORD lastWaitError = ERROR_SUCCESS;
+
+        do {
+            ++attemptCount;
+            client = CreateFileW(m_name.c_str(), GENERIC_READ | GENERIC_WRITE, 0, nullptr,
+                OPEN_EXISTING, FILE_FLAG_OVERLAPPED, nullptr);
+            if (client != INVALID_HANDLE_VALUE) {
+                m_clients.push_back(client);
+                return ::testing::AssertionSuccess();
+            }
+            openError = GetLastError();
+            if (openError != ERROR_PIPE_BUSY && openError != ERROR_FILE_NOT_FOUND) {
+                return ::testing::AssertionFailure() << "Connection #" << connectionNumber
+                    << ", attempt " << attemptCount << ": CreateFileW failed (GetLastError=" << openError << ')';
+            }
+
+            // 次のインスタンスが開くまで、接続用の残り時間だけ待つ。0 ms は Win32 で既定値を意味する。
+            const auto remaining = deadline - Clock::now();
+            if (remaining <= Clock::duration::zero()) {
+                break;
+            }
+            const auto waitMilliseconds = std::chrono::ceil<std::chrono::milliseconds>(remaining).count();
+            if (WaitNamedPipeW(m_name.c_str(), static_cast<DWORD>(waitMilliseconds))) {
+                continue;
+            }
+            lastWaitError = GetLastError();
+            if (lastWaitError != ERROR_FILE_NOT_FOUND && lastWaitError != ERROR_SEM_TIMEOUT) {
+                return ::testing::AssertionFailure() << "Connection #" << connectionNumber
+                    << ", attempt " << attemptCount << ": WaitNamedPipeW failed (GetLastError=" << lastWaitError
+                    << ", CreateFileW GetLastError=" << openError << ')';
+            }
+
+            // 待機が即時に戻る場合も、リスナーが次のインスタンスを作成できるようにする。
+            std::this_thread::yield();
+        } while (Clock::now() < deadline);
+
+        return ::testing::AssertionFailure() << "Connection #" << connectionNumber
+            << " timed out after " << attemptCount << " attempts (last CreateFileW GetLastError=" << openError
+            << ", last WaitNamedPipeW failure GetLastError=" << lastWaitError << ')';
     }
 
     DWORD Transfer(HANDLE client, char* data, DWORD count, bool write)
     {
         OVERLAPPED overlapped{};
         overlapped.hEvent = CreateEventW(nullptr, TRUE, FALSE, nullptr);
-        if (!overlapped.hEvent) return 0;
+        if (!overlapped.hEvent) {
+            return 0;
+        }
         DWORD bytes = 0;
         const BOOL complete = write ? WriteFile(client, data, count, &bytes, &overlapped)
             : ReadFile(client, data, count, &bytes, &overlapped);
         if (!complete && GetLastError() == ERROR_IO_PENDING) {
-            /// @note timeout は失敗時の後始末用で、スケジュール順の期待値には使わない。
+            // timeout は失敗時の後始末用で、スケジュール順の期待値には使わない。
             if (WaitForSingleObject(overlapped.hEvent, 5000) != WAIT_OBJECT_0) {
                 CancelIoEx(client, &overlapped);
                 GetOverlappedResult(client, &overlapped, &bytes, TRUE);
@@ -94,9 +136,13 @@ protected:
         std::array<char, 4096> bytes;
         for (;;) {
             const DWORD count = Transfer(client, bytes.data(), static_cast<DWORD>(bytes.size()), false);
-            if (!count) return line;
+            if (!count) {
+                return line;
+            }
             line.append(bytes.data(), count);
-            if (line.back() == '\n') return line;
+            if (line.back() == '\n') {
+                return line;
+            }
         }
     }
 };
@@ -104,8 +150,8 @@ protected:
 /// @brief Delivers the whole response before client disconnect.
 TEST_F(NamedPipeServerTest, DeliversTheWholeResponseBeforeClientDisconnect)
 {
-    const HANDLE client = Connect();
-    ASSERT_NE(client, INVALID_HANDLE_VALUE);
+    HANDLE client = INVALID_HANDLE_VALUE;
+    ASSERT_TRUE(Connect(client));
     Send(client);
     const std::string response(256 * 1024, 'x');
     Pump(1, [&](const auto& request) { EXPECT_EQ(request, "request"); return response; });
@@ -116,16 +162,16 @@ TEST_F(NamedPipeServerTest, DeliversTheWholeResponseBeforeClientDisconnect)
 TEST_F(NamedPipeServerTest, StopCancelsPartialRequestAndJoinsBeforeRestart)
 {
     for (int index = 0; index < 8; ++index) {
-        const HANDLE client = Connect();
-        ASSERT_NE(client, INVALID_HANDLE_VALUE);
+        HANDLE client = INVALID_HANDLE_VALUE;
+        ASSERT_TRUE(Connect(client));
         Send(client, "partial");
         m_server.Stop();
         EXPECT_FALSE(m_server.IsRunning());
         m_server.Stop();
         ASSERT_TRUE(m_server.Start(m_name));
     }
-    const HANDLE client = Connect();
-    ASSERT_NE(client, INVALID_HANDLE_VALUE);
+    HANDLE client = INVALID_HANDLE_VALUE;
+    ASSERT_TRUE(Connect(client));
     Send(client);
     Pump(1, [](const auto&) { return std::string("after-restart"); });
     EXPECT_EQ(ReadLine(client), "after-restart\n");
@@ -134,8 +180,8 @@ TEST_F(NamedPipeServerTest, StopCancelsPartialRequestAndJoinsBeforeRestart)
 /// @brief Checks stop unblocks a response larger than an unread pipe buffer.
 TEST_F(NamedPipeServerTest, StopUnblocksAResponseLargerThanAnUnreadPipeBuffer)
 {
-    const HANDLE client = Connect();
-    ASSERT_NE(client, INVALID_HANDLE_VALUE);
+    HANDLE client = INVALID_HANDLE_VALUE;
+    ASSERT_TRUE(Connect(client));
     Send(client);
     Pump(1, [](const auto&) { return std::string(2 * 1024 * 1024, 'x'); });
     DWORD available = 0;
@@ -151,8 +197,8 @@ TEST_F(NamedPipeServerTest, StopUnblocksAResponseLargerThanAnUnreadPipeBuffer)
 /// @brief Handler can stop without waiting for its own response.
 TEST_F(NamedPipeServerTest, HandlerCanStopWithoutWaitingForItsOwnResponse)
 {
-    const HANDLE client = Connect();
-    ASSERT_NE(client, INVALID_HANDLE_VALUE);
+    HANDLE client = INVALID_HANDLE_VALUE;
+    ASSERT_TRUE(Connect(client));
     Send(client);
     Pump(1, [&](const auto&) { m_server.Stop(); return std::string("ignored"); });
     EXPECT_FALSE(m_server.IsRunning());
@@ -163,8 +209,8 @@ TEST_F(NamedPipeServerTest, HandlerCanStopWithoutWaitingForItsOwnResponse)
 TEST_F(NamedPipeServerTest, StopJoinsConcurrentConnectionsWaitingForMainThread)
 {
     for (int index = 0; index < 8; ++index) {
-        const HANDLE client = Connect();
-        ASSERT_NE(client, INVALID_HANDLE_VALUE);
+        HANDLE client = INVALID_HANDLE_VALUE;
+        ASSERT_TRUE(Connect(client));
         Send(client);
     }
     m_server.Stop();

@@ -30,4 +30,4 @@ struct PlaySettingsAdoptionDraft {
 };
 void RegisterPlaySettingsAdoptionOperators(OperatorRegistry& registry);
 void DrawPlaySettingsAdoptionReview(EditorContext& context);
-} /// @note namespace fbzz::editor
+} // namespace fbzz::editor

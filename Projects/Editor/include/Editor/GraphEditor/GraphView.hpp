@@ -169,13 +169,13 @@ inline constexpr int MAX_NODE_ID = (std::numeric_limits<int>::max() - 2) / 2;
 
 [[nodiscard]] constexpr int InputPin(int nodeId)
 {
-    /// @note 奇数
+    // 奇数
     return IsValidNodeId(nodeId) ? nodeId * 2 + 1 : 0;
 }
 
 [[nodiscard]] constexpr int OutputPin(int nodeId)
 {
-    /// @note 偶数
+    // 偶数
     return IsValidNodeId(nodeId) ? nodeId * 2 + 2 : 0;
 }
 
@@ -191,8 +191,12 @@ inline constexpr int MAX_NODE_ID = (std::numeric_limits<int>::max() - 2) / 2;
 
 [[nodiscard]] constexpr int NodeOfPin(int pinId)
 {
-    if (IsOutputPin(pinId)) return (pinId - 2) / 2;
-    if (IsInputPin(pinId)) return (pinId - 1) / 2;
+    if (IsOutputPin(pinId)) {
+        return (pinId - 2) / 2;
+    }
+    if (IsInputPin(pinId)) {
+        return (pinId - 1) / 2;
+    }
     return 0;
 }
 

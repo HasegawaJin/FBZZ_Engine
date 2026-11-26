@@ -27,10 +27,9 @@ public:
     std::uint64_t GetRevision() const { return m_revision; }
 
 private:
-    std::deque<core::LogEntry> m_entries;
-    /// @note Clear やリングバッファ破棄後も値を戻さず、古いカーソルの取りこぼしを検出可能にする。
-    std::uint64_t m_nextSequence = 1;
-    std::uint64_t m_revision     = 0;
+    std::deque<core::LogEntry> m_entries; ///< Console パネルが直近のログとして取得できるエントリー。
+    std::uint64_t m_nextSequence = 1; ///< Clear やリングバッファ破棄後も値を戻さず、古いカーソルの取りこぼしを検出可能にする。
+    std::uint64_t m_revision     = 0; ///< ログの追加や消去をパネルが検知するための番号。
 };
 
 } // namespace fbzz::editor

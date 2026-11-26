@@ -34,7 +34,7 @@ void DrawEnvironmentInspectors(scene::GameObject* go, EditorContext& ctx, std::a
             ImGui::SeparatorText("Day Night");
             property::Checkbox("Day Night Enabled", &sr.dayNightEnabled);
             if (sr.dayNightEnabled) {
-                /// @note DayNight 有効時の Color / Intensity は空が上書きし、ライトは向きだけを指定する。
+                // DayNight 有効時の Color / Intensity は空が上書きし、ライトは向きだけを指定する。
                 ImGui::TextDisabled("太陽の向きは Directional Light の Transform。\n"
                                     "有効な間、そのライトの Color / Intensity はここが決めます。");
 
@@ -54,12 +54,12 @@ void DrawEnvironmentInspectors(scene::GameObject* go, EditorContext& ctx, std::a
                                       "夕方を作るには Directional Light を水平へ向けます。");
                 widgets::ColorEdit3("Night Color", sr.nightColor);
 
-                /// @note Intensity=1 は白い拡散面が albedo の明るさになる単位 (LIGHT_UNIT_SCALE)。
+                // Intensity=1 は白い拡散面が albedo の明るさになる単位 (LIGHT_UNIT_SCALE)。
                 property::DragFloat("Day Intensity", &sr.dayIntensity, 0.01f, 0.0f, 20.0f);
                 property::DragFloat("Sunset Intensity", &sr.sunsetIntensity, 0.01f, 0.0f, 20.0f);
                 property::DragFloat("Night Intensity", &sr.nightIntensity, 0.01f, 0.0f, 5.0f);
 
-                /// @note 空の倍率は地表への太陽光と独立し、Sky Scatter Intensity に乗算する。
+                // 空の倍率は地表への太陽光と独立し、Sky Scatter Intensity に乗算する。
                 property::DragFloat("Sky Day Brightness", &sr.skyDayBrightness, 0.01f, 0.0f, 20.0f);
                 property::DragFloat("Sky Sunset Brightness", &sr.skySunsetBrightness, 0.01f, 0.0f, 20.0f);
                 property::DragFloat("Sky Night Brightness", &sr.skyNightBrightness, 0.01f, 0.0f, 5.0f);
@@ -68,7 +68,7 @@ void DrawEnvironmentInspectors(scene::GameObject* go, EditorContext& ctx, std::a
             ImGui::SeparatorText("Cloud Shadow");
             widgets::RangeField("Cloud Shadow Strength", sr.cloudShadowStrength, 0.0f, 1.0f);
             widgets::RangeField("Cloud Shadow Coverage", sr.cloudShadowCoverage, 0.0f, 1.0f);
-            /// @note 中身は world→ノイズ UV スケールだが、Inspector では「まだら 1 周期の大きさ」で扱う。
+            // 中身は world→ノイズ UV スケールだが、Inspector では「まだら 1 周期の大きさ」で扱う。
             property::DragFloat("Cloud Shadow Size", &sr.cloudShadowSize, 1.0f, 1.0f, 10000.0f, "%.0f m");
             property::DragFloat("Cloud Shadow Speed", &sr.cloudShadowSpeed, 0.01f, 0.0f, 10.0f);
         });
@@ -95,9 +95,11 @@ void DrawEnvironmentInspectors(scene::GameObject* go, EditorContext& ctx, std::a
 
     DrawComponentSection<scene::VolumetricCloudComponent>(go, ctx, m_componentClipboard, m_componentClipboardType, "Volumetric Cloud",
         [](scene::VolumetricCloudComponent& cloud, EditorContext&) {
-            /// @note DragFloat 直後に付ける説明。RangeField はウィジェット側が tooltip 引数を持つ。
+            // DragFloat 直後に付ける説明。RangeField はウィジェット側が tooltip 引数を持つ。
             auto tip = [](const char* text) {
-                if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", text);
+                if (ImGui::IsItemHovered()) {
+                    ImGui::SetTooltip("%s", text);
+                }
             };
 
             ImGui::SeparatorText("Layer");
@@ -107,7 +109,7 @@ void DrawEnvironmentInspectors(scene::GameObject* go, EditorContext& ctx, std::a
             property::DragFloat("Density", &cloud.density, 0.01f, 0.0f, 8.0f);
 
             ImGui::SeparatorText("Shape");
-            /// @note world-to-noise の逆数をワールド寸法 [m] として編集する。
+            // world-to-noise の逆数をワールド寸法 [m] として編集する。
             property::DragFloat("Cloud Size", &cloud.cloudSize, 5.0f, 50.0f, 100000.0f, "%.0f m");
             tip(
                 "雲塊 1 周期の大きさ。大きいほど雄大な雲になります。\n"
@@ -212,7 +214,7 @@ void DrawEnvironmentInspectors(scene::GameObject* go, EditorContext& ctx, std::a
                 ImGui::SetTooltip("render_path = \"decal\" の .mat だけが使えます。\n"
                                   "空欄のときは下のテクスチャと色で組み込みシェーダーが描きます。");
 
-            /// @note .mat 指定時に組込みの値は渡らないため、編集を無効にする。
+            // .mat 指定時に組込みの値は渡らないため、編集を無効にする。
             const bool usesMaterial = !dc.materialPath.empty();
             ImGui::BeginDisabled(usesMaterial);
 
@@ -231,7 +233,7 @@ void DrawEnvironmentInspectors(scene::GameObject* go, EditorContext& ctx, std::a
             ImGui::EndDisabled();
 
             ImGui::SeparatorText("Angle Fade");
-            /// @note 行に複数アイテムがあるため、hover 説明は RangeField の内部で扱う。
+            // 行に複数アイテムがあるため、hover 説明は RangeField の内部で扱う。
             widgets::RangeField("Angle Fade", dc.angleFadeStrength, 0.0f, 1.0f, "%.3f",
                 "受け面が投影軸から傾くほどデカールを薄くします (0 で無効)。\n"
                 "OBB 投影は斜めな面へ当てるとテクスチャが引き伸ばされ、長い筋になります。\n"
@@ -253,13 +255,16 @@ void DrawEnvironmentInspectors(scene::GameObject* go, EditorContext& ctx, std::a
                                   "血だまりが広がる・焦げが焼き付く、といった «痕が付く» 過程を作ります。\n"
                                   "Permanent なデカールでも効きます。");
             }
-            if (dc.fadeInTime < 0.0f) dc.fadeInTime = 0.0f;
+            if (dc.fadeInTime < 0.0f) {
+                dc.fadeInTime = 0.0f;
+            }
             property::DragFloat("Fade Time (s)", &dc.fadeTime, 0.05f, 0.0f, 60.0f);
-            if (ImGui::IsItemHovered())
+            if (ImGui::IsItemHovered()) {
                 ImGui::SetTooltip("消える前のフェード時間。Lifetime が Permanent のときは効きません。");
+            }
             ImGui::BeginDisabled();
             property::DragFloat("Age (s)", &dc.age, 0.0f, 0.0f, 0.0f, "%.2f s");
-            /// @note VFX / script が指定する保存されないランタイム倍率。
+            // VFX / script が指定する保存されないランタイム倍率。
             property::DragFloat("Opacity", &dc.opacity, 0.0f, 0.0f, 0.0f, "%.2f");
             ImGui::EndDisabled();
 
@@ -271,11 +276,14 @@ void DrawEnvironmentInspectors(scene::GameObject* go, EditorContext& ctx, std::a
                                   "焦げの広がり・血の乾き・亀裂の進行をテクスチャだけで作れます。\n"
                                   "コマの境界はバイリニアが隣を拾うので、各コマの周囲に余白を作ってください。");
             }
-            if (dc.frameCount < 0) dc.frameCount = 0;
+            if (dc.frameCount < 0) {
+                dc.frameCount = 0;
+            }
             if (dc.frameCount > 1) {
                 property::DragInt("Frames Per Row", &dc.framesPerRow, 1.0f, 1, dc.frameCount);
-                if (ImGui::IsItemHovered())
+                if (ImGui::IsItemHovered()) {
                     ImGui::SetTooltip("横方向のコマ数。縦の段数は Frame Count から切り上げで決まります。");
+                }
                 dc.framesPerRow = std::clamp(dc.framesPerRow, 1, dc.frameCount);
 
                 property::DragFloat("Frame Rate", &dc.frameRate, 0.5f, 0.0f, 240.0f,
@@ -284,7 +292,9 @@ void DrawEnvironmentInspectors(scene::GameObject* go, EditorContext& ctx, std::a
                     ImGui::SetTooltip("0 なら Lifetime いっぱいで 1 周します (Permanent では進みません)。\n"
                                       ">0 なら秒あたりのコマ数。");
                 }
-                if (dc.frameRate < 0.0f) dc.frameRate = 0.0f;
+                if (dc.frameRate < 0.0f) {
+                    dc.frameRate = 0.0f;
+                }
 
                 property::Checkbox("Frame Loop", &dc.frameLoop);
                 if (ImGui::IsItemHovered()) {
@@ -308,7 +318,7 @@ void DrawEnvironmentInspectors(scene::GameObject* go, EditorContext& ctx, std::a
             }
 
             ImGui::SeparatorText("Receiver Layer Mask");
-            /// @note ビット 0〜7 を個別チェックボックスで表示。残りは hex 入力で直接編集。
+            // ビット 0〜7 を個別チェックボックスで表示。残りは hex 入力で直接編集。
             static constexpr const char* kLayerNames[] = {
                 "Default", "TransparentFX", "Ignore Raycast", "User Layer 3",
                 "Water",   "UI",            "User Layer 6",   "User Layer 7"
@@ -316,21 +326,26 @@ void DrawEnvironmentInspectors(scene::GameObject* go, EditorContext& ctx, std::a
             for (int i = 0; i < 8; ++i) {
                 bool checked = (dc.receiverLayerMask & (1u << i)) != 0;
                 if (ImGui::Checkbox(kLayerNames[i], &checked)) {
-                    if (checked) dc.receiverLayerMask |=  (1u << i);
-                    else         dc.receiverLayerMask &= ~(1u << i);
+                    if (checked) {
+                        dc.receiverLayerMask |=  (1u << i);
+                    } else {
+                        dc.receiverLayerMask &= ~(1u << i);
+                    }
                 }
-                if (i % 2 == 0) ImGui::SameLine(160.0f);
+                if (i % 2 == 0) {
+                    ImGui::SameLine(160.0f);
+                }
             }
             ImGui::InputScalar("Mask (hex)", ImGuiDataType_U32, &dc.receiverLayerMask,
                                nullptr, nullptr, "%08X",
                                ImGuiInputTextFlags_CharsHexadecimal);
         });
 
-    /// @name EnvironmentLightComponent
+    // EnvironmentLightComponent
     DrawComponentSection<scene::EnvironmentLightComponent>(go, ctx, m_componentClipboard, m_componentClipboardType, "Environment Light",
         [](scene::EnvironmentLightComponent& elc, EditorContext& ctx) {
 
-            /// @note 有効化トグル — ヘッダーの enabled と連動するが、こちらが本体の操作点。
+            // 有効化トグル — ヘッダーの enabled と連動するが、こちらが本体の操作点。
             property::Checkbox("IBL Enabled", &elc.enabled);
             ImGui::Spacing();
 
@@ -364,7 +379,7 @@ void DrawEnvironmentInspectors(scene::GameObject* go, EditorContext& ctx, std::a
                     "(!) パスが設定されていないと IBL は無効になります");
         });
 
-    /// @name ReflectionProbeComponent
+    // ReflectionProbeComponent
     DrawComponentSection<scene::ReflectionProbeComponent>(go, ctx, m_componentClipboard, m_componentClipboardType, "Reflection Probe",
         [](scene::ReflectionProbeComponent& rpc, EditorContext& ctx) {
 
@@ -387,17 +402,20 @@ void DrawEnvironmentInspectors(scene::GameObject* go, EditorContext& ctx, std::a
             ImGui::TextDisabled("(i) 局所反射ブレンドは将来の実装で有効になります");
         });
 
-    /// @name LightProbeVolumeComponent
+    // LightProbeVolumeComponent
     DrawComponentSection<scene::LightProbeVolumeComponent>(go, ctx, m_componentClipboard, m_componentClipboardType, "Light Probe Volume",
         [go](scene::LightProbeVolumeComponent& lpv, EditorContext& ctx) {
 
             ImGui::SeparatorText("Volume");
             float ext[3] = { lpv.boxExtents.x, lpv.boxExtents.y, lpv.boxExtents.z };
-            if (widgets::DragAxes("Box Extents (m)", ext, 3, 0.05f, 0.05f, 1000.0f))
+            if (widgets::DragAxes("Box Extents (m)", ext, 3, 0.05f, 0.05f, 1000.0f)) {
                 lpv.boxExtents = { ext[0], ext[1], ext[2] };
+            }
             int grid[3] = { lpv.probeCountX, lpv.probeCountY, lpv.probeCountZ };
             if (ImGui::DragInt3("Probe Count", grid, 0.1f, 1, 64)) {
-                lpv.probeCountX = grid[0]; lpv.probeCountY = grid[1]; lpv.probeCountZ = grid[2];
+                lpv.probeCountX = grid[0];
+                lpv.probeCountY = grid[1];
+                lpv.probeCountZ = grid[2];
             }
             const auto clamped = lpv.ClampedGrid();
             const math::Vector3 spacing{ lpv.boxExtents.x * 2.0f / static_cast<float>(clamped[0]),
@@ -441,7 +459,7 @@ void DrawEnvironmentInspectors(scene::GameObject* go, EditorContext& ctx, std::a
                 ImGui::SetTooltip("焼き終えたら最初から焼き直し続けます。昼夜や動く光源に追従しますが、\n"
                                   "毎フレーム Probes Per Frame x 6 面ぶんのシーン描画がかかります。");
 
-            /// @note 進捗は «何回目の焼きの何個目か»。ランタイム値なので保存されず、Play の往復で最初から焼き直す。
+            // 進捗は «何回目の焼きの何個目か»。ランタイム値なので保存されず、Play の往復で最初から焼き直す。
             const int total = lpv.ProbeCount();
             const int passes = std::clamp(lpv.bounces, 1, 8);
             if (lpv.runtimeBaking) {
@@ -457,17 +475,19 @@ void DrawEnvironmentInspectors(scene::GameObject* go, EditorContext& ctx, std::a
                 ImGui::TextDisabled("未ベイク — IBL (Environment Light) が有効なときに自動で焼きます");
             }
             if (ImGui::Button("Bake", ImVec2(-1.0f, 0.0f))) {
-                OpArgs args; args.Set("node", go->instanceId); InvokeOperator(ctx, "component.light_probe.bake", args);
+                OpArgs args;
+                args.Set("node", go->instanceId);
+                InvokeOperator(ctx, "component.light_probe.bake", args);
             }
         });
 
-    /// @name PostProcessVolumeComponent
+    // PostProcessVolumeComponent
     DrawComponentSection<scene::PostProcessVolumeComponent>(go, ctx, m_componentClipboard, m_componentClipboardType, "Post Process Volume",
         [](scene::PostProcessVolumeComponent& ppv, EditorContext& ctx) {
 
             ImGui::SeparatorText("Profile");
 
-            /// @note 未割当の volume は何も適用しない。設定の所有者は共有 .fzdata。
+            // 未割当の volume は何も適用しない。設定の所有者は共有 .fzdata。
             property::AssetPathField("Profile", ppv.profile.ref.path, ".fzdata", ctx.projectRoot);
             widgets::AcceptAssetPathDrop(ppv.profile.ref.path, ".fzdata");
 
@@ -481,14 +501,21 @@ void DrawEnvironmentInspectors(scene::GameObject* go, EditorContext& ctx, std::a
                     "プロファイルを解決できません — パス切れか型が不一致です");
             }
 
-            /// @note プロファイルに定義された効果だけがこの volume の対象になる。
+            // プロファイルに定義された効果だけがこの volume の対象になる。
             if (usingProfile) {
                 std::string driven;
                 int inactiveCount = 0;
                 for (const auto& entry : resolvedProfile->overrides) {
-                    if (!entry) continue;
-                    if (!entry->active) { ++inactiveCount; continue; }
-                    if (!driven.empty()) driven += ", ";
+                    if (!entry) {
+                        continue;
+                    }
+                    if (!entry->active) {
+                        ++inactiveCount;
+                        continue;
+                    }
+                    if (!driven.empty()) {
+                        driven += ", ";
+                    }
                     driven += entry->GetDisplayName();
                 }
                 if (driven.empty()) {
@@ -496,16 +523,18 @@ void DrawEnvironmentInspectors(scene::GameObject* go, EditorContext& ctx, std::a
                         "このプロファイルは何も上書きしません (Override が 0 個)");
                 } else {
                     ImGui::TextDisabled("上書きする効果: %s", driven.c_str());
-                    if (inactiveCount > 0)
+                    if (inactiveCount > 0) {
                         ImGui::TextDisabled("(ほかに %d 個が一時無効)", inactiveCount);
+                    }
                 }
             }
 
             ImGui::SeparatorText("Volume");
             property::Checkbox("Global",          &ppv.isGlobal);
             property::DragInt("Priority",         &ppv.priority);
-            if (ImGui::IsItemHovered())
+            if (ImGui::IsItemHovered()) {
                 ImGui::SetTooltip("小さいものから順に合成する。大きいほど後勝ちで強く出る。");
+            }
             property::DragFloat("Blend Weight",   &ppv.blendWeight,     0.01f, 0.0f, 1.0f);
             if (!ppv.isGlobal) {
                 property::DragFloat("Influence Radius (m)", &ppv.influenceRadius, 0.5f, 0.1f, 1000.0f);
@@ -515,7 +544,7 @@ void DrawEnvironmentInspectors(scene::GameObject* go, EditorContext& ctx, std::a
                                       "0 にすると半径をまたいだ瞬間にルックが飛ぶ。");
             }
 
-            /// @note プロファイル編集は全参照へ届くため、volume 固有の編集欄として表示しない。
+            // プロファイル編集は全参照へ届くため、volume 固有の編集欄として表示しない。
             if (usingProfile) {
                 ImGui::Spacing();
                 ImGui::TextDisabled("ルックの編集は Project ウィンドウで .fzdata を選択して行います。");
@@ -525,4 +554,4 @@ void DrawEnvironmentInspectors(scene::GameObject* go, EditorContext& ctx, std::a
 }
 
 
-} /// @note namespace fbzz::editor
+} // namespace fbzz::editor

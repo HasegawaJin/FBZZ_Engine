@@ -67,7 +67,9 @@ public:
     /// @brief 32-bit int に収まる整数だけを output へ書く。
     [[nodiscard]] bool TryGetInt32(int& output) const
     {
-        if (m_type != Type::Int || m_int < std::numeric_limits<int>::min() || m_int > std::numeric_limits<int>::max()) return false;
+        if (m_type != Type::Int || m_int < std::numeric_limits<int>::min() || m_int > std::numeric_limits<int>::max()) {
+            return false;
+        }
         output = static_cast<int>(m_int);
         return true;
     }
@@ -81,7 +83,9 @@ public:
     [[nodiscard]] bool TryGetFloat(float& output) const
     {
         if (m_type != Type::Float || !std::isfinite(m_float)
-            || m_float > std::numeric_limits<float>::max() || m_float < -std::numeric_limits<float>::max()) return false;
+            || m_float > std::numeric_limits<float>::max() || m_float < -std::numeric_limits<float>::max()) {
+            return false;
+        }
         output = static_cast<float>(m_float);
         return std::isfinite(output);
     }
@@ -103,16 +107,23 @@ public:
     {
         m_type = Type::Object;
         for (Member& member : m_object) {
-            if (member.first == key) { member.second = std::move(value); return; }
+            if (member.first == key) {
+                member.second = std::move(value);
+                return;
+            }
         }
         m_object.emplace_back(std::move(key), std::move(value));
     }
 
     [[nodiscard]] const OpData* Find(std::string_view key) const
     {
-        if (m_type != Type::Object) return nullptr;
+        if (m_type != Type::Object) {
+            return nullptr;
+        }
         for (const Member& member : m_object)
-            if (member.first == key) return &member.second;
+            if (member.first == key) {
+                return &member.second;
+            }
         return nullptr;
     }
 
@@ -130,4 +141,4 @@ private:
 /// @note 有限な数値だけを UTF-8 JSON に変換する。失敗時は output を変更しない。
 [[nodiscard]] bool WriteOpDataJson(const OpData& value, std::string& output);
 
-} /// @note namespace fbzz::editor
+} // namespace fbzz::editor

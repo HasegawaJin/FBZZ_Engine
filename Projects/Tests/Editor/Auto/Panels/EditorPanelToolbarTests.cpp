@@ -7,11 +7,13 @@
 #include <Editor/Panels/Diagnostics/ConsolePanel.hpp>
 #include <Editor/Project/EditorSettings.hpp>
 #include <Engine/Util/Files/FileSystem.hpp>
+#include <algorithm>
 #include <fstream>
 #include <Editor/Panels/Project/HotkeyEditorPanel.hpp>
 #include <Editor/Panels/Scene/SceneHierarchyPanel.hpp>
 #include <Editor/Op/EditorOperator.hpp>
 #include <Editor/Op/HotkeyManager.hpp>
+#include <Editor/Scene/Editing/Selection.hpp>
 #include <Editor/Scene/Editing/UndoStack.hpp>
 #include <Engine/Scene/Scene.hpp>
 #include <Engine/Scene/Components/Camera/CameraComponent.hpp>
@@ -257,43 +259,71 @@ TEST_F(EditorPanelToolbarTest, ClickingGridCaptionSelectsTheAsset)
     const auto root = File("Palette");
     std::filesystem::create_directories(root);
     const auto file = root / "Sample.txt";
-    std::ofstream(file).put('x');
-    editor::AssetBrowserPanel panel(util::FileSystem::PathToUtf8(root));
+    std::ofstream fileStream(file);
+    fileStream.put('x');
+    fileStream.close();
+    ASSERT_TRUE(fileStream.good());
+
+    constexpr float PANEL_WIDTH = 800.0f;
+    constexpr float ICON_SIZES[] = {64.0f, 112.0f};
+    const std::string rootPath = util::FileSystem::PathToUtf8(root);
+    const std::string path = util::FileSystem::NormalizePathSeparators(util::FileSystem::PathToUtf8(file));
+    editor::AssetBrowserPanel panel(rootPath);
     editor::EditorSettings settings;
     auto& state = settings.AssetBrowserPanelAt(0);
-    state.currentFolder = util::FileSystem::PathToUtf8(root);
+    state.currentFolder = rootPath;
     state.treeShowFiles = false;
-    state.iconSize = 64;
-    panel.OnLoadSettings(settings);
-    Frame(panel, 800);
-    Frame(panel, 800);
-    auto* window = ImGui::FindWindowByName("Asset Browser###Asset Browser");
-    ASSERT_NE(window, nullptr);
-    auto* content = window->DC.ChildWindows.back();
-    const std::string path = util::FileSystem::NormalizePathSeparators(util::FileSystem::PathToUtf8(file));
-    const auto tile = ImHashStr("##icon", 0, content->GetID(path.c_str()));
-    const float x = content->DC.CursorStartPos.x + state.iconSize * 0.5f;
     auto& io = ImGui::GetIO();
-    float top = 0.0f;
-    for (float y = content->Pos.y; y < content->Pos.y + content->Size.y; ++y) {
-        io.AddMousePosEvent(x, y);
-        Frame(panel, 800);
-        if (ImGui::GetCurrentContext()->HoveredId == tile) {
-            top = y;
-            break;
-        }
-    }
-    ASSERT_GT(top, 0.0f);
-    for (const auto* popup : ImGui::GetCurrentContext()->Windows)
-        EXPECT_FALSE(popup->Active && (popup->Flags & ImGuiWindowFlags_Tooltip))
-            << "Passing over a card should leave the grid visible";
 
-    io.AddMousePosEvent(x, top + state.iconSize + ImGui::GetStyle().ItemSpacing.y + 4.0f);
-    io.AddMouseButtonEvent(ImGuiMouseButton_Left, true);
-    Frame(panel, 800);
-    io.AddMouseButtonEvent(ImGuiMouseButton_Left, false);
-    Frame(panel, 800);
-    EXPECT_TRUE(util::FileSystem::SamePathText(Context().selectedAssetPath, path));
+    for (float iconSize : ICON_SIZES) {
+        SCOPED_TRACE(iconSize);
+        editor::ClearAssetSelection(Context());
+        state.iconSize = iconSize;
+        panel.OnLoadSettings(settings);
+        io.AddMousePosEvent(io.DisplaySize.x - 1.0f, io.DisplaySize.y - 1.0f);
+        Frame(panel, PANEL_WIDTH);
+        const std::string rendered = Frame(panel, PANEL_WIDTH);
+        ASSERT_NE(rendered.find("Sample.txt"), std::string::npos) << rendered;
+
+        auto* window = ImGui::FindWindowByName("Asset Browser###Asset Browser");
+        ASSERT_NE(window, nullptr);
+        const ImGuiID contentId = window->GetID("##content");
+        const auto& children = window->DC.ChildWindows;
+        const auto child = std::find_if(children.begin(), children.end(), [contentId](const ImGuiWindow* candidate) {
+            return candidate->ChildId == contentId;
+        });
+        ASSERT_NE(child, children.end());
+        auto* content = *child;
+        const ImGuiID tile = ImHashStr("##icon", 0, content->GetID(path.c_str()));
+
+        // 1 枚だけのグリッドでは内容の下端が名前欄の下端になる。描画済みの位置から各欄の中央を求める。
+        const float labelHeight = ImGui::GetFrameHeight();
+        const float captionBottom = content->DC.CursorMaxPos.y;
+        const float x = content->DC.CursorStartPos.x + iconSize * 0.5f;
+        const ImVec2 caption{x, captionBottom - labelHeight * 0.5f};
+        const ImVec2 thumbnail{x, captionBottom - labelHeight - ImGui::GetStyle().ItemSpacing.y - iconSize * 0.5f};
+        ASSERT_TRUE(content->InnerClipRect.Contains(caption));
+        ASSERT_TRUE(content->InnerClipRect.Contains(thumbnail));
+
+        // ツールバーを通過せずにカードへ移し、止まる前にツールチップが開かないことを確認する。
+        io.AddMousePosEvent(thumbnail.x, thumbnail.y);
+        Frame(panel, PANEL_WIDTH);
+        ASSERT_EQ(ImGui::GetCurrentContext()->HoveredId, tile);
+        for (const auto* popup : ImGui::GetCurrentContext()->Windows) {
+            EXPECT_FALSE(popup->Active && (popup->Flags & ImGuiWindowFlags_Tooltip))
+                << "Entering a card should leave the grid visible";
+        }
+
+        io.AddMousePosEvent(caption.x, caption.y);
+        Frame(panel, PANEL_WIDTH);
+        ASSERT_EQ(ImGui::GetCurrentContext()->HoveredId, tile);
+        io.AddMouseButtonEvent(ImGuiMouseButton_Left, true);
+        Frame(panel, PANEL_WIDTH);
+        EXPECT_TRUE(Context().selectedAssetPath.empty());
+        io.AddMouseButtonEvent(ImGuiMouseButton_Left, false);
+        Frame(panel, PANEL_WIDTH);
+        EXPECT_TRUE(util::FileSystem::SamePathText(Context().selectedAssetPath, path));
+    }
 }
 
 /// @brief フォルダーの原画を配布する全サイズで読み込み、背景の透過と本体の不透明性を保つ。

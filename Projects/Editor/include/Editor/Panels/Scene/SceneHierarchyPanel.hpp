@@ -38,26 +38,24 @@ private:
     /// @note       リネーム→隣を選ぶ→リネームの連続作業が全部マウス往復になっていた。
     void HandleKeyboardNavigation(EditorContext& ctx);
 
-    /// @note SetParent 成功後、次フレームで強制 open するノードの EntityID
-    scene::EntityID m_pendingExpand;
+    scene::EntityID m_pendingExpand; ///< SetParent 成功後、次フレームで強制 open するノードの EntityID
 
-    std::vector<scene::EntityID> m_revealOpenChain; /// @note 強制 open する祖先 (描画後に空にする)
-    scene::EntityID              m_revealScrollTo;  /// @note 行までスクロールする対象
-    scene::EntityID m_lastClickedEntity;               /// @note Shift+クリック範囲選択のアンカー
-    scene::EntityID m_pendingClickEntity;              /// @note ドラッグにならなかったクリックの保留
-    bool            m_hierarchyDragStarted = false;    /// @note 今フレームをまたいでドラッグ中か
-    scene::EntityID m_renamingId;                      /// @note F2 リネーム対象
-    char            m_renameBuffer[256] = {};
-    bool            m_renameFocusPending = false;      /// @note インライン入力欄へ初回フォーカスを移す
-    std::vector<scene::EntityID> m_visibleOrder;       /// @note 前フレームの描画順 (Shift+クリック用)
+    std::vector<scene::EntityID> m_revealOpenChain; ///< 表示要求を受けた行へ辿るために開く祖先 EntityID の列。
+    scene::EntityID              m_revealScrollTo; ///< 祖先を開いた後に表示位置までスクロールする対象の EntityID。
+    scene::EntityID m_lastClickedEntity; ///< 範囲選択の起点に使う最後のクリック対象の EntityID。
+    scene::EntityID m_pendingClickEntity; ///< クリック確定まで保持する EntityID。ドラッグへ移った場合は選択しない。
+    bool            m_hierarchyDragStarted = false; ///< 現在の押下で行のドラッグを開始したか。
+    scene::EntityID m_renamingId; ///< インラインで名前を変更している EntityID。
+    char            m_renameBuffer[256] = {}; ///< オブジェクトの新しい名前を入力するバッファ。
+    bool            m_renameFocusPending = false; ///< インライン入力欄を表示したらフォーカスする要求。
+    std::vector<scene::EntityID> m_visibleOrder; ///< 範囲選択に使う、Hierarchy に表示された行の EntityID 順。
 
-    /// @note 前フレームの並びを描画中に維持し、完了後に swap する。値は毎フレーム作り直す。
-    std::vector<scene::EntityID> m_nextVisibleOrder;
-    HierarchyTraversal m_traversal;
+    std::vector<scene::EntityID> m_nextVisibleOrder; ///< 前フレームの並びを描画中に維持し、完了後に swap する。値は毎フレーム作り直す。
+    HierarchyTraversal m_traversal; ///< 現在のシーンの階層索引と、一回の表示巡回の作業状態。
 
-    char m_searchFilter[128] = {};
-    const scene::Scene* m_expansionScene = nullptr;
-    std::unordered_map<std::string, bool> m_expansionRequests;
+    char m_searchFilter[128] = {}; ///< Hierarchy の名前絞り込み用の文字列バッファ。
+    const scene::Scene* m_expansionScene = nullptr; ///< 展開・折りたたみ要求の対象を照合するために借りるシーン。
+    std::unordered_map<std::string, bool> m_expansionRequests; ///< 次回の描画で反映する、オブジェクトの GUID ごとの開閉要求。
 };
 
-} /// @note namespace fbzz::editor
+} // namespace fbzz::editor

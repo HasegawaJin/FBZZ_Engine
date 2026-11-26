@@ -21,4 +21,4 @@ struct PixOperatorServices {
 
 void RegisterPixOperators(OperatorRegistry& registry, PixOperatorServices services);
 
-} /// @note namespace fbzz::editor
+} // namespace fbzz::editor

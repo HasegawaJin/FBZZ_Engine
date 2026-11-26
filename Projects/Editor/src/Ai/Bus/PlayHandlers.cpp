@@ -36,8 +36,12 @@ namespace {
 Outcome DoViewportCapture(editor::EditorContext& ctx, renderer::ResourceHandle<renderer::RenderTargetTag> rt,
     uint32_t requestedWidth, uint32_t requestedHeight)
 {
-    if (ctx.renderer == nullptr || ctx.resources == nullptr) return Outcome::Err("NO_RENDERER", "レンダラーが未初期化です");
-    if (!rt.IsValid()) return Outcome::Err("NO_VIEWPORT", "Scene View RT が未生成です");
+    if (ctx.renderer == nullptr || ctx.resources == nullptr) {
+        return Outcome::Err("NO_RENDERER", "レンダラーが未初期化です");
+    }
+    if (!rt.IsValid()) {
+        return Outcome::Err("NO_VIEWPORT", "Scene View RT が未生成です");
+    }
 
     std::vector<uint8_t> png;
     uint32_t width = 0;
@@ -45,7 +49,9 @@ Outcome DoViewportCapture(editor::EditorContext& ctx, renderer::ResourceHandle<r
     if (!ctx.renderer->CaptureRenderTargetToPng(rt, *ctx.resources, png, width, height) || png.empty()) {
         return Outcome::Err("CAPTURE_FAILED", "viewport のキャプチャに失敗しました");
     }
-    if (width == 0 || height == 0) return Outcome::Err("CAPTURE_FAILED", "撮影元の寸法が不正です");
+    if (width == 0 || height == 0) {
+        return Outcome::Err("CAPTURE_FAILED", "撮影元の寸法が不正です");
+    }
     const uint32_t sourceWidth = width, sourceHeight = height;
     if (requestedWidth || requestedHeight) {
         const uint32_t boundWidth = requestedWidth ? requestedWidth : 4096;
@@ -55,8 +61,9 @@ Outcome DoViewportCapture(editor::EditorContext& ctx, renderer::ResourceHandle<r
         const uint32_t outputHeight = std::clamp(static_cast<uint32_t>(std::lround(height * scale)), 1u, boundHeight);
         if (outputWidth != width || outputHeight != height) {
             playtest::RgbaImage input;
-            if (!playtest::DecodePng(png, input) || input.width != width || input.height != height)
+            if (!playtest::DecodePng(png, input) || input.width != width || input.height != height) {
                 return Outcome::Err("DECODE_FAILED", "撮影PNGと描画元の寸法が一致しません");
+            }
             playtest::RgbaImage output{outputWidth, outputHeight, {}};
             output.pixels.resize(static_cast<size_t>(outputWidth) * outputHeight * 4);
             for (uint32_t y = 0; y < outputHeight; ++y) {
@@ -78,8 +85,11 @@ Outcome DoViewportCapture(editor::EditorContext& ctx, renderer::ResourceHandle<r
                     }
                 }
             }
-            if (!playtest::EncodePng(output, png)) return Outcome::Err("ENCODE_FAILED", "撮影PNGをリサイズできません");
-            width = outputWidth; height = outputHeight;
+            if (!playtest::EncodePng(output, png)) {
+                return Outcome::Err("ENCODE_FAILED", "撮影PNGをリサイズできません");
+            }
+            width = outputWidth;
+            height = outputHeight;
         }
     }
     JsonValue result = JsonValue::MakeObject();
@@ -120,7 +130,9 @@ void AddSemanticViewportData(JsonValue& result, const RenderCaptureFrame& source
         pixel.Push(JsonValue((ndcX * 0.5f + 0.5f) * width));
         pixel.Push(JsonValue((1.0f - (ndcY * 0.5f + 0.5f)) * height));
         object.Set("pixel", std::move(pixel));
-        if (!go.parent.empty()) object.Set("parent", JsonValue(go.parent));
+        if (!go.parent.empty()) {
+            object.Set("parent", JsonValue(go.parent));
+        }
         objects.Push(std::move(object));
     }
     result.Set("objects", std::move(objects));
@@ -130,12 +142,16 @@ void AddSemanticViewportData(JsonValue& result, const RenderCaptureFrame& source
 /// @brief Play 中のゲームへ仮想入力を注入する (input.inject)。
 Outcome DoInputInject(editor::EditorContext& ctx, const JsonValue& payload, bool dryRun)
 {
-    if (ctx.playMode == nullptr) return Outcome::Err("NO_PLAY_MODE", "PlayModeController が未設定です");
+    if (ctx.playMode == nullptr) {
+        return Outcome::Err("NO_PLAY_MODE", "PlayModeController が未設定です");
+    }
     const std::string kind = StringField(payload, "kind");
     if (kind != "clear" && ctx.playMode->IsInEditor()) {
         return Outcome::Err("INVALID_PLAY_STATE", "入力注入は Play/Pause 中だけ実行できます");
     }
-    if (dryRun) return DryRunPreview("input.inject:" + kind);
+    if (dryRun) {
+        return DryRunPreview("input.inject:" + kind);
+    }
     bool applied = false;
     if (kind == "clear") {
         input::Input::ClearInjected();
@@ -143,22 +159,30 @@ Outcome DoInputInject(editor::EditorContext& ctx, const JsonValue& payload, bool
     } else if (kind == "key") {
         const int key = VirtualKeyFromName(StringField(payload, "key"));
         const JsonValue* pressed = payload.Find("pressed");
-        if (key < 0 || pressed == nullptr || !pressed->IsBool()) return Outcome::Err("BAD_ARG", "有効な key / pressed が必要です");
+        if (key < 0 || pressed == nullptr || !pressed->IsBool()) {
+            return Outcome::Err("BAD_ARG", "有効な key / pressed が必要です");
+        }
         applied = input::Input::InjectKey(static_cast<uint32_t>(key), pressed->AsBool());
     } else if (kind == "axis") {
         const std::string axis = StringField(payload, "axis");
         const JsonValue* value = payload.Find("value");
-        if (value == nullptr || !value->IsNumber()) return Outcome::Err("BAD_ARG", "axis / value が必要です");
+        if (value == nullptr || !value->IsNumber()) {
+            return Outcome::Err("BAD_ARG", "axis / value が必要です");
+        }
         applied = input::Input::SetVirtualAxis(axis, static_cast<float>(value->AsNumber()));
     } else if (kind == "gamepadAxis") {
         const std::string axis = StringField(payload, "axis");
         const JsonValue* value = payload.Find("value");
-        if (value == nullptr || !value->IsNumber()) return Outcome::Err("BAD_ARG", "axis / value が必要です");
+        if (value == nullptr || !value->IsNumber()) {
+            return Outcome::Err("BAD_ARG", "axis / value が必要です");
+        }
         applied = input::Input::SetVirtualAxis(axis, static_cast<float>(value->AsNumber()));
     } else if (kind == "gamepadButton") {
         const std::string buttonName = StringField(payload, "buttonName");
         const JsonValue* pressed = payload.Find("pressed");
-        if (pressed == nullptr || !pressed->IsBool()) return Outcome::Err("BAD_ARG", "buttonName / pressed が必要です");
+        if (pressed == nullptr || !pressed->IsBool()) {
+            return Outcome::Err("BAD_ARG", "buttonName / pressed が必要です");
+        }
         applied = input::Input::SetVirtualButton(buttonName, pressed->AsBool());
     } else if (kind == "mouseButton") {
         const JsonValue* button = payload.Find("button");
@@ -177,12 +201,17 @@ Outcome DoInputInject(editor::EditorContext& ctx, const JsonValue& payload, bool
             static_cast<float>(value->AsArray()[0].AsNumber()),
             static_cast<float>(value->AsArray()[1].AsNumber())
         };
-        if (kind == "mousePosition") input::Input::InjectMousePosition(vector);
-        else input::Input::InjectMouseDelta(vector);
+        if (kind == "mousePosition") {
+            input::Input::InjectMousePosition(vector);
+        } else {
+            input::Input::InjectMouseDelta(vector);
+        }
         applied = true;
     } else if (kind == "mouseScroll") {
         const JsonValue* value = payload.Find("value");
-        if (value == nullptr || !value->IsNumber()) return Outcome::Err("BAD_ARG", "value が必要です");
+        if (value == nullptr || !value->IsNumber()) {
+            return Outcome::Err("BAD_ARG", "value が必要です");
+        }
         input::Input::InjectMouseScroll(static_cast<float>(value->AsNumber()));
         applied = true;
     } else {
@@ -203,24 +232,37 @@ Outcome DoPlayControl(editor::EditorContext& ctx, const JsonValue& payload, bool
     }
     const bool standaloneActive = ctx.standalonePlay && ctx.standalonePlay->IsActive();
     const std::string action = StringField(payload, "action");
-    if (dryRun) return DryRunPreview(type + ":" + action);
+    if (dryRun) {
+        return DryRunPreview(type + ":" + action);
+    }
     const char* operatorId = nullptr;
     if (action == "start") {
-        if (ctx.managedBuildBusy) return Outcome::Err("MANAGED_BUILD_BUSY", "C# のビルド適用中は Play を開始できません");
-        if (standaloneActive || !ctx.playMode->IsInEditor()) return Outcome::Err("INVALID_PLAY_STATE", "Play は Editor 状態からのみ開始できます");
+        if (ctx.managedBuildBusy) {
+            return Outcome::Err("MANAGED_BUILD_BUSY", "C# のビルド適用中は Play を開始できません");
+        }
+        if (standaloneActive || !ctx.playMode->IsInEditor()) {
+            return Outcome::Err("INVALID_PLAY_STATE", "Play は Editor 状態からのみ開始できます");
+        }
         operatorId = "play.start";
     } else if (action == "stop") {
-        if (!standaloneActive && ctx.playMode->IsInEditor() && !editor::CanInvokeOperator(ctx, "play.stop"))
+        if (!standaloneActive && ctx.playMode->IsInEditor() && !editor::CanInvokeOperator(ctx, "play.stop")) {
             return Outcome::Err("INVALID_PLAY_STATE", "Play Mode は開始されていません");
+        }
         operatorId = "play.stop";
     } else if (action == "pause") {
-        if (!ctx.playMode->IsPlaying()) return Outcome::Err("INVALID_PLAY_STATE", "一時停止は Playing 状態でのみ実行できます");
+        if (!ctx.playMode->IsPlaying()) {
+            return Outcome::Err("INVALID_PLAY_STATE", "一時停止は Playing 状態でのみ実行できます");
+        }
         operatorId = "play.pause";
     } else if (action == "resume") {
-        if (!ctx.playMode->IsPaused()) return Outcome::Err("INVALID_PLAY_STATE", "再開は Paused 状態でのみ実行できます");
+        if (!ctx.playMode->IsPaused()) {
+            return Outcome::Err("INVALID_PLAY_STATE", "再開は Paused 状態でのみ実行できます");
+        }
         operatorId = "play.pause";
     } else if (action == "step") {
-        if (!ctx.playMode->IsPaused()) return Outcome::Err("INVALID_PLAY_STATE", "ステップは Paused 状態でのみ実行できます");
+        if (!ctx.playMode->IsPaused()) {
+            return Outcome::Err("INVALID_PLAY_STATE", "ステップは Paused 状態でのみ実行できます");
+        }
         operatorId = "play.step";
     } else {
         return Outcome::Err("BAD_ARG", "未知の Play action: " + action);
@@ -228,13 +270,17 @@ Outcome DoPlayControl(editor::EditorContext& ctx, const JsonValue& payload, bool
     JsonValue operatorPayload = JsonValue::MakeObject();
     operatorPayload.Set("id", JsonValue(operatorId));
     Outcome invocation = FromBridge(InvokeOperator(ctx, operatorPayload, false));
-    if (!invocation.ok) return invocation;
+    if (!invocation.ok) {
+        return invocation;
+    }
     JsonValue result = JsonValue::MakeObject();
     result.Set("action", JsonValue(action));
     const bool standaloneNow = ctx.standalonePlay && ctx.standalonePlay->IsActive();
     result.Set("playState", JsonValue(standaloneNow ? "standalone" : PlayStateName(*ctx.playMode)));
     result.Set("executionMode", JsonValue(ctx.playExecutionMode == PlayExecutionMode::STANDALONE ? "standalone" : "inEditor"));
-    if (ctx.standalonePlay) result.Set("standaloneDiagnostic", JsonValue(ctx.standalonePlay->Diagnostic()));
+    if (ctx.standalonePlay) {
+        result.Set("standaloneDiagnostic", JsonValue(ctx.standalonePlay->Diagnostic()));
+    }
     result.Set("restorePending", JsonValue(ctx.playMode->HasPendingRestore()));
     return Outcome::Ok(std::move(result));
 }
@@ -242,7 +288,9 @@ Outcome DoPlayControl(editor::EditorContext& ctx, const JsonValue& payload, bool
 Outcome DoViewportCamera(editor::EditorContext& ctx, const JsonValue& payload, bool dryRun)
 {
     const std::string type = "viewport.camera";
-    if (ctx.editorCamera == nullptr) return Outcome::Err("NO_CAMERA", "Scene View カメラが未設定です");
+    if (ctx.editorCamera == nullptr) {
+        return Outcome::Err("NO_CAMERA", "Scene View カメラが未設定です");
+    }
     math::Vector3 position;
     math::Vector3 lookAt;
     const bool hasPosition = ReadVec3(payload, "position", position);
@@ -250,18 +298,30 @@ Outcome DoViewportCamera(editor::EditorContext& ctx, const JsonValue& payload, b
     const std::string targetId = StringField(payload, "targetId");
     if (!targetId.empty()) {
         GameObject* target = ctx.activeScene != nullptr ? ctx.activeScene->FindByGuid(targetId) : nullptr;
-        if (target == nullptr) return Outcome::Err("NODE_NOT_FOUND", "targetId が見つかりません: " + targetId);
+        if (target == nullptr) {
+            return Outcome::Err("NODE_NOT_FOUND", "targetId が見つかりません: " + targetId);
+        }
         lookAt = target->transform.worldPosition;
         hasLookAt = true;
     }
-    if (!hasPosition && !hasLookAt) return Outcome::Err("BAD_ARG", "position / lookAt / targetId のいずれかが必要です");
-    if (dryRun) return DryRunPreview(type);
-    if (hasPosition) ctx.editorCamera->m_position = position;
-    if (hasLookAt) ctx.editorCamera->LookAt(lookAt);
+    if (!hasPosition && !hasLookAt) {
+        return Outcome::Err("BAD_ARG", "position / lookAt / targetId のいずれかが必要です");
+    }
+    if (dryRun) {
+        return DryRunPreview(type);
+    }
+    if (hasPosition) {
+        ctx.editorCamera->m_position = position;
+    }
+    if (hasLookAt) {
+        ctx.editorCamera->LookAt(lookAt);
+    }
     JsonValue result = JsonValue::MakeObject();
     result.Set("position", VectorToJson(ctx.editorCamera->m_position));
     result.Set("forward", VectorToJson(ctx.editorCamera->GetForward()));
-    if (hasLookAt) result.Set("lookAt", VectorToJson(lookAt));
+    if (hasLookAt) {
+        result.Set("lookAt", VectorToJson(lookAt));
+    }
     return Outcome::Ok(std::move(result));
 }
 
@@ -271,40 +331,60 @@ Outcome ReadViewportFrame(BusCall& call, bool semantic)
     uint32_t requestedWidth = 0, requestedHeight = 0;
     for (const char* key : {"w", "h"}) {
         const auto* dimension = call.payload.Find(key);
-        if (!dimension) continue;
-        if (!dimension->IsInteger() || dimension->AsInt64() < 1 || dimension->AsInt64() > 4096)
+        if (!dimension) {
+            continue;
+        }
+        if (!dimension->IsInteger() || dimension->AsInt64() < 1 || dimension->AsInt64() > 4096) {
             return Outcome::Err("BAD_ARG", "w/h は1〜4096の整数です");
+        }
         (key[0] == 'w' ? requestedWidth : requestedHeight) = static_cast<uint32_t>(dimension->AsInt64());
     }
     std::string view = StringField(call.payload, "view");
-    if (view.empty()) view = "scene";
-    if (view != "scene" && view != "game") return Outcome::Err("BAD_ARG", "view は scene か game で指定してください");
+    if (view.empty()) {
+        view = "scene";
+    }
+    if (view != "scene" && view != "game") {
+        return Outcome::Err("BAD_ARG", "view は scene か game で指定してください");
+    }
     const auto* requestedFrame = call.payload.Find("minFrame");
-    if (requestedFrame && (!requestedFrame->IsInteger() || requestedFrame->AsInt64() < 0))
+    if (requestedFrame && (!requestedFrame->IsInteger() || requestedFrame->AsInt64() < 0)) {
         return Outcome::Err("BAD_ARG", "minFrame は非負の整数です");
+    }
     const auto minFrame = requestedFrame ? static_cast<std::uint64_t>(requestedFrame->AsInt64()) : 0;
     const bool gameView = view == "game";
     const auto target = gameView ? call.state.gameViewportRT : call.state.sceneViewportRT;
-    if (!target.IsValid()) return Outcome::Err("NO_VIEWPORT", "選択したビューの Render Target が未生成です");
+    if (!target.IsValid()) {
+        return Outcome::Err("NO_VIEWPORT", "選択したビューの Render Target が未生成です");
+    }
     const auto index = gameView ? 1 : 0;
     ctx.aiViewportRenderUntilFrame = Time::frameCount + 8;
-    if (semantic) ctx.semanticCaptureUntilFrame[index] = ctx.aiViewportRenderUntilFrame;
+    if (semantic) {
+        ctx.semanticCaptureUntilFrame[index] = ctx.aiViewportRenderUntilFrame;
+    }
     const auto& source = ctx.viewportCaptureFrames[index];
-    if (!CanReadCaptureFrame(ctx, source, target, minFrame) || (semantic && !source.hasSemantic))
+    if (!CanReadCaptureFrame(ctx, source, target, minFrame) || (semantic && !source.hasSemantic)) {
         return Outcome::Err("CAPTURE_NOT_READY", "CAPTURE_NOT_READY: 指定フレーム以降の描画完了を待っています");
+    }
     const auto cameraId = StringField(call.payload, "cameraId");
-    if (!cameraId.empty() && cameraId != source.cameraId)
+    if (!cameraId.empty() && cameraId != source.cameraId) {
         return Outcome::Err("CAMERA_MISMATCH", "指定したカメラはこのビューの描画に使われていません");
+    }
 
     auto outcome = DoViewportCapture(ctx, target, requestedWidth, requestedHeight);
-    if (!outcome.ok) return outcome;
+    if (!outcome.ok) {
+        return outcome;
+    }
     outcome.result.Set("view", JsonValue(view));
-    if (!semantic && !source.cameraId.empty()) outcome.result.Set("cameraId", JsonValue(source.cameraId));
+    if (!semantic && !source.cameraId.empty()) {
+        outcome.result.Set("cameraId", JsonValue(source.cameraId));
+    }
     outcome.result.Set("provenance", source.Describe<JsonValue>("ViewportOutput", "Output"));
-    if (semantic) AddSemanticViewportData(outcome.result, source);
+    if (semantic) {
+        AddSemanticViewportData(outcome.result, source);
+    }
     return outcome;
 }
-} /// @note namespace
+} // namespace
 
 void RegisterPlayHandlers(BusHandlerTable& table)
 {
@@ -316,4 +396,4 @@ void RegisterPlayHandlers(BusHandlerTable& table)
     table.AddCommand("viewport.camera", [](BusCall& call) { return DoViewportCamera(call.ctx, call.payload, call.dryRun); });
 }
 
-} /// @note namespace fbzz::editor::ai::bus
+} // namespace fbzz::editor::ai::bus

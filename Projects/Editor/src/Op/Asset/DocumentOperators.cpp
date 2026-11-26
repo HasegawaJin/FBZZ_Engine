@@ -39,11 +39,15 @@ OpParam PathParam(const char* description)
 ///       持つ。片方しか受けないと、呼び出し元によって「ファイルが無い」と言われてしまう。
 std::string ResolveExistingPath(const EditorContext& context, const std::string& path)
 {
-    if (util::FileSystem::Exists(path)) return path;
+    if (util::FileSystem::Exists(path)) {
+        return path;
+    }
 
     const std::string assetPath = NormalizeAssetPath(path);
     const std::string diskPath  = ToProjectAssetDiskPath(context.projectRoot, assetPath);
-    if (util::FileSystem::Exists(diskPath)) return diskPath;
+    if (util::FileSystem::Exists(diskPath)) {
+        return diskPath;
+    }
 
     return {};
 }
@@ -66,14 +70,18 @@ void RegisterDocumentOperators(OperatorRegistry& registry)
         op.params = { preset, PathParam("Assets 配下の未作成フォルダ。例: Assets/VFX/MyLanding") };
         op.poll = [](const OpContext& context, const OpArgs&) { return context.ctx.fluidBake != nullptr; };
         op.exec = [](OpContext& context, const OpArgs& args) -> OpResult {
-            if (context.ctx.fluidBake == nullptr) return OpResult::Err("NO_SERVICE", "FluidBakeService がありません");
+            if (context.ctx.fluidBake == nullptr) {
+                return OpResult::Err("NO_SERVICE", "FluidBakeService がありません");
+            }
             const std::string name = args.GetString("preset");
             const auto preset = name == "landing" ? FluidEffectTemplate::LANDING
                 : name == "charge_release" ? FluidEffectTemplate::CHARGE_RELEASE
                 : name == "magic_eruption" ? FluidEffectTemplate::MAGIC_ERUPTION : FluidEffectTemplate::COUNT;
             FluidJobError error;
             const auto id = context.ctx.fluidBake->EnqueueEffectTemplate(context.ctx, preset, args.GetString("path"), error);
-            if (id == 0) return OpResult::Err(error.code, error.message);
+            if (id == 0) {
+                return OpResult::Err(error.code, error.message);
+            }
             context.ctx.requestAssetBrowserRefresh = true;
             OpResult result;
             result.message = "素材と演出テンプレートを作成しています";
@@ -83,7 +91,7 @@ void RegisterDocumentOperators(OperatorRegistry& registry)
         registry.Register(std::move(op));
     }
 
-    /// @name アセットを開く
+    // アセットを開く
     {
         EditorOperator op;
         op.id       = "asset.open";
@@ -103,8 +111,10 @@ void RegisterDocumentOperators(OperatorRegistry& registry)
         op.params   = { PathParam("絶対パスまたは Assets 起点のアセットパス") };
 
         op.poll = [](const OpContext& context, const OpArgs& args) {
-            /// @note 引数なしの評価 (パレット) では可否を伏せない
-            if (!args.Has("path")) return true;
+            // 引数なしの評価 (パレット) では可否を伏せない
+            if (!args.Has("path")) {
+                return true;
+            }
             return !ResolveExistingPath(context.ctx, args.GetString("path")).empty();
         };
 
@@ -120,48 +130,57 @@ void RegisterDocumentOperators(OperatorRegistry& registry)
 
             OpResult result;
             if (ext == ".scene") {
-                /// @note 未保存確認は requestOpenScene (人の導線) が持つ。
-                if (!ctx.requestOpenScene)
+                // 未保存確認は requestOpenScene (人の導線) が持つ。
+                if (!ctx.requestOpenScene) {
                     return OpResult::Err("NO_HANDLER", "シーンを開く経路が未結線です");
+                }
                 ctx.requestOpenScene(path);
                 result.message = "シーンを開きます";
             } else if (ext == ".animcontroller") {
-                /// @note 開くドキュメントを先に渡してから窓を出す (AssetBrowser と同じ順)。
-                ///       逆にすると、パネルは前回のドキュメントを 1 フレーム描いてしまう。
-                if (ctx.openAnimationGraph) ctx.openAnimationGraph(path);
+                // 開くドキュメントを先に渡してから窓を出す (AssetBrowser と同じ順)。
+                // 逆にすると、パネルは前回のドキュメントを 1 フレーム描いてしまう。
+                if (ctx.openAnimationGraph) {
+                    ctx.openAnimationGraph(path);
+                }
                 ctx.requestOpenAnimationGraph = true;
                 result.message = "Animation Graph で開きます";
             } else if (ext == ".behaviortree") {
-                if (ctx.openBehaviorTree) ctx.openBehaviorTree(path);
+                if (ctx.openBehaviorTree) {
+                    ctx.openBehaviorTree(path);
+                }
                 ctx.requestOpenBehaviorTree = true;
                 result.message = "Behavior Tree で開きます";
             } else if (ext == ".synth") {
-                if (ctx.openSfxEditor) ctx.openSfxEditor(path);
+                if (ctx.openSfxEditor) {
+                    ctx.openSfxEditor(path);
+                }
                 ctx.requestOpenSfxEditor = true;
                 result.message = "SFX Editor で開きます";
             } else if (ext == ".sequence") {
-                if (ctx.openSequence) ctx.openSequence(path);
+                if (ctx.openSequence) {
+                    ctx.openSequence(path);
+                }
                 ctx.requestOpenSequence = true;
                 result.message = "Sequence で開きます";
             } else if (ext == ".fluid") {
-                /// @note 読んで消すのは Fluid Editor パネル (未保存の確認もパネルが持つ)。閉じていれば EditorApp が開く。
+                // 読んで消すのは Fluid Editor パネル (未保存の確認もパネルが持つ)。閉じていれば EditorApp が開く。
                 ctx.requestOpenFluidEditor = path;
                 result.message = "Fluid Editor で開きます";
             } else if (ext == ".vfx" || ext == ".prefab") {
-                /// @note どちらも同じプレハブ形式。中身は Prefab 編集モードで開く (Hierarchy / Inspector /
-                ///       ギズモがそのまま使える)。
-                /// @note .prefab だけ «シーンへ置く» にすると拡張子ごとに操作の意味が変わるため «配置»
-                ///       にはしない。全拡張子を通して «編集面で開く» に統一し、配置は prefab_instantiate が持つ。
-                /// @note AssetBrowser のダブルクリックは別既定 (シーン編集中の .prefab = 配置 /
-                ///       Alt+ダブルクリック = 編集) を持つ。使われ方の違いによる意図した非対称。
-                /// @note 編集中でも受け付ける。EnterPrefabEditMode は編集中なら保存して閉じてから開き
-                ///       直すため (EditorApp_Prefab.cpp:64)、弾くと «プレハブ間を移る» 手段が無くなる。
+                // どちらも同じプレハブ形式。中身は Prefab 編集モードで開く (Hierarchy / Inspector /
+                // ギズモがそのまま使える)。
+                // .prefab だけ «シーンへ置く» にすると拡張子ごとに操作の意味が変わるため «配置»
+                // にはしない。全拡張子を通して «編集面で開く» に統一し、配置は prefab_instantiate が持つ。
+                // AssetBrowser のダブルクリックは別既定 (シーン編集中の .prefab = 配置 /
+                // Alt+ダブルクリック = 編集) を持つ。使われ方の違いによる意図した非対称。
+                // 編集中でも受け付ける。EnterPrefabEditMode は編集中なら保存して閉じてから開き
+                // 直すため (EditorApp_Prefab.cpp:64)、弾くと «プレハブ間を移る» 手段が無くなる。
                 ctx.requestOpenPrefabEdit = NormalizeAssetPath(path);
                 result.message = ctx.InPrefabEditMode()
                     ? "今のプレハブを保存して切り替えます"
                     : "Prefab 編集モードで開きます";
             } else {
-                /// @note 既定は Inspector の表示対象にする (.mat / .physmat / テクスチャなど)。
+                // 既定は Inspector の表示対象にする (.mat / .physmat / テクスチャなど)。
                 SelectAsset(ctx, path);
                 result.message = "Inspector に表示します";
             }
@@ -170,10 +189,10 @@ void RegisterDocumentOperators(OperatorRegistry& registry)
         registry.Register(std::move(op));
     }
 
-    /// @name Prefab 編集モードへ入る
-    /// @note asset.open は「拡張子から開き方を決める」汎用入口で、.scene かもしれないパスをそのまま渡す。
-    ///       こちらは «プレハブを編集する» という意図そのもので、他拡張子は弾く。asset.open は
-    ///       .prefab / .vfx をここへ委譲する。
+    // Prefab 編集モードへ入る
+    // asset.open は「拡張子から開き方を決める」汎用入口で、.scene かもしれないパスをそのまま渡す。
+    // こちらは «プレハブを編集する» という意図そのもので、他拡張子は弾く。asset.open は
+    // .prefab / .vfx をここへ委譲する。
     {
         EditorOperator op;
         op.id       = "prefab.edit";
@@ -187,9 +206,13 @@ void RegisterDocumentOperators(OperatorRegistry& registry)
         op.params   = { PathParam(".prefab の絶対パスまたは Assets 起点パス") };
 
         op.poll = [](const OpContext& context, const OpArgs& args) {
-            /// @note 編集中でも呼べる。EnterPrefabEditMode が保存して閉じてから開き直す。
-            if (context.ctx.activeScene == nullptr) return false;
-            if (!args.Has("path")) return true;
+            // 編集中でも呼べる。EnterPrefabEditMode が保存して閉じてから開き直す。
+            if (context.ctx.activeScene == nullptr) {
+                return false;
+            }
+            if (!args.Has("path")) {
+                return true;
+            }
             return !ResolveExistingPath(context.ctx, args.GetString("path")).empty();
         };
 
@@ -199,24 +222,24 @@ void RegisterDocumentOperators(OperatorRegistry& registry)
                 return OpResult::Err("ASSET_NOT_FOUND",
                                      "アセットが見つかりません: " + args.GetString("path"));
             }
-            /// @note .vfx もプレハブ形式なので同じ経路で開ける (旧 DAG 形式は除く)。
+            // .vfx もプレハブ形式なので同じ経路で開ける (旧 DAG 形式は除く)。
             const std::string ext = util::StringUtils::ToLower(util::FileSystem::GetExtension(path));
             if (ext != ".prefab" && ext != ".vfx")
                 return OpResult::Err("BAD_ARG",
                                      "prefab.edit が開けるのは .prefab / .vfx だけです: " + path);
 
-            /// @note 要求だけを立てる。実際の差し替えは ProcessPrefabEditRequests が
-            ///       フレーム先頭で行う (パネル描画の途中でシーンを入れ替えると、
-            ///       以降のパネルが破棄済みの GameObject を掴む)。
+            // 要求だけを立てる。実際の差し替えは ProcessPrefabEditRequests が
+            // フレーム先頭で行う (パネル描画の途中でシーンを入れ替えると、
+            // 以降のパネルが破棄済みの GameObject を掴む)。
             context.ctx.requestOpenPrefabEdit = NormalizeAssetPath(path);
             return OpResult::Ok();
         };
         registry.Register(std::move(op));
     }
 
-    /// @name AI Command Bus
-    /// @note 待受の開始・停止は AI Settings パネルにしか無く、メニューは状態表示だけ (押せない項目)
-    ///       だった。パレットからもホットキーからも届かず、パネルを探し当てるまで再接続できなかった。
+    // AI Command Bus
+    // 待受の開始・停止は AI Settings パネルにしか無く、メニューは状態表示だけ (押せない項目)
+    // だった。パレットからもホットキーからも届かず、パネルを探し当てるまで再接続できなかった。
     {
         EditorOperator op;
         op.id       = "ai.command_bus";

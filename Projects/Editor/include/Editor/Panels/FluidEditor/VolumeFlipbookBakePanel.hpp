@@ -64,43 +64,37 @@ private:
     [[nodiscard]] float PreviewWidth(float aspect) const;
     [[nodiscard]] float BakeDuration() const;
 
-    asset::VolumeFlipbookBakeSettings m_settings;
-    renderer::ResourceManager*        m_resources = nullptr;
-    std::unique_ptr<VolumeFlipbookComparePreview> m_compare;
-    asset::VolumeFramingReport        m_framing;
-    bool                              m_framingDirty = true;
+    asset::VolumeFlipbookBakeSettings m_settings; ///< 現在編集中のボリュームフリップブックのベイク設定。
+    renderer::ResourceManager*        m_resources = nullptr; ///< プレビュー資源を確保・解放するために借りる ResourceManager。
+    std::unique_ptr<VolumeFlipbookComparePreview> m_compare; ///< 元のボリュームとベイク画像を比較描画する所有プレビュー。
+    asset::VolumeFramingReport        m_framing; ///< ベイク対象を収めるカメラのフレーミング計算結果。
+    bool                              m_framingDirty = true; ///< 入力変更後にフレーミングを再計算する必要があるか。
 
-    /// @note 表示 (両タブ共通)
-    asset::VolumePreviewBackground m_background = asset::VolumePreviewBackground::Dark;
-    int  m_previewSize = 1;   ///< @note 0 = 256 / 1 = 384 / 2 = 512 / 3 = 幅に合わせる
-    bool m_selectFlipbookTab = false;
+    asset::VolumePreviewBackground m_background = asset::VolumePreviewBackground::Dark; ///< 表示 (両タブ共通)
+    int  m_previewSize = 1;   ///< 0 = 256 / 1 = 384 / 2 = 512 / 3 = 幅に合わせる
+    bool m_selectFlipbookTab = false; ///< 次の描画でベイク済みフリップブックのタブを選択する要求。
 
-    /// @note Volume タブ
-    float      m_previewTime = 0.0f;
-    bool       m_previewDirty = true;
-    bool       m_playing = false;
-    float      m_playSpeed = 1.0f;
-    VolumeView m_view = VolumeView::Color;
-    bool       m_showLightArrow = true;
+    float      m_previewTime = 0.0f; ///< Volume タブ
+    bool       m_previewDirty = true; ///< 現在の設定を反映するためにプレビューを描き直す必要があるか。
+    bool       m_playing = false; ///< ベイク設定側のボリュームプレビューを再生中か。
+    float      m_playSpeed = 1.0f; ///< ボリュームプレビューの時間の進み方に掛ける倍率。
+    VolumeView m_view = VolumeView::Color; ///< ボリュームプレビューに表示するチャンネルやビューの種類。
+    bool       m_showLightArrow = true; ///< ボリュームプレビューに照明方向の矢印を表示するか。
 
-    /// @note Flipbook タブ
-    float m_compareTime = 0.0f;
-    bool  m_comparePlaying = true;
-    /// @note 焼いた FPS より遅く再生すると、コマ間の補間の差がよく見える。
-    float m_compareFps = 6.0f;
-    float m_strengthScale = 1.0f;
+    float m_compareTime = 0.0f; ///< Flipbook タブ
+    bool  m_comparePlaying = true; ///< 結果比較ビューでフリップブックを再生中か。
+    float m_compareFps = 6.0f; ///< 焼いた FPS より遅く再生すると、コマ間の補間の差がよく見える。
+    float m_strengthScale = 1.0f; ///< 結果比較ビューでモーションベクトルの補間に掛ける強度倍率。
 
-    /// @note 自分が FluidBakeService へ出した焼きのジョブ (0 = 無し)。
-    std::uint32_t m_jobId = 0;
-    std::uint32_t m_apiJobId = 0;
-    bool m_apiPreview = false;
-    std::array<char, 64> m_baseName = {};
-    std::string m_materialPath;
-    std::string m_status;
-    bool        m_statusIsError = false;
-    asset::VolumeFlipbookBakeResult   m_lastResult;
-    /// @note m_lastResult を焼いたときの設定 (マテリアルのループ判定と FPS に使う)。
-    asset::VolumeFlipbookBakeSettings m_lastBakeSettings;
+    std::uint32_t m_jobId = 0; ///< 自分が FluidBakeService へ出した焼きのジョブ (0 = 無し)。
+    std::uint32_t m_apiJobId = 0; ///< Editor API から要求されたベイクジョブの識別番号。要求がなければ 0。
+    bool m_apiPreview = false; ///< パネルが閉じている間も Editor API のプレビュー要求を進めるか。
+    std::array<char, 64> m_baseName = {}; ///< ベイク成果物のファイル名に使う拡張子なしの名前。
+    std::string m_materialPath; ///< ベイク結果を適用するマテリアルアセットのパス。
+    std::string m_status; ///< 現在のベイクとプレビューに関する UI 向けの結果メッセージ。
+    bool        m_statusIsError = false; ///< m_status を失敗メッセージとして表示するか。
+    asset::VolumeFlipbookBakeResult   m_lastResult; ///< このパネルで直近に完了したボリュームフリップブックのベイク結果。
+    asset::VolumeFlipbookBakeSettings m_lastBakeSettings; ///< m_lastResult を焼いたときの設定 (マテリアルのループ判定と FPS に使う)。
 };
 
-} /// @note namespace fbzz::editor
+} // namespace fbzz::editor

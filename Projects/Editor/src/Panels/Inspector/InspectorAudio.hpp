@@ -7,4 +7,4 @@
 namespace fbzz::editor {
 void DrawAudioInspectors(scene::GameObject* go, EditorContext& ctx, std::any& componentClipboard,
     const std::type_info*& componentClipboardType);
-} /// @note namespace fbzz::editor
+} // namespace fbzz::editor

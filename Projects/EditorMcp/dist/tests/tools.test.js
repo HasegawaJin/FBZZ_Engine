@@ -59,7 +59,7 @@ class FakeEditorBus {
             return { enter: [], stay: [], exit: [] };
         }
         if (query.t === 'fluid.jobStatus') {
-            /// @note job 7 = 終わったプレビュー (画像あり)、それ以外 = 焼き途中 (画像なし)。
+            // job 7 = 終わったプレビュー (画像あり)、それ以外 = 焼き途中 (画像なし)。
             const done = query.job === 7 && query.includeImage !== false;
             return {
                 job: query.job, kind: query.job === 7 ? 'preview' : 'bake',
@@ -141,9 +141,9 @@ test('read mode は Query と capture だけを公開する', async () => {
         assert.equal(names.includes('scene_diff'), true);
         assert.equal(names.includes('scene_validate'), true);
         assert.equal(names.includes('asset_inspect'), true);
-        /// @note 実行状態の読み出しは診断専用の読み取りツール。read モードでも使えないと、
-        /// @note 「なぜ出ないか」の切り分けが write 権限を持つ場面でしかできなくなる。
-        /// @note 素材解析は読み取りのみ。設定を決める前段なので read モードでも必ず使える。
+        // 実行状態の読み出しは診断専用の読み取りツール。read モードでも使えないと、
+        // 「なぜ出ないか」の切り分けが write 権限を持つ場面でしかできなくなる。
+        // 素材解析は読み取りのみ。設定を決める前段なので read モードでも必ず使える。
         assert.equal(names.includes('shader_inspect'), true);
         assert.equal(names.includes('shader_get_compile_diagnostics'), true);
         assert.equal(names.includes('material_inspect'), true);
@@ -153,8 +153,8 @@ test('read mode は Query と capture だけを公開する', async () => {
         assert.equal(names.includes('animation_get_pose'), true);
         assert.equal(names.includes('profiler_get_snapshot'), true);
         assert.equal(names.includes('editor_wait'), true);
-        /// @note ワールドオーサリングの照会も read で使える。地形・植生・NavMesh・環境・UI・ビルド結果は
-        /// @note 「壊れている理由」を探す側の情報なので、write 権限が無いと診断できない状態にはしない。
+        // ワールドオーサリングの照会も read で使える。地形・植生・NavMesh・環境・UI・ビルド結果は
+        // 「壊れている理由」を探す側の情報なので、write 権限が無いと診断できない状態にはしない。
         assert.equal(names.includes('scene_list'), true);
         assert.equal(names.includes('preset_catalog'), true);
         assert.equal(names.includes('terrain_inspect'), true);
@@ -166,17 +166,17 @@ test('read mode は Query と capture だけを公開する', async () => {
         assert.equal(names.includes('audio_inspect'), true);
         assert.equal(names.includes('ui_inspect'), true);
         assert.equal(names.includes('build_get_status'), true);
-        /// @note Operator の目録は読み取りのみ。「何ができるか」を知る手段が write 権限に
-        /// @note 縛られていると、read で疎通確認している段階では操作面が一切見えない。
+        // Operator の目録は読み取りのみ。「何ができるか」を知る手段が write 権限に
+        // 縛られていると、read で疎通確認している段階では操作面が一切見えない。
         assert.equal(names.includes('editor_op_list'), true);
-        /// @note kind=query の Operator を読むゲートウェイも read で見える。
-        /// @note これが write 側にあると、read 権限では「目録には出るのに
-        /// @note      1 つも呼べない Query」を見ることになる。
+        // kind=query の Operator を読むゲートウェイも read で見える。
+        // これが write 側にあると、read 権限では「目録には出るのに
+        // 1 つも呼べない Query」を見ることになる。
         assert.equal(names.includes('editor_op_query'), true);
-        /// @note 実行はシーンを変えうるので read では発見不能。
+        // 実行はシーンを変えうるので read では発見不能。
         assert.equal(names.includes('editor_op_invoke'), false);
         assert.equal(names.includes('node_create'), false);
-        /// @note ワールドを書き換える側は read では発見不能。
+        // ワールドを書き換える側は read では発見不能。
         assert.equal(names.includes('preset_create'), false);
         assert.equal(names.includes('scene_open'), false);
         assert.equal(names.includes('scene_save'), false);
@@ -187,7 +187,7 @@ test('read mode は Query と capture だけを公開する', async () => {
         assert.equal(names.includes('navmesh_bake'), false);
         assert.equal(names.includes('audio_control'), false);
         assert.equal(names.includes('build_run'), false);
-        /// @note 親子付けはアセットを書き換えるので read モードには出さない。
+        // 親子付けはアセットを書き換えるので read モードには出さない。
         assert.equal(names.includes('node_set_active'), false);
         assert.equal(names.includes('node_set_tag'), false);
         assert.equal(names.includes('node_set_layer'), false);
@@ -205,8 +205,8 @@ test('read mode は Query と capture だけを公開する', async () => {
         assert.equal(names.includes('animation_remove_parameter'), false);
         assert.equal(names.includes('run_transaction'), false);
         assert.equal(names.includes('playtest_run'), false);
-        /// @note 流体: 目録・現在値・ジョブ状態は読むだけなので read でも見える。
-        /// @note 作成・編集・プレビュー・焼き・中止はファイルを書くか GPU を占有するので write 側。
+        // 流体: 目録・現在値・ジョブ状態は読むだけなので read でも見える。
+        // 作成・編集・プレビュー・焼き・中止はファイルを書くか GPU を占有するので write 側。
         for (const name of ['fluid_schema', 'fluid_get', 'fluid_job_status'])
             assert.equal(names.includes(name), true, name);
         for (const name of ['fluid_create', 'fluid_set', 'fluid_preview', 'fluid_bake', 'fluid_cancel', 'fluid_create_effect',
@@ -302,14 +302,14 @@ test('Operator ゲートウェイは目録 Query と実行 Command へ写像す�
         assert.deepEqual(harness.bus.queries.at(-1), {
             t: 'editor.op.list', category: 'Gizmo', includeUnavailable: false,
         });
-        /// @note 引数なしの操作は id だけで実行できる。
+        // 引数なしの操作は id だけで実行できる。
         await harness.client.callTool({ name: 'editor_op_invoke', arguments: { id: 'scene.save' } });
         assert.deepEqual(harness.bus.commands.at(-1), {
             command: { t: 'editor.op.invoke', id: 'scene.save' },
             dryRun: false,
         });
-        /// @note args は素通しする。中身の検証は Editor 側の params 宣言が持つので、
-        /// @note 操作が増えても MCP 側のスキーマを直す必要がない。
+        // args は素通しする。中身の検証は Editor 側の params 宣言が持つので、
+        // 操作が増えても MCP 側のスキーマを直す必要がない。
         await harness.client.callTool({
             name: 'editor_op_invoke',
             arguments: { id: 'node.set_tag', args: { id: '11111111-1111-4111-8111-111111111111', tag: 'Enemy' } },
@@ -322,7 +322,7 @@ test('Operator ゲートウェイは目録 Query と実行 Command へ写像す�
             },
             dryRun: false,
         });
-        /// @note Query 側は Command ではなく Query として流れる (read 権限でも通る経路)。
+        // Query 側は Command ではなく Query として流れる (read 権限でも通る経路)。
         await harness.client.callTool({
             name: 'editor_op_query',
             arguments: { id: 'panel.list' },
@@ -407,7 +407,7 @@ test('Behavior Tree のスキーマ・現在値・実行状態・差分は読み
         const path = 'Assets/AI/Guard.behaviortree';
         await harness.client.callTool({ name: 'bt_schema', arguments: {} });
         await harness.client.callTool({ name: 'bt_schema', arguments: { nodeType: 'MoveTo' } });
-        /// @note field 省略はその種別が読むフィールドを全部返す読み方。
+        // field 省略はその種別が読むフィールドを全部返す読み方。
         await harness.client.callTool({ name: 'bt_node_get_field', arguments: { path, nodeId: 4 } });
         await harness.client.callTool({
             name: 'bt_node_get_field', arguments: { path, nodeId: 4, field: 'moveTargetKey' },
@@ -442,7 +442,7 @@ test('Behavior Tree の複製・修復・Template適用はUndo可能なCommand�
         await harness.client.callTool({
             name: 'bt_node_duplicate', arguments: { path, nodeId: 2, parentId: 1 },
         });
-        /// @note フラグ省略は「全部直す」。個別に false を渡したときだけその修復を止める。
+        // フラグ省略は「全部直す」。個別に false を渡したときだけその修復を止める。
         await harness.client.callTool({ name: 'bt_repair', arguments: { path } });
         await harness.client.callTool({ name: 'bt_repair', arguments: { path, fixKeys: false } });
         await harness.client.callTool({
@@ -466,8 +466,8 @@ test('Behavior Tree の複製・修復・Template適用はUndo可能なCommand�
 });
 /// @brief `scene_get_tree` は既定で生成物を要求しない。
 test('scene_get_tree は既定で生成物を要求しない', async () => {
-    /// @note 既定で includeGenerated を送ってしまうと、C++ 側の既定 (除外) を上書きして
-    /// @note AI の context へ実行時生成物が流れ込む。省略されることを固定する。
+    // 既定で includeGenerated を送ってしまうと、C++ 側の既定 (除外) を上書きして
+    // AI の context へ実行時生成物が流れ込む。省略されることを固定する。
     const harness = await CreateHarness('read');
     try {
         await harness.client.callTool({ name: 'scene_get_tree', arguments: {} });
@@ -844,7 +844,7 @@ test('ワールドオーサリングの照会は引数の少ない Query 面へ�
         await harness.client.callTool({ name: 'scene_list', arguments: {} });
         await harness.client.callTool({ name: 'preset_catalog', arguments: {} });
         await harness.client.callTool({ name: 'terrain_inspect', arguments: {} });
-        /// @note [x, z] の 2 要素で問い合わせられることを固定する。高さを問うのに y は要らないため。
+        // [x, z] の 2 要素で問い合わせられることを固定する。高さを問うのに y は要らないため。
         await harness.client.callTool({ name: 'terrain_sample', arguments: { points: [[10, 20], [1, 2, 3]] } });
         await harness.client.callTool({ name: 'navmesh_get_state', arguments: {} });
         await harness.client.callTool({ name: 'navmesh_find_path', arguments: { from: [0, 0, 0], to: [10, 0, 10] } });
@@ -886,7 +886,7 @@ test('流体の照会は fluid.* Query へ写像し、省略引数は載せな�
             { t: 'fluid.jobStatus', job: 3 },
             { t: 'fluid.jobStatus', job: 3, includeImage: false },
         ]);
-        /// @note .fluid 以外は bus へ流す前に弾く。
+        // .fluid 以外は bus へ流す前に弾く。
         const wrong = CallToolResultSchema.parse(await harness.client.callTool({
             name: 'fluid_get', arguments: { path: 'Assets/VFX/Fluid/Smoke.mat' },
         }));
@@ -918,7 +918,7 @@ test('fluid_job_status はプレビュー画像を MCP image content へ移し�
             assert.equal(withImage.content[1].data, 'iVBORw0KGgo=');
         }
         assert.equal(withImage.structuredContent.image, undefined);
-        /// @note 焼き途中は画像が無いので text だけ返る。
+        // 焼き途中は画像が無いので text だけ返る。
         const running = CallToolResultSchema.parse(await harness.client.callTool({
             name: 'fluid_job_status', arguments: { job: 9 },
         }));
@@ -942,7 +942,7 @@ test('流体の作成・編集・プレビュー・焼き・中止は fluid.* Co
         });
         await harness.client.callTool({ name: 'fluid_preview', arguments: { path } });
         await harness.client.callTool({ name: 'fluid_preview', arguments: { path, time: 1.5, size: 512 } });
-        /// @note コマ指定・コンタクトシート・seed 違いの並べ方はそのまま bus へ渡る (決定論的な反復の入口)。
+        // コマ指定・コンタクトシート・seed 違いの並べ方はそのまま bus へ渡る (決定論的な反復の入口)。
         await harness.client.callTool({ name: 'fluid_preview', arguments: { path, frame: 12, contactSheet: true } });
         await harness.client.callTool({ name: 'fluid_preview', arguments: { path, variants: 4, seed: 77 } });
         await harness.client.callTool({ name: 'fluid_bake', arguments: { path } });
@@ -970,7 +970,7 @@ test('流体の作成・編集・プレビュー・焼き・中止は fluid.* Co
         });
         await harness.client.callTool({ name: 'fluid_move_operator', arguments: { path, list: 'collider', from: 1, to: 0 } });
         await harness.client.callTool({ name: 'fluid_remove_operator', arguments: { path, list: 'collider', index: 0 } });
-        /// @note 旧名の list は bus へ流す前に弾く。
+        // 旧名の list は bus へ流す前に弾く。
         const oldName = CallToolResultSchema.parse(await harness.client.callTool({
             name: 'fluid_add_operator', arguments: { path, list: 'gas_source' },
         }));
@@ -1030,7 +1030,7 @@ test('地形・NavMesh・シーン入出力は Undo 単位の Command へ写像�
     const harness = await CreateHarness('write');
     try {
         const terrainId = '55555555-5555-4555-8555-555555555555';
-        /// @note 省略した任意引数は payload へ載せない (C++ 側の「未指定」判定と一致させる)。
+        // 省略した任意引数は payload へ載せない (C++ 側の「未指定」判定と一致させる)。
         await harness.client.callTool({ name: 'preset_create', arguments: { preset: '3d.cube' } });
         await harness.client.callTool({
             name: 'preset_create',
@@ -1038,8 +1038,8 @@ test('地形・NavMesh・シーン入出力は Undo 単位の Command へ写像�
         });
         await harness.client.callTool({
             name: 'terrain_sculpt',
-            /// @note iterations を明示するか の理由: smooth / flatten は 1 回では収束しない。
-            /// @note     既定 1 のまま送られると AI は同じ要求を何十回も投げ、Undo 履歴がそのぶん汚れる。
+            // iterations を明示するか の理由: smooth / flatten は 1 回では収束しない。
+            // 既定 1 のまま送られると AI は同じ要求を何十回も投げ、Undo 履歴がそのぶん汚れる。
             arguments: { position: [5, 0, 5], op: 'flatten', radius: 8, iterations: 20, targetHeight: 2 },
         });
         await harness.client.callTool({
@@ -1050,12 +1050,12 @@ test('地形・NavMesh・シーン入出力は Undo 単位の Command へ写像�
             name: 'terrain_set_layer_material',
             arguments: { id: terrainId, layer: 1, material: 'Assets/Materials/Grass.mat' },
         });
-        /// @note 新しい op の固有引数は指定したものだけ payload へ載る。
+        // 新しい op の固有引数は指定したものだけ payload へ載る。
         await harness.client.callTool({
             name: 'terrain_sculpt',
             arguments: { position: [5, 0, 5], op: 'hydraulicErosion', seed: 7, droplets: 96, iterations: 4 },
         });
-        /// @note 層数ぶんの番号 (layer == layerCount で追加) を受ける。上限は C++ 側で層数と照合する。
+        // 層数ぶんの番号 (layer == layerCount で追加) を受ける。上限は C++ 側で層数と照合する。
         await harness.client.callTool({
             name: 'terrain_set_layer_material',
             arguments: { id: terrainId, layer: 4, material: 'Assets/Materials/Snow.mat' },

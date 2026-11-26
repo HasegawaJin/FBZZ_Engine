@@ -8,4 +8,4 @@
 namespace fbzz::editor {
 /// @note pathの上書きは禁止。presetは物理材質・Synthのプリセット名、DataAssetの型名。
 [[nodiscard]] bool CreateEditorAsset(std::string_view kind, const std::string& path, const std::string& preset = {});
-} /// @note namespace fbzz::editor
+} // namespace fbzz::editor

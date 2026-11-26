@@ -44,7 +44,7 @@ class TerrainTool {
 public:
     /// @brief ブラシモード。保存済み int 値を変えないため追加は末尾へ置く。
     enum class Mode {
-        Sculpt, ///< @note 高さ彫刻 (Ramp もここに含む)。
+        Sculpt, ///< 高さ彫刻 (Ramp もここに含む)。
         Paint,
         Hole,
     };
@@ -61,8 +61,8 @@ public:
     static const char* SculptModeLabel(SculptMode mode);
 
     /// @brief 毎フレームシーンビューで呼ぶ。マウス入力を処理して地形を編集する。
-    /// @param dt フレーム時間 [s]。ブラシ強度に乗算する (Ramp と Hole には掛けない)。
-    /// @param viewportMin ビューポートの左上スクリーン座標。
+    /// @param[in] dt フレーム時間 [s]。ブラシ強度に乗算する (Ramp と Hole には掛けない)。
+    /// @param[in] viewportMin ビューポートの左上スクリーン座標。
     /// @note Undo は context の現在シーンと部品の寿命を検証してから適用する。
     void Update(EditorContext&            context,
                 const renderer::Camera&   camera,
@@ -100,7 +100,9 @@ public:
     Mode          GetMode()         const { return m_mode; }
     BrushSettings GetBrush()        const { return m_brush; }
     void          SetBrush(float radius, float strength, FalloffType falloff) {
-        m_brush.radius = radius; m_brush.strength = strength; m_brush.falloff = falloff;
+        m_brush.radius = radius;
+        m_brush.strength = strength;
+        m_brush.falloff = falloff;
     }
     SculptMode    GetSculptMode()   const { return m_sculpt; }
     /// @note サブモードを選ぶと Ramp は解除される。
@@ -132,15 +134,13 @@ private:
     /// @{
     bool        m_active  = false;
     Mode        m_mode    = Mode::Sculpt;
-    /// @note パネルで選んだモードを保持し、修飾キーを離したときに元のブラシに戻せるようにする。
-    SculptMode  m_sculpt  = SculptMode::Raise;
-    /// @note 修飾キーで一時的に切り替わる実効サブモード。Shift+drag=Smooth / Ctrl+drag=Lower をパネルへ視線を戻さず使える。
-    SculptMode  m_activeSculpt = SculptMode::Raise;
+    SculptMode  m_sculpt  = SculptMode::Raise; ///< パネルで選んだモードを保持し、修飾キーを離したときに元のブラシに戻せるようにする。
+    SculptMode  m_activeSculpt = SculptMode::Raise; ///< 修飾キーで一時的に切り替わる実効サブモード。Shift+drag=Smooth / Ctrl+drag=Lower をパネルへ視線を戻さず使える。
     BrushSettings m_brush;
 
-    bool     m_rampMode      = false;  ///< @note SculptOp と別に保持する Sculpt のサブモード。
-    bool     m_holeErase     = false;  ///< @note true なら穴を埋める。
-    uint32_t m_paintLayer    = 0;      ///< @note 参照地形の層数 - 1 へ丸める。
+    bool     m_rampMode      = false;  ///< SculptOp と別に保持する Sculpt のサブモード。
+    bool     m_holeErase     = false;  ///< true なら穴を埋める。
+    uint32_t m_paintLayer    = 0;      ///< 参照地形の層数 - 1 へ丸める。
     enum class PaintTarget { Materials, Grass, Instances, HeightMap };
     PaintTarget m_paintTarget = PaintTarget::Instances;
     TerrainPaintLibrary m_paintLibrary;
@@ -155,8 +155,7 @@ private:
     bool m_scatterStrokeErase = false;
     bool m_scatterStrokeContinuous = false;
     float m_scatterStrokeRadius = 0.0f;
-    /// @note ドラッグの開始時に記録し、途中で地形が付け直されたら古いストロークの適用を止める。
-    uint64_t m_scatterTerrainLifetime = 0;
+    uint64_t m_scatterTerrainLifetime = 0; ///< ドラッグの開始時に記録し、途中で地形が付け直されたら古いストロークの適用を止める。
     std::string m_scatterStrokeTerrainId;
     struct PaintSource {
         std::string reference;
@@ -168,10 +167,8 @@ private:
     double m_nextPaintPreviewTime = 0.0;
     size_t m_paintPreviewTotal = 0;
     std::vector<TerrainPaintPreviewPoint> m_paintPreview;
-    /// @note 配置を確定する前に描画できるよう、プレビューの配置を描画用にまとめておく。
-    std::vector<scene::RenderInstancePreview> m_paintPreviewInputs;
-    /// @note プレビューを作った描画シーンの世代。シーンを切り替えた後の描画と区別する。
-    uint64_t m_paintPreviewGeneration = 0;
+    std::vector<scene::RenderInstancePreview> m_paintPreviewInputs; ///< 配置を確定する前に描画できるよう、プレビューの配置を描画用にまとめておく。
+    uint64_t m_paintPreviewGeneration = 0; ///< プレビューを作った描画シーンの世代。シーンを切り替えた後の描画と区別する。
     bool m_paintAvoidWater = true;
     bool m_paintAvoidPaths = true;
     int m_paintExcludedLayer = -1;
@@ -189,18 +186,15 @@ private:
     std::string m_instanceOwner;
     uint32_t m_instanceId = 0;
     uint64_t m_instanceRevision = 0, m_instanceLifetime = 0;
-    /// @note ギズモや数値入力で編集中の配置。確定前の見た目にも使う。
-    renderer::InstancePlacement m_instanceDraft;
-    /// @note 選択した時点の配置。プレビューの差分判定とリセットの戻り先に使う。
-    renderer::InstancePlacement m_instanceOriginal;
+    renderer::InstancePlacement m_instanceDraft; ///< ギズモや数値入力で編集中の配置。確定前の見た目にも使う。
+    renderer::InstancePlacement m_instanceOriginal; ///< 選択した時点の配置。プレビューの差分判定とリセットの戻り先に使う。
     bool m_instanceDragging = false;
     int m_instanceGizmo = 0;
     std::string m_paintPreviewError;
     std::string m_paintPreviewTerrainId;
     math::Vector3 m_paintPreviewCenter;
-    /// @note ドラッグで通った散布ブラシの中心をワールド座標で記録し、確定時にまとめて適用する。
-    std::vector<math::Vector3> m_scatterStroke;
-    float    m_flattenTarget = 0.0f;   ///< @note 基準高さ (ローカル Y [m])。
+    std::vector<math::Vector3> m_scatterStroke; ///< ドラッグで通った散布ブラシの中心をワールド座標で記録し、確定時にまとめて適用する。
+    float    m_flattenTarget = 0.0f;   ///< 基準高さ (ローカル Y [m])。
     bool     m_flattenLocked = false;
 
     enum class TerrainStrokeChannel { HEIGHT, SPLAT, HOLES, COUNT };
@@ -227,22 +221,22 @@ private:
     std::unordered_map<std::string, std::weak_ptr<const TerrainHistorySnapshot>> m_strokeBaselines;
     uint64_t m_strokeSceneGeneration = 0;
     bool          m_strokeActive = false;
-    std::uint32_t m_strokeStep   = 0;   ///< @note 侵食の乱数をストローク内の適用回ごとに変える。
+    std::uint32_t m_strokeStep   = 0;   ///< 侵食の乱数をストローク内の適用回ごとに変える。
 
     bool          m_rampDragging = false;
     math::Vector3 m_rampStartWorld;
     math::Vector3 m_rampEndWorld;
 
     bool              m_isHovering = false;
-    math::Vector3     m_hitPoint;              ///< @note ワールド座標。
-    scene::GameObject* m_hitTerrain = nullptr; ///< @note ヒットした地形 GO の非所有参照。
+    math::Vector3     m_hitPoint;              ///< ワールド座標。
+    scene::GameObject* m_hitTerrain = nullptr; ///< ヒットした地形 GO の非所有参照。
     /// @}
 
     /// @name HeightMap 入出力
     /// @{
     char        m_heightMapPath[512]   = {};
     char        m_heightMapExport[512] = {};
-    int         m_heightMapUnipolar    = 1;     ///< @note 1: [0,maxH]、0: [-maxH,+maxH]。
+    int         m_heightMapUnipolar    = 1;     ///< 1: [0,maxH]、0: [-maxH,+maxH]。
     std::string m_heightMapStatus;
     std::string m_heightMapExportStatus;
     std::string m_heightMapTargetId;
@@ -382,7 +376,7 @@ private:
         std::span<const math::Vector3> centers, float radius, bool erase) const;
 
     /// @brief DDA + 二分探索でレイと地形の交差を求める。穴のセルの交差は飛ばして次を探す。
-    /// @param outLocalHit テレインローカル座標。
+    /// @param[out] outLocalHit テレインローカル座標。
     bool RaycastSingleTerrain(const math::Ray&                 ray,
                                const scene::TerrainComponent&   terrain,
                                const scene::Transform&          tf,
@@ -392,7 +386,7 @@ private:
     TerrainStrokeSnapshot& CaptureStrokeBefore(scene::GameObject& go, const scene::TerrainComponent& terrain);
     void ClearStrokeSnapshots();
     /// @brief ストロークを確定し、触れた地形を 1 つの Undo にまとめる。
-    /// @param rebuildCollider 形が変わる操作 (Sculpt / Ramp / Hole) なら true。
+    /// @param[in] rebuildCollider 形が変わる操作 (Sculpt / Ramp / Hole) なら true。
     void CommitStroke(EditorContext& context, const char* undoLabel, bool rebuildCollider);
     /// @brief Ramp の押下・ドラッグ・確定。
     void UpdateRamp(EditorContext& context, bool mousePressed, bool mouseReleased);
@@ -407,4 +401,4 @@ private:
                          const renderer::Camera& camera) const;
 };
 
-} /// @note namespace fbzz::editor
+} // namespace fbzz::editor

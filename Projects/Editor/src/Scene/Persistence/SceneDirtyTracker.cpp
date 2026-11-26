@@ -16,11 +16,13 @@ namespace {
 std::optional<std::size_t> HashScene(const scene::Scene& scene, const std::string& path)
 {
     const std::string text = scene::SceneSerializer::CaptureSaveComparison(const_cast<scene::Scene&>(scene), path);
-    if (text.empty()) return std::nullopt;
+    if (text.empty()) {
+        return std::nullopt;
+    }
     return std::hash<std::string>{}(text);
 }
 
-} /// @note namespace
+} // namespace
 
 void SceneDirtyTracker::CaptureClean(const scene::Scene& scene, const std::string& path)
 {
@@ -63,4 +65,4 @@ void SceneDirtyTracker::Reset()
     m_dirty = false;
 }
 
-} /// @note namespace fbzz::editor
+} // namespace fbzz::editor

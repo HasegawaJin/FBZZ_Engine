@@ -26,13 +26,15 @@ asset::AnimatorGraphLayout ToAssetGraphLayout(const GraphLayout& source)
     layout.entryPosition = { source.entryPosition.x, source.entryPosition.y };
     layout.anyStatePosition = { source.anyStatePosition.x, source.anyStatePosition.y };
     layout.slotPosition = { source.slotPosition.x, source.slotPosition.y };
-    for (const auto& [stateName, pos] : source.nodePositions)
+    for (const auto& [stateName, pos] : source.nodePositions) {
         layout.nodePositions[stateName] = { pos.x, pos.y };
+    }
     for (const auto& [stateName, positions] : source.blendTreeMotionPositions) {
         auto& dst = layout.blendTreeMotionPositions[stateName];
         dst.reserve(positions.size());
-        for (const ImVec2& pos : positions)
+        for (const ImVec2& pos : positions) {
             dst.push_back({ pos.x, pos.y });
+        }
     }
     return layout;
 }
@@ -42,13 +44,13 @@ void AutoLayoutAnimatorStates(GraphLayout& layout, const scene::AnimatorComponen
     auto& positions = layout.nodePositions;
     constexpr float START_Y = 80.0f;
 
-    /// @note 遷移の深さを列にする共通実装を使う。以前は Animation だけ「4 列の単純グリッド」で
-    ///       遷移の構造を反映しておらず、VFX と結果の質が違っていた (共通アルゴリズムは既にあった)。
+    // 遷移の深さを列にする共通実装を使う。以前は Animation だけ「4 列の単純グリッド」で
+    // 遷移の構造を反映しておらず、VFX と結果の質が違っていた (共通アルゴリズムは既にあった)。
     std::vector<int> nodeIds;
     std::vector<GraphLayoutEdge> edges;
     std::unordered_map<std::string, int> indexOfState;
     for (int index = 0; index < static_cast<int>(animator.states.size()); ++index) {
-        /// @note ComputeGraphLayout は 1 以上の id を要求する (0 は「未解決」の意味を持つ)。
+        // ComputeGraphLayout は 1 以上の id を要求する (0 は「未解決」の意味を持つ)。
         indexOfState[animator.states[static_cast<std::size_t>(index)].name] = index + 1;
         nodeIds.push_back(index + 1);
     }
@@ -56,15 +58,18 @@ void AutoLayoutAnimatorStates(GraphLayout& layout, const scene::AnimatorComponen
         const auto& state = animator.states[static_cast<std::size_t>(index)];
         for (const auto& transition : state.transitions) {
             const auto target = indexOfState.find(transition.toStateName);
-            if (target != indexOfState.end()) edges.push_back({ index + 1, target->second });
+            if (target != indexOfState.end()) {
+                edges.push_back({ index + 1, target->second });
+            }
         }
     }
-    /// @note 既定ステートを根にする。入次数 0 に任せると、どこからも遷移して来ない
-    ///       孤立ステートまで 1 列目へ並び、開始点が読めなくなる。
+    // 既定ステートを根にする。入次数 0 に任せると、どこからも遷移して来ない
+    // 孤立ステートまで 1 列目へ並び、開始点が読めなくなる。
     std::vector<int> roots;
     if (const auto found = indexOfState.find(animator.defaultStateName);
-        found != indexOfState.end())
+        found != indexOfState.end()) {
         roots.push_back(found->second);
+    }
 
     GraphLayoutOptions options;
     options.rowStep = 220.0f;
@@ -73,7 +78,9 @@ void AutoLayoutAnimatorStates(GraphLayout& layout, const scene::AnimatorComponen
                                         : ComputeGraphLayout(nodeIds, edges, roots, options);
     for (int index = 0; index < static_cast<int>(animator.states.size()); ++index) {
         const auto found = computed.find(index + 1);
-        if (found == computed.end()) continue;
+        if (found == computed.end()) {
+            continue;
+        }
         positions[animator.states[static_cast<std::size_t>(index)].name] = found->second;
     }
     layout.entryPosition = ImVec2(-220.0f, START_Y);
@@ -92,14 +99,15 @@ bool SaveAnimatorControllerWithLayout(EditorContext& ctx,
 
 bool MarkAnimatorControllerDirty(EditorContext& ctx)
 {
-    if (!util::StringUtils::EndsWith(ctx.animationControllerEditorPath, ".animcontroller"))
+    if (!util::StringUtils::EndsWith(ctx.animationControllerEditorPath, ".animcontroller")) {
         return false;
+    }
 
     ctx.animationControllerDirty = true;
 
-    /// @note Registry に登録し Save All / 終了時確認で一括保存できるようにする。
-    ///       saveFunc は weak_ptr でモデルを掴む。保存要求が来たときに編集モデルが
-    ///       既に閉じられていることがあり、そのまま raw ポインタを持つと解放後参照になる。
+    // Registry に登録し Save All / 終了時確認で一括保存できるようにする。
+    // saveFunc は weak_ptr でモデルを掴む。保存要求が来たときに編集モデルが
+    // 既に閉じられていることがあり、そのまま raw ポインタを持つと解放後参照になる。
     const std::string capturedPath = ctx.animationControllerEditorPath;
     EditorContext* context = &ctx;
     std::weak_ptr<scene::AnimatorComponent> weakAnimator = ctx.animationControllerEditor;
@@ -107,7 +115,9 @@ bool MarkAnimatorControllerDirty(EditorContext& ctx)
         capturedPath, NormalizeAssetPath(capturedPath), "CTRL",
         [capturedPath, context, weakAnimator]() {
             auto animator = weakAnimator.lock();
-            if (!animator || !context) return false;
+            if (!animator || !context) {
+                return false;
+            }
             return SaveAnimatorControllerWithLayout(*context, capturedPath, *animator);
         });
     return true;

@@ -39,8 +39,12 @@ std::string ImportCacheFilePath(const std::string& projectRoot)
 std::string EnsureImportCacheLoaded()
 {
     const std::string projectRoot = asset::AssetDatabase::ProjectRoot();
-    if (projectRoot.empty()) return {};
-    if (s_importCacheLoaded && projectRoot == s_importCacheProjectRoot) return projectRoot;
+    if (projectRoot.empty()) {
+        return {};
+    }
+    if (s_importCacheLoaded && projectRoot == s_importCacheProjectRoot) {
+        return projectRoot;
+    }
 
     s_importCacheEntries.clear();
     s_importCacheProjectRoot = projectRoot;
@@ -48,33 +52,42 @@ std::string EnsureImportCacheLoaded()
 
     const std::string path = ImportCacheFilePath(projectRoot);
     std::string text;
-    if (!util::FileSystem::ReadText(path, text)) return projectRoot;
+    if (!util::FileSystem::ReadText(path, text)) {
+        return projectRoot;
+    }
 
     std::istringstream iss(text);
     const auto parsed = toml::parse(iss);
     if (!parsed) {
-        /// @note 壊れていても復旧は要らない。空から作り直せば、次の走査で焼き直されるだけ。
+        // 壊れていても復旧は要らない。空から作り直せば、次の走査で焼き直されるだけ。
         FBZZ_LOG_WARN("ImportCacheStore: parse failed, starting empty [%s]", path.c_str());
         return projectRoot;
     }
 
     const toml::table* hashes = parsed.table()["hashes"].as_table();
-    if (!hashes) return projectRoot;
+    if (!hashes) {
+        return projectRoot;
+    }
     for (const auto& [guid, value] : *hashes) {
         const toml::table* entry = value.as_table();
-        if (!entry) continue;
+        if (!entry) {
+            continue;
+        }
         ImportCacheStore::Entry loaded;
         loaded.contentHash  = (*entry)["content"].value_or(std::string{});
         loaded.settingsHash = (*entry)["settings"].value_or(std::string{});
-        /// @note TOML の整数は int64_t。負値は «壊れた記録» なので目印を捨てる (0 = 未記録)。
+        // TOML の整数は int64_t。負値は «壊れた記録» なので目印を捨てる (0 = 未記録)。
         const int64_t rawSize = (*entry)["size"].value_or(int64_t{0});
         loaded.size  = rawSize > 0 ? static_cast<uint64_t>(rawSize) : 0;
         loaded.mtime = (*entry)["mtime"].value_or(int64_t{0});
-        /// @note 旧形式は原本の «中身» ではなくパスと更新時刻から作られていた。値としては
-        ///       使えないので、移行判定用の別枠で持つ。
-        if (loaded.contentHash.empty())
+        // 旧形式は原本の «中身» ではなくパスと更新時刻から作られていた。値としては
+        // 使えないので、移行判定用の別枠で持つ。
+        if (loaded.contentHash.empty()) {
             loaded.legacyStamp = (*entry)["source"].value_or(std::string{});
-        if (loaded.Empty()) continue;
+        }
+        if (loaded.Empty()) {
+            continue;
+        }
         s_importCacheEntries.emplace(std::string(guid.str()), std::move(loaded));
     }
     return projectRoot;
@@ -95,7 +108,7 @@ bool WriteImportCacheFile(const std::string& projectRoot)
            "# WHY .meta ではなくここか: size / mtime は人・マシン・clone ごとに違う。\n"
            "#     git 追跡下の .meta へ書くと、同じプロジェクトを触る全員の手元が常に差分になる。\n\n";
     out << "count = " << s_importCacheEntries.size() << "\n\n[hashes]\n";
-    /// @note guid も hash も hex に限定済みなので、リテラル文字列でエスケープが要らない。
+    // guid も hash も hex に限定済みなので、リテラル文字列でエスケープが要らない。
     for (const auto& [guid, entry] : s_importCacheEntries) {
         out << '\'' << guid << "' = { content = '" << entry.contentHash
             << "', settings = '" << entry.settingsHash
@@ -105,7 +118,9 @@ bool WriteImportCacheFile(const std::string& projectRoot)
 
     util::FileSystem::EnsureDirectory(projectRoot + "Library");
     const std::string path = ImportCacheFilePath(projectRoot);
-    if (util::FileSystem::WriteText(path, out.str())) return true;
+    if (util::FileSystem::WriteText(path, out.str())) {
+        return true;
+    }
     FBZZ_LOG_WARN("ImportCacheStore: write failed [%s]", path.c_str());
     return false;
 }
@@ -123,10 +138,14 @@ bool IsWellFormedGuid(const std::string& guid)
 
 ImportCacheStore::Entry ImportCacheStore::Load(const std::string& assetGuid)
 {
-    if (assetGuid.empty()) return {};
+    if (assetGuid.empty()) {
+        return {};
+    }
 
     std::lock_guard lock(s_importCacheMutex);
-    if (EnsureImportCacheLoaded().empty()) return {};
+    if (EnsureImportCacheLoaded().empty()) {
+        return {};
+    }
 
     const auto it = s_importCacheEntries.find(assetGuid);
     return it != s_importCacheEntries.end() ? it->second : Entry{};
@@ -134,19 +153,24 @@ ImportCacheStore::Entry ImportCacheStore::Load(const std::string& assetGuid)
 
 bool ImportCacheStore::Save(const std::string& assetGuid, const Entry& entry)
 {
-    if (entry.Empty() || !IsWellFormedGuid(assetGuid)) return false;
+    if (entry.Empty() || !IsWellFormedGuid(assetGuid)) {
+        return false;
+    }
 
     std::lock_guard lock(s_importCacheMutex);
     const std::string projectRoot = EnsureImportCacheLoaded();
-    if (projectRoot.empty()) return false;
+    if (projectRoot.empty()) {
+        return false;
+    }
 
     const auto it = s_importCacheEntries.find(assetGuid);
     if (it != s_importCacheEntries.end()
         && it->second.contentHash  == entry.contentHash
         && it->second.settingsHash == entry.settingsHash
         && it->second.size         == entry.size
-        && it->second.mtime        == entry.mtime)
+        && it->second.mtime        == entry.mtime) {
         return true;
+    }
 
     s_importCacheEntries[assetGuid] = entry;
     return WriteImportCacheFile(projectRoot);
@@ -154,15 +178,23 @@ bool ImportCacheStore::Save(const std::string& assetGuid, const Entry& entry)
 
 bool ImportCacheStore::RefreshStamp(const std::string& assetGuid, uint64_t size, int64_t mtime)
 {
-    if (!IsWellFormedGuid(assetGuid)) return false;
+    if (!IsWellFormedGuid(assetGuid)) {
+        return false;
+    }
 
     std::lock_guard lock(s_importCacheMutex);
     const std::string projectRoot = EnsureImportCacheLoaded();
-    if (projectRoot.empty()) return false;
+    if (projectRoot.empty()) {
+        return false;
+    }
 
     const auto it = s_importCacheEntries.find(assetGuid);
-    if (it == s_importCacheEntries.end()) return false;
-    if (it->second.size == size && it->second.mtime == mtime) return true;
+    if (it == s_importCacheEntries.end()) {
+        return false;
+    }
+    if (it->second.size == size && it->second.mtime == mtime) {
+        return true;
+    }
 
     it->second.size  = size;
     it->second.mtime = mtime;
@@ -171,32 +203,47 @@ bool ImportCacheStore::RefreshStamp(const std::string& assetGuid, uint64_t size,
 
 size_t ImportCacheStore::Forget(const std::vector<std::string>& guids)
 {
-    if (guids.empty()) return 0;
+    if (guids.empty()) {
+        return 0;
+    }
 
     std::lock_guard lock(s_importCacheMutex);
     const std::string projectRoot = EnsureImportCacheLoaded();
-    if (projectRoot.empty()) return 0;
+    if (projectRoot.empty()) {
+        return 0;
+    }
 
     size_t dropped = 0;
-    for (const std::string& guid : guids)
+    for (const std::string& guid : guids) {
         dropped += s_importCacheEntries.erase(guid);
+    }
 
-    if (dropped > 0) WriteImportCacheFile(projectRoot);
+    if (dropped > 0) {
+        WriteImportCacheFile(projectRoot);
+    }
     return dropped;
 }
 
 bool ImportCacheStore::Rekey(const std::string& oldGuid, const std::string& newGuid)
 {
-    if (!IsWellFormedGuid(oldGuid) || !IsWellFormedGuid(newGuid)) return false;
-    if (oldGuid == newGuid) return true;
+    if (!IsWellFormedGuid(oldGuid) || !IsWellFormedGuid(newGuid)) {
+        return false;
+    }
+    if (oldGuid == newGuid) {
+        return true;
+    }
 
     std::lock_guard lock(s_importCacheMutex);
     const std::string projectRoot = EnsureImportCacheLoaded();
-    if (projectRoot.empty()) return false;
+    if (projectRoot.empty()) {
+        return false;
+    }
 
     const auto it = s_importCacheEntries.find(oldGuid);
-    /// @note 未記録なら移すものが無い
-    if (it == s_importCacheEntries.end()) return true;
+    // 未記録なら移すものが無い
+    if (it == s_importCacheEntries.end()) {
+        return true;
+    }
 
     s_importCacheEntries[newGuid] = it->second;
     s_importCacheEntries.erase(it);

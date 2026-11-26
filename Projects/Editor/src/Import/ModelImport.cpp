@@ -15,12 +15,14 @@ std::mutex& ImportMutex()
     static std::mutex importMutex;
     return importMutex;
 }
-} /// @note namespace
+} // namespace
 
 ModelSettingsWriteResult SaveModelImportOptions(const std::string& path, const FbxImportOptions& options)
 {
     std::unique_lock lock(ImportMutex(), std::try_to_lock);
-    if (!lock.owns_lock()) return ModelSettingsWriteResult::BUSY;
+    if (!lock.owns_lock()) {
+        return ModelSettingsWriteResult::BUSY;
+    }
     return FbxMetaSerializer::SaveOptions(path, options)
         ? ModelSettingsWriteResult::DONE : ModelSettingsWriteResult::FAILED;
 }
@@ -39,4 +41,4 @@ ModelImportResult ImportModelSource(const std::string& path, const FbxImportOpti
     return result;
 }
 
-} /// @note namespace fbzz::editor
+} // namespace fbzz::editor

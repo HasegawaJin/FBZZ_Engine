@@ -100,4 +100,4 @@ bool ComputeSelectionBounds(EditorContext& ctx,
                             math::Vector3& outCenter,
                             float& outRadius);
 
-} /// @note namespace fbzz::editor
+} // namespace fbzz::editor

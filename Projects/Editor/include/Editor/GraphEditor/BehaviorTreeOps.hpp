@@ -45,9 +45,9 @@ namespace fbzz::editor::btops {
 std::string TryReparentNode(fbzz::ai::BehaviorTreeAsset& asset, int childId, int newParentId);
 
 struct AddNodeResult {
-    int         nodeId = 0;      ///< @note 追加したノードの id (0 = 追加しなかった)
-    std::string rejectReason;    ///< @note 親付けに失敗した理由 (空なら成功)
-    bool        leftOrphan = false;  ///< @note 親付けに失敗したがノードは残した
+    int         nodeId = 0;      ///< 追加したノードの id (0 = 追加しなかった)
+    std::string rejectReason;    ///< 親付けに失敗した理由 (空なら成功)
+    bool        leftOrphan = false;  ///< 親付けに失敗したがノードは残した
 };
 
 /// @note ノードを 1 つ追加する。
@@ -70,9 +70,9 @@ AddNodeResult AddNode(fbzz::ai::BehaviorTreeAsset& asset,
 int RemoveSubtree(fbzz::ai::BehaviorTreeAsset& asset, int nodeId);
 
 struct DuplicateResult {
-    int newRootId = 0;                       ///< @note 複製した部分木の根 (0 = 失敗)
-    std::unordered_map<int, int> idMap;      ///< @note 旧 id → 新 id
-    std::string rejectReason;                ///< @note 失敗理由 / 親付けの警告
+    int newRootId = 0;                       ///< 複製した部分木の根 (0 = 失敗)
+    std::unordered_map<int, int> idMap;      ///< 旧 id → 新 id
+    std::string rejectReason;                ///< 失敗理由 / 親付けの警告
 };
 
 /// @note nodeId を根とする部分木を複製し、元と同じ親の末尾へ兄弟として並べる。

@@ -39,8 +39,12 @@ protected:
     std::string CreateRegisteredModel(const std::string& name)
     {
         const std::string path = File("Assets/" + name).generic_string();
-        if (!util::FileSystem::WriteText(path, "CPU comparison fixture")) return {};
-        if (asset::AssetDatabase::GuidFromPath(path).empty()) return {};
+        if (!util::FileSystem::WriteText(path, "CPU comparison fixture")) {
+            return {};
+        }
+        if (asset::AssetDatabase::GuidFromPath(path).empty()) {
+            return {};
+        }
         return path;
     }
 
@@ -55,17 +59,25 @@ protected:
             return {};
         auto restored = scene::SceneSerializer::LoadFromText(
             scene::SceneSerializer::SaveToText(source), nullptr, PrefabPath());
-        if (!restored) return {};
+        if (!restored) {
+            return {};
+        }
         auto* root = restored->GetRootGameObjects().front();
-        /// @note 比較対象の形式を明示し、別テストの AssetManager ベースパスを引き継がない。
+        // 比較対象の形式を明示し、別テストの AssetManager ベースパスを引き継がない。
         root->GetComponent<scene::MeshRenderer>()->meshPath = currentReference;
         auto baseline = toml::parse(root->prefabSourceSnapshot);
-        if (!baseline) return {};
+        if (!baseline) {
+            return {};
+        }
         auto* objects = baseline.table()["gameobjects"].as_array();
-        if (!objects || objects->empty()) return {};
+        if (!objects || objects->empty()) {
+            return {};
+        }
         auto* object = objects->front().as_table();
         auto* renderer = object ? (*object)["MeshRenderer"].as_table() : nullptr;
-        if (!renderer) return {};
+        if (!renderer) {
+            return {};
+        }
         renderer->insert_or_assign("mesh", baselineReference);
         std::ostringstream stream;
         stream << baseline.table();
@@ -76,7 +88,9 @@ protected:
     bool HasMeshOverride(const editor::PrefabOverrideSet& overrides) const
     {
         for (const auto& entry : overrides.entries)
-            if (entry.path == "MeshRenderer.mesh") return true;
+            if (entry.path == "MeshRenderer.mesh") {
+                return true;
+            }
         return false;
     }
 

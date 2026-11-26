@@ -16,7 +16,7 @@ namespace fbzz::editor::fluideditor {
 
 float ClampF(float value, float lo, float hi)
 {
-    /// @note std::clamp は lo > hi で未定義。パネルが極端に狭いと上限が下限を割るので自前で持つ。
+    // std::clamp は lo > hi で未定義。パネルが極端に狭いと上限が下限を割るので自前で持つ。
     return (std::max)(lo, (std::min)(value, hi));
 }
 
@@ -54,11 +54,19 @@ int MaxParts(FluidSelectionKind list)
 math::Vector3 MotionOffsetAt(const fluid::FluidMotion& motion, float solverTime)
 {
     const std::vector<fluid::FluidMotionKey>& keys = motion.keys;
-    if (keys.empty()) return {};
-    if (solverTime <= keys.front().time) return keys.front().offset;
-    if (solverTime >= keys.back().time) return keys.back().offset;
+    if (keys.empty()) {
+        return {};
+    }
+    if (solverTime <= keys.front().time) {
+        return keys.front().offset;
+    }
+    if (solverTime >= keys.back().time) {
+        return keys.back().offset;
+    }
     for (std::size_t i = 1; i < keys.size(); ++i) {
-        if (solverTime > keys[i].time) continue;
+        if (solverTime > keys[i].time) {
+            continue;
+        }
         const float span = keys[i].time - keys[i - 1].time;
         const float t = span > 1.0e-6f ? (solverTime - keys[i - 1].time) / span : 1.0f;
         return math::Vector3::Lerp(keys[i - 1].offset, keys[i].offset, t);
@@ -68,10 +76,14 @@ math::Vector3 MotionOffsetAt(const fluid::FluidMotion& motion, float solverTime)
 
 bool PartShownInPreview(const FluidDocument& document, FluidSelectionKind list, int index)
 {
-    if (document.IsHidden(list, index)) return false;
+    if (document.IsHidden(list, index)) {
+        return false;
+    }
     const int count = fluidui::PartCount(document.Recipe(), list);
     for (int i = 0; i < count; ++i)
-        if (document.IsSolo(list, i)) return i == index;
+        if (document.IsSolo(list, i)) {
+            return i == index;
+        }
     return true;
 }
 
@@ -83,7 +95,9 @@ float TimelineDuration(const fluid::FluidRecipe& recipe)
 float TimelineFrameDt(const State& state, const fluid::FluidRecipe& recipe)
 {
     const float fromPreview = state.preview.FrameDt();
-    if (fromPreview > 0.0f) return fromPreview;
+    if (fromPreview > 0.0f) {
+        return fromPreview;
+    }
     const int frames = (std::max)(recipe.output.columns * recipe.output.rows, 1);
     return TimelineDuration(recipe) / static_cast<float>(frames);
 }
@@ -107,7 +121,9 @@ void SetStatus(State& state, std::string text, bool isError)
 void ClampSelection(State& state)
 {
     FluidSelection& selection = state.document.selection;
-    if (!selection.IsPart()) return;
+    if (!selection.IsPart()) {
+        return;
+    }
     const int count = fluidui::PartCount(state.document.Recipe(), selection.kind);
     if (count <= 0) {
         selection = FluidSelection{ FluidSelectionKind::None, -1 };
@@ -118,7 +134,9 @@ void ClampSelection(State& state)
 
 void ClampKeySelection(State& state)
 {
-    if (state.selectedKey < 0) return;
+    if (state.selectedKey < 0) {
+        return;
+    }
     if (!(state.keyOwner == state.document.selection)) {
         state.selectedKey = -1;
         return;
@@ -126,23 +144,30 @@ void ClampKeySelection(State& state)
     int count = 0;
     const bool found = VisitPart(state.document.Recipe(), state.keyOwner.kind, state.keyOwner.index,
                                  [&count](const auto& part) { count = static_cast<int>(part.motion.keys.size()); });
-    if (!found || state.selectedKey >= count) state.selectedKey = -1;
+    if (!found || state.selectedKey >= count) {
+        state.selectedKey = -1;
+    }
 }
 
 int ActiveMotionKey(const State& state)
 {
-    if (state.selectedKey < 0) return -1;
+    if (state.selectedKey < 0) {
+        return -1;
+    }
     return state.keyOwner == state.document.selection ? state.selectedKey : -1;
 }
 
 void FixSelectionAfterRemove(FluidSelection& selection, FluidSelectionKind list, int removedIndex, int newCount)
 {
-    if (selection.kind != list) return;
+    if (selection.kind != list) {
+        return;
+    }
     if (selection.index == removedIndex) {
-        if (newCount <= 0)
+        if (newCount <= 0) {
             selection = FluidSelection{ FluidSelectionKind::None, -1 };
-        else
+        } else {
             selection.index = (std::min)(removedIndex, newCount - 1);
+        }
     } else if (selection.index > removedIndex) {
         --selection.index;
     }
@@ -150,28 +175,33 @@ void FixSelectionAfterRemove(FluidSelection& selection, FluidSelectionKind list,
 
 void FixSelectionAfterMove(FluidSelection& selection, FluidSelectionKind list, int from, int to)
 {
-    if (selection.kind != list || from == to) return;
-    if (selection.index == from)
+    if (selection.kind != list || from == to) {
+        return;
+    }
+    if (selection.index == from) {
         selection.index = to;
-    else if (from < selection.index && selection.index <= to)
+    } else if (from < selection.index && selection.index <= to) {
         --selection.index;
-    else if (to <= selection.index && selection.index < from)
+    } else if (to <= selection.index && selection.index < from) {
         ++selection.index;
+    }
 }
 
 bool RemoveSelectedPart(EditorContext& ctx, State& state)
 {
     FluidDocument& document = state.document;
     const FluidSelection selection = document.selection;
-    if (!selection.IsPart()) return false;
+    if (!selection.IsPart()) {
+        return false;
+    }
     const bool removed = document.Edit(ctx, "Delete Fluid Part", [&selection](fluid::FluidRecipe& recipe) {
         fluidui::RemovePart(recipe, selection.kind, selection.index);
     });
     if (removed) {
         FixSelectionAfterRemove(document.selection, selection.kind, selection.index,
                                 fluidui::PartCount(document.Recipe(), selection.kind));
-        /// @note hide/solo は (list, index) で覚えているので、詰まった添字へ印を追随させる。
-        ///       忘れると «隠したはずの渦ではない方が消える»。Outliner のメニュー削除と同じ扱い。
+        // hide/solo は (list, index) で覚えているので、詰まった添字へ印を追随させる。
+        // 忘れると «隠したはずの渦ではない方が消える»。Outliner のメニュー削除と同じ扱い。
         document.RemapVisibilityAfterRemove(selection.kind, selection.index);
         ++state.visibilityGeneration;
     }
@@ -188,7 +218,7 @@ bool InsertMotionKeyAtPlayhead(EditorContext& ctx, State& state)
     }
     const fluid::FluidRecipe& current = document.Recipe();
     const float solverTime = current.output.warmup + state.playhead;
-    /// @note 同じコマに打ち直したのを «置き換え» とみなす幅。これより狭いと 1 コマに 2 つ重なる。
+    // 同じコマに打ち直したのを «置き換え» とみなす幅。これより狭いと 1 コマに 2 つ重なる。
     const float sameFrame = 0.5f * TimelineFrameDt(state, current);
     bool full = false;
     const bool changed = document.Edit(ctx, "Insert Fluid Motion Key", [&](fluid::FluidRecipe& recipe) {
@@ -242,32 +272,43 @@ void EndStaleDrags(EditorContext& ctx, State& state)
 {
     FluidDocument& document = state.document;
 
-    /// @note Undo や外からの読み直しで文書が操作中の編集を捨てたら、こちらも黙って畳む (End を呼ぶと空の Undo が積まれうる)。
-    if (state.viewDrag.active && !document.InInteractiveEdit()) state.viewDrag = {};
-    /// @note ギズモは 3D のビューポートを描いたフレームにしか終わりを見られない。2D へ切り替えた・タブが
-    ///       背面に回ったなどで描かれなくなったら、ここで畳んでおかないと編集が開きっぱなしになる。
+    // Undo や外からの読み直しで文書が操作中の編集を捨てたら、こちらも黙って畳む (End を呼ぶと空の Undo が積まれうる)。
+    if (state.viewDrag.active && !document.InInteractiveEdit()) {
+        state.viewDrag = {};
+    }
+    // ギズモは 3D のビューポートを描いたフレームにしか終わりを見られない。2D へ切り替えた・タブが
+    // 背面に回ったなどで描かれなくなったら、ここで畳んでおかないと編集が開きっぱなしになる。
     if (state.gizmoActive && (!document.InInteractiveEdit() || !ImGui::IsMouseDown(ImGuiMouseButton_Left))) {
         const char* label = state.gizmoUndoLabel;
         const bool pending = document.InInteractiveEdit();
         state.gizmoActive = false;
-        if (pending) document.EndInteractiveEdit(ctx, label);
+        if (pending) {
+            document.EndInteractiveEdit(ctx, label);
+        }
     }
     if (state.timelineDrag.kind != TimelineDragKind::None && state.timelineDrag.kind != TimelineDragKind::Scrub
-        && !document.InInteractiveEdit())
+        && !document.InInteractiveEdit()) {
         state.timelineDrag = {};
+    }
 
-    if (ImGui::IsMouseDown(ImGuiMouseButton_Left)) return;
+    if (ImGui::IsMouseDown(ImGuiMouseButton_Left)) {
+        return;
+    }
 
     if (state.viewDrag.active) {
         const char* label = state.viewDrag.undoLabel;
         state.viewDrag = {};
-        if (document.InInteractiveEdit()) document.EndInteractiveEdit(ctx, label);
+        if (document.InInteractiveEdit()) {
+            document.EndInteractiveEdit(ctx, label);
+        }
     }
     if (state.timelineDrag.kind != TimelineDragKind::None) {
         const bool edits = state.timelineDrag.kind != TimelineDragKind::Scrub;
         const char* label = state.timelineDrag.undoLabel;
         state.timelineDrag = {};
-        if (edits && document.InInteractiveEdit()) document.EndInteractiveEdit(ctx, label);
+        if (edits && document.InInteractiveEdit()) {
+            document.EndInteractiveEdit(ctx, label);
+        }
     }
 }
 

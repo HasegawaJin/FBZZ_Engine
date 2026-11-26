@@ -61,11 +61,15 @@ void InputRecorder::Emit(JsonValue inject)
 
 void InputRecorder::Capture()
 {
-    if (!m_recording) return;
+    if (!m_recording) {
+        return;
+    }
 
     for (int key = 1; key < static_cast<int>(m_keys.size()); ++key) {
         const bool held = input::Input::KeyHeld(static_cast<input::KeyCode>(key));
-        if (held == m_keys[static_cast<size_t>(key)]) continue;
+        if (held == m_keys[static_cast<size_t>(key)]) {
+            continue;
+        }
         m_keys[static_cast<size_t>(key)] = held;
         JsonValue inject = JsonValue::MakeObject();
         inject.Set("kind", JsonValue("key"));
@@ -76,7 +80,9 @@ void InputRecorder::Capture()
 
     for (int button = 0; button < static_cast<int>(m_mouseButtons.size()); ++button) {
         const bool held = input::Input::MouseButton(button);
-        if (held == m_mouseButtons[static_cast<size_t>(button)]) continue;
+        if (held == m_mouseButtons[static_cast<size_t>(button)]) {
+            continue;
+        }
         m_mouseButtons[static_cast<size_t>(button)] = held;
         JsonValue inject = JsonValue::MakeObject();
         inject.Set("kind", JsonValue("mouseButton"));
@@ -85,7 +91,7 @@ void InputRecorder::Capture()
         Emit(std::move(inject));
     }
 
-    /// @note 移動量は «そのフレームだけ» の値なので、差分でなく非ゼロのフレームを全部残す。
+    // 移動量は «そのフレームだけ» の値なので、差分でなく非ゼロのフレームを全部残す。
     const math::Vector2 delta = input::Input::MouseDelta();
     if (delta.x != 0.0f || delta.y != 0.0f) {
         JsonValue inject = JsonValue::MakeObject();
@@ -105,7 +111,9 @@ void InputRecorder::Capture()
         const bool held = input::InputActionMap::GetAction(action.name);
         auto iterator = m_actions.find(action.name);
         const bool previous = iterator != m_actions.end() && iterator->second;
-        if (held == previous) continue;
+        if (held == previous) {
+            continue;
+        }
         m_actions[action.name] = held;
         JsonValue inject = JsonValue::MakeObject();
         inject.Set("kind", JsonValue("gamepadButton"));
@@ -117,7 +125,9 @@ void InputRecorder::Capture()
         const float value = input::InputActionMap::GetAxis(axis.name);
         auto iterator = m_axes.find(axis.name);
         const float previous = iterator != m_axes.end() ? iterator->second : 0.0f;
-        if (std::fabs(value - previous) < kAxisEpsilon && !(value == 0.0f && previous != 0.0f)) continue;
+        if (std::fabs(value - previous) < kAxisEpsilon && !(value == 0.0f && previous != 0.0f)) {
+            continue;
+        }
         m_axes[axis.name] = value;
         JsonValue inject = JsonValue::MakeObject();
         inject.Set("kind", JsonValue("axis"));

@@ -51,7 +51,9 @@ struct ManagedSettingsReflectorTestAccess {
     static void HoldInput(editor::ManagedSettingsReflector& reflector, const char* path, const char* field)
     {
         ImGuiContext* context = ImGui::GetCurrentContext();
-        if (!context || !context->CurrentWindow) return;
+        if (!context || !context->CurrentWindow) {
+            return;
+        }
         ImGui::PushID(path);
         ImGui::PushID(field);
         const unsigned int id = context->CurrentWindow->GetID("##primitive");
@@ -152,7 +154,9 @@ protected:
     std::unique_ptr<scene::Script> Create(scene::GameObject& owner, std::string_view name, const std::string& savedScriptId)
     {
         std::string type;
-        if (!scene::ScriptFactory::ResolveTypeName(name, type)) return nullptr;
+        if (!scene::ScriptFactory::ResolveTypeName(name, type)) {
+            return nullptr;
+        }
         auto script = scene::ScriptFactory::Create(type, savedScriptId);
         if (script) script->SetContext(AttachedScene(), &owner);
         return script;
@@ -625,7 +629,9 @@ TEST_F(ManagedCompletionTest, ExactManagedBatchSelectsDuplicateSameTypeInstances
     ASSERT_TRUE(second->ApplySettingsJson("{\"health\":7}"));
     const auto health = [](scene::ManagedScriptAdapter* adapter) {
         std::string json; editor::OpData page;
-        if (!adapter->ReadSettingsPage("/health", 0, 1, json) || !editor::ReadManagedSettingsJson(json, page)) return -1;
+        if (!adapter->ReadSettingsPage("/health", 0, 1, json) || !editor::ReadManagedSettingsJson(json, page)) {
+            return -1;
+        }
         return page.Find("value")->AsInt();
     };
     std::vector<editor::ManagedSettingsEdit> edits;
@@ -808,7 +814,9 @@ TEST_F(ManagedCompletionTest, InspectorAndAiAuthorIncompleteRequiredSettingsButS
     const auto exact = editor::CaptureManagedSettingsTarget(Context(), owner, entry);
     const auto edit = [&](const std::string& json) {
         editor::OpData fields;
-        if (!editor::ReadManagedSettingsJson(json, fields)) return editor::OpResult::Err("BAD_TEST_JSON", "Invalid test JSON");
+        if (!editor::ReadManagedSettingsJson(json, fields)) {
+            return editor::OpResult::Err("BAD_TEST_JSON", "Invalid test JSON");
+        }
         return editor::ApplyManagedInspectorFields(Context(), exact, fields);
     };
     auto result = edit("{\"settings\":{\"target\":\"" + guid + "\",\"targets\":[],\"list\":[],\"speed\":2}}");
@@ -950,7 +958,9 @@ TEST_F(ManagedCompletionTest, CommonConfigureCollectionMovesPreserveExpiredToken
     const auto exact = editor::CaptureManagedSettingsTarget(Context(), owner, entry);
     const auto edit = [&](const std::string& json, const std::vector<std::string>& rebind = std::vector<std::string>{}) {
         editor::OpData fields;
-        if (!editor::ReadManagedSettingsJson(json, fields)) return editor::OpResult::Err("BAD_TEST_JSON", "Invalid test JSON");
+        if (!editor::ReadManagedSettingsJson(json, fields)) {
+            return editor::OpResult::Err("BAD_TEST_JSON", "Invalid test JSON");
+        }
         return editor::ApplyManagedInspectorFields(Context(), exact, fields, rebind);
     };
     const std::string initial = "{\"settings\":{\"target\":\"" + guid + "\",\"targets\":[\"" + guid + "\",\"" + liveGuid
@@ -978,7 +988,7 @@ TEST_F(ManagedCompletionTest, CommonConfigureCollectionMovesPreserveExpiredToken
     EXPECT_FALSE(paths.at("/target").id.IsValid());
     result = edit(reordered, {"/settings/list/1"}); ASSERT_TRUE(result.ok) << result.message;
     paths = projection(); EXPECT_EQ(paths.at("/list/1").id, replacementId); EXPECT_FALSE(paths.at("/target").id.IsValid());
-    /// @note The saved GUIDs match but lifetime tokens differ; moves alone must receive an explicit error instead of silently becoming a no-change edit.
+    // The saved GUIDs match but lifetime tokens differ; moves alone must receive an explicit error instead of silently becoming a no-change edit.
     editor::OpData movesOnly = editor::OpData::MakeArray();
     for (const auto& [from, to] : {std::pair{"/settings/target", "/settings/list/1"}, std::pair{"/settings/list/1", "/settings/target"}}) {
         editor::OpData move = editor::OpData::MakeObject(); move.Set("fromPath", from); move.Set("toPath", to); movesOnly.Push(std::move(move));
@@ -1430,7 +1440,7 @@ TEST_F(ManagedCompletionTest, InspectorRuntimeCollectionsRemainBrowsableWithoutA
     ImGui::SetCursorPos({10.0f, 10.0f});
     ImGui::LogToBuffer();
     ManagedSettingsReflectorTestAccess::DrawRuntimeFields(reflector); reflector.Finish();
-    /// @note ImGui::LogFinish clears the internal buffer even for buffer-only logging.
+    // ImGui::LogFinish clears the internal buffer even for buffer-only logging.
     const std::string labels(frame.current->LogBuffer.c_str()); ImGui::LogFinish();
     EXPECT_NE(labels.find("observedCounts"), std::string::npos);
     EXPECT_EQ(labels.find("追加"), std::string::npos);

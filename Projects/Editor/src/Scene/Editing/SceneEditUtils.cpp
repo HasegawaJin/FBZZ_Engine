@@ -66,7 +66,9 @@ bool GatherCloneTree(scene::Scene& sourceScene,
                      std::vector<std::size_t>& outRootNodes)
 {
     scene::GameObject* source = sourceScene.GetGameObject(sourceId);
-    if (!source) return false;
+    if (!source) {
+        return false;
+    }
 
     CloneNode node;
     node.sourceId = sourceId;
@@ -84,25 +86,30 @@ bool GatherCloneTree(scene::Scene& sourceScene,
 
     const std::size_t nodeIndex = outNodes.size();
     outNodes.push_back(std::move(node));
-    if (parentNode == (std::numeric_limits<std::size_t>::max)())
+    if (parentNode == (std::numeric_limits<std::size_t>::max)()) {
         outRootNodes.push_back(nodeIndex);
+    }
 
     std::vector<scene::EntityID> childIds;
     childIds.reserve(static_cast<std::size_t>(source->GetChildCount()));
     for (int index = 0; index < source->GetChildCount(); ++index)
-        if (const scene::GameObject* child = source->GetChild(index))
+        if (const scene::GameObject* child = source->GetChild(index)) {
             childIds.push_back(child->GetID());
+        }
     for (scene::EntityID childId : childIds)
         if (!GatherCloneTree(sourceScene, childId, nodeIndex, scene::EntityID::INVALID,
-                             {}, outNodes, outRootNodes))
+                             {}, outNodes, outRootNodes)) {
             return false;
+        }
     return true;
 }
 
 bool HasSerializedFields(const std::string& fieldsToml)
 {
     for (unsigned char value : fieldsToml)
-        if (!std::isspace(value)) return true;
+        if (!std::isspace(value)) {
+            return true;
+        }
     return false;
 }
 
@@ -112,11 +119,14 @@ bool ValidateCloneScriptSchemas(scene::Scene& sourceScene, const std::vector<Clo
         scene::GameObject* source = sourceScene.GetGameObject(node.sourceId);
         const scene::ScriptComponent* scripts = source
             ? source->GetComponent<scene::ScriptComponent>() : nullptr;
-        if (!scripts) continue;
+        if (!scripts) {
+            continue;
+        }
         for (const scene::ScriptEntry& entry : scripts->scripts) {
             if (entry.script || !entry.serialized || !HasSerializedFields(entry.serialized->fieldsToml)
-                || scene::ScriptFactory::CanCreate(entry.serialized->type))
+                || scene::ScriptFactory::CanCreate(entry.serialized->type)) {
                 continue;
+            }
             FBZZ_LOG_WARN("Clone forest aborted: unavailable Script '%s' has saved fields without a typed reference schema",
                           entry.serialized->type.c_str());
             return false;
@@ -132,10 +142,13 @@ bool ValidatePreparedCloneScripts(scene::Scene& destinationScene,
         scene::GameObject* owner = destinationScene.GetGameObject(ownerId);
         const scene::ScriptComponent* scripts = owner
             ? owner->GetComponent<scene::ScriptComponent>() : nullptr;
-        if (!scripts) continue;
+        if (!scripts) {
+            continue;
+        }
         for (const scene::ScriptEntry& entry : scripts->scripts) {
-            if (entry.script || !entry.serialized || !HasSerializedFields(entry.serialized->fieldsToml))
+            if (entry.script || !entry.serialized || !HasSerializedFields(entry.serialized->fieldsToml)) {
                 continue;
+            }
             FBZZ_LOG_WARN("Clone forest aborted: Script '%s' could not be prepared for typed reference remapping",
                           entry.serialized->type.c_str());
             return false;
@@ -151,18 +164,25 @@ bool CopyHierarchyForest(scene::Scene& sourceScene,
                          EditorContext* editorContext)
 {
     outRoots.clear();
-    if (roots.empty()) return false;
+    if (roots.empty()) {
+        return false;
+    }
 
     std::vector<CloneNode> nodes;
     std::vector<std::size_t> rootNodeIndices;
     for (const CloneRootRequest& root : roots) {
         if (!GatherCloneTree(sourceScene, root.sourceId,
                 (std::numeric_limits<std::size_t>::max)(), root.destinationParentId,
-                root.rootSuffix, nodes, rootNodeIndices))
+                root.rootSuffix, nodes, rootNodeIndices)) {
             return false;
+        }
     }
-    if (!ValidateCloneScriptSchemas(sourceScene, nodes)) return false;
-    if (!destinationScene.CanCreateGameObjects(nodes.size())) return false;
+    if (!ValidateCloneScriptSchemas(sourceScene, nodes)) {
+        return false;
+    }
+    if (!destinationScene.CanCreateGameObjects(nodes.size())) {
+        return false;
+    }
 
     std::vector<scene::EntityID> createdIds;
     std::vector<std::pair<scene::EntityID, scene::EntityID>> replacements;
@@ -172,7 +192,9 @@ bool CopyHierarchyForest(scene::Scene& sourceScene,
     copiedOwners.reserve(nodes.size());
 
     auto rollback = [&]() {
-        if (!createdIds.empty()) destinationScene.DestroyGameObjects(createdIds);
+        if (!createdIds.empty()) {
+            destinationScene.DestroyGameObjects(createdIds);
+        }
         outRoots.clear();
     };
 
@@ -199,9 +221,12 @@ bool CopyHierarchyForest(scene::Scene& sourceScene,
     for (std::size_t index = 0; index < nodes.size(); ++index) {
         CloneNode& node = nodes[index];
         scene::EntityID destinationParentId = node.externalParentId;
-        if (node.parentNode != (std::numeric_limits<std::size_t>::max)())
+        if (node.parentNode != (std::numeric_limits<std::size_t>::max)()) {
             destinationParentId = nodes[node.parentNode].destinationId;
-        if (!destinationParentId.IsValid()) continue;
+        }
+        if (!destinationParentId.IsValid()) {
+            continue;
+        }
 
         scene::GameObject* destination = destinationScene.GetGameObject(node.destinationId);
         scene::GameObject* parent = destinationScene.GetGameObject(destinationParentId);
@@ -213,10 +238,11 @@ bool CopyHierarchyForest(scene::Scene& sourceScene,
 
     scene::FlushWorldTransforms(destinationScene);
     for (const CloneNode& node : nodes) {
-        if (&sourceScene == &destinationScene)
+        if (&sourceScene == &destinationScene) {
             destinationScene.DuplicateComponentsPassive(node.sourceId, node.destinationId);
-        else
+        } else {
             destinationScene.CopyComponentsFromPassive(sourceScene, node.sourceId, node.destinationId);
+        }
 
         if (editorContext && &destinationScene == editorContext->activeScene) {
             const scene::GameObject* source = sourceScene.GetGameObject(node.sourceId);
@@ -236,8 +262,9 @@ bool CopyHierarchyForest(scene::Scene& sourceScene,
     destinationScene.FinalizePassiveCopiedScripts(copiedOwners);
 
     outRoots.reserve(rootNodeIndices.size());
-    for (std::size_t rootIndex : rootNodeIndices)
+    for (std::size_t rootIndex : rootNodeIndices) {
         outRoots.push_back(nodes[rootIndex].destinationId);
+    }
     return !outRoots.empty();
 }
 
@@ -245,14 +272,18 @@ std::size_t CountHierarchyObjects(scene::GameObject& object)
 {
     std::size_t count = 1;
     for (int i = 0; i < object.GetChildCount(); ++i)
-        if (auto* child = object.GetChild(i)) count += CountHierarchyObjects(*child);
+        if (auto* child = object.GetChild(i)) {
+            count += CountHierarchyObjects(*child);
+        }
     return count;
 }
 
 /// @return id が Canvas を指していなければ空。
 std::string UICanvasGuidOf(scene::Scene& targetScene, scene::EntityID id)
 {
-    if (!id.IsValid()) return {};
+    if (!id.IsValid()) {
+        return {};
+    }
     const scene::GameObject* canvas = targetScene.GetGameObject(id);
     return canvas != nullptr ? canvas->instanceId : std::string{};
 }
@@ -261,24 +292,30 @@ std::string UICanvasGuidOf(scene::Scene& targetScene, scene::EntityID id)
 scene::EntityID FindUICanvasByGuid(scene::Scene& targetScene, const std::string& guid)
 {
     scene::GameObject* canvas = targetScene.FindByGuid(guid);
-    if (canvas == nullptr || canvas->GetComponent<scene::UICanvas>() == nullptr) return scene::EntityID::INVALID;
+    if (canvas == nullptr || canvas->GetComponent<scene::UICanvas>() == nullptr) {
+        return scene::EntityID::INVALID;
+    }
     return canvas->GetID();
 }
 
-} /// @note namespace
+} // namespace
 
 std::unique_ptr<ICommand> MakeSceneEditCommand(EditorContext& ctx,
                                                const char* description,
                                                const std::function<void()>& edit)
 {
-    if (!ctx.activeScene || !edit) return nullptr;
+    if (!ctx.activeScene || !edit) {
+        return nullptr;
+    }
 
     const bool canRecordUndo =
         ctx.undoStack != nullptr && ctx.undoStack->IsRecordingEnabled();
     if (!canRecordUndo) {
-        /// @note Play 中などは履歴を残さない。編集そのものは行う。
+        // Play 中などは履歴を残さない。編集そのものは行う。
         edit();
-        if (ctx.markSceneDirty) ctx.markSceneDirty();
+        if (ctx.markSceneDirty) {
+            ctx.markSceneDirty();
+        }
         return nullptr;
     }
 
@@ -287,26 +324,32 @@ std::unique_ptr<ICommand> MakeSceneEditCommand(EditorContext& ctx,
     edit();
     const std::string after = SceneIO::Serialize(*ctx.activeScene);
 
-    /// @note Reparent 等が専用コマンドを追加済みなら、全シーンコマンドとの二重登録を避ける。
+    // Reparent 等が専用コマンドを追加済みなら、全シーンコマンドとの二重登録を避ける。
     if (before == after ||
         ctx.undoStack->GetRevision() != historyRevisionBefore) {
-        if (before != after && ctx.markSceneDirty) ctx.markSceneDirty();
+        if (before != after && ctx.markSceneDirty) {
+            ctx.markSceneDirty();
+        }
         return nullptr;
     }
 
     scene::Scene* scene = ctx.activeScene;
     EditorContext* context = &ctx;
     const auto markDirty = ctx.markSceneDirty;
-    /// @note Deserialize で EntityID は振り直されるが instanceId は残るので、編集対象 Canvas は guid で引き直す。
+    // Deserialize で EntityID は振り直されるが instanceId は残るので、編集対象 Canvas は guid で引き直す。
     auto restore = [scene, context, markDirty](const std::string& snapshot) {
         const std::string canvasGuid = UICanvasGuidOf(*scene, context->activeUICanvas);
         if (SceneIO::Deserialize(*scene, snapshot)) {
             ClearEntitySelection(*context);
             context->activeUICanvas = FindUICanvasByGuid(*scene, canvasGuid);
-            if (markDirty) markDirty();
+            if (markDirty) {
+                markDirty();
+            }
         }
     };
-    if (ctx.markSceneDirty) ctx.markSceneDirty();
+    if (ctx.markSceneDirty) {
+        ctx.markSceneDirty();
+    }
     return std::make_unique<LambdaCommand>(
         description,
         [restore, after]() { restore(after); },
@@ -318,13 +361,16 @@ void ExecuteSceneEditWithUndo(EditorContext& ctx,
                               const std::function<void()>& edit)
 {
     auto command = MakeSceneEditCommand(ctx, description, edit);
-    if (command && ctx.undoStack != nullptr)
+    if (command && ctx.undoStack != nullptr) {
         ctx.undoStack->Push(std::move(command));
+    }
 }
 
 bool GetAuthoringActive(const EditorContext& ctx, const scene::GameObject& object)
 {
-    if (ctx.editScene && ctx.activeScene != ctx.editScene) return object.activeSelf();
+    if (ctx.editScene && ctx.activeScene != ctx.editScene) {
+        return object.activeSelf();
+    }
     const auto hidden = ctx.editorHiddenGuids.find(object.instanceId);
     return hidden == ctx.editorHiddenGuids.end() ? object.activeSelf() : hidden->second;
 }
@@ -332,7 +378,9 @@ bool GetAuthoringActive(const EditorContext& ctx, const scene::GameObject& objec
 void SetGameObjectsActive(EditorContext& ctx, std::span<const scene::EntityID> ids,
                           bool active, const char* description)
 {
-    if (!ctx.activeScene) return;
+    if (!ctx.activeScene) {
+        return;
+    }
     struct ActiveEdit {
         scene::EntityID entity;
         std::string guid;
@@ -343,13 +391,19 @@ void SetGameObjectsActive(EditorContext& ctx, std::span<const scene::EntityID> i
     for (scene::EntityID id : ids) {
         if (auto* object = ctx.activeScene->GetGameObject(id)) {
             const bool before = GetAuthoringActive(ctx, *object);
-            if (before != active) edits->push_back({id, object->instanceId, before});
+            if (before != active) {
+                edits->push_back({id, object->instanceId, before});
+            }
         }
     }
-    if (edits->empty()) return;
+    if (edits->empty()) {
+        return;
+    }
 
     auto apply = [context = &ctx, scene = ctx.activeScene, edits, active](bool forward) {
-        if (context->activeScene != scene) return;
+        if (context->activeScene != scene) {
+            return;
+        }
         const bool editing = !context->editScene || context->editScene == scene;
         std::unordered_map<std::string_view, scene::GameObject*> byGuid;
         bool indexed = false;
@@ -357,27 +411,38 @@ void SetGameObjectsActive(EditorContext& ctx, std::span<const scene::EntityID> i
         for (const auto& edit : *edits) {
             auto* object = scene->GetGameObject(edit.entity);
             if (!object || object->instanceId != edit.guid) {
-                /// @note スナップショットを介した Undo の後は EntityID が変わる。GUID 索引はそのときだけ作る。
+                // スナップショットを介した Undo の後は EntityID が変わる。GUID 索引はそのときだけ作る。
                 if (!indexed) {
-                    for (auto& candidate : scene->GameObjects()) byGuid.emplace(candidate.instanceId, &candidate);
+                    for (auto& candidate : scene->GameObjects()) {
+                        byGuid.emplace(candidate.instanceId, &candidate);
+                    }
                     indexed = true;
                 }
                 const auto found = byGuid.find(edit.guid);
-                if (found == byGuid.end()) continue;
+                if (found == byGuid.end()) {
+                    continue;
+                }
                 object = found->second;
             }
             const bool value = forward ? active : edit.before;
             const auto hidden = context->editorHiddenGuids.find(edit.guid);
-            if (!editing || hidden == context->editorHiddenGuids.end()) object->SetActive(value);
-            else hidden->second = value;
+            if (!editing || hidden == context->editorHiddenGuids.end()) {
+                object->SetActive(value);
+            } else {
+                hidden->second = value;
+            }
             changed = true;
         }
-        if (changed && context->markSceneDirty) context->markSceneDirty();
+        if (changed && context->markSceneDirty) {
+            context->markSceneDirty();
+        }
     };
     if (ctx.undoStack)
         ctx.undoStack->Execute(std::make_unique<LambdaCommand>(description,
             [apply] { apply(true); }, [apply] { apply(false); }));
-    else apply(true);
+    else {
+        apply(true);
+    }
 }
 
 void DestroySelected(EditorContext& ctx, const std::vector<scene::EntityID>& ids)
@@ -393,8 +458,9 @@ std::vector<scene::EntityID> CollectHierarchyRoots(const scene::Scene& scene, st
     std::unordered_set<const scene::GameObject*> selected;
     selected.reserve(ids.size());
     for (const auto id : ids)
-        if (const auto* object = scene.GetGameObject(id); object && selected.insert(object).second)
+        if (const auto* object = scene.GetGameObject(id); object && selected.insert(object).second) {
             ordered.push_back(object);
+        }
 
     std::vector<scene::EntityID> roots;
     roots.reserve(ordered.size());
@@ -404,15 +470,22 @@ std::vector<scene::EntityID> CollectHierarchyRoots(const scene::Scene& scene, st
         bool hasSelectedAncestor = false;
         path.clear();
         for (auto* parent = object->GetParent(); parent; parent = parent->GetParent()) {
-            if (selected.contains(parent)) { hasSelectedAncestor = true; break; }
+            if (selected.contains(parent)) {
+                hasSelectedAncestor = true;
+                break;
+            }
             if (const auto cached = ancestorMemo.find(parent); cached != ancestorMemo.end()) {
                 hasSelectedAncestor = cached->second;
                 break;
             }
             path.push_back(parent);
         }
-        for (const auto* parent : path) ancestorMemo.emplace(parent, hasSelectedAncestor);
-        if (!hasSelectedAncestor) roots.push_back(object->GetID());
+        for (const auto* parent : path) {
+            ancestorMemo.emplace(parent, hasSelectedAncestor);
+        }
+        if (!hasSelectedAncestor) {
+            roots.push_back(object->GetID());
+        }
     }
     return roots;
 }
@@ -422,11 +495,17 @@ scene::EntityID DuplicateHierarchyRecursive(EditorContext& ctx,
                                             scene::EntityID parentId,
                                             bool addCloneSuffix)
 {
-    if (!ctx.activeScene) return scene::EntityID::INVALID;
+    if (!ctx.activeScene) {
+        return scene::EntityID::INVALID;
+    }
     auto* src = ctx.activeScene->GetGameObject(srcId);
-    if (!src) return scene::EntityID::INVALID;
+    if (!src) {
+        return scene::EntityID::INVALID;
+    }
     for (auto* parent = ctx.activeScene->GetGameObject(parentId); parent; parent = parent->GetParent())
-        if (parent == src) return scene::EntityID::INVALID;
+        if (parent == src) {
+            return scene::EntityID::INVALID;
+        }
     if (!ctx.activeScene->CanCreateGameObjects(CountHierarchyObjects(*src))) {
         FBZZ_LOG_WARN("Duplicate hierarchy: insufficient entity capacity");
         return scene::EntityID::INVALID;
@@ -436,14 +515,17 @@ scene::EntityID DuplicateHierarchyRecursive(EditorContext& ctx,
         {srcId, parentId, addCloneSuffix ? " (Clone)" : ""}};
     std::vector<scene::EntityID> copiedRoots;
     if (!CopyHierarchyForest(*ctx.activeScene, *ctx.activeScene, requests,
-                             copiedRoots, &ctx))
+                             copiedRoots, &ctx)) {
         return scene::EntityID::INVALID;
+    }
     return copiedRoots.front();
 }
 
 std::unique_ptr<ICommand> MakeDeleteSelectedCommand(EditorContext& ctx)
 {
-    if (!ctx.activeScene || ctx.selectedEntities.empty()) return nullptr;
+    if (!ctx.activeScene || ctx.selectedEntities.empty()) {
+        return nullptr;
+    }
     const std::vector<scene::EntityID> ids = ctx.selectedEntities;
     return MakeSceneEditCommand(ctx, "Delete GameObjects",
         [&ctx, ids]() { DestroySelected(ctx, ids); });
@@ -451,11 +533,17 @@ std::unique_ptr<ICommand> MakeDeleteSelectedCommand(EditorContext& ctx)
 
 std::unique_ptr<ICommand> MakeDuplicateSelectedCommand(EditorContext& ctx)
 {
-    if (!ctx.activeScene || ctx.selectedEntities.empty()) return nullptr;
+    if (!ctx.activeScene || ctx.selectedEntities.empty()) {
+        return nullptr;
+    }
     auto toDup = CollectHierarchyRoots(*ctx.activeScene, ctx.selectedEntities);
     std::size_t required = 0;
-    for (const auto id : toDup) required += CountHierarchyObjects(*ctx.activeScene->GetGameObject(id));
-    if (toDup.empty()) return nullptr;
+    for (const auto id : toDup) {
+        required += CountHierarchyObjects(*ctx.activeScene->GetGameObject(id));
+    }
+    if (toDup.empty()) {
+        return nullptr;
+    }
     if (!ctx.activeScene->CanCreateGameObjects(required)) {
         FBZZ_LOG_WARN("Duplicate selection: insufficient entity capacity");
         return nullptr;
@@ -471,21 +559,26 @@ std::unique_ptr<ICommand> MakeDuplicateSelectedCommand(EditorContext& ctx)
         }
         std::vector<scene::EntityID> newIds;
         if (CopyHierarchyForest(*ctx.activeScene, *ctx.activeScene, requests,
-                                newIds, &ctx))
+                                newIds, &ctx)) {
             SelectEntities(ctx, newIds);
+        }
     });
 }
 
 void DeleteSelectedWithUndo(EditorContext& ctx)
 {
     auto command = MakeDeleteSelectedCommand(ctx);
-    if (command && ctx.undoStack != nullptr) ctx.undoStack->Push(std::move(command));
+    if (command && ctx.undoStack != nullptr) {
+        ctx.undoStack->Push(std::move(command));
+    }
 }
 
 void DuplicateSelectedWithUndo(EditorContext& ctx)
 {
     auto command = MakeDuplicateSelectedCommand(ctx);
-    if (command && ctx.undoStack != nullptr) ctx.undoStack->Push(std::move(command));
+    if (command && ctx.undoStack != nullptr) {
+        ctx.undoStack->Push(std::move(command));
+    }
 }
 
 std::unique_ptr<ICommand> MakeRenameNodeCommand(EditorContext& ctx,
@@ -494,45 +587,64 @@ std::unique_ptr<ICommand> MakeRenameNodeCommand(EditorContext& ctx,
                                                 const char* label,
                                                 bool applyNow)
 {
-    if (!ctx.activeScene || newName.empty()) return nullptr;
+    if (!ctx.activeScene || newName.empty()) {
+        return nullptr;
+    }
     scene::GameObject* go = ctx.activeScene->GetGameObject(id);
-    if (go == nullptr || go->name == newName) return nullptr;
+    if (go == nullptr || go->name == newName) {
+        return nullptr;
+    }
 
-    /// @note ポインタではなく EntityID を捕捉して毎回引き直す。Undo/Redo の途中でシーンが差し替わっても
-    /// @note 対象を取り違えず、解放後参照にもならない。
+    // ポインタではなく EntityID を捕捉して毎回引き直す。Undo/Redo の途中でシーンが差し替わっても
+    // 対象を取り違えず、解放後参照にもならない。
     scene::Scene* scene = ctx.activeScene;
     const auto markDirty = ctx.markSceneDirty;
     const std::string oldName = go->name;
 
     if (applyNow) {
         go->name = newName;
-        if (markDirty) markDirty();
+        if (markDirty) {
+            markDirty();
+        }
     }
 
     return std::make_unique<LambdaCommand>(
         label,
         [scene, id, newName, markDirty]() {
-            if (auto* g = scene->GetGameObject(id)) g->name = newName;
-            if (markDirty) markDirty();
+            if (auto* g = scene->GetGameObject(id)) {
+                g->name = newName;
+            }
+            if (markDirty) {
+                markDirty();
+            }
         },
         [scene, id, oldName, markDirty]() {
-            if (auto* g = scene->GetGameObject(id)) g->name = oldName;
-            if (markDirty) markDirty();
+            if (auto* g = scene->GetGameObject(id)) {
+                g->name = oldName;
+            }
+            if (markDirty) {
+                markDirty();
+            }
         });
 }
 
 void CopySelectedToClipboard(EditorContext& ctx)
 {
-    if (!ctx.activeScene || ctx.selectedEntities.empty()) return;
+    if (!ctx.activeScene || ctx.selectedEntities.empty()) {
+        return;
+    }
 
     scene::Scene prepared;
     std::vector<scene::EntityID> preparedRoots;
     const auto sourceRoots = CollectHierarchyRoots(*ctx.activeScene, ctx.selectedEntities);
     std::vector<CloneRootRequest> requests;
     requests.reserve(sourceRoots.size());
-    for (scene::EntityID sourceRoot : sourceRoots)
+    for (scene::EntityID sourceRoot : sourceRoots) {
         requests.push_back({sourceRoot, scene::EntityID::INVALID, {}});
-    if (!CopyHierarchyForest(*ctx.activeScene, prepared, requests, preparedRoots, nullptr)) return;
+    }
+    if (!CopyHierarchyForest(*ctx.activeScene, prepared, requests, preparedRoots, nullptr)) {
+        return;
+    }
     g_gameObjectClipboard = std::move(prepared);
     g_gameObjectClipboardRoots = std::move(preparedRoots);
 }
@@ -544,7 +656,9 @@ bool HasGameObjectClipboard()
 
 std::unique_ptr<ICommand> MakePasteClipboardCommand(EditorContext& ctx, scene::EntityID parentId)
 {
-    if (!ctx.activeScene || g_gameObjectClipboardRoots.empty()) return nullptr;
+    if (!ctx.activeScene || g_gameObjectClipboardRoots.empty()) {
+        return nullptr;
+    }
     if (!ctx.activeScene->CanCreateGameObjects(g_gameObjectClipboard.GameObjectCount())) {
         FBZZ_LOG_WARN("Paste clipboard: insufficient entity capacity");
         return nullptr;
@@ -555,21 +669,26 @@ std::unique_ptr<ICommand> MakePasteClipboardCommand(EditorContext& ctx, scene::E
         std::vector<CloneRootRequest> requests;
         requests.reserve(roots.size());
         for (scene::EntityID sourceRootId : roots) {
-            if (!g_gameObjectClipboard.GetGameObject(sourceRootId)) continue;
+            if (!g_gameObjectClipboard.GetGameObject(sourceRootId)) {
+                continue;
+            }
             requests.push_back({sourceRootId, parentId, " (Copy)"});
         }
 
         std::vector<scene::EntityID> pastedIds;
         if (CopyHierarchyForest(g_gameObjectClipboard, *ctx.activeScene, requests,
-                                pastedIds, &ctx))
+                                pastedIds, &ctx)) {
             SelectEntities(ctx, pastedIds);
+        }
     });
 }
 
 void PasteClipboardWithUndo(EditorContext& ctx, scene::EntityID parentId)
 {
     auto command = MakePasteClipboardCommand(ctx, parentId);
-    if (command && ctx.undoStack != nullptr) ctx.undoStack->Push(std::move(command));
+    if (command && ctx.undoStack != nullptr) {
+        ctx.undoStack->Push(std::move(command));
+    }
 }
 
 namespace {
@@ -579,17 +698,23 @@ void MergeSpheres(math::Vector3& c0, float& r0, const math::Vector3& c1, float r
 {
     const math::Vector3 d = { c1.x - c0.x, c1.y - c0.y, c1.z - c0.z };
     const float dist = d.Length();
-    /// @note 球1 は球0 に内包
-    if (dist + r1 <= r0) return;
-    /// @note 球0 は球1 に内包
-    if (dist + r0 <= r1) { c0 = c1; r0 = r1; return; }
+    // 球1 は球0 に内包
+    if (dist + r1 <= r0) {
+        return;
+    }
+    // 球0 は球1 に内包
+    if (dist + r0 <= r1) {
+        c0 = c1;
+        r0 = r1;
+        return;
+    }
     const float newR = (dist + r0 + r1) * 0.5f;
     const float t = (dist > 0.0001f) ? (newR - r0) / dist : 0.0f;
     c0 = { c0.x + d.x * t, c0.y + d.y * t, c0.z + d.z * t };
     r0 = newR;
 }
 
-} /// @note namespace
+} // namespace
 
 void ComputeGameObjectBounds(scene::GameObject& go,
                              math::Vector3& outCenter,
@@ -605,7 +730,7 @@ void ComputeGameObjectBounds(scene::GameObject& go,
         return math::Vector3{ v.x, v.y, v.z };
     };
 
-    /// @note メッシュバウンズが無い GO (空・ライト等) は原点+固定半径で扱う
+    // メッシュバウンズが無い GO (空・ライト等) は原点+固定半径で扱う
     outCenter = worldPoint({ 0.0f, 0.0f, 0.0f });
     outRadius = 0.5f;
     bool found = false;
@@ -618,18 +743,27 @@ void ComputeGameObjectBounds(scene::GameObject& go,
     }
 
     if (auto* smr = go.GetComponent<scene::SkinnedMeshRenderer>(); smr && smr->model) {
-        /// @note この Renderer が描く submesh の境界球を合成する (フレーム選択の範囲)。
-        /// @note 非表示スロットの submesh は描画されないので境界にも含めない。
-        /// @note i はローカルスロット番号なので、マテリアルスロットとそのまま対応する。
+        // この Renderer が描く submesh の境界球を合成する (フレーム選択の範囲)。
+        // 非表示スロットの submesh は描画されないので境界にも含めない。
+        // i はローカルスロット番号なので、マテリアルスロットとそのまま対応する。
         const auto* mat = go.GetComponent<scene::MaterialComponent>();
         for (size_t i = 0; i < smr->SubmeshCount(); ++i) {
             const renderer::Mesh* meshPtr = smr->SubmeshMesh(i);
-            if (!meshPtr || meshPtr->boundsRadius <= 0.0f) continue;
-            if (mat && !mat->SlotAt(i).visible) continue;
+            if (!meshPtr || meshPtr->boundsRadius <= 0.0f) {
+                continue;
+            }
+            if (mat && !mat->SlotAt(i).visible) {
+                continue;
+            }
             const math::Vector3 c = worldPoint(meshPtr->boundsCenter);
             const float r = meshPtr->boundsRadius * (std::max)(maxScale, 0.0001f);
-            if (!found) { outCenter = c; outRadius = r; found = true; }
-            else        MergeSpheres(outCenter, outRadius, c, r);
+            if (!found) {
+                outCenter = c;
+                outRadius = r;
+                found = true;
+            } else {
+                MergeSpheres(outCenter, outRadius, c, r);
+            }
         }
     }
 }
@@ -638,25 +772,36 @@ bool ComputeSelectionBounds(EditorContext& ctx,
                             math::Vector3& outCenter,
                             float& outRadius)
 {
-    if (!ctx.activeScene || ctx.selectedEntities.empty()) return false;
+    if (!ctx.activeScene || ctx.selectedEntities.empty()) {
+        return false;
+    }
 
     bool any = false;
     math::Vector3 center{};
     float radius = 0.0f;
     for (scene::EntityID id : ctx.selectedEntities) {
         auto* go = ctx.activeScene->GetGameObject(id);
-        if (!go) continue;
+        if (!go) {
+            continue;
+        }
         math::Vector3 c{};
         float r = 0.0f;
         ComputeGameObjectBounds(*go, c, r);
-        if (!any) { center = c; radius = r; any = true; }
-        else      MergeSpheres(center, radius, c, r);
+        if (!any) {
+            center = c;
+            radius = r;
+            any = true;
+        } else {
+            MergeSpheres(center, radius, c, r);
+        }
     }
-    if (!any) return false;
+    if (!any) {
+        return false;
+    }
 
     outCenter = center;
     outRadius = radius;
     return true;
 }
 
-} /// @note namespace fbzz::editor
+} // namespace fbzz::editor

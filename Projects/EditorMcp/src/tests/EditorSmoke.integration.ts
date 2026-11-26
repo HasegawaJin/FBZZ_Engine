@@ -49,7 +49,7 @@ async function VerifyAssetDependencies(client: Client, project: string, context:
     const query = async (job: number, direction: 'incoming' | 'outgoing', offset = 0, limit = 100) =>
         Call(client, 'asset_dependencies_status', { job, direction, offset, limit, maxFiles: 4 });
     const scan = async (guid: string, direction: 'incoming' | 'outgoing', limit = 100, maxDepth = 4) => {
-        /// @note 外部変更の通知が届いた検索は、同じジョブを進めず新しい索引世代でやり直す。
+        // 外部変更の通知が届いた検索は、同じジョブを進めず新しい索引世代でやり直す。
         for (let attempt = 0; attempt < 3; ++attempt) {
             const started = await Call(client, 'asset_dependencies_scan', { guid, maxDepth });
             for (let n = 0; n < 32; ++n) {
@@ -196,7 +196,7 @@ async function VerifyAssetMoveBatch(client: Client, project: string, context: { 
     await expectMissingPair(movedPrefab);
     await expectMissingPair(movedMaterial);
 
-    /// @note 読み取りは許可し、2件目のmetaを移す段階で Windows の共有違反を起こす。
+    // 読み取りは許可し、2件目のmetaを移す段階で Windows の共有違反を起こす。
     /// @see https://learn.microsoft.com/windows/win32/api/fileapi/nf-fileapi-createfilew FILE_SHARE_DELETE
     const lock = spawn('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', [
         '$stream = [IO.File]::Open($env:FBZZ_SMOKE_LOCK_PATH, "Open", "Read", "ReadWrite")',
@@ -316,7 +316,7 @@ test('Editor MCP connects, edits, saves, reloads and runs a Playtest', { timeout
                 authoring = (await Call(client, 'editor_op_query', { id: 'authoring.context' })).data;
                 break;
             } catch (error) {
-                /// @note WARP はパイプの起動後も初回描画の準備を続ける。照会だけを再試行する。
+                // WARP はパイプの起動後も初回描画の準備を続ける。照会だけを再試行する。
                 if (!/ENOENT|EBUSY|timeout|timed out|応答が \d+ms を超えました/i.test(String(error))) throw error;
                 await delay(250);
             }

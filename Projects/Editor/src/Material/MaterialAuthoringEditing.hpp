@@ -18,8 +18,9 @@ using CommitResult = asset::detail::MaterialAuthoringCommitResult;
 [[nodiscard]] inline std::optional<asset::MaterialAsset::AuthoringEdit> BeginAssetEdit(
     asset::AssetHandle<asset::MaterialAsset> handle)
 {
-    if (auto* source = asset::AssetManager::Get<asset::MaterialAsset>(handle))
+    if (auto* source = asset::AssetManager::Get<asset::MaterialAsset>(handle)) {
         return source->BeginAuthoringEdit();
+    }
     return std::nullopt;
 }
 
@@ -28,7 +29,9 @@ using CommitResult = asset::detail::MaterialAuthoringCommitResult;
     asset::MaterialAsset::AuthoringEdit& edit)
 {
     const auto result = [&] {
-        if (auto* live = asset::AssetManager::Get<asset::MaterialAsset>(handle)) return edit.Commit(*live);
+        if (auto* live = asset::AssetManager::Get<asset::MaterialAsset>(handle)) {
+            return edit.Commit(*live);
+        }
         edit.Cancel();
         return CommitResult::CONFLICT;
     }();
@@ -49,7 +52,9 @@ using CommitResult = asset::detail::MaterialAuthoringCommitResult;
     const asset::MaterialAssetAuthoring& values)
 {
     auto* live = asset::AssetManager::Get<asset::MaterialAsset>(handle);
-    if (!live) return false;
+    if (!live) {
+        return false;
+    }
     live->ReplaceAuthoring(values);
     return true;
 }
@@ -63,7 +68,9 @@ public:
     SlotTarget(EditorContext& context, scene::Scene* scene, uint64_t generation, std::string ownerId, size_t slot)
         : m_context(context), m_scene(scene), m_sceneGeneration(generation), m_ownerId(std::move(ownerId)), m_slot(slot)
     {
-        if (auto* live = ResolveWithoutIdentity()) m_owner = live->ReadAuthoring();
+        if (auto* live = ResolveWithoutIdentity()) {
+            m_owner = live->ReadAuthoring();
+        }
     }
     [[nodiscard]] scene::MaterialSlot* Resolve() const
     {
@@ -74,7 +81,9 @@ public:
     [[nodiscard]] CommitResult Finish(scene::MaterialSlot::AuthoringEdit& edit) const
     {
         const auto result = [&] {
-            if (auto* live = Resolve()) return edit.Commit(*live);
+            if (auto* live = Resolve()) {
+                return edit.Commit(*live);
+            }
             edit.Cancel();
             return CommitResult::CONFLICT;
         }();
@@ -86,7 +95,9 @@ private:
     scene::MaterialSlot* ResolveWithoutIdentity() const
     {
         if (!m_scene || m_context.activeScene != m_scene
-            || m_context.activeScene->GetRenderSceneGeneration() != m_sceneGeneration) return nullptr;
+            || m_context.activeScene->GetRenderSceneGeneration() != m_sceneGeneration) {
+            return nullptr;
+        }
         auto* owner = m_context.activeScene->FindByGuid(m_ownerId);
         auto* materials = owner ? owner->GetComponent<scene::MaterialComponent>() : nullptr;
         return materials && m_slot < materials->SlotCount() ? &materials->RawSlotAt(m_slot) : nullptr;
@@ -103,13 +114,17 @@ private:
 [[nodiscard]] inline CommitResult AssignSlotReference(const SlotTarget& target, const std::string& path)
 {
     auto* live = target.Resolve();
-    if (!live) return CommitResult::CONFLICT;
+    if (!live) {
+        return CommitResult::CONFLICT;
+    }
     auto edit = live->BeginAuthoringEdit();
     edit.Draft().materialPath = path;
     edit.Draft().materialAsset = {};
     const auto result = target.Finish(edit);
     if (result != CommitResult::CONFLICT)
-        if (auto* current = target.Resolve()) current->InvalidateResolvedMaterialReference();
+        if (auto* current = target.Resolve()) {
+            current->InvalidateResolvedMaterialReference();
+        }
     return result;
 }
 
@@ -117,17 +132,25 @@ private:
 [[nodiscard]] inline CommitResult FinishSlotPathEdit(const SlotTarget& target,
     scene::MaterialSlot::AuthoringEdit& edit, bool fieldAccepted)
 {
-    if (fieldAccepted) edit.Draft().materialAsset = {};
+    if (fieldAccepted) {
+        edit.Draft().materialAsset = {};
+    }
     const auto result = target.Finish(edit);
-    if (result == CommitResult::CONFLICT || (result == CommitResult::UNCHANGED && !fieldAccepted)) return result;
-    if (auto* current = target.Resolve()) current->InvalidateResolvedMaterialReference();
+    if (result == CommitResult::CONFLICT || (result == CommitResult::UNCHANGED && !fieldAccepted)) {
+        return result;
+    }
+    if (auto* current = target.Resolve()) {
+        current->InvalidateResolvedMaterialReference();
+    }
     if (auto* current = target.Resolve()) {
         auto referenceEdit = current->BeginAuthoringEdit();
         const auto handle = asset::AssetManager::Load<asset::MaterialAsset>(referenceEdit.Draft().materialPath);
         referenceEdit.Draft().materialAsset = handle;
         const auto referenceResult = target.Finish(referenceEdit);
-        if (result == CommitResult::UNCHANGED) return referenceResult;
+        if (result == CommitResult::UNCHANGED) {
+            return referenceResult;
+        }
     }
     return result;
 }
-} /// @note namespace fbzz::editor::material_edit_detail
+} // namespace fbzz::editor::material_edit_detail

@@ -42,6 +42,7 @@ async function Context(bus) {
     return context;
 }
 async function Capture(bus, referencePaths) {
+    // Editor が現在開いているプロジェクトを基準に、解析に使えるソースの範囲を決める。
     const context = await Context(bus);
     const root = await realpath(context.projectRoot);
     const sourceRoot = await ProjectFile(root, 'Assets/Scripts');
@@ -52,17 +53,21 @@ async function Capture(bus, referencePaths) {
         entries.sort((left, right) => left.name.localeCompare(right.name, 'en'));
         for (const entry of entries) {
             const absolute = path.join(directory, entry.name);
-            if (entry.isSymbolicLink())
+            if (entry.isSymbolicLink()) {
                 throw new Error('Linked script paths are unsupported.');
+            }
             if (entry.isDirectory()) {
                 await Visit(absolute);
                 continue;
             }
-            if (!entry.isFile() || path.extname(entry.name).toLowerCase() !== '.cs')
+            const isCSharpSource = entry.isFile() && path.extname(entry.name).toLowerCase() === '.cs';
+            if (!isCSharpSource) {
                 continue;
+            }
             const resolved = await realpath(absolute);
             if (!IsWithin(root, resolved))
                 throw new Error('Script path escaped the active project.');
+            // 読み込みの前後で上限を検査し、途中で増えたファイルも全体の容量に含める。
             if (sources.length >= 512)
                 throw new Error('Source snapshot exceeds 512 files; no partial snapshot was analyzed.');
             if ((await lstat(resolved)).size > MAX_SOURCE_BYTES - sourceBytes)
@@ -80,6 +85,7 @@ async function Capture(bus, referencePaths) {
     await Visit(sourceRoot);
     if (sources.length === 0)
         throw new Error('Assets/Scripts contains no C# source files.');
+    // SDK と指定された参照 DLL を収集し、ソースと同じく内容で識別する。
     const referenceFiles = [];
     if (context.managed?.apiPath)
         referenceFiles.push(await realpath(context.managed.apiPath));
@@ -96,9 +102,13 @@ async function Capture(bus, referencePaths) {
         references.push({ path: reference, hash: Hash(await readFile(reference)) });
     }
     const fingerprint = Hash(JSON.stringify({ root: PathKey(root), sources: sources.map(source => [source.file, source.hash]), references }));
+    // 取得中に Editor が別プロジェクトや別の Script API に切り替わった場合は、結果を渡さない。
     const after = await Context(bus);
-    if (PathKey(await realpath(after.projectRoot)) !== PathKey(root) || after.managed?.apiPath !== context.managed?.apiPath)
+    const projectChanged = PathKey(await realpath(after.projectRoot)) !== PathKey(root);
+    const apiChanged = after.managed?.apiPath !== context.managed?.apiPath;
+    if (projectChanged || apiChanged) {
         throw new Error('Active project or Script API changed while reading the source snapshot.');
+    }
     return { root, sources, references, fingerprint };
 }
 /// @note Spawn has no shell and never builds or executes the inspected project or its analyzers.
@@ -177,22 +187,29 @@ export class CSharpSession {
         return this.Execute(snapshot, operation, options);
     }
     async Preview(options) {
+        // 解析対象を確定し、Roslyn が名前変更を許可した場合だけ計画を作る。
         const referencePaths = options.referencePaths ?? [];
         const snapshot = await Capture(this.bus, referencePaths);
         const result = RenameResultSchema.parse(await this.Execute(snapshot, 'rename', options));
         if (result.blocked)
             return result;
-        for (const [id, plan] of this.plans)
-            if (plan.expiresAt <= this.now())
+        for (const [id, plan] of this.plans) {
+            if (plan.expiresAt <= this.now()) {
                 this.plans.delete(id);
+            }
+        }
         if (this.plans.size >= 8)
             throw new Error('Eight rename plans are pending; apply a plan or wait for its five-minute expiry.');
         if (result.edits.length === 0)
             throw new Error('Roslyn returned an empty rename plan.');
+        // 編集位置、元の文字列、置換文字列を取得時のソースと照合する。
         for (const edit of result.edits) {
             const source = snapshot.sources.find(source => source.file === edit.file);
-            if (!source || source.content.slice(edit.start, edit.start + edit.length) !== edit.before || edit.after !== options.newName)
+            const matchesOriginal = source !== undefined
+                && source.content.slice(edit.start, edit.start + edit.length) === edit.before;
+            if (!matchesOriginal || edit.after !== options.newName) {
                 throw new Error('Roslyn returned an invalid source edit.');
+            }
         }
         const planId = randomUUID();
         const expiresAt = this.now() + PLAN_LIFETIME_MS;
@@ -232,6 +249,7 @@ export class CSharpSession {
         }
     }
     async ApplyPlan(planId) {
+        // ファイルを書き換える前に、計画の期限と元のスナップショットを確認する。
         if (this.permission === 'read')
             throw new Error('Read mode cannot apply C# edits.');
         const plan = this.plans.get(planId);
@@ -240,10 +258,12 @@ export class CSharpSession {
             throw new Error('Rename plan is absent or expired.');
         }
         const snapshot = await Capture(this.bus, plan.referencePaths);
-        if (snapshot.fingerprint !== plan.snapshot.fingerprint)
+        if (snapshot.fingerprint !== plan.snapshot.fingerprint) {
             throw new Error('Source snapshot, project or metadata reference changed; create a new rename preview.');
-        if (this.permission !== 'write')
+        }
+        if (this.permission !== 'write') {
             return { status: 'dry-run', planId, edits: plan.edits, sourceFingerprint: snapshot.fingerprint, filesWritten: 0, atomic: false };
+        }
         const context = await Context(this.bus);
         if (context.managedBuildBusy)
             throw new Error('Managed build is active; apply after its completion.');
@@ -252,22 +272,27 @@ export class CSharpSession {
         const restoredFiles = [];
         const recoveryConflicts = [];
         try {
+            // 後ろの位置から置換し、手前の編集位置を変えずに一時ファイルを作る。
             for (const source of snapshot.sources) {
                 const edits = plan.edits.filter(edit => edit.file === source.file).sort((left, right) => right.start - left.start);
                 if (edits.length === 0)
                     continue;
                 let content = source.content;
-                let boundary = content.length;
+                let nextEditStart = content.length;
                 for (const edit of edits) {
-                    if (edit.start + edit.length > boundary || content.slice(edit.start, edit.start + edit.length) !== edit.before)
+                    const editEnd = edit.start + edit.length;
+                    const overlapsNextEdit = editEnd > nextEditStart;
+                    if (overlapsNextEdit || content.slice(edit.start, editEnd) !== edit.before) {
                         throw new Error('Overlapping or stale rename edits.');
-                    content = content.slice(0, edit.start) + edit.after + content.slice(edit.start + edit.length);
-                    boundary = edit.start;
+                    }
+                    content = content.slice(0, edit.start) + edit.after + content.slice(editEnd);
+                    nextEditStart = edit.start;
                 }
                 const write = { source, bytes: Buffer.from(content, 'utf8'), temporary: `${source.absolute}.roslyn-${randomUUID()}.tmp`, applied: false };
                 writes.push(write);
                 await writeFile(write.temporary, write.bytes, { flag: 'wx' });
             }
+            // 全体を再検査し、各ファイルも置き換えの直前に読み直して外部編集を検出する。
             const beforeCommit = await Capture(this.bus, plan.referencePaths);
             if (beforeCommit.fingerprint !== snapshot.fingerprint)
                 throw new Error('Source snapshot changed while staging the rename.');
@@ -277,13 +302,17 @@ export class CSharpSession {
                 await rename(write.temporary, write.source.absolute);
                 write.applied = true;
             }
-            for (const write of writes)
-                if (Hash(await readFile(write.source.absolute)) !== Hash(write.bytes))
+            // 実ファイルの読み戻しに成功した場合に限り、変更前後のハッシュを返す。
+            for (const write of writes) {
+                if (Hash(await readFile(write.source.absolute)) !== Hash(write.bytes)) {
                     throw new Error('Rename readback failed.');
+                }
+            }
             return { status: 'success', planId, filesWritten: writes.length, files: writes.map(write => ({ file: write.source.file, beforeHash: write.source.hash, afterHash: Hash(write.bytes) })),
                 sourceFingerprint: snapshot.fingerprint, atomic: false, requiresManagedBuild: true, sceneFilesModified: false };
         }
         catch (error) {
+            // 公開した順序を逆にたどり、別の編集が見つかったファイルは復元の対象から外す。
             for (const write of writes.filter(write => write.applied).reverse()) {
                 try {
                     if (Hash(await readFile(write.source.absolute)) !== Hash(write.bytes)) {
@@ -306,7 +335,9 @@ export class CSharpSession {
                 try {
                     await unlink(write.temporary);
                 }
-                catch { }
+                catch {
+                    // 既に置き換えに使った一時ファイルは存在しない。
+                }
             }
         }
     }

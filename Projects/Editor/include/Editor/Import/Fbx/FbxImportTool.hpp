@@ -46,7 +46,9 @@ struct FbxImportOptions {
     [[nodiscard]] AnimationClipImportSettings ClipSettingsFor(const std::string& clipName) const
     {
         for (const AnimationClipImportSettings& settings : clipSettings)
-            if (settings.name == clipName) return settings;
+            if (settings.name == clipName) {
+                return settings;
+            }
         AnimationClipImportSettings fallback;
         fallback.name = clipName;
         return fallback;
@@ -63,8 +65,8 @@ struct FbxScanResult {
 class FbxImportTool {
 public:
     /// FBX を分解して outputDir に fz* ファイル群を書き出す。
-    /// @param fbxPath   FBX ファイルの絶対パス
-    /// @param outputDir 出力サブフォルダの絶対パス (stem/ — 存在しなければ作成する)
+    /// @param[in] fbxPath FBX ファイルの絶対パス
+    /// @param[in] outputDir 出力サブフォルダの絶対パス (stem/ — 存在しなければ作成する)
     static bool Import(const std::string& fbxPath,
                        const std::string& outputDir,
                        const std::string& sourceHint = {},

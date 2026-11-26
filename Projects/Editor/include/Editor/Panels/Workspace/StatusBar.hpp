@@ -26,10 +26,10 @@ public:
     void SetMessage(const std::string& msg) { m_message = msg; }
 
 private:
-    std::string m_message;
-    float       m_fps       = 0.0f;
-    float       m_fpsTimer  = 0.0f;
-    int         m_fpsCount  = 0;
+    std::string m_message; ///< ステータスバーに表示する現在の操作結果メッセージ。
+    float       m_fps       = 0.0f; ///< 表示用に集計したフレームレート [frames/s]。
+    float       m_fpsTimer  = 0.0f; ///< フレームレートを計算する現在の区間の経過時間 [s]。
+    int         m_fpsCount  = 0; ///< フレームレートを計算する現在の区間で数えたフレーム数。
 };
 
 } // namespace fbzz::editor

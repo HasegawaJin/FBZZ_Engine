@@ -22,8 +22,9 @@ bool WriteAll(HANDLE pipe, const std::string& bytes)
         DWORD written = 0;
         const DWORD chunk = static_cast<DWORD>((std::min<std::size_t>)(
             bytes.size() - offset, static_cast<std::size_t>(MAXDWORD)));
-        if (!WriteFile(pipe, bytes.data() + offset, chunk, &written, nullptr) || written == 0)
+        if (!WriteFile(pipe, bytes.data() + offset, chunk, &written, nullptr) || written == 0) {
             return false;
+        }
         offset += written;
     }
     return true;
@@ -37,11 +38,15 @@ bool NamedPipeClient::Request(const std::wstring& pipeName,
                               std::uint32_t timeoutMs)
 {
     response.clear();
-    if (!WaitNamedPipeW(pipeName.c_str(), timeoutMs)) return false;
+    if (!WaitNamedPipeW(pipeName.c_str(), timeoutMs)) {
+        return false;
+    }
 
     const HANDLE pipe = CreateFileW(pipeName.c_str(), GENERIC_READ | GENERIC_WRITE,
         0, nullptr, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
-    if (pipe == INVALID_HANDLE_VALUE) return false;
+    if (pipe == INVALID_HANDLE_VALUE) {
+        return false;
+    }
 
     std::string line = request;
     line.push_back('\n');
@@ -55,17 +60,22 @@ bool NamedPipeClient::Request(const std::wstring& pipeName,
     while (response.size() <= MAX_RESPONSE_BYTES) {
         DWORD read = 0;
         if (!ReadFile(pipe, buffer.data(), static_cast<DWORD>(buffer.size()), &read, nullptr)
-            || read == 0)
+            || read == 0) {
             break;
+        }
         for (DWORD index = 0; index < read; ++index) {
             if (buffer[index] == '\n') {
                 complete = true;
                 break;
             }
             response.push_back(buffer[index]);
-            if (response.size() > MAX_RESPONSE_BYTES) break;
+            if (response.size() > MAX_RESPONSE_BYTES) {
+                break;
+            }
         }
-        if (complete) break;
+        if (complete) {
+            break;
+        }
     }
     CloseHandle(pipe);
     if (!complete || response.size() > MAX_RESPONSE_BYTES) {

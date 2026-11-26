@@ -17,7 +17,9 @@ namespace {
 
 std::string ScopeLabel(HotkeyScope scope)
 {
-    if (HasScope(scope, HotkeyScope::Global)) return LOCT("Anywhere");
+    if (HasScope(scope, HotkeyScope::Global)) {
+        return LOCT("Anywhere");
+    }
     struct Entry { HotkeyScope scope; const char* label; };
     constexpr Entry scopes[] = {
         { HotkeyScope::SceneViewport, "Scene View" },
@@ -32,14 +34,18 @@ std::string ScopeLabel(HotkeyScope scope)
     };
     std::string text;
     for (const auto& entry : scopes) {
-        if (!HasScope(scope, entry.scope)) continue;
-        if (!text.empty()) text += " / ";
+        if (!HasScope(scope, entry.scope)) {
+            continue;
+        }
+        if (!text.empty()) {
+            text += " / ";
+        }
         text += LOCT(entry.label);
     }
     return text;
 }
 
-} /// @note namespace
+} // namespace
 
 void HotkeyEditorPanel::OnRegisterOperators(OperatorRegistry& registry)
 {
@@ -75,8 +81,13 @@ void HotkeyEditorPanel::OnRegisterOperators(OperatorRegistry& registry)
             const auto target = args.GetString("target");
             bool found = false;
             for (const auto& key : context.ctx.hotkeyManager->GetHotkeys())
-                if (key.name == target && !key.infoOnly) { found = true; break; }
-            if (!found) return OpResult::Err("HOTKEY_NOT_FOUND", "target");
+                if (key.name == target && !key.infoOnly) {
+                    found = true;
+                    break;
+                }
+            if (!found) {
+                return OpResult::Err("HOTKEY_NOT_FOUND", "target");
+            }
             m_rebindTarget = target;
         } else if (action == "cancel") {
             m_rebindTarget.clear();
@@ -96,7 +107,7 @@ void HotkeyEditorPanel::OnRenderContent(EditorContext& ctx)
         return;
     }
 
-    /// @note リバインド待ち中: 次のキー入力を捕捉する
+    // リバインド待ち中: 次のキー入力を捕捉する
     const bool capturing = !m_rebindTarget.empty();
     if (capturing) {
         ImGui::TextColored({ 0.4f, 0.9f, 1.0f, 1.0f },
@@ -111,12 +122,24 @@ void HotkeyEditorPanel::OnRenderContent(EditorContext& ctx)
             m_conflictNote.clear();
         } else {
             for (int k = ImGuiKey_NamedKey_BEGIN; k < ImGuiKey_GamepadStart; ++k) {
-                if (k == ImGuiKey_Escape) continue;
-                if (k == ImGuiKey_LeftCtrl  || k == ImGuiKey_RightCtrl)  continue;
-                if (k == ImGuiKey_LeftShift || k == ImGuiKey_RightShift) continue;
-                if (k == ImGuiKey_LeftAlt   || k == ImGuiKey_RightAlt)   continue;
-                if (k == ImGuiKey_LeftSuper || k == ImGuiKey_RightSuper) continue;
-                if (!ImGui::IsKeyPressed(static_cast<ImGuiKey>(k), false)) continue;
+                if (k == ImGuiKey_Escape) {
+                    continue;
+                }
+                if (k == ImGuiKey_LeftCtrl  || k == ImGuiKey_RightCtrl) {
+                    continue;
+                }
+                if (k == ImGuiKey_LeftShift || k == ImGuiKey_RightShift) {
+                    continue;
+                }
+                if (k == ImGuiKey_LeftAlt   || k == ImGuiKey_RightAlt) {
+                    continue;
+                }
+                if (k == ImGuiKey_LeftSuper || k == ImGuiKey_RightSuper) {
+                    continue;
+                }
+                if (!ImGui::IsKeyPressed(static_cast<ImGuiKey>(k), false)) {
+                    continue;
+                }
 
                 const bool ctrl  = ImGui::IsKeyDown(ImGuiKey_LeftCtrl)  || ImGui::IsKeyDown(ImGuiKey_RightCtrl);
                 const bool shift = ImGui::IsKeyDown(ImGuiKey_LeftShift) || ImGui::IsKeyDown(ImGuiKey_RightShift);
@@ -139,7 +162,9 @@ void HotkeyEditorPanel::OnRenderContent(EditorContext& ctx)
     if (!m_conflictNote.empty()) {
         ImGui::TextColored({ 1.0f, 0.75f, 0.25f, 1.0f }, "%s", m_conflictNote.c_str());
         ImGui::SameLine();
-        if (ImGui::SmallButton(LOC("Dismiss"))) m_conflictNote.clear();
+        if (ImGui::SmallButton(LOC("Dismiss"))) {
+            m_conflictNote.clear();
+        }
         ImGui::Separator();
     }
 
@@ -149,8 +174,9 @@ void HotkeyEditorPanel::OnRenderContent(EditorContext& ctx)
         return;
     }
 
-    if (!capturing)
+    if (!capturing) {
         toolbar::SearchField("##hotkey_search", "Search actions, shortcuts or contexts...", m_search, sizeof(m_search));
+    }
 
     if (ImGui::BeginTable("##hotkeys", 4,
             ImGuiTableFlags_Borders | ImGuiTableFlags_RowBg | ImGuiTableFlags_SizingStretchProp))
@@ -170,8 +196,9 @@ void HotkeyEditorPanel::OnRenderContent(EditorContext& ctx)
                 && !util::StringUtils::ContainsCI(action, m_search)
                 && !util::StringUtils::ContainsCI(hk.name, m_search)
                 && !util::StringUtils::ContainsCI(binding, m_search)
-                && !util::StringUtils::ContainsCI(scopeText, m_search))
+                && !util::StringUtils::ContainsCI(scopeText, m_search)) {
                 continue;
+            }
             anyShown = true;
             ImGui::TableNextRow();
 
@@ -183,13 +210,14 @@ void HotkeyEditorPanel::OnRenderContent(EditorContext& ctx)
 
             ImGui::TableSetColumnIndex(2);
             const bool waiting = (m_rebindTarget == hk.name);
-            if (waiting)
+            if (waiting) {
                 ImGui::TextColored({ 0.4f, 0.9f, 1.0f, 1.0f }, "...");
-            else
+            } else {
                 ImGui::TextUnformatted(binding.c_str());
+            }
 
             ImGui::TableSetColumnIndex(3);
-            /// @note 説明専用エントリ (マウス操作など) は割り当てを持たないのでリバインドできない。
+            // 説明専用エントリ (マウス操作など) は割り当てを持たないのでリバインドできない。
             if (hk.infoOnly) {
                 ImGui::TextDisabled("-");
             } else {
@@ -202,7 +230,9 @@ void HotkeyEditorPanel::OnRenderContent(EditorContext& ctx)
             }
         }
         ImGui::EndTable();
-        if (!anyShown) ImGui::TextDisabled("%s", LOCT("No matching shortcuts"));
+        if (!anyShown) {
+            ImGui::TextDisabled("%s", LOCT("No matching shortcuts"));
+        }
     }
 
     ImGui::Spacing();
@@ -211,4 +241,4 @@ void HotkeyEditorPanel::OnRenderContent(EditorContext& ctx)
     ImGui::PopTextWrapPos();
 }
 
-} /// @note namespace fbzz::editor
+} // namespace fbzz::editor

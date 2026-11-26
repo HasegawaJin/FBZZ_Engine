@@ -44,14 +44,18 @@ bool BeginModule(const char* name, bool* enabled, bool defaultOpen, bool& change
         ImGui::SameLine();
     }
     ImGuiTreeNodeFlags flags = ImGuiTreeNodeFlags_AllowOverlap;
-    if (defaultOpen) flags |= ImGuiTreeNodeFlags_DefaultOpen;
-    /// @note 無効モジュールはヘッダー文字を落として「使われていない」ことを見せる (Unity 同様)
+    if (defaultOpen) {
+        flags |= ImGuiTreeNodeFlags_DefaultOpen;
+    }
+    // 無効モジュールはヘッダー文字を落として「使われていない」ことを見せる (Unity 同様)
     const bool disabled = enabled && !*enabled;
-    if (disabled)
+    if (disabled) {
         ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetStyleColorVec4(ImGuiCol_TextDisabled));
+    }
     const bool open = ImGui::CollapsingHeader(name, flags);
-    if (disabled)
+    if (disabled) {
         ImGui::PopStyleColor();
+    }
     if (!open) {
         ImGui::PopID();
         return false;
@@ -82,7 +86,7 @@ void EndModule()
     ImGui::PopID();
 }
 
-} /// @note namespace
+} // namespace
 
 /// @brief 流れ 1 本ぶんの編集。型によって意味のある項目だけを出す。
 /// @note シーン FlowField とエミッター内蔵の流れの両方から呼ばれる共通 UI。
@@ -93,8 +97,8 @@ bool DrawFlowFieldSettings(scene::FlowFieldSettings& force, EditorContext& ctx,
     using Type  = scene::FlowFieldType;
     using Space = scene::FlowFieldSpace;
 
-    /// @note 添字 = FlowFieldType の値。LegacyDrag (5) は読み込み専用なので選択肢へ出さない
-    /// @note (kSelectableTypes がその «出してよい型» の並び)。
+    // 添字 = FlowFieldType の値。LegacyDrag (5) は読み込み専用なので選択肢へ出さない
+    // (kSelectableTypes がその «出してよい型» の並び)。
     static const char* kTypeLabels[] = {
         "Uniform (constant flow)", "Sink", "Source", "Vortex", "Curl (turbulence)",
         "Drag (legacy)", "Baked Field"
@@ -115,9 +119,11 @@ bool DrawFlowFieldSettings(scene::FlowFieldSettings& force, EditorContext& ctx,
                 const bool selected = force.fieldType == candidate;
                 if (ImGui::Selectable(kTypeLabels[static_cast<int>(candidate)], selected)
                     && !selected) {
-                    /// @note direction は Uniform では流れの向き、Vortex では回転軸を兼ねる。既定の
-                    /// @note (1,0,0) は風にしか合わず、そのまま Vortex にすると軸が寝た «ローラー» になる。
-                    if (candidate == Type::Vortex) force.direction = { 0.0f, 1.0f, 0.0f };
+                    // direction は Uniform では流れの向き、Vortex では回転軸を兼ねる。既定の
+                    // (1,0,0) は風にしか合わず、そのまま Vortex にすると軸が寝た «ローラー» になる。
+                    if (candidate == Type::Vortex) {
+                        force.direction = { 0.0f, 1.0f, 0.0f };
+                    }
                     force.fieldType = candidate;
                     changed = true;
                 }
@@ -160,15 +166,17 @@ bool DrawFlowFieldSettings(scene::FlowFieldSettings& force, EditorContext& ctx,
                                      force.direction, 0.01f);
     if (!showSpace && force.fieldType == Type::Uniform) {
         changed |= ImGui::DragFloat("Water Swell Amplitude [m]", &force.waterSwellAmplitude, 0.02f, 0.0f, 3.0f);
-        if (ImGui::IsItemHovered())
+        if (ImGui::IsItemHovered()) {
             ImGui::SetTooltip("0 で無効。半径内の水面に、Direction の XZ 方向へ進むうねりを加えます。");
+        }
         changed |= ImGui::DragFloat("Water Swell Wavelength [m]", &force.waterSwellWavelength, 0.2f, 2.0f, 1000.0f);
     }
     if (force.fieldType == Type::Vortex) {
         if (!showSpace) {
             changed |= ImGui::DragFloat("Water Vortex Depth [m]", &force.waterSwellAmplitude, 0.05f, 0.0f, 24.0f);
-            if (ImGui::IsItemHovered())
+            if (ImGui::IsItemHovered()) {
                 ImGui::SetTooltip("0 は通常の渦。正の値で水面にくぼみと螺旋の波を作ります。");
+            }
             changed |= ImGui::DragFloat("Water Spiral Spacing [m]", &force.waterSwellWavelength, 0.2f, 2.0f, 1000.0f);
         }
         const float axisLength = force.direction.Length();
@@ -183,8 +191,9 @@ bool DrawFlowFieldSettings(scene::FlowFieldSettings& force, EditorContext& ctx,
         if (ImGui::IsItemHovered())
             ImGui::SetTooltip("0 = 減衰なしで全体に効きます。\n"
                               "シーン全体の «環境流» は Scene Environment 側にあります。");
-        if (force.radius > 0.0f)
+        if (force.radius > 0.0f) {
             changed |= ImGui::DragFloat("Falloff Power", &force.falloffPower, 0.01f, 0.01f, 16.0f);
+        }
     }
 
     if (force.fieldType == Type::Curl) {
@@ -199,9 +208,9 @@ bool DrawFlowFieldSettings(scene::FlowFieldSettings& force, EditorContext& ctx,
         if (ImGui::IsItemHovered())
             ImGui::SetTooltip("焼いた場をワールドのどの寸法へ貼るか (半径)。\n"
                               "同じ 1 枚を «部屋いっぱいの渦» と «手のひらの渦» に使い回せます。");
-        if (force.vectorFieldPath.empty())
+        if (force.vectorFieldPath.empty()) {
             ImGui::TextDisabled("Baked Field が未設定のため、この流れは何もしません。");
-        else
+        } else
             ImGui::TextDisabled("CPU / GPU どちらのシミュレーションでも効きます\n"
                                 "(常駐できる場は %u 枚まで)。",
                                 asset::VelocityFieldAtlas::kMaxTiles);
@@ -214,7 +223,7 @@ bool DrawFlowFieldList(std::vector<scene::FlowFieldSettings>& forces,
                                EditorContext& ctx, bool showSpace)
 {
     using Type = scene::FlowFieldType;
-    /// @note 添字 = FlowFieldType の値。LegacyDrag は «Add Flow» に出さない (kAddableTypes)。
+    // 添字 = FlowFieldType の値。LegacyDrag は «Add Flow» に出さない (kAddableTypes)。
     static const char* kShortNames[] = {
         "Uniform", "Sink", "Source", "Vortex", "Curl", "Drag (legacy)", "Baked"
     };
@@ -233,7 +242,9 @@ bool DrawFlowFieldList(std::vector<scene::FlowFieldSettings>& forces,
         const bool open = ImGui::TreeNodeEx(header, ImGuiTreeNodeFlags_DefaultOpen
                                                   | ImGuiTreeNodeFlags_AllowOverlap);
         ImGui::SameLine(ImGui::GetContentRegionAvail().x - 18.0f);
-        if (ImGui::SmallButton("x")) removeIndex = static_cast<int>(index);
+        if (ImGui::SmallButton("x")) {
+            removeIndex = static_cast<int>(index);
+        }
         if (open) {
             changed |= DrawFlowFieldSettings(force, ctx, showSpace);
             ImGui::TreePop();
@@ -245,25 +256,33 @@ bool DrawFlowFieldList(std::vector<scene::FlowFieldSettings>& forces,
         changed = true;
     }
 
-    if (ImGui::Button("Add Flow")) ImGui::OpenPopup("add_force");
+    if (ImGui::Button("Add Flow")) {
+        ImGui::OpenPopup("add_force");
+    }
     if (ImGui::BeginPopup("add_force")) {
         for (Type type : kAddableTypes) {
-            if (!ImGui::MenuItem(kShortNames[static_cast<int>(type)])) continue;
-            /// @note EnsureLocalForce は «同じ型が既にあれば足さない»。ここでは «2 本目の Uniform» を
-            /// @note 作れる必要がある (別方向の流れ、別半径の吸い込み) ので直接足す。
+            if (!ImGui::MenuItem(kShortNames[static_cast<int>(type)])) {
+                continue;
+            }
+            // EnsureLocalForce は «同じ型が既にあれば足さない»。ここでは «2 本目の Uniform» を
+            // 作れる必要がある (別方向の流れ、別半径の吸い込み) ので直接足す。
             scene::FlowFieldSettings force;
             force.fieldType = type;
             force.radius = 0.0f;
-            if (type == Type::Vortex) force.direction = { 0.0f, 1.0f, 0.0f };
-            if (type == Type::Vortex || type == Type::Source || type == Type::Sink)
+            if (type == Type::Vortex) {
+                force.direction = { 0.0f, 1.0f, 0.0f };
+            }
+            if (type == Type::Vortex || type == Type::Source || type == Type::Sink) {
                 force.space = scene::FlowFieldSpace::Emitter;
+            }
             forces.push_back(force);
             changed = true;
         }
         ImGui::EndPopup();
     }
-    if (forces.empty())
+    if (forces.empty()) {
         ImGui::TextDisabled("流れがありません。粒子は初速と重力だけで飛びます。");
+    }
     return changed;
 }
 
@@ -272,17 +291,20 @@ bool SubEmitterCombo(const char* label, std::string& target, EditorContext& ctx)
 {
     bool changed = false;
     const char* preview = target.empty() ? "(None)" : target.c_str();
-    if (!ImGui::BeginCombo(label, preview))
+    if (!ImGui::BeginCombo(label, preview)) {
         return false;
+    }
     if (ImGui::Selectable("(None)", target.empty()) && !target.empty()) {
         target.clear();
         changed = true;
     }
     if (ctx.activeScene) {
         for (auto& go : ctx.activeScene->GameObjects()) {
-            if (!go.GetComponent<scene::ParticleEmitter>()) continue;
+            if (!go.GetComponent<scene::ParticleEmitter>()) {
+                continue;
+            }
             const bool selected = target == go.name;
-            /// @note 同名の GameObject は珍しくないので、名前ではなく実体で ID を分ける。
+            // 同名の GameObject は珍しくないので、名前ではなく実体で ID を分ける。
             ImGui::PushID(&go);
             if (ImGui::Selectable(go.name.c_str(), selected) && !selected) {
                 target = go.name;
@@ -327,18 +349,21 @@ bool DrawShapeGizmo(scene::ParticleEmitterSettings& pe)
         || pe.shape == scene::ParticleEmitterShape::Cone || pe.shape == scene::ParticleEmitterShape::Box;
     if (resizable && ImGui::IsItemActive()) {
         const ImVec2 delta = ImGui::GetIO().MouseDelta;
-        if (delta.x != 0.0f || delta.y != 0.0f) changed = true;
-        if (pe.shape == scene::ParticleEmitterShape::Sphere)
+        if (delta.x != 0.0f || delta.y != 0.0f) {
+            changed = true;
+        }
+        if (pe.shape == scene::ParticleEmitterShape::Sphere) {
             pe.sphereRadius = (std::max)(0.0f, pe.sphereRadius + delta.x * 0.01f);
-        else if (pe.shape == scene::ParticleEmitterShape::Cone)
+        } else if (pe.shape == scene::ParticleEmitterShape::Cone) {
             pe.coneRadius = (std::max)(0.0f, pe.coneRadius + delta.x * 0.01f);
-        else if (pe.shape == scene::ParticleEmitterShape::Box) {
+        } else if (pe.shape == scene::ParticleEmitterShape::Box) {
             pe.boxExtents.x = (std::max)(0.0f, pe.boxExtents.x + delta.x * 0.01f);
             pe.boxExtents.y = (std::max)(0.0f, pe.boxExtents.y - delta.y * 0.01f);
         }
     }
-    if (resizable && ImGui::IsItemHovered(ImGuiHoveredFlags_DelayShort))
+    if (resizable && ImGui::IsItemHovered(ImGuiHoveredFlags_DelayShort)) {
         ImGui::SetTooltip("Drag to resize the emitter shape. Box shows local X/Y half extents.");
+    }
     return changed;
 }
 
@@ -353,57 +378,77 @@ template<typename T>
     return it->second;
 }
 
-} /// @note namespace
+} // namespace
 
 void DrawParticleEmitterPlaybackButtons(scene::ParticleEmitter& pe)
 {
     if (ImGui::Button(pe.settings.playing ? "Pause emission" : "Play emission")) {
-        if (pe.settings.playing) pe.Pause();
-        else                     pe.Play();
+        if (pe.settings.playing) {
+            pe.Pause();
+        } else {
+            pe.Play();
+        }
     }
-    if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayShort))
+    if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayShort)) {
         ImGui::SetTooltip("Toggles new emission; live particles continue. Preview speed 0 freezes the simulation.");
+    }
     ImGui::SameLine();
-    if (ImGui::Button("Replay")) pe.Play(true);
-    if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayShort))
+    if (ImGui::Button("Replay")) {
+        pe.Play(true);
+    }
+    if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayShort)) {
         ImGui::SetTooltip("Clear particles and restart delay, bursts and random seed for a repeatable preview.");
-    if (ImGui::Button("Stop")) pe.Stop();
-    if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayShort))
+    }
+    if (ImGui::Button("Stop")) {
+        pe.Stop();
+    }
+    if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayShort)) {
         ImGui::SetTooltip("Stop new emission and discard queued bursts. Live particles finish their lifetime.");
+    }
     ImGui::SameLine();
-    if (ImGui::Button("Clear")) pe.ClearParticles();
+    if (ImGui::Button("Clear")) {
+        pe.ClearParticles();
+    }
     ImGui::SameLine();
-    if (ImGui::Button("Burst 10")) pe.Burst(10);
-    if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayShort))
+    if (ImGui::Button("Burst 10")) {
+        pe.Burst(10);
+    }
+    if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayShort)) {
         ImGui::SetTooltip("Queue up to 10 particles within Max Particles, even when emission is stopped.");
+    }
     pe.runtime.editorTimeScale = pe.GetEditorTimeScale(Time::frameCount);
     ImGui::SliderFloat("Preview speed", &pe.runtime.editorTimeScale, 0.0f, 2.0f, "%.2fx");
     pe.runtime.editorTimeScaleFrame = Time::frameCount;
-    if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayShort))
+    if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayShort)) {
         ImGui::SetTooltip("Runtime preview only. 0 freezes simulation; 1 is real time. Resumes when this inspector closes.");
+    }
 }
 
 bool DrawParticleEmitterModules(scene::ParticleEmitterSettings& pe, EditorContext& ctx,
                                 scene::ParticleEmitter* liveEmitter)
 {
-    /// @note 実体が無い (VFX グラフのノードを編集している) ときは、再生状態のリセットを捨て先へ流す。
-    /// @note 分岐を書かずに済ませることで、以降のモジュール実装が実体の有無を意識しなくてよくなる。
+    // 実体が無い (VFX グラフのノードを編集している) ときは、再生状態のリセットを捨て先へ流す。
+    // 分岐を書かずに済ませることで、以降のモジュール実装が実体の有無を意識しなくてよくなる。
     scene::ParticleRuntime discardedRuntime;
     scene::ParticleRuntime& runtime =
         liveEmitter != nullptr ? liveEmitter->runtime : discardedRuntime;
     bool changed = false;
     ImGui::PushID(&pe);
-    if (liveEmitter) DrawParticleEmitterPlaybackButtons(*liveEmitter);
+    if (liveEmitter) {
+        DrawParticleEmitterPlaybackButtons(*liveEmitter);
+    }
 
-    /// @note GPU 縮退の判定にはマテリアルの自己影設定も使う。
-    /// @note 実体の有無に関わらず同じ答えを出すため、runtime の解決結果ではなく素材から直接読む。
+    // GPU 縮退の判定にはマテリアルの自己影設定も使う。
+    // 実体の有無に関わらず同じ答えを出すため、runtime の解決結果ではなく素材から直接読む。
     const auto look = ResolveParticleMaterialSettings(pe.materialPath);
 
     const auto fallback = scene::GetParticleGpuFallbackReason(pe, look.get());
     ImGui::TextDisabled("Effective simulation: %s", fallback == scene::ParticleGpuFallbackReason::None ? "GPU" : "CPU");
     if (fallback != scene::ParticleGpuFallbackReason::None && fallback != scene::ParticleGpuFallbackReason::NotRequested) {
         ImGui::TextColored({1.0f, 0.65f, 0.3f, 1.0f}, "CPU fallback: %s", GpuFallbackLabel(fallback));
-        if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", scene::ParticleGpuFallbackDescription(fallback));
+        if (ImGui::IsItemHovered()) {
+            ImGui::SetTooltip("%s", scene::ParticleGpuFallbackDescription(fallback));
+        }
     }
     enum class Section { EMISSION, MOTION, APPEARANCE, RENDERING, BUDGET };
     Section section = Section::EMISSION;
@@ -418,14 +463,15 @@ bool DrawParticleEmitterModules(scene::ParticleEmitterSettings& pe, EditorContex
         ImGui::EndTabBar();
     }
 
-    /// @name Presets: よく使う見た目のワンクリック設定
+    // Presets: よく使う見た目のワンクリック設定
     if (section == Section::EMISSION && BeginModule("Presets", nullptr, false, changed)) {
         static int selectedPreset = 0;
         const auto presets = asset::ParticleEmitterPresets();
         if (ImGui::BeginCombo("Starter", presets[static_cast<std::size_t>(selectedPreset)].name.data())) {
             for (std::size_t index = 0; index < presets.size(); ++index) {
-                if (ImGui::Selectable(presets[index].name.data(), selectedPreset == static_cast<int>(index)))
+                if (ImGui::Selectable(presets[index].name.data(), selectedPreset == static_cast<int>(index))) {
                     selectedPreset = static_cast<int>(index);
+                }
             }
             ImGui::EndCombo();
         }
@@ -445,7 +491,7 @@ bool DrawParticleEmitterModules(scene::ParticleEmitterSettings& pe, EditorContex
     }
 
 
-    /// @name Main: 初期値・再生設定・シミュレーション方式
+    // Main: 初期値・再生設定・シミュレーション方式
     if (section == Section::EMISSION && BeginModule("Main", nullptr, true, changed)) {
         changed |= ImGui::DragFloat("Duration [s]", &pe.duration, 0.05f, 0.0f, 300.0f);
         changed |= ImGui::Checkbox("Loop", &pe.loop);
@@ -454,16 +500,18 @@ bool DrawParticleEmitterModules(scene::ParticleEmitterSettings& pe, EditorContex
         changed |= ImGui::DragFloat("Start Delay [s]", &pe.startDelay, 0.05f, 0.0f, 300.0f);
         changed |= ImGui::DragFloat("Lifetime [s]", &pe.lifetime, 0.05f, 0.1f, 30.0f);
         changed |= ImGui::DragFloat("Lifetime Random [0..1]", &pe.lifetimeRandom, 0.01f, 0.0f, 1.0f);
-        if (ImGui::IsItemHovered())
+        if (ImGui::IsItemHovered()) {
             ImGui::SetTooltip("Lifetime x (1 +/- this ratio), sampled at birth. Existing particles retain their spawn lifetime.");
+        }
 
         if (ImGui::InputScalar("Random Seed", ImGuiDataType_U32, &pe.randomSeed)) {
             runtime.randomState = pe.randomSeed != 0 ? pe.randomSeed : 1;
             runtime.emitAccum = 0.0f;
             changed = true;
         }
-        if (ImGui::IsItemHovered())
+        if (ImGui::IsItemHovered()) {
             ImGui::SetTooltip("Unsigned 32-bit seed. 0 uses seed 1. Replay repeats the same random sequence.");
+        }
 
         const char* simItems[] = { "CPU", "GPU" };
         int sim = static_cast<int>(pe.simulationMode);
@@ -476,16 +524,17 @@ bool DrawParticleEmitterModules(scene::ParticleEmitterSettings& pe, EditorContex
         int simulationSpace = static_cast<int>(pe.simulationSpace);
         if (ImGui::Combo("Simulation Space", &simulationSpace, spaceItems, 2)) {
             pe.simulationSpace = static_cast<scene::ParticleSimulationSpace>(simulationSpace);
-            /// @note Local Space は CPU のみ対応 (GPU CS はワールド固定レイアウトのため)
-            if (pe.simulationSpace == scene::ParticleSimulationSpace::Local)
+            // Local Space は CPU のみ対応 (GPU CS はワールド固定レイアウトのため)
+            if (pe.simulationSpace == scene::ParticleSimulationSpace::Local) {
                 pe.simulationMode = scene::ParticleSimulationMode::Cpu;
+            }
             runtime.gpuClearPending = true;
             changed = true;
         }
         EndModule();
     }
 
-    /// @name Emission: 連続レート・距離レート・Burst
+    // Emission: 連続レート・距離レート・Burst
     if (section == Section::EMISSION && BeginModule("Emission", nullptr, true, changed)) {
         changed |= ImGui::DragFloat("Rate over Time [particles/s]", &pe.emitRate, 1.0f, 0.0f, 10000.0f);
         changed |= ImGui::DragFloat("Rate over Distance [particles/m]", &pe.rateOverDistance, 0.1f, 0.0f, 10000.0f);
@@ -494,15 +543,18 @@ bool DrawParticleEmitterModules(scene::ParticleEmitterSettings& pe, EditorContex
             runtime.prewarmSpawnPending = 0;
             changed = true;
         }
-        if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayShort))
+        if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayShort)) {
             ImGui::SetTooltip("Loop 時に定常状態の粒子を最初から投入する");
+        }
 
         changed |= ImGui::Checkbox("Rate envelope", &pe.useEmitRateCurve);
         if (pe.useEmitRateCurve) {
             changed |= widgets::CurveEditor("Rate multiplier", pe.emitRateCurve, 4.0f, 96.0f, &ctx.projectRoot);
             ImGui::TextDisabled("X = cycle time / Duration. Multiplies time emission; distance and bursts are independent.");
         }
-        if (pe.prewarm && !pe.loop) ImGui::TextDisabled("Prewarm applies to looping emitters only.");
+        if (pe.prewarm && !pe.loop) {
+            ImGui::TextDisabled("Prewarm applies to looping emitters only.");
+        }
 
         ImGui::SeparatorText("Bursts");
         ImGui::TextDisabled("Times are measured from the start of each emission cycle.");
@@ -521,7 +573,9 @@ bool DrawParticleEmitterModules(scene::ParticleEmitterSettings& pe, EditorContex
             changed |= ImGui::DragInt("Cycles", &pe.bursts[i].cycles, 1, 1, 1000);
             changed |= ImGui::DragFloat("Interval [s]", &pe.bursts[i].interval, 0.01f, 0.0f, 300.0f);
             changed |= ImGui::DragFloat("Probability", &pe.bursts[i].probability, 0.01f, 0.0f, 1.0f);
-            if (ImGui::SmallButton("Remove")) removeBurst = static_cast<int>(i);
+            if (ImGui::SmallButton("Remove")) {
+                removeBurst = static_cast<int>(i);
+            }
             ImGui::PopID();
         }
         if (removeBurst >= 0) {
@@ -531,7 +585,7 @@ bool DrawParticleEmitterModules(scene::ParticleEmitterSettings& pe, EditorContex
         EndModule();
     }
 
-    /// @name Shape: 発生形状と初速
+    // Shape: 発生形状と初速
     if (section == Section::EMISSION && BeginModule("Shape", nullptr, false, changed)) {
         const char* shapeItems[] = { "Point", "Sphere", "Cone", "Box", "Mesh Surface (FBX)" };
         int shape = static_cast<int>(pe.shape);
@@ -539,14 +593,16 @@ bool DrawParticleEmitterModules(scene::ParticleEmitterSettings& pe, EditorContex
             pe.shape = static_cast<scene::ParticleEmitterShape>(shape);
             changed = true;
         }
-        if (pe.shape == scene::ParticleEmitterShape::Sphere)
+        if (pe.shape == scene::ParticleEmitterShape::Sphere) {
             changed |= ImGui::DragFloat("Sphere Radius [m]", &pe.sphereRadius, 0.01f, 0.0f, 100.0f);
+        }
         if (pe.shape == scene::ParticleEmitterShape::Cone) {
             changed |= ImGui::DragFloat("Cone Half Angle [deg]", &pe.coneAngleDegrees, 0.1f, 0.0f, 180.0f);
             changed |= ImGui::DragFloat("Cone Radius [m]", &pe.coneRadius, 0.01f, 0.0f, 100.0f);
         }
-        if (pe.shape == scene::ParticleEmitterShape::Box)
+        if (pe.shape == scene::ParticleEmitterShape::Box) {
             changed |= widgets::DragVec3("Box Half Extents [m]", pe.boxExtents, 0.01f, 0.0f, 1000.0f);
+        }
         if (pe.shape == scene::ParticleEmitterShape::MeshSurface) {
             if (widgets::AssetPathField("Shape Model", pe.meshShapePath, ".fbx,.fzasset,.obj,.gltf,.glb", ctx.projectRoot)) {
                 runtime.loadedMeshShapePath.clear();
@@ -561,15 +617,18 @@ bool DrawParticleEmitterModules(scene::ParticleEmitterSettings& pe, EditorContex
                 runtime.meshShapeTriangles.clear();
                 changed = true;
             }
-            if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayShort))
+            if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayShort)) {
                 ImGui::SetTooltip("-1 uses every sub-mesh from the FBX");
+            }
             changed |= ImGui::DragFloat("Shape Scale", &pe.meshShapeScale, 0.001f, 0.0001f, 1000.0f);
             changed |= ImGui::Checkbox("Follow Skinned Animation", &pe.meshShapeFollowSkinnedAnimation);
-            if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayShort))
+            if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayShort)) {
                 ImGui::SetTooltip("Uses the Animator on this GameObject to deform particle spawn points");
+            }
             changed |= ImGui::DragFloat("Normal Velocity", &pe.meshShapeNormalVelocity, 0.01f, -100.0f, 100.0f);
-            if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayShort))
+            if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayShort)) {
                 ImGui::SetTooltip("Initial speed along the surface normal (m/s). Negative pulls inward");
+            }
         }
 
         ImGui::SeparatorText("Initial Velocity");
@@ -582,8 +641,8 @@ bool DrawParticleEmitterModules(scene::ParticleEmitterSettings& pe, EditorContex
     }
 
     if (section == Section::MOTION && BeginModule("Acceleration + Flow Coupling", nullptr, true, changed)) {
-        /// @note 重力と結合係数は «流れ» ではないのでリストに入らない。最も触る 2 つなので
-        /// @note Motion へ直に出す。
+        // 重力と結合係数は «流れ» ではないのでリストに入らない。最も触る 2 つなので
+        // Motion へ直に出す。
         changed |= widgets::DragVec3("Acceleration [m/s^2]", pe.gravity, 0.05f);
         if (ImGui::IsItemHovered())
             ImGui::SetTooltip("粒子だけに掛かる加速度 [m/s^2]。\n"
@@ -594,14 +653,16 @@ bool DrawParticleEmitterModules(scene::ParticleEmitterSettings& pe, EditorContex
                               "大きいほど素早く流れに乗り、0 で流れを完全に無視します。\n"
                               "旧 Velocity Damping と同じ枠・同じ単位です。");
         changed |= ImGui::SliderFloat("Inherit Velocity", &pe.inheritVelocity, 0.0f, 1.0f);
-        if (ImGui::IsItemHovered())
+        if (ImGui::IsItemHovered()) {
             ImGui::SetTooltip("Adds a fraction of emitter world velocity at birth. Local simulation already follows the emitter.");
-        if (pe.inheritVelocity > 0.0f && pe.simulationSpace == scene::ParticleSimulationSpace::Local)
+        }
+        if (pe.inheritVelocity > 0.0f && pe.simulationSpace == scene::ParticleSimulationSpace::Local) {
             ImGui::TextDisabled("Inherit Velocity is ignored in Local simulation space.");
+        }
         EndModule();
     }
 
-    /// @name Velocity over Lifetime: 寿命に沿った速度スケールカーブ
+    // Velocity over Lifetime: 寿命に沿った速度スケールカーブ
     if (section == Section::MOTION && BeginModule("Velocity over Lifetime", &pe.useVelocityCurve, false, changed)) {
         if (pe.useVelocityCurve) {
             changed |= widgets::CurveEditor("Speed Multiplier", pe.velocityCurve, 10.0f, 96.0f, &ctx.projectRoot);
@@ -611,7 +672,7 @@ bool DrawParticleEmitterModules(scene::ParticleEmitterSettings& pe, EditorContex
         EndModule();
     }
 
-    /// @name Size over Lifetime: カーブ or べき乗フォールバック
+    // Size over Lifetime: カーブ or べき乗フォールバック
     if (section == Section::APPEARANCE && BeginModule("Size over Lifetime", &pe.useSizeCurve, true, changed)) {
         changed |= ImGui::DragFloat("Size Start [m]", &pe.sizeStart, 0.005f, 0.0f, 10.0f);
         changed |= ImGui::DragFloat("Size End [m]", &pe.sizeEnd, 0.005f, 0.0f, 10.0f);
@@ -619,23 +680,32 @@ bool DrawParticleEmitterModules(scene::ParticleEmitterSettings& pe, EditorContex
         if (ImGui::IsItemHovered())
             ImGui::SetTooltip("軸ごとのサイズ倍率。X<Y で縦長 (立ち上る炎)、X>Y で平たい (衝撃波)。\n"
                               "Billboard は XY のみ、Mesh Particle は Z も使います。");
-        if (ImGui::SmallButton("Uniform##SizeAxis")) { pe.sizeAxisScale = { 1, 1, 1 }; changed = true; }
+        if (ImGui::SmallButton("Uniform##SizeAxis")) {
+            pe.sizeAxisScale = { 1, 1, 1 };
+            changed = true;
+        }
         ImGui::SameLine();
-        if (ImGui::SmallButton("Tall##SizeAxis")) { pe.sizeAxisScale = { 0.5f, 2.0f, 1 }; changed = true; }
+        if (ImGui::SmallButton("Tall##SizeAxis")) {
+            pe.sizeAxisScale = { 0.5f, 2.0f, 1 };
+            changed = true;
+        }
         ImGui::SameLine();
-        if (ImGui::SmallButton("Flat##SizeAxis")) { pe.sizeAxisScale = { 2.0f, 0.4f, 1 }; changed = true; }
+        if (ImGui::SmallButton("Flat##SizeAxis")) {
+            pe.sizeAxisScale = { 2.0f, 0.4f, 1 };
+            changed = true;
+        }
 
         if (pe.useSizeCurve) {
             changed |= widgets::CurveEditor("Size (Start -> End blend)", pe.sizeCurve, 1.0f, 96.0f, &ctx.projectRoot);
         } else {
-            /// @note カーブ無効時は Start->End の補間カーブ形状をべき乗で調整する既定動作
+            // カーブ無効時は Start->End の補間カーブ形状をべき乗で調整する既定動作
             changed |= ImGui::DragFloat("Size Curve Power", &pe.sizeCurvePower, 0.01f, 0.01f, 10.0f);
             ImGui::TextDisabled("pow(t, power) blend. Enable the checkbox for a custom curve.");
         }
         EndModule();
     }
 
-    /// @name Color over Lifetime: グラデーション or べき乗フォールバック
+    // Color over Lifetime: グラデーション or べき乗フォールバック
     if (section == Section::APPEARANCE && BeginModule("Color over Lifetime", &pe.useColorGradient, true, changed)) {
         changed |= ImGui::SliderFloat("Color Variation", &pe.colorVariation, 0.0f, 1.0f);
         if (ImGui::IsItemHovered())
@@ -655,7 +725,9 @@ bool DrawParticleEmitterModules(scene::ParticleEmitterSettings& pe, EditorContex
                 changed = true;
             }
 
-            if (pe.useColorGradient) ImGui::TextDisabled("Start / End colors apply to the ribbon only; particles use the gradient.");
+            if (pe.useColorGradient) {
+                ImGui::TextDisabled("Start / End colors apply to the ribbon only; particles use the gradient.");
+            }
         }
         if (pe.useColorGradient) {
             changed |= widgets::GradientEditor("Color Gradient", pe.colorGradient, &ctx.projectRoot);
@@ -675,10 +747,12 @@ bool DrawParticleEmitterModules(scene::ParticleEmitterSettings& pe, EditorContex
         if (pe.useSpeedSizeCurve || pe.useSpeedColorGradient) {
             changed |= ImGui::DragFloat("Speed range [m/s]", &pe.speedRange, 0.05f, 0.001f, 1000.0f);
             ImGui::TextDisabled("X = speed / range, clamped to 0..1. Multiplies the lifetime result. CPU simulation.");
-            if (pe.useSpeedSizeCurve)
+            if (pe.useSpeedSizeCurve) {
                 changed |= widgets::CurveEditor("Size multiplier", pe.speedSizeCurve, 4.0f, 96.0f, &ctx.projectRoot);
-            if (pe.useSpeedColorGradient)
+            }
+            if (pe.useSpeedColorGradient) {
                 changed |= widgets::GradientEditor("Speed tint", pe.speedColorGradient, &ctx.projectRoot);
+            }
         }
         EndModule();
     }
@@ -697,12 +771,14 @@ bool DrawParticleEmitterModules(scene::ParticleEmitterSettings& pe, EditorContex
                                   "輝度は T^4 に比例するので、これより高い部分は HDR で白熱し、\n"
                                   "低い部分は彩度を保ったまま暗く沈みます。");
             changed |= ImGui::DragFloat("Intensity", &pe.blackbodyIntensity, 0.01f, 0.0f, 100.0f);
-            /// @note 実際に焼き込まれる色を出す。数値だけでは温度と見た目が結び付かない。
+            // 実際に焼き込まれる色を出す。数値だけでは温度と見た目が結び付かない。
             scene::RefreshParticleRuntimeGradient(pe, runtime);
             ImGui::TextDisabled("Baked");
             ImGui::SameLine();
             for (uint32_t i = 0; i < runtime.runtimeGradient.keyCount; ++i) {
-                if (i > 0) ImGui::SameLine();
+                if (i > 0) {
+                    ImGui::SameLine();
+                }
                 const auto& color = runtime.runtimeGradient.keys[i].color;
                 ImGui::PushID(static_cast<int>(i));
                 ImGui::ColorButton("##baked",
@@ -721,7 +797,7 @@ bool DrawParticleEmitterModules(scene::ParticleEmitterSettings& pe, EditorContex
         EndModule();
     }
 
-    /// @name Rotation over Lifetime
+    // Rotation over Lifetime
     if (section == Section::MOTION && BeginModule("Rotation over Lifetime", nullptr, false, changed)) {
         changed |= ImGui::Checkbox("Random Start Rotation", &pe.randomStartRotation);
         changed |= ImGui::DragFloat("Angular Velocity Min [rad/s]", &pe.angularVelocityMin, 0.01f, -100.0f, 100.0f);
@@ -735,7 +811,7 @@ bool DrawParticleEmitterModules(scene::ParticleEmitterSettings& pe, EditorContex
         EndModule();
     }
 
-    /// @name Drag over Lifetime: flowCoupling への時間倍率
+    // Drag over Lifetime: flowCoupling への時間倍率
     if (section == Section::MOTION && BeginModule("Drag over Lifetime", &pe.useDragCurve, false, changed)) {
         if (pe.useDragCurve) {
             changed |= widgets::CurveEditor("Drag Multiplier", pe.dragCurve, 4.0f, 96.0f, &ctx.projectRoot);
@@ -747,13 +823,13 @@ bool DrawParticleEmitterModules(scene::ParticleEmitterSettings& pe, EditorContex
         EndModule();
     }
 
-    /// @name Flows: 内蔵の流れ (乱流・渦・湧き出し・焼いた場)
+    // Flows: 内蔵の流れ (乱流・渦・湧き出し・焼いた場)
     if (section == Section::MOTION && BeginModule("Flows", nullptr, false, changed)) {
         changed |= DrawFlowFieldList(pe.localForces, ctx, true);
         EndModule();
     }
 
-    /// @name Trails: 粒子1つ1つに尾を付ける (火の粉・魔法の軌跡)
+    // Trails: 粒子1つ1つに尾を付ける (火の粉・魔法の軌跡)
     if (section == Section::RENDERING && BeginModule("Trails", &pe.trail.trailEnabled, false, changed)) {
         if (pe.trail.trailEnabled) {
             changed |= ImGui::DragInt("Trail Points", &pe.trail.trailPointCount, 1, 1,
@@ -781,8 +857,9 @@ bool DrawParticleEmitterModules(scene::ParticleEmitterSettings& pe, EditorContex
             if (pe.trail.trailRibbon) {
                 changed |= ImGui::DragFloat("Ribbon Width", &pe.trail.trailRibbonWidth, 0.01f, 0.0f, 20.0f,
                                             "%.3f m");
-                if (ImGui::IsItemHovered())
+                if (ImGui::IsItemHovered()) {
                     ImGui::SetTooltip("0 のときは粒子サイズをそのまま帯の幅として使います。");
+                }
                 ImGui::TextDisabled("帯は 1 エミッターぶんをまとめて 1 DrawCall で描くため、"
                                     "色は粒子ごとではなく Color Start / End を帯の長さ方向へ配ります。");
                 ImGui::TextDisabled("粒子ごとの色ゆらぎを尾へ乗せたい場合はビルボード方式のままにしてください。");
@@ -799,27 +876,32 @@ bool DrawParticleEmitterModules(scene::ParticleEmitterSettings& pe, EditorContex
         EndModule();
     }
 
-    /// @note Noise モジュールは Forces の Curl 1 本になった (専用の枠を持たない)。
+    // Noise モジュールは Forces の Curl 1 本になった (専用の枠を持たない)。
 
-    /// @name External Flow: シーンの FlowField と環境流を受けるか
+    // External Flow: シーンの FlowField と環境流を受けるか
     if (section == Section::MOTION && BeginModule("External Flow", &pe.receiveFlowFields, false, changed)) {
         ImGui::TextDisabled("Receives Flow Fields and the scene's ambient wind.");
-        if (widgets::FlowFieldChannelMask("Channels", pe.flowFieldChannels)) changed = true;
-        if (ImGui::IsItemHovered())
+        if (widgets::FlowFieldChannelMask("Channels", pe.flowFieldChannels)) {
+            changed = true;
+        }
+        if (ImGui::IsItemHovered()) {
             ImGui::SetTooltip("Only flow fields sharing a bit with this mask are applied.");
+        }
         EndModule();
     }
 
-    /// @name Collision: mode != None で有効
+    // Collision: mode != None で有効
     if (section == Section::MOTION) {
         bool collisionEnabled = pe.collisionMode != scene::ParticleCollisionMode::None;
         bool moduleChanged = false;
         auto& rememberedMode = RememberedModuleValue<scene::ParticleCollisionMode>(
             &pe.collisionMode, scene::ParticleCollisionMode::Physics);
-        if (collisionEnabled) rememberedMode = pe.collisionMode;
+        if (collisionEnabled) {
+            rememberedMode = pe.collisionMode;
+        }
         const bool open = BeginModule("Collision", &collisionEnabled, false, moduleChanged);
         if (moduleChanged) {
-            /// @note 戻したときは «外す直前の方式»。常に Physics へ倒すと Plane / Depth の選択が消える。
+            // 戻したときは «外す直前の方式»。常に Physics へ倒すと Plane / Depth の選択が消える。
             pe.collisionMode = collisionEnabled
                 ? rememberedMode
                 : scene::ParticleCollisionMode::None;
@@ -843,17 +925,20 @@ bool DrawParticleEmitterModules(scene::ParticleEmitterSettings& pe, EditorContex
                 changed |= ImGui::DragFloat("Bounciness", &pe.collisionBounciness, 0.01f, 0.0f, 1.0f);
                 changed |= ImGui::DragFloat("Damping", &pe.collisionDamping, 0.01f, 0.0f, 1.0f);
                 if (pe.collisionMode == scene::ParticleCollisionMode::Physics) {
-                    if (widgets::FlowFieldChannelMask("Collision Layers", pe.collisionLayerMask))
+                    if (widgets::FlowFieldChannelMask("Collision Layers", pe.collisionLayerMask)) {
                         changed = true;
+                    }
                     if (ImGui::IsItemHovered())
                         ImGui::SetTooltip("当たってよいコライダーのレイヤーです (ビット n = レイヤー n)。\n"
                                           "既定は全レイヤー。地面だけに当てたいときはここで絞ります。");
                     ImGui::TextDisabled("トリガーには当たりません (通過を検知する体積で、跳ね返る面ではないため)");
                 }
-                if (pe.collisionMode == scene::ParticleCollisionMode::Plane)
+                if (pe.collisionMode == scene::ParticleCollisionMode::Plane) {
                     changed |= ImGui::DragFloat("Plane Y [m]", &pe.collisionPlaneY, 0.01f, -10000.0f, 10000.0f);
-                if (pe.collisionMode == scene::ParticleCollisionMode::Depth)
+                }
+                if (pe.collisionMode == scene::ParticleCollisionMode::Depth) {
                     ImGui::TextDisabled("GPU simulation only. Uses opaque scene depth without CPU readback.");
+                }
                 ImGui::Text("Collisions this frame: %d", runtime.collisionCountThisFrame);
             } else {
                 ImGui::TextDisabled("Enable to collide particles with Physics World or a ground plane.");
@@ -862,14 +947,15 @@ bool DrawParticleEmitterModules(scene::ParticleEmitterSettings& pe, EditorContex
         }
     }
 
-    /// @name Sub Emitters: Birth / Death / Collision イベント連鎖
+    // Sub Emitters: Birth / Death / Collision イベント連鎖
     if (section == Section::MOTION && BeginModule("Sub Emitters", nullptr, false, changed)) {
         changed |= SubEmitterCombo("Birth", pe.birthSubEmitter, ctx);
         changed |= SubEmitterCombo("Death", pe.deathSubEmitter, ctx);
         changed |= SubEmitterCombo("Collision", pe.collisionSubEmitter, ctx);
         changed |= ImGui::DragInt("Burst Count", &pe.subEmitterBurstCount, 1, 1, 10000);
-        if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayShort))
+        if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayShort)) {
             ImGui::SetTooltip("Particles queued on the target emitter per event");
+        }
         ImGui::TextDisabled("イベントの «発生した位置» が対象エミッターへ渡ります "
                             "(当たった点 / 消えた点)");
         ImGui::Separator();
@@ -883,9 +969,9 @@ bool DrawParticleEmitterModules(scene::ParticleEmitterSettings& pe, EditorContex
         EndModule();
     }
 
-    /// @name Renderer: 描画方式とマテリアル参照
-    /// @note 見た目 (ブレンド・フリップブック・歪み・煙・影) は .mat の [particle] が
-    /// @note 正本になったため、ここには無い。Material を選んで Inspector で編集する。
+    // Renderer: 描画方式とマテリアル参照
+    // 見た目 (ブレンド・フリップブック・歪み・煙・影) は .mat の [particle] が
+    // 正本になったため、ここには無い。Material を選んで Inspector で編集する。
     if (section == Section::RENDERING && BeginModule("Renderer", nullptr, true, changed)) {
         const char* renderModeItems[] = { "Billboard", "Stretched", "Horizontal", "Vertical" };
         int renderMode = static_cast<int>(pe.renderMode);
@@ -909,8 +995,8 @@ bool DrawParticleEmitterModules(scene::ParticleEmitterSettings& pe, EditorContex
                               "炎(小さい値)と煙(大きい値)のように重ねると前後が安定します。\n"
                               "同値のときはカメラから遠い順に描画されます。");
 
-        /// @note .mat 参照。変更時はキャッシュを無効化してレンダーパスに再ロードさせる。
-        /// @note テクスチャを直接落とした場合は加算の .mat を用意して差し替える。
+        // .mat 参照。変更時はキャッシュを無効化してレンダーパスに再ロードさせる。
+        // テクスチャを直接落とした場合は加算の .mat を用意して差し替える。
         if (ParticleMaterialField("Material", pe.materialPath, ctx.projectRoot)) {
             runtime.loadedMaterialPath.clear();
             runtime.texture = {};
@@ -921,8 +1007,9 @@ bool DrawParticleEmitterModules(scene::ParticleEmitterSettings& pe, EditorContex
         if (pe.materialPath.empty())
             ImGui::TextColored({ 1.0f, 0.78f, 0.35f, 1.0f },
                 "Material 未設定: ParticleFallback.mat (加算の丸い光) で描かれます");
-        else
+        else {
             ImGui::TextDisabled("ブレンド・フリップブック・歪み・煙・影は Material の Inspector で編集します");
+        }
         changed |= widgets::AssetPathField("Mesh Particle (optional)", pe.meshParticlePath,
                                            ".fbx,.obj,.mesh,.fzasset,.gltf,.glb", ctx.projectRoot);
         if (ImGui::IsItemHovered())
@@ -930,8 +1017,8 @@ bool DrawParticleEmitterModules(scene::ParticleEmitterSettings& pe, EditorContex
                               "指定したパスは読み込まれません — 形は同じ GameObject の\n"
                               "MeshRenderer が持ちます (互換のため型は文字列のまま)。");
         if (!pe.meshParticlePath.empty()) {
-            /// @note «別のモデルを指定したのに変わらない» / «何も出ない» の 2 つが、この欄で
-            /// @note 一番多い詰まり方。要求を画面に出しておく (どちらも黙って失敗する)。
+            // «別のモデルを指定したのに変わらない» / «何も出ない» の 2 つが、この欄で
+            // 一番多い詰まり方。要求を画面に出しておく (どちらも黙って失敗する)。
             ImGui::TextColored({ 1.0f, 0.78f, 0.35f, 1.0f },
                 "パスは使われません: 形は同じ GameObject の MeshRenderer が正本です");
             ImGui::TextColored({ 1.0f, 0.78f, 0.35f, 1.0f },
@@ -940,16 +1027,18 @@ bool DrawParticleEmitterModules(scene::ParticleEmitterSettings& pe, EditorContex
         EndModule();
     }
 
-    /// @name Culling & LOD
+    // Culling & LOD
     if (section == Section::BUDGET && BeginModule("Culling & LOD", nullptr, true, changed)) {
         changed |= ImGui::DragInt("Max Particles", &pe.maxParticles, 1, 1, 100000);
         const float maxLifetime = (std::max)(pe.lifetime, 0.0f) * (1.0f + std::clamp(pe.lifetimeRandom, 0.0f, 1.0f));
         const float estimatedLive = (std::max)(pe.emitRate, 0.0f) * maxLifetime;
         ImGui::TextDisabled("Time emission estimate: %.0f live / %d capacity", estimatedLive, pe.maxParticles);
-        if (ImGui::IsItemHovered())
+        if (ImGui::IsItemHovered()) {
             ImGui::SetTooltip("Rate x longest lifetime before rate envelope / LOD. Bursts, distance emission and sub emitters add demand.");
-        if (estimatedLive > pe.maxParticles)
+        }
+        if (estimatedLive > pe.maxParticles) {
             ImGui::TextColored({1.0f, 0.65f, 0.3f, 1.0f}, "Pool may fill: reduce Rate / Lifetime or raise capacity.");
+        }
         if (liveEmitter) {
             const float bytes = static_cast<float>((std::max)(pe.maxParticles, 0)) * static_cast<float>(fallback == scene::ParticleGpuFallbackReason::None
                 ? sizeof(scene::GpuParticle) : sizeof(scene::Particle));
@@ -960,10 +1049,12 @@ bool DrawParticleEmitterModules(scene::ParticleEmitterSettings& pe, EditorContex
         changed |= ImGui::Checkbox("Culling Enabled", &pe.culling.cullingEnabled);
         changed |= ImGui::DragFloat("Bounds Padding [m]", &pe.culling.cullingBoundsPadding, 0.01f, 0.0f, 100.0f);
         changed |= ImGui::Checkbox("Pause When Culled", &pe.culling.pauseWhenCulled);
-        if (ImGui::IsItemHovered())
+        if (ImGui::IsItemHovered()) {
             ImGui::SetTooltip("Freezes emission and live particles outside the view. Returning to view resumes the frozen effect.");
-        if (fallback == scene::ParticleGpuFallbackReason::None && pe.culling.cullingEnabled && !pe.culling.pauseWhenCulled)
+        }
+        if (fallback == scene::ParticleGpuFallbackReason::None && pe.culling.cullingEnabled && !pe.culling.pauseWhenCulled) {
             ImGui::TextWrapped("GPU particles stop updating while culled. Choose CPU when particles must keep moving outside the view.");
+        }
         changed |= ImGui::DragFloat("Screen Coverage Threshold", &pe.culling.screenCoverageThreshold, 0.0001f, 0.0f, 1.0f, "%.4f");
         ImGui::Separator();
         changed |= ImGui::Checkbox("LOD Enabled", &pe.culling.lodEnabled);
@@ -971,19 +1062,22 @@ bool DrawParticleEmitterModules(scene::ParticleEmitterSettings& pe, EditorContex
         changed |= ImGui::DragFloat("LOD Far Distance [m]", &pe.culling.lodFarDistance, 0.1f, 0.0f, 10000.0f);
         changed |= ImGui::DragFloat("LOD Near Rate", &pe.culling.lodNearRateScale, 0.01f, 0.0f, 1.0f);
         changed |= ImGui::DragFloat("LOD Far Rate", &pe.culling.lodFarRateScale, 0.01f, 0.0f, 1.0f);
-        if (pe.culling.lodEnabled && pe.culling.lodFarDistance <= pe.culling.lodNearDistance)
+        if (pe.culling.lodEnabled && pe.culling.lodFarDistance <= pe.culling.lodNearDistance) {
             ImGui::TextColored({1.0f, 0.65f, 0.3f, 1.0f}, "Set LOD Far Distance beyond Near Distance for a gradual transition.");
+        }
         ImGui::TextDisabled("LOD scales time emission only. Bursts / distance events keep their authored counts.");
         ImGui::Text("Bounds radius [m]: %.2f  Draw count: %d  Culled: %s",
                     runtime.boundsRadius, runtime.visibleParticleCount, runtime.isCulledThisFrame ? "Yes" : "No");
         EndModule();
     }
 
-    /// @name Lights: 粒子を点光源にする
+    // Lights: 粒子を点光源にする
     if (section == Section::RENDERING && BeginModule("Lights", &pe.light.lightEnabled, false, changed)) {
         auto& light = pe.light;
         changed |= ImGui::SliderFloat("Ratio", &light.lightRatio, 0.0f, 1.0f);
-        if (ImGui::IsItemHovered()) ImGui::SetTooltip("光らせる粒子の割合です。粒子ごとに固定で、寿命の間は変わりません。");
+        if (ImGui::IsItemHovered()) {
+            ImGui::SetTooltip("光らせる粒子の割合です。粒子ごとに固定で、寿命の間は変わりません。");
+        }
         changed |= ImGui::DragInt("Max Lights", &light.lightMaxCount, 1.0f, 0, 64);
         if (ImGui::IsItemHovered())
             ImGui::SetTooltip("このエミッターから出す本数の上限です。明るい順に選びます。\n"
@@ -1006,4 +1100,4 @@ bool DrawParticleEmitterModules(scene::ParticleEmitterSettings& pe, EditorContex
     return changed;
 }
 
-} /// @note namespace fbzz::editor
+} // namespace fbzz::editor

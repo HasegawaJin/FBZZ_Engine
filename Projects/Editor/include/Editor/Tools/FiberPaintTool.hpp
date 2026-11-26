@@ -53,4 +53,4 @@ void CancelFiberPaintPreview(EditorContext& ctx, FiberPaintTransaction& transact
 /// @return 同 frame の HUD が mouse を占有した場合 true。
 bool DrawFiberPaintTool(EditorContext& ctx, FiberPaintTool& tool, const ImVec2& min,
     const ImVec2& size, bool hovered, bool editable);
-} /// @note namespace fbzz::editor
+} // namespace fbzz::editor

@@ -130,143 +130,288 @@ void VisitSettings(asset::VolumeFlipbookBakeSettings& s, Field&& field)
 }
 bool Number(const OpData& value, double& out)
 {
-    if (value.IsInt()) out = static_cast<double>(value.AsInt64());
-    else if (value.IsFloat()) out = value.AsDouble();
-    else return false;
+    if (value.IsInt()) {
+        out = static_cast<double>(value.AsInt64());
+    } else if (value.IsFloat()) {
+        out = value.AsDouble();
+    } else {
+        return false;
+    }
     return std::isfinite(out);
 }
 bool Validate(const asset::VolumeFlipbookBakeSettings& s)
 {
     const auto resolution = s.volumeResolution;
-    if (resolution != 32 && resolution != 48 && resolution != 64 && resolution != 96 && resolution != 128 && resolution != 160) return false;
-    if (s.tileSize != 128 && s.tileSize != 256 && s.tileSize != 512) return false;
-    if (s.blackbodyMinKelvin > s.blackbodyMaxKelvin || s.source.emitter.colorKeyMin > s.source.emitter.colorKeyMax) return false;
+    if (resolution != 32 && resolution != 48 && resolution != 64 && resolution != 96 && resolution != 128 && resolution != 160) {
+        return false;
+    }
+    if (s.tileSize != 128 && s.tileSize != 256 && s.tileSize != 512) {
+        return false;
+    }
+    if (s.blackbodyMinKelvin > s.blackbodyMaxKelvin || s.source.emitter.colorKeyMin > s.source.emitter.colorKeyMax) {
+        return false;
+    }
     for (const auto* ramp : {&s.albedoRamp, &s.emissionRamp})
         for (std::size_t i = 1; i < ramp->stops.size(); ++i)
-            if (ramp->stops[i].position < ramp->stops[i - 1].position) return false;
+            if (ramp->stops[i].position < ramp->stops[i - 1].position) {
+                return false;
+            }
     return asset::FindVolumeSource(s.source.preset) && (!s.source.loop || asset::VolumeSourceCanLoop(s.source));
 }
-} /// @note namespace
+} // namespace
 void VolumeFlipbookBakePanel::OnRegisterOperators(OperatorRegistry& registry)
 {
     for (const char* action : {"inspect", "configure", "reset_look", "control", "bake", "cancel", "apply", "preview_vfx"}) {
-        EditorOperator op; const std::string name = action;
-        op.id = "volume.flipbook." + name; op.label = op.id; op.category = "Volume Flipbook";
+        EditorOperator op;
+        const std::string name = action;
+        op.id = "volume.flipbook." + name;
+        op.label = op.id;
+        op.category = "Volume Flipbook";
         op.kind = name == "inspect" ? OpKind::Query : OpKind::Action;
         op.desc = "解析puffベイクの直接操作。configureはinspect.settingsの平坦なキーを部分指定する。範囲はschema。bakeのjobはfluid.jobStatusでも追跡できる。controlはtime/playing/speed/enabledと比較再生を指定する。";
-        if (name == "configure" || name == "control") { OpParam p; p.name = "settings"; p.type = OpParamType::Data; op.params.push_back(std::move(p)); }
-        if (name == "apply" || name == "preview_vfx") { OpParam p; p.name = "material"; p.type = OpParamType::String; op.params.push_back(std::move(p)); }
+        if (name == "configure" || name == "control") {
+            OpParam p;
+            p.name = "settings";
+            p.type = OpParamType::Data;
+            op.params.push_back(std::move(p));
+        }
+        if (name == "apply" || name == "preview_vfx") {
+            OpParam p;
+            p.name = "material";
+            p.type = OpParamType::String;
+            op.params.push_back(std::move(p));
+        }
         op.poll = [name](const OpContext& context, const OpArgs&) { return name == "inspect" || !context.ctx.playMode || context.ctx.playMode->IsInEditor(); };
         op.exec = [this, name](OpContext& context, const OpArgs& args) {
             auto& ctx = context.ctx;
             if (name == "configure" || name == "reset_look") {
-                if (JobActive(ctx)) return OpResult::Err("VOLUME_BUSY", "自分のベイクの完了を待ってください。");
-                auto next = m_settings; std::string base = m_baseName.data();
+                if (JobActive(ctx)) {
+                    return OpResult::Err("VOLUME_BUSY", "自分のベイクの完了を待ってください。");
+                }
+                auto next = m_settings;
+                std::string base = m_baseName.data();
                 const OpData* patch = args.GetData("settings");
-                if (name == "configure" && (!patch || !patch->IsObject())) return OpResult::Err("BAD_ARG", "settingsはオブジェクトです。");
+                if (name == "configure" && (!patch || !patch->IsObject())) {
+                    return OpResult::Err("BAD_ARG", "settingsはオブジェクトです。");
+                }
                 std::size_t consumed = 0; bool valid = true;
-                if (name == "reset_look") asset::ApplyVolumeSourceLook(next);
+                if (name == "reset_look") {
+                    asset::ApplyVolumeSourceLook(next);
+                }
                 if (patch) {
                     if (const auto* preset = patch->Find("source.preset")) {
-                        if (!preset->IsString() || !asset::FindVolumeSource(preset->AsString())) return OpResult::Err("BAD_ARG", "source.preset");
-                        if (next.source.preset != preset->AsString()) { next.source.preset = preset->AsString(); asset::ApplyVolumeSourceLook(next); }
+                        if (!preset->IsString() || !asset::FindVolumeSource(preset->AsString())) {
+                            return OpResult::Err("BAD_ARG", "source.preset");
+                        }
+                        if (next.source.preset != preset->AsString()) {
+                            next.source.preset = preset->AsString();
+                            asset::ApplyVolumeSourceLook(next);
+                        }
                         ++consumed;
                     }
                     if (const auto* value = patch->Find("baseName")) {
-                        if (!value->IsString()) return OpResult::Err("BAD_ARG", "baseName");
-                        base = value->AsString(); ++consumed;
+                        if (!value->IsString()) {
+                            return OpResult::Err("BAD_ARG", "baseName");
+                        }
+                        base = value->AsString();
+                        ++consumed;
                     }
                     VisitSettings(next, [&](const char* key, auto& value, double lower = 0, double upper = 1) {
-                        const auto* data = patch->Find(key); if (!data) return; ++consumed;
+                        const auto* data = patch->Find(key);
+                        if (!data) {
+                            return;
+                        }
+                        ++consumed;
                         using T = std::remove_cvref_t<decltype(value)>;
                         if constexpr (std::is_same_v<T, bool>) { if (!data->IsBool()) valid = false; else value = data->AsBool(); }
                         else { double number = 0;
-                            if (!Number(*data, number) || number < lower || number > upper || (std::is_integral_v<T> && std::floor(number) != number)) valid = false;
-                            else value = static_cast<T>(number);
+                            if (!Number(*data, number) || number < lower || number > upper || (std::is_integral_v<T> && std::floor(number) != number)) {
+                                valid = false;
+                            } else {
+                                value = static_cast<T>(number);
+                            }
                         }
                     });
                     valid = valid && consumed == patch->AsObject().size();
                 }
                 if (!valid || !Validate(next) || base.empty() || base.size() >= m_baseName.size()
-                    || base.find_first_of("/\\:*?\"<>|\0", 0, 10) != std::string::npos || base == "." || base == "..")
+                    || base.find_first_of("/\\:*?\"<>|\0", 0, 10) != std::string::npos || base == "." || base == "..") {
                     return OpResult::Err("BAD_ARG", "設定値・範囲・ランプの順序・出力名を確認してください。");
-                m_settings = std::move(next); std::snprintf(m_baseName.data(), m_baseName.size(), "%s", base.c_str()); MarkSettingsChanged();
+                }
+                m_settings = std::move(next);
+                std::snprintf(m_baseName.data(), m_baseName.size(), "%s", base.c_str());
+                MarkSettingsChanged();
             } else if (name == "control") {
-                const OpData* patch = args.GetData("settings"); if (!patch || !patch->IsObject()) return OpResult::Err("BAD_ARG", "settings");
+                const OpData* patch = args.GetData("settings");
+                if (!patch || !patch->IsObject()) {
+                    return OpResult::Err("BAD_ARG", "settings");
+                }
                 auto time = m_previewTime, speed = m_playSpeed, compareTime = m_compareTime, fps = m_compareFps, strength = m_strengthScale;
                 bool enabled = m_apiPreview, playing = m_playing, comparePlaying = m_comparePlaying, arrow = m_showLightArrow;
                 int view = static_cast<int>(m_view), background = static_cast<int>(m_background), size = m_previewSize;
                 for (const auto& [key, value] : patch->AsObject()) {
                     if (key == "enabled" || key == "playing" || key == "comparePlaying" || key == "showLightArrow") {
-                        if (!value.IsBool()) return OpResult::Err("BAD_ARG", key);
-                        if (key == "enabled") enabled = value.AsBool(); else if (key == "playing") playing = value.AsBool();
-                        else if (key == "comparePlaying") comparePlaying = value.AsBool(); else arrow = value.AsBool();
+                        if (!value.IsBool()) {
+                            return OpResult::Err("BAD_ARG", key);
+                        }
+                        if (key == "enabled") {
+                            enabled = value.AsBool();
+                        } else if (key == "playing") {
+                            playing = value.AsBool();
+                        } else if (key == "comparePlaying") {
+                            comparePlaying = value.AsBool();
+                        } else {
+                            arrow = value.AsBool();
+                        }
                     } else { double number = 0; if (!Number(value, number)) return OpResult::Err("BAD_ARG", key);
-                        if (key == "time" && number >= 0 && number <= BakeDuration()) time = static_cast<float>(number);
-                        else if (key == "speed" && number >= 0.05 && number <= 4) speed = static_cast<float>(number);
-                        else if (key == "compareTime" && number >= 0 && number <= 3600) compareTime = static_cast<float>(number);
-                        else if (key == "compareFps" && number >= 0.1 && number <= 120) fps = static_cast<float>(number);
-                        else if (key == "strengthScale" && number >= 0 && number <= 4) strength = static_cast<float>(number);
-                        else if (key == "view" && number >= 0 && number <= 4 && std::floor(number) == number) view = static_cast<int>(number);
-                        else if (key == "background" && number >= 0 && number <= 2 && std::floor(number) == number) background = static_cast<int>(number);
-                        else if (key == "previewSize" && number >= 0 && number <= 3 && std::floor(number) == number) size = static_cast<int>(number);
-                        else return OpResult::Err("BAD_ARG", key);
+                        if (key == "time" && number >= 0 && number <= BakeDuration()) {
+                            time = static_cast<float>(number);
+                        } else if (key == "speed" && number >= 0.05 && number <= 4) {
+                            speed = static_cast<float>(number);
+                        } else if (key == "compareTime" && number >= 0 && number <= 3600) {
+                            compareTime = static_cast<float>(number);
+                        } else if (key == "compareFps" && number >= 0.1 && number <= 120) {
+                            fps = static_cast<float>(number);
+                        } else if (key == "strengthScale" && number >= 0 && number <= 4) {
+                            strength = static_cast<float>(number);
+                        } else if (key == "view" && number >= 0 && number <= 4 && std::floor(number) == number) {
+                            view = static_cast<int>(number);
+                        } else if (key == "background" && number >= 0 && number <= 2 && std::floor(number) == number) {
+                            background = static_cast<int>(number);
+                        } else if (key == "previewSize" && number >= 0 && number <= 3 && std::floor(number) == number) {
+                            size = static_cast<int>(number);
+                        } else {
+                            return OpResult::Err("BAD_ARG", key);
+                        }
                     }
                 }
-                m_apiPreview = enabled; m_previewTime = time; m_playSpeed = speed; m_playing = playing;
-                m_compareTime = compareTime; m_comparePlaying = comparePlaying; m_compareFps = fps; m_strengthScale = strength;
-                m_view = static_cast<VolumeView>(view); m_background = static_cast<asset::VolumePreviewBackground>(background); m_previewSize = size; m_showLightArrow = arrow; m_previewDirty = true;
+                m_apiPreview = enabled;
+                m_previewTime = time;
+                m_playSpeed = speed;
+                m_playing = playing;
+                m_compareTime = compareTime;
+                m_comparePlaying = comparePlaying;
+                m_compareFps = fps;
+                m_strengthScale = strength;
+                m_view = static_cast<VolumeView>(view);
+                m_background = static_cast<asset::VolumePreviewBackground>(background);
+                m_previewSize = size;
+                m_showLightArrow = arrow;
+                m_previewDirty = true;
             } else if (name == "bake") {
-                if (!ctx.fluidBake || !ctx.renderer || !ctx.resources || ctx.projectRoot.empty()) return OpResult::Err("NO_RENDERER", "描画デバイスとプロジェクトが必要です。");
-                if (JobActive(ctx)) return OpResult::Err("VOLUME_BUSY", "ベイクは既に実行中です。");
-                StartBake(ctx); if (m_statusIsError || m_jobId == 0) return OpResult::Err("VOLUME_BAKE_FAILED", m_status);
+                if (!ctx.fluidBake || !ctx.renderer || !ctx.resources || ctx.projectRoot.empty()) {
+                    return OpResult::Err("NO_RENDERER", "描画デバイスとプロジェクトが必要です。");
+                }
+                if (JobActive(ctx)) {
+                    return OpResult::Err("VOLUME_BUSY", "ベイクは既に実行中です。");
+                }
+                StartBake(ctx);
+                if (m_statusIsError || m_jobId == 0) {
+                    return OpResult::Err("VOLUME_BAKE_FAILED", m_status);
+                }
                 m_apiJobId = m_jobId;
             } else if (name == "cancel") {
-                if (!ctx.fluidBake || !ctx.fluidBake->Cancel(m_jobId)) return OpResult::Err("NO_JOB", "実行中のベイクがありません。");
+                if (!ctx.fluidBake || !ctx.fluidBake->Cancel(m_jobId)) {
+                    return OpResult::Err("NO_JOB", "実行中のベイクがありません。");
+                }
             } else if (name == "apply" || name == "preview_vfx") {
-                if (JobActive(ctx)) return OpResult::Err("VOLUME_BUSY", "ベイクの完了を待ってください。");
-                if (name == "apply" && !m_lastResult.success) return OpResult::Err("NO_BAKE", "成功したベイク結果がありません。");
+                if (JobActive(ctx)) {
+                    return OpResult::Err("VOLUME_BUSY", "ベイクの完了を待ってください。");
+                }
+                if (name == "apply" && !m_lastResult.success) {
+                    return OpResult::Err("NO_BAKE", "成功したベイク結果がありません。");
+                }
                 if (name == "apply") {
                     std::error_code error;
                     const auto output = std::filesystem::weakly_canonical(util::FileSystem::PathFromUtf8(m_lastBakeSettings.outputDirectory), error);
                     const auto assets = std::filesystem::weakly_canonical(util::FileSystem::PathFromUtf8(ctx.projectRoot) / "Assets", error);
                     const auto relative = output.lexically_relative(assets);
-                    if (ctx.projectRoot.empty() || error || relative.empty() || relative.is_absolute() || *relative.begin() == "..") return OpResult::Err("NO_BAKE", "現在のプロジェクトでベイクしてください。");
+                    if (ctx.projectRoot.empty() || error || relative.empty() || relative.is_absolute() || *relative.begin() == "..") {
+                        return OpResult::Err("NO_BAKE", "現在のプロジェクトでベイクしてください。");
+                    }
                 }
                 auto requested = args.GetString("material");
-                if (requested.starts_with("guid:")) requested = asset::AssetDatabase::PathFromGuid(asset::AssetDatabase::GuidFromRef(requested));
+                if (requested.starts_with("guid:")) {
+                    requested = asset::AssetDatabase::PathFromGuid(asset::AssetDatabase::GuidFromRef(requested));
+                }
                 auto file = util::FileSystem::PathFromUtf8(requested);
-                if (file.is_relative()) file = util::FileSystem::PathFromUtf8(ctx.projectRoot) / file;
-                std::error_code error; file = std::filesystem::weakly_canonical(file, error);
+                if (file.is_relative()) {
+                    file = util::FileSystem::PathFromUtf8(ctx.projectRoot) / file;
+                }
+                std::error_code error;
+                file = std::filesystem::weakly_canonical(file, error);
                 const auto root = std::filesystem::weakly_canonical(util::FileSystem::PathFromUtf8(ctx.projectRoot) / "Assets", error);
                 const auto relative = file.lexically_relative(root);
-                if (ctx.projectRoot.empty() || requested.empty() || error || file.extension() != ".mat" || relative.empty() || relative.is_absolute() || *relative.begin() == ".."
-                    || !std::filesystem::is_regular_file(file, error)) return OpResult::Err("BAD_PATH", "Assets内の.matを指定してください。");
+
+                // プロジェクトに属するマテリアルを指定した場合だけ、既存ファイルを調べる。
+                constexpr char INVALID_MATERIAL[] = "Assets内の.matを指定してください。";
+                if (ctx.projectRoot.empty() || requested.empty() || error || file.extension() != ".mat") {
+                    return OpResult::Err("BAD_PATH", INVALID_MATERIAL);
+                }
+                if (relative.empty() || relative.is_absolute() || *relative.begin() == "..") {
+                    return OpResult::Err("BAD_PATH", INVALID_MATERIAL);
+                }
+                if (!std::filesystem::is_regular_file(file, error)) {
+                    return OpResult::Err("BAD_PATH", INVALID_MATERIAL);
+                }
+
                 m_materialPath = util::FileSystem::PathToUtf8(file);
-                if (name == "apply") ApplyToMaterial(ctx); else OpenInPrefabPreview(ctx);
-                if (m_statusIsError) return OpResult::Err("VOLUME_APPLY_FAILED", m_status);
+                if (name == "apply") {
+                    ApplyToMaterial(ctx);
+                } else {
+                    OpenInPrefabPreview(ctx);
+                }
+                if (m_statusIsError) {
+                    return OpResult::Err("VOLUME_APPLY_FAILED", m_status);
+                }
             }
             OpData data = OpData::MakeObject(), settings = OpData::MakeObject(), schema = OpData::MakeObject();
             VisitSettings(m_settings, [&](const char* key, auto& value, double lower = 0, double upper = 1) {
                 using T = std::remove_cvref_t<decltype(value)>;
-                if constexpr (std::is_same_v<T, bool>) settings.Set(key, OpData(value));
-                else if constexpr (std::is_integral_v<T>) settings.Set(key, OpData(static_cast<std::int64_t>(value)));
-                else settings.Set(key, OpData(value));
-                OpData range = OpData::MakeObject(); range.Set("min", OpData(lower)); range.Set("max", OpData(upper)); schema.Set(key, std::move(range));
+                if constexpr (std::is_same_v<T, bool>) {
+                    settings.Set(key, OpData(value));
+                } else if constexpr (std::is_integral_v<T>) {
+                    settings.Set(key, OpData(static_cast<std::int64_t>(value)));
+                } else {
+                    settings.Set(key, OpData(value));
+                }
+                OpData range = OpData::MakeObject();
+                range.Set("min", OpData(lower));
+                range.Set("max", OpData(upper));
+                schema.Set(key, std::move(range));
             });
-            settings.Set("source.preset", OpData(m_settings.source.preset)); settings.Set("baseName", OpData(std::string(m_baseName.data())));
-            OpData presets = OpData::MakeArray(); for (const auto& preset : asset::VolumeSources()) presets.Push(OpData(preset.name));
-            data.Set("settings", std::move(settings)); data.Set("schema", std::move(schema)); data.Set("presets", std::move(presets));
-            data.Set("job", OpData(m_jobId != 0 ? m_jobId : m_apiJobId)); data.Set("busy", OpData(JobActive(ctx)));
-            data.Set("message", OpData(m_status)); data.Set("error", OpData(m_statusIsError)); data.Set("success", OpData(m_lastResult.success));
-            data.Set("colorPath", OpData(m_lastResult.colorPath)); data.Set("motionPath", OpData(m_lastResult.motionPath));
-            OpData playback = OpData::MakeObject(); playback.Set("enabled", OpData(m_apiPreview)); playback.Set("time", OpData(m_previewTime));
-            playback.Set("playing", OpData(m_playing)); playback.Set("speed", OpData(m_playSpeed)); playback.Set("compareTime", OpData(m_compareTime));
-            playback.Set("comparePlaying", OpData(m_comparePlaying)); playback.Set("compareFps", OpData(m_compareFps)); playback.Set("strengthScale", OpData(m_strengthScale));
-            playback.Set("view", OpData(static_cast<int>(m_view))); playback.Set("background", OpData(static_cast<int>(m_background)));
-            playback.Set("previewSize", OpData(m_previewSize)); playback.Set("showLightArrow", OpData(m_showLightArrow)); data.Set("playback", std::move(playback));
+            settings.Set("source.preset", OpData(m_settings.source.preset));
+            settings.Set("baseName", OpData(std::string(m_baseName.data())));
+            OpData presets = OpData::MakeArray();
+            for (const auto& preset : asset::VolumeSources()) {
+                presets.Push(OpData(preset.name));
+            }
+            data.Set("settings", std::move(settings));
+            data.Set("schema", std::move(schema));
+            data.Set("presets", std::move(presets));
+            data.Set("job", OpData(m_jobId != 0 ? m_jobId : m_apiJobId));
+            data.Set("busy", OpData(JobActive(ctx)));
+            data.Set("message", OpData(m_status));
+            data.Set("error", OpData(m_statusIsError));
+            data.Set("success", OpData(m_lastResult.success));
+            data.Set("colorPath", OpData(m_lastResult.colorPath));
+            data.Set("motionPath", OpData(m_lastResult.motionPath));
+            OpData playback = OpData::MakeObject();
+            playback.Set("enabled", OpData(m_apiPreview));
+            playback.Set("time", OpData(m_previewTime));
+            playback.Set("playing", OpData(m_playing));
+            playback.Set("speed", OpData(m_playSpeed));
+            playback.Set("compareTime", OpData(m_compareTime));
+            playback.Set("comparePlaying", OpData(m_comparePlaying));
+            playback.Set("compareFps", OpData(m_compareFps));
+            playback.Set("strengthScale", OpData(m_strengthScale));
+            playback.Set("view", OpData(static_cast<int>(m_view)));
+            playback.Set("background", OpData(static_cast<int>(m_background)));
+            playback.Set("previewSize", OpData(m_previewSize));
+            playback.Set("showLightArrow", OpData(m_showLightArrow));
+            data.Set("playback", std::move(playback));
             return OpResult::Data(std::move(data));
         }; registry.Register(std::move(op));
     }
 }
-} /// @note namespace fbzz::editor
+} // namespace fbzz::editor

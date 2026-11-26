@@ -46,7 +46,7 @@ asset::SpriteRect MakeRect(const char* name, uint32_t x, uint32_t y,
                            uint32_t w, uint32_t h)
 {
     asset::SpriteRect rect;
-    /// @note テスト内で追跡できる印として使う
+    // テスト内で追跡できる印として使う
     rect.id     = name;
     rect.name   = name;
     rect.x      = x;
@@ -60,7 +60,9 @@ const asset::SpriteRect* FindByName(const std::vector<asset::SpriteRect>& list,
                                     const std::string& name)
 {
     for (const auto& rect : list)
-        if (rect.name == name) return &rect;
+        if (rect.name == name) {
+            return &rect;
+        }
     return nullptr;
 }
 
@@ -74,7 +76,7 @@ TEST(SpriteSlicerGrid, SplitsEvenlyByCellSize)
     const auto result = slicer::GenerateGrid("", 128, 64, ByCellSize(32, 32));
 
     ASSERT_TRUE(result.error.empty()) << result.error;
-    /// @note 4 列 x 2 行
+    // 4 列 x 2 行
     EXPECT_EQ(result.sprites.size(), 8u);
     EXPECT_EQ(result.sprites[0].x, 0u);
     EXPECT_EQ(result.sprites[0].y, 0u);
@@ -94,7 +96,7 @@ TEST(SpriteSlicerGrid, SplitsEvenlyByCellCount)
 /// @brief Cell count covers the whole texture without gaps.
 TEST(SpriteSlicerGrid, CellCountCoversTheWholeTextureWithoutGaps)
 {
-    /// @note 割り切れない幅。切り捨てで «右端が欠ける» と、最後のコマだけ絵が切れる。
+    // 割り切れない幅。切り捨てで «右端が欠ける» と、最後のコマだけ絵が切れる。
     const auto result = slicer::GenerateGrid("", 100, 30, ByCellCount(3, 1));
 
     ASSERT_EQ(result.sprites.size(), 3u);
@@ -132,10 +134,10 @@ TEST(SpriteSlicerGrid, LaysCellsLeftToRightThenTopToBottom)
     const auto result = slicer::GenerateGrid("", 64, 64, ByCellSize(32, 32));
 
     ASSERT_EQ(result.sprites.size(), 4u);
-    /// @note 同じ行
+    // 同じ行
     EXPECT_EQ(result.sprites[0].y, result.sprites[1].y);
     EXPECT_LT(result.sprites[0].x, result.sprites[1].x);
-    /// @note 次の行へ
+    // 次の行へ
     EXPECT_LT(result.sprites[1].y, result.sprites[2].y);
 }
 
@@ -162,16 +164,16 @@ TEST(SpriteSlicerGrid, PutsPaddingBetweenCellsNotInsideThem)
     const auto result = slicer::GenerateGrid("", 128, 32, params);
 
     ASSERT_GE(result.sprites.size(), 2u);
-    /// @note セル自体は縮まない
+    // セル自体は縮まない
     EXPECT_EQ(result.sprites[0].width, 32u);
-    /// @note 間に隙間が入る
+    // 間に隙間が入る
     EXPECT_EQ(result.sprites[1].x, 32u + 8u);
 }
 
 /// @brief Clamps cells that would run past the edge.
 TEST(SpriteSlicerGrid, ClampsCellsThatWouldRunPastTheEdge)
 {
-    /// @note 端数が出る割り方。テクスチャの外へはみ出す矩形を作ってはいけない。
+    // 端数が出る割り方。テクスチャの外へはみ出す矩形を作ってはいけない。
     const auto result = slicer::GenerateGrid("", 100, 100, ByCellSize(30, 30));
 
     ASSERT_FALSE(result.sprites.empty());
@@ -218,7 +220,7 @@ TEST(SpriteSlicerGrid, ReportsWhenOffsetAndPaddingLeaveNoRoom)
 /// @brief Clamps degenerate cell sizes.
 TEST(SpriteSlicerGrid, ClampsDegenerateCellSizes)
 {
-    /// @note 0 や負の指定で «幅 0 のスプライトが大量に出る» ことがあってはいけない。
+    // 0 や負の指定で «幅 0 のスプライトが大量に出る» ことがあってはいけない。
     auto params = ByCellSize(0, -5);
     const auto result = slicer::GenerateGrid("", 8, 8, params);
 
@@ -247,7 +249,7 @@ TEST(SpriteSlicerMerge, DeleteExistingReplacesEverything)
 /// @brief Smart updates the rect but keeps the identity.
 TEST(SpriteSlicerMerge, SmartUpdatesTheRectButKeepsTheIdentity)
 {
-    /// @note 人が詰めた ID・名前・pivot は «位置がずれた» の修正で消してはいけない。
+    // 人が詰めた ID・名前・pivot は «位置がずれた» の修正で消してはいけない。
     asset::SpriteRect old = MakeRect("hand", 0, 0, 10, 10);
     old.pivotX = 0.25f;
     old.pivotY = 0.75f;
@@ -260,13 +262,13 @@ TEST(SpriteSlicerMerge, SmartUpdatesTheRectButKeepsTheIdentity)
 
     ASSERT_EQ(merged.size(), 1u);
     EXPECT_EQ(reused, 1);
-    /// @note 名前は残る
+    // 名前は残る
     EXPECT_EQ(merged[0].name, "hand");
-    /// @note ID も残る
+    // ID も残る
     EXPECT_EQ(merged[0].id, "hand");
-    /// @note pivot も残る
+    // pivot も残る
     EXPECT_FLOAT_EQ(merged[0].pivotX, 0.25f);
-    /// @note 矩形だけ合わせ直す
+    // 矩形だけ合わせ直す
     EXPECT_EQ(merged[0].x, 2u);
     EXPECT_EQ(merged[0].width, 32u);
 }
@@ -283,7 +285,7 @@ TEST(SpriteSlicerMerge, SafeKeepsTheOverlappedSpriteUntouched)
 
     ASSERT_EQ(merged.size(), 1u);
     EXPECT_EQ(reused, 1);
-    /// @note 矩形すら変えない
+    // 矩形すら変えない
     EXPECT_EQ(merged[0].x, 0u);
     EXPECT_EQ(merged[0].width, 10u);
 }
@@ -306,7 +308,7 @@ TEST(SpriteSlicerMerge, AddsSpritesThatOverlapNothing)
 /// @brief Renames an added sprite that would collide.
 TEST(SpriteSlicerMerge, RenamesAnAddedSpriteThatWouldCollide)
 {
-    /// @note 重ならないので «追加» されるが、名前は既存と衝突している。
+    // 重ならないので «追加» されるが、名前は既存と衝突している。
     const std::vector<asset::SpriteRect> existing{ MakeRect("sprite_0", 0, 0, 10, 10) };
     std::vector<asset::SpriteRect> generated{ MakeRect("sprite_0", 100, 100, 32, 32) };
 
@@ -320,11 +322,11 @@ TEST(SpriteSlicerMerge, RenamesAnAddedSpriteThatWouldCollide)
 /// @brief Picks the largest overlap when several match.
 TEST(SpriteSlicerMerge, PicksTheLargestOverlapWhenSeveralMatch)
 {
-    /// @note かすっただけの相手に吸われると、別のコマの設定が書き換わる。
+    // かすっただけの相手に吸われると、別のコマの設定が書き換わる。
     const std::vector<asset::SpriteRect> existing{
-        /// @note わずかに重なる
+        // わずかに重なる
         MakeRect("touching", 30, 0, 4, 4),
-        /// @note ほぼ一致
+        // ほぼ一致
         MakeRect("covering",  0, 0, 32, 32),
     };
     std::vector<asset::SpriteRect> generated{ MakeRect("sprite_0", 0, 0, 32, 32) };
@@ -338,7 +340,7 @@ TEST(SpriteSlicerMerge, PicksTheLargestOverlapWhenSeveralMatch)
     ASSERT_NE(covering, nullptr);
     ASSERT_NE(touching, nullptr);
     EXPECT_EQ(covering->width, 32u);
-    /// @note かすった側は触られない
+    // かすった側は触られない
     EXPECT_EQ(touching->width, 4u);
 }
 

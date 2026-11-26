@@ -53,7 +53,7 @@ OpData ReviewData(const Review& review)
     data.Set("conflicts", std::move(conflicts));
     return data;
 }
-} /// @note namespace
+} // namespace
 
 void RegisterPrefabStructureMergeOperators(OperatorRegistry& registry)
 {
@@ -74,7 +74,9 @@ void RegisterPrefabStructureMergeOperators(OperatorRegistry& registry)
         *review = {};
         auto* scene = context.ctx.activeScene;
         auto* object = scene ? scene->FindByGuid(args.GetString("root")) : nullptr;
-        if (!object) return OpResult::Err("NO_ROOT", "The requested Prefab root does not exist");
+        if (!object) {
+            return OpResult::Err("NO_ROOT", "The requested Prefab root does not exist");
+        }
         review->scene = scene;
         review->generation = scene->GetRenderSceneGeneration();
         PreviewPrefabStructureMerge(*scene, object->GetID(), context.ctx.projectRoot, review->plan);
@@ -96,15 +98,22 @@ void RegisterPrefabStructureMergeOperators(OperatorRegistry& registry)
     apply.params = {receipt};
     apply.poll = CanReview;
     apply.exec = [review](OpContext& context, const OpArgs& args) -> OpResult {
-        if (!context.undo.IsRecordingEnabled()) return OpResult::Err("NO_HISTORY", "Enable Edit Undo before applying a reviewed Prefab update");
+        if (!context.undo.IsRecordingEnabled()) {
+            return OpResult::Err("NO_HISTORY", "Enable Edit Undo before applying a reviewed Prefab update");
+        }
         if (review->receipt.empty() || args.GetString("receipt") != review->receipt
             || context.ctx.activeScene != review->scene
-            || review->scene->GetRenderSceneGeneration() != review->generation)
+            || review->scene->GetRenderSceneGeneration() != review->generation) {
             return OpResult::Err("STALE_REVIEW", "Preview this Prefab instance again");
-        if (!review->plan.merge.CanApply()) return OpResult::Err("PREFAB_CONFLICT", "The review has unresolved conflicts");
+        }
+        if (!review->plan.merge.CanApply()) {
+            return OpResult::Err("PREFAB_CONFLICT", "The review has unresolved conflicts");
+        }
         auto command = MakePrefabStructureMergeCommand(context.ctx, review->plan);
         std::string reason;
-        if (!command->TryExecute(reason)) return OpResult::Err("PREFAB_NOT_APPLIED", reason);
+        if (!command->TryExecute(reason)) {
+            return OpResult::Err("PREFAB_NOT_APPLIED", reason);
+        }
         OpResult result;
         result.command = std::move(command);
         result.data.Set("rootGuid", review->plan.rootGuid);
@@ -113,4 +122,4 @@ void RegisterPrefabStructureMergeOperators(OperatorRegistry& registry)
     };
     registry.Register(std::move(apply));
 }
-} /// @note namespace fbzz::editor
+} // namespace fbzz::editor

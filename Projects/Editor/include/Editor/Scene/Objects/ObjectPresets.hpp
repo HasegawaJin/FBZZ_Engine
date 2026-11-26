@@ -45,4 +45,4 @@ struct ObjectPreset {
 /// @return 見つからなければ nullptr。
 [[nodiscard]] const ObjectPreset* FindObjectPreset(std::string_view id);
 
-} /// @note namespace fbzz::editor
+} // namespace fbzz::editor

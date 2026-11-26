@@ -92,7 +92,9 @@ void ClearReferenceCache(scene::ObjectReference& reference)
 template<typename T>
 void ClearReferenceCaches(std::vector<T>& bindings)
 {
-    for (auto& binding : bindings) ClearReferenceCache(binding.target);
+    for (auto& binding : bindings) {
+        ClearReferenceCache(binding.target);
+    }
 }
 
 template<typename T, typename Equal>
@@ -152,22 +154,26 @@ bool FiniteChain(const scene::GameObject* object)
         const auto& pose = object->transform;
         if (!Finite(pose.position) || !Finite(pose.scale) || !Finite(pose.rotation)
             || std::abs(pose.scale.x) <= 1.0e-6f || std::abs(pose.scale.y) <= 1.0e-6f
-            || std::abs(pose.scale.z) <= 1.0e-6f) return false;
+            || std::abs(pose.scale.z) <= 1.0e-6f) {
+            return false;
+        }
     }
     return true;
 }
 
 /// @brief Convert an owner-local point through the Engine world TRS into an absolute point.
-/// @param owner Synchronized owner transform with finite nonzero scale.
-/// @param local Owner-local position.
-/// @param world Receives the finite absolute position on success.
+/// @param[in] owner ワールド変換を同期済みで、全軸のスケールが有限かつ 0 以外であること。
+/// @param[in] local 所有オブジェクトのローカル位置。
+/// @param[out] world 成功時に有限のワールド位置を受け取る。
 /// @return False when the transform or result is not usable.
 /// @see Docs/design/script-transform-contract.md
 bool ToOwnerWorld(const scene::Transform& owner, const math::Vector3& local, math::Vector3& world)
 {
     if (!Finite(local) || !Finite(owner.worldPosition) || !Finite(owner.worldScale)
         || !Finite(owner.worldRotation) || std::abs(owner.worldScale.x) <= 1.0e-6f
-        || std::abs(owner.worldScale.y) <= 1.0e-6f || std::abs(owner.worldScale.z) <= 1.0e-6f) return false;
+        || std::abs(owner.worldScale.y) <= 1.0e-6f || std::abs(owner.worldScale.z) <= 1.0e-6f) {
+        return false;
+    }
     const math::Vector3 scaled{local.x * owner.worldScale.x, local.y * owner.worldScale.y,
         local.z * owner.worldScale.z};
     world = owner.worldPosition + owner.worldRotation * scaled;
@@ -184,7 +190,9 @@ bool NearVector(const math::Vector3& lhs, const math::Vector3& rhs)
 
 scene::GameObject* ResolveOwner(EditorContext& ctx, const OpArgs& args)
 {
-    if (!ctx.activeScene) return nullptr;
+    if (!ctx.activeScene) {
+        return nullptr;
+    }
     const std::string guid = args.GetString("node");
     return guid.empty() ? ctx.GetSelectedGO() : ctx.activeScene->FindByGuid(guid);
 }
@@ -192,9 +200,15 @@ scene::GameObject* ResolveOwner(EditorContext& ctx, const OpArgs& args)
 Domain ParseDomain(std::string_view kind, bool& valid)
 {
     valid = true;
-    if (kind == "patrol") return Domain::PATROL;
-    if (kind == "line") return Domain::LINE;
-    if (kind == "nav_link") return Domain::NAV_LINK;
+    if (kind == "patrol") {
+        return Domain::PATROL;
+    }
+    if (kind == "line") {
+        return Domain::LINE;
+    }
+    if (kind == "nav_link") {
+        return Domain::NAV_LINK;
+    }
     valid = false;
     return Domain::LINE;
 }
@@ -224,29 +238,44 @@ AuthoringState Capture(scene::GameObject& owner, Domain domain)
     AuthoringState state;
     if (domain == Domain::PATROL) {
         const auto& value = *owner.GetComponent<scene::NavMeshPatrolComponent>();
-        state.source = value.pointSourceMode; state.runtime = value.pointRuntimeMode;
-        state.positions = value.waypoints; state.waitTimes = value.waypointWaitTimes;
-        state.speeds = value.waypointSpeeds; state.patrolBindings = value.waypointBindings;
-        state.patrolBake = value.bakedWaypoints; state.patrolWaitTime = value.waitTime;
-        state.patrolMode = value.mode; state.patrolBakeSource = value.bakedSourceMode;
+        state.source = value.pointSourceMode;
+        state.runtime = value.pointRuntimeMode;
+        state.positions = value.waypoints;
+        state.waitTimes = value.waypointWaitTimes;
+        state.speeds = value.waypointSpeeds;
+        state.patrolBindings = value.waypointBindings;
+        state.patrolBake = value.bakedWaypoints;
+        state.patrolWaitTime = value.waitTime;
+        state.patrolMode = value.mode;
+        state.patrolBakeSource = value.bakedSourceMode;
         state.patrolBakeVersion = value.bakedAdapterVersion;
-        state.patrolBakeSignature = value.bakedInputSignature; state.patrolBakeValid = value.bakeValid;
+        state.patrolBakeSignature = value.bakedInputSignature;
+        state.patrolBakeValid = value.bakeValid;
         ClearReferenceCaches(state.patrolBindings);
     } else if (domain == Domain::LINE) {
         const auto& value = *owner.GetComponent<scene::LineRendererComponent>();
-        state.source = value.pointSourceMode; state.runtime = value.pointRuntimeMode;
-        state.positions = value.points; state.lineBindings = value.pointBindings;
-        state.lineBake = value.bakedPoints; state.lineSpace = value.space;
-        state.lineBakeSpace = value.bakedSpace; state.lineLoop = value.loop;
-        state.lineBakeSource = value.bakedSourceMode; state.lineBakeVersion = value.bakedAdapterVersion;
-        state.lineBakeSignature = value.bakedInputSignature; state.lineBakeValid = value.bakeValid;
+        state.source = value.pointSourceMode;
+        state.runtime = value.pointRuntimeMode;
+        state.positions = value.points;
+        state.lineBindings = value.pointBindings;
+        state.lineBake = value.bakedPoints;
+        state.lineSpace = value.space;
+        state.lineBakeSpace = value.bakedSpace;
+        state.lineLoop = value.loop;
+        state.lineBakeSource = value.bakedSourceMode;
+        state.lineBakeVersion = value.bakedAdapterVersion;
+        state.lineBakeSignature = value.bakedInputSignature;
+        state.lineBakeValid = value.bakeValid;
         ClearReferenceCaches(state.lineBindings);
     } else {
         const auto& value = *owner.GetComponent<scene::NavMeshOffMeshLinkComponent>();
-        state.source = value.pointSourceMode; state.linkStart = value.startPoint;
-        state.linkEnd = value.endPoint; state.linkStartTarget = value.startTarget;
+        state.source = value.pointSourceMode;
+        state.linkStart = value.startPoint;
+        state.linkEnd = value.endPoint;
+        state.linkStartTarget = value.startTarget;
         state.linkEndTarget = value.endTarget;
-        ClearReferenceCache(state.linkStartTarget); ClearReferenceCache(state.linkEndTarget);
+        ClearReferenceCache(state.linkStartTarget);
+        ClearReferenceCache(state.linkEndTarget);
     }
     return state;
 }
@@ -257,46 +286,98 @@ void Write(scene::GameObject& owner, Domain domain, const AuthoringState& before
     const AuthoringState& value = apply ? after : before;
     if (domain == Domain::PATROL) {
         auto& patrol = *owner.GetComponent<scene::NavMeshPatrolComponent>();
-        if (before.source != after.source) patrol.pointSourceMode = value.source;
-        if (before.runtime != after.runtime) patrol.pointRuntimeMode = value.runtime;
-        if (!SameRows(before.positions, after.positions, SameVector)) patrol.waypoints = value.positions;
-        if (!SameRows(before.waitTimes, after.waitTimes, SameFloat)) patrol.waypointWaitTimes = value.waitTimes;
-        if (!SameRows(before.speeds, after.speeds, SameFloat)) patrol.waypointSpeeds = value.speeds;
+        if (before.source != after.source) {
+            patrol.pointSourceMode = value.source;
+        }
+        if (before.runtime != after.runtime) {
+            patrol.pointRuntimeMode = value.runtime;
+        }
+        if (!SameRows(before.positions, after.positions, SameVector)) {
+            patrol.waypoints = value.positions;
+        }
+        if (!SameRows(before.waitTimes, after.waitTimes, SameFloat)) {
+            patrol.waypointWaitTimes = value.waitTimes;
+        }
+        if (!SameRows(before.speeds, after.speeds, SameFloat)) {
+            patrol.waypointSpeeds = value.speeds;
+        }
         if (!SameRows(before.patrolBindings, after.patrolBindings, [](const auto& lhs, const auto& rhs) {
                 return lhs.id == rhs.id && SameReference(lhs.target, rhs.target)
                     && SameFloat(lhs.waitTime, rhs.waitTime) && SameFloat(lhs.speed, rhs.speed);
-            })) patrol.waypointBindings = value.patrolBindings;
+            })) {
+            patrol.waypointBindings = value.patrolBindings;
+        }
         if (!SameRows(before.patrolBake, after.patrolBake, [](const auto& lhs, const auto& rhs) {
                 return lhs.id == rhs.id && SameVector(lhs.worldPosition, rhs.worldPosition)
                     && SameFloat(lhs.waitTime, rhs.waitTime) && SameFloat(lhs.speed, rhs.speed);
-            })) patrol.bakedWaypoints = value.patrolBake;
-        if (before.patrolBakeSignature != after.patrolBakeSignature) patrol.bakedInputSignature = value.patrolBakeSignature;
-        if (before.patrolBakeSource != after.patrolBakeSource) patrol.bakedSourceMode = value.patrolBakeSource;
-        if (before.patrolBakeVersion != after.patrolBakeVersion) patrol.bakedAdapterVersion = value.patrolBakeVersion;
-        if (before.patrolBakeValid != after.patrolBakeValid) patrol.bakeValid = value.patrolBakeValid;
+            })) {
+            patrol.bakedWaypoints = value.patrolBake;
+        }
+        if (before.patrolBakeSignature != after.patrolBakeSignature) {
+            patrol.bakedInputSignature = value.patrolBakeSignature;
+        }
+        if (before.patrolBakeSource != after.patrolBakeSource) {
+            patrol.bakedSourceMode = value.patrolBakeSource;
+        }
+        if (before.patrolBakeVersion != after.patrolBakeVersion) {
+            patrol.bakedAdapterVersion = value.patrolBakeVersion;
+        }
+        if (before.patrolBakeValid != after.patrolBakeValid) {
+            patrol.bakeValid = value.patrolBakeValid;
+        }
     } else if (domain == Domain::LINE) {
         auto& line = *owner.GetComponent<scene::LineRendererComponent>();
-        if (before.source != after.source) line.pointSourceMode = value.source;
-        if (before.runtime != after.runtime) line.pointRuntimeMode = value.runtime;
-        if (!SameRows(before.positions, after.positions, SameVector)) line.points = value.positions;
+        if (before.source != after.source) {
+            line.pointSourceMode = value.source;
+        }
+        if (before.runtime != after.runtime) {
+            line.pointRuntimeMode = value.runtime;
+        }
+        if (!SameRows(before.positions, after.positions, SameVector)) {
+            line.points = value.positions;
+        }
         if (!SameRows(before.lineBindings, after.lineBindings, [](const auto& lhs, const auto& rhs) {
                 return lhs.id == rhs.id && SameReference(lhs.target, rhs.target);
-            })) line.pointBindings = value.lineBindings;
+            })) {
+            line.pointBindings = value.lineBindings;
+        }
         if (!SameRows(before.lineBake, after.lineBake, [](const auto& lhs, const auto& rhs) {
                 return lhs.id == rhs.id && SameVector(lhs.position, rhs.position);
-            })) line.bakedPoints = value.lineBake;
-        if (before.lineBakeSpace != after.lineBakeSpace) line.bakedSpace = value.lineBakeSpace;
-        if (before.lineBakeSignature != after.lineBakeSignature) line.bakedInputSignature = value.lineBakeSignature;
-        if (before.lineBakeSource != after.lineBakeSource) line.bakedSourceMode = value.lineBakeSource;
-        if (before.lineBakeVersion != after.lineBakeVersion) line.bakedAdapterVersion = value.lineBakeVersion;
-        if (before.lineBakeValid != after.lineBakeValid) line.bakeValid = value.lineBakeValid;
+            })) {
+            line.bakedPoints = value.lineBake;
+        }
+        if (before.lineBakeSpace != after.lineBakeSpace) {
+            line.bakedSpace = value.lineBakeSpace;
+        }
+        if (before.lineBakeSignature != after.lineBakeSignature) {
+            line.bakedInputSignature = value.lineBakeSignature;
+        }
+        if (before.lineBakeSource != after.lineBakeSource) {
+            line.bakedSourceMode = value.lineBakeSource;
+        }
+        if (before.lineBakeVersion != after.lineBakeVersion) {
+            line.bakedAdapterVersion = value.lineBakeVersion;
+        }
+        if (before.lineBakeValid != after.lineBakeValid) {
+            line.bakeValid = value.lineBakeValid;
+        }
     } else {
         auto& link = *owner.GetComponent<scene::NavMeshOffMeshLinkComponent>();
-        if (before.source != after.source) link.pointSourceMode = value.source;
-        if (!SameVector(before.linkStart, after.linkStart)) link.startPoint = value.linkStart;
-        if (!SameVector(before.linkEnd, after.linkEnd)) link.endPoint = value.linkEnd;
-        if (!SameReference(before.linkStartTarget, after.linkStartTarget)) link.startTarget = value.linkStartTarget;
-        if (!SameReference(before.linkEndTarget, after.linkEndTarget)) link.endTarget = value.linkEndTarget;
+        if (before.source != after.source) {
+            link.pointSourceMode = value.source;
+        }
+        if (!SameVector(before.linkStart, after.linkStart)) {
+            link.startPoint = value.linkStart;
+        }
+        if (!SameVector(before.linkEnd, after.linkEnd)) {
+            link.endPoint = value.linkEnd;
+        }
+        if (!SameReference(before.linkStartTarget, after.linkStartTarget)) {
+            link.startTarget = value.linkStartTarget;
+        }
+        if (!SameReference(before.linkEndTarget, after.linkEndTarget)) {
+            link.endTarget = value.linkEndTarget;
+        }
     }
 }
 
@@ -312,8 +393,12 @@ struct PoseStamp {
 PoseStamp CapturePose(scene::Scene& world, scene::GameObject& object)
 {
     PoseStamp stamp;
-    stamp.guid = object.instanceId; stamp.entity = object.GetID(); stamp.pose = object.transform;
-    if (const auto* parent = object.GetParent()) stamp.parent = parent->instanceId;
+    stamp.guid = object.instanceId;
+    stamp.entity = object.GetID();
+    stamp.pose = object.transform;
+    if (const auto* parent = object.GetParent()) {
+        stamp.parent = parent->instanceId;
+    }
     stamp.markerLifetime = world.GetComponentLifetime<scene::TargetPointComponent>(stamp.entity);
     stamp.activeSelf = object.activeSelf();
     return stamp;
@@ -346,7 +431,9 @@ void CaptureChain(scene::Scene& world, scene::GameObject* object,
     for (; object; object = object->GetParent()) {
         const auto id = object->GetID();
         const std::uint64_t key = static_cast<std::uint64_t>(id.generation) << 32 | id.index;
-        if (known.insert(key).second) stamps.push_back(CapturePose(world, *object));
+        if (known.insert(key).second) {
+            stamps.push_back(CapturePose(world, *object));
+        }
     }
 }
 
@@ -358,8 +445,12 @@ std::vector<std::string> TargetGuids(const AuthoringState& state, Domain domain)
     } else if (domain == Domain::LINE) {
         for (const auto& row : state.lineBindings) if (!row.target.guid.empty()) result.push_back(row.target.guid);
     } else {
-        if (!state.linkStartTarget.guid.empty()) result.push_back(state.linkStartTarget.guid);
-        if (!state.linkEndTarget.guid.empty()) result.push_back(state.linkEndTarget.guid);
+        if (!state.linkStartTarget.guid.empty()) {
+            result.push_back(state.linkStartTarget.guid);
+        }
+        if (!state.linkEndTarget.guid.empty()) {
+            result.push_back(state.linkEndTarget.guid);
+        }
     }
     return result;
 }
@@ -397,7 +488,8 @@ bool IsInsidePrefabInstance(const scene::GameObject* object)
 void AddContainer(Plan& plan, std::string parentGuid, std::string name)
 {
     CreatedObject container;
-    container.parentGuid = std::move(parentGuid); container.name = std::move(name);
+    container.parentGuid = std::move(parentGuid);
+    container.name = std::move(name);
     plan.created.push_back(std::move(container));
 }
 
@@ -413,7 +505,9 @@ std::string FindRootContainer(Plan& plan, const scene::GameObject& owner)
     const scene::Transform identity;
     auto isReusable = [&](scene::GameObject* candidate) {
         if (!candidate || candidate->GetParent() || candidate->name != expectedName
-            || !candidate->activeSelf() || !SamePose(candidate->transform, identity)) return false;
+            || !candidate->activeSelf() || !SamePose(candidate->transform, identity)) {
+            return false;
+        }
         bool hasComponent = false;
         scene::ForEachRegisteredComponent([&]<typename T, typename Registration>() {
             hasComponent |= candidate->GetComponent<T>() != nullptr;
@@ -422,7 +516,9 @@ std::string FindRootContainer(Plan& plan, const scene::GameObject& owner)
     };
     for (const auto& guid : TargetGuids(plan.before, plan.domain)) {
         auto* target = world.FindByGuid(guid);
-        if (target && isReusable(target->GetParent())) return target->GetParent()->instanceId;
+        if (target && isReusable(target->GetParent())) {
+            return target->GetParent()->instanceId;
+        }
     }
     auto* named = world.Find(expectedName);
     return isReusable(named) ? named->instanceId : std::string{};
@@ -432,8 +528,10 @@ CreatedObject& AddPoint(Plan& plan, const std::string& parentGuid,
     std::uint32_t id, const math::Vector3& position)
 {
     CreatedObject point;
-    point.parentGuid = parentGuid; point.name = "Point_" + std::to_string(id);
-    point.position = position; point.marker = true;
+    point.parentGuid = parentGuid;
+    point.name = "Point_" + std::to_string(id);
+    point.position = position;
+    point.marker = true;
     plan.created.push_back(std::move(point));
     return plan.created.back();
 }
@@ -449,27 +547,38 @@ void AddDependencies(Plan& plan)
 {
     auto& world = *plan.context->activeScene;
     std::unordered_set<std::uint64_t> known;
-    for (const auto& stamp : plan.dependencies)
+    for (const auto& stamp : plan.dependencies) {
         known.insert(static_cast<std::uint64_t>(stamp.entity.generation) << 32 | stamp.entity.index);
+    }
     CaptureChain(world, world.GetGameObject(plan.ownerId), plan.dependencies, known);
     for (const auto& guid : TargetGuids(plan.before, plan.domain)) {
-        if (auto* target = world.FindByGuid(guid)) CaptureChain(world, target, plan.dependencies, known);
+        if (auto* target = world.FindByGuid(guid)) {
+            CaptureChain(world, target, plan.dependencies, known);
+        }
     }
     for (const auto& guid : TargetGuids(plan.after, plan.domain)) {
-        if (auto* target = world.FindByGuid(guid)) CaptureChain(world, target, plan.dependencies, known);
+        if (auto* target = world.FindByGuid(guid)) {
+            CaptureChain(world, target, plan.dependencies, known);
+        }
     }
 }
 
 std::shared_ptr<Plan> MakePlan(EditorContext& ctx, Domain domain, scene::GameObject& owner)
 {
     auto& world = *ctx.activeScene;
-    if (!HasDomainComponent(owner, domain) || ctx.IsLocked(owner.GetID())) return {};
+    if (!HasDomainComponent(owner, domain) || ctx.IsLocked(owner.GetID())) {
+        return {};
+    }
     scene::FlushWorldTransforms(world);
     auto plan = std::make_shared<Plan>();
-    plan->context = &ctx; plan->domain = domain; plan->sceneGeneration = world.GetRenderSceneGeneration();
-    plan->ownerGuid = owner.instanceId; plan->ownerId = owner.GetID();
+    plan->context = &ctx;
+    plan->domain = domain;
+    plan->sceneGeneration = world.GetRenderSceneGeneration();
+    plan->ownerGuid = owner.instanceId;
+    plan->ownerId = owner.GetID();
     plan->componentLifetime = ComponentLifetime(world, domain, owner.GetID());
-    plan->before = Capture(owner, domain); plan->after = plan->before;
+    plan->before = Capture(owner, domain);
+    plan->after = plan->before;
     AddDependencies(*plan);
     return plan;
 }
@@ -477,26 +586,38 @@ std::shared_ptr<Plan> MakePlan(EditorContext& ctx, Domain domain, scene::GameObj
 bool ValidCreated(scene::Scene& world, const CreatedObject& created,
     const std::unordered_set<std::string>& createdGuids)
 {
-    if (!PoseMatches(world, created.stamp)) return false;
+    if (!PoseMatches(world, created.stamp)) {
+        return false;
+    }
     auto* object = world.GetGameObject(created.stamp.entity);
     if (!object || object->name != created.name || !object->activeSelf() || !object->prefabAssetPath.empty()
-        || !object->prefabSourceId.empty() || object->IsRuntimeGenerated() || object->tag != "Untagged" || object->layer != 0)
+        || !object->prefabSourceId.empty() || object->IsRuntimeGenerated() || object->tag != "Untagged" || object->layer != 0) {
         return false;
+    }
     bool extraComponent = false;
     scene::ForEachRegisteredComponent([&]<typename T, typename Registration>() {
-        if constexpr (!std::is_same_v<T, scene::TargetPointComponent>)
+        if constexpr (!std::is_same_v<T, scene::TargetPointComponent>) {
             extraComponent |= object->GetComponent<T>() != nullptr;
+        }
     });
-    if (extraComponent) return false;
+    if (extraComponent) {
+        return false;
+    }
     const auto* marker = object->GetComponent<scene::TargetPointComponent>();
     if (created.marker) {
         const scene::TargetPointComponent defaults;
         if (!marker || marker->visible != defaults.visible || marker->color != defaults.color
-            || marker->screenSize != defaults.screenSize) return false;
-    } else if (marker) return false;
+            || marker->screenSize != defaults.screenSize) {
+            return false;
+        }
+    } else if (marker) {
+        return false;
+    }
     for (int index = 0; index < object->GetChildCount(); ++index) {
         const auto* child = object->GetChild(index);
-        if (!child || !createdGuids.contains(child->instanceId)) return false;
+        if (!child || !createdGuids.contains(child->instanceId)) {
+            return false;
+        }
     }
     return true;
 }
@@ -509,7 +630,9 @@ public:
     {
         for (const auto& object : objects) {
             m_guids.insert(object.guid);
-            if (object.stamp.entity.IsValid()) m_entities.insert(EntityKey(object.stamp.entity));
+            if (object.stamp.entity.IsValid()) {
+                m_entities.insert(EntityKey(object.stamp.entity));
+            }
         }
     }
     void Field(const char*, float&) override {}
@@ -526,7 +649,9 @@ public:
     }
     void ListField(const char* name, std::vector<scene::EntityRef>& values) override
     {
-        for (auto& value : values) Field(name, value.id);
+        for (auto& value : values) {
+            Field(name, value.id);
+        }
     }
     void ObjectReferenceField(const char*, scene::ObjectReference& reference) override
     {
@@ -534,7 +659,9 @@ public:
     }
     void ObjectReferenceListField(const char* name, std::vector<scene::ObjectReference>& values) override
     {
-        for (auto& value : values) ObjectReferenceField(name, value);
+        for (auto& value : values) {
+            ObjectReferenceField(name, value);
+        }
     }
     bool SavedMayReference(const std::string& fields) const
     {
@@ -560,8 +687,11 @@ bool HasOtherReferences(scene::Scene& world, const Plan& plan)
             if constexpr (std::is_same_v<T, scene::ScriptComponent>) {
                 if (auto* scripts = object.GetComponent<T>()) {
                     for (auto& entry : scripts->scripts) {
-                        if (entry.script && !entry.script->IsRuntimeFaulted()) entry.script->Reflect(probe);
-                        else if (entry.serialized && probe.SavedMayReference(entry.serialized->fieldsToml)) probe.found = true;
+                        if (entry.script && !entry.script->IsRuntimeFaulted()) {
+                            entry.script->Reflect(probe);
+                        } else if (entry.serialized && probe.SavedMayReference(entry.serialized->fieldsToml)) {
+                            probe.found = true;
+                        }
                     }
                 }
             } else if constexpr (Registration::hasReflect && std::is_copy_constructible_v<T>) {
@@ -569,14 +699,18 @@ bool HasOtherReferences(scene::Scene& world, const Plan& plan)
                     && ((plan.domain == Domain::PATROL && std::is_same_v<T, scene::NavMeshPatrolComponent>)
                      || (plan.domain == Domain::LINE && std::is_same_v<T, scene::LineRendererComponent>)
                      || (plan.domain == Domain::NAV_LINK && std::is_same_v<T, scene::NavMeshOffMeshLinkComponent>));
-                if (ownerDomainComponent) return;
+                if (ownerDomainComponent) {
+                    return;
+                }
                 if (auto* component = object.GetComponent<T>()) {
                     T copy = *component;
                     copy.Reflect(probe);
                 }
             }
         });
-        if (probe.found) return true;
+        if (probe.found) {
+            return true;
+        }
     }
     return false;
 }
@@ -585,7 +719,9 @@ bool CreatePlannedObjects(Plan& plan, std::string& reason)
 {
     auto& ctx = *plan.context;
     auto& world = *ctx.activeScene;
-    if (plan.created.empty()) return true;
+    if (plan.created.empty()) {
+        return true;
+    }
     if (IsInsidePrefabInstance(world.GetGameObject(plan.ownerId))) {
         reason = "Prefab instanceのHierarchy編集はasset編集またはunpack後に実行してください";
         return false;
@@ -596,7 +732,9 @@ bool CreatePlannedObjects(Plan& plan, std::string& reason)
     }
     std::unordered_set<std::string> occupied;
     occupied.reserve(world.GameObjectCount() + plan.created.size());
-    for (auto& object : world.GameObjects()) occupied.insert(object.instanceId);
+    for (auto& object : world.GameObjects()) {
+        occupied.insert(object.instanceId);
+    }
     for (const auto& object : plan.created) {
         if (!occupied.insert(object.guid).second) {
             reason = "作成するGUIDが既に使われています";
@@ -613,7 +751,8 @@ bool CreatePlannedObjects(Plan& plan, std::string& reason)
             reason = "制御点の作成に失敗しました";
             return false;
         }
-        made.push_back(object->GetID()); object->instanceId = spec.guid;
+        made.push_back(object->GetID());
+        object->instanceId = spec.guid;
         scene::GameObject* parent = nullptr;
         if (!spec.parentGuid.empty()) {
             const auto found = prepared.find(spec.parentGuid);
@@ -625,13 +764,17 @@ bool CreatePlannedObjects(Plan& plan, std::string& reason)
             }
         }
         object->transform.position = spec.position;
-        if (spec.marker) object->AddComponent<scene::TargetPointComponent>();
+        if (spec.marker) {
+            object->AddComponent<scene::TargetPointComponent>();
+        }
         prepared.emplace(spec.guid, object);
         spec.stamp = CapturePose(world, *object);
     }
     scene::FlushWorldTransforms(world);
     for (auto& spec : plan.created) {
-        if (auto* object = world.FindByGuid(spec.guid)) spec.stamp = CapturePose(world, *object);
+        if (auto* object = world.FindByGuid(spec.guid)) {
+            spec.stamp = CapturePose(world, *object);
+        }
     }
     return true;
 }
@@ -641,8 +784,12 @@ void DestroyPlannedObjects(scene::Scene& world, const std::vector<CreatedObject>
     std::vector<scene::EntityID> ids;
     ids.reserve(objects.size());
     for (auto iterator = objects.rbegin(); iterator != objects.rend(); ++iterator)
-        if (iterator->stamp.entity.IsValid()) ids.push_back(iterator->stamp.entity);
-    if (!ids.empty()) world.DestroyGameObjects(ids);
+        if (iterator->stamp.entity.IsValid()) {
+            ids.push_back(iterator->stamp.entity);
+        }
+    if (!ids.empty()) {
+        world.DestroyGameObjects(ids);
+    }
 }
 
 bool ValidateConvertedPoints(Plan& plan, scene::GameObject& owner)
@@ -652,18 +799,26 @@ bool ValidateConvertedPoints(Plan& plan, scene::GameObject& owner)
         auto& patrol = *owner.GetComponent<scene::NavMeshPatrolComponent>();
         const auto resolved = scene::ResolveNavMeshPatrolPointAuthoring(world, owner.GetID(), patrol,
             scene::ControlPointRuntimeMode::LIVE);
-        if (!resolved.valid || resolved.points.size() != plan.expectedPoints.size()) return false;
+        if (!resolved.valid || resolved.points.size() != plan.expectedPoints.size()) {
+            return false;
+        }
         for (std::size_t index = 0; index < resolved.points.size(); ++index)
-            if (!NearVector(resolved.points[index].worldPosition, plan.expectedPoints[index])) return false;
+            if (!NearVector(resolved.points[index].worldPosition, plan.expectedPoints[index])) {
+                return false;
+            }
         return true;
     }
     if (plan.domain == Domain::LINE) {
         auto& line = *owner.GetComponent<scene::LineRendererComponent>();
         const auto resolved = scene::ResolveLineControlPointAuthoring(world, owner.GetID(), line,
             scene::ControlPointRuntimeMode::LIVE);
-        if (!resolved.valid || resolved.points.size() != plan.expectedPoints.size()) return false;
+        if (!resolved.valid || resolved.points.size() != plan.expectedPoints.size()) {
+            return false;
+        }
         for (std::size_t index = 0; index < resolved.points.size(); ++index)
-            if (!NearVector(resolved.points[index], plan.expectedPoints[index])) return false;
+            if (!NearVector(resolved.points[index], plan.expectedPoints[index])) {
+                return false;
+            }
         return true;
     }
     const auto resolved = scene::ResolveNavMeshOffMeshLinkEndpoints(world, owner.GetID(),
@@ -695,10 +850,14 @@ bool ApplyPlan(const std::shared_ptr<Plan>& plan, bool apply, std::string& reaso
             return false;
         }
     }
-    if (apply && !CreatePlannedObjects(*plan, reason)) return false;
+    if (apply && !CreatePlannedObjects(*plan, reason)) {
+        return false;
+    }
     if (!apply && !plan->created.empty()) {
         std::unordered_set<std::string> createdGuids;
-        for (const auto& created : plan->created) createdGuids.insert(created.guid);
+        for (const auto& created : plan->created) {
+            createdGuids.insert(created.guid);
+        }
         for (const auto& created : plan->created) {
             if (!ValidCreated(world, created, createdGuids) || ctx.IsLocked(created.stamp.entity)) {
                 reason = "作成した制御点が移動または編集されています";
@@ -719,8 +878,12 @@ bool ApplyPlan(const std::shared_ptr<Plan>& plan, bool apply, std::string& reaso
         reason = "変換前後の数値点が一致しません";
         return false;
     }
-    if (!apply) DestroyPlannedObjects(world, plan->created);
-    if (ctx.markSceneDirty) ctx.markSceneDirty();
+    if (!apply) {
+        DestroyPlannedObjects(world, plan->created);
+    }
+    if (ctx.markSceneDirty) {
+        ctx.markSceneDirty();
+    }
     reason.clear();
     return true;
 }
@@ -736,7 +899,9 @@ OpResult Commit(const std::shared_ptr<Plan>& plan, const char* label)
         [plan](std::string& reason) { return ApplyPlan(plan, true, reason); },
         [plan](std::string& reason) { return ApplyPlan(plan, false, reason); });
     std::string reason;
-    if (!command->TryExecute(reason)) return OpResult::Err("CONFLICT", std::move(reason));
+    if (!command->TryExecute(reason)) {
+        return OpResult::Err("CONFLICT", std::move(reason));
+    }
     result.command = std::move(command);
     OpData targets = OpData::MakeArray();
     for (const auto& created : plan->created) if (created.marker) targets.Push(created.guid);
@@ -757,7 +922,9 @@ std::string AddPointParent(Plan& plan, scene::GameObject& owner)
 {
     if (plan.domain == Domain::PATROL) {
         const std::string existing = FindRootContainer(plan, owner);
-        if (!existing.empty()) return existing;
+        if (!existing.empty()) {
+            return existing;
+        }
         AddContainer(plan, {}, ControlPointContainerName(owner));
         return plan.created.back().guid;
     }
@@ -765,23 +932,31 @@ std::string AddPointParent(Plan& plan, scene::GameObject& owner)
         auto* line = owner.GetComponent<scene::LineRendererComponent>();
         if (line && line->space == scene::LineSpace::World) {
             const std::string existing = FindRootContainer(plan, owner);
-            if (!existing.empty()) return existing;
+            if (!existing.empty()) {
+                return existing;
+            }
             AddContainer(plan, {}, ControlPointContainerName(owner));
             return plan.created.back().guid;
         }
         for (const auto& row : plan.before.lineBindings) {
             if (auto* target = plan.context->activeScene->FindByGuid(row.target.guid)) {
                 auto* parent = target->GetParent();
-                if (parent == &owner) return owner.instanceId;
+                if (parent == &owner) {
+                    return owner.instanceId;
+                }
                 const scene::Transform identity;
                 if (parent && parent->GetParent() == &owner && SamePose(parent->transform, identity)
-                    && !parent->GetComponent<scene::TargetPointComponent>()) return parent->instanceId;
+                    && !parent->GetComponent<scene::TargetPointComponent>()) {
+                    return parent->instanceId;
+                }
             }
         }
     }
     if (plan.domain == Domain::NAV_LINK) {
         const std::string existing = FindRootContainer(plan, owner);
-        if (!existing.empty()) return existing;
+        if (!existing.empty()) {
+            return existing;
+        }
         AddContainer(plan, {}, ControlPointContainerName(owner));
         return plan.created.back().guid;
     }
@@ -800,14 +975,22 @@ OpResult Convert(OpContext& context, Domain domain, const OpArgs& args, scene::G
     const std::shared_ptr<Plan>& plan)
 {
     const std::string source = args.GetString("source");
-    if (source != "INLINE" && source != "POINT_OBJECTS")
+    if (source != "INLINE" && source != "POINT_OBJECTS") {
         return OpResult::Err("BAD_SOURCE", "sourceにはINLINEまたはPOINT_OBJECTSを指定してください");
+    }
     const auto desired = source == "POINT_OBJECTS" ? scene::ControlPointSourceMode::POINT_OBJECTS
         : scene::ControlPointSourceMode::INLINE;
-    if (plan->before.source == desired) { OpResult result; result.noChange = true; return result; }
-    if (IsInsidePrefabInstance(&owner))
+    if (plan->before.source == desired) {
+        OpResult result;
+        result.noChange = true;
+        return result;
+    }
+    if (IsInsidePrefabInstance(&owner)) {
         return OpResult::Err("PREFAB_STRUCTURE", "Prefab asset編集またはunpack後に制御点sourceを変換してください");
-    if (!FiniteChain(&owner)) return OpResult::Err("INVALID_TRANSFORM", "所有者または祖先のTransformが不正です");
+    }
+    if (!FiniteChain(&owner)) {
+        return OpResult::Err("INVALID_TRANSFORM", "所有者または祖先のTransformが不正です");
+    }
     auto& world = *context.ctx.activeScene;
     scene::FlushWorldTransforms(world);
 
@@ -815,12 +998,19 @@ OpResult Convert(OpContext& context, Domain domain, const OpArgs& args, scene::G
         auto* patrol = owner.GetComponent<scene::NavMeshPatrolComponent>();
         const auto snapshot = scene::ResolveNavMeshPatrolPointAuthoring(world, owner.GetID(), *patrol,
             scene::ControlPointRuntimeMode::LIVE);
-        if (!snapshot.valid) return OpResult::Err("INVALID_POINTS", "Patrolの全点を有効な数値点へ解決できません");
+        if (!snapshot.valid) {
+            return OpResult::Err("INVALID_POINTS", "Patrolの全点を有効な数値点へ解決できません");
+        }
         plan->expectedPoints.reserve(snapshot.points.size());
-        for (const auto& point : snapshot.points) plan->expectedPoints.push_back(point.worldPosition);
-        plan->after.source = desired; plan->after.runtime = scene::ControlPointRuntimeMode::LIVE;
+        for (const auto& point : snapshot.points) {
+            plan->expectedPoints.push_back(point.worldPosition);
+        }
+        plan->after.source = desired;
+        plan->after.runtime = scene::ControlPointRuntimeMode::LIVE;
         if (desired == scene::ControlPointSourceMode::INLINE) {
-            plan->after.positions.clear(); plan->after.waitTimes.clear(); plan->after.speeds.clear();
+            plan->after.positions.clear();
+            plan->after.waitTimes.clear();
+            plan->after.speeds.clear();
             for (const auto& point : snapshot.points) {
                 plan->after.positions.push_back(point.worldPosition);
                 plan->after.waitTimes.push_back(point.waitTime);
@@ -834,21 +1024,29 @@ OpResult Convert(OpContext& context, Domain domain, const OpArgs& args, scene::G
             for (const auto& point : snapshot.points) {
                 const auto& created = AddPoint(*plan, container, point.stableId, point.worldPosition);
                 scene::NavMeshPatrolWaypointBinding row;
-                row.id = point.stableId; row.target = MakeReference(created);
-                row.waitTime = point.waitTime; row.speed = point.speed;
+                row.id = point.stableId;
+                row.target = MakeReference(created);
+                row.waitTime = point.waitTime;
+                row.speed = point.speed;
                 plan->after.patrolBindings.push_back(std::move(row));
             }
-            plan->after.positions.clear(); plan->after.waitTimes.clear(); plan->after.speeds.clear();
+            plan->after.positions.clear();
+            plan->after.waitTimes.clear();
+            plan->after.speeds.clear();
         }
     } else if (domain == Domain::LINE) {
         auto* line = owner.GetComponent<scene::LineRendererComponent>();
         const auto snapshot = scene::ResolveLineControlPointAuthoring(world, owner.GetID(), *line,
             scene::ControlPointRuntimeMode::LIVE);
-        if (!snapshot.valid) return OpResult::Err("INVALID_POINTS", "Lineの全点を有効な数値点へ解決できません");
+        if (!snapshot.valid) {
+            return OpResult::Err("INVALID_POINTS", "Lineの全点を有効な数値点へ解決できません");
+        }
         plan->expectedPoints = snapshot.points;
-        plan->after.source = desired; plan->after.runtime = scene::ControlPointRuntimeMode::LIVE;
+        plan->after.source = desired;
+        plan->after.runtime = scene::ControlPointRuntimeMode::LIVE;
         if (desired == scene::ControlPointSourceMode::INLINE) {
-            plan->after.positions = snapshot.points; plan->after.lineBindings.clear();
+            plan->after.positions = snapshot.points;
+            plan->after.lineBindings.clear();
         } else {
             const bool worldSpace = line->space == scene::LineSpace::World;
             AddContainer(*plan, worldSpace ? std::string{} : plan->ownerGuid,
@@ -865,12 +1063,16 @@ OpResult Convert(OpContext& context, Domain domain, const OpArgs& args, scene::G
     } else {
         auto* link = owner.GetComponent<scene::NavMeshOffMeshLinkComponent>();
         const auto snapshot = scene::ResolveNavMeshOffMeshLinkEndpoints(world, owner.GetID(), *link);
-        if (!snapshot.valid) return OpResult::Err("INVALID_POINTS", "Off-Mesh Linkの両端を有効なworld位置へ解決できません");
+        if (!snapshot.valid) {
+            return OpResult::Err("INVALID_POINTS", "Off-Mesh Linkの両端を有効なworld位置へ解決できません");
+        }
         plan->expectedPoints = {snapshot.startPoint, snapshot.endPoint};
         plan->after.source = desired;
         if (desired == scene::ControlPointSourceMode::INLINE) {
-            plan->after.linkStart = snapshot.startPoint; plan->after.linkEnd = snapshot.endPoint;
-            plan->after.linkStartTarget = {}; plan->after.linkEndTarget = {};
+            plan->after.linkStart = snapshot.startPoint;
+            plan->after.linkEnd = snapshot.endPoint;
+            plan->after.linkStartTarget = {};
+            plan->after.linkEndTarget = {};
         } else {
             AddContainer(*plan, {}, ControlPointContainerName(owner));
             const std::string container = plan->created.back().guid;
@@ -895,41 +1097,56 @@ std::uint32_t RowId(const OpArgs& args)
 OpResult Add(OpContext& context, Domain domain, const OpArgs& args,
     scene::GameObject& owner, const std::shared_ptr<Plan>& plan)
 {
-    if (plan->before.source != scene::ControlPointSourceMode::POINT_OBJECTS)
+    if (plan->before.source != scene::ControlPointSourceMode::POINT_OBJECTS) {
         return OpResult::Err("POINT_OBJECTS_REQUIRED", "TargetPointを位置ソースにする所有者が必要です");
+    }
     std::uint32_t id = 0;
     if (domain == Domain::NAV_LINK) {
         id = RowId(args);
-        if (id != 1 && id != 2) return OpResult::Err("BAD_ENDPOINT", "Off-Mesh LinkのidはStart=1、End=2です");
+        if (id != 1 && id != 2) {
+            return OpResult::Err("BAD_ENDPOINT", "Off-Mesh LinkのidはStart=1、End=2です");
+        }
         const auto& existing = id == 1 ? plan->before.linkStartTarget : plan->before.linkEndTarget;
-        if (!existing.guid.empty()) return OpResult::Err("ENDPOINT_BOUND", "このLink endpointには既にTargetPointが接続されています");
+        if (!existing.guid.empty()) {
+            return OpResult::Err("ENDPOINT_BOUND", "このLink endpointには既にTargetPointが接続されています");
+        }
     }
-    if (!args.Has("worldPosition") && !FiniteChain(&owner))
+    if (!args.Has("worldPosition") && !FiniteChain(&owner)) {
         return OpResult::Err("INVALID_TRANSFORM", "所有者または祖先のTransformが不正です");
+    }
     auto& world = *context.ctx.activeScene;
     scene::FlushWorldTransforms(world);
-    if (args.Has("worldPosition") == args.Has("localPosition"))
+    if (args.Has("worldPosition") == args.Has("localPosition")) {
         return OpResult::Err("BAD_POSITION", "worldPositionまたはlocalPositionを1つ指定してください");
+    }
     const bool worldSpace = domain != Domain::LINE
         || owner.GetComponent<scene::LineRendererComponent>()->space == scene::LineSpace::World;
     math::Vector3 position = args.GetVec3("worldPosition");
     if (args.Has("worldPosition")) {
-        if (!worldSpace || !Finite(position))
+        if (!worldSpace || !Finite(position)) {
             return OpResult::Err("BAD_POSITION", "worldPositionはworld座標のPoint Objectsだけに指定できます");
+        }
     } else {
         const math::Vector3 localPosition = args.GetVec3("localPosition");
-        if (!Finite(localPosition)) return OpResult::Err("BAD_POSITION", "点位置は有限値である必要があります");
+        if (!Finite(localPosition)) {
+            return OpResult::Err("BAD_POSITION", "点位置は有限値である必要があります");
+        }
         position = localPosition;
-        if (worldSpace && !ToOwnerWorld(owner.transform, localPosition, position))
+        if (worldSpace && !ToOwnerWorld(owner.transform, localPosition, position)) {
             return OpResult::Err("INVALID_TRANSFORM", "owner-local位置をworldへ変換できません");
+        }
     }
     if (domain != Domain::NAV_LINK) {
         const std::size_t count = domain == Domain::PATROL ? plan->after.patrolBindings.size() : plan->after.lineBindings.size();
         const std::size_t maximum = domain == Domain::PATROL ? scene::MAX_NAV_MESH_PATROL_WAYPOINTS
             : scene::MAX_CONTROL_POINT_BINDINGS;
-        if (count >= maximum) return OpResult::Err("LIMIT", "制御点数の上限を越えています");
+        if (count >= maximum) {
+            return OpResult::Err("LIMIT", "制御点数の上限を越えています");
+        }
         id = NextId(plan->after, domain);
-        if (id == 0) return OpResult::Err("ID_EXHAUSTED", "利用可能な制御点IDがありません");
+        if (id == 0) {
+            return OpResult::Err("ID_EXHAUSTED", "利用可能な制御点IDがありません");
+        }
     }
     const std::string parent = AddPointParent(*plan, owner);
     const auto& created = AddPoint(*plan, parent, id, position);
@@ -937,12 +1154,17 @@ OpResult Add(OpContext& context, Domain domain, const OpArgs& args,
     if (domain == Domain::PATROL) {
         const float wait = args.GetFloat("waitTime", plan->after.patrolWaitTime);
         const float speed = args.GetFloat("speed", 0.0f);
-        if (!std::isfinite(wait) || !std::isfinite(speed) || wait < 0.0f || speed < 0.0f)
+        if (!std::isfinite(wait) || !std::isfinite(speed) || wait < 0.0f || speed < 0.0f) {
             return OpResult::Err("BAD_ATTRIBUTES", "waitTimeとspeedは有限な非負値です");
+        }
         plan->after.patrolBindings.push_back({id, reference, wait, speed});
-    } else if (domain == Domain::LINE) plan->after.lineBindings.push_back({id, reference});
-    else if (id == 1) plan->after.linkStartTarget = reference;
-    else plan->after.linkEndTarget = reference;
+    } else if (domain == Domain::LINE) {
+        plan->after.lineBindings.push_back({id, reference});
+    } else if (id == 1) {
+        plan->after.linkStartTarget = reference;
+    } else {
+        plan->after.linkEndTarget = reference;
+    }
     AddDependencies(*plan);
     auto result = Commit(plan, "Add Control Point");
     result.data.Set("id", static_cast<int>(id));
@@ -955,46 +1177,72 @@ OpResult EditRow(OpContext& context, Domain domain, const OpArgs& args,
     auto* owner = context.ctx.activeScene->GetGameObject(plan->ownerId);
     if (owner && IsInsidePrefabInstance(owner)
         && (opId == "control_points.bind" || opId == "control_points.unbind"
-            || opId == "control_points.remove" || opId == "control_points.reorder"))
+            || opId == "control_points.remove" || opId == "control_points.reorder")) {
         return OpResult::Err("PREFAB_STRUCTURE", "Prefab asset編集またはunpack後に制御点bindingを変更してください");
+    }
     const std::uint32_t id = RowId(args);
-    if (id == 0) return OpResult::Err("BAD_ID", "正のbinding IDが必要です");
+    if (id == 0) {
+        return OpResult::Err("BAD_ID", "正のbinding IDが必要です");
+    }
     if (domain == Domain::NAV_LINK) {
-        if (plan->before.source != scene::ControlPointSourceMode::POINT_OBJECTS || (id != 1 && id != 2))
+        if (plan->before.source != scene::ControlPointSourceMode::POINT_OBJECTS || (id != 1 && id != 2)) {
             return OpResult::Err("BAD_ENDPOINT", "POINT_OBJECTSのStartはID 1、EndはID 2を指定してください");
+        }
         if (opId == "control_points.bind") {
             scene::GameObject* target = nullptr;
             const std::string guid = args.GetString("target");
-            if (!ValidateTarget(*context.ctx.activeScene, guid, target)) return OpResult::Err("NO_TARGET", "同じSceneの有効なTargetPointが必要です");
+            if (!ValidateTarget(*context.ctx.activeScene, guid, target)) {
+                return OpResult::Err("NO_TARGET", "同じSceneの有効なTargetPointが必要です");
+            }
             const auto& other = id == 1 ? plan->before.linkEndTarget : plan->before.linkStartTarget;
-            if (other.guid == guid) return OpResult::Err("DUPLICATE_TARGET", "StartとEndには別のTargetPointを指定してください");
+            if (other.guid == guid) {
+                return OpResult::Err("DUPLICATE_TARGET", "StartとEndには別のTargetPointを指定してください");
+            }
             scene::ObjectReference reference; reference.guid = guid;
             (id == 1 ? plan->after.linkStartTarget : plan->after.linkEndTarget) = std::move(reference);
         } else if (opId == "control_points.unbind") {
             (id == 1 ? plan->after.linkStartTarget : plan->after.linkEndTarget) = {};
-        } else return OpResult::Err("UNSUPPORTED", "Off-Mesh Linkの行操作はbind/unbindのみです");
+        } else {
+            return OpResult::Err("UNSUPPORTED", "Off-Mesh Linkの行操作はbind/unbindのみです");
+        }
     } else if (plan->before.source != scene::ControlPointSourceMode::POINT_OBJECTS) {
         return OpResult::Err("POINT_OBJECTS_REQUIRED", "TargetPointを位置ソースにする所有者が必要です");
     } else {
         auto edit = [&](auto& rows) -> bool {
             const auto found = std::find_if(rows.begin(), rows.end(), [id](const auto& row) { return row.id == id; });
-            if (found == rows.end()) return false;
+            if (found == rows.end()) {
+                return false;
+            }
             const std::size_t index = static_cast<std::size_t>(found - rows.begin());
             if (opId == "control_points.bind") {
                 scene::GameObject* target = nullptr;
                 const std::string guid = args.GetString("target");
-                if (!ValidateTarget(*context.ctx.activeScene, guid, target)) return false;
-                if (domain == Domain::PATROL && (target == owner || target->IsDescendantOf(*owner)))
+                if (!ValidateTarget(*context.ctx.activeScene, guid, target)) {
                     return false;
-                if (std::any_of(rows.begin(), rows.end(), [id, &guid](const auto& row) { return row.id != id && row.target.guid == guid; })) return false;
-                found->target = {}; found->target.guid = guid;
+                }
+                if (domain == Domain::PATROL && (target == owner || target->IsDescendantOf(*owner))) {
+                    return false;
+                }
+                if (std::any_of(rows.begin(), rows.end(), [id, &guid](const auto& row) { return row.id != id && row.target.guid == guid; })) {
+                    return false;
+                }
+                found->target = {};
+                found->target.guid = guid;
                 return true;
             }
-            if (opId == "control_points.unbind") { found->target = {}; return true; }
-            if (opId == "control_points.remove") { rows.erase(found); return true; }
+            if (opId == "control_points.unbind") {
+                found->target = {};
+                return true;
+            }
+            if (opId == "control_points.remove") {
+                rows.erase(found);
+                return true;
+            }
             if (opId == "control_points.reorder") {
                 const int destination = args.GetInt("toIndex", -1);
-                if (destination < 0 || static_cast<std::size_t>(destination) >= rows.size()) return false;
+                if (destination < 0 || static_cast<std::size_t>(destination) >= rows.size()) {
+                    return false;
+                }
                 const auto value = *found;
                 rows.erase(found);
                 rows.insert(rows.begin() + destination, value);
@@ -1005,8 +1253,11 @@ OpResult EditRow(OpContext& context, Domain domain, const OpArgs& args,
                     scene::NavMeshPatrolWaypointBinding>) {
                     const float wait = args.GetFloat("waitTime", found->waitTime);
                     const float speed = args.GetFloat("speed", found->speed);
-                    if (!std::isfinite(wait) || !std::isfinite(speed) || wait < 0.0f || speed < 0.0f) return false;
-                    found->waitTime = wait; found->speed = speed;
+                    if (!std::isfinite(wait) || !std::isfinite(speed) || wait < 0.0f || speed < 0.0f) {
+                        return false;
+                    }
+                    found->waitTime = wait;
+                    found->speed = speed;
                     return true;
                 }
                 return false;
@@ -1014,7 +1265,9 @@ OpResult EditRow(OpContext& context, Domain domain, const OpArgs& args,
             return false;
         };
         const bool changed = domain == Domain::PATROL ? edit(plan->after.patrolBindings) : edit(plan->after.lineBindings);
-        if (!changed) return OpResult::Err("BAD_ROW", "対象の制御点が見つからないか引数が不正です");
+        if (!changed) {
+            return OpResult::Err("BAD_ROW", "対象の制御点が見つからないか引数が不正です");
+        }
     }
     AddDependencies(*plan);
     return Commit(plan, "Edit Control Point Binding");
@@ -1029,11 +1282,16 @@ bool BakeMatches(const AuthoringState& current, Domain domain, scene::GameObject
         signature = snapshot.inputSignature;
         if (!snapshot.valid || !current.patrolBakeValid || current.patrolBakeVersion != scene::NAV_MESH_PATROL_ADAPTER_VERSION
             || current.patrolBakeSource != current.source || current.patrolBakeSignature != signature
-            || current.patrolBake.size() != snapshot.points.size()) return false;
+            || current.patrolBake.size() != snapshot.points.size()) {
+            return false;
+        }
         for (std::size_t index = 0; index < snapshot.points.size(); ++index) {
-            const auto& point = snapshot.points[index]; const auto& baked = current.patrolBake[index];
+            const auto& point = snapshot.points[index];
+            const auto& baked = current.patrolBake[index];
             if (point.stableId != baked.id || !SameVector(point.worldPosition, baked.worldPosition)
-                || !SameFloat(point.waitTime, baked.waitTime) || !SameFloat(point.speed, baked.speed)) return false;
+                || !SameFloat(point.waitTime, baked.waitTime) || !SameFloat(point.speed, baked.speed)) {
+                return false;
+            }
         }
         return true;
     }
@@ -1043,11 +1301,15 @@ bool BakeMatches(const AuthoringState& current, Domain domain, scene::GameObject
     signature = snapshot.inputSignature;
     if (!snapshot.valid || !current.lineBakeValid || current.lineBakeVersion != scene::LINE_CONTROL_POINT_ADAPTER_VERSION
         || current.lineBakeSource != current.source || current.lineBakeSpace != current.lineSpace
-        || current.lineBakeSignature != signature || current.lineBake.size() != snapshot.points.size()) return false;
+        || current.lineBakeSignature != signature || current.lineBake.size() != snapshot.points.size()) {
+        return false;
+    }
     for (std::size_t index = 0; index < snapshot.points.size(); ++index) {
         const std::uint32_t id = current.source == scene::ControlPointSourceMode::INLINE
             ? static_cast<std::uint32_t>(index + 1) : current.lineBindings[index].id;
-        if (current.lineBake[index].id != id || !SameVector(current.lineBake[index].position, snapshot.points[index])) return false;
+        if (current.lineBake[index].id != id || !SameVector(current.lineBake[index].position, snapshot.points[index])) {
+            return false;
+        }
     }
     return true;
 }
@@ -1055,26 +1317,34 @@ bool BakeMatches(const AuthoringState& current, Domain domain, scene::GameObject
 OpResult Bake(OpContext& context, Domain domain, scene::GameObject& owner,
     const std::shared_ptr<Plan>& plan)
 {
-    if (domain == Domain::NAV_LINK) return OpResult::Err("NO_BAKE", "Off-Mesh Link endpoint capture is handled by NavMesh bake");
+    if (domain == Domain::NAV_LINK) {
+        return OpResult::Err("NO_BAKE", "Off-Mesh Link endpoint capture is handled by NavMesh bake");
+    }
     auto& world = *context.ctx.activeScene;
     scene::FlushWorldTransforms(world);
     std::uint64_t signature = 0;
     if (domain == Domain::PATROL) {
         const auto snapshot = scene::ResolveNavMeshPatrolPointAuthoring(world, owner.GetID(),
             *owner.GetComponent<scene::NavMeshPatrolComponent>(), scene::ControlPointRuntimeMode::BAKED_STATIC);
-        if (!snapshot.valid) return OpResult::Err("INVALID_POINTS", "Patrolの全点を解決できません");
+        if (!snapshot.valid) {
+            return OpResult::Err("INVALID_POINTS", "Patrolの全点を解決できません");
+        }
         signature = snapshot.inputSignature;
         plan->after.patrolBake.clear();
-        for (const auto& point : snapshot.points)
+        for (const auto& point : snapshot.points) {
             plan->after.patrolBake.push_back({point.stableId, point.worldPosition, point.waitTime, point.speed});
+        }
         plan->after.patrolBakeSource = plan->after.source;
         plan->after.patrolBakeVersion = scene::NAV_MESH_PATROL_ADAPTER_VERSION;
-        plan->after.patrolBakeSignature = signature; plan->after.patrolBakeValid = true;
+        plan->after.patrolBakeSignature = signature;
+        plan->after.patrolBakeValid = true;
     } else {
         auto& line = *owner.GetComponent<scene::LineRendererComponent>();
         const auto snapshot = scene::ResolveLineControlPointAuthoring(world, owner.GetID(), line,
             scene::ControlPointRuntimeMode::BAKED_STATIC);
-        if (!snapshot.valid) return OpResult::Err("INVALID_POINTS", "Lineの全点を解決できません");
+        if (!snapshot.valid) {
+            return OpResult::Err("INVALID_POINTS", "Lineの全点を解決できません");
+        }
         signature = snapshot.inputSignature;
         plan->after.lineBake.clear();
         for (std::size_t index = 0; index < snapshot.points.size(); ++index) {
@@ -1082,9 +1352,11 @@ OpResult Bake(OpContext& context, Domain domain, scene::GameObject& owner,
                 ? static_cast<std::uint32_t>(index + 1) : plan->after.lineBindings[index].id;
             plan->after.lineBake.push_back({id, snapshot.points[index]});
         }
-        plan->after.lineBakeSpace = snapshot.space; plan->after.lineBakeSource = plan->after.source;
+        plan->after.lineBakeSpace = snapshot.space;
+        plan->after.lineBakeSource = plan->after.source;
         plan->after.lineBakeVersion = scene::LINE_CONTROL_POINT_ADAPTER_VERSION;
-        plan->after.lineBakeSignature = signature; plan->after.lineBakeValid = true;
+        plan->after.lineBakeSignature = signature;
+        plan->after.lineBakeValid = true;
     }
     plan->after.runtime = scene::ControlPointRuntimeMode::BAKED_STATIC;
     return Commit(plan, "Bake Control Points");
@@ -1093,20 +1365,26 @@ OpResult Bake(OpContext& context, Domain domain, scene::GameObject& owner,
 OpResult SetRuntime(OpContext& context, Domain domain, scene::GameObject& owner,
     const OpArgs& args, const std::shared_ptr<Plan>& plan)
 {
-    if (domain == Domain::NAV_LINK) return OpResult::Err("NO_RUNTIME_MODE", "Off-Mesh LinkはNavMesh capture policyを使用します");
+    if (domain == Domain::NAV_LINK) {
+        return OpResult::Err("NO_RUNTIME_MODE", "Off-Mesh LinkはNavMesh capture policyを使用します");
+    }
     const std::string mode = args.GetString("mode");
-    if (mode == "LIVE") plan->after.runtime = scene::ControlPointRuntimeMode::LIVE;
-    else if (mode == "BAKED_STATIC") {
+    if (mode == "LIVE") {
+        plan->after.runtime = scene::ControlPointRuntimeMode::LIVE;
+    } else if (mode == "BAKED_STATIC") {
         std::uint64_t signature = 0;
         scene::FlushWorldTransforms(*context.ctx.activeScene);
-        if (!BakeMatches(plan->before, domain, owner, *context.ctx.activeScene, signature))
+        if (!BakeMatches(plan->before, domain, owner, *context.ctx.activeScene, signature)) {
             return OpResult::Err("STALE_BAKE", "現在の制御点と一致するベイクが必要です");
+        }
         plan->after.runtime = scene::ControlPointRuntimeMode::BAKED_STATIC;
-    } else return OpResult::Err("BAD_MODE", "modeにはLIVEまたはBAKED_STATICを指定してください");
+    } else {
+        return OpResult::Err("BAD_MODE", "modeにはLIVEまたはBAKED_STATICを指定してください");
+    }
     return Commit(plan, "Set Control Point Runtime Mode");
 }
 
-} /// @note namespace
+} // namespace
 
 OpResult InvokeAdditionalControlPointOperation(OpContext& context,
     std::string_view opId, const OpArgs& args)
@@ -1114,20 +1392,35 @@ OpResult InvokeAdditionalControlPointOperation(OpContext& context,
     const std::string kind = args.GetString("kind");
     bool validKind = false;
     const Domain domain = ParseDomain(kind, validKind);
-    if (!validKind) return OpResult::Err("UNSUPPORTED_KIND", "kindにはpatrol、line、nav_linkを指定してください");
+    if (!validKind) {
+        return OpResult::Err("UNSUPPORTED_KIND", "kindにはpatrol、line、nav_linkを指定してください");
+    }
     auto* owner = ResolveOwner(context.ctx, args);
-    if (!owner || !HasDomainComponent(*owner, domain)) return OpResult::Err("NO_OWNER", "対応する制御点ownerが必要です");
+    if (!owner || !HasDomainComponent(*owner, domain)) {
+        return OpResult::Err("NO_OWNER", "対応する制御点ownerが必要です");
+    }
     auto plan = MakePlan(context.ctx, domain, *owner);
-    if (!plan) return OpResult::Err("LOCKED", "ownerがロックされているか変更できません");
-    if (opId == "control_points.convert") return Convert(context, domain, args, *owner, plan);
-    if (opId == "control_points.add") return Add(context, domain, args, *owner, plan);
+    if (!plan) {
+        return OpResult::Err("LOCKED", "ownerがロックされているか変更できません");
+    }
+    if (opId == "control_points.convert") {
+        return Convert(context, domain, args, *owner, plan);
+    }
+    if (opId == "control_points.add") {
+        return Add(context, domain, args, *owner, plan);
+    }
     if (opId == "control_points.remove" || opId == "control_points.reorder"
         || opId == "control_points.unbind" || opId == "control_points.bind"
-        || opId == "control_points.set_patrol_attributes")
+        || opId == "control_points.set_patrol_attributes") {
         return EditRow(context, domain, args, plan, opId);
-    if (opId == "control_points.bake") return Bake(context, domain, *owner, plan);
-    if (opId == "control_points.set_runtime") return SetRuntime(context, domain, *owner, args, plan);
+    }
+    if (opId == "control_points.bake") {
+        return Bake(context, domain, *owner, plan);
+    }
+    if (opId == "control_points.set_runtime") {
+        return SetRuntime(context, domain, *owner, args, plan);
+    }
     return OpResult::Err("UNSUPPORTED_OPERATION", "この操作は追加制御点adapterの対象外です");
 }
 
-} /// @note namespace fbzz::editor
+} // namespace fbzz::editor

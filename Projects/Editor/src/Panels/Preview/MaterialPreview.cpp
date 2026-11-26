@@ -46,15 +46,20 @@ struct TextureFileRevision {
 TextureFileRevision ReadTextureFileRevision(const std::string& path)
 {
     const std::string resolvedAssetPath = renderer::ResolveAssetPath(path);
-    if (resolvedAssetPath.empty()) return {};
-    std::string sourcePath;
-    if (!renderer::ResolveTextureSource(resolvedAssetPath, sourcePath) || sourcePath.empty())
+    if (resolvedAssetPath.empty()) {
         return {};
+    }
+    std::string sourcePath;
+    if (!renderer::ResolveTextureSource(resolvedAssetPath, sourcePath) || sourcePath.empty()) {
+        return {};
+    }
 
     std::error_code error;
     const auto writeTime = std::filesystem::last_write_time(
         util::FileSystem::PathFromUtf8(sourcePath), error);
-    if (error) return {};
+    if (error) {
+        return {};
+    }
     return { true, static_cast<std::int64_t>(writeTime.time_since_epoch().count()) };
 }
 
@@ -81,16 +86,18 @@ mp::PreviewGpuKey ReadPreviewGpuKey(const asset::MaterialAssetAuthoring& materia
     key.textures.reserve(material.textures.size() * 2);
     for (const auto& textureBinding : material.textures) {
         const auto& path = textureBinding.second;
-        if (path.empty()) continue;
+        if (path.empty()) {
+            continue;
+        }
         const std::string loadPath = mp::TextureLoadPath(path, resourceKey.projectRoot);
-        /// @note 法線の raw RGB と G 反転版は独立した GPU キャッシュを持つ。
+        // 法線の raw RGB と G 反転版は独立した GPU キャッシュを持つ。
         for (bool flipGreen : { false, true }) {
             const auto handle = resources.FindCachedTexture(loadPath, flipGreen);
             const auto* texture = resources.Get(handle);
             key.textures.push_back({ handle, texture, texture ? texture->GetContentVersion() : 0 });
         }
     }
-    /// @note unordered_map の再配置だけでは未変更の材質を再描画しない。
+    // unordered_map の再配置だけでは未変更の材質を再描画しない。
     std::sort(key.textures.begin(), key.textures.end(), [](const auto& a, const auto& b) {
         return std::tie(a.handle.id, a.handle.gen) < std::tie(b.handle.id, b.handle.gen);
     });
@@ -120,10 +127,12 @@ void DrawGrid(ImDrawList& draw, ImVec2 min, ImVec2 max)
     const ImVec2 center{ (min.x + max.x) * 0.5f, (min.y + max.y) * 0.5f };
     draw.AddRectFilled(min, max, IM_COL32(24, 26, 30, 255));
     const ImU32 grid = IM_COL32(48, 52, 60, 255), axis = IM_COL32(74, 80, 92, 255);
-    for (float x = min.x + std::fmod(center.x - min.x, cell); x < max.x; x += cell)
+    for (float x = min.x + std::fmod(center.x - min.x, cell); x < max.x; x += cell) {
         draw.AddLine({ x, min.y }, { x, max.y }, grid);
-    for (float y = min.y + std::fmod(center.y - min.y, cell); y < max.y; y += cell)
+    }
+    for (float y = min.y + std::fmod(center.y - min.y, cell); y < max.y; y += cell) {
         draw.AddLine({ min.x, y }, { max.x, y }, grid);
+    }
     draw.AddLine({ center.x, min.y }, { center.x, max.y }, axis);
     draw.AddLine({ min.x, center.y }, { max.x, center.y }, axis);
 }
@@ -137,7 +146,7 @@ void DrawBadge(ImDrawList* drawList, ImVec2 origin, float size, const char* badg
     drawList->AddText({ badgeMin.x + 4.0f, badgeMin.y + 2.0f }, IM_COL32(235, 240, 245, 230), badge);
 }
 
-} /// @note namespace
+} // namespace
 
 void MaterialPreviewView::ResetView()
 {
@@ -164,9 +173,12 @@ void MaterialPreviewView::RegisterOperators(OperatorRegistry& registry, std::str
         }
         op.exec = [this, action](OpContext&, const OpArgs& args) {
             const auto* settings = args.GetData("settings");
-            if (action == "configure" && (!settings || !settings->IsObject()))
+            if (action == "configure" && (!settings || !settings->IsObject())) {
                 return OpResult::Err("BAD_ARG", "settings");
-            if (action == "reset") ResetView();
+            }
+            if (action == "reset") {
+                ResetView();
+            }
 
             auto data = OpData::MakeObject();
             std::vector<std::function<void()>> changes;
@@ -177,7 +189,9 @@ void MaterialPreviewView::RegisterOperators(OperatorRegistry& registry, std::str
                     return;
                 }
                 const auto* value = settings->Find(key);
-                if (!value) return;
+                if (!value) {
+                    return;
+                }
                 auto next = target;
                 if (!decode(*value, next)) {
                     invalid = key;
@@ -188,10 +202,14 @@ void MaterialPreviewView::RegisterOperators(OperatorRegistry& registry, std::str
             const auto choice = [&](const char* key, auto& target, const auto& values, auto label) {
                 field(key, target, [&](auto value) { return OpData(label(value)); },
                     [&](const OpData& input, auto& next) {
-                        if (!input.IsString()) return false;
+                        if (!input.IsString()) {
+                            return false;
+                        }
                         const auto match = std::find_if(values.begin(), values.end(),
                             [&](auto value) { return input.AsString() == label(value); });
-                        if (match == values.end()) return false;
+                        if (match == values.end()) {
+                            return false;
+                        }
                         next = *match;
                         return true;
                     });
@@ -200,9 +218,13 @@ void MaterialPreviewView::RegisterOperators(OperatorRegistry& registry, std::str
                 field(key, target, [](auto value) { return OpData(value); },
                     [&](const OpData& input, auto& next) {
                         using Number = std::remove_reference_t<decltype(next)>;
-                        if (!input.IsInt() && (std::is_integral_v<Number> || !input.IsFloat())) return false;
+                        if (!input.IsInt() && (std::is_integral_v<Number> || !input.IsFloat())) {
+                            return false;
+                        }
                         const double value = input.IsInt() ? static_cast<double>(input.AsInt64()) : input.AsDouble();
-                        if (!std::isfinite(value) || value < minimum || value > maximum) return false;
+                        if (!std::isfinite(value) || value < minimum || value > maximum) {
+                            return false;
+                        }
                         next = static_cast<Number>(value);
                         return true;
                     });
@@ -226,18 +248,27 @@ void MaterialPreviewView::RegisterOperators(OperatorRegistry& registry, std::str
             const auto boolean = [&](const char* key, bool& target) {
                 field(key, target, [](bool value) { return OpData(value); },
                     [](const OpData& input, bool& next) {
-                        if (!input.IsBool()) return false;
+                        if (!input.IsBool()) {
+                            return false;
+                        }
                         next = input.AsBool();
                         return true;
                     });
             };
             boolean("animate", m_animateWater);
             boolean("parallax", m_showParallax);
-            if (!invalid.empty()) return OpResult::Err("BAD_ARG", invalid);
-            if (!settings) return OpResult::Data(std::move(data));
-            if (changes.size() != settings->AsObject().size())
+            if (!invalid.empty()) {
+                return OpResult::Err("BAD_ARG", invalid);
+            }
+            if (!settings) {
+                return OpResult::Data(std::move(data));
+            }
+            if (changes.size() != settings->AsObject().size()) {
                 return OpResult::Err("BAD_ARG", "settings に不明なキーがあります。");
-            for (const auto& change : changes) change();
+            }
+            for (const auto& change : changes) {
+                change();
+            }
             return OpResult::Ok();
         };
         registry.Register(std::move(op));
@@ -251,9 +282,11 @@ void MaterialPreviewView::SynchronizeResources(EditorContext& ctx)
     const bool projectChanged = key.projectRoot != m_resourceKey.projectRoot;
     const bool shaderChanged = key.shaderVersion != m_resourceKey.shaderVersion;
     if (managerChanged || projectChanged || shaderChanged) {
-        /// @note 旧 Manager / Reset 前のハンドルを新しい資源プールへ返さない。
+        // 旧 Manager / Reset 前のハンドルを新しい資源プールへ返さない。
         InvalidateGpu(managerChanged ? nullptr : ctx.resources);
-        if (managerChanged) m_renderTarget = {};
+        if (managerChanged) {
+            m_renderTarget = {};
+        }
     }
     if (managerChanged || projectChanged || key.assetGeneration != m_resourceKey.assetGeneration) {
         m_fallbackTexture = {};
@@ -378,7 +411,7 @@ void MaterialPreviewView::DrawUnsupported(EditorContext& ctx,
     ImDrawList* drawList = ImGui::GetWindowDrawList();
     const char* badge = mp::UnsupportedBadge(material);
 
-    /// @note 代表画像またはスウォッチで描画失敗と材質色を見分ける。
+    // 代表画像またはスウォッチで描画失敗と材質色を見分ける。
     const std::string texturePath = mp::RepresentativeTexturePath(material);
     if (texturePath != m_fallbackTexturePath) {
         m_fallbackTexturePath = texturePath;
@@ -421,7 +454,9 @@ void MaterialPreviewView::DrawUnsupported(EditorContext& ctx,
 
 bool MaterialPreviewView::EnsureGpuData(EditorContext& ctx, const asset::MaterialAssetAuthoring& material)
 {
-    if (!ctx.renderer || !ctx.resources) return false;
+    if (!ctx.renderer || !ctx.resources) {
+        return false;
+    }
     auto& resources = *ctx.resources;
 
     if ((m_gpu.shader.IsValid() && !resources.Get(m_gpu.shader))
@@ -436,7 +471,7 @@ bool MaterialPreviewView::EnsureGpuData(EditorContext& ctx, const asset::Materia
             return false;
         }
         m_sourceMaterial = material;
-        /// @note BuildGpuData が初めてロードしたテクスチャも成功済み入力へ含める。
+        // BuildGpuData が初めてロードしたテクスチャも成功済み入力へ含める。
         m_gpuCache.Commit(ReadPreviewGpuKey(material, resources, m_resourceKey));
         ++m_sourceRevision;
     }
@@ -455,7 +490,9 @@ bool MaterialPreviewView::EnsurePreviewFrame(EditorContext& ctx,
     if (!m_renderTarget.IsValid())
         m_renderTarget = resources.CreateRenderTarget(kPreviewRtSize, kPreviewRtSize,
                                                       renderer::CameraDepthTargetDesc(1));
-    if (!m_renderTarget.IsValid()) return false;
+    if (!m_renderTarget.IsValid()) {
+        return false;
+    }
 
     mp::RenderDesc desc;
     desc.target   = m_renderTarget;
@@ -470,12 +507,15 @@ bool MaterialPreviewView::EnsurePreviewFrame(EditorContext& ctx,
     desc.fiberShellCount = m_fiberShellCount;
     desc.fiberWind       = m_fiberWind;
     const auto frameKey = mp::MakePreviewFrameKey(m_sourceRevision, desc, m_shape, m_animateWater);
-    if (!mp::UsesPreviewTime(flavor, m_animateWater) && m_frameCache.IsCurrent(frameKey))
+    if (!mp::UsesPreviewTime(flavor, m_animateWater) && m_frameCache.IsCurrent(frameKey)) {
         return true;
+    }
 
     m_frameCache.Invalidate();
-    if (!RenderFrame(ctx, desc)) return false;
-    /// @note Terrain の層画像など Render が初めてロードする依存も記録する。
+    if (!RenderFrame(ctx, desc)) {
+        return false;
+    }
+    // Terrain の層画像など Render が初めてロードする依存も記録する。
     m_gpuCache.Commit(ReadPreviewGpuKey(material, resources, m_resourceKey));
     m_frameCache.Commit(frameKey);
     return true;
@@ -486,7 +526,9 @@ bool MaterialPreviewView::RenderFrame(EditorContext& ctx, mp::RenderDesc desc)
     auto& resources = *ctx.resources;
     desc.time = m_animateWater ? static_cast<float>(ImGui::GetTime()) : 0.0f;
     desc.mesh = mp::ShapeMesh(resources, m_shape, desc.flavor);
-    if (!desc.mesh && !mp::UsesOwnGeometry(desc.flavor)) return false;
+    if (!desc.mesh && !mp::UsesOwnGeometry(desc.flavor)) {
+        return false;
+    }
 
     return mp::Render(*ctx.renderer, resources, desc);
 }
@@ -508,15 +550,17 @@ bool MaterialPreviewView::Draw(EditorContext& ctx,
     const float height = std::clamp(requestedHeight, 1.0f, width);
     ImGui::InvisibleButton("##Image", { width, height });
     const ImVec2 canvasMin = ImGui::GetItemRectMin(), canvasMax = ImGui::GetItemRectMax();
-    /// @note 正方形の描画ターゲットは縦横比を保って中央に置き、左右の余白でも視点を操作できる。
+    // 正方形の描画ターゲットは縦横比を保って中央に置き、左右の余白でも視点を操作できる。
     const ImVec2 imageMin{ canvasMin.x + (width - height) * 0.5f, canvasMin.y };
     const bool hovered = ImGui::IsItemHovered();
     const bool active  = ImGui::IsItemActive();
-    if (hovered) ImGui::SetItemKeyOwner(ImGuiKey_MouseWheelY);
+    if (hovered) {
+        ImGui::SetItemKeyOwner(ImGuiKey_MouseWheelY);
+    }
 
     if (active && ImGui::IsMouseDragging(ImGuiMouseButton_Left)) {
         const ImVec2 delta = ImGui::GetIO().MouseDelta;
-        /// @note Ctrl+Drag でライトの向きを変更する。
+        // Ctrl+Drag でライトの向きを変更する。
         if (ImGui::GetIO().KeyCtrl) {
             m_rig.yaw -= delta.x * 0.012f;
             m_rig.pitch = std::clamp(m_rig.pitch + delta.y * 0.010f, -1.35f, 1.35f);
@@ -529,10 +573,13 @@ bool MaterialPreviewView::Draw(EditorContext& ctx,
         m_orbit.distance *= ImGui::GetIO().MouseWheel > 0.0f ? 0.88f : 1.14f;
         m_orbit.distance = std::clamp(m_orbit.distance, 1.5f, 8.0f);
     }
-    if (hovered && ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left)) ResetView();
+    if (hovered && ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left)) {
+        ResetView();
+    }
 
-    if (hovered && !active && flavor != mp::Flavor::Unsupported)
+    if (hovered && !active && flavor != mp::Flavor::Unsupported) {
         ImGui::SetItemTooltip("%s", LOCT("Drag to orbit\nCtrl + drag to rotate light\nWheel to zoom\nDouble-click to reset view"));
+    }
 
     DrawBackground(canvasMin, canvasMax);
     const bool rendered = gpuReady && EnsurePreviewFrame(ctx, material, flavor);
@@ -552,8 +599,8 @@ bool MaterialPreviewView::Draw(EditorContext& ctx,
 
     DrawNormalMap(ctx, material);
     ImGui::PopID();
-    /// @note 描画失敗時もスウォッチを表示するため true を返す。
+    // 描画失敗時もスウォッチを表示するため true を返す。
     return true;
 }
 
-} /// @note namespace fbzz::editor
+} // namespace fbzz::editor

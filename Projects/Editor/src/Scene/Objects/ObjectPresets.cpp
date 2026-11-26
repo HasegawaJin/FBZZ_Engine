@@ -87,7 +87,9 @@ enum class PrimitiveKind { Cube, Sphere, Plane, Quad, Cylinder, Cone, Torus, Cap
 
 renderer::Mesh* PrimitiveMeshFor(PrimitiveKind kind, renderer::ResourceManager* resources)
 {
-    if (resources == nullptr) return nullptr;
+    if (resources == nullptr) {
+        return nullptr;
+    }
     switch (kind) {
     case PrimitiveKind::Cube:     return renderer::PrimitiveMesh::Cube(*resources);
     case PrimitiveKind::Sphere:   return renderer::PrimitiveMesh::Sphere(*resources);
@@ -141,7 +143,9 @@ scene::GameObject* NewPrimitive(EditorContext& ctx, const char* name, PrimitiveK
                                 bool withCollider = true)
 {
     auto* created = ctx.activeScene->TryCreateGameObject(name);
-    if (!created) return nullptr;
+    if (!created) {
+        return nullptr;
+    }
     auto& go = *created;
 
     scene::MeshRenderer mr;
@@ -154,7 +158,9 @@ scene::GameObject* NewPrimitive(EditorContext& ctx, const char* name, PrimitiveK
     mc.SetMaterialPath("Assets/Materials/Surface/Lit.mat");
     go.AddComponent<scene::MaterialComponent>(std::move(mc));
 
-    if (withCollider) AttachFittedCollider(go, kind);
+    if (withCollider) {
+        AttachFittedCollider(go, kind);
+    }
     return &go;
 }
 
@@ -173,9 +179,13 @@ scene::RigidBodyComponent MakePresetRigidBody()
 scene::GameObject* NewPresetChild(EditorContext& ctx, scene::EntityID parentId, const char* name)
 {
     auto* created = ctx.activeScene->TryCreateGameObject(name);
-    if (!created) return nullptr;
+    if (!created) {
+        return nullptr;
+    }
     auto& child = *created;
-    if (auto* parent = ctx.activeScene->GetGameObject(parentId)) child.SetParent(parent);
+    if (auto* parent = ctx.activeScene->GetGameObject(parentId)) {
+        child.SetParent(parent);
+    }
     return &child;
 }
 
@@ -189,7 +199,9 @@ scene::GameObject* MakeEmpty(EditorContext& ctx)
 scene::GameObject* MakeTargetPoint(EditorContext& ctx)
 {
     auto* point = ctx.activeScene->TryCreateGameObject("Target Point");
-    if (point) point->AddComponent<scene::TargetPointComponent>();
+    if (point) {
+        point->AddComponent<scene::TargetPointComponent>();
+    }
     return point;
 }
 
@@ -203,9 +215,11 @@ scene::GameObject* MakeCapsule(EditorContext& ctx)  { return NewPrimitive(ctx, "
 
 scene::GameObject* MakeQuad(EditorContext& ctx)
 {
-    /// @note withCollider=
+    // withCollider=
     auto* created = NewPrimitive(ctx, "Quad", PrimitiveKind::Quad, false);
-    if (!created) return nullptr;
+    if (!created) {
+        return nullptr;
+    }
     auto& go = *created;
     AttachFittedCollider(go, PrimitiveKind::Quad);
     return &go;
@@ -215,7 +229,9 @@ scene::GameObject* MakeLight(EditorContext& ctx, const char* name, scene::LightC
 {
     using Type = scene::LightComponent::Type;
     auto* created = ctx.activeScene->TryCreateGameObject(name);
-    if (!created) return nullptr;
+    if (!created) {
+        return nullptr;
+    }
     auto& go = *created;
     scene::LightComponent light;
     light.type = type;
@@ -229,7 +245,7 @@ scene::GameObject* MakeLight(EditorContext& ctx, const char* name, scene::LightC
         light.range     = 12.0f;
         break;
     case Type::Area:
-        /// @note Area の intensity は輝度で、Point の感覚の数値ではほぼ見えない (LightComponent.hpp)。
+        // Area の intensity は輝度で、Point の感覚の数値ではほぼ見えない (LightComponent.hpp)。
         light.intensity  = 150.0f;
         light.range      = 12.0f;
         light.areaWidth  = 2.0f;
@@ -264,7 +280,9 @@ scene::GameObject* MakeTubeLight(EditorContext& ctx)        { return MakeLight(c
 scene::GameObject* MakeCamera(EditorContext& ctx)
 {
     auto* created = ctx.activeScene->TryCreateGameObject("Camera");
-    if (!created) return nullptr;
+    if (!created) {
+        return nullptr;
+    }
     auto& go = *created;
     go.transform.position = { 0.0f, 2.0f, -5.0f };
     go.AddComponent<scene::CameraComponent>();
@@ -276,7 +294,9 @@ scene::GameObject* MakeCamera(EditorContext& ctx)
 scene::GameObject* MakeVirtualCamera(EditorContext& ctx)
 {
     auto* created = ctx.activeScene->TryCreateGameObject("Virtual Camera");
-    if (!created) return nullptr;
+    if (!created) {
+        return nullptr;
+    }
     auto& go = *created;
     go.AddComponent<scene::CameraComponent>();
     go.AddComponent<scene::VirtualCameraComponent>();
@@ -286,7 +306,9 @@ scene::GameObject* MakeVirtualCamera(EditorContext& ctx)
 scene::GameObject* MakeFollowCamera(EditorContext& ctx)
 {
     auto* created = ctx.activeScene->TryCreateGameObject("Follow Camera");
-    if (!created) return nullptr;
+    if (!created) {
+        return nullptr;
+    }
     auto& go = *created;
     go.AddComponent<scene::CameraComponent>();
     go.AddComponent<scene::VirtualCameraComponent>();
@@ -299,7 +321,9 @@ scene::GameObject* MakeFollowCamera(EditorContext& ctx)
 scene::GameObject* MakeSprite(EditorContext& ctx)
 {
     auto* created = ctx.activeScene->TryCreateGameObject("Sprite");
-    if (!created) return nullptr;
+    if (!created) {
+        return nullptr;
+    }
     auto& go = *created;
     go.AddComponent<scene::SpriteRendererComponent>();
     return &go;
@@ -309,7 +333,9 @@ scene::GameObject* MakeSprite(EditorContext& ctx)
 scene::GameObject* MakeLineRenderer(EditorContext& ctx)
 {
     auto* created = ctx.activeScene->TryCreateGameObject("Line");
-    if (!created) return nullptr;
+    if (!created) {
+        return nullptr;
+    }
     auto& go = *created;
     scene::LineRendererComponent line;
     line.points = { math::Vector3{ 0.0f, 0.0f, 0.0f }, math::Vector3{ 0.0f, 0.0f, 3.0f } };
@@ -319,9 +345,11 @@ scene::GameObject* MakeLineRenderer(EditorContext& ctx)
 
 scene::GameObject* MakeBillboard(EditorContext& ctx)
 {
-    /// @note withCollider=
+    // withCollider=
     auto* created = NewPrimitive(ctx, "Billboard", PrimitiveKind::Quad, false);
-    if (!created) return nullptr;
+    if (!created) {
+        return nullptr;
+    }
     auto& go = *created;
     go.AddComponent<scene::BillboardComponent>();
     return &go;
@@ -330,7 +358,9 @@ scene::GameObject* MakeBillboard(EditorContext& ctx)
 scene::GameObject* MakeProjector(EditorContext& ctx)
 {
     auto* created = ctx.activeScene->TryCreateGameObject("Projector");
-    if (!created) return nullptr;
+    if (!created) {
+        return nullptr;
+    }
     auto& go = *created;
     go.AddComponent<scene::ProjectorComponent>();
     return &go;
@@ -339,7 +369,9 @@ scene::GameObject* MakeProjector(EditorContext& ctx)
 scene::GameObject* MakeLODGroup(EditorContext& ctx)
 {
     auto* created = ctx.activeScene->TryCreateGameObject("LOD Group");
-    if (!created) return nullptr;
+    if (!created) {
+        return nullptr;
+    }
     auto& go = *created;
     go.AddComponent<scene::LODGroupComponent>();
     return &go;
@@ -348,7 +380,9 @@ scene::GameObject* MakeLODGroup(EditorContext& ctx)
 scene::GameObject* MakeSortingGroup(EditorContext& ctx)
 {
     auto* created = ctx.activeScene->TryCreateGameObject("Sorting Group");
-    if (!created) return nullptr;
+    if (!created) {
+        return nullptr;
+    }
     auto& go = *created;
     go.AddComponent<scene::SortingGroupComponent>();
     return &go;
@@ -359,7 +393,9 @@ scene::GameObject* MakeSortingGroup(EditorContext& ctx)
 scene::GameObject* MakeSky(EditorContext& ctx)
 {
     auto* created = ctx.activeScene->TryCreateGameObject("Sky");
-    if (!created) return nullptr;
+    if (!created) {
+        return nullptr;
+    }
     auto& go = *created;
     go.AddComponent<scene::SkyRenderer>();
     return &go;
@@ -368,7 +404,9 @@ scene::GameObject* MakeSky(EditorContext& ctx)
 scene::GameObject* MakeSunMoon(EditorContext& ctx)
 {
     auto* created = ctx.activeScene->TryCreateGameObject("Sun & Moon");
-    if (!created) return nullptr;
+    if (!created) {
+        return nullptr;
+    }
     auto& go = *created;
     go.AddComponent<scene::SunMoonRenderer>();
     return &go;
@@ -377,7 +415,9 @@ scene::GameObject* MakeSunMoon(EditorContext& ctx)
 scene::GameObject* MakeEnvironmentLight(EditorContext& ctx)
 {
     auto* created = ctx.activeScene->TryCreateGameObject("Environment Light");
-    if (!created) return nullptr;
+    if (!created) {
+        return nullptr;
+    }
     auto& go = *created;
     go.AddComponent<scene::EnvironmentLightComponent>();
     return &go;
@@ -386,7 +426,9 @@ scene::GameObject* MakeEnvironmentLight(EditorContext& ctx)
 scene::GameObject* MakeVolumetricCloud(EditorContext& ctx)
 {
     auto* created = ctx.activeScene->TryCreateGameObject("Volumetric Cloud");
-    if (!created) return nullptr;
+    if (!created) {
+        return nullptr;
+    }
     auto& go = *created;
     go.AddComponent<scene::VolumetricCloudComponent>();
     return &go;
@@ -396,7 +438,9 @@ scene::GameObject* MakeVolumetricCloud(EditorContext& ctx)
 scene::GameObject* MakePostProcessVolume(EditorContext& ctx)
 {
     auto* created = ctx.activeScene->TryCreateGameObject("Post Process Volume");
-    if (!created) return nullptr;
+    if (!created) {
+        return nullptr;
+    }
     auto& go = *created;
     auto& ppv = go.AddComponent<scene::PostProcessVolumeComponent>();
     ppv.profile.ref.path = "Assets/PostProcess/DefaultPostProcess.fzdata";
@@ -406,7 +450,9 @@ scene::GameObject* MakePostProcessVolume(EditorContext& ctx)
 scene::GameObject* MakeReflectionProbe(EditorContext& ctx)
 {
     auto* created = ctx.activeScene->TryCreateGameObject("Reflection Probe");
-    if (!created) return nullptr;
+    if (!created) {
+        return nullptr;
+    }
     auto& go = *created;
     go.AddComponent<scene::ReflectionProbeComponent>();
     return &go;
@@ -415,7 +461,9 @@ scene::GameObject* MakeReflectionProbe(EditorContext& ctx)
 scene::GameObject* MakeLightProbeVolume(EditorContext& ctx)
 {
     auto* created = ctx.activeScene->TryCreateGameObject("Light Probe Volume");
-    if (!created) return nullptr;
+    if (!created) {
+        return nullptr;
+    }
     auto& go = *created;
     go.AddComponent<scene::LightProbeVolumeComponent>();
     return &go;
@@ -426,12 +474,18 @@ scene::GameObject* MakeLightProbeVolume(EditorContext& ctx)
 /// @note 環境流はシーン設定 (SceneEnvironment) で、置き場所を持たない。GameObject にすると «どれが環境風か» が並び順で決まる沈黙のバグが戻る (flow-field.md §6)。
 scene::GameObject* MakeAmbientWind(EditorContext& ctx)
 {
-    if (ctx.activeScene == nullptr) return nullptr;
+    if (ctx.activeScene == nullptr) {
+        return nullptr;
+    }
     scene::SceneEnvironment& environment = ctx.activeScene->Environment();
     environment.enabled = true;
-    /// @note 置いた瞬間に何も起きないと «壊れている» と映るので、そよ風ぶんの速さを入れる。
-    if (environment.speed <= 0.0f) environment.speed = 5.0f;
-    if (ctx.markSceneDirty) ctx.markSceneDirty();
+    // 置いた瞬間に何も起きないと «壊れている» と映るので、そよ風ぶんの速さを入れる。
+    if (environment.speed <= 0.0f) {
+        environment.speed = 5.0f;
+    }
+    if (ctx.markSceneDirty) {
+        ctx.markSceneDirty();
+    }
     return nullptr;
 }
 
@@ -444,7 +498,9 @@ scene::GameObject* MakeWeather(EditorContext& ctx)
         return nullptr;
     }
     auto* created = ctx.activeScene->TryCreateGameObject("Weather");
-    if (!created) return nullptr;
+    if (!created) {
+        return nullptr;
+    }
     auto& weatherGo = *created;
     scene::WeatherComponent weather;
     weather.rainIntensity = 0.5f;
@@ -472,11 +528,11 @@ scene::GameObject* MakeWeather(EditorContext& ctx)
     s.maxParticles   = 8000;
     s.sizeStart      = 0.05f;
     s.sizeEnd        = 0.05f;
-    /// @note RainDrop.hlsl は StretchedBillboard でないと縦棒を描けない。
+    // RainDrop.hlsl は StretchedBillboard でないと縦棒を描けない。
     s.renderMode             = scene::ParticleRenderMode::StretchedBillboard;
     s.stretchedLengthScale   = 0.6f;
     s.stretchedVelocityScale = 0.06f;
-    /// @note Local だと親を動かした瞬間に降っている粒ごと平行移動する。
+    // Local だと親を動かした瞬間に降っている粒ごと平行移動する。
     s.simulationSpace = scene::ParticleSimulationSpace::World;
     s.colorStart   = { 1.0f, 1.0f, 1.0f, 1.0f };
     s.colorEnd     = { 1.0f, 1.0f, 1.0f, 1.0f };
@@ -491,7 +547,9 @@ scene::GameObject* MakeWeather(EditorContext& ctx)
 scene::GameObject* MakeSkySystem(EditorContext& ctx)
 {
     auto* created = ctx.activeScene->TryCreateGameObject("Sky System");
-    if (!created) return nullptr;
+    if (!created) {
+        return nullptr;
+    }
     auto& go = *created;
     go.AddComponent<scene::SkyRenderer>();
     go.AddComponent<scene::SunMoonRenderer>();
@@ -504,12 +562,15 @@ scene::GameObject* MakeSkySystem(EditorContext& ctx)
 scene::GameObject* MakeTerrain(EditorContext& ctx)
 {
     auto* created = ctx.activeScene->TryCreateGameObject("Terrain");
-    if (!created) return nullptr;
+    if (!created) {
+        return nullptr;
+    }
     auto& go = *created;
     scene::TerrainComponent terrain;
     terrain.InitFlat(0.0f);
-    for (int layer = 0; layer < terrain.LayerCount(); ++layer)
+    for (int layer = 0; layer < terrain.LayerCount(); ++layer) {
         terrain.layerMaterials[static_cast<size_t>(layer)] = DefaultTerrainLayerMaterialPath(layer);
+    }
     terrain.heightDirty   = true;
     terrain.colliderDirty = true;
     go.AddComponent<scene::TerrainComponent>(std::move(terrain));
@@ -520,7 +581,9 @@ scene::GameObject* MakeTerrain(EditorContext& ctx)
 scene::GameObject* MakeTerrainGrid(EditorContext& ctx)
 {
     auto* created = ctx.activeScene->TryCreateGameObject("Terrain Grid");
-    if (!created) return nullptr;
+    if (!created) {
+        return nullptr;
+    }
     auto& go = *created;
     go.AddComponent<scene::TerrainGridComponent>();
     return &go;
@@ -529,7 +592,9 @@ scene::GameObject* MakeTerrainGrid(EditorContext& ctx)
 scene::GameObject* MakeWater(EditorContext& ctx)
 {
     auto* created = ctx.activeScene->TryCreateGameObject("Water");
-    if (!created) return nullptr;
+    if (!created) {
+        return nullptr;
+    }
     auto& go = *created;
     scene::WaterComponent water{};
     water.resolutionX  = 96;
@@ -552,7 +617,9 @@ scene::GameObject* MakeWater(EditorContext& ctx)
 scene::GameObject* MakeNavMeshSurface(EditorContext& ctx)
 {
     auto* created = ctx.activeScene->TryCreateGameObject("NavMesh Surface");
-    if (!created) return nullptr;
+    if (!created) {
+        return nullptr;
+    }
     auto& go = *created;
     go.AddComponent<scene::NavMeshSurfaceComponent>();
     return &go;
@@ -560,9 +627,11 @@ scene::GameObject* MakeNavMeshSurface(EditorContext& ctx)
 
 scene::GameObject* MakeNavMeshAgent(EditorContext& ctx)
 {
-    /// @note withCollider=
+    // withCollider=
     auto* created = NewPrimitive(ctx, "NavMesh Agent", PrimitiveKind::Capsule, false);
-    if (!created) return nullptr;
+    if (!created) {
+        return nullptr;
+    }
     auto& go = *created;
     go.AddComponent<scene::NavMeshAgentComponent>();
     return &go;
@@ -570,9 +639,11 @@ scene::GameObject* MakeNavMeshAgent(EditorContext& ctx)
 
 scene::GameObject* MakeNavMeshModifier(EditorContext& ctx)
 {
-    /// @note withCollider=
+    // withCollider=
     auto* created = NewPrimitive(ctx, "NavMesh Modifier", PrimitiveKind::Cube, true);
-    if (!created) return nullptr;
+    if (!created) {
+        return nullptr;
+    }
     auto& go = *created;
     go.AddComponent<scene::NavMeshModifierComponent>();
     return &go;
@@ -581,7 +652,9 @@ scene::GameObject* MakeNavMeshModifier(EditorContext& ctx)
 scene::GameObject* MakeOffMeshLink(EditorContext& ctx)
 {
     auto* created = ctx.activeScene->TryCreateGameObject("Off-Mesh Link");
-    if (!created) return nullptr;
+    if (!created) {
+        return nullptr;
+    }
     auto& go = *created;
     go.AddComponent<scene::NavMeshOffMeshLinkComponent>();
     return &go;
@@ -590,9 +663,11 @@ scene::GameObject* MakeOffMeshLink(EditorContext& ctx)
 /// @note 4 つを 1 セットで置く。Sensor だけ忘れると BT の条件が永久に偽になり、最も追いにくい。
 scene::GameObject* MakeAIAgent(EditorContext& ctx)
 {
-    /// @note withCollider=
+    // withCollider=
     auto* created = NewPrimitive(ctx, "AI Agent", PrimitiveKind::Capsule, false);
-    if (!created) return nullptr;
+    if (!created) {
+        return nullptr;
+    }
     auto& go = *created;
     go.AddComponent<scene::NavMeshAgentComponent>();
     go.AddComponent<scene::NavMeshSensorComponent>();
@@ -606,7 +681,9 @@ scene::GameObject* MakeAIAgent(EditorContext& ctx)
 scene::GameObject* MakeParticleEmitter(EditorContext& ctx)
 {
     auto* created = ctx.activeScene->TryCreateGameObject("Particle Emitter");
-    if (!created) return nullptr;
+    if (!created) {
+        return nullptr;
+    }
     auto& go = *created;
     go.AddComponent<scene::ParticleEmitter>();
     return &go;
@@ -615,7 +692,9 @@ scene::GameObject* MakeParticleEmitter(EditorContext& ctx)
 scene::GameObject* MakeFlowField(EditorContext& ctx)
 {
     auto* created = ctx.activeScene->TryCreateGameObject("Flow Field");
-    if (!created) return nullptr;
+    if (!created) {
+        return nullptr;
+    }
     auto& go = *created;
     go.AddComponent<scene::FlowField>();
     return &go;
@@ -624,7 +703,9 @@ scene::GameObject* MakeFlowField(EditorContext& ctx)
 scene::GameObject* MakeTrail(EditorContext& ctx)
 {
     auto* created = ctx.activeScene->TryCreateGameObject("Trail");
-    if (!created) return nullptr;
+    if (!created) {
+        return nullptr;
+    }
     auto& go = *created;
     go.AddComponent<scene::TrailComponent>();
     return &go;
@@ -633,7 +714,9 @@ scene::GameObject* MakeTrail(EditorContext& ctx)
 scene::GameObject* MakeMeshTrail(EditorContext& ctx)
 {
     auto* created = ctx.activeScene->TryCreateGameObject("Mesh Trail");
-    if (!created) return nullptr;
+    if (!created) {
+        return nullptr;
+    }
     auto& go = *created;
     go.AddComponent<scene::MeshTrailComponent>();
     return &go;
@@ -648,7 +731,9 @@ scene::ParticleCurve MakeFlashWeightCurve()
     curve.keys[0] = { 0.0f, 0.0f };
     curve.keys[1] = { 0.1f, 1.0f };
     curve.keys[2] = { 1.0f, 0.0f };
-    for (std::size_t i = 3; i < scene::kMaxParticleCurveKeys; ++i) curve.keys[i] = curve.keys[2];
+    for (std::size_t i = 3; i < scene::kMaxParticleCurveKeys; ++i) {
+        curve.keys[i] = curve.keys[2];
+    }
     curve.keyCount = 3;
     return curve;
 }
@@ -662,7 +747,9 @@ scene::ParticleCurve MakeDecayWeightCurve()
     curve.keys[2] = { 0.5f, 0.25f };
     curve.keys[3] = { 0.75f, 0.06f };
     curve.keys[4] = { 1.0f, 0.0f };
-    for (std::size_t i = 5; i < scene::kMaxParticleCurveKeys; ++i) curve.keys[i] = curve.keys[4];
+    for (std::size_t i = 5; i < scene::kMaxParticleCurveKeys; ++i) {
+        curve.keys[i] = curve.keys[4];
+    }
     curve.keyCount = 5;
     return curve;
 }
@@ -670,7 +757,9 @@ scene::ParticleCurve MakeDecayWeightCurve()
 scene::GameObject* MakeVFXRoot(EditorContext& ctx)
 {
     auto* created = ctx.activeScene->TryCreateGameObject("VFX");
-    if (!created) return nullptr;
+    if (!created) {
+        return nullptr;
+    }
     auto& go = *created;
     go.AddComponent<scene::VFXComponent>();
     return &go;
@@ -686,7 +775,9 @@ scene::GameObject* MakeVFXGroup(EditorContext& ctx)
 scene::GameObject* MakeVFXParticle(EditorContext& ctx)
 {
     auto* created = ctx.activeScene->TryCreateGameObject("Particle");
-    if (!created) return nullptr;
+    if (!created) {
+        return nullptr;
+    }
     auto& go = *created;
     scene::ParticleEmitter emitter;
     emitter.settings.loop     = false;
@@ -700,7 +791,9 @@ scene::GameObject* MakeVFXParticle(EditorContext& ctx)
 scene::GameObject* MakeVFXLightFlash(EditorContext& ctx)
 {
     auto* created = ctx.activeScene->TryCreateGameObject("Light Flash");
-    if (!created) return nullptr;
+    if (!created) {
+        return nullptr;
+    }
     auto& go = *created;
     scene::LightComponent light;
     light.type        = scene::LightComponent::Type::Point;
@@ -718,7 +811,9 @@ scene::GameObject* MakeVFXLightFlash(EditorContext& ctx)
 scene::GameObject* MakeVFXMeshShell(EditorContext& ctx)
 {
     auto* created = ctx.activeScene->TryCreateGameObject("Shell");
-    if (!created) return nullptr;
+    if (!created) {
+        return nullptr;
+    }
     auto& go = *created;
     scene::MeshRenderer renderer;
     renderer.meshPath = "primitive:sphere";
@@ -737,11 +832,13 @@ scene::GameObject* MakeVFXMeshShell(EditorContext& ctx)
 scene::GameObject* MakeVFXFlowField(EditorContext& ctx)
 {
     auto* created = ctx.activeScene->TryCreateGameObject("Blast Push");
-    if (!created) return nullptr;
+    if (!created) {
+        return nullptr;
+    }
     auto& go = *created;
     scene::FlowFieldSettings push;
     push.fieldType = scene::FlowFieldType::Source;
-    /// @note 流速 [m/s]。爆風の «押しのける» は 4 m/s あれば十分に見える。
+    // 流速 [m/s]。爆風の «押しのける» は 4 m/s あれば十分に見える。
     push.strength  = 4.0f;
     push.radius    = 4.5f;
     scene::FlowField field;
@@ -757,7 +854,9 @@ scene::GameObject* MakeVFXFlowField(EditorContext& ctx)
 scene::GameObject* MakeVFXScreenEffect(EditorContext& ctx)
 {
     auto* created = ctx.activeScene->TryCreateGameObject("Screen Flash");
-    if (!created) return nullptr;
+    if (!created) {
+        return nullptr;
+    }
     auto& go = *created;
     scene::VFXScreenEffect effect;
     effect.flashIntensity = 0.35f;
@@ -775,7 +874,9 @@ scene::GameObject* MakeVFXScreenEffect(EditorContext& ctx)
 scene::GameObject* MakeVFXCameraShake(EditorContext& ctx)
 {
     auto* created = ctx.activeScene->TryCreateGameObject("Camera Shake");
-    if (!created) return nullptr;
+    if (!created) {
+        return nullptr;
+    }
     auto& go = *created;
     scene::VFXCameraShake shake;
     shake.kick = 0.06f;
@@ -790,7 +891,9 @@ scene::GameObject* MakeVFXCameraShake(EditorContext& ctx)
 scene::GameObject* MakeVFXTimeScale(EditorContext& ctx)
 {
     auto* created = ctx.activeScene->TryCreateGameObject("Hit Stop");
-    if (!created) return nullptr;
+    if (!created) {
+        return nullptr;
+    }
     auto& go = *created;
     go.AddComponent<scene::VFXTimeScale>();
     scene::VFXElement element;
@@ -803,7 +906,9 @@ scene::GameObject* MakeVFXTimeScale(EditorContext& ctx)
 scene::GameObject* MakeVFXAudio(EditorContext& ctx)
 {
     auto* created = ctx.activeScene->TryCreateGameObject("Audio");
-    if (!created) return nullptr;
+    if (!created) {
+        return nullptr;
+    }
     auto& go = *created;
     scene::AudioSourceComponent audio;
     audio.playOnAwake = true;
@@ -819,7 +924,9 @@ scene::GameObject* MakeVFXAudio(EditorContext& ctx)
 scene::GameObject* MakeVFXBeam(EditorContext& ctx)
 {
     auto* created = ctx.activeScene->TryCreateGameObject("Beam");
-    if (!created) return nullptr;
+    if (!created) {
+        return nullptr;
+    }
     auto& go = *created;
     scene::TrailComponent trail;
     trail.beamMode      = true;
@@ -840,7 +947,9 @@ scene::GameObject* MakeVFXBeam(EditorContext& ctx)
 scene::GameObject* MakeVFXLine(EditorContext& ctx, scene::VFXLinePreset preset, const char* name)
 {
     auto* created = ctx.activeScene->TryCreateGameObject(name);
-    if (!created) return nullptr;
+    if (!created) {
+        return nullptr;
+    }
     auto& go = *created;
     scene::VFXLineComponent line;
     scene::ApplyVFXLinePreset(line, preset);
@@ -857,7 +966,9 @@ scene::GameObject* MakeVFXTether(EditorContext& ctx)      { return MakeVFXLine(c
 scene::GameObject* MakeVFXDecal(EditorContext& ctx)
 {
     auto* created = ctx.activeScene->TryCreateGameObject("Ground Mark");
-    if (!created) return nullptr;
+    if (!created) {
+        return nullptr;
+    }
     auto& go = *created;
     scene::DecalComponent decal;
     decal.lifetime = 4.0f;
@@ -868,12 +979,14 @@ scene::GameObject* MakeVFXDecal(EditorContext& ctx)
     return &go;
 }
 
-/// @param sizeXZ 投影面の一辺 [m]。
-/// @param depth  投影の深さ [m]。
+/// @param[in] sizeXZ 投影面の一辺 [m]。
+/// @param[in] depth 投影の深さ [m]。
 scene::GameObject* MakeDecal(EditorContext& ctx, const char* name, float sizeXZ, float depth)
 {
     auto* created = ctx.activeScene->TryCreateGameObject(name);
-    if (!created) return nullptr;
+    if (!created) {
+        return nullptr;
+    }
     auto& go = *created;
     go.transform.scale = { sizeXZ, depth, sizeXZ };
     go.AddComponent<scene::DecalComponent>();
@@ -890,7 +1003,9 @@ scene::GameObject* MakeDecalLarge(EditorContext& ctx)  { return MakeDecal(ctx, "
 scene::GameObject* MakeRigidBodyCube(EditorContext& ctx)
 {
     auto* created = NewPrimitive(ctx, "Rigid Body", PrimitiveKind::Cube);
-    if (!created) return nullptr;
+    if (!created) {
+        return nullptr;
+    }
     auto& go = *created;
     go.transform.position = { 0.0f, 3.0f, 0.0f };
     go.AddComponent<scene::RigidBodyComponent>(MakePresetRigidBody());
@@ -900,7 +1015,9 @@ scene::GameObject* MakeRigidBodyCube(EditorContext& ctx)
 scene::GameObject* MakeCharacterController(EditorContext& ctx)
 {
     auto* created = NewPrimitive(ctx, "Character", PrimitiveKind::Capsule);
-    if (!created) return nullptr;
+    if (!created) {
+        return nullptr;
+    }
     auto& go = *created;
     go.AddComponent<scene::CharacterControllerComponent>();
     return &go;
@@ -909,7 +1026,9 @@ scene::GameObject* MakeCharacterController(EditorContext& ctx)
 scene::GameObject* MakeTriggerVolume(EditorContext& ctx)
 {
     auto* created = ctx.activeScene->TryCreateGameObject("Trigger");
-    if (!created) return nullptr;
+    if (!created) {
+        return nullptr;
+    }
     auto& go = *created;
     scene::BoxColliderComponent box;
     box.isTrigger = true;
@@ -920,7 +1039,9 @@ scene::GameObject* MakeTriggerVolume(EditorContext& ctx)
 scene::GameObject* MakeSphereTrigger(EditorContext& ctx)
 {
     auto* created = ctx.activeScene->TryCreateGameObject("Sphere Trigger");
-    if (!created) return nullptr;
+    if (!created) {
+        return nullptr;
+    }
     auto& go = *created;
     scene::SphereColliderComponent sphere;
     sphere.isTrigger = true;
@@ -931,7 +1052,9 @@ scene::GameObject* MakeSphereTrigger(EditorContext& ctx)
 scene::GameObject* MakeCapsuleTrigger(EditorContext& ctx)
 {
     auto* created = ctx.activeScene->TryCreateGameObject("Capsule Trigger");
-    if (!created) return nullptr;
+    if (!created) {
+        return nullptr;
+    }
     auto& go = *created;
     scene::CapsuleColliderComponent capsule;
     capsule.isTrigger = true;
@@ -942,9 +1065,11 @@ scene::GameObject* MakeCapsuleTrigger(EditorContext& ctx)
 /// @note meshPath は空のままにする。ColliderSync は同じ GameObject の MeshRenderer を先に見る。
 scene::GameObject* MakeMeshColliderObject(EditorContext& ctx)
 {
-    /// @note withCollider=
+    // withCollider=
     auto* created = NewPrimitive(ctx, "Mesh Collider", PrimitiveKind::Torus, false);
-    if (!created) return nullptr;
+    if (!created) {
+        return nullptr;
+    }
     auto& go = *created;
     go.AddComponent<scene::MeshColliderComponent>();
     return &go;
@@ -952,9 +1077,11 @@ scene::GameObject* MakeMeshColliderObject(EditorContext& ctx)
 
 scene::GameObject* MakeConvexHullObject(EditorContext& ctx)
 {
-    /// @note withCollider=
+    // withCollider=
     auto* created = NewPrimitive(ctx, "Convex Hull Collider", PrimitiveKind::Cone, false);
-    if (!created) return nullptr;
+    if (!created) {
+        return nullptr;
+    }
     auto& go = *created;
     go.AddComponent<scene::ConvexHullColliderComponent>();
     return &go;
@@ -964,7 +1091,9 @@ scene::GameObject* MakeConvexHullObject(EditorContext& ctx)
 scene::GameObject* MakeRopeJoint(EditorContext& ctx)
 {
     auto* created = NewPrimitive(ctx, "Joint", PrimitiveKind::Cube);
-    if (!created) return nullptr;
+    if (!created) {
+        return nullptr;
+    }
     auto& go = *created;
     go.transform.scale = { 0.5f, 0.5f, 0.5f };
     go.AddComponent<scene::RigidBodyComponent>(MakePresetRigidBody());
@@ -979,7 +1108,9 @@ scene::GameObject* MakeRopeJoint(EditorContext& ctx)
 scene::GameObject* MakeForceVolume(EditorContext& ctx)
 {
     auto* created = ctx.activeScene->TryCreateGameObject("Force Volume");
-    if (!created) return nullptr;
+    if (!created) {
+        return nullptr;
+    }
     auto& go = *created;
     go.AddComponent<scene::VolumeComponent>();
     return &go;
@@ -990,7 +1121,9 @@ scene::GameObject* MakeForceVolume(EditorContext& ctx)
 scene::GameObject* MakeAudioSource(EditorContext& ctx)
 {
     auto* created = ctx.activeScene->TryCreateGameObject("Audio Source");
-    if (!created) return nullptr;
+    if (!created) {
+        return nullptr;
+    }
     auto& go = *created;
     go.AddComponent<scene::AudioSourceComponent>();
     return &go;
@@ -999,7 +1132,9 @@ scene::GameObject* MakeAudioSource(EditorContext& ctx)
 scene::GameObject* MakeSpatialAudioSource(EditorContext& ctx)
 {
     auto* go = MakeAudioSource(ctx);
-    if (!go) return nullptr;
+    if (!go) {
+        return nullptr;
+    }
     go->name = "Spatial Audio Source";
     go->GetComponent<scene::AudioSourceComponent>()->spatialBlend = 1.0f;
     return go;
@@ -1008,7 +1143,9 @@ scene::GameObject* MakeSpatialAudioSource(EditorContext& ctx)
 scene::GameObject* MakeAmbientAudioSource(EditorContext& ctx)
 {
     auto* go = MakeSpatialAudioSource(ctx);
-    if (!go) return nullptr;
+    if (!go) {
+        return nullptr;
+    }
     go->name = "Ambient Audio";
     auto& source = *go->GetComponent<scene::AudioSourceComponent>();
     source.playOnAwake = true;
@@ -1019,7 +1156,9 @@ scene::GameObject* MakeAmbientAudioSource(EditorContext& ctx)
 scene::GameObject* MakeMusicAudioSource(EditorContext& ctx)
 {
     auto* go = MakeAudioSource(ctx);
-    if (!go) return nullptr;
+    if (!go) {
+        return nullptr;
+    }
     go->name = "Background Music";
     auto& source = *go->GetComponent<scene::AudioSourceComponent>();
     source.playOnAwake = true;
@@ -1032,7 +1171,9 @@ scene::GameObject* MakeMusicAudioSource(EditorContext& ctx)
 scene::GameObject* MakeAudioListener(EditorContext& ctx)
 {
     auto* created = ctx.activeScene->TryCreateGameObject("Audio Listener");
-    if (!created) return nullptr;
+    if (!created) {
+        return nullptr;
+    }
     auto& go = *created;
     go.AddComponent<scene::AudioListenerComponent>();
     return &go;
@@ -1041,7 +1182,9 @@ scene::GameObject* MakeAudioListener(EditorContext& ctx)
 scene::GameObject* MakeAudioReverbZone(EditorContext& ctx)
 {
     auto* created = ctx.activeScene->TryCreateGameObject("Audio Reverb Zone");
-    if (!created) return nullptr;
+    if (!created) {
+        return nullptr;
+    }
     auto& go = *created;
     go.AddComponent<scene::AudioReverbZoneComponent>();
     return &go;
@@ -1052,7 +1195,9 @@ scene::GameObject* MakeAudioReverbZone(EditorContext& ctx)
 scene::GameObject* MakeSequencePlayer(EditorContext& ctx)
 {
     auto* created = ctx.activeScene->TryCreateGameObject("Sequence Player");
-    if (!created) return nullptr;
+    if (!created) {
+        return nullptr;
+    }
     auto& go = *created;
     go.AddComponent<scene::SequencePlayerComponent>();
     return &go;
@@ -1061,7 +1206,9 @@ scene::GameObject* MakeSequencePlayer(EditorContext& ctx)
 scene::GameObject* MakeSocketAttachment(EditorContext& ctx)
 {
     auto* created = ctx.activeScene->TryCreateGameObject("Socket Attachment");
-    if (!created) return nullptr;
+    if (!created) {
+        return nullptr;
+    }
     auto& go = *created;
     go.AddComponent<scene::SocketAttachmentComponent>();
     return &go;
@@ -1070,7 +1217,9 @@ scene::GameObject* MakeSocketAttachment(EditorContext& ctx)
 scene::GameObject* MakeTransformConstraint(EditorContext& ctx)
 {
     auto* created = ctx.activeScene->TryCreateGameObject("Transform Constraint");
-    if (!created) return nullptr;
+    if (!created) {
+        return nullptr;
+    }
     auto& go = *created;
     go.AddComponent<scene::TransformConstraintComponent>();
     return &go;
@@ -1082,7 +1231,9 @@ scene::GameObject* MakeTransformConstraint(EditorContext& ctx)
 scene::GameObject* MakeSpline(EditorContext& ctx)
 {
     auto* created = ctx.activeScene->TryCreateGameObject("Spline");
-    if (!created) return nullptr;
+    if (!created) {
+        return nullptr;
+    }
     auto& go = *created;
     scene::SplineComponent spline;
     spline.points = {
@@ -1096,9 +1247,11 @@ scene::GameObject* MakeSpline(EditorContext& ctx)
 
 scene::GameObject* MakeSplineFollower(EditorContext& ctx)
 {
-    /// @note withCollider=
+    // withCollider=
     auto* created = NewPrimitive(ctx, "Spline Follower", PrimitiveKind::Cube, false);
-    if (!created) return nullptr;
+    if (!created) {
+        return nullptr;
+    }
     auto& go = *created;
     go.AddComponent<scene::SplineFollowerComponent>();
     return &go;
@@ -1110,20 +1263,24 @@ scene::GameObject* MakeSplineFollower(EditorContext& ctx)
 scene::GameObject* MakeUICanvas(EditorContext& ctx)
 {
     auto* created = ctx.activeScene->TryCreateGameObject("Canvas");
-    if (!created) return nullptr;
+    if (!created) {
+        return nullptr;
+    }
     auto& go = *created;
     go.AddComponent<scene::UICanvas>();
     ctx.activeUICanvas = go.GetID();
     return &go;
 }
 
-/// @param w 幅 (Canvas 単位)。UI 要素の大きさは transform.scale.xy が正本 (UIRect.hpp)。
-/// @param h 高さ (Canvas 単位)。
+/// @param[in] w 幅 (Canvas 単位)。UI 要素の大きさは transform.scale.xy が正本 (UIRect.hpp)。
+/// @param[in] h 高さ (Canvas 単位)。
 scene::GameObject* MakeUIImageObject(EditorContext& ctx, const char* name,
                                      const math::Vector4& color, float w, float h)
 {
     auto* created = ctx.activeScene->TryCreateGameObject(name);
-    if (!created) return nullptr;
+    if (!created) {
+        return nullptr;
+    }
     auto& go = *created;
     go.transform.scale = { w, h, 1.0f };
     scene::UIImage img;
@@ -1154,7 +1311,9 @@ scene::GameObject* MakeUIPanel(EditorContext& ctx)
 scene::GameObject* MakeUIText(EditorContext& ctx)
 {
     auto* created = ctx.activeScene->TryCreateGameObject("Text");
-    if (!created) return nullptr;
+    if (!created) {
+        return nullptr;
+    }
     auto& go = *created;
     go.AddComponent<scene::UIText>(MakeUILabelText("Text", 42.0f, { 1.0f, 1.0f, 1.0f, 1.0f }));
     return &go;
@@ -1167,7 +1326,9 @@ scene::GameObject* MakeUIButton(EditorContext& ctx)
         return nullptr;
     }
     auto* button = MakeUIImageObject(ctx, "Button", { 0.90f, 0.90f, 0.90f, 1.0f }, 160.0f, 40.0f);
-    if (!button) return nullptr;
+    if (!button) {
+        return nullptr;
+    }
     button->AddComponent<scene::UIButton>();
     const scene::EntityID buttonId = button->GetID();
 
@@ -1186,11 +1347,15 @@ scene::GameObject* MakeUIButton(EditorContext& ctx)
 scene::GameObject* MakeUISlider(EditorContext& ctx)
 {
     auto* go = MakeUIImageObject(ctx, "Slider", { 0.35f, 0.65f, 1.0f, 1.0f }, 200.0f, 20.0f);
-    if (!go) return nullptr;
+    if (!go) {
+        return nullptr;
+    }
     scene::UISlider slider;
     slider.value = 0.5f;
     go->AddComponent<scene::UISlider>(slider);
-    if (auto* image = go->GetComponent<scene::UIImage>()) image->fillAmount = slider.value;
+    if (auto* image = go->GetComponent<scene::UIImage>()) {
+        image->fillAmount = slider.value;
+    }
     return go;
 }
 
@@ -1201,7 +1366,9 @@ scene::GameObject* MakeUIToggle(EditorContext& ctx)
         return nullptr;
     }
     auto* toggle = MakeUIImageObject(ctx, "Toggle", { 1.0f, 1.0f, 1.0f, 1.0f }, 24.0f, 24.0f);
-    if (!toggle) return nullptr;
+    if (!toggle) {
+        return nullptr;
+    }
     toggle->AddComponent<scene::UIToggle>();
     const scene::EntityID toggleId = toggle->GetID();
 
@@ -1225,7 +1392,9 @@ scene::GameObject* MakeUIScrollView(EditorContext& ctx)
         return nullptr;
     }
     auto* view = MakeUIImageObject(ctx, "Scroll View", { 0.15f, 0.15f, 0.15f, 0.90f }, 300.0f, 300.0f);
-    if (!view) return nullptr;
+    if (!view) {
+        return nullptr;
+    }
     scene::UIScrollView scroll;
     scroll.contentSize = { 300.0f, 600.0f };
     view->AddComponent<scene::UIScrollView>(scroll);
@@ -1250,7 +1419,9 @@ scene::GameObject* MakeUIScrollView(EditorContext& ctx)
 scene::GameObject* MakeUIMask(EditorContext& ctx)
 {
     auto* go = MakeUIImageObject(ctx, "Mask", { 1.0f, 1.0f, 1.0f, 1.0f }, 200.0f, 200.0f);
-    if (!go) return nullptr;
+    if (!go) {
+        return nullptr;
+    }
     go->AddComponent<scene::UIMask>();
     return go;
 }
@@ -1259,7 +1430,9 @@ scene::GameObject* MakeUIMask(EditorContext& ctx)
 scene::GameObject* MakeUIInputField(EditorContext& ctx)
 {
     auto* go = MakeUIImageObject(ctx, "Input Field", { 0.95f, 0.95f, 0.95f, 1.0f }, 240.0f, 40.0f);
-    if (!go) return nullptr;
+    if (!go) {
+        return nullptr;
+    }
     scene::UIInputField field;
     field.placeholder = "Enter text...";
     go->AddComponent<scene::UIInputField>(field);
@@ -1270,7 +1443,9 @@ scene::GameObject* MakeUIInputField(EditorContext& ctx)
 scene::GameObject* MakeUILayoutGroup(EditorContext& ctx, const char* name, scene::UILayoutAxis axis)
 {
     auto* created = ctx.activeScene->TryCreateGameObject(name);
-    if (!created) return nullptr;
+    if (!created) {
+        return nullptr;
+    }
     auto& go = *created;
     scene::UILayoutGroup layout;
     layout.axis    = axis;
@@ -1302,7 +1477,9 @@ scene::GameObject* MakeUIGridLayout(EditorContext& ctx)
 scene::GameObject* MakeUICanvasGroup(EditorContext& ctx)
 {
     auto* created = ctx.activeScene->TryCreateGameObject("Canvas Group");
-    if (!created) return nullptr;
+    if (!created) {
+        return nullptr;
+    }
     auto& go = *created;
     go.AddComponent<scene::UICanvasGroup>();
     return &go;
@@ -1435,7 +1612,7 @@ constexpr ObjectPreset kPresets[] = {
     { "ui.canvasGroup",      "UI", "Canvas Group",            "CanvasGroup。配下の UI をまとめて薄くする・触れなくする", &MakeUICanvasGroup, PresetPlace::UIElement },
 };
 
-} /// @note namespace
+} // namespace
 
 std::span<const ObjectPreset> ObjectPresetCatalog()
 {
@@ -1445,9 +1622,11 @@ std::span<const ObjectPreset> ObjectPresetCatalog()
 const ObjectPreset* FindObjectPreset(std::string_view id)
 {
     for (const ObjectPreset& preset : kPresets) {
-        if (preset.id == id) return &preset;
+        if (preset.id == id) {
+            return &preset;
+        }
     }
     return nullptr;
 }
 
-} /// @note namespace fbzz::editor
+} // namespace fbzz::editor

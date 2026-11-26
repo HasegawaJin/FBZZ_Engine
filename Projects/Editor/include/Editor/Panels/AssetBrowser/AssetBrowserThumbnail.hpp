@@ -26,14 +26,26 @@ inline constexpr size_t MAX_CACHE_ENTRIES = 192;
 {
     if (extension == ".cs" || extension == ".py" || extension == ".lua" ||
         extension == ".cpp" || extension == ".hpp" || extension == ".c" ||
-        extension == ".h" || extension == ".cc" || extension == ".cxx") return Icon::SCRIPT;
-    if (extension == ".scene") return Icon::SCENE;
-    if (extension == ".prefab") return Icon::PREFAB;
+        extension == ".h" || extension == ".cc" || extension == ".cxx") {
+        return Icon::SCRIPT;
+    }
+    if (extension == ".scene") {
+        return Icon::SCENE;
+    }
+    if (extension == ".prefab") {
+        return Icon::PREFAB;
+    }
     if (extension == ".wav" || extension == ".mp3" || extension == ".ogg" ||
-        extension == ".flac" || extension == ".synth") return Icon::AUDIO;
+        extension == ".flac" || extension == ".synth") {
+        return Icon::AUDIO;
+    }
     if (extension == ".anim" || extension == ".animcontroller" || extension == ".animctrl" ||
-        extension == ".mask" || extension == ".sequence") return Icon::ANIMATION;
-    if (extension == ".hlsl" || extension == ".hlsli") return Icon::SHADER;
+        extension == ".mask" || extension == ".sequence") {
+        return Icon::ANIMATION;
+    }
+    if (extension == ".hlsl" || extension == ".hlsli") {
+        return Icon::SHADER;
+    }
     return Icon::NONE;
 }
 
@@ -52,16 +64,16 @@ inline constexpr size_t MAX_CACHE_ENTRIES = 192;
 }
 
 struct Image {
-    State state = State::FAILED;
-    uint32_t width = 0;
-    uint32_t height = 0;
-    uint32_t sourceWidth = 0;
-    uint32_t sourceHeight = 0;
-    std::vector<uint8_t> rgba;
+    State state = State::FAILED; ///< サムネイル画像の取得結果または未対応の状態。
+    uint32_t width = 0; ///< 縮小後の画像の幅 [px]。
+    uint32_t height = 0; ///< 縮小後の画像の高さ [px]。
+    uint32_t sourceWidth = 0; ///< 元の画像の幅 [px]。
+    uint32_t sourceHeight = 0; ///< 元の画像の高さ [px]。
+    std::vector<uint8_t> rgba; ///< サムネイル画像の RGBA 8 ビット画素を行優先で保持する。
 };
 
 /// @note CPU only; the caller creates and releases GPU resources on the renderer thread.
 /// @note Encoded file and decoded pixel limits are checked before allocation. Cubemap/array/volume DDS are unsupported.
 [[nodiscard]] Image Decode(const std::filesystem::path& path);
 
-} /// @note namespace fbzz::editor::assetthumbnail
+} // namespace fbzz::editor::assetthumbnail

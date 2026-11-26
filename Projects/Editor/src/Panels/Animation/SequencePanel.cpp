@@ -46,9 +46,9 @@ using asset::SequenceTrackType;
 int ChannelCount(SequenceTrackType type)
 {
     switch (type) {
-    /// @note position / rotation / scale
+    // position / rotation / scale
     case SequenceTrackType::Transform: return 3;
-    /// @note float / v2 / v3 / v4 / int / bool
+    // float / v2 / v3 / v4 / int / bool
     case SequenceTrackType::Property:  return 6;
     default:                           return 1;
     }
@@ -111,12 +111,18 @@ void WithChannel(SequenceTrack& track, int channel, Fn&& fn)
 {
     switch (track.type) {
     case SequenceTrackType::Animation:
-        if (channel == 0) fn(track.animationClips);
+        if (channel == 0) {
+            fn(track.animationClips);
+        }
         break;
     case SequenceTrackType::Transform:
-        if (channel == 0)      fn(track.positions);
-        else if (channel == 1) fn(track.rotations);
-        else if (channel == 2) fn(track.scales);
+        if (channel == 0) {
+            fn(track.positions);
+        } else if (channel == 1) {
+            fn(track.rotations);
+        } else if (channel == 2) {
+            fn(track.scales);
+        }
         break;
     case SequenceTrackType::Property:
         switch (channel) {
@@ -130,16 +136,24 @@ void WithChannel(SequenceTrack& track, int channel, Fn&& fn)
         }
         break;
     case SequenceTrackType::Activation:
-        if (channel == 0) fn(track.ranges);
+        if (channel == 0) {
+            fn(track.ranges);
+        }
         break;
     case SequenceTrackType::Audio:
-        if (channel == 0) fn(track.audioClips);
+        if (channel == 0) {
+            fn(track.audioClips);
+        }
         break;
     case SequenceTrackType::VFX:
-        if (channel == 0) fn(track.vfxClips);
+        if (channel == 0) {
+            fn(track.vfxClips);
+        }
         break;
     case SequenceTrackType::Event:
-        if (channel == 0) fn(track.eventKeys);
+        if (channel == 0) {
+            fn(track.eventKeys);
+        }
         break;
     }
 }
@@ -154,15 +168,21 @@ void WithChannel(const SequenceTrack& track, int channel, Fn&& fn)
 template<typename Element>
 double ElementStart(const Element& element)
 {
-    if constexpr (requires { element.time; }) return element.time;
-    else                                      return element.start;
+    if constexpr (requires { element.time; }) {
+        return element.time;
+    } else {
+        return element.start;
+    }
 }
 
 template<typename Element>
 void SetElementStart(Element& element, double value)
 {
-    if constexpr (requires { element.time; }) element.time  = value;
-    else                                      element.start = value;
+    if constexpr (requires { element.time; }) {
+        element.time  = value;
+    } else {
+        element.start = value;
+    }
 }
 
 std::size_t ChannelSize(const SequenceTrack& track, int channel)
@@ -184,11 +204,13 @@ ItemSpan SpanOf(const SequenceTrack& track, int channel, std::size_t index, doub
     ItemSpan span;
     switch (track.type) {
     case SequenceTrackType::Animation: {
-        if (index >= track.animationClips.size()) break;
+        if (index >= track.animationClips.size()) {
+            break;
+        }
         const auto& clip = track.animationClips[index];
         span.start = clip.start;
-        /// @note 尺を書いていないクリップは次のクリップの頭まで。最後なら演出の終わりまで。
-        /// @note       実際のクリップ長は Animator がロードしないと分からないので、ここでは出さない。
+        // 尺を書いていないクリップは次のクリップの頭まで。最後なら演出の終わりまで。
+        // 実際のクリップ長は Animator がロードしないと分からないので、ここでは出さない。
         span.end = clip.duration > 0.0 ? clip.start + clip.duration
                  : (index + 1 < track.animationClips.size()
                         ? track.animationClips[index + 1].start
@@ -196,21 +218,27 @@ ItemSpan SpanOf(const SequenceTrack& track, int channel, std::size_t index, doub
         break;
     }
     case SequenceTrackType::Activation: {
-        if (index >= track.ranges.size()) break;
+        if (index >= track.ranges.size()) {
+            break;
+        }
         span.start = track.ranges[index].start;
         span.end   = track.ranges[index].end;
         break;
     }
     case SequenceTrackType::Audio: {
-        if (index >= track.audioClips.size()) break;
+        if (index >= track.audioClips.size()) {
+            break;
+        }
         const auto& clip = track.audioClips[index];
         span.start = clip.start;
-        /// @note one-shot は「その瞬間に鳴る」だけなので点。帯にすると尺を持つように見える。
+        // one-shot は「その瞬間に鳴る」だけなので点。帯にすると尺を持つように見える。
         span.end = clip.loop ? (clip.end > clip.start ? clip.end : sequenceDuration) : -1.0;
         break;
     }
     case SequenceTrackType::VFX: {
-        if (index >= track.vfxClips.size()) break;
+        if (index >= track.vfxClips.size()) {
+            break;
+        }
         span.start = track.vfxClips[index].start;
         span.end   = track.vfxClips[index].end > track.vfxClips[index].start
                    ? track.vfxClips[index].end : sequenceDuration;
@@ -218,7 +246,9 @@ ItemSpan SpanOf(const SequenceTrack& track, int channel, std::size_t index, doub
     }
     default:
         WithChannel(track, channel, [&](const auto& values) {
-            if (index < values.size()) span.start = ElementStart(values[index]);
+            if (index < values.size()) {
+                span.start = ElementStart(values[index]);
+            }
         });
         break;
     }
@@ -240,20 +270,25 @@ void MoveItem(SequenceTrack& track, int channel, std::size_t index, double newSt
         if (index < track.audioClips.size()) {
             const double length = track.audioClips[index].end - track.audioClips[index].start;
             track.audioClips[index].start = clamped;
-            if (track.audioClips[index].loop && length > 0.0)
+            if (track.audioClips[index].loop && length > 0.0) {
                 track.audioClips[index].end = clamped + length;
+            }
         }
         break;
     case SequenceTrackType::VFX:
         if (index < track.vfxClips.size()) {
             const double length = track.vfxClips[index].end - track.vfxClips[index].start;
             track.vfxClips[index].start = clamped;
-            if (length > 0.0) track.vfxClips[index].end = clamped + length;
+            if (length > 0.0) {
+                track.vfxClips[index].end = clamped + length;
+            }
         }
         break;
     default:
         WithChannel(track, channel, [&](auto& values) {
-            if (index < values.size()) SetElementStart(values[index], clamped);
+            if (index < values.size()) {
+                SetElementStart(values[index], clamped);
+            }
         });
         break;
     }
@@ -302,8 +337,9 @@ void SortChannel(SequenceTrack& track, int channel)
 void EraseItem(SequenceTrack& track, int channel, std::size_t index)
 {
     WithChannel(track, channel, [&](auto& values) {
-        if (index < values.size())
+        if (index < values.size()) {
             values.erase(values.begin() + static_cast<std::ptrdiff_t>(index));
+        }
     });
 }
 
@@ -349,8 +385,8 @@ void InsertItem(SequenceTrack& track, int channel, double time)
             Element element{};
             SetElementStart(element, time);
             values.push_back(std::move(element));
-            /// @note ElementStart で比べる: この generic lambda は switch の全分岐ぶん実体化されるため、
-            /// @note       キー型にしか無い .time を直接書くと clip 型で落ちる。
+            // ElementStart で比べる: この generic lambda は switch の全分岐ぶん実体化されるため、
+            // キー型にしか無い .time を直接書くと clip 型で落ちる。
             std::stable_sort(values.begin(), values.end(),
                              [](const Element& a, const Element& b) {
                                  return ElementStart(a) < ElementStart(b);
@@ -364,11 +400,13 @@ std::string TrackRowLabel(const SequenceTrack& track)
 {
     std::string label = track.name.empty()
         ? std::string(asset::SequenceTrackTypeName(track.type)) : track.name;
-    if (!track.binding.empty()) label += "  [" + track.binding + "]";
+    if (!track.binding.empty()) {
+        label += "  [" + track.binding + "]";
+    }
     return label;
 }
 
-} /// @note namespace
+} // namespace
 
 /// @name ドキュメント
 
@@ -400,13 +438,16 @@ bool SequencePanel::Load(EditorContext& ctx, const std::string& path)
 
 bool SequencePanel::Save()
 {
-    if (m_path.empty()) return false;
-    /// @note ディスクへ出す前に必ず時刻順へ整える。ドラッグ中は並べ替えずに済ませているため、
-    /// @note       保存だけが「並びの崩れたまま書かれる」経路になりうる。
+    if (m_path.empty()) {
+        return false;
+    }
+    // ディスクへ出す前に必ず時刻順へ整える。ドラッグ中は並べ替えずに済ませているため、
+    // 保存だけが「並びの崩れたまま書かれる」経路になりうる。
     auto saved = m_asset;
     for (auto& track : saved.tracks)
-        for (int channel = 0; channel < ChannelCount(track.type); ++channel)
+        for (int channel = 0; channel < ChannelCount(track.type); ++channel) {
             SortChannel(track, channel);
+        }
 
     if (!asset::SaveSequenceAsset(m_path, saved)) {
         m_error = "Sequence を保存できませんでした: " + m_path;
@@ -439,9 +480,14 @@ void SequencePanel::RequestDocumentAction(EditorContext& ctx, const char* action
 {
     const bool close = std::string_view(action) == "close";
     const auto change = [this, &ctx, close, path, expected = m_path] {
-        if (m_path != expected) return;
-        if (close) CloseDocument(ctx);
-        else (void)Load(ctx, path.empty() ? m_path : path);
+        if (m_path != expected) {
+            return;
+        }
+        if (close) {
+            CloseDocument(ctx);
+        } else {
+            (void)Load(ctx, path.empty() ? m_path : path);
+        }
     };
     if (!m_dirty) {
         change();
@@ -450,7 +496,9 @@ void SequencePanel::RequestDocumentAction(EditorContext& ctx, const char* action
     ModalDialog::OpenUnsavedChanges(LOCT("Unsaved Sequence"),
         m_assetPath + "\n" + LOCT("Save changes before continuing?"),
         [this, change] {
-            if (!Save()) return false;
+            if (!Save()) {
+                return false;
+            }
             change();
             return true;
         }, change);
@@ -460,13 +508,17 @@ void SequencePanel::PushUndo()
 {
     constexpr std::size_t kUndoLimit = 96;
     m_undoStack.push_back(m_asset);
-    if (m_undoStack.size() > kUndoLimit) m_undoStack.erase(m_undoStack.begin());
+    if (m_undoStack.size() > kUndoLimit) {
+        m_undoStack.erase(m_undoStack.begin());
+    }
     m_redoStack.clear();
 }
 
 void SequencePanel::Undo()
 {
-    if (m_undoStack.empty()) return;
+    if (m_undoStack.empty()) {
+        return;
+    }
     m_redoStack.push_back(m_asset);
     m_asset = std::move(m_undoStack.back());
     m_undoStack.pop_back();
@@ -477,7 +529,9 @@ void SequencePanel::Undo()
 
 void SequencePanel::Redo()
 {
-    if (m_redoStack.empty()) return;
+    if (m_redoStack.empty()) {
+        return;
+    }
     m_undoStack.push_back(m_asset);
     m_asset = std::move(m_redoStack.back());
     m_redoStack.pop_back();
@@ -493,9 +547,11 @@ double SequencePanel::Duration() const
 
 double SequencePanel::ApplySnap(double seconds) const
 {
-    /// @note Shift でスナップを一時反転する (VFX Editor のタイムラインと同じ約束)。
+    // Shift でスナップを一時反転する (VFX Editor のタイムラインと同じ約束)。
     const bool snapping = m_snap != ImGui::GetIO().KeyShift;
-    if (!snapping || m_snapStep <= 0.0f) return seconds;
+    if (!snapping || m_snapStep <= 0.0f) {
+        return seconds;
+    }
     const double step = static_cast<double>(m_snapStep);
     return std::round(seconds / step) * step;
 }
@@ -506,28 +562,44 @@ scene::SequencePlayerComponent* SequencePanel::ResolvePreviewPlayer(
     EditorContext& ctx, scene::EntityID& outEntity) const
 {
     outEntity = scene::EntityID::INVALID;
-    if (!ctx.activeScene) return nullptr;
+    if (!ctx.activeScene) {
+        return nullptr;
+    }
 
     const auto accept = [&](scene::GameObject* go) -> scene::SequencePlayerComponent* {
-        if (!go || !go->IsValid()) return nullptr;
+        if (!go || !go->IsValid()) {
+            return nullptr;
+        }
         auto* player = go->GetComponent<scene::SequencePlayerComponent>();
-        if (!player) return nullptr;
+        if (!player) {
+            return nullptr;
+        }
         outEntity = go->GetID();
         return player;
     };
 
     if (m_pinnedEntity.IsValid() && ctx.activeScene->IsValid(m_pinnedEntity)) {
-        if (auto* player = accept(ctx.activeScene->GetGameObject(m_pinnedEntity))) return player;
+        if (auto* player = accept(ctx.activeScene->GetGameObject(m_pinnedEntity))) {
+            return player;
+        }
     }
-    if (auto* player = accept(ctx.GetSelectedGO())) return player;
+    if (auto* player = accept(ctx.GetSelectedGO())) {
+        return player;
+    }
 
-    /// @note 最後に、この .sequence を指している Player を探す。「今いじっているオブジェクト」を
-    /// @note       優先しないと、同じ演出を複数の敵が持つ盤面でプレビュー先が勝手に移る。
-    if (m_assetPath.empty()) return nullptr;
+    // 最後に、この .sequence を指している Player を探す。「今いじっているオブジェクト」を
+    // 優先しないと、同じ演出を複数の敵が持つ盤面でプレビュー先が勝手に移る。
+    if (m_assetPath.empty()) {
+        return nullptr;
+    }
     for (auto* go : ctx.activeScene->FindObjectsOfType<scene::SequencePlayerComponent>()) {
-        if (!go) continue;
+        if (!go) {
+            continue;
+        }
         auto* player = go->GetComponent<scene::SequencePlayerComponent>();
-        if (!player || NormalizeAssetPath(player->sequencePath) != m_assetPath) continue;
+        if (!player || NormalizeAssetPath(player->sequencePath) != m_assetPath) {
+            continue;
+        }
         outEntity = go->GetID();
         return player;
     }
@@ -539,16 +611,22 @@ void SequencePanel::PushPreview(EditorContext& ctx)
     scene::EntityID entity = scene::EntityID::INVALID;
     scene::SequencePlayerComponent* player = ResolvePreviewPlayer(ctx, entity);
 
-    /// @note プレビュー先が移ったら、前の相手を必ず元へ戻してから乗り換える。
-    if (m_previewEntity.IsValid() && m_previewEntity != entity) ReleasePreview(ctx);
-    if (!player) { m_previewEntity = scene::EntityID::INVALID; return; }
+    // プレビュー先が移ったら、前の相手を必ず元へ戻してから乗り換える。
+    if (m_previewEntity.IsValid() && m_previewEntity != entity) {
+        ReleasePreview(ctx);
+    }
+    if (!player) {
+        m_previewEntity = scene::EntityID::INVALID;
+        return;
+    }
 
     if (m_pushedRevision != m_localRevision || !player->authoringSequence) {
-        /// @note 版数を進めると SequenceSystem が「触ったものを戻して撮り直す」。
+        // 版数を進めると SequenceSystem が「触ったものを戻して撮り直す」。
         auto preview = m_asset;
         for (auto& track : preview.tracks)
-            for (int channel = 0; channel < ChannelCount(track.type); ++channel)
+            for (int channel = 0; channel < ChannelCount(track.type); ++channel) {
                 SortChannel(track, channel);
+            }
         player->authoringSequence = std::make_shared<const asset::SequenceAsset>(std::move(preview));
         ++player->authoringRevision;
         m_pushedRevision = m_localRevision;
@@ -566,7 +644,7 @@ void SequencePanel::ReleasePreview(EditorContext& ctx)
     if (ctx.activeScene->IsValid(m_previewEntity)) {
         if (auto* go = ctx.activeScene->GetGameObject(m_previewEntity)) {
             if (auto* player = go->GetComponent<scene::SequencePlayerComponent>()) {
-                /// @note scrub を負へ戻すと SequenceSystem が復帰を 1 回だけ流す。
+                // scrub を負へ戻すと SequenceSystem が復帰を 1 回だけ流す。
                 player->editorScrubTime = -1.0f;
                 player->authoringSequence.reset();
                 ++player->authoringRevision;
@@ -579,20 +657,28 @@ void SequencePanel::ReleasePreview(EditorContext& ctx)
 
 void SequencePanel::OnShutdown()
 {
-    /// @note ここでは EditorContext を貰えない。scrub は保存されないうえ、
-    /// @note       Play/Stop の往復でコンポーネントごと作り直されるため残留しない。
+    // ここでは EditorContext を貰えない。scrub は保存されないうえ、
+    // Play/Stop の往復でコンポーネントごと作り直されるため残留しない。
     m_previewEntity = scene::EntityID::INVALID;
 }
 
 void SequencePanel::OnUpdate(EditorContext& ctx, float dt)
 {
     const bool inPlay = ctx.playMode && !ctx.playMode->IsInEditor();
-    if (m_path.empty()) return;
-    /// @note Play 中はシーンの権威がゲーム側にある。そこへスクラブを重ねると、
-    /// @note       演出が動いているのか自分が動かしているのか区別できなくなる。
-    if (inPlay) { m_playing = false; ReleasePreview(ctx); return; }
+    if (m_path.empty()) {
+        return;
+    }
+    // Play 中はシーンの権威がゲーム側にある。そこへスクラブを重ねると、
+    // 演出が動いているのか自分が動かしているのか区別できなくなる。
+    if (inPlay) {
+        m_playing = false;
+        ReleasePreview(ctx);
+        return;
+    }
     if (!m_apiPreview && (!visible || !WasContentRendered())) {
-        if (m_previewEntity.IsValid()) ReleasePreview(ctx);
+        if (m_previewEntity.IsValid()) {
+            ReleasePreview(ctx);
+        }
         return;
     }
 
@@ -606,16 +692,20 @@ void SequencePanel::OnUpdate(EditorContext& ctx, float dt)
             m_playing  = false;
         }
     }
-    if (m_apiPreview && m_previewing && !inPlay) PushPreview(ctx);
-    else if (inPlay && m_previewEntity.IsValid()) ReleasePreview(ctx);
+    if (m_apiPreview && m_previewing && !inPlay) {
+        PushPreview(ctx);
+    } else if (inPlay && m_previewEntity.IsValid()) {
+        ReleasePreview(ctx);
+    }
 }
 
 void SequencePanel::OnAfterEnd(EditorContext& ctx)
 {
-    /// @note ウィンドウを閉じた / タブが隠れたフレームでもここは呼ばれる。
-    /// @note       閉じた瞬間にスクラブを畳まないと、編集用の姿勢がシーンに残ったままになる。
-    if (!m_apiPreview && (!visible || !WasContentRendered()) && m_previewEntity.IsValid())
+    // ウィンドウを閉じた / タブが隠れたフレームでもここは呼ばれる。
+    // 閉じた瞬間にスクラブを畳まないと、編集用の姿勢がシーンに残ったままになる。
+    if (!m_apiPreview && (!visible || !WasContentRendered()) && m_previewEntity.IsValid()) {
         ReleasePreview(ctx);
+    }
 }
 
 /// @name ツールバー
@@ -626,25 +716,35 @@ void SequencePanel::DrawToolbar(EditorContext& ctx)
     ImGui::SetNextItemWidth(std::min(360.0f, ImGui::GetContentRegionAvail().x * 0.8f));
     if (widgets::AssetPathField("Sequence", path, ".sequence", ctx.projectRoot)) {
         if (!path.empty() && path != m_path) {
-            /// @note 別の演出へ移る前に、今出しているスクラブを畳んで姿勢を戻す。
+            // 別の演出へ移る前に、今出しているスクラブを畳んで姿勢を戻す。
             RequestDocumentAction(ctx, "open", path);
         }
     }
 
     ImGui::BeginDisabled(m_path.empty());
-    if (ImGui::Button("Save")) (void)Save();
+    if (ImGui::Button("Save")) {
+        (void)Save();
+    }
     ImGui::SameLine();
-    if (ImGui::Button("Reload")) RequestDocumentAction(ctx, "reload");
+    if (ImGui::Button("Reload")) {
+        RequestDocumentAction(ctx, "reload");
+    }
     ImGui::SameLine();
-    if (ImGui::Button("Close")) RequestDocumentAction(ctx, "close");
+    if (ImGui::Button("Close")) {
+        RequestDocumentAction(ctx, "close");
+    }
     ImGui::EndDisabled();
     ImGui::SameLine();
     ImGui::BeginDisabled(m_undoStack.empty());
-    if (ImGui::Button("Undo")) Undo();
+    if (ImGui::Button("Undo")) {
+        Undo();
+    }
     ImGui::EndDisabled();
     ImGui::SameLine();
     ImGui::BeginDisabled(m_redoStack.empty());
-    if (ImGui::Button("Redo")) Redo();
+    if (ImGui::Button("Redo")) {
+        Redo();
+    }
     ImGui::EndDisabled();
 
     if (m_dirty) {
@@ -652,9 +752,11 @@ void SequencePanel::DrawToolbar(EditorContext& ctx)
         ImGui::TextColored(ImVec4(1.0f, 0.80f, 0.35f, 1.0f), "*未保存");
     }
 
-    if (m_path.empty()) return;
+    if (m_path.empty()) {
+        return;
+    }
 
-    /// @name 演出そのものの設定
+    // 演出そのものの設定
     float duration = static_cast<float>(m_asset.duration);
     ImGui::SetNextItemWidth(90.0f);
     if (ImGui::DragFloat("Duration", &duration, 0.05f, 0.0f, 600.0f, "%.2fs")) {
@@ -683,11 +785,15 @@ void SequencePanel::DrawToolbar(EditorContext& ctx)
     }
 
     ImGui::SameLine();
-    if (ImGui::Button("+ Track")) ImGui::OpenPopup("##SequenceAddTrack");
+    if (ImGui::Button("+ Track")) {
+        ImGui::OpenPopup("##SequenceAddTrack");
+    }
     if (ImGui::BeginPopup("##SequenceAddTrack")) {
         for (int i = 0; i <= static_cast<int>(SequenceTrackType::Event); ++i) {
             const auto type = static_cast<SequenceTrackType>(i);
-            if (ImGui::MenuItem(asset::SequenceTrackTypeName(type))) AddTrack(type);
+            if (ImGui::MenuItem(asset::SequenceTrackTypeName(type))) {
+                AddTrack(type);
+            }
         }
         ImGui::EndPopup();
     }
@@ -698,21 +804,35 @@ void SequencePanel::DrawTransport(EditorContext& ctx)
     const bool inPlay = ctx.playMode && !ctx.playMode->IsInEditor();
 
     if (ImGui::Checkbox("Preview", &m_previewing)) {
-        if (!m_previewing) ReleasePreview(ctx);
+        if (!m_previewing) {
+            ReleasePreview(ctx);
+        }
     }
     ImGui::SetItemTooltip("スクラブした絵をシーンへ出す。合図 (Event / Audio / VFX の発火) は "
                           "巻き戻せないため、プレビューでは鳴らない");
 
     ImGui::SameLine();
-    if (ImGui::Button("|<")) { m_playhead = 0.0; m_playing = false; }
+    if (ImGui::Button("|<")) {
+        m_playhead = 0.0;
+        m_playing = false;
+    }
     ImGui::SameLine();
-    if (ImGui::Button("<|")) m_playhead = (std::max)(m_playhead - kScrubStep, 0.0);
+    if (ImGui::Button("<|")) {
+        m_playhead = (std::max)(m_playhead - kScrubStep, 0.0);
+    }
     ImGui::SameLine();
-    if (ImGui::Button(m_playing ? "||" : ">")) m_playing = !m_playing;
+    if (ImGui::Button(m_playing ? "||" : ">")) {
+        m_playing = !m_playing;
+    }
     ImGui::SameLine();
-    if (ImGui::Button("|>")) m_playhead = (std::min)(m_playhead + kScrubStep, Duration());
+    if (ImGui::Button("|>")) {
+        m_playhead = (std::min)(m_playhead + kScrubStep, Duration());
+    }
     ImGui::SameLine();
-    if (ImGui::Button(">|")) { m_playhead = Duration(); m_playing = false; }
+    if (ImGui::Button(">|")) {
+        m_playhead = Duration();
+        m_playing = false;
+    }
 
     ImGui::SameLine();
     ImGui::SetNextItemWidth(80.0f);
@@ -764,7 +884,7 @@ void SequencePanel::DrawTimeline(EditorContext& ctx)
     draw->AddRectFilled(origin, { origin.x + availableWidth, origin.y + contentHeight },
                         IM_COL32(20, 23, 30, 255));
 
-    /// @note 目盛り
+    // 目盛り
     for (int i = 0; i <= 10; ++i) {
         const float ratio = static_cast<float>(i) / 10.0f;
         const float x = trackLeft + trackWidth * ratio;
@@ -800,11 +920,13 @@ void SequencePanel::DrawTimeline(EditorContext& ctx)
                                                : IM_COL32(180, 188, 205, 255);
         draw->AddText({ origin.x + 6.0f, rowTop + 4.0f }, labelColor, label.c_str());
 
-        /// @note 行に乗っていれば、項目の上でなくてもそのトラックを指しているものとして扱う。
-        /// @note       キーを打つ操作は「その行の、その時刻で右クリック」なので、既存の項目の上でしか
-        /// @note       行を掴めないと最初の 1 個が置けない。
+        // 行に乗っていれば、項目の上でなくてもそのトラックを指しているものとして扱う。
+        // キーを打つ操作は「その行の、その時刻で右クリック」なので、既存の項目の上でしか
+        // 行を掴めないと最初の 1 個が置けない。
         const bool rowHot = canvasHovered && mouse.y >= rowTop && mouse.y < rowTop + kRowHeight;
-        if (rowHot) hovered = { static_cast<int>(t), 0, -1 };
+        if (rowHot) {
+            hovered = { static_cast<int>(t), 0, -1 };
+        }
 
         const int channels = ChannelCount(track.type);
         for (int c = 0; c < channels; ++c) {
@@ -825,7 +947,7 @@ void SequencePanel::DrawTimeline(EditorContext& ctx)
                                   3.0f, 0, selected ? 2.0f : 1.0f);
                     if (rowHot && mouse.x >= left - 4.0f && mouse.x <= right + 4.0f) {
                         hovered = { static_cast<int>(t), c, static_cast<int>(i) };
-                        /// @note 右端 6px は尺のハンドル。掴み分けはカーソルでも示す。
+                        // 右端 6px は尺のハンドル。掴み分けはカーソルでも示す。
                         hoveredKind = (mouse.x >= right - 6.0f) ? 1 : 0;
                     }
                 } else {
@@ -835,7 +957,7 @@ void SequencePanel::DrawTimeline(EditorContext& ctx)
                         hovered = { static_cast<int>(t), c, static_cast<int>(i) };
                         hoveredKind = 0;
                     }
-                    /// @note 菱形。帯と形で区別が付くので、色が同系でも取り違えない。
+                    // 菱形。帯と形で区別が付くので、色が同系でも取り違えない。
                     const ImU32 keyColor = (selected || hot)
                         ? IM_COL32(255, 235, 150, 255) : color;
                     draw->AddQuadFilled({ x, centerY - kKeyRadius }, { x + kKeyRadius, centerY },
@@ -850,17 +972,21 @@ void SequencePanel::DrawTimeline(EditorContext& ctx)
         ImGui::SetMouseCursor(hoveredKind == 1 ? ImGuiMouseCursor_ResizeEW
                                                : ImGuiMouseCursor_ResizeAll);
 
-    /// @note 再生ヘッド
+    // 再生ヘッド
     const float headX = timeToX(m_playhead);
     draw->AddLine({ headX, origin.y }, { headX, origin.y + contentHeight },
                   IM_COL32(255, 96, 96, 220), 1.5f);
 
-    /// @name 入力
+    // 入力
     const bool overRuler = canvasHovered && mouse.y < origin.y + kRulerHeight;
-    if (overRuler && ImGui::IsMouseClicked(ImGuiMouseButton_Left)) m_scrubbingRuler = true;
-    if (!ImGui::IsMouseDown(ImGuiMouseButton_Left)) m_scrubbingRuler = false;
+    if (overRuler && ImGui::IsMouseClicked(ImGuiMouseButton_Left)) {
+        m_scrubbingRuler = true;
+    }
+    if (!ImGui::IsMouseDown(ImGuiMouseButton_Left)) {
+        m_scrubbingRuler = false;
+    }
     if (m_scrubbingRuler) {
-        /// @note 掴んだら離すまで追う。行の上へ外れた瞬間に止まると、掴み直しが要る。
+        // 掴んだら離すまで追う。行の上へ外れた瞬間に止まると、掴み直しが要る。
         m_playhead = ApplySnap(xToTime(mouse.x));
         m_playing  = false;
     }
@@ -881,8 +1007,8 @@ void SequencePanel::DrawTimeline(EditorContext& ctx)
 
     if (m_drag.HasItem()) {
         if (!ImGui::IsMouseDown(ImGuiMouseButton_Left)) {
-            /// @note 掴んでいる間は並べ替えない (添字が動くと掴んだ対象が入れ替わる)。
-            /// @note       離した時点で 1 回だけ整える。
+            // 掴んでいる間は並べ替えない (添字が動くと掴んだ対象が入れ替わる)。
+            // 離した時点で 1 回だけ整える。
             SortChannelKeepingSelection(m_drag.track, m_drag.channel, m_dragLastValue);
             m_drag = {};
             m_dragKind = -1;
@@ -894,16 +1020,19 @@ void SequencePanel::DrawTimeline(EditorContext& ctx)
                                             static_cast<std::size_t>(m_drag.index), span);
             const double before = m_dragKind == 1 ? current.end : current.start;
             if (std::fabs(next - before) > 1.0e-6) {
-                /// @note 1 操作分をまとめて戻せるよう、動き始めた瞬間に 1 回だけ撮る。
-                if (!m_dragPushedUndo) { PushUndo(); m_dragPushedUndo = true; }
-                if (m_dragKind == 1)
+                // 1 操作分をまとめて戻せるよう、動き始めた瞬間に 1 回だけ撮る。
+                if (!m_dragPushedUndo) {
+                    PushUndo();
+                    m_dragPushedUndo = true;
+                }
+                if (m_dragKind == 1) {
                     ResizeItem(track, static_cast<std::size_t>(m_drag.index), next);
-                else
+                } else
                     MoveItem(track, m_drag.channel,
                              static_cast<std::size_t>(m_drag.index), next);
                 MarkEdited();
             }
-            /// @note 並べ替え後に選び直すための手掛かり。移動なら新しい開始時刻そのもの。
+            // 並べ替え後に選び直すための手掛かり。移動なら新しい開始時刻そのもの。
             m_dragLastValue = m_dragKind == 1
                 ? SpanOf(track, m_drag.channel,
                          static_cast<std::size_t>(m_drag.index), span).start
@@ -912,7 +1041,7 @@ void SequencePanel::DrawTimeline(EditorContext& ctx)
         }
     }
 
-    /// @note 行の右クリックで、その時刻へ項目を足す / トラックを操作する。
+    // 行の右クリックで、その時刻へ項目を足す / トラックを操作する。
     if (canvasHovered && ImGui::IsMouseClicked(ImGuiMouseButton_Right) && !overRuler) {
         m_selection    = hovered;
         m_contextTrack = hovered.track;
@@ -928,7 +1057,9 @@ void SequencePanel::DrawTrackContextMenu(EditorContext& ctx)
         ImGui::OpenPopup("##SequenceTrackMenu");
         m_openTrackMenu = false;
     }
-    if (!ImGui::BeginPopup("##SequenceTrackMenu")) return;
+    if (!ImGui::BeginPopup("##SequenceTrackMenu")) {
+        return;
+    }
 
     if (m_contextTrack < 0 || m_contextTrack >= static_cast<int>(m_asset.tracks.size())) {
         ImGui::EndPopup();
@@ -941,8 +1072,9 @@ void SequencePanel::DrawTrackContextMenu(EditorContext& ctx)
         char label[64];
         std::snprintf(label, sizeof(label), "Add %s Key",
                       channels > 1 ? ChannelName(track.type, c) : "");
-        if (ImGui::MenuItem(channels > 1 ? label : "Add Item"))
+        if (ImGui::MenuItem(channels > 1 ? label : "Add Item")) {
             AddItemAt(track, c, m_contextTime);
+        }
     }
 
     if (m_selection.HasItem() && m_selection.track == m_contextTrack) {
@@ -970,7 +1102,9 @@ void SequencePanel::DrawTrackContextMenu(EditorContext& ctx)
             std::move(copy));
         MarkEdited();
     }
-    if (ImGui::MenuItem("Delete Track")) DeleteTrack(m_contextTrack);
+    if (ImGui::MenuItem("Delete Track")) {
+        DeleteTrack(m_contextTrack);
+    }
     ImGui::EndPopup();
 }
 
@@ -981,7 +1115,9 @@ void SequencePanel::DrawTrackHeaderFields(SequenceTrack& track)
     const auto editString = [&](const char* label, std::string& value) {
         const bool changed = widgets::InputString(label, value);
         SnapshotOnActivate();
-        if (changed) MarkEdited();
+        if (changed) {
+            MarkEdited();
+        }
     };
     const auto editEnum = [&](const char* label, auto& value, const char* items) {
         int current = static_cast<int>(value);
@@ -999,9 +1135,15 @@ void SequencePanel::DrawTrackHeaderFields(SequenceTrack& track)
                           "$self = Player を持つ GameObject 自身。\n"
                           "空にできるのは Event トラックだけ (盤面全体への合図になる)");
 
-    if (ImGui::Checkbox("Muted", &track.muted)) { PushUndo(); MarkEdited(); }
+    if (ImGui::Checkbox("Muted", &track.muted)) {
+        PushUndo();
+        MarkEdited();
+    }
     ImGui::SameLine();
-    if (ImGui::Checkbox("Restore On Stop", &track.restoreOnStop)) { PushUndo(); MarkEdited(); }
+    if (ImGui::Checkbox("Restore On Stop", &track.restoreOnStop)) {
+        PushUndo();
+        MarkEdited();
+    }
     ImGui::SetItemTooltip("停止時に、このトラックが触った値を元へ戻す");
 
     switch (track.type) {
@@ -1055,10 +1197,12 @@ void SequencePanel::DrawSelectedItemFields(SequenceTrack& track)
             m_pendingSortTime    = value;
         }
     };
-    /// @note 値の編集はどれも「掴んだ瞬間に 1 回撮って、変わったら dirty」で同じ形になる。
+    // 値の編集はどれも「掴んだ瞬間に 1 回撮って、変わったら dirty」で同じ形になる。
     const auto edited = [&](bool changed) {
         SnapshotOnActivate();
-        if (changed) MarkEdited();
+        if (changed) {
+            MarkEdited();
+        }
         return changed;
     };
     const auto editString = [&](const char* label, std::string& value) {
@@ -1067,7 +1211,9 @@ void SequencePanel::DrawSelectedItemFields(SequenceTrack& track)
 
     switch (track.type) {
     case SequenceTrackType::Animation: {
-        if (index >= track.animationClips.size()) break;
+        if (index >= track.animationClips.size()) {
+            break;
+        }
         auto& clip = track.animationClips[index];
         editTime("Start", clip.start);
         editTime("Duration", clip.duration);
@@ -1078,7 +1224,10 @@ void SequencePanel::DrawSelectedItemFields(SequenceTrack& track)
         }
         editString("Clip", clip.clipName);
         edited(ImGui::DragFloat("Speed", &clip.speed, 0.01f, -4.0f, 4.0f, "%.2f"));
-        if (ImGui::Checkbox("Loop", &clip.loop)) { PushUndo(); MarkEdited(); }
+        if (ImGui::Checkbox("Loop", &clip.loop)) {
+            PushUndo();
+            MarkEdited();
+        }
         editTime("Clip In", clip.clipIn);
         edited(ImGui::DragFloat("Blend In", &clip.blendIn, 0.005f, 0.0f, 2.0f, "%.3fs"));
         edited(ImGui::DragFloat("Blend Out", &clip.blendOut, 0.005f, 0.0f, 2.0f, "%.3fs"));
@@ -1086,16 +1235,21 @@ void SequencePanel::DrawSelectedItemFields(SequenceTrack& track)
     }
     case SequenceTrackType::Transform: {
         if (m_selection.channel == 1) {
-            if (index >= track.rotations.size()) break;
+            if (index >= track.rotations.size()) {
+                break;
+            }
             auto& key = track.rotations[index];
             editTime("Time", key.time);
             math::Vector3 euler = widgets::QuatToEulerDeg(key.value);
-            if (edited(ImGui::DragFloat3("Euler", &euler.x, 0.5f)))
+            if (edited(ImGui::DragFloat3("Euler", &euler.x, 0.5f))) {
                 key.value = widgets::EulerDegToQuat(euler);
+            }
             break;
         }
         auto& keys = m_selection.channel == 0 ? track.positions : track.scales;
-        if (index >= keys.size()) break;
+        if (index >= keys.size()) {
+            break;
+        }
         editTime("Time", keys[index].time);
         edited(ImGui::DragFloat3("Value", &keys[index].value.x, 0.01f));
         break;
@@ -1103,19 +1257,24 @@ void SequencePanel::DrawSelectedItemFields(SequenceTrack& track)
     case SequenceTrackType::Property: {
         switch (m_selection.channel) {
         case 0: {
-            if (index >= track.property.floatKeys.size()) break;
+            if (index >= track.property.floatKeys.size()) {
+                break;
+            }
             editTime("Time", track.property.floatKeys[index].time);
             auto& key = track.property.floatKeys[index];
             float value = key.value;
-            if (edited(ImGui::DragFloat("Value", &value, 0.01f)) && std::isfinite(value))
+            if (edited(ImGui::DragFloat("Value", &value, 0.01f)) && std::isfinite(value)) {
                 key.value = value;
+            }
             if (track.property.interp == asset::AnimInterp::Cubic) {
                 float in = key.inTangent;
                 float out = key.outTangent;
-                if (edited(ImGui::DragFloat("In slope / s", &in, 0.01f)) && std::isfinite(in))
+                if (edited(ImGui::DragFloat("In slope / s", &in, 0.01f)) && std::isfinite(in)) {
                     key.inTangent = in;
-                if (edited(ImGui::DragFloat("Out slope / s", &out, 0.01f)) && std::isfinite(out))
+                }
+                if (edited(ImGui::DragFloat("Out slope / s", &out, 0.01f)) && std::isfinite(out)) {
                     key.outTangent = out;
+                }
                 if (ImGui::Button("Flat tangents")) {
                     PushUndo();
                     key.inTangent = key.outTangent = 0.0f;
@@ -1131,17 +1290,23 @@ void SequencePanel::DrawSelectedItemFields(SequenceTrack& track)
             break;
         }
         case 1:
-            if (index >= track.property.vector2Keys.size()) break;
+            if (index >= track.property.vector2Keys.size()) {
+                break;
+            }
             editTime("Time", track.property.vector2Keys[index].time);
             edited(ImGui::DragFloat2("Value", &track.property.vector2Keys[index].value.x, 0.01f));
             break;
         case 2:
-            if (index >= track.property.vector3Keys.size()) break;
+            if (index >= track.property.vector3Keys.size()) {
+                break;
+            }
             editTime("Time", track.property.vector3Keys[index].time);
             edited(ImGui::DragFloat3("Value", &track.property.vector3Keys[index].value.x, 0.01f));
             break;
         case 3: {
-            if (index >= track.property.vector4Keys.size()) break;
+            if (index >= track.property.vector4Keys.size()) {
+                break;
+            }
             editTime("Time", track.property.vector4Keys[index].time);
             auto& value = track.property.vector4Keys[index].value;
             const bool isColor = track.property.valueType == asset::AnimValueType::Color;
@@ -1150,15 +1315,20 @@ void SequencePanel::DrawSelectedItemFields(SequenceTrack& track)
             break;
         }
         case 4: {
-            if (index >= track.property.intKeys.size()) break;
+            if (index >= track.property.intKeys.size()) {
+                break;
+            }
             editTime("Time", track.property.intKeys[index].time);
             int value = track.property.intKeys[index].value;
-            if (edited(ImGui::InputInt("Value", &value)))
+            if (edited(ImGui::InputInt("Value", &value))) {
                 track.property.intKeys[index].value = static_cast<std::int32_t>(value);
+            }
             break;
         }
         default:
-            if (index >= track.property.boolKeys.size()) break;
+            if (index >= track.property.boolKeys.size()) {
+                break;
+            }
             editTime("Time", track.property.boolKeys[index].time);
             if (ImGui::Checkbox("Value", &track.property.boolKeys[index].value)) {
                 PushUndo();
@@ -1169,13 +1339,17 @@ void SequencePanel::DrawSelectedItemFields(SequenceTrack& track)
         break;
     }
     case SequenceTrackType::Activation: {
-        if (index >= track.ranges.size()) break;
+        if (index >= track.ranges.size()) {
+            break;
+        }
         editTime("Start", track.ranges[index].start);
         editTime("End", track.ranges[index].end);
         break;
     }
     case SequenceTrackType::Audio: {
-        if (index >= track.audioClips.size()) break;
+        if (index >= track.audioClips.size()) {
+            break;
+        }
         auto& clip = track.audioClips[index];
         editTime("Start", clip.start);
         if (widgets::AssetPathField("Clip", clip.clipPath,
@@ -1186,27 +1360,40 @@ void SequencePanel::DrawSelectedItemFields(SequenceTrack& track)
         editString("Bus", clip.bus);
         ImGui::SetItemTooltip("Project Settings > Audio で定義したミキサーバス名");
         edited(ImGui::DragFloat("Volume", &clip.volume, 0.01f, 0.0f, 1.0f, "%.2f"));
-        if (ImGui::Checkbox("Loop", &clip.loop)) { PushUndo(); MarkEdited(); }
-        if (clip.loop) editTime("End", clip.end);
+        if (ImGui::Checkbox("Loop", &clip.loop)) {
+            PushUndo();
+            MarkEdited();
+        }
+        if (clip.loop) {
+            editTime("End", clip.end);
+        }
         break;
     }
     case SequenceTrackType::VFX: {
-        if (index >= track.vfxClips.size()) break;
+        if (index >= track.vfxClips.size()) {
+            break;
+        }
         editTime("Start", track.vfxClips[index].start);
         editTime("End", track.vfxClips[index].end);
         ImGui::SetItemTooltip("0 ならグラフ側の尺に任せる");
-        if (ImGui::Checkbox("Restart", &track.vfxClips[index].restart)) { PushUndo(); MarkEdited(); }
+        if (ImGui::Checkbox("Restart", &track.vfxClips[index].restart)) {
+            PushUndo();
+            MarkEdited();
+        }
         break;
     }
     case SequenceTrackType::Event: {
-        if (index >= track.eventKeys.size()) break;
+        if (index >= track.eventKeys.size()) {
+            break;
+        }
         auto& key = track.eventKeys[index];
         editTime("Time", key.time);
         editString("Name", key.name);
         ImGui::SetItemTooltip("OnSequenceEvent が受け取る名前。\"boss.entry.impact\" のような点付き名");
         int intParam = key.intParam;
-        if (edited(ImGui::InputInt("Int", &intParam)))
+        if (edited(ImGui::InputInt("Int", &intParam))) {
             key.intParam = static_cast<std::int32_t>(intParam);
+        }
         edited(ImGui::DragFloat("Float", &key.floatParam, 0.01f));
         break;
     }
@@ -1227,7 +1414,9 @@ void SequencePanel::FitFloatCurve(const SequenceTrack& track)
     }
     for (int i = 0; i <= 256; ++i) {
         const double value = asset::SampleFloatKeys(keys, m_curveEnd * i / 256.0, track.property.interp);
-        if (!std::isfinite(value)) continue;
+        if (!std::isfinite(value)) {
+            continue;
+        }
         low = (std::min)(low, value);
         high = (std::max)(high, value);
     }
@@ -1259,7 +1448,9 @@ void SequencePanel::DrawFloatCurve(SequenceTrack& track)
         m_selection.index = -1;
         MarkEdited();
     }
-    if (fit) FitFloatCurve(track);
+    if (fit) {
+        FitFloatCurve(track);
+    }
 
     const ImVec2 origin = ImGui::GetCursorScreenPos();
     const ImVec2 size{ (std::max)(ImGui::GetContentRegionAvail().x, 80.0f), 180.0f };
@@ -1306,14 +1497,21 @@ void SequencePanel::DrawFloatCurve(SequenceTrack& track)
             && track.property.interp == asset::AnimInterp::Cubic) {
             const auto i = static_cast<std::size_t>(m_selection.index);
             for (int side = 0; side < 2; ++side) {
-                if (handleTime(i, side == 0) <= 0.0) continue;
+                if (handleTime(i, side == 0) <= 0.0) {
+                    continue;
+                }
                 const float d = distance(ImGui::GetIO().MousePos, handle(i, side == 0));
-                if (d < best) { best = d; m_curveDragKind = side + 1; }
+                if (d < best) {
+                    best = d;
+                    m_curveDragKind = side + 1;
+                }
             }
         }
         for (std::size_t i = 0; i < keys.size(); ++i) {
             const float d = distance(ImGui::GetIO().MousePos, point(keys[i].time, keys[i].value));
-            if (d >= best) continue;
+            if (d >= best) {
+                continue;
+            }
             best = d;
             m_selection.channel = 0;
             m_selection.index = static_cast<int>(i);
@@ -1329,10 +1527,15 @@ void SequencePanel::DrawFloatCurve(SequenceTrack& track)
     if (active && m_curveDragKind >= 0 && m_selection.channel == 0 && m_selection.HasItem()
         && static_cast<std::size_t>(m_selection.index) < keys.size()
         && ImGui::IsMouseDragging(ImGuiMouseButton_Left, 1.0f)) {
-        if (!m_curveUndoPushed) { PushUndo(); m_curveUndoPushed = true; }
+        if (!m_curveUndoPushed) {
+            PushUndo();
+            m_curveUndoPushed = true;
+        }
         if (m_curveDragKind == 0) {
             if (detail::MoveFloatCurveKey(keys, m_selection.index,
-                    std::clamp(ApplySnap(mouseTime()), 0.0, m_curveEnd), mouseValue())) MarkEdited();
+                    std::clamp(ApplySnap(mouseTime()), 0.0, m_curveEnd), mouseValue())) {
+                MarkEdited();
+            }
         } else {
             auto& key = keys[static_cast<std::size_t>(m_selection.index)];
             const bool incoming = m_curveDragKind == 1;
@@ -1347,7 +1550,9 @@ void SequencePanel::DrawFloatCurve(SequenceTrack& track)
             }
         }
     }
-    if (!ImGui::IsMouseDown(ImGuiMouseButton_Left)) m_curveDragKind = -1;
+    if (!ImGui::IsMouseDown(ImGuiMouseButton_Left)) {
+        m_curveDragKind = -1;
+    }
 
     ImDrawList* draw = ImGui::GetWindowDrawList();
     const ImVec2 end{ origin.x + size.x, origin.y + size.y };
@@ -1369,8 +1574,9 @@ void SequencePanel::DrawFloatCurve(SequenceTrack& track)
             const double time = m_curveEnd * i / 256.0;
             const float nextValue = asset::SampleFloatKeys(sampledKeys, time, track.property.interp);
             const ImVec2 next = point(time, std::isfinite(nextValue) ? nextValue : 0.0);
-            if (std::isfinite(previousValue) && std::isfinite(nextValue))
+            if (std::isfinite(previousValue) && std::isfinite(nextValue)) {
                 draw->AddLine(previous, next, IM_COL32(100, 190, 240, 255), 2.0f);
+            }
             previous = next;
             previousValue = nextValue;
         }
@@ -1382,7 +1588,9 @@ void SequencePanel::DrawFloatCurve(SequenceTrack& track)
         const ImVec2 keyPoint = point(keys[i].time, keys[i].value);
         if (selected && track.property.interp == asset::AnimInterp::Cubic) {
             for (int side = 0; side < 2; ++side) {
-                if (handleTime(i, side == 0) <= 0.0) continue;
+                if (handleTime(i, side == 0) <= 0.0) {
+                    continue;
+                }
                 const ImVec2 tip = handle(i, side == 0);
                 draw->AddLine(keyPoint, tip, IM_COL32(240, 190, 100, 255));
                 draw->AddCircleFilled(tip, 4.0f, IM_COL32(240, 190, 100, 255));
@@ -1414,24 +1622,29 @@ void SequencePanel::DrawInspector(EditorContext& ctx)
     DrawTrackHeaderFields(track);
 
     if (track.type == SequenceTrackType::Property
-        && track.property.valueType == asset::AnimValueType::Float)
+        && track.property.valueType == asset::AnimValueType::Float) {
         DrawFloatCurve(track);
-    if (!m_selection.HasItem()) return;
+    }
+    if (!m_selection.HasItem()) {
+        return;
+    }
     ImGui::Separator();
     const int channels = ChannelCount(track.type);
     if (channels > 1)
         ImGui::TextDisabled("%s #%d", ChannelName(track.type, m_selection.channel),
                             m_selection.index);
-    else
+    else {
         ImGui::TextDisabled("Item #%d", m_selection.index);
+    }
     DrawSelectedItemFields(track);
 
-    /// @note プレビュー先の表示。どのオブジェクトへ出しているのか分からないと、
-    /// @note       「絵が変わらない」がバインド漏れなのか値の問題なのか切り分けられない。
+    // プレビュー先の表示。どのオブジェクトへ出しているのか分からないと、
+    // 「絵が変わらない」がバインド漏れなのか値の問題なのか切り分けられない。
     ImGui::Separator();
     if (m_previewEntity.IsValid() && ctx.activeScene) {
-        if (auto* go = ctx.activeScene->GetGameObject(m_previewEntity))
+        if (auto* go = ctx.activeScene->GetGameObject(m_previewEntity)) {
             ImGui::TextDisabled("Preview: %s", go->name.c_str());
+        }
     } else if (m_previewing) {
         ImGui::TextColored(ImVec4(1.0f, 0.75f, 0.4f, 1.0f),
                            "Preview: SequencePlayerComponent を持つ GameObject がありません");
@@ -1443,7 +1656,9 @@ void SequencePanel::DrawInspector(EditorContext& ctx)
 void SequencePanel::SortChannelKeepingSelection(int track, int channel, double keepTime)
 {
     (void)keepTime;
-    if (track < 0 || track >= static_cast<int>(m_asset.tracks.size())) return;
+    if (track < 0 || track >= static_cast<int>(m_asset.tracks.size())) {
+        return;
+    }
     SequenceTrack& target = m_asset.tracks[static_cast<std::size_t>(track)];
     if (m_selection.track == track && m_selection.channel == channel) {
         WithChannel(target, channel, [&](auto& values) {
@@ -1461,9 +1676,11 @@ void SequencePanel::AddTrack(SequenceTrackType type)
     SequenceTrack track;
     track.type = type;
     track.name = asset::SequenceTrackTypeName(type);
-    /// @note Event 以外はターゲットが要る。空欄のままだと黙って何も起きないので、
-    /// @note       最初から埋めておいて「ここを直す」と分かる形にする。
-    if (type != SequenceTrackType::Event) track.binding = "$self";
+    // Event 以外はターゲットが要る。空欄のままだと黙って何も起きないので、
+    // 最初から埋めておいて「ここを直す」と分かる形にする。
+    if (type != SequenceTrackType::Event) {
+        track.binding = "$self";
+    }
     m_asset.tracks.push_back(std::move(track));
     m_selection = { static_cast<int>(m_asset.tracks.size()) - 1, 0, -1 };
     m_curveTrack = -1;
@@ -1472,7 +1689,9 @@ void SequencePanel::AddTrack(SequenceTrackType type)
 
 void SequencePanel::DeleteTrack(int index)
 {
-    if (index < 0 || index >= static_cast<int>(m_asset.tracks.size())) return;
+    if (index < 0 || index >= static_cast<int>(m_asset.tracks.size())) {
+        return;
+    }
     PushUndo();
     m_asset.tracks.erase(m_asset.tracks.begin() + static_cast<std::ptrdiff_t>(index));
     m_selection = {};
@@ -1496,7 +1715,9 @@ void SequencePanel::OnRenderContent(EditorContext& ctx)
     if (!m_requestedPath.empty()) {
         const std::string requested = std::move(m_requestedPath);
         m_requestedPath.clear();
-        if (requested != m_path) RequestDocumentAction(ctx, "open", requested);
+        if (requested != m_path) {
+            RequestDocumentAction(ctx, "open", requested);
+        }
     }
 
     DrawToolbar(ctx);
@@ -1505,8 +1726,9 @@ void SequencePanel::OnRenderContent(EditorContext& ctx)
         ImGui::Separator();
         ImGui::TextDisabled("Asset Browser から .sequence をダブルクリックするか、");
         ImGui::TextDisabled("Create > Sequence で新しく作ってください。");
-        if (!m_error.empty())
+        if (!m_error.empty()) {
             ImGui::TextColored(ImVec4(1.0f, 0.55f, 0.5f, 1.0f), "%s", m_error.c_str());
+        }
         return;
     }
 
@@ -1514,10 +1736,11 @@ void SequencePanel::OnRenderContent(EditorContext& ctx)
     DrawTransport(ctx);
     ImGui::Separator();
 
-    if (!m_error.empty())
+    if (!m_error.empty()) {
         ImGui::TextColored(ImVec4(1.0f, 0.55f, 0.5f, 1.0f), "%s", m_error.c_str());
-    else if (!m_status.empty())
+    } else if (!m_status.empty()) {
         ImGui::TextDisabled("%s", m_status.c_str());
+    }
 
     const float inspectorHeight = 460.0f;
     const float timelineHeight =
@@ -1525,10 +1748,11 @@ void SequencePanel::OnRenderContent(EditorContext& ctx)
 
     ImGui::BeginChild("##SequenceTimeline", { 0.0f, timelineHeight }, true,
                       ImGuiWindowFlags_HorizontalScrollbar);
-    if (m_asset.tracks.empty())
+    if (m_asset.tracks.empty()) {
         ImGui::TextDisabled("トラックがありません。ツールバーの [+ Track] で追加してください。");
-    else
+    } else {
         DrawTimeline(ctx);
+    }
     DrawTrackContextMenu(ctx);
     ImGui::EndChild();
 
@@ -1537,10 +1761,18 @@ void SequencePanel::OnRenderContent(EditorContext& ctx)
     ImGui::EndChild();
 
     if (!ImGui::GetIO().WantTextInput && !ImGui::IsAnyItemActive()) {
-        if (ImGui::Shortcut(ImGuiMod_Ctrl | ImGuiKey_Z)) Undo();
-        if (ImGui::Shortcut(ImGuiMod_Ctrl | ImGuiKey_Y) || ImGui::Shortcut(ImGuiMod_Ctrl | ImGuiMod_Shift | ImGuiKey_Z)) Redo();
-        if (ImGui::Shortcut(ImGuiMod_Ctrl | ImGuiKey_S)) (void)Save();
-        if (ImGui::Shortcut(ImGuiKey_Space)) m_playing = !m_playing;
+        if (ImGui::Shortcut(ImGuiMod_Ctrl | ImGuiKey_Z)) {
+            Undo();
+        }
+        if (ImGui::Shortcut(ImGuiMod_Ctrl | ImGuiKey_Y) || ImGui::Shortcut(ImGuiMod_Ctrl | ImGuiMod_Shift | ImGuiKey_Z)) {
+            Redo();
+        }
+        if (ImGui::Shortcut(ImGuiMod_Ctrl | ImGuiKey_S)) {
+            (void)Save();
+        }
+        if (ImGui::Shortcut(ImGuiKey_Space)) {
+            m_playing = !m_playing;
+        }
         if (ImGui::Shortcut(ImGuiKey_Delete) && m_selection.HasItem()
             && m_selection.track < static_cast<int>(m_asset.tracks.size())) {
             PushUndo();
@@ -1556,17 +1788,20 @@ void SequencePanel::OnRenderContent(EditorContext& ctx)
         m_pendingSortTrack = -1;
     }
 
-    /// @note スクラブの反映はこのフレームの最後で行う。ツールバーで済ませると、
-    /// @note       直後のタイムラインで動かした再生ヘッドが 1 フレーム遅れて絵に出る。
+    // スクラブの反映はこのフレームの最後で行う。ツールバーで済ませると、
+    // 直後のタイムラインで動かした再生ヘッドが 1 フレーム遅れて絵に出る。
     const bool inPlay = ctx.playMode && !ctx.playMode->IsInEditor();
-    if (m_previewing && !inPlay) PushPreview(ctx);
-    else if (m_previewEntity.IsValid() && !m_apiPreview) ReleasePreview(ctx);
+    if (m_previewing && !inPlay) {
+        PushPreview(ctx);
+    } else if (m_previewEntity.IsValid() && !m_apiPreview) {
+        ReleasePreview(ctx);
+    }
 
-    /// @note 未保存を保存待ちアセットへ載せる。終了時の一括保存ダイアログがこれを見るため、
-    /// @note       載せ忘れると編集だけが黙って捨てられる。
+    // 未保存を保存待ちアセットへ載せる。終了時の一括保存ダイアログがこれを見るため、
+    // 載せ忘れると編集だけが黙って捨てられる。
     if (m_dirty)
         AssetDirtyRegistry::Register(m_path, m_assetPath, "Sequence",
                                      [this]() { return Save(); });
 }
 
-} /// @note namespace fbzz::editor
+} // namespace fbzz::editor

@@ -17,7 +17,7 @@ function InstallDraft2020ToolSchemas(server: McpServer): void {
     const handlers = (server.server as unknown as { _requestHandlers?: Map<string, RawRequestHandler> })._requestHandlers;
     const original = handlers?.get('tools/list');
     if (!handlers || !original) {
-        /// @note SDK の内部構造が変わった場合も既定形式の一覧を利用できる。
+        // SDK の内部構造が変わった場合も既定形式の一覧を利用できる。
         console.error('[FBZZ Editor MCP] warn: tools/list ハンドラを包めず、JSON Schema は draft-07 のままです');
         return;
     }

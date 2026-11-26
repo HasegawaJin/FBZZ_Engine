@@ -144,19 +144,29 @@ inline bool CanRecordEditorUndo(const EditorContext& ctx)
 template<typename T>
 T CaptureInspectorComponentValues(const T& value)
 {
-    if constexpr (std::is_same_v<T, scene::WaterComponent>) return CaptureWaterAuthoringValues(value);
-    else return value;
+    if constexpr (std::is_same_v<T, scene::WaterComponent>) {
+        return CaptureWaterAuthoringValues(value);
+    } else {
+        return value;
+    }
 }
 
 template<typename T>
 void ApplyInspectorComponentValues(scene::GameObject& owner, T& target, const T& values)
 {
-    if (&target == &values) return;
-    if constexpr (requires { target.runtimeMesh; }) {
-        if (auto* scene = owner.GetScene()) scene::UnlinkRuntimeMesh(*scene, owner.GetID(), target.runtimeMesh);
+    if (&target == &values) {
+        return;
     }
-    if constexpr (std::is_same_v<T, scene::WaterComponent>) ApplyWaterAuthoringValues(target, values);
-    else target = values;
+    if constexpr (requires { target.runtimeMesh; }) {
+        if (auto* scene = owner.GetScene()) {
+            scene::UnlinkRuntimeMesh(*scene, owner.GetID(), target.runtimeMesh);
+        }
+    }
+    if constexpr (std::is_same_v<T, scene::WaterComponent>) {
+        ApplyWaterAuthoringValues(target, values);
+    } else {
+        target = values;
+    }
 }
 
 template<typename T>
@@ -166,7 +176,9 @@ void PushComponentValueCommand(scene::GameObject& go,
                                const T& before,
                                const T& after)
 {
-    if (!CanRecordEditorUndo(ctx) || !ctx.activeScene) return;
+    if (!CanRecordEditorUndo(ctx) || !ctx.activeScene) {
+        return;
+    }
 
     scene::Scene* scene = ctx.activeScene;
     const std::string instanceId = go.instanceId;
@@ -187,7 +199,9 @@ void PushComponentValueCommand(scene::GameObject& go,
                 } else if constexpr (std::is_same_v<T, scene::MaterialComponent>) {
                     component->material.reset();
                 }
-                if (markDirty) markDirty();
+                if (markDirty) {
+                    markDirty();
+                }
             }
         }
     };
@@ -236,15 +250,17 @@ public:
     }
     void Field(const char* name, input::KeyCode& v) override
     {
-        Put(name); m_out += std::to_string(static_cast<int>(v));
+        Put(name);
+        m_out += std::to_string(static_cast<int>(v));
     }
     void Field(const char* name, scene::ParticleCurve& v) override
     {
         Put(name);
         m_out += std::to_string(static_cast<int>(v.interpolation));
         m_out += '|';
-        for (uint32_t i = 0; i < v.keyCount && i < v.keys.size(); ++i)
+        for (uint32_t i = 0; i < v.keyCount && i < v.keys.size(); ++i) {
             Nums({ v.keys[i].time, v.keys[i].value });
+        }
     }
     void Field(const char* name, scene::ParticleGradient& v) override
     {
@@ -268,21 +284,32 @@ public:
     void ListField(const char* name, std::vector<scene::EntityRef>& values) override
     {
         Put(name);
-        for (const auto& x : values) { m_out += std::to_string(x.id.index); m_out += ','; }
+        for (const auto& x : values) {
+            m_out += std::to_string(x.id.index);
+            m_out += ',';
+        }
     }
     void AssetListField(const char* name,
                         std::vector<scene::ScriptAssetReference>& values,
                         scene::ScriptAssetType) override
     {
         Put(name);
-        for (const auto& x : values) { m_out += x.guid; m_out += '|'; m_out += x.path; m_out += ','; }
+        for (const auto& x : values) {
+            m_out += x.guid;
+            m_out += '|';
+            m_out += x.path;
+            m_out += ',';
+        }
     }
 
 private:
     void Put(const char* name) { m_out += ';'; m_out += name ? name : ""; m_out += '='; }
     void Nums(std::initializer_list<float> values)
     {
-        for (float x : values) { m_out += std::to_string(x); m_out += ','; }
+        for (float x : values) {
+            m_out += std::to_string(x);
+            m_out += ',';
+        }
     }
     std::string m_out;
 };
@@ -308,10 +335,11 @@ template<typename T>
 struct ComponentUndoCompare {
     static bool UserValuesEqual(T& a, T& b)
     {
-        if constexpr (ComponentUndoReflects<T>::value)
+        if constexpr (ComponentUndoReflects<T>::value) {
             return CaptureComponentDigest(a) == CaptureComponentDigest(b);
-        else
+        } else {
             return false;
+        }
     }
 };
 
@@ -368,9 +396,13 @@ FBZZ_COMPONENT_UNDO_REFLECTS(WeatherComponent)
 template<typename T, typename Equal>
 [[nodiscard]] bool RangesEqual(const std::vector<T>& a, const std::vector<T>& b, Equal equal)
 {
-    if (a.size() != b.size()) return false;
+    if (a.size() != b.size()) {
+        return false;
+    }
     for (size_t i = 0; i < a.size(); ++i)
-        if (!equal(a[i], b[i])) return false;
+        if (!equal(a[i], b[i])) {
+            return false;
+        }
     return true;
 }
 
@@ -381,8 +413,11 @@ template<typename Snapshot>
 struct ComponentSnapshotCompare {
     static bool Equal(const Snapshot& a, const Snapshot& b)
     {
-        if constexpr (requires { a == b; }) return a == b;
-        else return false;
+        if constexpr (requires { a == b; }) {
+            return a == b;
+        } else {
+            return false;
+        }
     }
 };
 
@@ -426,10 +461,13 @@ template<>
 struct ComponentUndoCompare<scene::MaterialComponent> {
     static bool UserValuesEqual(scene::MaterialComponent& a, scene::MaterialComponent& b)
     {
-        if (a.SlotCount() != b.SlotCount()) return false;
+        if (a.SlotCount() != b.SlotCount()) {
+            return false;
+        }
         for (size_t i = 0; i < a.SlotCount(); ++i)
-            if (!MaterialSlotUserValuesEqual(a.RawSlotAt(i), b.RawSlotAt(i)))
+            if (!MaterialSlotUserValuesEqual(a.RawSlotAt(i), b.RawSlotAt(i))) {
                 return false;
+            }
         return CaptureComponentDigest(a) == CaptureComponentDigest(b);
     }
 };
@@ -440,7 +478,9 @@ struct ComponentUndoCompare<scene::CameraComponent> {
     static bool UserValuesEqual(scene::CameraComponent& a, scene::CameraComponent& b)
     {
         for (size_t i = 0; i < std::size(a.layerCullDistances); ++i)
-            if (a.layerCullDistances[i] != b.layerCullDistances[i]) return false;
+            if (a.layerCullDistances[i] != b.layerCullDistances[i]) {
+                return false;
+            }
         return CaptureComponentDigest(a) == CaptureComponentDigest(b);
     }
 };
@@ -453,7 +493,9 @@ struct ComponentUndoCompare<scene::LODGroupComponent> {
     static bool UserValuesEqual(scene::LODGroupComponent& a, scene::LODGroupComponent& b)
     {
         const auto levelEqual = [](const scene::LODLevel& x, const scene::LODLevel& y) {
-            if (x.screenRelativeHeight != y.screenRelativeHeight) return false;
+            if (x.screenRelativeHeight != y.screenRelativeHeight) {
+                return false;
+            }
             return RangesEqual(x.renderers, y.renderers,
                 [](const scene::LODRendererReference& p, const scene::LODRendererReference& q) {
                     return p.instanceId == q.instanceId;
@@ -502,8 +544,8 @@ template<>
 struct ComponentUndoCompare<scene::IKSolverComponent> {
     static bool UserValuesEqual(scene::IKSolverComponent& a, scene::IKSolverComponent& b)
     {
-        /// @note IKChain は 15 個以上のフィールドを持つが、Inspector で 1 つ変えるたびに
-        /// @note Undo を積むべきなので主要な編集対象を見る。チェーン数の増減も拾う。
+        // IKChain は 15 個以上のフィールドを持つが、Inspector で 1 つ変えるたびに
+        // Undo を積むべきなので主要な編集対象を見る。チェーン数の増減も拾う。
         const auto chainEqual = [](const scene::IKChain& x, const scene::IKChain& y) {
             return x.type       == y.type
                 && x.enabled    == y.enabled
@@ -555,7 +597,7 @@ void InspectorUndoValues(T& component, InspectorValueSnapshot& values)
     } else if constexpr (requires { ProjectInspectorUndoValues(component, values); }) {
         ProjectInspectorUndoValues(component, values);
     } else {
-        /// @note Reflect の完全性は clamp・ID採番を含むため、捕捉の非変異契約には使わない。
+        // Reflect の完全性は clamp・ID採番を含むため、捕捉の非変異契約には使わない。
         values.Value("component", component);
     }
 }
@@ -617,20 +659,24 @@ void DrawGenericUndoableComponentBody(scene::GameObject& go,
 
     const auto transition = edit.session.Observe(go.GetID(), activeBefore, activeAfter);
     if (transition == InspectorEditTransition::BEGIN) {
-        /// @note UI が最初の値を書いた後でも、直前の値 stream を戻して初回の差分を取りこぼさない。
+        // UI が最初の値を書いた後でも、直前の値 stream を戻して初回の差分を取りこぼさない。
         edit.before = std::make_unique<T>(CaptureInspectorComponentValues(component));
         edit.values.BeginApply();
         InspectorUndoValues(*edit.before, edit.values);
         return;
     }
 
-    if (transition != InspectorEditTransition::END) return;
+    if (transition != InspectorEditTransition::END) {
+        return;
+    }
 
-    /// @note 値が動いていない操作 (参照欄のクリック・折りたたみの開閉など) では積まない。
+    // 値が動いていない操作 (参照欄のクリック・折りたたみの開閉など) では積まない。
     if (!ComponentUndoCompare<T>::UserValuesEqual(*edit.before, component)) {
         PushComponentValueCommand(
             go, ctx, std::string("Change ") + label, *edit.before, component);
-        if (ctx.markSceneDirty) ctx.markSceneDirty();
+        if (ctx.markSceneDirty) {
+            ctx.markSceneDirty();
+        }
     }
     edit.session.Cancel();
     edit.before.reset();
@@ -668,15 +714,19 @@ void DrawUndoableComponentBody(scene::GameObject& go,
         edit.before = beforeDraw;
         return;
     }
-    if (transition != InspectorEditTransition::END) return;
+    if (transition != InspectorEditTransition::END) {
+        return;
+    }
 
-    /// @note 全スロットの割り当てを Undo 対象にする。判定は汎用側と同じ
-    /// @note ComponentUndoCompare を使う (以前はここに同じ比較を手書きで重複させていた)。
+    // 全スロットの割り当てを Undo 対象にする。判定は汎用側と同じ
+    // ComponentUndoCompare を使う (以前はここに同じ比較を手書きで重複させていた)。
     if (!ComponentUndoCompare<scene::MaterialComponent>::UserValuesEqual(
             edit.before, component)) {
         PushComponentValueCommand(
             go, ctx, std::string("Change ") + label, edit.before, component);
-        if (ctx.markSceneDirty) ctx.markSceneDirty();
+        if (ctx.markSceneDirty) {
+            ctx.markSceneDirty();
+        }
     }
     edit.session.Cancel();
 }
@@ -710,7 +760,9 @@ void DrawUndoableComponentBody(scene::GameObject& go,
         Snapshot snapshot;
         snapshot.component = value;
         snapshot.hasBody = value.rigidBody != nullptr;
-        if (value.rigidBody) snapshot.body = *value.rigidBody;
+        if (value.rigidBody) {
+            snapshot.body = *value.rigidBody;
+        }
         return snapshot;
     };
 
@@ -724,13 +776,15 @@ void DrawUndoableComponentBody(scene::GameObject& go,
         edit.before = beforeDraw;
         return;
     }
-    if (transition != InspectorEditTransition::END) return;
+    if (transition != InspectorEditTransition::END) {
+        return;
+    }
 
     const Snapshot after = capture(component);
 
-    /// @note 値が動いていない操作 (参照欄のクリック等) では積まない。
-    /// @note RigidBodyComponent::Reflect は body の先まで読み書きし、Snapshot も body を
-    /// @note 深いコピーで持つので、component の digest だけで足りる。
+    // 値が動いていない操作 (参照欄のクリック等) では積まない。
+    // RigidBodyComponent::Reflect は body の先まで読み書きし、Snapshot も body を
+    // 深いコピーで持つので、component の digest だけで足りる。
     if (edit.before.hasBody == after.hasBody &&
         ComponentUndoCompare<scene::RigidBodyComponent>::UserValuesEqual(
             edit.before.component, component)) {
@@ -748,13 +802,16 @@ void DrawUndoableComponentBody(scene::GameObject& go,
                     rigidBody->enabled = snapshot.component.enabled;
                     rigidBody->bodyHandle = snapshot.component.bodyHandle;
                     if (snapshot.hasBody) {
-                        if (!rigidBody->rigidBody)
+                        if (!rigidBody->rigidBody) {
                             rigidBody->rigidBody = std::make_unique<physics::RigidBody>();
+                        }
                         *rigidBody->rigidBody = snapshot.body;
                     } else {
                         rigidBody->rigidBody.reset();
                     }
-                    if (markDirty) markDirty();
+                    if (markDirty) {
+                        markDirty();
+                    }
                 }
             }
         };
@@ -763,7 +820,9 @@ void DrawUndoableComponentBody(scene::GameObject& go,
             [apply, after]() { apply(after); },
             [apply, before = edit.before]() { apply(before); }));
     }
-    if (ctx.markSceneDirty) ctx.markSceneDirty();
+    if (ctx.markSceneDirty) {
+        ctx.markSceneDirty();
+    }
     edit.session.Cancel();
 }
 
@@ -773,7 +832,9 @@ void DrawUndoableComponentBody(scene::GameObject& go,
 /// @note nullptr の場合はドロップなし (BeginDragDropTarget が false を返すか payload 不正)。
 inline scene::GameObject* AcceptHierarchyDrop(scene::Scene* scene)
 {
-    if (!ImGui::BeginDragDropTarget()) return nullptr;
+    if (!ImGui::BeginDragDropTarget()) {
+        return nullptr;
+    }
     scene::GameObject* result = nullptr;
     if (const ImGuiPayload* p = ImGui::AcceptDragDropPayload("FBZZ_HIERARCHY_ENTITY")) {
         if (p->DataSize == sizeof(scene::EntityID) && scene) {
@@ -824,7 +885,9 @@ inline scene::ComponentCategory LookupComponentCategory(const std::type_info& ty
 
     const std::type_index key(type);
     for (const auto& [registered, category] : table)
-        if (registered == key) return category;
+        if (registered == key) {
+            return category;
+        }
     return scene::ComponentCategory::Misc;
 }
 
@@ -849,10 +912,11 @@ template<typename T>
 template<typename T>
 [[nodiscard]] inline bool& ComponentEnabledFlag(T& value)
 {
-    if constexpr (requires { static_cast<bool&>(value.enabled); })
+    if constexpr (requires { static_cast<bool&>(value.enabled); }) {
         return value.enabled;
-    else
+    } else {
         return value.settings.enabled;
+    }
 }
 
 /// @note 既存のカテゴリ別 Inspector を一度収集し、GameObject が持つ順序で再生するための一時バッファ。
@@ -880,37 +944,46 @@ struct InspectorComponentDrawCollector {
 
     void DrawInOrder()
     {
-        if (!gameObject) return;
+        if (!gameObject) {
+            return;
+        }
 
-        /// @note 今フレーム実在するキーだけを保存対象に残す (削除された Component の残骸掃除)。
+        // 今フレーム実在するキーだけを保存対象に残す (削除された Component の残骸掃除)。
         if (complete && editorState) {
             std::vector<std::string> presentKeys;
             presentKeys.reserve(requests.size());
-            for (const Request& request : requests) presentKeys.push_back(request.key);
+            for (const Request& request : requests) {
+                presentKeys.push_back(request.key);
+            }
             editorState->PruneComponentOrder(gameObject->instanceId, presentKeys);
         }
 
         std::vector<bool> drawn(requests.size(), false);
         const auto drawRequest = [&](size_t index) {
-            if (index >= requests.size() || drawn[index]) return;
+            if (index >= requests.size() || drawn[index]) {
+                return;
+            }
             drawn[index] = true;
             drawing = true;
             requests[index].draw();
             drawing = false;
         };
 
-        /// @note 描画中のドロップで順序が変更されてもイテレータを無効化しないよう、
-        /// @note 並び順はフレーム開始時点のスナップショットを使う。
+        // 描画中のドロップで順序が変更されてもイテレータを無効化しないよう、
+        // 並び順はフレーム開始時点のスナップショットを使う。
         const std::vector<std::string> order = editorState
             ? editorState->GetComponentOrder(gameObject->instanceId)
             : std::vector<std::string>{};
-        /// @note 保存済み順序に存在する要求を先に描き、後から追加された Component は末尾へ置く。
+        // 保存済み順序に存在する要求を先に描き、後から追加された Component は末尾へ置く。
         for (const std::string& key : order) {
             for (size_t i = 0; i < requests.size(); ++i)
-                if (requests[i].key == key) drawRequest(i);
+                if (requests[i].key == key) {
+                    drawRequest(i);
+                }
         }
-        for (size_t i = 0; i < requests.size(); ++i)
+        for (size_t i = 0; i < requests.size(); ++i) {
             drawRequest(i);
+        }
     }
 };
 
@@ -926,10 +999,14 @@ inline void MoveInspectorComponentWithUndo(scene::GameObject& go,
     const std::vector<std::string> before =
         ctx.editorSceneState.GetComponentOrder(go.instanceId);
     if (!ctx.editorSceneState.MoveComponentOrder(
-            go.instanceId, draggedKey, targetKey, insertAfter)) return;
+            go.instanceId, draggedKey, targetKey, insertAfter)) {
+        return;
+    }
     const std::vector<std::string> after =
         ctx.editorSceneState.GetComponentOrder(go.instanceId);
-    if (before == after) return;
+    if (before == after) {
+        return;
+    }
 
     if (CanRecordEditorUndo(ctx) && ctx.activeScene) {
         EditorSceneState* editorState = &ctx.editorSceneState;
@@ -938,14 +1015,18 @@ inline void MoveInspectorComponentWithUndo(scene::GameObject& go,
         const auto apply = [editorState, instanceId, markDirty](
                                const std::vector<std::string>& order) {
             editorState->SetComponentOrder(instanceId, order);
-            if (markDirty) markDirty();
+            if (markDirty) {
+                markDirty();
+            }
         };
         ctx.undoStack->Push(std::make_unique<LambdaCommand>(
             "Reorder Components",
             [apply, after]()  { apply(after); },
             [apply, before]() { apply(before); }));
     }
-    if (ctx.markSceneDirty) ctx.markSceneDirty();
+    if (ctx.markSceneDirty) {
+        ctx.markSceneDirty();
+    }
 }
 
 /// @note エンジン Component カード共通の並び替え指定。
@@ -978,17 +1059,22 @@ inline void DrawComponentMenuHeading(const char* label)
 inline bool DrawPasteComponentValuesMenuItem(const char* label, bool enabled)
 {
     const bool clicked = ImGui::MenuItem(LOC(label), nullptr, false, enabled);
-    if (!enabled && ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled))
+    if (!enabled && ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled)) {
         ImGui::SetTooltip("%s", LOCT("Copy values from the same component type first."));
+    }
     return clicked;
 }
 
 inline bool DrawRemoveComponentMenuItem(bool enabled = true)
 {
     ImGui::Separator();
-    if (enabled) ImGui::PushStyleColor(ImGuiCol_Text, EditorTheme::Color(ThemeColor::Danger));
+    if (enabled) {
+        ImGui::PushStyleColor(ImGuiCol_Text, EditorTheme::Color(ThemeColor::Danger));
+    }
     const bool clicked = ImGui::MenuItem(LOC("Remove Component"), nullptr, false, enabled);
-    if (enabled) ImGui::PopStyleColor();
+    if (enabled) {
+        ImGui::PopStyleColor();
+    }
     return clicked;
 }
 
@@ -998,8 +1084,9 @@ inline bool DrawRemoveComponentMenuItem(scene::GameObject& go, const std::type_i
 {
     const std::string blocker = FindComponentRemovalBlocker(go, type);
     const bool clicked = DrawRemoveComponentMenuItem(blocker.empty());
-    if (!blocker.empty() && ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled))
+    if (!blocker.empty() && ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled)) {
         ImGui::SetTooltip(LOCT("Required by %s"), blocker.c_str());
+    }
     return clicked;
 }
 
@@ -1012,7 +1099,7 @@ template<typename T>
 }
 
 /// @brief 1 コンポーネントぶんのカード (ヘッダー・メニュー・Undo 付き本文) を描く。
-/// @param label 未登録型の見出し。登録型は ComponentDisplayName が正本で、並び順キーもそれを使う。
+/// @param[in] label 未登録型の見出し。登録型は ComponentDisplayName が正本で、並び順キーもそれを使う。
 /// @note 内部型は Reset / Paste を出さず、本文は読み取り専用として Undo を追跡しない。
 template<typename T, typename DrawFn>
 void DrawComponentSection(scene::GameObject* go,
@@ -1023,7 +1110,9 @@ void DrawComponentSection(scene::GameObject* go,
                           DrawFn drawFn)
 {
     auto* comp = go->GetComponent<T>();
-    if (!comp) return;
+    if (!comp) {
+        return;
+    }
     label = ComponentDisplayName<T>(label);
 
     if (ctx.inspectorComponentCollector && !ctx.inspectorComponentCollector->drawing) {
@@ -1046,19 +1135,21 @@ void DrawComponentSection(scene::GameObject* go,
     widgets::ComponentHeaderResult header;
     constexpr bool internalType = !ComponentAddableTrait<T>::value;
 
-    /// @note Bone のような enabled を持たない型はチェックを出さない。置き場の差は ComponentEnabledFlag が吸収する。
+    // Bone のような enabled を持たない型はチェックを出さない。置き場の差は ComponentEnabledFlag が吸収する。
     constexpr bool hasEnabled = ComponentHasEnabled<T>();
     if constexpr (hasEnabled) {
         header = widgets::ComponentHeader(
             label, accent, &ComponentEnabledFlag(*comp), true,
             MakeComponentReorderTarget(go, ctx, label));
         if (header.enabledChanged) {
-            /// @note 変わったのはフラグだけなので、変化後から直前を組む (毎フレームの全体コピーを避ける)。
+            // 変わったのはフラグだけなので、変化後から直前を組む (毎フレームの全体コピーを避ける)。
             T beforeEnabled = *comp;
             ComponentEnabledFlag(beforeEnabled) = !ComponentEnabledFlag(*comp);
             PushComponentValueCommand(
                 *go, ctx, std::string("Toggle ") + label, beforeEnabled, *comp);
-            if (ctx.markSceneDirty) ctx.markSceneDirty();
+            if (ctx.markSceneDirty) {
+                ctx.markSceneDirty();
+            }
         }
     } else {
         header = widgets::ComponentHeader(
@@ -1067,8 +1158,9 @@ void DrawComponentSection(scene::GameObject* go,
     }
 
     const bool open = header.open;
-    if (header.menuClicked)
+    if (header.menuClicked) {
         ImGui::OpenPopup("##comp_opts");
+    }
 
     bool removeRequested = false;
     if (ImGui::BeginPopup("##comp_opts")) {
@@ -1091,24 +1183,29 @@ void DrawComponentSection(scene::GameObject* go,
             }
             PushComponentValueCommand(
                 *go, ctx, std::string("Paste ") + label, before, *comp);
-            if (ctx.markSceneDirty) ctx.markSceneDirty();
+            if (ctx.markSceneDirty) {
+                ctx.markSceneDirty();
+            }
         }
         DrawPasteComponentAsNewMenuItem(*go, ctx, compClipboard, compClipboardType);
         if constexpr (!internalType) {
             ImGui::Separator();
             if (ImGui::MenuItem(LOC("Reset to Defaults"))) {
                 const T before = *comp;
-                /// @note Add Component と同じ既定値へ戻す (T{} だと RigidBody の本体や Terrain の格子が消える)。
+                // Add Component と同じ既定値へ戻す (T{} だと RigidBody の本体や Terrain の格子が消える)。
                 T after = MakeDefaultComponent<T>(*go);
                 CopyComponentEnabledFlag(before, after);
                 ApplyInspectorComponentValues(*go, *comp, after);
                 PushComponentValueCommand(
                     *go, ctx, std::string("Reset ") + label, before, *comp);
-                if (ctx.markSceneDirty) ctx.markSceneDirty();
+                if (ctx.markSceneDirty) {
+                    ctx.markSceneDirty();
+                }
             }
         }
-        if constexpr (ComponentCardAllowsRemove<T>())
+        if constexpr (ComponentCardAllowsRemove<T>()) {
             removeRequested = DrawRemoveComponentMenuItem(*go, typeid(T));
+        }
         ImGui::EndPopup();
     }
 
@@ -1116,7 +1213,7 @@ void DrawComponentSection(scene::GameObject* go,
         const widgets::ComponentBodyScope body = widgets::BeginComponentBody(header, accent);
         ImGui::Spacing();
         if constexpr (internalType || std::is_same_v<T, scene::TerrainComponent>) {
-            /// @note Terrain は変更直前に配列を保存する専用の編集 transaction を持つ。
+            // Terrain は変更直前に配列を保存する専用の編集 transaction を持つ。
             drawFn(*comp, ctx);
         } else if constexpr (std::is_same_v<T, scene::MaterialComponent>
                           || std::is_same_v<T, scene::RigidBodyComponent>) {
@@ -1133,18 +1230,18 @@ void DrawComponentSection(scene::GameObject* go,
         ImGui::Spacing();
         widgets::EndComponentBody(body);
     }
-    /// @note カード同士の間隔。詰まっていると帯があっても切れ目が読めない。
+    // カード同士の間隔。詰まっていると帯があっても切れ目が読めない。
     ImGui::Spacing();
 
     ImGui::PopID();
 
     if (removeRequested) {
-        /// @note 外す直前を基準に取り、数フレーム後の残りを出す («外したのに減らない» をその場で見せる)。
+        // 外す直前を基準に取り、数フレーム後の残りを出す («外したのに減らない» をその場で見せる)。
         if (ctx.memoryLeakDiff != nullptr && ctx.resources != nullptr) {
             ctx.memoryLeakDiff->CaptureBaseline(*ctx.resources, std::string("Before remove ") + label);
             ctx.memoryLeakDiff->ScheduleCompare(3, std::string("Remove ") + label);
         }
-        /// @note Component の値コピーは GPU 所有権を持たないため、Undo からの復元時に描画資源を再作成する。
+        // Component の値コピーは GPU 所有権を持たないため、Undo からの復元時に描画資源を再作成する。
         T removed = CaptureInspectorComponentValues(*comp);
         scene::Scene* scene = ctx.activeScene;
         const std::string instanceId = go->instanceId;
@@ -1155,20 +1252,28 @@ void DrawComponentSection(scene::GameObject* go,
                 std::string("Remove ") + label,
                 [scene, instanceId, markDirty]() {
                     if (auto* target = scene->FindByGuid(instanceId)) {
-                        if (target->GetComponent<T>())
+                        if (target->GetComponent<T>()) {
                             target->RemoveComponent<T>();
-                        if (markDirty) markDirty();
+                        }
+                        if (markDirty) {
+                            markDirty();
+                        }
                     }
                 },
                 [scene, instanceId, removed, markDirty]() {
                     if (auto* target = scene->FindByGuid(instanceId)) {
-                        if (!target->GetComponent<T>())
+                        if (!target->GetComponent<T>()) {
                             target->AddComponent<T>(removed);
-                        if (markDirty) markDirty();
+                        }
+                        if (markDirty) {
+                            markDirty();
+                        }
                     }
                 }));
         }
-        if (ctx.markSceneDirty) ctx.markSceneDirty();
+        if (ctx.markSceneDirty) {
+            ctx.markSceneDirty();
+        }
     }
 }
 
@@ -1188,24 +1293,34 @@ struct ComponentImGuiReflector final : ImGuiReflector {
     using ImGuiReflector::Field;
     void Field(const char* name, bool& value) override
     {
-        if (std::strcmp(name, "enabled") == 0 || ManagedField(name)) return;
+        if (std::strcmp(name, "enabled") == 0 || ManagedField(name)) {
+            return;
+        }
         ImGuiReflector::Field(name, value);
     }
     void Field(const char* name, int& value) override
     {
-        if (!ManagedField(name)) ImGuiReflector::Field(name, value);
+        if (!ManagedField(name)) {
+            ImGuiReflector::Field(name, value);
+        }
     }
     void Field(const char* name, float& value) override
     {
-        if (!ManagedField(name)) ImGuiReflector::Field(name, value);
+        if (!ManagedField(name)) {
+            ImGuiReflector::Field(name, value);
+        }
     }
     void Field(const char* name, std::string& value) override
     {
-        if (!ManagedField(name)) ImGuiReflector::Field(name, value);
+        if (!ManagedField(name)) {
+            ImGuiReflector::Field(name, value);
+        }
     }
     void Enum(const char* name, int& value, std::span<const char* const> labels) override
     {
-        if (!ManagedField(name)) ImGuiReflector::Enum(name, value, labels);
+        if (!ManagedField(name)) {
+            ImGuiReflector::Enum(name, value, labels);
+        }
     }
     std::size_t BeginObjectList(const char* name, std::size_t count) override
     {
@@ -1213,7 +1328,9 @@ struct ComponentImGuiReflector final : ImGuiReflector {
             || std::strcmp(name, "pointBindings") == 0 || std::strcmp(name, "waypointBindings") == 0))
             || (managedClothAnchors && std::strcmp(name, "attachments") == 0);
         const bool visible = FieldVisible();
-        if (hidden) SetFieldVisible(false);
+        if (hidden) {
+            SetFieldVisible(false);
+        }
         const auto result = ImGuiReflector::BeginObjectList(name, count);
         SetFieldVisible(visible);
         return result;
@@ -1276,7 +1393,9 @@ void DrawComponentSectionCustom(
     ApplyFn applyFn)
 {
     auto* comp = go->GetComponent<T>();
-    if (!comp) return;
+    if (!comp) {
+        return;
+    }
     label = ComponentDisplayName<T>(label);
 
     if (ctx.inspectorComponentCollector && !ctx.inspectorComponentCollector->drawing) {
@@ -1298,7 +1417,9 @@ void DrawComponentSectionCustom(
     const bool canUndo = CanRecordEditorUndo(ctx);
 
     auto pushUndoCmd = [&](const std::string& desc, const Snapshot& before, const Snapshot& after) {
-        if (!ctx.undoStack || !ctx.activeScene) return;
+        if (!ctx.undoStack || !ctx.activeScene) {
+            return;
+        }
         scene::Scene* sc = ctx.activeScene;
         const std::string iid = go->instanceId;
         const auto dirty = ctx.markSceneDirty;
@@ -1307,7 +1428,9 @@ void DrawComponentSectionCustom(
             if (auto* target = sc->FindByGuid(iid))
                 if (auto* c = target->GetComponent<T>()) {
                     af(*c, v);
-                    if (dirty) dirty();
+                    if (dirty) {
+                        dirty();
+                    }
                 }
         };
         ctx.undoStack->Push(std::make_unique<LambdaCommand>(
@@ -1322,13 +1445,18 @@ void DrawComponentSectionCustom(
         label, accent, &comp->enabled, true,
         MakeComponentReorderTarget(go, ctx, label));
     if (header.enabledChanged) {
-        if (canUndo) pushUndoCmd(std::string("Toggle ") + label, beforeEnabled, captureFn(*comp));
-        if (ctx.markSceneDirty) ctx.markSceneDirty();
+        if (canUndo) {
+            pushUndoCmd(std::string("Toggle ") + label, beforeEnabled, captureFn(*comp));
+        }
+        if (ctx.markSceneDirty) {
+            ctx.markSceneDirty();
+        }
     }
 
     const bool open = header.open;
-    if (header.menuClicked)
+    if (header.menuClicked) {
         ImGui::OpenPopup("##comp_opts");
+    }
 
     bool removeRequested = false;
     if (ImGui::BeginPopup("##comp_opts")) {
@@ -1344,19 +1472,27 @@ void DrawComponentSectionCustom(
             const bool wasEnabled = comp->enabled;
             applyFn(*comp, std::any_cast<Snapshot>(compClipboard));
             comp->enabled = wasEnabled;
-            if (canUndo) pushUndoCmd(std::string("Paste ") + label, before, captureFn(*comp));
-            if (ctx.markSceneDirty) ctx.markSceneDirty();
+            if (canUndo) {
+                pushUndoCmd(std::string("Paste ") + label, before, captureFn(*comp));
+            }
+            if (ctx.markSceneDirty) {
+                ctx.markSceneDirty();
+            }
         }
         DrawPasteComponentAsNewMenuItem(*go, ctx, compClipboard, compClipboardType);
         ImGui::Separator();
         if (ImGui::MenuItem(LOC("Reset to Defaults"))) {
             const Snapshot before = captureFn(*comp);
             const bool wasEnabled = comp->enabled;
-            /// @note Add Component と同じ既定値 (Renderer のメッシュから組み直す) へ戻す。
+            // Add Component と同じ既定値 (Renderer のメッシュから組み直す) へ戻す。
             applyFn(*comp, captureFn(MakeDefaultComponent<T>(*go)));
             comp->enabled = wasEnabled;
-            if (canUndo) pushUndoCmd(std::string("Reset ") + label, before, captureFn(*comp));
-            if (ctx.markSceneDirty) ctx.markSceneDirty();
+            if (canUndo) {
+                pushUndoCmd(std::string("Reset ") + label, before, captureFn(*comp));
+            }
+            if (ctx.markSceneDirty) {
+                ctx.markSceneDirty();
+            }
         }
         removeRequested = DrawRemoveComponentMenuItem(*go, typeid(T));
         ImGui::EndPopup();
@@ -1381,10 +1517,12 @@ void DrawComponentSectionCustom(
                 edit.before = beforeDraw;
             } else if (transition == InspectorEditTransition::END) {
                 const Snapshot after = captureFn(*comp);
-                /// @note 値が動いていない操作 (参照欄のクリック等) では積まない。
+                // 値が動いていない操作 (参照欄のクリック等) では積まない。
                 if (!ComponentSnapshotCompare<Snapshot>::Equal(edit.before, after)) {
                     pushUndoCmd(std::string("Change ") + label, edit.before, after);
-                    if (ctx.markSceneDirty) ctx.markSceneDirty();
+                    if (ctx.markSceneDirty) {
+                        ctx.markSceneDirty();
+                    }
                 }
                 edit.session.Cancel();
             }
@@ -1396,9 +1534,11 @@ void DrawComponentSectionCustom(
 
     ImGui::PopID();
 
-    if (!removeRequested) return;
+    if (!removeRequested) {
+        return;
+    }
 
-    /// @note やり直しは空の T を足して Snapshot を当てる (collider は ApplyFn が捨て、物理側が組み直す)。
+    // やり直しは空の T を足して Snapshot を当てる (collider は ApplyFn が捨て、物理側が組み直す)。
     const Snapshot removed = captureFn(*comp);
     scene::Scene* scene = ctx.activeScene;
     const std::string instanceId = go->instanceId;
@@ -1410,9 +1550,12 @@ void DrawComponentSectionCustom(
             std::string("Remove ") + label,
             [scene, instanceId, markDirty]() {
                 if (auto* target = scene->FindByGuid(instanceId)) {
-                    if (target->GetComponent<T>())
+                    if (target->GetComponent<T>()) {
                         target->RemoveComponent<T>();
-                    if (markDirty) markDirty();
+                    }
+                    if (markDirty) {
+                        markDirty();
+                    }
                 }
             },
             [scene, instanceId, removed, markDirty, af]() {
@@ -1421,11 +1564,15 @@ void DrawComponentSectionCustom(
                         auto& restored = target->AddComponent<T>();
                         af(restored, removed);
                     }
-                    if (markDirty) markDirty();
+                    if (markDirty) {
+                        markDirty();
+                    }
                 }
             }));
     }
-    if (ctx.markSceneDirty) ctx.markSceneDirty();
+    if (ctx.markSceneDirty) {
+        ctx.markSceneDirty();
+    }
 }
 
 /// @note 明滅 (Flicker)。既定は Off なので、既存のライトでは «Flicker» の行 1 本しか増えない。
@@ -1442,8 +1589,9 @@ inline void DrawLightFlickerFields(scene::LightComponent& lc)
     static constexpr const char* kFlickerModeNames[] = { "Off", "Sine", "Noise", "Curve" };
     int flickerMode = static_cast<int>(lc.flickerMode);
     if (property::Combo("Flicker Mode", &flickerMode, kFlickerModeNames,
-                     IM_ARRAYSIZE(kFlickerModeNames)))
+                     IM_ARRAYSIZE(kFlickerModeNames))) {
         lc.flickerMode = static_cast<Flicker>(flickerMode);
+    }
     if (ImGui::IsItemHovered()) {
         ImGui::SetTooltip(
             "Off   : 無効 (既定)。intensity はそのまま\n"
@@ -1462,9 +1610,12 @@ inline void DrawLightFlickerFields(scene::LightComponent& lc)
         "0 で無効 (常に 1 倍)、1 で消灯まで落ちます。\n"
         "オーサリングした Intensity は «ピーク» として扱われ、上へは振れません。");
     property::DragFloat("Flicker Frequency", &lc.flickerFrequency, 0.05f, 0.0f, 60.0f, "%.2f Hz");
-    if (ImGui::IsItemHovered())
+    if (ImGui::IsItemHovered()) {
         ImGui::SetTooltip("1 秒あたりの周期数。Curve モードではカーブ 1 周の速さです。");
-    if (lc.flickerFrequency < 0.0f) lc.flickerFrequency = 0.0f;
+    }
+    if (lc.flickerFrequency < 0.0f) {
+        lc.flickerFrequency = 0.0f;
+    }
 
     if (lc.flickerMode != Flicker::Noise) {
         widgets::RangeField("Flicker Noise", lc.flickerNoise, 0.0f, 1.0f, "%.3f",
@@ -1486,7 +1637,7 @@ inline void DrawLightFlickerFields(scene::LightComponent& lc)
     }
 
     if (lc.flickerMode == Flicker::Curve) {
-        /// @note 縦軸は倍率。1 を超えると増幅になるので、上限は 2 まで取る。
+        // 縦軸は倍率。1 を超えると増幅になるので、上限は 2 まで取る。
         widgets::CurveEditor("Flicker Curve", lc.flickerCurve, 2.0f);
     }
 
@@ -1503,15 +1654,16 @@ inline void DrawLightFields(scene::GameObject& go, scene::LightComponent& lc,
     static constexpr const char* kTypeNames[] = {
         "Directional", "Point", "Spot", "Area (Rect)", "Sphere", "Tube" };
     int typeIdx = static_cast<int>(lc.type);
-    if (property::Combo("Type", &typeIdx, kTypeNames, IM_ARRAYSIZE(kTypeNames)))
+    if (property::Combo("Type", &typeIdx, kTypeNames, IM_ARRAYSIZE(kTypeNames))) {
         lc.type = static_cast<scene::LightComponent::Type>(typeIdx);
+    }
 
     const bool drivenBySky = dayNightDriven && lc.type == scene::LightComponent::Type::Directional;
     ImGui::BeginDisabled(drivenBySky);
     property::Checkbox("Use Color Temperature", &lc.useColorTemperature);
     if (lc.useColorTemperature) {
         property::DragFloat("Temperature", &lc.colorTemperature, 25.0f, 1000.0f, 15000.0f, "%.0f K");
-        /// @note 温度から作った色をそのまま見せる。数値だけでは何色になるか分からない。
+        // 温度から作った色をそのまま見せる。数値だけでは何色になるか分からない。
         const math::Vector3 preview = renderer::ColorFromTemperature(lc.colorTemperature);
         ImGui::ColorButton("##tempPreview",
                            ImVec4(preview.x, preview.y, preview.z, 1.0f),
@@ -1521,13 +1673,13 @@ inline void DrawLightFields(scene::GameObject& go, scene::LightComponent& lc,
     } else {
         widgets::ColorEdit3("Color", lc.color);
     }
-    /// @note Area は上限 200 では足りない。単位が「面の輝度」で、小さなパネルほど
-    /// @note 大きな値が要るため (LightComponent.hpp の intensity の説明を参照)。
+    // Area は上限 200 では足りない。単位が「面の輝度」で、小さなパネルほど
+    // 大きな値が要るため (LightComponent.hpp の intensity の説明を参照)。
     const bool isArea = (lc.type == scene::LightComponent::Type::Area);
     property::DragFloat("Intensity", &lc.intensity, isArea ? 1.0f : 0.05f,
                      0.0f, isArea ? 2000.0f : 200.0f);
-    /// @note タイプごとに単位が違うことを、値を触る場所で明示する。Point の感覚のまま Area へ
-    /// @note 10 を入れると albedo x 0.04 でほぼ見えず、«実装が壊れている» と読み違える (実例あり)。
+    // タイプごとに単位が違うことを、値を触る場所で明示する。Point の感覚のまま Area へ
+    // 10 を入れると albedo x 0.04 でほぼ見えず、«実装が壊れている» と読み違える (実例あり)。
     switch (lc.type) {
     case scene::LightComponent::Type::Directional:
         ImGui::TextWrapped("放射照度 (1.0 = albedo そのまま)"); break;
@@ -1551,8 +1703,9 @@ inline void DrawLightFields(scene::GameObject& go, scene::LightComponent& lc,
             go.transform.position.y,
             go.transform.position.z
         };
-        if (widgets::DragAxes("Position", pos, 3, 0.1f))
+        if (widgets::DragAxes("Position", pos, 3, 0.1f)) {
             go.transform.position = { pos[0], pos[1], pos[2] };
+        }
         property::DragFloat("Range", &lc.range, 0.1f, 0.0f, 500.0f);
     }
 
@@ -1568,7 +1721,7 @@ inline void DrawLightFields(scene::GameObject& go, scene::LightComponent& lc,
         ImGui::TextDisabled("面の向きは Transform の Forward。板の裏は Two Sided で照らす");
     }
 
-    /// @note 発光体の大きさ。Area だけは幅と高さがその役割なので出さない。
+    // 発光体の大きさ。Area だけは幅と高さがその役割なので出さない。
     if (lc.type != scene::LightComponent::Type::Directional &&
         lc.type != scene::LightComponent::Type::Area) {
         property::DragFloat("Source Radius", &lc.sourceRadius, 0.005f, 0.0f, 10.0f, "%.3f m");
@@ -1596,21 +1749,25 @@ inline void DrawLightFields(scene::GameObject& go, scene::LightComponent& lc,
         if (lc.type == scene::LightComponent::Type::Directional) {
             const char* shadowModes[] = {"Realtime", "Auto Bake", "Cached Far Cascade"};
             int shadowMode = static_cast<int>(lc.shadowMode);
-            if (property::Combo("Shadow Mode", &shadowMode, shadowModes, IM_ARRAYSIZE(shadowModes)))
+            if (property::Combo("Shadow Mode", &shadowMode, shadowModes, IM_ARRAYSIZE(shadowModes))) {
                 lc.shadowMode = static_cast<scene::LightComponent::ShadowMode>(shadowMode);
+            }
             if (lc.shadowMode == scene::LightComponent::ShadowMode::AUTO_BAKE) {
                 const auto drawBakeDirection = [&go](const char* label, math::Vector3& direction) {
                     ImGui::PushID(label);
                     widgets::DragAxes(label, direction, 0.01f, -1.0f, 1.0f);
-                    if (ImGui::SmallButton("Use Current")) direction = go.transform.Forward();
+                    if (ImGui::SmallButton("Use Current")) {
+                        direction = go.transform.Forward();
+                    }
                     ImGui::PopID();
                 };
                 drawBakeDirection("Day Direction", lc.shadowBakeDayDirection);
                 drawBakeDirection("Evening Direction", lc.shadowBakeEveningDirection);
                 ImGui::TextDisabled("Play prepares static far shadows for both directions.");
             }
-            if (lc.shadowMode == scene::LightComponent::ShadowMode::CACHED_FAR_CASCADE)
+            if (lc.shadowMode == scene::LightComponent::ShadowMode::CACHED_FAR_CASCADE) {
                 ImGui::TextDisabled("Play updates middle/far cascades every 4/8 frames with four cascades.");
+            }
             const char* distFmt = (lc.shadowDistance <= 0.0f) ? "Render Settings" : "%.1f m";
             property::DragFloat("Shadow Distance Override", &lc.shadowDistance,
                              5.0f, 0.0f, 2000.0f, distFmt);
@@ -1621,8 +1778,8 @@ inline void DrawLightFields(scene::GameObject& go, scene::LightComponent& lc,
         } else {
             property::DragFloat("Shadow Near Plane", &lc.shadowNearPlane,
                              0.01f, 0.01f, 10.0f, "%.2f m");
-            /// @note タイルの取り合いは «置いたのに影が出ない» の唯一の原因なので、
-            /// @note この型が何枚使うかをその場で出す。
+            // タイルの取り合いは «置いたのに影が出ない» の唯一の原因なので、
+            // この型が何枚使うかをその場で出す。
             const bool cube = lc.type == scene::LightComponent::Type::Point
                            || lc.type == scene::LightComponent::Type::Sphere
                            || lc.type == scene::LightComponent::Type::Tube;
@@ -1630,10 +1787,12 @@ inline void DrawLightFields(scene::GameObject& go, scene::LightComponent& lc,
                 ? "アトラスのタイルは 16 枚。この型は全方位なのでキューブ 6 面 = 6 枚"
                 : "アトラスのタイルは 16 枚。この型は 1 枚");
             ImGui::TextDisabled("割り当てはカメラに近い順。あふれた光源は影を落とさない");
-            if (lc.type == scene::LightComponent::Type::Area)
+            if (lc.type == scene::LightComponent::Type::Area) {
                 ImGui::TextDisabled("Area は法線方向 75 度ぶんだけ。真横へは影が出ない");
-            if (lc.type == scene::LightComponent::Type::Tube)
+            }
+            if (lc.type == scene::LightComponent::Type::Tube) {
                 ImGui::TextDisabled("管の長さは影の形に効かない (中心から焼く)。ぼけ幅は Source Radius");
+            }
         }
     }
 
@@ -1641,8 +1800,9 @@ inline void DrawLightFields(scene::GameObject& go, scene::LightComponent& lc,
         ImGui::Separator();
         ImGui::SeparatorText("Cookie");
         property::AssetPathField("Cookie", lc.cookiePath, ".png,.jpg,.dds,.tga", projectRoot);
-        if (!lc.cookiePath.empty())
+        if (!lc.cookiePath.empty()) {
             property::DragFloat("Cookie Rotation", &lc.cookieRotation, 1.0f, -180.0f, 180.0f, "%.0f deg");
+        }
     }
 
     DrawLightFlickerFields(lc);
@@ -1654,7 +1814,9 @@ template<typename T>
 void SyncColliderPreview(scene::GameObject& go, T& col)
 {
     scene::SyncColliderShape(col, go.transform.worldScale);
-    if (!col.collider) return;
+    if (!col.collider) {
+        return;
+    }
 
     bool useTransformScale = true;
     if constexpr (std::is_same_v<T, scene::MeshColliderComponent> ||
@@ -1668,7 +1830,9 @@ inline std::string SanitizeTerrainAssetName(const std::string& name)
     std::string result = name.empty() ? "Terrain" : name;
     for (char& c : result) {
         const bool ok = std::isalnum(static_cast<unsigned char>(c)) || c == '_' || c == '-' || c == ' ';
-        if (!ok) c = '_';
+        if (!ok) {
+            c = '_';
+        }
     }
     return result;
 }
@@ -1682,8 +1846,9 @@ inline std::string UniqueTerrainAssetPath(const EditorContext& ctx, const std::s
 
     const std::string base = terrainDir + "/" + SanitizeTerrainAssetName(objectName);
     std::string path = base + ".terrain";
-    for (int i = 1; util::FileSystem::Exists(path) && i < 10000; ++i)
+    for (int i = 1; util::FileSystem::Exists(path) && i < 10000; ++i) {
         path = base + " " + std::to_string(i) + ".terrain";
+    }
     return NormalizeAssetPath(path);
 }
 inline std::string TerrainAssetDiskPath(const EditorContext& ctx, const std::string& assetPath)
@@ -1705,7 +1870,9 @@ inline std::vector<std::type_index> CapturePresentComponentTypes(scene::GameObje
 {
     std::vector<std::type_index> types;
     scene::ForEachRegisteredComponent([&]<typename T, typename Registration>() {
-        if (go.GetComponent<T>()) types.emplace_back(typeid(T));
+        if (go.GetComponent<T>()) {
+            types.emplace_back(typeid(T));
+        }
     });
     return types;
 }
@@ -1719,25 +1886,34 @@ inline void CollectAddedComponentOps(
 {
     scene::ForEachRegisteredComponent([&]<typename T, typename Registration>() {
         auto* comp = go.GetComponent<T>();
-        if (!comp) return;
-        if (std::find(before.begin(), before.end(), std::type_index(typeid(T))) != before.end())
+        if (!comp) {
             return;
+        }
+        if (std::find(before.begin(), before.end(), std::type_index(typeid(T))) != before.end()) {
+            return;
+        }
 
-        /// @note Redo は「追加直後の値」をそのまま復元する。
-        /// @note unique_ptr を含むなどコピーできない型 (MeshCollider 等) は値を持ち運べないため、
-        /// @note 既定の追加経路をもう一度走らせる — 追加直後と同じ結果になる。
+        // Redo は「追加直後の値」をそのまま復元する。
+        // unique_ptr を含むなどコピーできない型 (MeshCollider 等) は値を持ち運べないため、
+        // 既定の追加経路をもう一度走らせる — 追加直後と同じ結果になる。
         if constexpr (std::is_copy_constructible_v<T>) {
             T value = *comp;
             outAdders.push_back([value](scene::GameObject& target) {
-                if (!target.GetComponent<T>()) target.AddComponent<T>(value);
+                if (!target.GetComponent<T>()) {
+                    target.AddComponent<T>(value);
+                }
             });
         } else {
             outAdders.push_back([](scene::GameObject& target) {
-                if (!target.GetComponent<T>()) AddRegisteredComponent<T>(target);
+                if (!target.GetComponent<T>()) {
+                    AddRegisteredComponent<T>(target);
+                }
             });
         }
         outRemovers.push_back([](scene::GameObject& target) {
-            if (target.GetComponent<T>()) target.RemoveComponent<T>();
+            if (target.GetComponent<T>()) {
+                target.RemoveComponent<T>();
+            }
         });
     });
 }
@@ -1752,12 +1928,16 @@ inline std::unique_ptr<ICommand> MakeAddedComponentsCommand(
     const std::vector<std::type_index>& before,
     std::string description)
 {
-    if (!(CanRecordEditorUndo(ctx) && ctx.activeScene)) return nullptr;
+    if (!(CanRecordEditorUndo(ctx) && ctx.activeScene)) {
+        return nullptr;
+    }
 
     std::vector<std::function<void(scene::GameObject&)>> adders;
     std::vector<std::function<void(scene::GameObject&)>> removers;
     CollectAddedComponentOps(go, before, adders, removers);
-    if (adders.empty()) return nullptr;
+    if (adders.empty()) {
+        return nullptr;
+    }
 
     scene::Scene* scene = ctx.activeScene;
     const std::string instanceId = go.instanceId;
@@ -1765,9 +1945,15 @@ inline std::unique_ptr<ICommand> MakeAddedComponentsCommand(
     auto apply = [scene, instanceId, markDirty](
                      const std::vector<std::function<void(scene::GameObject&)>>& ops) {
         auto* target = scene->FindByGuid(instanceId);
-        if (!target) return;
-        for (const auto& op : ops) op(*target);
-        if (markDirty) markDirty();
+        if (!target) {
+            return;
+        }
+        for (const auto& op : ops) {
+            op(*target);
+        }
+        if (markDirty) {
+            markDirty();
+        }
     };
 
     return std::make_unique<LambdaCommand>(
@@ -1784,10 +1970,14 @@ std::unique_ptr<ICommand> AddRegisteredComponentWithUndo(scene::GameObject& go,
 {
     const bool canRecordUndo = CanRecordEditorUndo(ctx) && ctx.activeScene;
     std::vector<std::type_index> before;
-    if (canRecordUndo) before = CapturePresentComponentTypes(go);
+    if (canRecordUndo) {
+        before = CapturePresentComponentTypes(go);
+    }
 
     AddRegisteredComponent<T>(go);
-    if (!canRecordUndo) return nullptr;
+    if (!canRecordUndo) {
+        return nullptr;
+    }
     return MakeAddedComponentsCommand(go, ctx, before, std::string("Add ") + label);
 }
 
@@ -1797,8 +1987,12 @@ inline bool HasRegisteredComponentByName(scene::GameObject& go, std::string_view
 {
     bool found = false;
     scene::ForEachRegisteredComponent([&]<typename T, typename Registration>() {
-        if (found) return;
-        if (typeName != Registration::serializedName) return;
+        if (found) {
+            return;
+        }
+        if (typeName != Registration::serializedName) {
+            return;
+        }
         found = go.GetComponent<T>() != nullptr;
     });
     return found;
@@ -1813,13 +2007,18 @@ inline std::unique_ptr<ICommand> AddMissingComponentsWithUndo(
 {
     const bool canRecordUndo = CanRecordEditorUndo(ctx) && ctx.activeScene;
     std::vector<std::type_index> before;
-    if (canRecordUndo) before = CapturePresentComponentTypes(go);
+    if (canRecordUndo) {
+        before = CapturePresentComponentTypes(go);
+    }
 
     bool anyAdded = false;
-    for (const std::string& typeName : typeNames)
+    for (const std::string& typeName : typeNames) {
         anyAdded |= AddRegisteredComponentByName(go, typeName);
+    }
 
-    if (!anyAdded || !canRecordUndo) return nullptr;
+    if (!anyAdded || !canRecordUndo) {
+        return nullptr;
+    }
     return MakeAddedComponentsCommand(go, ctx, before, "Add Missing Components");
 }
 
@@ -1828,10 +2027,16 @@ inline std::unique_ptr<ICommand> AddMissingComponentsWithUndo(
 inline bool HasScriptOfType(scene::GameObject& go, std::string_view typeName)
 {
     const auto* sc = go.GetComponent<scene::ScriptComponent>();
-    if (!sc) return false;
+    if (!sc) {
+        return false;
+    }
     for (const scene::ScriptEntry& entry : sc->scripts) {
-        if (entry.script && typeName == entry.script->GetTypeName()) return true;
-        if (!entry.script && entry.serialized && typeName == entry.serialized->type) return true;
+        if (entry.script && typeName == entry.script->GetTypeName()) {
+            return true;
+        }
+        if (!entry.script && entry.serialized && typeName == entry.serialized->type) {
+            return true;
+        }
     }
     return false;
 }
@@ -1846,13 +2051,18 @@ inline std::unique_ptr<ICommand> AddScriptWithUndo(scene::GameObject& go,
 {
     const std::string savedScriptId = util::GenerateUUID();
     auto script = scene::ScriptFactory::Create(typeName, savedScriptId);
-    if (!script) return nullptr;
+    if (!script) {
+        return nullptr;
+    }
 
     const bool canRecordUndo = CanRecordEditorUndo(ctx) && ctx.activeScene;
     std::vector<std::type_index> before;
-    if (canRecordUndo) before = CapturePresentComponentTypes(go);
-    for (const std::string& required : script->RequiredComponents())
+    if (canRecordUndo) {
+        before = CapturePresentComponentTypes(go);
+    }
+    for (const std::string& required : script->RequiredComponents()) {
         AddRegisteredComponentByName(go, required);
+    }
     std::unique_ptr<ICommand> requiredCommand =
         canRecordUndo ? MakeAddedComponentsCommand(go, ctx, before, "Add Required Components")
                       : nullptr;
@@ -1864,13 +2074,17 @@ inline std::unique_ptr<ICommand> AddScriptWithUndo(scene::GameObject& go,
 
     const bool hadComponent = go.GetComponent<scene::ScriptComponent>() != nullptr;
     auto* sc = go.GetComponent<scene::ScriptComponent>();
-    if (!sc) sc = &go.AddComponent<scene::ScriptComponent>();
+    if (!sc) {
+        sc = &go.AddComponent<scene::ScriptComponent>();
+    }
 
     scene::ScriptEntry& entry = sc->scripts.emplace_back();
     entry.savedScriptId = savedScriptId;
     entry.script = std::move(script);
 
-    if (!canRecordUndo) return nullptr;
+    if (!canRecordUndo) {
+        return nullptr;
+    }
 
     scene::Scene* scene = ctx.activeScene;
     const std::string instanceId = go.instanceId;
@@ -1879,30 +2093,51 @@ inline std::unique_ptr<ICommand> AddScriptWithUndo(scene::GameObject& go,
     return std::make_unique<LambdaCommand>(
         std::string("Add Script ") + scene::ScriptFactory::DisplayName(typeName),
         [scene, instanceId, savedScriptId, typeName, required, markDirty]() {
-            if (required) required->Execute();
+            if (required) {
+                required->Execute();
+            }
             auto* target = scene->FindByGuid(instanceId);
-            if (!target) return;
+            if (!target) {
+                return;
+            }
             auto newScript = scene::ScriptFactory::Create(typeName, savedScriptId);
-            if (!newScript) return;
+            if (!newScript) {
+                return;
+            }
             auto* comp = target->GetComponent<scene::ScriptComponent>();
-            if (!comp) comp = &target->AddComponent<scene::ScriptComponent>();
+            if (!comp) {
+                comp = &target->AddComponent<scene::ScriptComponent>();
+            }
             newScript->SetContext(scene, target);
             newScript->Reset();
                     newScript->ExecuteProfiledCallback(&scene::Script::OnValidate, scene::ScriptCallbackKind::VALIDATE, "OnValidate");
-            auto& entry = comp->scripts.emplace_back(); entry.savedScriptId = savedScriptId; entry.script = std::move(newScript);
-            if (markDirty) markDirty();
+            auto& entry = comp->scripts.emplace_back();
+            entry.savedScriptId = savedScriptId;
+            entry.script = std::move(newScript);
+            if (markDirty) {
+                markDirty();
+            }
         },
         [scene, instanceId, savedScriptId, hadComponent, required, markDirty]() {
             auto* target = scene->FindByGuid(instanceId);
-            if (!target) return;
+            if (!target) {
+                return;
+            }
             if (auto* comp = target->GetComponent<scene::ScriptComponent>()) {
                 const auto added = std::find_if(comp->scripts.begin(), comp->scripts.end(), [&savedScriptId](const auto& entry) { return entry.savedScriptId == savedScriptId; });
-                if (added != comp->scripts.end()) comp->scripts.erase(added);
-                if (!hadComponent && comp->scripts.empty())
+                if (added != comp->scripts.end()) {
+                    comp->scripts.erase(added);
+                }
+                if (!hadComponent && comp->scripts.empty()) {
                     target->RemoveComponent<scene::ScriptComponent>();
+                }
             }
-            if (required) required->Undo();
-            if (markDirty) markDirty();
+            if (required) {
+                required->Undo();
+            }
+            if (markDirty) {
+                markDirty();
+            }
         });
 }
 
@@ -1912,11 +2147,15 @@ inline bool CanPasteComponentAsNew(scene::GameObject& go,
                                    const std::any& clipboard,
                                    const std::type_info* clipboardType)
 {
-    if (clipboardType == nullptr || clipboard.type() != *clipboardType) return false;
+    if (clipboardType == nullptr || clipboard.type() != *clipboardType) {
+        return false;
+    }
     bool can = false;
     scene::ForEachRegisteredComponent([&]<typename T, typename Registration>() {
         if constexpr (Registration::addable && std::is_copy_constructible_v<T>) {
-            if (*clipboardType == typeid(T)) can = go.GetComponent<T>() == nullptr;
+            if (*clipboardType == typeid(T)) {
+                can = go.GetComponent<T>() == nullptr;
+            }
         }
     });
     return can;
@@ -1929,25 +2168,33 @@ inline std::unique_ptr<ICommand> PasteComponentAsNewWithUndo(scene::GameObject& 
                                                              const std::any& clipboard,
                                                              const std::type_info* clipboardType)
 {
-    if (!CanPasteComponentAsNew(go, clipboard, clipboardType)) return nullptr;
+    if (!CanPasteComponentAsNew(go, clipboard, clipboardType)) {
+        return nullptr;
+    }
 
     const bool canRecordUndo = CanRecordEditorUndo(ctx) && ctx.activeScene;
     std::vector<std::type_index> before;
-    if (canRecordUndo) before = CapturePresentComponentTypes(go);
+    if (canRecordUndo) {
+        before = CapturePresentComponentTypes(go);
+    }
 
     std::string description = "Paste Component As New";
     scene::ForEachRegisteredComponent([&]<typename T, typename Registration>() {
         if constexpr (Registration::addable && std::is_copy_constructible_v<T>) {
-            if (*clipboardType != typeid(T)) return;
+            if (*clipboardType != typeid(T)) {
+                return;
+            }
             T value = std::any_cast<const T&>(clipboard);
-            /// @note コピー元の GPU ハンドルを共有すると片方の破棄でもう片方が消えた枠を掴む。
+            // コピー元の GPU ハンドルを共有すると片方の破棄でもう片方が消えた枠を掴む。
             go.AddComponent<T>(std::move(value));
             AddComponentDependencies<T>(go);
             description = std::string("Paste ") + Registration::displayName + " As New";
         }
     });
 
-    if (!canRecordUndo) return nullptr;
+    if (!canRecordUndo) {
+        return nullptr;
+    }
     return MakeAddedComponentsCommand(go, ctx, before, std::move(description));
 }
 
@@ -1959,18 +2206,24 @@ inline void DrawPasteComponentAsNewMenuItem(scene::GameObject& go,
 {
     const bool canPaste = CanPasteComponentAsNew(go, clipboard, clipboardType);
     if (!ImGui::MenuItem(LOC("Paste Component As New"), nullptr, false, canPaste)) {
-        if (!canPaste && ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled))
+        if (!canPaste && ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled)) {
             ImGui::SetTooltip("%s", LOCT("Copy an addable component that this object does not have."));
+        }
         return;
     }
-    if (auto command = PasteComponentAsNewWithUndo(go, ctx, clipboard, clipboardType))
+    if (auto command = PasteComponentAsNewWithUndo(go, ctx, clipboard, clipboardType)) {
         ctx.undoStack->Push(std::move(command));
-    if (ctx.markSceneDirty) ctx.markSceneDirty();
+    }
+    if (ctx.markSceneDirty) {
+        ctx.markSceneDirty();
+    }
 }
 
 inline bool ComponentMatchesFilter(const char* label, const char* filter)
 {
-    if (filter[0] == '\0') return true;
+    if (filter[0] == '\0') {
+        return true;
+    }
     return util::StringUtils::ContainsCI(label, filter);
 }
 
@@ -1994,18 +2247,23 @@ inline void DrawAddComponentMenuMulti(const std::vector<scene::GameObject*>& tar
                                       EditorContext& ctx,
                                       const char* buttonLabel)
 {
-    if (targets.empty()) return;
-    /// @note 最も押されるボタンなので、カード列の底に埋もれないようアクセント色 + 1 段高い枠にする。
+    if (targets.empty()) {
+        return;
+    }
+    // 最も押されるボタンなので、カード列の底に埋もれないようアクセント色 + 1 段高い枠にする。
     ImGui::PushStyleColor(ImGuiCol_Button,        EditorTheme::Color(ThemeColor::AccentSoft));
     ImGui::PushStyleColor(ImGuiCol_ButtonHovered, EditorTheme::Color(ThemeColor::AccentHover));
     ImGui::PushStyleColor(ImGuiCol_ButtonActive,  EditorTheme::Color(ThemeColor::AccentActive));
     const bool addClicked =
         ImGui::Button(buttonLabel, { -1.0f, ImGui::GetFrameHeight() + 6.0f });
     ImGui::PopStyleColor(3);
-    if (addClicked)
+    if (addClicked) {
         ImGui::OpenPopup("##add_component");
+    }
 
-    if (!ImGui::BeginPopup("##add_component")) return;
+    if (!ImGui::BeginPopup("##add_component")) {
+        return;
+    }
 
     if (ImGui::IsWindowAppearing()) {
         filterBuffer[0] = '\0';
@@ -2018,19 +2276,25 @@ inline void DrawAddComponentMenuMulti(const std::vector<scene::GameObject*>& tar
     bool        anyShown = false;
     bool        didAdd = false;
 
-    /// @note 対象ごとの Undo を 1 コマンドへ束ねる (20 個へ足した操作を Ctrl+Z 20 回にしない)。
+    // 対象ごとの Undo を 1 コマンドへ束ねる (20 個へ足した操作を Ctrl+Z 20 回にしない)。
     auto AddToAllTargets = [&targets](auto addOne, const std::string& description)
         -> std::unique_ptr<ICommand> {
         auto composite = std::make_unique<CompositeCommand>(description);
         for (auto* target : targets) {
-            if (!target) continue;
-            if (auto cmd = addOne(*target)) composite->Add(std::move(cmd));
+            if (!target) {
+                continue;
+            }
+            if (auto cmd = addOne(*target)) {
+                composite->Add(std::move(cmd));
+            }
         }
-        if (composite->Empty()) return nullptr;
+        if (composite->Empty()) {
+            return nullptr;
+        }
         return composite;
     };
 
-    /// @note perform() は追加を実行して戻す Undo (不要なら nullptr) を返す。差分の作り方は呼び出し側が知っている。
+    // perform() は追加を実行して戻す Undo (不要なら nullptr) を返す。差分の作り方は呼び出し側が知っている。
     auto addItem = [&](const char* category, const char* label, bool enabled, auto perform) -> bool {
         char path[128];
         std::snprintf(path, sizeof(path), "%s/%s", category, label);
@@ -2038,13 +2302,17 @@ inline void DrawAddComponentMenuMulti(const std::vector<scene::GameObject*>& tar
         std::snprintf(colonPath, sizeof(colonPath), "%s: %s", category, label);
         if (!ComponentMatchesFilter(path, filter) &&
             !ComponentMatchesFilter(colonPath, filter) &&
-            !ComponentMatchesFilter(label, filter))
+            !ComponentMatchesFilter(label, filter)) {
             return false;
+        }
         if (ImGui::MenuItem(filter[0] == '\0' ? label : path, nullptr, false, enabled)) {
             std::unique_ptr<ICommand> command = perform();
-            if (command && CanRecordEditorUndo(ctx))
+            if (command && CanRecordEditorUndo(ctx)) {
                 ctx.undoStack->Push(std::move(command));
-            if (ctx.markSceneDirty) ctx.markSceneDirty();
+            }
+            if (ctx.markSceneDirty) {
+                ctx.markSceneDirty();
+            }
             didAdd = true;
             ImGui::CloseCurrentPopup();
         }
@@ -2068,21 +2336,29 @@ inline void DrawAddComponentMenuMulti(const std::vector<scene::GameObject*>& tar
     for (const scene::ComponentCategory selectedCategory : kCategories) {
         bool hasRegisteredItems = false;
         scene::ForEachRegisteredComponent([&]<typename T, typename Registration>() {
-            if constexpr (Registration::addable)
+            if constexpr (Registration::addable) {
                 hasRegisteredItems |= Registration::category == selectedCategory;
+            }
         });
-        if (!hasRegisteredItems) continue;
+        if (!hasRegisteredItems) {
+            continue;
+        }
 
         const char* categoryLabel = ComponentCategoryLabel(selectedCategory);
         anyShown |= AddComponentCategory(categoryLabel, filter, [&](const char* category, const char*) {
             bool shown = false;
             scene::ForEachRegisteredComponent([&]<typename T, typename Registration>() {
                 if constexpr (Registration::addable) {
-                    if (Registration::category != selectedCategory) return;
-                    /// @note 1 体でも未所持なら追加できる (所持済みの対象は飛ばす)。
+                    if (Registration::category != selectedCategory) {
+                        return;
+                    }
+                    // 1 体でも未所持なら追加できる (所持済みの対象は飛ばす)。
                     bool anyMissing = false;
                     for (auto* target : targets)
-                        if (!target->GetComponent<T>()) { anyMissing = true; break; }
+                        if (!target->GetComponent<T>()) {
+                            anyMissing = true;
+                            break;
+                        }
 
                     shown |= addItem(category, Registration::displayName, anyMissing, [&]() {
                         return AddToAllTargets([&](scene::GameObject& target) {
@@ -2106,7 +2382,10 @@ inline void DrawAddComponentMenuMulti(const std::vector<scene::GameObject*>& tar
                 const std::string displayName = scene::ScriptFactory::DisplayName(typeName);
                 bool anyMissing = false;
                 for (auto* target : targets)
-                    if (!HasScriptOfType(*target, typeName)) { anyMissing = true; break; }
+                    if (!HasScriptOfType(*target, typeName)) {
+                        anyMissing = true;
+                        break;
+                    }
 
                 shown |= addItem(category, displayName.c_str(), anyMissing, [&]() {
                     return AddToAllTargets([&](scene::GameObject& target) {
@@ -2120,13 +2399,15 @@ inline void DrawAddComponentMenuMulti(const std::vector<scene::GameObject*>& tar
         });
     }
 
-    if (!anyShown)
+    if (!anyShown) {
         ImGui::TextDisabled("%s", LOCT("No matching components"));
+    }
 
     ImGui::EndPopup();
 
-    if (didAdd)
+    if (didAdd) {
         filterBuffer[0] = '\0';
+    }
 }
 
 /// @note 単一 GameObject 版 (要素 1 個のリストとして同じ経路へ乗せる)。
@@ -2141,7 +2422,9 @@ inline bool DragVec2(const char* label, math::Vector2& value, float speed = 0.1f
     const widgets::PropertyRowScope row = widgets::BeginPropertyField(label);
     float data[2] = { value.x, value.y };
     const bool changed = widgets::DragAxes("##v", data, 2, speed, min, max);
-    if (changed) value = { data[0], data[1] };
+    if (changed) {
+        value = { data[0], data[1] };
+    }
     widgets::EndPropertyField(row);
     return changed;
 }
@@ -2171,4 +2454,4 @@ void DrawScriptCard(scene::GameObject* go, EditorContext& ctx, int index);
 void EndScriptInspectorFrame(scene::GameObject* go, EditorContext& ctx);
 void DrawScriptInspectors(scene::GameObject* go, EditorContext& ctx);
 
-} /// @note namespace fbzz::editor
+} // namespace fbzz::editor

@@ -62,8 +62,8 @@ TEST(EditorBusProtocol, AcceptsAWellFormedCommand)
 /// @brief Defaults dry run to the safe side.
 TEST(EditorBusProtocol, DefaultsDryRunToTheSafeSide)
 {
-    /// @note dryRun の «欠落» を実変更として扱ってはいけない。壊れた送信側や古い
-    ///       クライアントが、黙ってシーンを書き換えることになる。
+    // dryRun の «欠落» を実変更として扱ってはいけない。壊れた送信側や古い
+    // クライアントが、黙ってシーンを書き換えることになる。
     const auto request = ParseBusRequest(MakeEnvelope("command"), nullptr);
     ASSERT_TRUE(request.has_value());
     EXPECT_TRUE(request->dryRun);
@@ -73,7 +73,7 @@ TEST(EditorBusProtocol, DefaultsDryRunToTheSafeSide)
 TEST(EditorBusProtocol, DefaultsDryRunToTrueWhenItIsNotABool)
 {
     JsonValue root = MakeEnvelope("command");
-    /// @note 文字列は bool ではない
+    // 文字列は bool ではない
     root.Set("dryRun", JsonValue("yes"));
 
     const auto request = ParseBusRequest(root, nullptr);
@@ -107,7 +107,7 @@ TEST(EditorBusProtocol, RejectsAMismatchedProtocol)
 TEST(EditorBusProtocol, RejectsAMissingOrEmptyId)
 {
     JsonValue missing = MakeEnvelope();
-    /// @note null
+    // null
     missing.Set("id", JsonValue());
     EXPECT_FALSE(ParseBusRequest(missing, nullptr).has_value());
 
@@ -127,7 +127,7 @@ TEST(EditorBusProtocol, RejectsAnUnknownKind)
 TEST(EditorBusProtocol, RejectsAPayloadWithoutAType)
 {
     JsonValue root = MakeEnvelope();
-    /// @note "t" が無い
+    // "t" が無い
     root.Set("payload", JsonValue::MakeObject());
 
     EXPECT_FALSE(ParseBusRequest(root, nullptr).has_value());
@@ -175,7 +175,7 @@ TEST(EditorBusProtocol, ErrorResponseCarriesCodeAndMessage)
     ASSERT_NE(response.Find("error"), nullptr);
     EXPECT_EQ(response.Find("error")->Find("code")->AsString(), "not_found");
     EXPECT_EQ(response.Find("error")->Find("message")->AsString(), "scene がありません");
-    /// @note 失敗応答に result を混ぜない (受け手が «部分的に成功» と読む余地を残さない)。
+    // 失敗応答に result を混ぜない (受け手が «部分的に成功» と読む余地を残さない)。
     EXPECT_EQ(response.Find("result"), nullptr);
 }
 

@@ -20,22 +20,24 @@ namespace {
 /// @brief ドラッグ 1 回ぶんの状態。位置はすべてワールド空間。
 struct SnapDrag {
     bool active     = false;
-    bool vertexMode = false;   ///< @note true=頂点スナップ / false=面スナップ
+    bool vertexMode = false;   ///< true=頂点スナップ / false=面スナップ
     /// @note 頂点スナップは掴んだ頂点を目標へ合わせるので、原点ではなくこのオフセットぶんずらして置く。
     math::Vector3 grabOffset{};
     math::Vector3 grabWorld{};
     bool          hasTarget = false;
     math::Vector3 targetWorld{};
 
-    std::vector<std::string>      guids;   ///< @note 移動対象 (選択済みの祖先を持たないものだけ)
-    std::vector<scene::Transform> before;  ///< @note Undo 用
+    std::vector<std::string>      guids;   ///< 移動対象 (選択済みの祖先を持たないものだけ)
+    std::vector<scene::Transform> before;  ///< Undo 用
 };
 SnapDrag g_drag;
 
 math::Vector3 TransformPoint(const math::Matrix4& m, const math::Vector3& p)
 {
     math::Vector4 v = m * math::Vector4{ p.x, p.y, p.z, 1.0f };
-    if (!math::NearlyZero(v.w)) v = v * (1.0f / v.w);
+    if (!math::NearlyZero(v.w)) {
+        v = v * (1.0f / v.w);
+    }
     return { v.x, v.y, v.z };
 }
 
@@ -43,7 +45,9 @@ HierarchyTraversal::EntitySet SelectionKeys(const EditorContext& ctx)
 {
     HierarchyTraversal::EntitySet selected;
     selected.reserve(ctx.selectedEntities.size());
-    for (const auto id : ctx.selectedEntities) selected.insert(HierarchyTraversal::EntityKey(id));
+    for (const auto id : ctx.selectedEntities) {
+        selected.insert(HierarchyTraversal::EntityKey(id));
+    }
     return selected;
 }
 
@@ -64,8 +68,9 @@ std::vector<scene::EntityID> SnapMeshOwners(scene::Scene& scene)
 /// @note worldPosition は TransformSystem が次フレームに更新するので、ドラッグ中に書き換えた直後は古い。親は動かない (祖先は対象外) ので親の行列は信用できる。
 math::Vector3 CurrentWorldPosition(const scene::GameObject& go)
 {
-    if (const scene::GameObject* parent = go.GetParent())
+    if (const scene::GameObject* parent = go.GetParent()) {
         return TransformPoint(parent->transform.GetWorldMatrix(), go.transform.position);
+    }
     return go.transform.position;
 }
 
@@ -77,7 +82,9 @@ bool RayHitsMeshBounds(const math::Ray& ray,
                        const scene::Transform& tf,
                        float radiusInflate)
 {
-    if (mesh.boundsRadius <= 0.0f) return true;
+    if (mesh.boundsRadius <= 0.0f) {
+        return true;
+    }
 
     const math::Vector3 center = TransformPoint(world, mesh.boundsCenter);
     const math::Vector3& ws = tf.worldScale;
@@ -86,7 +93,9 @@ bool RayHitsMeshBounds(const math::Ray& ray,
     const float radius = mesh.boundsRadius * (std::max)(maxScale, 0.0001f) * radiusInflate;
 
     const math::Vector3 toCenter = center - ray.origin;
-    if (toCenter.Length() <= radius) return true;
+    if (toCenter.Length() <= radius) {
+        return true;
+    }
     float t = 0.0f;
     return ray.IntersectSphere(center, radius, t);
 }
@@ -102,25 +111,32 @@ void ForEachWorldVertex(scene::GameObject& go, const math::Ray& cursorRay, Fn&& 
 
     if (auto* mr = go.GetComponent<scene::MeshRenderer>(); mr && mr->mesh) {
         if (RayHitsMeshBounds(cursorRay, *mr->mesh, world, go.transform, kInflate))
-            for (const auto& v : mr->mesh->cpuVertices)
+            for (const auto& v : mr->mesh->cpuVertices) {
                 fn(TransformPoint(world, v.position));
+            }
     }
     if (auto* smr = go.GetComponent<scene::SkinnedMeshRenderer>(); smr && smr->model) {
         const auto* mat = go.GetComponent<scene::MaterialComponent>();
         for (size_t i = 0; i < smr->SubmeshCount(); ++i) {
             const renderer::Mesh* meshPtr = smr->SubmeshMesh(i);
-            if (!meshPtr) continue;
-            if (mat && !mat->SlotAt(i).visible) continue;
-            if (!RayHitsMeshBounds(cursorRay, *meshPtr, world, go.transform, kInflate * 2.0f))
+            if (!meshPtr) {
                 continue;
-            for (const auto& v : meshPtr->cpuSkinnedVertices)
+            }
+            if (mat && !mat->SlotAt(i).visible) {
+                continue;
+            }
+            if (!RayHitsMeshBounds(cursorRay, *meshPtr, world, go.transform, kInflate * 2.0f)) {
+                continue;
+            }
+            for (const auto& v : meshPtr->cpuSkinnedVertices) {
                 fn(TransformPoint(world, v.position));
+            }
         }
     }
 }
 
 /// @brief カーソルに最も近い頂点をスクリーン空間で探す。
-/// @param selectedSide true なら選択中から、false なら非選択から探す。
+/// @param[in] selectedSide true なら選択中から、false なら非選択から探す。
 /// @return maxPixelDist 以内に無ければ false。outWorld は未変更。
 bool FindNearestVertex(EditorContext& ctx,
                        const ImVec2& vpMin,
@@ -130,7 +146,9 @@ bool FindNearestVertex(EditorContext& ctx,
                        float maxPixelDist,
                        math::Vector3& outWorld)
 {
-    if (!ctx.activeScene) return false;
+    if (!ctx.activeScene) {
+        return false;
+    }
 
     float bestDistSq = maxPixelDist * maxPixelDist;
     bool  found      = false;
@@ -141,16 +159,24 @@ bool FindNearestVertex(EditorContext& ctx,
 
     for (const auto id : SnapMeshOwners(*ctx.activeScene)) {
         auto* go = ctx.activeScene->GetGameObject(id);
-        if (!go || !go->activeInHierarchy()) continue;
-        if (selected.contains(HierarchyTraversal::EntityKey(id)) != selectedSide) continue;
+        if (!go || !go->activeInHierarchy()) {
+            continue;
+        }
+        if (selected.contains(HierarchyTraversal::EntityKey(id)) != selectedSide) {
+            continue;
+        }
 
         ForEachWorldVertex(*go, cursorRay, [&](const math::Vector3& worldPos) {
             ImVec2 sp;
-            if (!WorldToScreen(worldPos, viewProjection, vpMin, vpSize, sp)) return;
+            if (!WorldToScreen(worldPos, viewProjection, vpMin, vpSize, sp)) {
+                return;
+            }
             const float dx = sp.x - cursor.x;
             const float dy = sp.y - cursor.y;
             const float distSq = dx * dx + dy * dy;
-            if (distSq >= bestDistSq) return;
+            if (distSq >= bestDistSq) {
+                return;
+            }
             bestDistSq = distSq;
             outWorld   = worldPos;
             found      = true;
@@ -166,8 +192,12 @@ math::Quaternion AlignUpToNormal(const math::Vector3& normal)
     const math::Vector3 up = math::Vector3::UP;
     const math::Vector3 n  = normal.Normalized();
     const float d = math::Vector3::Dot(up, n);
-    if (d >  0.9999f) return math::Quaternion::Identity();
-    if (d < -0.9999f) return math::Quaternion::FromAxisAngle({ 1.0f, 0.0f, 0.0f }, math::PI);
+    if (d >  0.9999f) {
+        return math::Quaternion::Identity();
+    }
+    if (d < -0.9999f) {
+        return math::Quaternion::FromAxisAngle({ 1.0f, 0.0f, 0.0f }, math::PI);
+    }
     const math::Vector3 axis = math::Vector3::Cross(up, n).Normalized();
     return math::Quaternion::FromAxisAngle(axis, std::acos(d));
 }
@@ -181,7 +211,9 @@ bool RaycastUnselectedSurface(EditorContext& ctx,
                               math::Vector3& outPoint,
                               math::Vector3& outNormal)
 {
-    if (!ctx.activeScene) return false;
+    if (!ctx.activeScene) {
+        return false;
+    }
 
     float bestT  = 1e30f;
     bool  found  = false;
@@ -190,7 +222,9 @@ bool RaycastUnselectedSurface(EditorContext& ctx,
 
     for (const auto id : SnapMeshOwners(*ctx.activeScene)) {
         auto* object = ctx.activeScene->GetGameObject(id);
-        if (!object || !object->activeInHierarchy() || selected.contains(HierarchyTraversal::EntityKey(id))) continue;
+        if (!object || !object->activeInHierarchy() || selected.contains(HierarchyTraversal::EntityKey(id))) {
+            continue;
+        }
         auto& go = *object;
 
         const math::Matrix4 world = go.transform.GetWorldMatrix();
@@ -198,8 +232,12 @@ bool RaycastUnselectedSurface(EditorContext& ctx,
         auto testMesh = [&](const renderer::Mesh& mesh, const auto& verts, bool skinned,
                             float radiusInflate) {
             const auto& indices = mesh.cpuIndices;
-            if (verts.empty() || indices.size() < 3) return;
-            if (!RayHitsMeshBounds(ray, mesh, world, go.transform, radiusInflate)) return;
+            if (verts.empty() || indices.size() < 3) {
+                return;
+            }
+            if (!RayHitsMeshBounds(ray, mesh, world, go.transform, radiusInflate)) {
+                return;
+            }
             const bool indexed = CollectRayTriangleOffsets(mesh, skinned, world, ray, triangleOffsets);
             const size_t count = indexed ? triangleOffsets.size() : indices.size() / 3;
             for (size_t item = 0; item < count; ++item) {
@@ -207,14 +245,18 @@ bool RaycastUnselectedSurface(EditorContext& ctx,
                 const std::uint32_t i0 = indices[i + 0];
                 const std::uint32_t i1 = indices[i + 1];
                 const std::uint32_t i2 = indices[i + 2];
-                if (i0 >= verts.size() || i1 >= verts.size() || i2 >= verts.size()) continue;
+                if (i0 >= verts.size() || i1 >= verts.size() || i2 >= verts.size()) {
+                    continue;
+                }
 
                 const math::Vector3 v0 = TransformPoint(world, verts[i0].position);
                 const math::Vector3 v1 = TransformPoint(world, verts[i1].position);
                 const math::Vector3 v2 = TransformPoint(world, verts[i2].position);
 
                 float t = 0.0f;
-                if (!ray.IntersectTriangle(v0, v1, v2, t) || t >= bestT) continue;
+                if (!ray.IntersectTriangle(v0, v1, v2, t) || t >= bestT) {
+                    continue;
+                }
 
                 bestT     = t;
                 outPoint  = ray.origin + ray.direction * t;
@@ -223,14 +265,19 @@ bool RaycastUnselectedSurface(EditorContext& ctx,
             }
         };
 
-        if (auto* mr = go.GetComponent<scene::MeshRenderer>(); mr && mr->mesh)
+        if (auto* mr = go.GetComponent<scene::MeshRenderer>(); mr && mr->mesh) {
             testMesh(*mr->mesh, mr->mesh->cpuVertices, false, 1.0f);
+        }
         if (auto* smr = go.GetComponent<scene::SkinnedMeshRenderer>(); smr && smr->model) {
             const auto* mat = go.GetComponent<scene::MaterialComponent>();
             for (size_t i = 0; i < smr->SubmeshCount(); ++i) {
                 const renderer::Mesh* meshPtr = smr->SubmeshMesh(i);
-                if (!meshPtr) continue;
-                if (mat && !mat->SlotAt(i).visible) continue;
+                if (!meshPtr) {
+                    continue;
+                }
+                if (mat && !mat->SlotAt(i).visible) {
+                    continue;
+                }
                 testMesh(*meshPtr, meshPtr->cpuSkinnedVertices, true, 2.0f);
             }
         }
@@ -262,7 +309,9 @@ void CollectDragTargets(EditorContext& ctx)
     g_drag.before.clear();
     for (scene::EntityID id : CollectHierarchyRoots(*ctx.activeScene, ctx.selectedEntities)) {
         scene::GameObject* go = ctx.activeScene->GetGameObject(id);
-        if (!go || ctx.IsLocked(id)) continue;
+        if (!go || ctx.IsLocked(id)) {
+            continue;
+        }
         g_drag.guids.push_back(go->instanceId);
         g_drag.before.push_back(go->transform);
     }
@@ -270,8 +319,12 @@ void CollectDragTargets(EditorContext& ctx)
 
 void PushSnapUndo(EditorContext& ctx, const char* description)
 {
-    if (!ctx.undoStack || !ctx.undoStack->IsRecordingEnabled() || !ctx.activeScene) return;
-    if (g_drag.guids.empty()) return;
+    if (!ctx.undoStack || !ctx.undoStack->IsRecordingEnabled() || !ctx.activeScene) {
+        return;
+    }
+    if (g_drag.guids.empty()) {
+        return;
+    }
 
     scene::Scene* scene = ctx.activeScene;
     const std::vector<std::string>      guids  = g_drag.guids;
@@ -289,35 +342,46 @@ void PushSnapUndo(EditorContext& ctx, const char* description)
             if (a.position.x != b.position.x || a.position.y != b.position.y ||
                 a.position.z != b.position.z || a.rotation.x != b.rotation.x ||
                 a.rotation.y != b.rotation.y || a.rotation.z != b.rotation.z ||
-                a.rotation.w != b.rotation.w)
+                a.rotation.w != b.rotation.w) {
                 anyChanged = true;
+            }
         }
     }
-    if (!anyChanged) return;
+    if (!anyChanged) {
+        return;
+    }
 
     const auto markDirty = ctx.markSceneDirty;
     auto applyAll = [scene, guids, markDirty](const std::vector<scene::Transform>& values) {
         for (std::size_t i = 0; i < guids.size(); ++i)
-            if (auto* target = scene->FindByGuid(guids[i]))
+            if (auto* target = scene->FindByGuid(guids[i])) {
                 target->transform = values[i];
-        if (markDirty) markDirty();
+            }
+        if (markDirty) {
+            markDirty();
+        }
     };
     ctx.undoStack->Push(std::make_unique<LambdaCommand>(
         description,
         [applyAll, after]()  { applyAll(after); },
         [applyAll, before]() { applyAll(before); }));
-    if (markDirty) markDirty();
+    if (markDirty) {
+        markDirty();
+    }
 }
 
 /// @brief 全対象をワールド空間で delta ぶん平行移動する。
 /// @note ローカル position へ書くので、親があれば delta を親空間 (回転・スケール込み) へ戻してから足す。
 void TranslateTargets(EditorContext& ctx, const math::Vector3& worldDelta)
 {
-    if (math::NearlyZero(worldDelta.x) && math::NearlyZero(worldDelta.y) && math::NearlyZero(worldDelta.z))
+    if (math::NearlyZero(worldDelta.x) && math::NearlyZero(worldDelta.y) && math::NearlyZero(worldDelta.z)) {
         return;
+    }
     for (const std::string& guid : g_drag.guids) {
         auto* target = ctx.activeScene->FindByGuid(guid);
-        if (!target) continue;
+        if (!target) {
+            continue;
+        }
         math::Vector3 localDelta = worldDelta;
         if (const scene::GameObject* parent = target->GetParent()) {
             const math::Vector4 d = math::Matrix4::Inverse(parent->transform.GetWorldMatrix())
@@ -345,17 +409,20 @@ void DrawSnapFeedback(EditorContext& ctx, const ImVec2& vpMin, const ImVec2& vpS
     }
 }
 
-} /// @note namespace
+} // namespace
 
 bool HandleViewportSnapping(EditorContext& ctx, const ImVec2& vpMin, const ImVec2& vpSize)
 {
-    if (!ctx.activeScene || !ctx.editorCamera) { ctx.vertexSnapActive = ctx.surfaceSnapActive = false; return false; }
+    if (!ctx.activeScene || !ctx.editorCamera) {
+        ctx.vertexSnapActive = ctx.surfaceSnapActive = false;
+        return false;
+    }
 
     const ImGuiIO& io = ImGui::GetIO();
     const bool hovered = ImGui::IsWindowHovered(ImGuiHoveredFlags_RootAndChildWindows);
     const bool hasSelection = !ctx.selectedEntities.empty();
 
-    /// @note V は押している間だけ有効 (Unity と同じモーメンタリ操作)。
+    // V は押している間だけ有効 (Unity と同じモーメンタリ操作)。
     const bool vertexKey  = !io.WantTextInput && ImGui::IsKeyDown(ImGuiKey_V) && !io.KeyCtrl;
     const bool surfaceKey = io.KeyCtrl && io.KeyShift;
 
@@ -367,39 +434,49 @@ bool HandleViewportSnapping(EditorContext& ctx, const ImVec2& vpMin, const ImVec
         ImGui::IsMouseClicked(ImGuiMouseButton_Left))
     {
         scene::GameObject* primary = ctx.activeScene->GetGameObject(ctx.PrimarySelected());
-        if (!primary) return false;
+        if (!primary) {
+            return false;
+        }
 
         CollectDragTargets(ctx);
-        if (g_drag.guids.empty()) return false;
+        if (g_drag.guids.empty()) {
+            return false;
+        }
 
         g_drag.vertexMode = ctx.vertexSnapActive;
         g_drag.hasTarget  = false;
 
-        /// @note 頂点スナップはカーソルに一番近い自分の頂点を掴む。見つからなければ原点を掴み、面スナップと同じ挙動になる。
+        // 頂点スナップはカーソルに一番近い自分の頂点を掴む。見つからなければ原点を掴み、面スナップと同じ挙動になる。
         const math::Vector3 primaryWorld = CurrentWorldPosition(*primary);
         math::Vector3 grab = primaryWorld;
         if (g_drag.vertexMode) {
             constexpr float kGrabRadiusPx = 40.0f;
             math::Vector3   found{};
-            if (FindNearestVertex(ctx, vpMin, vpSize, ImGui::GetMousePos(), true, kGrabRadiusPx, found))
+            if (FindNearestVertex(ctx, vpMin, vpSize, ImGui::GetMousePos(), true, kGrabRadiusPx, found)) {
                 grab = found;
+            }
         }
         g_drag.grabWorld  = grab;
         g_drag.grabOffset = grab - primaryWorld;
         g_drag.active     = true;
     }
 
-    if (!g_drag.active) return false;
+    if (!g_drag.active) {
+        return false;
+    }
 
     if (ImGui::IsMouseReleased(ImGuiMouseButton_Left)) {
         PushSnapUndo(ctx, g_drag.vertexMode ? "Vertex Snap" : "Surface Snap");
         g_drag.active = false;
-        /// @note このフレームはまだ他の操作へ渡さない。
+        // このフレームはまだ他の操作へ渡さない。
         return true;
     }
 
     scene::GameObject* primary = ctx.activeScene->GetGameObject(ctx.PrimarySelected());
-    if (!primary) { g_drag.active = false; return false; }
+    if (!primary) {
+        g_drag.active = false;
+        return false;
+    }
 
     const ImVec2 cursor = ImGui::GetMousePos();
     g_drag.hasTarget = false;
@@ -419,12 +496,14 @@ bool HandleViewportSnapping(EditorContext& ctx, const ImVec2& vpMin, const ImVec
             g_drag.targetWorld = point;
             g_drag.hasTarget   = true;
 
-            /// @note 法線合わせは位置より先に回す。align はワールド回転なので、親があれば親のワールド回転を外してローカルへ書く。
+            // 法線合わせは位置より先に回す。align はワールド回転なので、親があれば親のワールド回転を外してローカルへ書く。
             if (ctx.surfaceSnapAlignToNormal) {
                 const math::Quaternion align = AlignUpToNormal(normal);
                 for (const std::string& guid : g_drag.guids) {
                     auto* target = ctx.activeScene->FindByGuid(guid);
-                    if (!target) continue;
+                    if (!target) {
+                        continue;
+                    }
                     const scene::GameObject* parent = target->GetParent();
                     target->transform.rotation = parent
                         ? parent->transform.worldRotation.Inverse() * align
@@ -439,11 +518,13 @@ bool HandleViewportSnapping(EditorContext& ctx, const ImVec2& vpMin, const ImVec
         const math::Vector3 delta = desiredPrimaryPos - CurrentWorldPosition(*primary);
         TranslateTargets(ctx, delta);
         g_drag.grabWorld = g_drag.targetWorld;
-        if (ctx.markSceneDirty) ctx.markSceneDirty();
+        if (ctx.markSceneDirty) {
+            ctx.markSceneDirty();
+        }
     }
 
     DrawSnapFeedback(ctx, vpMin, vpSize);
     return true;
 }
 
-} /// @note namespace fbzz::editor
+} // namespace fbzz::editor

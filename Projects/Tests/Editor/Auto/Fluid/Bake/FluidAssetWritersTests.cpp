@@ -46,7 +46,9 @@ std::string ResolvedAssetPath(const std::string& path)
 std::string SavedTextureReference(const std::string& materialPath, const char* slot)
 {
     const toml::parse_result parsed = toml::parse(ReadFile(materialPath));
-    if (!parsed) return {};
+    if (!parsed) {
+        return {};
+    }
     return parsed["textures"][slot].value_or(std::string{});
 }
 
@@ -449,7 +451,7 @@ TEST_F(FluidAssetWritersTest, SiblingMaterialSitsNextToTheFluid)
 TEST_F(FluidAssetWritersTest, SingleEmitterVfxIsPrefabFormatWithTheMaterial)
 {
     const std::filesystem::path file = File("Preview.vfx");
-    /// @note 名前に引用符が入っても TOML として壊れないこと (エスケープの確認)。
+    // 名前に引用符が入っても TOML として壊れないこと (エスケープの確認)。
     ASSERT_TRUE(editor::WriteSingleEmitterVfx(file, "Smoke \"A\"", "Assets/FX/Smoke.mat", 2.0f));
 
     const auto parsed = toml::parse(ReadFile(file));

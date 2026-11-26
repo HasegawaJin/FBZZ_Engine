@@ -103,7 +103,9 @@ TEST_F(AssetReferenceScanTest, GraphKeepsCyclesAndUnresolvedAuthority)
             EXPECT_EQ(report.nodes[edge.target].state, editor::assetrefs::GraphNodeState::MISSING_PATH);
             EXPECT_EQ(report.nodes[edge.target].path, "Assets/Missing.mat");
         }
-        if (edge.field != "missing") continue;
+        if (edge.field != "missing") {
+            continue;
+        }
         EXPECT_EQ(hop.distance, 2u);
         EXPECT_EQ(edge.suffix, ":4");
         EXPECT_EQ(edge.hint, "Assets/Root.prefab");

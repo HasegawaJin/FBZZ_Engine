@@ -46,12 +46,16 @@ struct RenderCaptureFrame {
         data.Set("sceneName", sceneName);
         data.Set("view", gameView ? "game" : "scene");
         data.Set("cameraKind", !cameraId.empty() ? "node" : gameView ? "editorFallback" : "editor");
-        if (!cameraId.empty()) data.Set("cameraId", cameraId);
+        if (!cameraId.empty()) {
+            data.Set("cameraId", cameraId);
+        }
         data.Set("renderPass", std::move(pass));
         data.Set("occurrence", occurrence);
         data.Set("output", std::move(output));
         Data executed = Data::MakeArray();
-        for (const auto& name : passes) executed.Push(Data(name));
+        for (const auto& name : passes) {
+            executed.Push(Data(name));
+        }
         data.Set("passes", std::move(executed));
         return data;
     }
@@ -60,4 +64,4 @@ struct RenderCaptureFrame {
 /// @note 世代・描画先・編集境界の照合を読み戻しより先に行う。
 [[nodiscard]] bool CanReadCaptureFrame(const EditorContext& context, const RenderCaptureFrame& capture,
     renderer::ResourceHandle<renderer::RenderTargetTag> expectedTarget, std::uint64_t minFrame);
-} /// @note namespace fbzz::editor
+} // namespace fbzz::editor

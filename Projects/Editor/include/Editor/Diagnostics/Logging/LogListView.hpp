@@ -106,4 +106,4 @@ private:
     const char*                       m_emptyText = "No output.";
 };
 
-} /// @note namespace fbzz::editor
+} // namespace fbzz::editor

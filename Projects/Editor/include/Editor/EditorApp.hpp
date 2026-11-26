@@ -73,9 +73,9 @@ class TerrainTool;
 class EditorApp final : public core::IModule {
 public:
     EditorApp();
-    ~EditorApp(); ///< @note TerrainTool の完全型が見えるところ (EditorApp.cpp) で定義する
+    ~EditorApp(); ///< TerrainTool の完全型が見えるところ (EditorApp.cpp) で定義する
 
-    /// @param enableViewports false の場合は Scene / Game の描画と撮影を省く。
+    /// @param[in] enableViewports false の場合は Scene / Game の描画と撮影を省く。
     /// @return 初期化済みなら false。
     bool Init(renderer::IRenderer& renderer, renderer::IImGuiRenderer& imguiRenderer,
               renderer::ResourceManager& resources, core::Window& window, bool enableViewports = true);
@@ -261,8 +261,8 @@ private:
     bool FinishSceneSave(const std::string& path, bool backup, uint64_t editRevision,
                          std::size_t undoRevision, const SceneSaveResult& result);
     bool RejectWhileSceneSaving();
-    void RemoveEditorHiding();   ///< @note Play/Save 前に editor-only 非表示を一時解除
-    void RestoreEditorHiding();  ///< @note Play 復元/Save 後に editor-only 非表示を再適用
+    void RemoveEditorHiding();   ///< Play/Save 前に editor-only 非表示を一時解除
+    void RestoreEditorHiding();  ///< Play 復元/Save 後に editor-only 非表示を再適用
     /// @brief Play 中のシーン読み書き要求を断る (断ったら true)。理由は Console と Toast へ。
     bool RejectSceneIOWhilePlaying(const char* action);
 
@@ -278,8 +278,8 @@ private:
     [[nodiscard]] std::string AutoSaveDir() const;
     [[nodiscard]] std::string AutoSavePath() const;
     [[nodiscard]] std::string SessionLockPath() const;
-    void WriteSessionLock();       ///< @note 起動時: 生存セッションの印を書く
-    void ClearSessionLock();       ///< @note 正常終了時: 印とオートセーブ中間物を掃除する
+    void WriteSessionLock();       ///< 起動時: 生存セッションの印を書く
+    void ClearSessionLock();       ///< 正常終了時: 印とオートセーブ中間物を掃除する
     /// @brief 未保存の変更がある間だけ時間を数え、間隔ごとに編集シーンを中間ファイルへ退避する。
     /// @note 直前 kAutoSaveWarningSec 秒は通知を出す。期限に操作中なら手を離すまで待つ (Unreal と同じ)。
     void TickAutoSave(float dt);
@@ -289,7 +289,7 @@ private:
     void DrawAutoSaveNotice();
     /// @brief 前回の印とオートセーブが残っていれば、復旧の提案を予約する。OpenProject がシーンを開いた後に呼ぶ。
     void DetectCrashRecovery();
-    void ProcessCrashRecovery();   ///< @note 前回異常終了時にオートセーブ復元を促す
+    void ProcessCrashRecovery();   ///< 前回異常終了時にオートセーブ復元を促す
 
     /// @brief コマンドパレット (Ctrl+K): アクション/アセット/GameObject を横断検索して実行する。
     void RefreshPaletteAssetIndex();
@@ -333,183 +333,156 @@ private:
     /// @brief AI 要求 1 行を処理する。
     std::string HandleAiRequest(const std::string& request);
 
-    EditorContext                        m_ctx;
-    /// @note 起動中にプロジェクトを開けず Shutdown に届かない場合も解放する。
-    std::unique_ptr<ImPlotContext, void (*)(ImPlotContext*)> m_implotContext;
-    std::vector<std::unique_ptr<IPanel>> m_panels;
-    std::unique_ptr<StatusBar>           m_statusBar;
+    EditorContext                        m_ctx; ///< パネルと操作が参照する現在の Editor 状態。
+    std::unique_ptr<ImPlotContext, void (*)(ImPlotContext*)> m_implotContext; ///< 起動時に所有するプロット用 UI コンテキスト。初期化の途中で終了しても解放する。
+    std::vector<std::unique_ptr<IPanel>> m_panels; ///< 毎フレーム更新・描画する Editor パネルの所有コンテナ。
+    std::unique_ptr<StatusBar>           m_statusBar; ///< Editor ウィンドウ下部の操作と状態表示を担当する、所有するバー。
 
-    UndoStack          m_undoStack;
-    HotkeyManager      m_hotkeys;
-    HotkeyEditorPanel* m_hotkeyEditorPanel = nullptr;
-    OperatorRegistry   m_operators;
-    ConsoleSink        m_consoleSink;
-    EditorSettings     m_settings;
-    PackageBuildService m_packageBuild;
-    SceneDirtyTracker  m_dirtyTracker;
-    std::string        m_projectRoot;
-    std::string        m_projectSettingsPath;
-    /// @brief 最後にディスクと一致していた ProjectSettings の TOML。
-    std::string        m_projectSettingsSavedToml;
-    /// @brief 前回ポーリング時の TOML。値が動き続けている間は保存を待つ。
-    std::string        m_projectSettingsLastToml;
-    /// @brief 書き出しに失敗した TOML。同じ内容のままなら自動では再試行しない。
-    std::string        m_projectSettingsFailedToml;
-    float              m_projectSettingsPollTimer = 0.0f;
-    float              m_projectSettingsIdleTime  = 0.0f;
-    uint64_t           m_sceneEditRevision = 0;
+    UndoStack          m_undoStack; ///< 現在の編集操作を取り消し・再適用するための履歴。
+    HotkeyManager      m_hotkeys; ///< 編集中のパネルやモードに応じてショートカットを解決する。
+    HotkeyEditorPanel* m_hotkeyEditorPanel = nullptr; ///< ショートカット設定の表示を制御するパネル。実体は m_panels が所有する。
+    OperatorRegistry   m_operators; ///< メニュー、キー、パレット、AI バスから共通で呼ぶ編集操作の登録簿。
+    ConsoleSink        m_consoleSink; ///< パネルから参照できるログを受け取る出力先。
+    EditorSettings     m_settings; ///< パネル配置やカメラなど Editor 固有の永続設定。
+    PackageBuildService m_packageBuild; ///< 配布ビルドの実行と結果を管理するサービス。
+    SceneDirtyTracker  m_dirtyTracker; ///< シーンの保存時点と現在の編集状態を比較する。
+    std::string        m_projectRoot; ///< 現在開いているプロジェクトのルートパス。
+    std::string        m_projectSettingsPath; ///< 現在のプロジェクト設定の保存先。
+    std::string        m_projectSettingsSavedToml; ///< 最後にディスクと一致していた ProjectSettings の TOML。
+    std::string        m_projectSettingsLastToml; ///< 前回ポーリング時の TOML。値が動き続けている間は保存を待つ。
+    std::string        m_projectSettingsFailedToml; ///< 書き出しに失敗した TOML。同じ内容のままなら自動では再試行しない。
+    float              m_projectSettingsPollTimer = 0.0f; ///< プロジェクト設定を次に確認するまでの周期管理 [s]。
+    float              m_projectSettingsIdleTime  = 0.0f; ///< プロジェクト設定の変更が止まってからの経過時間 [s]。
+    uint64_t           m_sceneEditRevision = 0; ///< 非同期保存開始後に編集が加わったかを区別する番号。
     struct PendingSceneSave {
-        std::future<SceneSaveResult> result;
-        std::string path;
-        std::function<void()> afterSave;
-        uint64_t editRevision = 0;
-        std::size_t undoRevision = 0;
-        bool backup = false;
+        std::future<SceneSaveResult> result; ///< シーンファイルを書き出す非同期処理の結果。
+        std::string path; ///< 開始時に控えたシーンの保存先。
+        std::function<void()> afterSave; ///< 保存が終わってから続ける操作。無ければ空。
+        uint64_t editRevision = 0; ///< 保存した内容を採取した時点のシーン編集リビジョン。
+        std::size_t undoRevision = 0; ///< 保存した内容を採取した時点の Undo 履歴のリビジョン。
+        bool backup = false; ///< 中間退避用のバックアップ保存か。
     };
-    PendingSceneSave   m_pendingSceneSave;
-    bool               m_titleInitialized = false;
-    bool               m_lastTitleDirty = false;
-    std::string        m_lastTitleScenePath;
-    PlayModeController              m_playMode;
-    StandalonePlaySession           m_standalonePlay;
+    PendingSceneSave   m_pendingSceneSave; ///< 進行中のシーン保存と、完了時の編集状態照合に使うスナップショット。
+    bool               m_titleInitialized = false; ///< タイトルの初回表示を済ませたか。
+    bool               m_lastTitleDirty = false; ///< 最後にタイトルへ反映した未保存マークの状態。
+    std::string        m_lastTitleScenePath; ///< 最後にウィンドウタイトルへ反映したシーンパス。
+    PlayModeController              m_playMode; ///< 編集シーンとエディター内 Play シーンの切り替えと寿命を管理する。
+    StandalonePlaySession           m_standalonePlay; ///< 別プロセスで動く Standalone Play の起動・終了・ログを管理する。
     /// @brief Play→Stop 時の再ベイクを避けるため、Play 開始前にベイク済み NavMesh をキャッシュする (key = GameObject::instanceId)。
     /// @note 統計とソースハッシュも戻さないと、Stop した瞬間に Navigation パネルが「ベイク後にソースが変わった」と誤検知する。
     struct NavMeshPlayCacheEntry {
-        scene::NavMesh              navMesh;
-        scene::NavMeshBakeStats     stats;
-        scene::NavMeshBakeDebugGrid debug;
-        uint64_t                    sourceHash = 0;
+        scene::NavMesh              navMesh; ///< Play 前に編集シーンで有効だったベイク済みメッシュ。
+        scene::NavMeshBakeStats     stats; ///< ベイク結果に対応し、Navigation パネルで表示する統計。
+        scene::NavMeshBakeDebugGrid debug; ///< ベイク結果に対応する診断用グリッド。
+        uint64_t                    sourceHash = 0; ///< 復元したメッシュが対応するベイク入力のハッシュ。
     };
-    std::unordered_map<std::string, NavMeshPlayCacheEntry> m_navMeshPlayCache;
-    /// @brief Play 開始時の解決済み設定から作る実行用コピー。編集側の自動保存とは独立する。
-    renderer::RenderSettings m_playRenderSettings;
-    /// @note Script.App.Quit intent を次 frame へ渡す。Scene が先に変われば要求を捨てる。
-    uint64_t m_scriptQuitSceneLifetime = 0;
-    /// @note Play is deferred until the matching edit scene finishes preparing its directional shadow presets.
-    uint64_t m_pendingShadowBakePlayScene = 0;
-    bool m_pendingShadowBakeAllowPhysicalInput = true;
-    bool m_playAllowsPhysicalInput = true;
-    bool m_playInputPolicyApplied = false;
-    bool m_playPreviousPhysicalInputAllowed = true;
-    /// @brief Play 開始時に取った Renderer リソースの基準。Stop 後の復元が落ち着いてから比べる。
-    MemoryLeakDiff     m_memoryLeakDiff;
-    /// @brief .fluid の焼き・プレビューのジョブ窓口 (m_ctx.fluidBake がこれを指す)。
-    /// @brief パネルではなくここが持つので、パネルを閉じても AI から頼んでも焼きが進む。
-    std::unique_ptr<FluidBakeService> m_fluidBake;
-    std::unique_ptr<TerrainTool>    m_terrainTool; ///< @note pimpl: EditorApp.hpp が imgui に依存しないよう unique_ptr で隠蔽
-    std::string                     m_normalLayoutIni;
-    const char*                     m_normalIniFilename = nullptr;
-    std::string                     m_imguiIniPath;   ///< @note io.IniFilename が指すパス (文字列寿命を保持)
-    std::vector<bool>               m_normalPanelVisibility;
-    std::string                     m_playLayoutIni;
-    const char*                     m_playIniFilename = nullptr;
-    std::vector<bool>               m_playPanelVisibility;
-    bool                            m_playViewportLayoutActive = false;
-    bool                            m_playCursorApplied  = false; ///< @note Play 開始時のカーソル初期化を済ませたか
-    bool                            m_playCursorReleased = false; ///< @note Escape で一時解放したか (2 回目で Stop)
-    uint8_t                         m_playCursorAcquireAttempts = 0;
-    bool                            m_terrainToolWasActive = false;
-    int                             m_terrainToolModeBeforeMap = 0;
+    std::unordered_map<std::string, NavMeshPlayCacheEntry> m_navMeshPlayCache; ///< Play から戻す編集側 NavMesh の控え。キーは GameObject の instanceId。
+    renderer::RenderSettings m_playRenderSettings; ///< Play 開始時の解決済み設定から作る実行用コピー。編集側の自動保存とは独立する。
+    uint64_t m_scriptQuitSceneLifetime = 0; ///< Script.App.Quit intent を次 frame へ渡す。Scene が先に変われば要求を捨てる。
+    uint64_t m_pendingShadowBakePlayScene = 0; ///< 影のベイク完了を待っている編集シーンの世代番号。待機していなければ 0。
+    bool m_pendingShadowBakeAllowPhysicalInput = true; ///< 影のベイク完了待ち後に開始する Play の実機入力ポリシー。
+    bool m_playAllowsPhysicalInput = true; ///< 現在の Play セッションの実機入力を許可するか。
+    bool m_playInputPolicyApplied = false; ///< Play 用入力ポリシーを適用し、停止時に復元する必要があるか。
+    bool m_playPreviousPhysicalInputAllowed = true; ///< Play 開始直前の実機入力ポリシー。終了時に戻す。
+    MemoryLeakDiff     m_memoryLeakDiff; ///< Play 開始時に取った Renderer リソースの基準。Stop 後の復元が落ち着いてから比べる。
+    std::unique_ptr<FluidBakeService> m_fluidBake; ///< パネルが閉じている間も続行する流体ベイクとプレビューの窓口。m_ctx.fluidBake が参照する。
+    std::unique_ptr<TerrainTool>    m_terrainTool; ///< pimpl: EditorApp.hpp が imgui に依存しないよう unique_ptr で隠蔽
+    std::string                     m_normalLayoutIni; ///< Play 用のレイアウトに切り替える前の通常レイアウト。
+    const char*                     m_normalIniFilename = nullptr; ///< Play へ切り替える前の ImGui 設定ファイル名。文字列は借用する。
+    std::string                     m_imguiIniPath;   ///< io.IniFilename が指すパス (文字列寿命を保持)
+    std::vector<bool>               m_normalPanelVisibility; ///< Play に切り替える前の m_panels の表示状態を並び順で控える。
+    std::string                     m_playLayoutIni; ///< Play 用のレイアウトを復元するために保持する ImGui 設定。
+    const char*                     m_playIniFilename = nullptr; ///< Play 中のレイアウトに用いる ImGui 設定ファイル名。文字列は借用する。
+    std::vector<bool>               m_playPanelVisibility; ///< Play レイアウトの m_panels の表示状態を並び順で控える。
+    bool                            m_playViewportLayoutActive = false; ///< 通常の編集レイアウトから Play 向けの配置へ切り替え済みか。
+    bool                            m_playCursorApplied  = false; ///< Play 開始時のカーソル初期化を済ませたか
+    bool                            m_playCursorReleased = false; ///< Escape で一時解放したか (2 回目で Stop)
+    uint8_t                         m_playCursorAcquireAttempts = 0; ///< Play 中のマウス取得を試行した回数。
+    bool                            m_terrainToolWasActive = false; ///< Map Editor を出るときに Terrain Tool を戻すための作動状態の控え。
+    int                             m_terrainToolModeBeforeMap = 0; ///< Map Editor へ移る前に Terrain Tool で選択していたモード。
 
-    /// @brief ビルドコンソール: Script / HLSL コンパイルの出力・診断・履歴を集約する。
     /// @note m_ctx.buildConsole がこれを指し、Build Output パネル・StatusBar・通知バーが共有する。
-    BuildConsole             m_buildConsole;
-    BuildOutputPanel*        m_buildOutputPanel = nullptr;
+    BuildConsole             m_buildConsole; ///< 各種コンパイルの出力、診断、結果をパネルへ配る。
+    BuildOutputPanel*        m_buildOutputPanel = nullptr; ///< ビルド結果の表示を制御するパネル。実体は m_panels が所有する。
 
-    std::unique_ptr<ai::EditorBusDispatcher> m_aiDispatcher;
-    std::unique_ptr<ai::NamedPipeServer>      m_aiPipeServer;
+    std::unique_ptr<ai::EditorBusDispatcher> m_aiDispatcher; ///< AI バスの要求を現在のシーンと操作登録簿へ振り分ける。
+    std::unique_ptr<ai::NamedPipeServer>      m_aiPipeServer; ///< AI バスとの名前付きパイプ接続を所有する。
 
-    /// @brief Playtest の手順が叩く専用のバス。AI のパイプを閉じていても (バッチ実行でも) 回せるよう別に持つ。
-    std::unique_ptr<ai::EditorBusDispatcher> m_playtestDispatcher;
-    playtest::PlaytestRunner                 m_playtest;
-    playtest::InputRecorder                  m_inputRecorder;
-    BatchOptions                             m_batch;
-    bool                                     m_batchStarted = false;
-    int                                      m_batchExitCode = 0;
+    std::unique_ptr<ai::EditorBusDispatcher> m_playtestDispatcher; ///< Playtest の手順が叩く専用のバス。AI のパイプを閉じていても (バッチ実行でも) 回せるよう別に持つ。
+    playtest::PlaytestRunner                 m_playtest; ///< 現在の Playtest シナリオと各手順の進行状態。
+    playtest::InputRecorder                  m_inputRecorder; ///< Playtest に再利用する入力イベントの記録器。
+    BatchOptions                             m_batch; ///< コマンドラインから指定したシナリオと出力設定。
+    bool                                     m_batchStarted = false; ///< バッチシナリオの開始処理を済ませたか。
+    int                                      m_batchExitCode = 0; ///< バッチ終了時にランチャーへ返す終了コード。
     /// @brief シナリオを 1 フレーム進める。OnInputPolled から呼ぶ。
     void TickPlaytest();
 
-    std::unique_ptr<ManagedScriptEditor> m_managedScripts;
+    std::unique_ptr<ManagedScriptEditor> m_managedScripts; ///< C# 編集、コンパイルと Editor への公開を管理する。
     /// @brief HLSL ホットリロード
-    std::filesystem::path    m_hlslSourceDir;       ///< @note プロジェクト側の Assets/Shaders。監視不可なら空。
-    std::filesystem::path    m_compileShadersScript; ///< @note プロジェクトまたは SDK の compile_shaders.ps1。
-    Compiler                 m_hlslCompiler;
-    bool                     m_hlslCompilePending = false;
-    float                    m_hlslDebounceTimer  = 0.0f;
-    float                    m_hlslDirtyPollTimer = 0.0f; ///< @note HLSL ツリー監視を毎フレーム走らせないための間隔管理
-    /// @note 走査は最大 1 件。worker はパスのコピーだけを読み、Editor の状態には触れない。
-    std::future<std::uint64_t> m_hlslSourceScan;
+    std::filesystem::path    m_hlslSourceDir;       ///< プロジェクト側の Assets/Shaders。監視不可なら空。
+    std::filesystem::path    m_compileShadersScript; ///< プロジェクトまたは SDK の compile_shaders.ps1。
+    Compiler                 m_hlslCompiler; ///< HLSL ビルドの子プロセスと出力を管理する。
+    bool                     m_hlslCompilePending = false; ///< 変更検知からコンパイル開始までの間に保留している HLSL 更新。
+    float                    m_hlslDebounceTimer  = 0.0f; ///< 連続する HLSL 変更をまとめるための待機時間 [s]。
+    float                    m_hlslDirtyPollTimer = 0.0f; ///< HLSL ツリー監視を毎フレーム走らせないための間隔管理
+    std::future<std::uint64_t> m_hlslSourceScan; ///< 走査は最大 1 件。worker はパスのコピーだけを読み、Editor の状態には触れない。
 
-    std::uint64_t                            m_lastSceneWriteTime = 0;
-    /// @brief HLSL ソースツリーの内容フィンガープリント。前回値との差分でホットリロードを判定する。
-    std::uint64_t                            m_hlslSourceFingerprint = 0;
+    std::uint64_t                            m_lastSceneWriteTime = 0; ///< シーン自身の書き込み通知を外部変更と区別する時刻の控え。
+    std::uint64_t                            m_hlslSourceFingerprint = 0; ///< HLSL ソースツリーの内容フィンガープリント。前回値との差分でホットリロードを判定する。
 
     /// @brief ディスク変更を検知したアセットの、最後に通知が来た時刻。
     /// @note 1 回の保存で通知は複数回届き途中状態を掴むこともあるため、静かになるまで待って 1 回だけ読み直す。
     std::unordered_map<std::string, std::chrono::steady_clock::time_point>
                  m_pendingAssetReloadAt;
 
-    /// @brief 現在のシーンを読み込んだ / 保存した時点のファイル更新時刻。
-    /// @brief 自分の書き込みで上がった時刻もここへ入れるので、これと食い違う = 他人が書いた。
-    std::filesystem::file_time_type m_sceneDiskStamp{};
-    bool m_sceneDiskStampValid = false;
-    /// @brief 外部からの書き換えを検知した状態。通知バーがこれを見る。
-    bool m_sceneDiskChanged    = false;
-    /// @brief 検知した時刻。書き込み途中のファイルを開き直さないよう、少し置いてから動く。
-    std::chrono::steady_clock::time_point m_sceneDiskChangedAt{};
-    /// @brief 上書き確認モーダルの要求。SaveScene が立て、次フレームの先頭で開く。
+    std::filesystem::file_time_type m_sceneDiskStamp{}; ///< シーンを開いたか保存した時点の更新時刻。現在の時刻と違えば外部書き込みを検知する。
+    bool m_sceneDiskStampValid = false; ///< シーンファイルの照合に使える更新時刻を取得済みか。
+    bool m_sceneDiskChanged    = false; ///< 外部からの書き換えを検知した状態。通知バーがこれを見る。
+    std::chrono::steady_clock::time_point m_sceneDiskChangedAt{}; ///< 検知した時刻。書き込み途中のファイルを開き直さないよう、少し置いてから動く。
     /// @note SaveScene は ModalDialog の onSave コールバックからも呼ばれ、そこで ModalDialog::Open* を呼ぶと実行中の std::function ごと state が壊れるため、開くのは必ずモーダル描画の外で行う。
-    bool m_staleSaveConfirmPending = false;
+    bool m_staleSaveConfirmPending = false; ///< 上書き確認を次フレームのモーダル外で開くための保留フラグ。
 
     /// @brief オートセーブ / クラッシュ復旧の状態。
-    float        m_autoSaveTimer = 0.0f;          ///< @note 前回オートセーブからの経過秒
-    /// @brief 期限を過ぎたが操作中なので待っている。
-    bool         m_autoSaveWaitingForIdle = false;
-    bool         m_crashRecoveryChecked = false;  ///< @note 復旧プロンプトは起動後1回だけ
-    std::string  m_pendingRecoveryAutoSave;       ///< @note 前回異常終了時に見つかったオートセーブのパス
+    float        m_autoSaveTimer = 0.0f;          ///< 前回オートセーブからの経過秒
+    bool         m_autoSaveWaitingForIdle = false; ///< 期限を過ぎたが操作中なので待っている。
+    bool         m_crashRecoveryChecked = false;  ///< 復旧プロンプトは起動後1回だけ
+    std::string  m_pendingRecoveryAutoSave;       ///< 前回異常終了時に見つかったオートセーブのパス
 
     /// @brief コマンドパレット (Ctrl+K) の状態。
-    std::vector<std::string> m_paletteAssetPaths;      ///< @note 開いた瞬間のアセット索引スナップショット
-    bool                     m_commandPaletteOpen = false;   ///< @note 起動要求フラグ
-    char                     m_commandPaletteQuery[256] = {}; ///< @note 検索クエリ入力バッファ
-    int                      m_commandPaletteSel = 0;        ///< @note 選択中の候補行
-    bool                     m_commandPaletteFocus = false;  ///< @note 開いた次フレームで検索欄へフォーカス
+    std::vector<std::string> m_paletteAssetPaths;      ///< 開いた瞬間のアセット索引スナップショット
+    bool                     m_commandPaletteOpen = false;   ///< 起動要求フラグ
+    char                     m_commandPaletteQuery[256] = {}; ///< 検索クエリ入力バッファ
+    int                      m_commandPaletteSel = 0;        ///< 選択中の候補行
+    bool                     m_commandPaletteFocus = false;  ///< 開いた次フレームで検索欄へフォーカス
 
-    /// @brief Prefab 編集モードの退避状態。編集前のシーンをテキストで丸ごと保持する。
-    std::string              m_prefabEditStashedScene;
-    std::string              m_prefabEditStashedScenePath;
-    bool                     m_prefabEditStashedDirty = false;
-    std::vector<std::string> m_prefabEditStashedSelection;   ///< @note GUID (EntityID は復元で変わる)
-    std::string              m_prefabEditDiskPath;           ///< @note 保存先の絶対パス
-    /// @brief この編集セッション中に 1 度でも保存したか。
+    std::string              m_prefabEditStashedScene; ///< Prefab 編集モードの退避状態。編集前のシーンをテキストで丸ごと保持する。
+    std::string              m_prefabEditStashedScenePath; ///< Prefab 編集から戻るときに復元する、元のシーンパス。
+    bool                     m_prefabEditStashedDirty = false; ///< Prefab 編集に切り替える直前のシーンの未保存状態。
+    std::vector<std::string> m_prefabEditStashedSelection;   ///< GUID (EntityID は復元で変わる)
+    std::string              m_prefabEditDiskPath;           ///< 保存先の絶対パス
     /// @note 「Save Prefab」→「Back to Scene」では閉じる操作自体は保存を伴わないが、これを見ないとシーンへ戻ったときにインスタンスへ反映されない。
-    bool                     m_prefabEditSaved = false;
+    bool                     m_prefabEditSaved = false; ///< 現在の Prefab 編集セッションで一度でも保存したか。
 
-    /// @brief ショートカット一覧オーバーレイ (F1) と選択ヒストリ (Alt+←/→)。
-    bool                         m_showShortcutsOverlay = false;
-    std::vector<scene::EntityID> m_selectionHistory;          ///< @note 選択の往復履歴
-    int                          m_selectionHistoryIndex = -1;
-    bool                         m_selectionNavigating = false; ///< @note 履歴移動由来の選択は再記録しない
-    scene::EntityID              m_lastRecordedSelection;       ///< @note 直近で履歴に積んだ選択 (既定=INVALID)
+    bool                         m_showShortcutsOverlay = false; ///< ショートカット一覧オーバーレイ (F1) と選択ヒストリ (Alt+←/→)。
+    std::vector<scene::EntityID> m_selectionHistory;          ///< 選択の往復履歴
+    int                          m_selectionHistoryIndex = -1; ///< 選択の往復履歴 m_selectionHistory の現在位置。履歴が空なら -1。
+    bool                         m_selectionNavigating = false; ///< 履歴移動由来の選択は再記録しない
+    scene::EntityID              m_lastRecordedSelection;       ///< 直近で履歴に積んだ選択 (既定=INVALID)
 
-    HWND__*                                  m_hwnd          = nullptr;
-    core::Window*                            m_window        = nullptr;
-    renderer::IRenderer*                     m_renderer      = nullptr;
-    renderer::IImGuiRenderer*                m_imguiRenderer = nullptr;
-    renderer::ResourceManager*               m_resources     = nullptr;
-    /// @note Pure bounded Scene/Game Water plans; RenderSystem pins the owner across recording callbacks.
-    std::shared_ptr<renderer::SurfacePatchSelectionCacheOwner> m_surfacePatchPlans;
+    HWND__*                                  m_hwnd          = nullptr; ///< 起動元ウィンドウの借用 Win32 ハンドル。
+    core::Window*                            m_window        = nullptr; ///< ウィンドウの表示や復旧状態を参照する借用ウィンドウ。
+    renderer::IRenderer*                     m_renderer      = nullptr; ///< 起動元が所有するフレーム描画インターフェース。
+    renderer::IImGuiRenderer*                m_imguiRenderer = nullptr; ///< 起動元が所有する ImGui 描画インターフェース。
+    renderer::ResourceManager*               m_resources     = nullptr; ///< 起動元が所有する描画・アセット用リソース管理器。
+    std::shared_ptr<renderer::SurfacePatchSelectionCacheOwner> m_surfacePatchPlans; ///< Pure bounded Scene/Game Water plans; RenderSystem pins the owner across recording callbacks.
     ViewportPanel*                           m_sceneViewportPanel     = nullptr;
     ViewportPanel*                           m_gameViewportPanel      = nullptr;
     ViewportPanel*                           m_uiViewportPanel        = nullptr;
     ProjectSettingsPanel*                    m_projectSettingsPanel   = nullptr;
     BuildSettingsPanel*                      m_buildSettingsPanel     = nullptr;
-    /// @brief 1 枚目の Asset Browser (ファイル監視とインポートを担当する枚)。
-    AssetBrowserPanel*                       m_assetBrowserPanel      = nullptr;
-    /// @brief 開いている Asset Browser 全部。ルートの差し替えのように全枚に配る操作で使う。
-    std::vector<AssetBrowserPanel*>          m_assetBrowserPanels;
-    /// @brief StatusBar から Asset Browser と同じ操作感で開閉するため、専用ポインタで保持する。
-    ConsolePanel*                            m_consolePanel           = nullptr;
+    AssetBrowserPanel*                       m_assetBrowserPanel      = nullptr; ///< 1 枚目の Asset Browser (ファイル監視とインポートを担当する枚)。
+    std::vector<AssetBrowserPanel*>          m_assetBrowserPanels; ///< 開いている Asset Browser 全部。ルートの差し替えのように全枚に配る操作で使う。
+    ConsolePanel*                            m_consolePanel           = nullptr; ///< StatusBar から Asset Browser と同じ操作感で開閉するため、専用ポインタで保持する。
     PerformanceProfilerPanel*                m_analysisPanel          = nullptr;
     RenderPassViewerPanel*                   m_renderPassViewerPanel  = nullptr;
     MapEditorPanel*                          m_mapEditorPanel         = nullptr;
@@ -517,19 +490,18 @@ private:
     VolumeFlipbookBakePanel*                 m_volumeFlipbookBakePanel = nullptr;
     FluidEditorPanel*                        m_fluidEditorPanel       = nullptr;
     AssetMaintenancePanel*                   m_assetMaintenancePanel  = nullptr;
-    /// @brief 通知バーを閉じたときの件数。これより増えたらもう一度出す。
-    size_t m_dismissedGuidConflicts = 0;
+    size_t m_dismissedGuidConflicts = 0; ///< 通知バーを閉じたときの件数。これより増えたらもう一度出す。
     bool   m_guidConflictBarDismissed = false;
     NavigationPanel*                         m_navigationPanel        = nullptr;
     AiSettingsPanel*                         m_aiSettingsPanel        = nullptr;
-    bool m_viewportsEnabled = true;
-    renderer::ResourceHandle<renderer::RenderTargetTag> m_sceneViewportRT;
-    renderer::ResourceHandle<renderer::RenderTargetTag> m_gameViewportRT;
+    bool m_viewportsEnabled = true; ///< Scene View と Game View の生成・描画を有効にするか。
+    renderer::ResourceHandle<renderer::RenderTargetTag> m_sceneViewportRT; ///< Scene View の描画先をリソース管理器で解決するためのハンドル。
+    renderer::ResourceHandle<renderer::RenderTargetTag> m_gameViewportRT; ///< Game View の描画先をリソース管理器で解決するためのハンドル。
     /// @brief このフレームで RT を作り直したか。OnRender の «出ているビューだけ描く» 判定へ渡す。
     /// @note 作り直した直後の RT は中身が未定義 (DX12 は解放待ち領域を使い回すため «少し前の絵» が残る)。描画を省いたフレームでパネルがそれを貼ると絵が重なって出る。
-    bool m_sceneViewportRTRecreated = false;
-    bool m_gameViewportRTRecreated  = false;
+    bool m_sceneViewportRTRecreated = false; ///< このフレーム中に Scene View の描画先を再作成したか。
+    bool m_gameViewportRTRecreated  = false; ///< このフレーム中に Game View の描画先を再作成したか。
 
 };
 
-} /// @note namespace fbzz::editor
+} // namespace fbzz::editor

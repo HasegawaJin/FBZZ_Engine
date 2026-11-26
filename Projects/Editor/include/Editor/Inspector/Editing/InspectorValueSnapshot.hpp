@@ -43,9 +43,14 @@ public:
     void Value(const char* name, T& value)
     {
         auto* stored = StoredValue<T>(name);
-        if (!stored) return;
-        if (m_applying) value = *stored;
-        else if (!Equal(*stored, value)) *stored = value;
+        if (!stored) {
+            return;
+        }
+        if (m_applying) {
+            value = *stored;
+        } else if (!Equal(*stored, value)) {
+            *stored = value;
+        }
     }
 
     /// @note copy は作者設定だけを代入し、対象の runtime・正規化・dirty 更新を実行しない。
@@ -53,9 +58,14 @@ public:
     void ProjectedValue(const char* name, T& value, Copy copy)
     {
         auto* stored = StoredValue<T>(name);
-        if (!stored) return;
-        if (m_applying) copy(value, *stored);
-        else copy(*stored, value);
+        if (!stored) {
+            return;
+        }
+        if (m_applying) {
+            copy(value, *stored);
+        } else {
+            copy(*stored, value);
+        }
     }
     template<typename T, size_t N>
     void Value(const char* name, T (&values)[N])
@@ -72,13 +82,17 @@ private:
         const char* fieldName = name ? name : "";
         if (m_applying) {
             assert(m_cursor < m_entries.size());
-            if (m_cursor >= m_entries.size()) return nullptr;
+            if (m_cursor >= m_entries.size()) {
+                return nullptr;
+            }
             auto& entry = m_entries[m_cursor++];
             auto* stored = std::any_cast<T>(&entry.value);
             assert(stored && entry.name == fieldName);
             return entry.name == fieldName ? stored : nullptr;
         }
-        if (m_cursor == m_entries.size()) m_entries.emplace_back();
+        if (m_cursor == m_entries.size()) {
+            m_entries.emplace_back();
+        }
         auto& entry = m_entries[m_cursor++];
         auto* stored = std::any_cast<T>(&entry.value);
         if (entry.name != fieldName || !stored) {
@@ -91,15 +105,21 @@ private:
     template<typename T>
     static bool Equal(const T& a, const T& b)
     {
-        /// @note float と数学値は近似比較を使わず、編集前の bit 値を維持する。padding の差は再コピー側へ倒れる。
-        if constexpr (std::is_trivially_copyable_v<T>) return std::memcmp(&a, &b, sizeof(T)) == 0;
-        else if constexpr (requires { a == b; }) return a == b;
-        else return false;
+        // float と数学値は近似比較を使わず、編集前の bit 値を維持する。padding の差は再コピー側へ倒れる。
+        if constexpr (std::is_trivially_copyable_v<T>) {
+            return std::memcmp(&a, &b, sizeof(T)) == 0;
+        } else if constexpr (requires { a == b; }) {
+            return a == b;
+        } else {
+            return false;
+        }
     }
     template<typename T>
     static bool Equal(const std::vector<T>& a, const std::vector<T>& b)
     {
-        if (a.size() != b.size()) return false;
+        if (a.size() != b.size()) {
+            return false;
+        }
         for (size_t index = 0; index < a.size(); ++index) if (!Equal(a[index], b[index])) return false;
         return true;
     }
@@ -121,4 +141,4 @@ void ProjectInspectorUndoValues(scene::NavMeshSurfaceComponent& component, Inspe
 void ProjectInspectorUndoValues(scene::IKSolverComponent& component, InspectorValueSnapshot& values);
 void ProjectInspectorUndoValues(scene::TerrainGridComponent& component, InspectorValueSnapshot& values);
 
-} /// @note namespace fbzz::editor
+} // namespace fbzz::editor

@@ -136,4 +136,4 @@ private:
     std::pair<int, int> m_solo{ -1, -1 };
 };
 
-} ///< @note namespace fbzz::editor
+} ///< namespace fbzz::editor

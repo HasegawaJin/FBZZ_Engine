@@ -208,9 +208,13 @@ protected:
     ImGuiWindow* Child(const char* label) const
     {
         auto* parent = PanelWindow();
-        if (!parent) return nullptr;
+        if (!parent) {
+            return nullptr;
+        }
         for (auto* window : parent->DC.ChildWindows)
-            if (std::strstr(window->Name, label)) return window;
+            if (std::strstr(window->Name, label)) {
+                return window;
+            }
         return nullptr;
     }
 

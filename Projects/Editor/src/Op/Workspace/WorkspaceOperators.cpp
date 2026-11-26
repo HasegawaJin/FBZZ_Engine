@@ -22,7 +22,9 @@ bool ValidSettings(const EditorSettings& s)
     };
     for (const auto& panel : s.assetBrowserPanels)
         if (!range(panel.iconSize, 56.0f, 132.0f) || !range(panel.treeWidth, 140.0f, 420.0f)
-            || panel.viewMode < 0 || panel.viewMode > 1 || panel.sortMode < 0 || panel.sortMode > 3) return false;
+            || panel.viewMode < 0 || panel.viewMode > 1 || panel.sortMode < 0 || panel.sortMode > 3) {
+            return false;
+        }
     const auto& import = s.defaultImportOptions;
     return static_cast<int>(import.sourceDcc) >= 0 && static_cast<int>(import.sourceDcc) <= 2
         && static_cast<int>(import.upAxis) >= 0 && static_cast<int>(import.upAxis) <= 2
@@ -52,18 +54,22 @@ bool ValidSettings(const EditorSettings& s)
         && range(s.consoleDetailRatio, 0.1f, 0.8f)
         && range(s.defaultImportOptions.unitScaleMultiplier, 0.000001f, 10000.0f);
 }
-} /// @note namespace
+} // namespace
 
 void EditorApp::RegisterWorkspaceOperators()
 {
     for (const char* action : {"inspect", "configure", "reload", "save"}) {
         EditorOperator op;
         const std::string name = action;
-        op.id = "workspace.settings." + name; op.label = op.id; op.category = "Workspace";
+        op.id = "workspace.settings." + name;
+        op.label = op.id;
+        op.category = "Workspace";
         op.kind = name == "inspect" ? OpKind::Query : OpKind::Action;
         op.desc = "エディター設定・ホットキー・パネル設定を直接照会/編集する。settingsはinspectの部分オブジェクト。配列は全置換。saveで共有値と個人状態を通常の保存先へ保存する。";
         if (name == "configure") {
-            OpParam patch; patch.name = "settings"; patch.type = OpParamType::Data;
+            OpParam patch;
+            patch.name = "settings";
+            patch.type = OpParamType::Data;
             op.params.push_back(std::move(patch));
         }
         op.poll = [](const OpContext& context, const OpArgs&) { return !context.ctx.projectRoot.empty(); };
@@ -74,16 +80,21 @@ void EditorApp::RegisterWorkspaceOperators()
                 EditorSettings after = m_settings;
                 const std::string path = m_ctx.projectRoot + "/Assets/EditorConfig/editor_settings.toml";
                 if (name == "reload") {
-                    if (!after.Load(path, m_ctx.projectRoot)) return OpResult::Err("SETTINGS_READ_FAILED", "エディター設定を読み取れません。");
+                    if (!after.Load(path, m_ctx.projectRoot)) {
+                        return OpResult::Err("SETTINGS_READ_FAILED", "エディター設定を読み取れません。");
+                    }
                 } else {
                     std::string text;
                     const OpData* patch = args.GetData("settings");
                     if (!patch || !settingsdocument::Patch(m_settings.ToToml(m_ctx.projectRoot), *patch, text)
                         || !after.LoadFromToml(text, m_ctx.projectRoot)
-                        || !settingsdocument::Preserves(after.ToToml(m_ctx.projectRoot), *patch))
+                        || !settingsdocument::Preserves(after.ToToml(m_ctx.projectRoot), *patch)) {
                         return OpResult::Err("BAD_ARG", "未知の設定キー、型不一致または不正な値です。");
+                    }
                 }
-                if (!ValidSettings(after)) return OpResult::Err("BAD_ARG", "設定値が許容範囲外です。");
+                if (!ValidSettings(after)) {
+                    return OpResult::Err("BAD_ARG", "設定値が許容範囲外です。");
+                }
                 std::unordered_set<std::string> names;
                 for (const auto& binding : after.hotkeyOverrides) {
                     const auto& hotkeys = m_hotkeys.GetHotkeys();
@@ -91,21 +102,28 @@ void EditorApp::RegisterWorkspaceOperators()
                         return !hotkey.infoOnly && (hotkey.operatorId.empty() ? hotkey.name : hotkey.operatorId) == binding.name;
                     });
                     if (found == hotkeys.end() || !names.insert(binding.name).second
-                        || (binding.key != ImGuiKey_None && (binding.key < ImGuiKey_NamedKey_BEGIN || binding.key >= ImGuiKey_NamedKey_END)))
+                        || (binding.key != ImGuiKey_None && (binding.key < ImGuiKey_NamedKey_BEGIN || binding.key >= ImGuiKey_NamedKey_END))) {
                         return OpResult::Err("BAD_ARG", "ホットキー名、重複またはキーコードが不正です。");
+                    }
                 }
                 for (const auto& [panel, open] : after.panelVisibility) {
                     static_cast<void>(open);
-                    if (!FindPanelByName(panel)) return OpResult::Err("UNKNOWN_PANEL", panel);
+                    if (!FindPanelByName(panel)) {
+                        return OpResult::Err("UNKNOWN_PANEL", panel);
+                    }
                 }
                 m_settings = std::move(after);
                 ApplyEditorSettingsToContext(true);
                 ImGuiIO& io = ImGui::GetIO();
-                if (m_settings.multiViewportEnabled) io.ConfigFlags |= ImGuiConfigFlags_ViewportsEnable;
-                else io.ConfigFlags &= ~ImGuiConfigFlags_ViewportsEnable;
+                if (m_settings.multiViewportEnabled) {
+                    io.ConfigFlags |= ImGuiConfigFlags_ViewportsEnable;
+                } else {
+                    io.ConfigFlags &= ~ImGuiConfigFlags_ViewportsEnable;
+                }
             }
-            if (name == "save" && !m_settings.Save(m_ctx.projectRoot + "/Assets/EditorConfig/editor_settings.toml", m_ctx.projectRoot))
+            if (name == "save" && !m_settings.Save(m_ctx.projectRoot + "/Assets/EditorConfig/editor_settings.toml", m_ctx.projectRoot)) {
                 return OpResult::Err("SETTINGS_SAVE_FAILED", "エディター設定を保存できません。");
+            }
             OpData data = OpData::MakeObject();
             data.Set("settings", settingsdocument::Inspect(m_settings.ToToml(m_ctx.projectRoot)));
             data.Set("sharedPath", OpData(m_ctx.projectRoot + "/Assets/EditorConfig/editor_settings.toml"));
@@ -117,28 +135,37 @@ void EditorApp::RegisterWorkspaceOperators()
     for (const char* action : {"inspect", "configure", "save"}) {
         EditorOperator op;
         const std::string name = action;
-        op.id = "workspace.layout." + name; op.label = op.id; op.category = "Workspace";
+        op.id = "workspace.layout." + name;
+        op.label = op.id;
+        op.category = "Workspace";
         op.kind = name == "inspect" ? OpKind::Query : OpKind::Action;
         op.desc = "ドッキング配置のINI本文を直接取得/適用/保存する。configureはinspectのiniを受け取る。";
         if (name == "configure") {
-            OpParam ini; ini.name = "ini"; ini.type = OpParamType::String; op.params.push_back(std::move(ini));
+            OpParam ini;
+            ini.name = "ini";
+            ini.type = OpParamType::String;
+            op.params.push_back(std::move(ini));
         }
         op.poll = [this](const OpContext&, const OpArgs&) { return !m_imguiIniPath.empty() && !m_ctx.mapEditingMode && !m_playViewportLayoutActive; };
         op.exec = [this, name](OpContext&, const OpArgs& args) {
             if (name == "configure") {
                 const std::string ini = args.GetString("ini");
-                if (ini.size() > 1024 * 1024 || ini.find('\0') != std::string::npos)
+                if (ini.size() > 1024 * 1024 || ini.find('\0') != std::string::npos) {
                     return OpResult::Err("BAD_ARG", "配置データが不正です。");
+                }
                 ImGui::LoadIniSettingsFromMemory(ini.c_str(), ini.size());
             }
-            if (name == "save") ImGui::SaveIniSettingsToDisk(m_imguiIniPath.c_str());
+            if (name == "save") {
+                ImGui::SaveIniSettingsToDisk(m_imguiIniPath.c_str());
+            }
             std::size_t size = 0;
             const char* ini = ImGui::SaveIniSettingsToMemory(&size);
-            OpData data = OpData::MakeObject(); data.Set("ini", OpData(std::string(ini, size)));
+            OpData data = OpData::MakeObject();
+            data.Set("ini", OpData(std::string(ini, size)));
             data.Set("path", OpData(m_imguiIniPath));
             return OpResult::Data(std::move(data));
         };
         m_operators.Register(std::move(op));
     }
 }
-} /// @note namespace fbzz::editor
+} // namespace fbzz::editor

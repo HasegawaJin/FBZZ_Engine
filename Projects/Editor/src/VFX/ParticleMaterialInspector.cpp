@@ -25,8 +25,8 @@ bool DrawParticleMaterialInspector(asset::MaterialAssetAuthoring& material, cons
 
     ImGui::SeparatorText("Particle / Alpha");
     {
-        /// @note テクスチャの作りの違いを吸収する。素材を画像編集ソフトで加工させないための設定。
-        ///       並びは Rendering/Mask.hlsli の FBZZ_MASK_* と一致させること。
+        // テクスチャの作りの違いを吸収する。素材を画像編集ソフトで加工させないための設定。
+        // 並びは Rendering/Mask.hlsli の FBZZ_MASK_* と一致させること。
         static constexpr const char* kAlphaItems[] = {
             "Texture Alpha", "Luminance (black = clear)",
             "Inverted Luminance (white = clear)", "Red Channel",
@@ -47,12 +47,14 @@ bool DrawParticleMaterialInspector(asset::MaterialAssetAuthoring& material, cons
                 "素材を Alpha Blend にしたら黒い四角が出る場合は Luminance を選びます。\n"
                 "この選択肢は全マテリアル共通の語彙です (Rendering/Mask.hlsli)。");
         if (particle.alphaSource == scene::ParticleAlphaSource::TextureAlpha
-            && material.blendMode != renderer::BlendMode::ADDITIVE)
+            && material.blendMode != renderer::BlendMode::ADDITIVE) {
             ImGui::TextDisabled("黒い矩形が出る場合はアルファ無し素材です。Luminance を試してください。");
+        }
 
         changed |= property::DragFloat("HDR Emissive", &particle.emissiveScale, 0.01f, 0.0f, 100.0f);
-        if (ImGui::IsItemHovered())
+        if (ImGui::IsItemHovered()) {
             ImGui::SetTooltip("粒子色に掛かる倍率。1 を超えるとブルームが拾います。");
+        }
 
         changed |= property::Checkbox("Soft Particles", &particle.softParticles);
         if (particle.softParticles)
@@ -63,10 +65,11 @@ bool DrawParticleMaterialInspector(asset::MaterialAssetAuthoring& material, cons
                                     0.01f, 0.0f, 100.0f);
         changed |= property::DragFloat("Camera Fade Far##pm_camera_fade_far", &particle.cameraFadeFar,
                                     0.01f, 0.0f, 100.0f);
-        if (particle.cameraFadeNear >= particle.cameraFadeFar)
+        if (particle.cameraFadeNear >= particle.cameraFadeFar) {
             ImGui::TextDisabled("Near >= Far のあいだは無効 (カメラ距離で薄めません)。");
-        else if (ImGui::IsItemHovered())
+        } else if (ImGui::IsItemHovered()) {
             ImGui::SetTooltip("Near より近い粒子を薄くする。カメラが煙に突っ込んで画面が埋まるのを防ぐ。");
+        }
     }
 
     changed |= DrawFlipbookInspector(material, projectRoot, resources, imguiRenderer);
@@ -77,7 +80,7 @@ bool DrawParticleMaterialInspector(asset::MaterialAssetAuthoring& material, cons
         if (particle.distortion) {
             changed |= property::DragFloat("Distortion Strength", &particle.distortionStrength,
                                         0.001f, 0.0f, 0.25f, "%.4f");
-            /// @note 歪み専用マップは [textures] normal。未設定なら albedo の RG へ縮退する。
+            // 歪み専用マップは [textures] normal。未設定なら albedo の RG へ縮退する。
             changed |= property::AssetPathField("Distortion Map (normal)", material.textures["normal"],
                                                widgets::kTextureAssetFilter, projectRoot);
             if (ImGui::IsItemHovered())
@@ -95,16 +98,19 @@ bool DrawParticleMaterialInspector(asset::MaterialAssetAuthoring& material, cons
     ImGui::SeparatorText("Smoke Lighting");
     {
         if (property::Checkbox("Six-way Lit Smoke", &particle.sixWayLighting)) {
-            /// @note 役割が重複するため排他にする (両方掛けると二重に陰影が付いて濁る)。
-            if (particle.sixWayLighting) particle.volumetric = false;
+            // 役割が重複するため排他にする (両方掛けると二重に陰影が付いて濁る)。
+            if (particle.sixWayLighting) {
+                particle.volumetric = false;
+            }
             changed = true;
         }
         if (particle.sixWayLighting) {
-            /// @note シェーダー側が saturate するため 1.0 が上限。それ以上は「元の色を捨てて
-            ///       (ambient + N·L) で塗る」だけになり、暗い環境で煙が真っ黒に潰れる。
+            // シェーダー側が saturate するため 1.0 が上限。それ以上は「元の色を捨てて
+            // (ambient + N·L) で塗る」だけになり、暗い環境で煙が真っ黒に潰れる。
             changed |= property::SliderFloat("Lighting Strength", &particle.lightingStrength, 0.0f, 1.0f);
-            if (ImGui::IsItemHovered())
+            if (ImGui::IsItemHovered()) {
                 ImGui::SetTooltip("0 = 元の色そのまま / 1 = 完全にライティングで置換");
+            }
             changed |= property::SliderFloat("Smoke Wrap", &particle.smokeWrap, 0.0f, 1.0f);
             if (ImGui::IsItemHovered())
                 ImGui::SetTooltip("陰側への光の回り込みです。\n"
@@ -127,12 +133,14 @@ bool DrawParticleMaterialInspector(asset::MaterialAssetAuthoring& material, cons
                               "光を回すと、明暗が煙の形に沿って回り込みます。");
         if (particle.sixWayMaps) {
             const auto negative = material.textures.find("emissive");
-            if (negative == material.textures.end() || negative->second.empty())
+            if (negative == material.textures.end() || negative->second.empty()) {
                 ImGui::TextColored({ 1.0f, 0.65f, 0.3f, 1.0f }, "emissive スロットに _6wayN を割り当ててください");
+            }
             changed |= property::ColorEdit3("Six-way Emission", &particle.sixWayEmissionColor.x,
                                          ImGuiColorEditFlags_HDR | ImGuiColorEditFlags_Float);
-            if (ImGui::IsItemHovered())
+            if (ImGui::IsItemHovered()) {
                 ImGui::SetTooltip("_6wayN の A (発光マスク) に掛ける色です。炎の芯は影の中でも光ります。");
+            }
         }
         changed |= property::Checkbox("Receive Point Lights", &particle.punctualLighting);
         if (ImGui::IsItemHovered())
@@ -140,7 +148,9 @@ bool DrawParticleMaterialInspector(asset::MaterialAssetAuthoring& material, cons
                               "画素ごとにライト一覧を走査するので、画面を覆う煙では重くなります。");
 
         if (property::Checkbox("Volumetric Smoke", &particle.volumetric)) {
-            if (particle.volumetric) particle.sixWayLighting = false;
+            if (particle.volumetric) {
+                particle.sixWayLighting = false;
+            }
             changed = true;
         }
         if (ImGui::IsItemHovered())
@@ -149,15 +159,18 @@ bool DrawParticleMaterialInspector(asset::MaterialAssetAuthoring& material, cons
                               "テクスチャは使わず密度場で色を作るため Six-way とは排他です。");
         if (particle.volumetric) {
             changed |= property::DragInt("Volumetric Steps", &particle.volumetricSteps, 1, 1, 64);
-            if (ImGui::IsItemHovered())
+            if (ImGui::IsItemHovered()) {
                 ImGui::SetTooltip("1 ピクセルあたりのループ回数です。増やすほど滑らかですが重くなります。");
+            }
             changed |= property::DragFloat("Density", &particle.volumetricDensity, 0.01f, 0.0f, 20.0f);
             changed |= property::SliderFloat("Anisotropy", &particle.volumetricAnisotropy, -0.95f, 0.95f);
-            if (ImGui::IsItemHovered())
+            if (ImGui::IsItemHovered()) {
                 ImGui::SetTooltip("正で前方散乱。逆光のとき煙の縁が光ります。");
+            }
             changed |= property::DragFloat("Noise Scale", &particle.volumetricNoiseScale, 0.05f, 0.0f, 32.0f);
-            if (material.blendMode == renderer::BlendMode::ADDITIVE)
+            if (material.blendMode == renderer::BlendMode::ADDITIVE) {
                 ImGui::TextDisabled("出力は事前乗算アルファです。Premultiplied ブレンドを推奨します。");
+            }
         }
     }
 
@@ -174,7 +187,7 @@ bool DrawParticleMaterialInspector(asset::MaterialAssetAuthoring& material, cons
                 ImGui::TextDisabled("加算ブレンドでは影が暗くしても見えにくくなります。"
                                     "煙は Alpha / Premultiplied を推奨。");
         }
-        /// @note 自己影。受け影とは別の現象なので、別のスライダーとして並べる。
+        // 自己影。受け影とは別の現象なので、別のスライダーとして並べる。
         changed |= property::DragFloat("Self Shadow", &particle.selfShadowStrength,
                                     0.01f, 0.0f, 8.0f, "%.2f");
         if (ImGui::IsItemHovered())
@@ -192,4 +205,4 @@ bool DrawParticleMaterialInspector(asset::MaterialAssetAuthoring& material, cons
     return changed;
 }
 
-} /// @note namespace fbzz::editor
+} // namespace fbzz::editor

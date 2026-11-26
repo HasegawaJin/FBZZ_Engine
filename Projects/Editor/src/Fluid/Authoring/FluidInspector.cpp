@@ -85,7 +85,9 @@ std::filesystem::file_time_type FileStamp(const std::string& path)
 [[nodiscard]] bool BakeJobActive()
 {
     FluidBakeService* service = BakeService();
-    if (s_bakeJobId == 0 || service == nullptr) return false;
+    if (s_bakeJobId == 0 || service == nullptr) {
+        return false;
+    }
     const FluidJobStatus* status = service->Find(s_bakeJobId);
     return status != nullptr && !status->Finished();
 }
@@ -98,22 +100,34 @@ void SetStatus(std::string text, bool isError)
 
 void DrawStatus()
 {
-    if (s_state.status.empty()) return;
-    if (s_state.statusIsError) ImGui::PushStyleColor(ImGuiCol_Text, kErrorColor);
+    if (s_state.status.empty()) {
+        return;
+    }
+    if (s_state.statusIsError) {
+        ImGui::PushStyleColor(ImGuiCol_Text, kErrorColor);
+    }
     ImGui::TextWrapped("%s", s_state.status.c_str());
-    if (s_state.statusIsError) ImGui::PopStyleColor();
+    if (s_state.statusIsError) {
+        ImGui::PopStyleColor();
+    }
 }
 
 void Tooltip(const char* text)
 {
-    if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", text);
+    if (ImGui::IsItemHovered()) {
+        ImGui::SetTooltip("%s", text);
+    }
 }
 
 void LoadIfNeeded(const std::string& absPath)
 {
     const std::filesystem::file_time_type stamp = FileStamp(absPath);
-    if (s_state.path == absPath && stamp == s_state.stamp) return;
-    if (s_state.path != absPath) s_state = FluidSummaryState{};
+    if (s_state.path == absPath && stamp == s_state.stamp) {
+        return;
+    }
+    if (s_state.path != absPath) {
+        s_state = FluidSummaryState{};
+    }
     s_state.path = absPath;
     s_state.stamp = stamp;
     s_state.outputsChecked = false;
@@ -136,7 +150,9 @@ void LoadIfNeeded(const std::string& absPath)
 
 [[nodiscard]] const char* ShadingName(const fluid::FluidRecipe& recipe)
 {
-    if (recipe.kind == FluidKind::Liquid) return "Liquid";
+    if (recipe.kind == FluidKind::Liquid) {
+        return "Liquid";
+    }
     switch (recipe.render.shading) {
     case FluidShading::Smoke:      return "Smoke";
     case FluidShading::Fire:       return "Fire";
@@ -154,7 +170,9 @@ void LoadIfNeeded(const std::string& absPath)
 void RefreshSiblingOutputs()
 {
     const auto now = std::chrono::steady_clock::now();
-    if (s_state.outputsChecked && now - s_state.outputsCheckedAt < std::chrono::seconds(1)) return;
+    if (s_state.outputsChecked && now - s_state.outputsCheckedAt < std::chrono::seconds(1)) {
+        return;
+    }
     s_state.outputsChecked = true;
     s_state.outputsCheckedAt = now;
     s_state.outputs.clear();
@@ -177,8 +195,9 @@ void RefreshSiblingOutputs()
     addFirst("6-way -", { "_6wayN.dds", "_6wayN.png" });
     addFirst("Vector Field", { "_Velocity.png" });
     addFirst("VFX", { ".vfx" });
-    if (std::string material = SiblingMaterialPath(s_state.path); util::FileSystem::Exists(material))
+    if (std::string material = SiblingMaterialPath(s_state.path); util::FileSystem::Exists(material)) {
         s_state.outputs.emplace_back("Material", std::move(material));
+    }
 }
 
 void DrawSiblingOutputs()
@@ -189,7 +208,9 @@ void DrawSiblingOutputs()
         ImGui::TextDisabled("まだ焼いていません (.fluid の隣に出力がありません)。");
         return;
     }
-    if (!ImGui::BeginTable("##outputs", 2, ImGuiTableFlags_SizingStretchProp)) return;
+    if (!ImGui::BeginTable("##outputs", 2, ImGuiTableFlags_SizingStretchProp)) {
+        return;
+    }
     ImGui::TableSetupColumn("##label", ImGuiTableColumnFlags_WidthFixed, ImGui::GetFontSize() * 7.0f);
     ImGui::TableSetupColumn("##file", ImGuiTableColumnFlags_WidthStretch);
     for (const auto& [label, path] : s_state.outputs) {
@@ -198,7 +219,9 @@ void DrawSiblingOutputs()
         ImGui::TableNextColumn();
         ImGui::TextDisabled("%s", label);
         ImGui::TableNextColumn();
-        if (ImGui::SmallButton(FileNameOf(path).c_str())) widgets::RequestAssetReveal(NormalizeAssetPath(path), false);
+        if (ImGui::SmallButton(FileNameOf(path).c_str())) {
+            widgets::RequestAssetReveal(NormalizeAssetPath(path), false);
+        }
         Tooltip("Asset Browser で見せます。");
         ImGui::PopID();
     }
@@ -238,8 +261,11 @@ void DrawRecipeSummary()
         SummaryRow("Shading", "%s", ShadingName(recipe));
 
         const auto partRow = [](const char* label, int count, int enabled, int limit) {
-            if (count == enabled) SummaryRow(label, "%d / %d", count, limit);
-            else                  SummaryRow(label, "%d / %d  (%d off)", count, limit, count - enabled);
+            if (count == enabled) {
+                SummaryRow(label, "%d / %d", count, limit);
+            } else {
+                SummaryRow(label, "%d / %d  (%d off)", count, limit, count - enabled);
+            }
         };
         partRow("Sources", static_cast<int>(recipe.sources.size()), CountEnabled(recipe.sources),
                 fluid::kMaxFluidSources);
@@ -252,8 +278,9 @@ void DrawRecipeSummary()
             SummaryRow("Bake Mode", "3D (Volume)  %d^3  %s%s", bake.volumeResolution,
                        bake.solver == fluid::FluidBakeSolver::Gpu ? "GPU" : "CPU",
                        bake.sixWayLightmaps ? "  + 6-way" : "");
-        else
+        else {
             SummaryRow("Bake Mode", "2D (Flat)");
+        }
 
         const fluid::FluidOutputSettings& output = recipe.output;
         const int frames = FrameCount(recipe);
@@ -266,8 +293,9 @@ void DrawRecipeSummary()
                    recipe.kind == FluidKind::Gas && output.vectorField ? "Vector Field" : "");
         ImGui::EndTable();
     }
-    if (recipe.sources.empty() || CountEnabled(recipe.sources) == 0)
+    if (recipe.sources.empty() || CountEnabled(recipe.sources) == 0) {
         ImGui::TextColored(kErrorColor, "有効な発生源がありません。焼いても何も写りません。");
+    }
 }
 
 /// @name 焼き
@@ -285,7 +313,9 @@ bool WriteParticleMaterial(const std::string& fluidPath, const FluidMaterialSour
     }
     asset::AssetManager::ReloadPath(materialDisk);
     asset::AssetManager::FlushFailed();
-    if (s_context != nullptr) s_context->requestAssetBrowserRefresh = true;
+    if (s_context != nullptr) {
+        s_context->requestAssetBrowserRefresh = true;
+    }
     s_state.outputsChecked = false;
     outRelativePath = NormalizeAssetPath(materialDisk);
     return true;
@@ -298,7 +328,9 @@ void StartBake()
         SetStatus("焼きの窓口 (FluidBakeService) が繋がっていません。", true);
         return;
     }
-    if (BakeJobActive()) return;
+    if (BakeJobActive()) {
+        return;
+    }
     FluidBakeRequest request;
     request.fluidPath = s_state.path;
     FluidJobError error;
@@ -318,21 +350,29 @@ void StartBake()
 void PollBake()
 {
     FluidBakeService* service = BakeService();
-    if (s_bakeJobId == 0 || service == nullptr) return;
+    if (s_bakeJobId == 0 || service == nullptr) {
+        return;
+    }
     const FluidJobStatus* status = service->Find(s_bakeJobId);
     if (status == nullptr) {
         s_bakeJobId = 0;
         return;
     }
-    if (!status->Finished()) return;
+    if (!status->Finished()) {
+        return;
+    }
     const std::uint32_t id = s_bakeJobId;
     s_bakeJobId = 0;
-    /// @note 焼いている間に別のアセットへ移った
-    if (s_bakeJobPath != s_state.path) return;
+    // 焼いている間に別のアセットへ移った
+    if (s_bakeJobPath != s_state.path) {
+        return;
+    }
 
     s_state.outputsChecked = false;
     SetStatus(status->message, status->state != FluidJobState::Done);
-    if (status->state != FluidJobState::Done) return;
+    if (status->state != FluidJobState::Done) {
+        return;
+    }
     if (const asset::FluidBakeResult* flat = service->FindFlatResult(id)) {
         s_state.lastBake = FluidMaterialSource::FromFlat(*flat);
         s_state.hasBake = flat->success;
@@ -348,9 +388,13 @@ void PollBake()
 void DrawBakeProgress()
 {
     FluidBakeService* service = BakeService();
-    if (s_bakeJobId == 0 || service == nullptr) return;
+    if (s_bakeJobId == 0 || service == nullptr) {
+        return;
+    }
     const FluidJobStatus* status = service->Find(s_bakeJobId);
-    if (status == nullptr || status->Finished()) return;
+    if (status == nullptr || status->Finished()) {
+        return;
+    }
     const float elapsed = std::chrono::duration<float>(std::chrono::steady_clock::now() - s_bakeStarted).count();
     const char* stage = status->state == FluidJobState::Queued     ? "  待機中"
                       : status->state == FluidJobState::Encoding   ? "  書き出し中"
@@ -358,16 +402,21 @@ void DrawBakeProgress()
     char label[64];
     std::snprintf(label, sizeof(label), "%.0f%%  (%.1f s)%s", status->progress * 100.0f, elapsed, stage);
     ImGui::ProgressBar(status->progress, { -1.0f, 0.0f }, label);
-    if (s_bakeJobPath != s_state.path)
+    if (s_bakeJobPath != s_state.path) {
         ImGui::TextDisabled("焼いているのは %s です。", FileNameOf(s_bakeJobPath).c_str());
-    if (ImGui::SmallButton("Cancel Bake")) (void)service->Cancel(s_bakeJobId);
+    }
+    if (ImGui::SmallButton("Cancel Bake")) {
+        (void)service->Cancel(s_bakeJobId);
+    }
     Tooltip("2D の焼きは途中で止められないため、書き出しは最後まで続きます (結果は捨てます)。");
 }
 
 /// @brief 焼き上がった直後だけ出す。.mat が既にあれば焼きのたびにサービスが追従させているので、ここは «作る» ための入口。
 void DrawMaterialButton()
 {
-    if (!s_state.hasBake) return;
+    if (!s_state.hasBake) {
+        return;
+    }
     ImGui::BeginDisabled(BakeJobActive());
     if (ImGui::Button("Create / Update Particle Material", { -1.0f, 0.0f })) {
         std::string materialPath;
@@ -385,7 +434,9 @@ void DrawBakeSection()
     ImGui::SeparatorText("Bake");
     const bool volumeMode = s_state.loaded && s_state.recipe.bake.mode == fluid::FluidBakeMode::Volume3D;
     ImGui::BeginDisabled(BakeJobActive() || BakeService() == nullptr || !s_state.loaded);
-    if (ImGui::Button(volumeMode ? "Bake (3D)" : "Bake (2D)", { -1.0f, 0.0f })) StartBake();
+    if (ImGui::Button(volumeMode ? "Bake (3D)" : "Bake (2D)", { -1.0f, 0.0f })) {
+        StartBake();
+    }
     ImGui::EndDisabled();
     if (volumeMode)
         Tooltip("保存済みのレシピを 3D で解き直してレイマーチで焼き、.fluid の隣へ <名前>.dds / _mv.dds を書きます。\n"
@@ -415,8 +466,9 @@ void DrawFluidAssetInspector(const std::string& absPath,
     ImGui::PushID("fluid_asset_summary");
 
     ImGui::BeginDisabled(s_context == nullptr);
-    if (ImGui::Button("Open in Fluid Editor", { -1.0f, ImGui::GetFrameHeight() * 1.8f }))
+    if (ImGui::Button("Open in Fluid Editor", { -1.0f, ImGui::GetFrameHeight() * 1.8f })) {
         s_context->requestOpenFluidEditor = absPath;
+    }
     ImGui::EndDisabled();
     Tooltip("発生源・力・障害物・見た目・出力の編集と、ライブプレビューは Fluid Editor で行います。\n"
             "Asset Browser で .fluid をダブルクリックしても開きます。");

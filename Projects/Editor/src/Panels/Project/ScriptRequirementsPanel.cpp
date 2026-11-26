@@ -30,19 +30,23 @@ void ScriptRequirementsPanel::OnRenderContent(EditorContext& ctx)
     ImGui::EndDisabled();
     ImGui::SameLine();
     ImGui::TextDisabled("変更後は再検証してください");
-    if (!available)
+    if (!available) {
         ImGui::TextWrapped("編集モードでシーンを開き、Script の読み込み完了後に検証できます。");
-    if (!review.message.empty()) ImGui::TextWrapped("%s", review.message.c_str());
+    }
+    if (!review.message.empty()) {
+        ImGui::TextWrapped("%s", review.message.c_str());
+    }
     if (!IsScriptRequirementReviewCurrent(ctx)) {
         ImGui::TextWrapped("このシーンの検証結果はありません。チェックを実行してください。");
         return;
     }
     ImGui::Separator();
     ImGui::Text("検証時点: %d Script / 問題 %zu 件", review.scriptsChecked, review.rows.size());
-    if (review.unavailableScripts)
+    if (review.unavailableScripts) {
         ImGui::TextWrapped("未ロードの Script が %d 件あるため検証は未完了です。ビルド・読み込み後に再検証してください。", review.unavailableScripts);
-    else if (review.rows.empty())
+    } else if (review.rows.empty()) {
         ImGui::TextColored({0.35f, 0.85f, 0.5f, 1}, "検証時点で必須設定の不足はありません。");
+    }
     ImGui::TextWrapped("項目をクリックすると Inspector に移動します。Awake で設定する参照は再生時に再判定されます。");
     if (ImGui::BeginTable("requirements", 4, ImGuiTableFlags_BordersInnerH |
         ImGuiTableFlags_RowBg | ImGuiTableFlags_Resizable | ImGuiTableFlags_ScrollY)) {
@@ -78,4 +82,4 @@ void ScriptRequirementsPanel::OnRenderContent(EditorContext& ctx)
         ImGui::EndTable();
     }
 }
-} /// @note namespace fbzz::editor
+} // namespace fbzz::editor

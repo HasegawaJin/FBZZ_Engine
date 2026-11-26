@@ -81,7 +81,9 @@ std::vector<TimelineRow> CollectRows(const fluid::FluidRecipe& recipe)
     std::vector<TimelineRow> rows;
     for (const FluidSelectionKind list : kLists) {
         const int count = fluidui::PartCount(recipe, list);
-        for (int i = 0; i < count; ++i) rows.push_back(TimelineRow{ list, i });
+        for (int i = 0; i < count; ++i) {
+            rows.push_back(TimelineRow{ list, i });
+        }
     }
     return rows;
 }
@@ -96,7 +98,9 @@ PartSpan SpanOf(const fluid::FluidRecipe& recipe, const TimelineRow& row, const 
                   && part.duration <= 0.0f;
         span.untilEnd = !span.burst && part.duration <= 0.0f;
         span.end = span.untilEnd ? g.duration : span.start + (std::max)(part.duration, 0.0f);
-        for (const fluid::FluidMotionKey& key : part.motion.keys) span.keyTimes.push_back(key.time - g.warmup);
+        for (const fluid::FluidMotionKey& key : part.motion.keys) {
+            span.keyTimes.push_back(key.time - g.warmup);
+        }
     });
     return span;
 }
@@ -107,7 +111,9 @@ Hit HitTest(const fluid::FluidRecipe& recipe, const std::vector<TimelineRow>& ro
     Hit hit;
     const int row = static_cast<int>(std::floor((mouse.y - rowsTop) / kRowHeight));
     if (row < 0 || row >= static_cast<int>(rows.size())) {
-        if (mouse.x >= g.trackX0) hit.kind = HitKind::Empty;
+        if (mouse.x >= g.trackX0) {
+            hit.kind = HitKind::Empty;
+        }
         return hit;
     }
     hit.row = row;
@@ -121,7 +127,9 @@ Hit HitTest(const fluid::FluidRecipe& recipe, const std::vector<TimelineRow>& ro
     float best = kKeyPickRadius;
     for (std::size_t k = 0; k < span.keyTimes.size(); ++k) {
         const float t = span.keyTimes[k];
-        if (t < 0.0f || t > g.duration) continue;
+        if (t < 0.0f || t > g.duration) {
+            continue;
+        }
         const float d = (std::max)(std::fabs(mouse.x - g.ToX(t)), std::fabs(mouse.y - centerY));
         if (d <= best) {
             best = d;
@@ -169,13 +177,17 @@ void DrawRuler(ImDrawList* drawList, const State& state, const TrackGeometry& g,
     int major = kMajorSteps[0];
     for (const int step : kMajorSteps) {
         major = step;
-        if (static_cast<float>(step) * framePx >= 56.0f) break;
+        if (static_cast<float>(step) * framePx >= 56.0f) {
+            break;
+        }
     }
     const int frameCount = (std::min)(static_cast<int>(std::floor(g.duration / g.frameDt + 0.5f)), 100000);
     char text[32]{};
     for (int f = 0; f <= frameCount; ++f) {
         const bool isMajor = (f % major) == 0;
-        if (!isMajor && framePx < 4.0f) continue;
+        if (!isMajor && framePx < 4.0f) {
+            continue;
+        }
         const float x = g.ToX(static_cast<float>(f) * g.frameDt);
         drawList->AddLine({ x, max.y - (isMajor ? 9.0f : 4.0f) }, { x, max.y }, kTickColor);
         if (isMajor) {
@@ -196,10 +208,11 @@ void DrawRow(ImDrawList* drawList, const State& state, const fluid::FluidRecipe&
 {
     const FluidDocument& document = state.document;
     const bool selected = document.selection.kind == row.list && document.selection.index == row.index;
-    if (selected)
+    if (selected) {
         drawList->AddRectFilled({ left, y0 }, { right, y1 }, EditorTheme::ColorU32(ThemeColor::Accent, 0.22f));
-    else if (rowIndex % 2 == 0)
+    } else if (rowIndex % 2 == 0) {
         drawList->AddRectFilled({ left, y0 }, { right, y1 }, IM_COL32(255, 255, 255, 8));
+    }
     drawList->AddRectFilled({ left, y0 + 3.0f }, { left + 3.0f, y1 - 3.0f }, ListColor(row.list));
 
     const PartSpan span = SpanOf(recipe, row, g);
@@ -228,11 +241,12 @@ void DrawRow(ImDrawList* drawList, const State& state, const fluid::FluidRecipe&
         if (x1 > x0) {
             drawList->AddRectFilled({ x0, barTop }, { x1, barBottom }, barColor, 3.0f);
             if (span.untilEnd) {
-                /// @note 終わりの無い帯は斜線にして、右端が «ここで止まる» ではないことを見せる。
+                // 終わりの無い帯は斜線にして、右端が «ここで止まる» ではないことを見せる。
                 drawList->PushClipRect({ x0, barTop }, { x1, barBottom }, true);
                 const float h = barBottom - barTop;
-                for (float hx = x0 - h; hx < x1; hx += 7.0f)
+                for (float hx = x0 - h; hx < x1; hx += 7.0f) {
                     drawList->AddLine({ hx, barBottom }, { hx + h, barTop }, IM_COL32(0, 0, 0, 70), 1.5f);
+                }
                 drawList->PopClipRect();
             } else {
                 drawList->AddRectFilled({ x1 - kEndGrip, barTop }, { x1, barBottom }, ListColor(row.list, alpha), 2.0f);
@@ -244,7 +258,9 @@ void DrawRow(ImDrawList* drawList, const State& state, const fluid::FluidRecipe&
     const float centerY = (y0 + y1) * 0.5f;
     for (std::size_t k = 0; k < span.keyTimes.size(); ++k) {
         const float t = span.keyTimes[k];
-        if (t < 0.0f || t > g.duration) continue;
+        if (t < 0.0f || t > g.duration) {
+            continue;
+        }
         const float x = g.ToX(t);
         const bool dragging = drag.kind == TimelineDragKind::Key && drag.list == row.list && drag.index == row.index
                            && drag.keyIndex == static_cast<int>(k);
@@ -258,8 +274,10 @@ void DrawRow(ImDrawList* drawList, const State& state, const fluid::FluidRecipe&
         const ImVec2 leftPoint{ x - kKeyRadius, centerY };
         drawList->AddQuadFilled(top, rightPoint, bottomPoint, leftPoint, fill);
         drawList->AddQuad(top, rightPoint, bottomPoint, leftPoint, IM_COL32(0, 0, 0, 170));
-        /// @note 選んだキーは 3D のギズモの掴み先になる。どれが動くのかを輪で示す。
-        if (picked) drawList->AddCircle({ x, centerY }, kKeyRadius + 3.0f, IM_COL32(255, 215, 90, 255), 0, 2.0f);
+        // 選んだキーは 3D のギズモの掴み先になる。どれが動くのかを輪で示す。
+        if (picked) {
+            drawList->AddCircle({ x, centerY }, kKeyRadius + 3.0f, IM_COL32(255, 215, 90, 255), 0, 2.0f);
+        }
     }
 }
 
@@ -276,14 +294,18 @@ void BeginTimelineDrag(State& state, TimelineDragKind kind, const TimelineRow& r
     VisitPart(state.document.Recipe(), row.list, row.index, [&drag](const auto& part) {
         drag.baseStart = part.startTime;
         drag.baseDuration = part.duration;
-        for (const fluid::FluidMotionKey& key : part.motion.keys) drag.baseKeyTimes.push_back(key.time);
-        /// @note 障害物には量のエンベロープが無い (部品の型ごとに分岐を増やさずに «ある物だけ» 見る)。
+        for (const fluid::FluidMotionKey& key : part.motion.keys) {
+            drag.baseKeyTimes.push_back(key.time);
+        }
+        // 障害物には量のエンベロープが無い (部品の型ごとに分岐を増やさずに «ある物だけ» 見る)。
         if constexpr (requires { part.amount; })
-            for (const fluid::FluidAmountKey& key : part.amount.keys) drag.baseAmountKeyTimes.push_back(key.time);
+            for (const fluid::FluidAmountKey& key : part.amount.keys) {
+                drag.baseAmountKeyTimes.push_back(key.time);
+            }
     });
     state.timelineDrag = std::move(drag);
-    /// @note 帯やキーを掴むのは «出番をずらす» 編集で、時間の操作ではない。再生は続ける
-    ///       (止めるのはスクラブ・コマ送り・先頭へ の 3 つだけ)。
+    // 帯やキーを掴むのは «出番をずらす» 編集で、時間の操作ではない。再生は続ける
+    // (止めるのはスクラブ・コマ送り・先頭へ の 3 つだけ)。
     state.document.BeginInteractiveEdit();
 }
 
@@ -299,8 +321,10 @@ void UpdateTimelineDrag(State& state, const TrackGeometry& g)
     }
 
     FluidDocument& document = state.document;
-    if (!document.InInteractiveEdit()) return;
-    /// @note 既定はコマに吸い付ける (焼いたコマの境目以外に置いても絵には出ない)。Alt で自由。
+    if (!document.InInteractiveEdit()) {
+        return;
+    }
+    // 既定はコマに吸い付ける (焼いたコマの境目以外に置いても絵には出ない)。Alt で自由。
     const bool snap = !io.KeyAlt;
     const auto snapTime = [&g, snap](float t) { return snap ? std::round(t / g.frameDt) * g.frameDt : t; };
     const bool liquidSource = drag.list == FluidSelectionKind::Source
@@ -316,7 +340,7 @@ void UpdateTimelineDrag(State& state, const TrackGeometry& g)
                 part.startTime = start;
                 changed = true;
             }
-            /// @note 動きのキーは帯と一緒に動かす (クリップを動かすのと同じ)。Ctrl を押している間は開始だけ動かす。
+            // 動きのキーは帯と一緒に動かす (クリップを動かすのと同じ)。Ctrl を押している間は開始だけ動かす。
             const float keyShift = io.KeyCtrl ? 0.0f : start - drag.baseStart;
             std::vector<fluid::FluidMotionKey>& keys = part.motion.keys;
             if (keys.size() == drag.baseKeyTimes.size()) {
@@ -328,7 +352,7 @@ void UpdateTimelineDrag(State& state, const TrackGeometry& g)
                     }
                 }
             }
-            /// @note 量のエンベロープも同じだけずらす (菱形では出さないが、帯と一緒でないと出番から外れる)。
+            // 量のエンベロープも同じだけずらす (菱形では出さないが、帯と一緒でないと出番から外れる)。
             if constexpr (requires { part.amount; }) {
                 std::vector<fluid::FluidAmountKey>& amountKeys = part.amount.keys;
                 if (amountKeys.size() == drag.baseAmountKeyTimes.size()) {
@@ -343,10 +367,11 @@ void UpdateTimelineDrag(State& state, const TrackGeometry& g)
             }
         } else if (drag.kind == TimelineDragKind::BarEnd) {
             const float end = ClampF(snapTime(rawTime), 0.0f, g.duration);
-            /// @note 右端まで引いたら «最後まで» (duration = 0) に戻す。液体の発生源は 0 が «一斉に撃つ» なので戻さない。
+            // 右端まで引いたら «最後まで» (duration = 0) に戻す。液体の発生源は 0 が «一斉に撃つ» なので戻さない。
             float duration = 0.0f;
-            if (liquidSource || end < g.duration - 0.5f * g.frameDt)
+            if (liquidSource || end < g.duration - 0.5f * g.frameDt) {
                 duration = (std::max)(g.warmup + end - part.startTime, g.frameDt);
+            }
             if (duration != part.duration) {
                 part.duration = duration;
                 changed = true;
@@ -354,12 +379,16 @@ void UpdateTimelineDrag(State& state, const TrackGeometry& g)
         } else if (drag.kind == TimelineDragKind::Key) {
             std::vector<fluid::FluidMotionKey>& keys = part.motion.keys;
             int index = drag.keyIndex;
-            if (index < 0 || index >= static_cast<int>(keys.size())) return;
+            if (index < 0 || index >= static_cast<int>(keys.size())) {
+                return;
+            }
             const float time = g.warmup + ClampF(snapTime(rawTime), 0.0f, g.duration);
-            if (time == keys[static_cast<std::size_t>(index)].time) return;
+            if (time == keys[static_cast<std::size_t>(index)].time) {
+                return;
+            }
             keys[static_cast<std::size_t>(index)].time = time;
             changed = true;
-            /// @note 時刻の昇順を保つ (キーは並んだ順につながる)。追い越したら入れ替え、つかんでいるキーを追いかける。
+            // 時刻の昇順を保つ (キーは並んだ順につながる)。追い越したら入れ替え、つかんでいるキーを追いかける。
             while (index > 0 && keys[static_cast<std::size_t>(index - 1)].time > keys[static_cast<std::size_t>(index)].time) {
                 std::swap(keys[static_cast<std::size_t>(index - 1)], keys[static_cast<std::size_t>(index)]);
                 --index;
@@ -370,8 +399,10 @@ void UpdateTimelineDrag(State& state, const TrackGeometry& g)
                 ++index;
             }
             drag.keyIndex = index;
-            /// @note 入れ替わった先を «選んでいるキー» も追いかける (3D のギズモの掴み先がずれないように)。
-            if (state.keyOwner.kind == drag.list && state.keyOwner.index == drag.index) state.selectedKey = index;
+            // 入れ替わった先を «選んでいるキー» も追いかける (3D のギズモの掴み先がずれないように)。
+            if (state.keyOwner.kind == drag.list && state.keyOwner.index == drag.index) {
+                state.selectedKey = index;
+            }
         }
     });
     if (changed) {
@@ -382,7 +413,9 @@ void UpdateTimelineDrag(State& state, const TrackGeometry& g)
 
 void DrawBarContextMenu(EditorContext& ctx, State& state, const TrackGeometry& g)
 {
-    if (!ImGui::BeginPopup("##fe_tl_context")) return;
+    if (!ImGui::BeginPopup("##fe_tl_context")) {
+        return;
+    }
     FluidDocument& document = state.document;
     const FluidSelection target = state.timelineContextTarget;
     const bool liquidSource = target.kind == FluidSelectionKind::Source
@@ -437,8 +470,10 @@ void DrawTimeline(EditorContext& ctx, State& state)
     g.warmup = (std::max)(recipe.output.warmup, 0.0f);
     g.frameDt = (std::max)(TimelineFrameDt(state, recipe), 1.0e-4f);
 
-    /// @name 再生
-    if (ImGui::Button(state.playing ? "Pause###fe_play" : "Play###fe_play")) state.playing = !state.playing;
+    // 再生
+    if (ImGui::Button(state.playing ? "Pause###fe_play" : "Play###fe_play")) {
+        state.playing = !state.playing;
+    }
     ImGui::SetItemTooltip("再生 / 一時停止 (Space)");
     ImGui::SameLine();
     if (ImGui::Button("|<##fe_home")) {
@@ -447,10 +482,14 @@ void DrawTimeline(EditorContext& ctx, State& state)
     }
     ImGui::SetItemTooltip("先頭へ (Home)");
     ImGui::SameLine();
-    if (ImGui::Button("<##fe_prev")) StepFrame(state, -1);
+    if (ImGui::Button("<##fe_prev")) {
+        StepFrame(state, -1);
+    }
     ImGui::SetItemTooltip("1 コマ戻る (Left)");
     ImGui::SameLine();
-    if (ImGui::Button(">##fe_next")) StepFrame(state, 1);
+    if (ImGui::Button(">##fe_next")) {
+        StepFrame(state, 1);
+    }
     ImGui::SetItemTooltip("1 コマ進む (Right)");
     ImGui::SameLine();
     ImGui::Checkbox("Loop##fe_loop", &state.loop);
@@ -458,28 +497,32 @@ void DrawTimeline(EditorContext& ctx, State& state)
     ImGui::Text("%.2f / %.2f s", state.playhead, g.duration);
     ImGui::SameLine();
     ImGui::BeginDisabled(!document.selection.IsPart());
-    if (ImGui::Button("Key##fe_key")) (void)InsertMotionKeyAtPlayhead(ctx, state);
+    if (ImGui::Button("Key##fe_key")) {
+        (void)InsertMotionKeyAtPlayhead(ctx, state);
+    }
     ImGui::EndDisabled();
     ImGui::SetItemTooltip("選んだ部品に再生位置でキーを打つ (K)。キーは右クリックで消す");
     ImGui::SameLine();
     ImGui::TextDisabled("solved %.2f s%s | drag snaps to frames (Alt = free)", state.preview.SolvedUntil(),
                         state.preview.IsSolving() ? " (solving...)" : "");
 
-    /// @name 目盛り (ドラッグでスクラブ)
+    // 目盛り (ドラッグでスクラブ)
     const ImVec2 rulerMin = ImGui::GetCursorScreenPos();
     const float areaWidth = (std::max)(ImGui::GetContentRegionAvail().x, kLabelWidth + 60.0f);
     g.trackX0 = rulerMin.x + kLabelWidth;
-    /// @note 下の行リストに縦スクロールバーが出ても右端がずれないよう、その幅を先に空けておく。
+    // 下の行リストに縦スクロールバーが出ても右端がずれないよう、その幅を先に空けておく。
     g.trackWidth = (std::max)(areaWidth - kLabelWidth - ImGui::GetStyle().ScrollbarSize - 6.0f, 40.0f);
     ImGui::InvisibleButton("##fe_ruler", { areaWidth, kRulerHeight });
-    if (ImGui::IsItemHovered() || ImGui::IsItemActive()) ImGui::SetMouseCursor(ImGuiMouseCursor_ResizeEW);
+    if (ImGui::IsItemHovered() || ImGui::IsItemActive()) {
+        ImGui::SetMouseCursor(ImGuiMouseCursor_ResizeEW);
+    }
     if (ImGui::IsItemActive()) {
         state.playhead = ClampF(g.ToTime(io.MousePos.x), 0.0f, g.duration);
         state.playing = false;
     }
     DrawRuler(ImGui::GetWindowDrawList(), state, g, rulerMin, areaWidth);
 
-    /// @name 部品の行
+    // 部品の行
     ImGui::BeginChild("##fe_tl_rows", { 0.0f, 0.0f }, ImGuiChildFlags_None, ImGuiWindowFlags_None);
     const std::vector<TimelineRow> rows = CollectRows(recipe);
     const ImVec2 rowsMin = ImGui::GetCursorScreenPos();
@@ -494,7 +537,9 @@ void DrawTimeline(EditorContext& ctx, State& state)
     const float bottom = rowsMin.y + contentHeight;
 
     const float solvedX = g.ToX(ClampF(state.preview.SolvedUntil(), 0.0f, g.duration));
-    if (solvedX > g.trackX0) drawList->AddRectFilled({ g.trackX0, rowsMin.y }, { solvedX, bottom }, kSolvedTint);
+    if (solvedX > g.trackX0) {
+        drawList->AddRectFilled({ g.trackX0, rowsMin.y }, { solvedX, bottom }, kSolvedTint);
+    }
     if (rows.empty()) {
         drawList->AddText({ rowsMin.x + 8.0f, rowsMin.y + 4.0f }, kDimTextColor,
                           "No parts - add Sources / Forces / Colliders with [+] in the Outliner");
@@ -502,20 +547,23 @@ void DrawTimeline(EditorContext& ctx, State& state)
     for (int r = 0; r < static_cast<int>(rows.size()); ++r) {
         const float y0 = rowsMin.y + static_cast<float>(r) * kRowHeight;
         const float y1 = y0 + kRowHeight;
-        if (!ImGui::IsRectVisible({ rowsMin.x, y0 }, { right, y1 })) continue;
+        if (!ImGui::IsRectVisible({ rowsMin.x, y0 }, { right, y1 })) {
+            continue;
+        }
         DrawRow(drawList, state, recipe, rows[static_cast<std::size_t>(r)], g, rowsMin.x, right, y0, y1, r);
     }
     const float playheadX = g.ToX(state.playhead);
     drawList->AddLine({ playheadX, rowsMin.y }, { playheadX, bottom }, kPlayheadColor, 1.5f);
 
-    /// @name 入力 (描いた後に当てる。当てた結果は次のフレームから見える)
+    // 入力 (描いた後に当てる。当てた結果は次のフレームから見える)
     const ImVec2 mouse = io.MousePos;
     const Hit hover = canvasHovered ? HitTest(recipe, rows, g, rowsMin.y, mouse) : Hit{};
     if (canvasHovered && state.timelineDrag.kind == TimelineDragKind::None) {
-        if (hover.kind == HitKind::End)
+        if (hover.kind == HitKind::End) {
             ImGui::SetMouseCursor(ImGuiMouseCursor_ResizeEW);
-        else if (hover.kind == HitKind::Body || hover.kind == HitKind::Key)
+        } else if (hover.kind == HitKind::Body || hover.kind == HitKind::Key) {
             ImGui::SetMouseCursor(ImGuiMouseCursor_Hand);
+        }
         if (hover.kind == HitKind::Key) {
             const PartSpan span = SpanOf(recipe, rows[static_cast<std::size_t>(hover.row)], g);
             ImGui::SetTooltip("Key  t = %.2f s\nドラッグで移動 (Alt で自由) / 右クリックで削除",
@@ -533,7 +581,9 @@ void DrawTimeline(EditorContext& ctx, State& state)
             const TimelineRow& row = rows[static_cast<std::size_t>(hover.row)];
             document.selection = FluidSelection{ row.list, row.index };
         }
-        if (hover.kind != HitKind::Key) state.selectedKey = -1;
+        if (hover.kind != HitKind::Key) {
+            state.selectedKey = -1;
+        }
         switch (hover.kind) {
         case HitKind::Key:
             state.keyOwner = FluidSelection{ rows[static_cast<std::size_t>(hover.row)].list,
@@ -563,8 +613,9 @@ void DrawTimeline(EditorContext& ctx, State& state)
             break;
         }
     }
-    if (state.timelineDrag.kind != TimelineDragKind::None && ImGui::IsMouseDown(ImGuiMouseButton_Left))
+    if (state.timelineDrag.kind != TimelineDragKind::None && ImGui::IsMouseDown(ImGuiMouseButton_Left)) {
         UpdateTimelineDrag(state, g);
+    }
 
     if (canvasHovered && state.timelineDrag.kind == TimelineDragKind::None
         && ImGui::IsMouseClicked(ImGuiMouseButton_Right) && hover.row >= 0) {
@@ -576,8 +627,9 @@ void DrawTimeline(EditorContext& ctx, State& state)
             document.Edit(ctx, "Delete Fluid Motion Key", [&](fluid::FluidRecipe& target) {
                 VisitPart(target, row.list, row.index, [keyIndex](auto& part) {
                     std::vector<fluid::FluidMotionKey>& keys = part.motion.keys;
-                    if (keyIndex >= 0 && keyIndex < static_cast<int>(keys.size()))
+                    if (keyIndex >= 0 && keyIndex < static_cast<int>(keys.size())) {
                         keys.erase(keys.begin() + keyIndex);
+                    }
                 });
             });
         } else {

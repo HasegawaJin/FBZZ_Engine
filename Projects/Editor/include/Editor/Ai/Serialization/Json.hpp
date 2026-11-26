@@ -19,9 +19,9 @@ class JsonValue {
 public:
     enum class Type { Null, Bool, Number, String, Array, Object };
 
-    /// @brief Object members retain insertion order for stable output.
     using Array  = std::vector<JsonValue>;
     using Member = std::pair<std::string, JsonValue>;
+    /// @brief JSON の出力順が安定するように、メンバーを追加順に保持する。
     using Object = std::vector<Member>;
 
     JsonValue() = default;
@@ -51,7 +51,13 @@ public:
     bool               AsBool(bool fallback = false) const { return m_type == Type::Bool ? m_bool : fallback; }
     double AsNumber(double fallback = 0.0) const
     {
-        return m_type == Type::Number ? (m_isInteger ? static_cast<double>(m_integer) : m_number) : fallback;
+        if (m_type != Type::Number) {
+            return fallback;
+        }
+        if (m_isInteger) {
+            return static_cast<double>(m_integer);
+        }
+        return m_number;
     }
     /// @brief int64 値、または正確な整数 double を返す。
     std::int64_t AsInt64(std::int64_t fallback = 0) const
@@ -83,7 +89,10 @@ public:
     {
         m_type = Type::Object;
         for (auto& member : m_object) {
-            if (member.first == key) { member.second = std::move(value); return; }
+            if (member.first == key) {
+                member.second = std::move(value);
+                return;
+            }
         }
         m_object.emplace_back(std::move(key), std::move(value));
     }
@@ -91,22 +100,26 @@ public:
     /// @brief 指定キーを検索し、存在しない場合は nullptr を返す。
     const JsonValue* Find(std::string_view key) const
     {
-        if (m_type != Type::Object) return nullptr;
+        if (m_type != Type::Object) {
+            return nullptr;
+        }
         for (const auto& member : m_object) {
-            if (member.first == key) return &member.second;
+            if (member.first == key) {
+                return &member.second;
+            }
         }
         return nullptr;
     }
 
 private:
-    Type        m_type = Type::Null;
-    bool        m_bool = false;
-    double      m_number = 0.0;
-    std::int64_t m_integer = 0;
-    bool        m_isInteger = false;
-    std::string m_string;
-    Array       m_array;
-    Object      m_object;
+    Type m_type = Type::Null; ///< 参照してよい値フィールドを選ぶ JSON の型タグ。
+    bool m_bool = false; ///< Bool 型の値。
+    double m_number = 0.0; ///< Number 型を浮動小数点として保持した値。
+    std::int64_t m_integer = 0; ///< Number 型の整数を丸めずに保持する値。
+    bool m_isInteger = false; ///< Number 型で m_integer が有効なら true。
+    std::string m_string; ///< String 型の文字列。
+    Array m_array; ///< Array 型の要素を順に保持する配列。
+    Object m_object; ///< Object 型のキーと値を追加順に保持する配列。
 };
 
 /// @brief JSON text をパースし、失敗時は nullopt と診断を返す。
@@ -119,4 +132,4 @@ std::string SerializeJson(const JsonValue& value);
 std::string Base64Encode(const std::uint8_t* data, std::size_t size);
 std::string Base64Encode(const std::vector<std::uint8_t>& data);
 
-} /// @note namespace fbzz::editor::ai
+} // namespace fbzz::editor::ai

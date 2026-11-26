@@ -51,7 +51,7 @@ void DrawVFXLinePreview(const scene::VFXLineComponent& line)
     ImDrawList* drawList = ImGui::GetWindowDrawList();
     drawList->AddRectFilled(origin, { origin.x + width, origin.y + kPreviewHeight }, IM_COL32(16, 18, 24, 255), 4.0f);
 
-    /// @note 端点はプレビュー用に横一文字へ固定する。形の規則 (折れ・枝・打ち直し・明滅) は本番と同じ関数。
+    // 端点はプレビュー用に横一文字へ固定する。形の規則 (折れ・枝・打ち直し・明滅) は本番と同じ関数。
     const float time = static_cast<float>(ImGui::GetTime());
     scene::VFXLineComponent preview = line;
     std::vector<scene::VFXLineStrand> strands;
@@ -67,7 +67,7 @@ void DrawVFXLinePreview(const scene::VFXLineComponent& line)
         const std::uint32_t seed = math::PcgHash(static_cast<std::uint32_t>(line.seed) * 9781u + strikeIndex * 6271u);
         scene::GenerateLightning(preview, from, to, seed, time, strands);
     } else {
-        /// @note 実寸のたるみ・揺れを «長さ 2 の線» へ縮めて見せる。
+        // 実寸のたるみ・揺れを «長さ 2 の線» へ縮めて見せる。
         const float length = (std::max)(line.toPoint.Length(), 0.5f);
         preview.sag = line.sag * 2.0f / length;
         preview.wobble = line.wobble * 2.0f / length;
@@ -78,15 +78,18 @@ void DrawVFXLinePreview(const scene::VFXLineComponent& line)
     const float usable = width - kPreviewMargin * 2.0f;
     const float pixelsPerUnit = usable * 0.5f;
     const ImVec2 center = { origin.x + width * 0.5f, origin.y + kPreviewHeight * 0.5f };
-    /// @note 幅は «線の長さに対する割合» で見せる (実際の長さは端点しだいなので toPoint の長さで代用する)。
+    // 幅は «線の長さに対する割合» で見せる (実際の長さは端点しだいなので toPoint の長さで代用する)。
     const float relativeWidth = line.width / (std::max)(line.toPoint.Length(), 0.5f) * 2.0f;
     std::vector<ImVec2> points;
     drawList->PushClipRect(origin, { origin.x + width, origin.y + kPreviewHeight }, true);
     for (const scene::VFXLineStrand& strand : strands) {
         points.clear();
-        for (const math::Vector3& p : strand.points)
+        for (const math::Vector3& p : strand.points) {
             points.push_back({ center.x + p.x * pixelsPerUnit, center.y - p.y * pixelsPerUnit });
-        if (points.size() < 2) continue;
+        }
+        if (points.size() < 2) {
+            continue;
+        }
         const float thickness = std::clamp(relativeWidth * strand.width * pixelsPerUnit, 1.0f, 28.0f);
         const float glow = line.intensity * brightness * strand.brightness;
         drawList->AddPolyline(points.data(), static_cast<int>(points.size()), DisplayColor(line.color, glow * 0.25f, 0.45f),

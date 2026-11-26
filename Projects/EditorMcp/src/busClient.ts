@@ -128,7 +128,7 @@ export class EditorBusClient implements EditorBus {
         return new Promise<unknown>((resolve, reject) => {
             const timeout = setTimeout(() => {
                 this.pending.delete(id);
-                /// @note サーバーは 1 接続につき 1 要求だけ処理する。遅延応答と受信途中のデータを次の要求へ渡さない。
+                // サーバーは 1 接続につき 1 要求だけ処理する。遅延応答と受信途中のデータを次の要求へ渡さない。
                 if (this.socket === socket) {
                     this.socket = undefined;
                     this.receiveBuffer = '';
@@ -189,7 +189,7 @@ export class EditorBusClient implements EditorBus {
         } else {
             pending.reject(new EditorBusError(response.data.error?.code ?? 'ENGINE_REJECTED', response.data.error?.message ?? 'Engine が要求を拒否しました'));
         }
-        /// @note 他のローカル利用者に待受を返す。
+        // 他のローカル利用者に待受を返す。
         const completedSocket = this.socket;
         this.socket = undefined;
         completedSocket?.end();

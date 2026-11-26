@@ -73,7 +73,7 @@ EditorOperator MakeRenderToggle(const char* id, const char* label, const char* d
     op.exec = [field](OpContext& c, const OpArgs& args) -> OpResult {
         return ApplyToggle(c.ctx.projectSettings.render.*field, args);
     };
-    /// @note メニューのチェックと op.list の checked が同じ式から出る。
+    // メニューのチェックと op.list の checked が同じ式から出る。
     op.checked = [field](const OpContext& c, const OpArgs&) {
         return c.ctx.projectSettings.render.*field;
     };
@@ -88,7 +88,9 @@ EditorOperator MakeShadowToggle()
         return context.ctx.playMode && !context.ctx.playMode->IsInEditor();
     };
     op.poll = [playing](const OpContext& context, const OpArgs&) {
-        if (playing(context)) return core::Application::Get().GetActiveRenderSettings() != nullptr;
+        if (playing(context)) {
+            return core::Application::Get().GetActiveRenderSettings() != nullptr;
+        }
         renderer::RenderSettings resolved;
         return !asset::ResolveRenderPipelineSettings(context.ctx.projectSettings.render,
             context.ctx.projectSettings.renderPipelineAssetPath, resolved);
@@ -96,13 +98,16 @@ EditorOperator MakeShadowToggle()
     op.exec = [playing](OpContext& context, const OpArgs& args) -> OpResult {
         if (playing(context)) {
             auto* runtime = core::Application::Get().GetActiveRenderSettings();
-            if (!runtime) return OpResult::Err("NO_RUNTIME_SETTINGS", "実行中の描画設定がありません");
+            if (!runtime) {
+                return OpResult::Err("NO_RUNTIME_SETTINGS", "実行中の描画設定がありません");
+            }
             return ApplyToggle(runtime->shadowEnabled, args);
         }
         renderer::RenderSettings resolved;
         if (asset::ResolveRenderPipelineSettings(context.ctx.projectSettings.render,
-            context.ctx.projectSettings.renderPipelineAssetPath, resolved))
+            context.ctx.projectSettings.renderPipelineAssetPath, resolved)) {
             return OpResult::Err("PIPELINE_ASSET_OWNS_SETTING", "影の品質設定は Render Pipeline Asset の Inspector で編集してください");
+        }
         return ApplyToggle(context.ctx.projectSettings.render.shadowEnabled, args);
     };
     op.checked = [playing](const OpContext& context, const OpArgs&) {
@@ -147,10 +152,14 @@ EditorOperator MakeDirectionalShadowMode()
     op.params = {node, mode, distance};
 
     const auto resolve = [](const EditorContext& ctx, const OpArgs& args) -> scene::GameObject* {
-        if (!ctx.activeScene) return nullptr;
+        if (!ctx.activeScene) {
+            return nullptr;
+        }
         const auto id = args.GetString("node");
         auto* object = id.empty() ? ctx.GetSelectedGO() : ctx.activeScene->FindByGuid(id);
-        if (!object || object->IsRuntimeGenerated() || ctx.IsLocked(object->GetID())) return nullptr;
+        if (!object || object->IsRuntimeGenerated() || ctx.IsLocked(object->GetID())) {
+            return nullptr;
+        }
         const auto* light = object->GetComponent<Light>();
         return light && light->type == Light::Type::Directional ? object : nullptr;
     };
@@ -160,17 +169,24 @@ EditorOperator MakeDirectionalShadowMode()
     op.exec = [resolve](OpContext& context, const OpArgs& args) -> OpResult {
         auto& ctx = context.ctx;
         auto* object = resolve(ctx, args);
-        if (!object) return OpResult::Err("NO_DIRECTIONAL_LIGHT", "編集可能な方向ライトを選択してください");
+        if (!object) {
+            return OpResult::Err("NO_DIRECTIONAL_LIGHT", "編集可能な方向ライトを選択してください");
+        }
         const auto* light = object->GetComponent<Light>();
         const auto modeName = args.GetString("mode");
         auto nextMode = Light::ShadowMode::REALTIME;
-        if (modeName == "auto_bake") nextMode = Light::ShadowMode::AUTO_BAKE;
-        if (modeName == "cached_far_cascade") nextMode = Light::ShadowMode::CACHED_FAR_CASCADE;
+        if (modeName == "auto_bake") {
+            nextMode = Light::ShadowMode::AUTO_BAKE;
+        }
+        if (modeName == "cached_far_cascade") {
+            nextMode = Light::ShadowMode::CACHED_FAR_CASCADE;
+        }
         const bool setDistance = args.Has("distance");
         const auto nextDistance = setDistance
             ? args.GetFloat("distance", std::numeric_limits<float>::quiet_NaN()) : light->shadowDistance;
-        if (setDistance && !std::isfinite(nextDistance))
+        if (setDistance && !std::isfinite(nextDistance)) {
             return OpResult::Err("BAD_ARG", "distance は有限の距離で指定してください");
+        }
         struct Values {
             Light::ShadowMode mode;
             float distance;
@@ -182,7 +198,9 @@ EditorOperator MakeDirectionalShadowMode()
         OpData data = OpData::MakeObject();
         data.Set("node", object->instanceId);
         data.Set("mode", modeName);
-        if (std::isfinite(after.distance)) data.Set("distance", after.distance);
+        if (std::isfinite(after.distance)) {
+            data.Set("distance", after.distance);
+        }
         auto result = OpResult::Data(std::move(data));
         if (!changeMode && !changeDistance) {
             result.noChange = true;
@@ -193,7 +211,7 @@ EditorOperator MakeDirectionalShadowMode()
         const auto entity = object->GetID();
         const auto sceneGeneration = owner->GetRenderSceneGeneration();
         const auto lifetime = owner->GetComponentLifetime<Light>(entity);
-        /// @note Undo は今回指定して変更した値だけを戻す。
+        // Undo は今回指定して変更した値だけを戻す。
         const auto apply = [&ctx, owner, entity, sceneGeneration, lifetime, changeMode, changeDistance](
                                const Values& expected, const Values& values, std::string& reason) {
             if (ctx.activeScene != owner || owner->GetRenderSceneGeneration() != sceneGeneration
@@ -209,16 +227,24 @@ EditorOperator MakeDirectionalShadowMode()
                 reason = "方向ライトの影設定が別の操作で変わっています。";
                 return false;
             }
-            if (changeMode) target->shadowMode = values.mode;
-            if (changeDistance) target->shadowDistance = values.distance;
-            if (ctx.markSceneDirty) ctx.markSceneDirty();
+            if (changeMode) {
+                target->shadowMode = values.mode;
+            }
+            if (changeDistance) {
+                target->shadowDistance = values.distance;
+            }
+            if (ctx.markSceneDirty) {
+                ctx.markSceneDirty();
+            }
             return true;
         };
         auto command = std::make_unique<CheckedLambdaCommand>("Set Directional Shadow Mode",
             [apply, before, after](std::string& reason) { return apply(before, after, reason); },
             [apply, before, after](std::string& reason) { return apply(after, before, reason); });
         std::string reason;
-        if (!command->TryExecute(reason)) return OpResult::Err("CONFLICT", std::move(reason));
+        if (!command->TryExecute(reason)) {
+            return OpResult::Err("CONFLICT", std::move(reason));
+        }
         result.command = std::move(command);
         return result;
     };
@@ -238,7 +264,7 @@ EditorOperator MakeContextToggle(const char* id, const char* label, const char* 
     return op;
 }
 
-} /// @note namespace
+} // namespace
 
 void RegisterRenderOperators(OperatorRegistry& registry)
 {
@@ -258,7 +284,9 @@ void RegisterRenderOperators(OperatorRegistry& registry)
         op.params = {heading};
         const auto resolve = [](const EditorContext& ctx) -> scene::GameObject* {
             auto* object = ctx.GetSelectedGO();
-            if (!object || object->IsRuntimeGenerated() || ctx.IsLocked(object->GetID())) return nullptr;
+            if (!object || object->IsRuntimeGenerated() || ctx.IsLocked(object->GetID())) {
+                return nullptr;
+            }
             const auto* water = object->GetComponent<scene::WaterComponent>();
             return water && (water->waveAuthoring.preset != scene::WaterSeaPreset::AUTHORED
                 || !water->wavesAssetRef.path.empty()) ? object : nullptr;
@@ -268,15 +296,19 @@ void RegisterRenderOperators(OperatorRegistry& registry)
             auto& ctx = context.ctx;
             auto* object = resolve(ctx);
             const float heading = args.GetFloat("heading", std::numeric_limits<float>::quiet_NaN());
-            if (!object || !std::isfinite(heading))
+            if (!object || !std::isfinite(heading)) {
                 return OpResult::Err("BAD_ARG", "水面と有限な波の進行角度を指定してください。");
+            }
             using Water = scene::WaterComponent;
             const auto& authoring = object->GetComponent<Water>()->waveAuthoring;
             using Heading = std::pair<bool, float>;
             const Heading before{authoring.overrideHeading, authoring.headingDegrees};
             const Heading after{true, std::remainder(heading, 360.0f)};
             OpResult result;
-            if (before == after) { result.noChange = true; return result; }
+            if (before == after) {
+                result.noChange = true;
+                return result;
+            }
             auto* scene = ctx.activeScene;
             const auto entity = object->GetID();
             const auto generation = scene->GetRenderSceneGeneration();
@@ -292,14 +324,18 @@ void RegisterRenderOperators(OperatorRegistry& registry)
                 }
                 water->waveAuthoring.overrideHeading = next.first;
                 water->waveAuthoring.headingDegrees = next.second;
-                if (ctx.markSceneDirty) ctx.markSceneDirty();
+                if (ctx.markSceneDirty) {
+                    ctx.markSceneDirty();
+                }
                 return true;
             };
             auto command = std::make_unique<CheckedLambdaCommand>("Set Main Swell Heading",
                 [apply, before, after](std::string& reason) { return apply(before, after, reason); },
                 [apply, before, after](std::string& reason) { return apply(after, before, reason); });
             std::string reason;
-            if (!command->TryExecute(reason)) return OpResult::Err("CONFLICT", std::move(reason));
+            if (!command->TryExecute(reason)) {
+                return OpResult::Err("CONFLICT", std::move(reason));
+            }
             result.command = std::move(command);
             return result;
         };
@@ -373,33 +409,60 @@ void RegisterRenderOperators(OperatorRegistry& registry)
         }
         op.exec = [](OpContext& context, const OpArgs& args) -> OpResult {
             const auto target = args.GetString("target");
-            if (target != "render" && target != "physics")
+            if (target != "render" && target != "physics") {
                 return OpResult::Err("BAD_SPATIAL_TARGET", "target must be render or physics");
+            }
             auto& state = context.ctx.spatialDebugVisualization;
             auto& destination = target == "render" ? state.render : state.physics;
             auto settings = destination;
-            if (args.Has("enabled")) settings.enabled = args.GetBool("enabled");
-            if (args.Has("hierarchy")) settings.hierarchy = args.GetBool("hierarchy");
-            if (args.Has("proxy_bounds")) settings.proxyBounds = args.GetBool("proxy_bounds");
-            if (args.Has("candidate_pairs")) settings.candidatePairs = args.GetBool("candidate_pairs");
-            if (args.Has("selected_only")) settings.selectedOnly = args.GetBool("selected_only");
-            if (args.Has("depth_test")) settings.depthTest = args.GetBool("depth_test");
-            if (args.Has("min_depth")) settings.minDepth = args.GetInt("min_depth");
-            if (args.Has("max_depth")) settings.maxDepth = args.GetInt("max_depth");
-            if (args.Has("max_draw_commands")) settings.maxDrawCommands = args.GetInt("max_draw_commands");
+            if (args.Has("enabled")) {
+                settings.enabled = args.GetBool("enabled");
+            }
+            if (args.Has("hierarchy")) {
+                settings.hierarchy = args.GetBool("hierarchy");
+            }
+            if (args.Has("proxy_bounds")) {
+                settings.proxyBounds = args.GetBool("proxy_bounds");
+            }
+            if (args.Has("candidate_pairs")) {
+                settings.candidatePairs = args.GetBool("candidate_pairs");
+            }
+            if (args.Has("selected_only")) {
+                settings.selectedOnly = args.GetBool("selected_only");
+            }
+            if (args.Has("depth_test")) {
+                settings.depthTest = args.GetBool("depth_test");
+            }
+            if (args.Has("min_depth")) {
+                settings.minDepth = args.GetInt("min_depth");
+            }
+            if (args.Has("max_depth")) {
+                settings.maxDepth = args.GetInt("max_depth");
+            }
+            if (args.Has("max_draw_commands")) {
+                settings.maxDrawCommands = args.GetInt("max_draw_commands");
+            }
             if (settings.minDepth < 0 || settings.maxDepth > 64 || settings.minDepth > settings.maxDepth
-                || settings.maxDrawCommands < 1 || settings.maxDrawCommands > 4096)
+                || settings.maxDrawCommands < 1 || settings.maxDrawCommands > 4096) {
                 return OpResult::Err("BAD_SPATIAL_RANGE", "Use ordered depth 0..64 and draw budget 1..4096");
-            if (target == "render" && (settings.proxyBounds || settings.candidatePairs))
+            }
+            if (target == "render" && (settings.proxyBounds || settings.candidatePairs)) {
                 return OpResult::Err("UNSUPPORTED_SPATIAL_CONTENT", "Broadphase proxy bounds and pairs belong to Physics");
+            }
             destination = settings;
             state.target = target == "render" ? SpatialDebugTarget::RENDER : SpatialDebugTarget::PHYSICS;
             auto& status = target == "render" ? state.renderStatus : state.physicsStatus;
             status = settings.AnyCapture() ? "Waiting for current snapshot" : "OFF";
-            if (target == "render") state.renderTraversalStatusAvailable = false;
-            else state.physicsTraversalStatusAvailable = false;
-            if (target == "render") state.renderDrawCommands = 0;
-            else state.physicsDrawCommands = 0;
+            if (target == "render") {
+                state.renderTraversalStatusAvailable = false;
+            } else {
+                state.physicsTraversalStatusAvailable = false;
+            }
+            if (target == "render") {
+                state.renderDrawCommands = 0;
+            } else {
+                state.physicsDrawCommands = 0;
+            }
             OpResult result;
             result.message = target + " spatial visualization " + (settings.AnyCapture() ? "ON" : "OFF");
             return result;
@@ -415,9 +478,12 @@ void RegisterRenderOperators(OperatorRegistry& registry)
             auto& state = context.ctx.spatialDebugVisualization;
             auto& settings = target == SpatialDebugTarget::RENDER ? state.render : state.physics;
             state.target = target;
-            if (target == SpatialDebugTarget::PHYSICS && !settings.hierarchy && !settings.proxyBounds && !settings.candidatePairs)
+            if (target == SpatialDebugTarget::PHYSICS && !settings.hierarchy && !settings.proxyBounds && !settings.candidatePairs) {
                 settings.hierarchy = true;
-            if (target == SpatialDebugTarget::RENDER) settings.hierarchy = true;
+            }
+            if (target == SpatialDebugTarget::RENDER) {
+                settings.hierarchy = true;
+            }
             auto result = ApplyToggle(settings.enabled, args);
             auto& status = target == SpatialDebugTarget::RENDER ? state.renderStatus : state.physicsStatus;
             status = settings.AnyCapture() ? "Waiting for current snapshot" : "OFF";
@@ -438,20 +504,37 @@ void RegisterRenderOperators(OperatorRegistry& registry)
     }
 
     {
-        EditorOperator op; op.id="render.instance_mode"; op.label="Instance Drawing"; op.category="Render"; op.kind=OpKind::Action;
+        EditorOperator op;
+        op.id="render.instance_mode";
+        op.label="Instance Drawing";
+        op.category="Render";
+        op.kind=OpKind::Action;
         op.desc="共有配置を通常描画・CPU選別インスタンス・GPU選別間接描画で比較する。Playでは一時設定。";
-        OpParam mode; mode.name="mode"; mode.type=OpParamType::String;
-        mode.enumValues={"individual","cpu_instanced","gpu"}; mode.defaultValue=std::string("cpu_instanced"); op.params={mode};
+        OpParam mode;
+        mode.name="mode";
+        mode.type=OpParamType::String;
+        mode.enumValues={"individual","cpu_instanced","gpu"};
+        mode.defaultValue=std::string("cpu_instanced");
+        op.params={mode};
         op.exec=[](OpContext& context,const OpArgs& args)->OpResult {
             const auto mode=args.GetString("mode","cpu_instanced");
-            if (mode!="individual" && mode!="cpu_instanced" && mode!="gpu") return OpResult::Err("BAD_INSTANCE_MODE","modeはindividual / cpu_instanced / gpuです");
-            if (mode=="gpu" && !core::Application::Get().GetRenderer().SupportsIndirectDraw()) return OpResult::Err("UNSUPPORTED_INSTANCE_MODE","このbackendは間接描画に対応していません");
+            if (mode!="individual" && mode!="cpu_instanced" && mode!="gpu") {
+                return OpResult::Err("BAD_INSTANCE_MODE","modeはindividual / cpu_instanced / gpuです");
+            }
+            if (mode=="gpu" && !core::Application::Get().GetRenderer().SupportsIndirectDraw()) {
+                return OpResult::Err("UNSUPPORTED_INSTANCE_MODE","このbackendは間接描画に対応していません");
+            }
             const bool playing=context.ctx.playMode && !context.ctx.playMode->IsInEditor();
             auto* settings=playing ? core::Application::Get().GetActiveRenderSettings() : &context.ctx.projectSettings.render;
-            if (!settings) return OpResult::Err("NO_RUNTIME_SETTINGS","描画設定がありません");
-            settings->gpuInstancing=mode!="individual"; settings->bulkInstanceGpuCulling=mode=="gpu";
+            if (!settings) {
+                return OpResult::Err("NO_RUNTIME_SETTINGS","描画設定がありません");
+            }
+            settings->gpuInstancing=mode!="individual";
+            settings->bulkInstanceGpuCulling=mode=="gpu";
             settings->geometryDrawMode=mode=="gpu" ? renderer::GeometryDrawMode::GPU_INDIRECT : renderer::GeometryDrawMode::CPU;
-            OpResult result; result.message="Instance drawing: "+mode; return result;
+            OpResult result;
+            result.message="Instance drawing: "+mode;
+            return result;
         };
         registry.Register(std::move(op));
     }
@@ -470,17 +553,22 @@ void RegisterRenderOperators(OperatorRegistry& registry)
         op.params = {mode};
         op.exec = [](OpContext& context, const OpArgs& args) -> OpResult {
             const auto mode = args.GetString("mode", "cpu");
-            if (mode != "cpu" && mode != "indirect" && mode != "mesh")
+            if (mode != "cpu" && mode != "indirect" && mode != "mesh") {
                 return OpResult::Err("BAD_GEOMETRY_MODE", "modeはcpu / indirect / meshです");
+            }
             auto& device = core::Application::Get().GetRenderer();
-            if (mode == "indirect" && !device.SupportsIndirectDraw())
+            if (mode == "indirect" && !device.SupportsIndirectDraw()) {
                 return OpResult::Err("UNSUPPORTED_GEOMETRY_MODE", "このGPU/backendは間接描画に対応していません");
-            if (mode == "mesh" && !device.SupportsMeshShaders())
+            }
+            if (mode == "mesh" && !device.SupportsMeshShaders()) {
                 return OpResult::Err("UNSUPPORTED_GEOMETRY_MODE", "このGPU/backendはMesh Shaderに対応していません");
+            }
             const bool playing = context.ctx.playMode && !context.ctx.playMode->IsInEditor();
             auto* settings = playing ? core::Application::Get().GetActiveRenderSettings()
                 : &context.ctx.projectSettings.render;
-            if (!settings) return OpResult::Err("NO_RUNTIME_SETTINGS", "描画設定がありません");
+            if (!settings) {
+                return OpResult::Err("NO_RUNTIME_SETTINGS", "描画設定がありません");
+            }
             settings->geometryDrawMode = mode == "mesh" ? renderer::GeometryDrawMode::MESH_SHADER
                 : mode == "indirect" ? renderer::GeometryDrawMode::GPU_INDIRECT : renderer::GeometryDrawMode::CPU;
             OpResult result;
@@ -505,12 +593,15 @@ void RegisterRenderOperators(OperatorRegistry& registry)
         op.exec = [](OpContext& context, const OpArgs& args) -> OpResult {
             using renderer::RasterGeometryMode;
             const auto mode = args.GetString("mode", "list");
-            if (mode != "list" && mode != "strip" && mode != "indexed_fiber")
+            if (mode != "list" && mode != "strip" && mode != "indexed_fiber") {
                 return OpResult::Err("BAD_RASTER_GEOMETRY_MODE", "modeはlist / strip / indexed_fiberです");
+            }
             const bool playing = context.ctx.playMode && !context.ctx.playMode->IsInEditor();
             auto* settings = playing ? core::Application::Get().GetActiveRenderSettings()
                 : &context.ctx.projectSettings.render;
-            if (!settings) return OpResult::Err("NO_RUNTIME_SETTINGS", "描画設定がありません");
+            if (!settings) {
+                return OpResult::Err("NO_RUNTIME_SETTINGS", "描画設定がありません");
+            }
             settings->rasterGeometryMode = mode == "strip" ? RasterGeometryMode::TRIANGLE_STRIP
                 : mode == "indexed_fiber" ? RasterGeometryMode::INDEXED_FIBER_LIST : RasterGeometryMode::TRIANGLE_LIST;
             OpResult result;
@@ -527,28 +618,36 @@ void RegisterRenderOperators(OperatorRegistry& registry)
         op.desc = "通常のクラスタ照明・全ライト評価・重要度サンプリングを同じ視点で比較する。Play中の変更は一時設定。";
         op.kind = OpKind::Action;
         OpParam mode;
-        mode.name = "mode"; mode.type = OpParamType::String;
+        mode.name = "mode";
+        mode.type = OpParamType::String;
         mode.enumValues = {"sampled", "clustered", "all"};
         mode.defaultValue = std::string("sampled");
         OpParam samples;
-        samples.name = "samples"; samples.type = OpParamType::Int;
-        samples.defaultValue = 8; samples.required = false;
+        samples.name = "samples";
+        samples.type = OpParamType::Int;
+        samples.defaultValue = 8;
+        samples.required = false;
         op.params = {mode, samples};
         op.exec = [](OpContext& context, const OpArgs& args) -> OpResult {
             const std::string mode = args.GetString("mode", "sampled");
-            if (mode != "sampled" && mode != "clustered" && mode != "all")
+            if (mode != "sampled" && mode != "clustered" && mode != "all") {
                 return OpResult::Err("BAD_LIGHT_MODE", "modeはsampled / clustered / allです");
+            }
             const bool playing = context.ctx.playMode && !context.ctx.playMode->IsInEditor();
             auto* settings = playing ? core::Application::Get().GetActiveRenderSettings() : &context.ctx.projectSettings.render;
-            if (!settings) return OpResult::Err("NO_RUNTIME_SETTINGS", "描画設定がありません");
+            if (!settings) {
+                return OpResult::Err("NO_RUNTIME_SETTINGS", "描画設定がありません");
+            }
             if (!playing) {
                 renderer::RenderSettings resolved;
-                if (asset::ResolveRenderPipelineSettings(*settings, context.ctx.projectSettings.renderPipelineAssetPath, resolved))
+                if (asset::ResolveRenderPipelineSettings(*settings, context.ctx.projectSettings.renderPipelineAssetPath, resolved)) {
                     return OpResult::Err("PIPELINE_ASSET_OWNS_SETTING", "Render Pipeline AssetのMany Lights設定を編集してください");
+                }
             }
             if (settings->pipeline != renderer::RenderingPipeline::ForwardPlus
-                && settings->pipeline != renderer::RenderingPipeline::DeferredPlus)
+                && settings->pipeline != renderer::RenderingPipeline::DeferredPlus) {
                 settings->pipeline = renderer::RenderingPipeline::DeferredPlus;
+            }
             settings->clustered.enabled = true;
             settings->clustered.forceAllLights = mode == "all";
             settings->clustered.manyLights = mode == "sampled";
@@ -559,7 +658,7 @@ void RegisterRenderOperators(OperatorRegistry& registry)
         };
         registry.Register(std::move(op));
     }
-    /// @name EditorContext が正本のもの
+    // EditorContext が正本のもの
     registry.Register(MakeContextToggle(
         "render.show_grid", "Show Grid",
         "Scene View のグリッド表示。", &EditorContext::showGrid));
@@ -670,7 +769,7 @@ void RegisterRenderOperators(OperatorRegistry& registry)
         "編集ビューでの有効・無効はここでしか切り替えられない。",
         &EditorContext::sceneViewOcclusionCulling));
 
-    /// @note 描画でなくスクリプト DLL の監視のため Render でなく Tools。Play 前に自動リロードを止めたい場面 (途中の再構築で NodeId が無効化) があるので切り替え手段を出す。
+    // 描画でなくスクリプト DLL の監視のため Render でなく Tools。Play 前に自動リロードを止めたい場面 (途中の再構築で NodeId が無効化) があるので切り替え手段を出す。
     {
         EditorOperator op = MakeContextToggle(
             "debug.hot_reload", "Hot Reload",
@@ -690,7 +789,7 @@ void RegisterRenderOperators(OperatorRegistry& registry)
         registry.Register(std::move(op));
     }
 
-    /// @name ProjectSettings が正本のもの
+    // ProjectSettings が正本のもの
     registry.Register(MakeRenderToggle(
         "render.show_colliders", "Show Colliders",
         "Collider の形状をワイヤーで描く。"
@@ -728,8 +827,8 @@ void RegisterRenderOperators(OperatorRegistry& registry)
         "重なりは通常の絵からは読めない。",
         &renderer::RenderSettings::particleOverdrawView));
 
-    /// @name ビューモード
-    /// @note 排他選択と現在値の判定を同じ操作へ集約する。
+    // ビューモード
+    // 排他選択と現在値の判定を同じ操作へ集約する。
     {
         EditorOperator op;
         op.id       = "render.set_view_mode";
@@ -742,19 +841,31 @@ void RegisterRenderOperators(OperatorRegistry& registry)
         modeParam.name = "mode";
         modeParam.type = OpParamType::String;
         modeParam.desc = "描画モード";
-        /// @note AI バスの候補提示と入力検証もこの宣言を使う。
+        // AI バスの候補提示と入力検証もこの宣言を使う。
         modeParam.enumValues = { "lit", "unlit", "wireframe_lit", "wireframe_unlit",
             "ray_hit_distance", "ray_geometric_normal", "ray_instance_id" };
         op.params = { modeParam };
 
-        /// @note exec と checked は同じ文字列と enum の対応を使う。
+        // exec と checked は同じ文字列と enum の対応を使う。
         const auto toViewMode = [](const std::string& mode) {
-            if (mode == "unlit")           return renderer::ViewMode::Unlit;
-            if (mode == "wireframe_lit")   return renderer::ViewMode::WireframeLit;
-            if (mode == "wireframe_unlit") return renderer::ViewMode::WireframeUnlit;
-            if (mode == "ray_hit_distance") return renderer::ViewMode::RayHitDistance;
-            if (mode == "ray_geometric_normal") return renderer::ViewMode::RayGeometricNormal;
-            if (mode == "ray_instance_id") return renderer::ViewMode::RayInstanceId;
+            if (mode == "unlit") {
+                return renderer::ViewMode::Unlit;
+            }
+            if (mode == "wireframe_lit") {
+                return renderer::ViewMode::WireframeLit;
+            }
+            if (mode == "wireframe_unlit") {
+                return renderer::ViewMode::WireframeUnlit;
+            }
+            if (mode == "ray_hit_distance") {
+                return renderer::ViewMode::RayHitDistance;
+            }
+            if (mode == "ray_geometric_normal") {
+                return renderer::ViewMode::RayGeometricNormal;
+            }
+            if (mode == "ray_instance_id") {
+                return renderer::ViewMode::RayInstanceId;
+            }
             return renderer::ViewMode::Lit;
         };
 
@@ -763,20 +874,23 @@ void RegisterRenderOperators(OperatorRegistry& registry)
                 || core::DeveloperMode::IsEnabled();
         };
         op.exec = [toViewMode](OpContext& c, const OpArgs& args) -> OpResult {
-            /// @note 未知の綴りは ValidateArgs (enumValues) が入口で弾く。
-            if (renderer::IsRayDebugView(toViewMode(args.GetString("mode"))) && !core::DeveloperMode::IsEnabled())
+            // 未知の綴りは ValidateArgs (enumValues) が入口で弾く。
+            if (renderer::IsRayDebugView(toViewMode(args.GetString("mode"))) && !core::DeveloperMode::IsEnabled()) {
                 return OpResult::Err("DEVELOPER_MODE_REQUIRED", "レイ診断表示には DeveloperMode が必要です");
+            }
             c.ctx.projectSettings.render.viewMode = toViewMode(args.GetString("mode"));
             return OpResult::Ok();
         };
         op.checked = [toViewMode](const OpContext& c, const OpArgs& args) {
-            if (!args.Has("mode")) return false;
+            if (!args.Has("mode")) {
+                return false;
+            }
             return c.ctx.projectSettings.render.viewMode == toViewMode(args.GetString("mode"));
         };
         registry.Register(std::move(op));
     }
 
-    /// @note NavMesh の可視性と診断表示の種類は独立して指定する。
+    // NavMesh の可視性と診断表示の種類は独立して指定する。
     {
         EditorOperator op;
         op.id       = "render.set_navmesh_draw_mode";
@@ -797,26 +911,36 @@ void RegisterRenderOperators(OperatorRegistry& registry)
         op.params = { modeParam };
 
         const auto toDrawMode = [](const std::string& mode) {
-            if (mode == "transparent") return renderer::NavMeshDrawMode::Transparent;
-            if (mode == "areas")       return renderer::NavMeshDrawMode::Areas;
-            if (mode == "portals")     return renderer::NavMeshDrawMode::Portals;
-            if (mode == "voxels")      return renderer::NavMeshDrawMode::Voxels;
+            if (mode == "transparent") {
+                return renderer::NavMeshDrawMode::Transparent;
+            }
+            if (mode == "areas") {
+                return renderer::NavMeshDrawMode::Areas;
+            }
+            if (mode == "portals") {
+                return renderer::NavMeshDrawMode::Portals;
+            }
+            if (mode == "voxels") {
+                return renderer::NavMeshDrawMode::Voxels;
+            }
             return renderer::NavMeshDrawMode::Solid;
         };
         op.exec = [toDrawMode](OpContext& c, const OpArgs& args) -> OpResult {
             c.ctx.projectSettings.render.navMeshDrawMode = toDrawMode(args.GetString("mode"));
-            /// @note 描き方だけ変えても表示が消えていれば何も起きないので、同時に点ける。
+            // 描き方だけ変えても表示が消えていれば何も起きないので、同時に点ける。
             c.ctx.projectSettings.render.showNavMesh = true;
             return OpResult::Ok();
         };
         op.checked = [toDrawMode](const OpContext& c, const OpArgs& args) {
-            if (!args.Has("mode")) return false;
+            if (!args.Has("mode")) {
+                return false;
+            }
             return c.ctx.projectSettings.render.navMeshDrawMode == toDrawMode(args.GetString("mode"));
         };
         registry.Register(std::move(op));
     }
 
-    /// @note NavMesh のベイクは描画ではないが、登録先を分けると専用グループと EditorApp 登録列の二重管理が要る。debug.hot_reload と同じく category だけ Tools に寄せる。
+    // NavMesh のベイクは描画ではないが、登録先を分けると専用グループと EditorApp 登録列の二重管理が要る。debug.hot_reload と同じく category だけ Tools に寄せる。
     {
         EditorOperator op;
         op.id       = "navmesh.bake_all";
@@ -829,11 +953,15 @@ void RegisterRenderOperators(OperatorRegistry& registry)
         op.poll = [](const OpContext& c, const OpArgs&) { return c.ctx.activeScene != nullptr; };
         op.exec = [](OpContext& c, const OpArgs&) -> OpResult {
             scene::Scene* activeScene = c.ctx.activeScene;
-            if (!activeScene) return OpResult::Err("NO_SCENE", "シーンが開かれていません");
+            if (!activeScene) {
+                return OpResult::Err("NO_SCENE", "シーンが開かれていません");
+            }
             int queued = 0;
             for (scene::EntityID eid : activeScene->GetEntities<scene::NavMeshSurfaceComponent>()) {
                 auto* surface = activeScene->GetComponent<scene::NavMeshSurfaceComponent>(eid);
-                if (!surface || !surface->enabled) continue;
+                if (!surface || !surface->enabled) {
+                    continue;
+                }
                 surface->needsBake = true;
                 ++queued;
             }
@@ -848,4 +976,4 @@ void RegisterRenderOperators(OperatorRegistry& registry)
     }
 }
 
-} /// @note namespace fbzz::editor
+} // namespace fbzz::editor

@@ -41,35 +41,51 @@ void CollectCreationSubtree(scene::GameObject& go, std::vector<scene::GameObject
 {
     out.push_back(&go);
     for (int i = 0; i < go.GetChildCount(); ++i)
-        if (auto* child = go.GetChild(i)) CollectCreationSubtree(*child, out);
+        if (auto* child = go.GetChild(i)) {
+            CollectCreationSubtree(*child, out);
+        }
 }
 
 /// @brief " (N)" 接尾辞を外した名前。
 std::string StripCreationIndexSuffix(const std::string& name)
 {
-    if (name.size() < 4 || name.back() != ')') return name;
+    if (name.size() < 4 || name.back() != ')') {
+        return name;
+    }
     const std::size_t open = name.rfind(" (");
-    if (open == std::string::npos || open + 2 >= name.size() - 1) return name;
+    if (open == std::string::npos || open + 2 >= name.size() - 1) {
+        return name;
+    }
     for (std::size_t i = open + 2; i + 1 < name.size(); ++i)
-        if (!std::isdigit(static_cast<unsigned char>(name[i]))) return name;
+        if (!std::isdigit(static_cast<unsigned char>(name[i]))) {
+            return name;
+        }
     return name.substr(0, open);
 }
 
 /// @return Prefab の実ファイルのパス。見つからなければ空。
 std::string ResolveCreationPrefabPath(const EditorContext& ctx, const std::string& key)
 {
-    if (key.empty()) return {};
-    if (util::FileSystem::Exists(key)) return key;
+    if (key.empty()) {
+        return {};
+    }
+    if (util::FileSystem::Exists(key)) {
+        return key;
+    }
     if (!ctx.projectRoot.empty()) {
         const std::string candidate = ctx.projectRoot + "/" + key;
-        if (util::FileSystem::Exists(candidate)) return candidate;
+        if (util::FileSystem::Exists(candidate)) {
+            return candidate;
+        }
     }
     return {};
 }
 
 PresetPlacement PlacementOf(const CreateObjectRequest& request)
 {
-    if (request.source != CreateObjectSource::Preset) return PresetPlacement::World;
+    if (request.source != CreateObjectSource::Preset) {
+        return PresetPlacement::World;
+    }
     const ObjectPreset* preset = FindObjectPreset(request.key);
     return preset != nullptr ? preset->placement : PresetPlacement::World;
 }
@@ -77,36 +93,45 @@ PresetPlacement PlacementOf(const CreateObjectRequest& request)
 scene::GameObject* FindCanvasInAncestors(scene::GameObject* go)
 {
     for (; go != nullptr; go = go->GetParent())
-        if (go->GetComponent<scene::UICanvas>() != nullptr) return go;
+        if (go->GetComponent<scene::UICanvas>() != nullptr) {
+            return go;
+        }
     return nullptr;
 }
 
 std::size_t RequiredPresetEntities(const EditorContext& ctx, const ObjectPreset& preset,
                                   scene::GameObject* parent)
 {
-    if (preset.placement != PresetPlacement::UIElement || FindCanvasInAncestors(parent))
+    if (preset.placement != PresetPlacement::UIElement || FindCanvasInAncestors(parent)) {
         return preset.entityCount;
+    }
     auto* canvas = ctx.activeScene->GetGameObject(ctx.activeUICanvas);
     return preset.entityCount + (canvas && canvas->GetComponent<scene::UICanvas>() ? 0 : 1);
 }
 
 /// @brief UI 要素の入れ先を決める。
-/// @param outCreatedCanvas 新しく Canvas を作ったらその ID。
+/// @param[out] outCreatedCanvas 新しく Canvas を作ったらその ID。
 /// @note 祖先に Canvas があればそのまま。無ければ activeUICanvas、それも無ければルートに Canvas を作る。 Canvas を持たない 3D の親の下へ UI を入れても描かれないので、指定された親より Canvas を優先する。
 scene::GameObject* ResolveUIParent(EditorContext& ctx, scene::GameObject* requestedParent,
                                    scene::EntityID& outCreatedCanvas)
 {
-    if (FindCanvasInAncestors(requestedParent) != nullptr) return requestedParent;
+    if (FindCanvasInAncestors(requestedParent) != nullptr) {
+        return requestedParent;
+    }
 
     scene::Scene& targetScene = *ctx.activeScene;
     if (ctx.activeUICanvas.IsValid()) {
         scene::GameObject* active = targetScene.GetGameObject(ctx.activeUICanvas);
-        if (active != nullptr && active->GetComponent<scene::UICanvas>() != nullptr) return active;
+        if (active != nullptr && active->GetComponent<scene::UICanvas>() != nullptr) {
+            return active;
+        }
     }
 
     const ObjectPreset* canvasPreset = FindObjectPreset("ui.canvas");
     scene::GameObject* canvas = canvasPreset != nullptr ? canvasPreset->create(ctx) : nullptr;
-    if (canvas == nullptr) return requestedParent;
+    if (canvas == nullptr) {
+        return requestedParent;
+    }
     canvas->name = MakeUniqueSiblingName(targetScene, nullptr, canvas->name, canvas);
     outCreatedCanvas = canvas->GetID();
     return canvas;
@@ -119,35 +144,47 @@ std::vector<scene::EntityID> SpawnCreationRoots(EditorContext& ctx, const Create
     switch (request.source) {
     case CreateObjectSource::Preset: {
         const ObjectPreset* preset = FindObjectPreset(request.key);
-        if (preset == nullptr || preset->create == nullptr) break;
-        if (scene::GameObject* go = preset->create(ctx)) roots.push_back(go->GetID());
+        if (preset == nullptr || preset->create == nullptr) {
+            break;
+        }
+        if (scene::GameObject* go = preset->create(ctx)) {
+            roots.push_back(go->GetID());
+        }
         break;
     }
     case CreateObjectSource::Prefab: {
         const std::string path = ResolveCreationPrefabPath(ctx, request.key);
-        if (path.empty()) break;
+        if (path.empty()) {
+            break;
+        }
         PrefabSerializer::Instantiate(*ctx.activeScene, path, roots);
         break;
     }
     case CreateObjectSource::Script:
-        if (scene::GameObject* go = CreateScriptObject(ctx, request.key)) roots.push_back(go->GetID());
+        if (scene::GameObject* go = CreateScriptObject(ctx, request.key)) {
+            roots.push_back(go->GetID());
+        }
         break;
     }
     return roots;
 }
 
 /// @brief 生成を 1 回実行する。
-/// @param record 前回の結果があれば同じ instanceId を名乗り直し、今回の結果で上書きする。
+/// @param[in,out] record 前回の結果があれば同じ instanceId を名乗り直し、今回の結果で上書きする。
 /// @return 何も作れなければ false (シーンは変えない)。
 bool RunCreation(EditorContext& ctx, const CreateObjectRequest& request, CreationRecord& record)
 {
     scene::Scene* activeScene = ctx.activeScene;
-    if (activeScene == nullptr) return false;
+    if (activeScene == nullptr) {
+        return false;
+    }
 
     scene::GameObject* parent = nullptr;
     if (!request.parentGuid.empty()) {
         parent = activeScene->FindByGuid(request.parentGuid);
-        if (parent == nullptr) return false;
+        if (parent == nullptr) {
+            return false;
+        }
     }
 
     const PresetPlacement placement = PlacementOf(request);
@@ -162,7 +199,9 @@ bool RunCreation(EditorContext& ctx, const CreateObjectRequest& request, Creatio
         return false;
     }
     scene::EntityID createdCanvas{};
-    if (placement == PresetPlacement::UIElement) parent = ResolveUIParent(ctx, parent, createdCanvas);
+    if (placement == PresetPlacement::UIElement) {
+        parent = ResolveUIParent(ctx, parent, createdCanvas);
+    }
     const scene::EntityID parentId = parent != nullptr ? parent->GetID() : scene::EntityID{};
 
     const scene::SceneEnvironment environmentBefore = activeScene->Environment();
@@ -170,10 +209,14 @@ bool RunCreation(EditorContext& ctx, const CreateObjectRequest& request, Creatio
     if (roots.empty()) {
         if (createdCanvas.IsValid()) {
             activeScene->DestroyGameObject(createdCanvas);
-            if (ctx.activeUICanvas == createdCanvas) ctx.activeUICanvas = scene::EntityID::INVALID;
+            if (ctx.activeUICanvas == createdCanvas) {
+                ctx.activeUICanvas = scene::EntityID::INVALID;
+            }
         }
         const ObjectPreset* preset = request.source == CreateObjectSource::Preset ? FindObjectPreset(request.key) : nullptr;
-        if (!preset || preset->entityCount != 0) return false;
+        if (!preset || preset->entityCount != 0) {
+            return false;
+        }
         record = {};
         record.settingsOnly      = true;
         record.environmentBefore = environmentBefore;
@@ -183,15 +226,22 @@ bool RunCreation(EditorContext& ctx, const CreateObjectRequest& request, Creatio
     const bool inView = request.placeInView && ctx.editorCamera != nullptr;
     for (scene::EntityID rootId : roots) {
         scene::GameObject* root = activeScene->GetGameObject(rootId);
-        if (root == nullptr) continue;
+        if (root == nullptr) {
+            continue;
+        }
         scene::GameObject* rootParent = parentId.IsValid() ? activeScene->GetGameObject(parentId) : nullptr;
-        if (rootParent != nullptr) root->SetParent(rootParent);
+        if (rootParent != nullptr) {
+            root->SetParent(rootParent);
+        }
 
         if (request.hasPosition) {
             root->transform.position = request.position;
         } else if (placement == PresetPlacement::World) {
-            if (rootParent != nullptr) root->transform.position = math::Vector3{};
-            else if (inView)           root->transform.position = ctx.editorCameraPivot + root->transform.position;
+            if (rootParent != nullptr) {
+                root->transform.position = math::Vector3{};
+            } else if (inView) {
+                root->transform.position = ctx.editorCameraPivot + root->transform.position;
+            }
         }
 
         root->name = request.name.empty()
@@ -200,31 +250,46 @@ bool RunCreation(EditorContext& ctx, const CreateObjectRequest& request, Creatio
     }
 
     std::vector<scene::EntityID> destroyIds;
-    if (createdCanvas.IsValid()) destroyIds.push_back(createdCanvas);
-    else                         destroyIds = roots;
+    if (createdCanvas.IsValid()) {
+        destroyIds.push_back(createdCanvas);
+    } else {
+        destroyIds = roots;
+    }
 
     std::vector<scene::GameObject*> created;
     for (scene::EntityID id : destroyIds)
-        if (auto* go = activeScene->GetGameObject(id)) CollectCreationSubtree(*go, created);
+        if (auto* go = activeScene->GetGameObject(id)) {
+            CollectCreationSubtree(*go, created);
+        }
 
-    /// @note 生成は決定的なので、個数が一致すれば同じ順に同じ GameObject が並ぶ。
+    // 生成は決定的なので、個数が一致すれば同じ順に同じ GameObject が並ぶ。
     if (!record.allGuids.empty() && record.allGuids.size() == created.size()) {
-        for (std::size_t i = 0; i < created.size(); ++i) created[i]->instanceId = record.allGuids[i];
+        for (std::size_t i = 0; i < created.size(); ++i) {
+            created[i]->instanceId = record.allGuids[i];
+        }
     }
 
     record = {};
-    for (scene::GameObject* go : created) record.allGuids.push_back(go->instanceId);
+    for (scene::GameObject* go : created) {
+        record.allGuids.push_back(go->instanceId);
+    }
     for (scene::EntityID id : destroyIds)
-        if (auto* go = activeScene->GetGameObject(id)) record.destroyGuids.push_back(go->instanceId);
+        if (auto* go = activeScene->GetGameObject(id)) {
+            record.destroyGuids.push_back(go->instanceId);
+        }
     for (scene::EntityID id : roots)
-        if (auto* go = activeScene->GetGameObject(id)) record.primaryGuids.push_back(go->instanceId);
+        if (auto* go = activeScene->GetGameObject(id)) {
+            record.primaryGuids.push_back(go->instanceId);
+        }
 
     SelectEntities(ctx, roots);
-    if (ctx.markSceneDirty) ctx.markSceneDirty();
+    if (ctx.markSceneDirty) {
+        ctx.markSceneDirty();
+    }
     return true;
 }
 
-} /// @note namespace
+} // namespace
 
 bool ValidateCreateObjectRequest(const EditorContext& ctx, const CreateObjectRequest& request,
                                  std::string& outCode, std::string& outMessage)
@@ -288,13 +353,16 @@ std::string CreateObjectLabel(const CreateObjectRequest& request)
 {
     switch (request.source) {
     case CreateObjectSource::Preset:
-        if (const ObjectPreset* preset = FindObjectPreset(request.key))
+        if (const ObjectPreset* preset = FindObjectPreset(request.key)) {
             return "Create " + std::string(preset->label);
+        }
         return "Create GameObject";
     case CreateObjectSource::Prefab: {
         std::string file = util::FileSystem::GetFilename(request.key);
         const std::size_t dot = file.rfind('.');
-        if (dot != std::string::npos) file.resize(dot);
+        if (dot != std::string::npos) {
+            file.resize(dot);
+        }
         return "Instantiate " + file;
     }
     case CreateObjectSource::Script:
@@ -309,7 +377,9 @@ std::unique_ptr<ICommand> MakeCreateObjectCommand(
 {
     std::string code;
     std::string message;
-    if (!ValidateCreateObjectRequest(ctx, request, code, message)) return nullptr;
+    if (!ValidateCreateObjectRequest(ctx, request, code, message)) {
+        return nullptr;
+    }
 
     auto record = std::make_shared<CreationRecord>();
     EditorContext* context = &ctx;
@@ -317,23 +387,35 @@ std::unique_ptr<ICommand> MakeCreateObjectCommand(
     const scene::EntityID previousCanvasId = ctx.activeUICanvas;
 
     auto execute = [context, request, record, onCreated]() -> bool {
-        if (!RunCreation(*context, request, *record)) return false;
-        if (onCreated) onCreated(record->primaryGuids);
+        if (!RunCreation(*context, request, *record)) {
+            return false;
+        }
+        if (onCreated) {
+            onCreated(record->primaryGuids);
+        }
         return true;
     };
 
-    if (applyNow && !execute()) return nullptr;
+    if (applyNow && !execute()) {
+        return nullptr;
+    }
 
     auto undo = [context, record, previousSelection, previousCanvasId]() {
         scene::Scene* activeScene = context->activeScene;
-        if (activeScene == nullptr) return;
+        if (activeScene == nullptr) {
+            return;
+        }
         if (record->settingsOnly) {
             activeScene->Environment() = record->environmentBefore;
-            if (context->markSceneDirty) context->markSceneDirty();
+            if (context->markSceneDirty) {
+                context->markSceneDirty();
+            }
             return;
         }
         for (const std::string& guid : record->destroyGuids)
-            if (scene::GameObject* go = activeScene->FindByGuid(guid)) activeScene->DestroyGameObject(go->GetID());
+            if (scene::GameObject* go = activeScene->FindByGuid(guid)) {
+                activeScene->DestroyGameObject(go->GetID());
+            }
 
         if (context->activeUICanvas.IsValid() && activeScene->GetGameObject(context->activeUICanvas) == nullptr)
             context->activeUICanvas = activeScene->GetGameObject(previousCanvasId) != nullptr
@@ -341,7 +423,9 @@ std::unique_ptr<ICommand> MakeCreateObjectCommand(
 
         SelectEntities(*context, previousSelection, SelectionReveal::Skip);
         PruneSelection(*context);
-        if (context->markSceneDirty) context->markSceneDirty();
+        if (context->markSceneDirty) {
+            context->markSceneDirty();
+        }
     };
 
     return std::make_unique<LambdaCommand>(
@@ -358,20 +442,27 @@ std::string MakeUniqueSiblingName(const scene::Scene& targetScene, const scene::
     std::vector<std::string> taken;
     if (parent != nullptr) {
         for (int i = 0; i < parent->GetChildCount(); ++i)
-            if (const auto* child = parent->GetChild(i); child != nullptr && child != self)
+            if (const auto* child = parent->GetChild(i); child != nullptr && child != self) {
                 taken.push_back(child->name);
+            }
     } else {
         for (const auto* root : targetScene.GetRootGameObjects())
-            if (root != nullptr && root != self) taken.push_back(root->name);
+            if (root != nullptr && root != self) {
+                taken.push_back(root->name);
+            }
     }
 
     const auto isTaken = [&taken](const std::string& candidate) {
         return std::find(taken.begin(), taken.end(), candidate) != taken.end();
     };
-    if (!isTaken(stem)) return stem;
+    if (!isTaken(stem)) {
+        return stem;
+    }
     for (int index = 1; index < 10000; ++index) {
         std::string candidate = stem + " (" + std::to_string(index) + ")";
-        if (!isTaken(candidate)) return candidate;
+        if (!isTaken(candidate)) {
+            return candidate;
+        }
     }
     return stem;
 }
@@ -379,7 +470,9 @@ std::string MakeUniqueSiblingName(const scene::Scene& targetScene, const scene::
 bool IsInsidePrefabInstance(const scene::GameObject* go)
 {
     for (; go != nullptr; go = go->GetParent())
-        if (!go->prefabAssetPath.empty() || !go->prefabSourceId.empty()) return true;
+        if (!go->prefabAssetPath.empty() || !go->prefabSourceId.empty()) {
+            return true;
+        }
     return false;
 }
 
@@ -389,4 +482,4 @@ const char* PrefabInstanceChildWarning()
            "Revert from Prefab and prefab updates remove them; Apply to Prefab writes them into the asset.";
 }
 
-} /// @note namespace fbzz::editor
+} // namespace fbzz::editor

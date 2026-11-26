@@ -75,4 +75,4 @@ scene::WaterComponent CaptureWaterAuthoringValues(const scene::WaterComponent& s
     CopyWaterAuthoringValues(values, source);
     return values;
 }
-} /// @note namespace fbzz::editor
+} // namespace fbzz::editor

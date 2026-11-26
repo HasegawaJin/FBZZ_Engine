@@ -34,15 +34,15 @@ private:
     /// @note       startDelay/duration、それ以外は VFXElement にある (§4.1)。書き戻し先を行ごとに
     /// @note       決めておかないと、掴んで動かした値が «読んだ場所と違うところ» へ入る。
     struct Track {
-        scene::EntityID entity{};
-        std::string     label;
-        int             depth = 0;
-        bool            isGroup = false;    ///< @note Transform だけの層。窓を持たない
-        bool            fromEmitter = false; ///< @note true: ParticleEmitter / false: VFXElement
-        float           start = 0.0f;
-        float           duration = 0.0f;
-        bool            loop = false;
-        std::string     trigger;            ///< @note 空でなければ時間ではなく発火で始まる
+        scene::EntityID entity{}; ///< タイムラインの行が編集するエフェクトの EntityID。
+        std::string     label; ///< タイムラインの行に表示するエフェクト名。
+        int             depth = 0; ///< 行を字下げするための、VFX ルートからの階層の深さ。
+        bool            isGroup = false;    ///< Transform だけの層。窓を持たない
+        bool            fromEmitter = false; ///< true: ParticleEmitter / false: VFXElement
+        float           start = 0.0f; ///< エフェクトのタイムライン上の開始時刻 [s]。
+        float           duration = 0.0f; ///< エフェクトを再生する時間 [s]。
+        bool            loop = false; ///< このエフェクトの再生を繰り返すか。
+        std::string     trigger;            ///< 空でなければ時間ではなく発火で始まる
     };
 
     void CollectTracks(scene::Scene& scene, scene::GameObject& root, int depth);
@@ -51,21 +51,19 @@ private:
 
     [[nodiscard]] scene::GameObject* ResolveRoot(EditorContext& ctx) const;
 
-    std::vector<Track> m_tracks;
-    /// @note スクラブ中の時刻 [秒]。負なら通常再生。
-    float m_scrubTime = -1.0f;
-    float m_apiScrubTime = -1.0f;
-    std::string m_apiRoot;
-    std::string m_apiProject;
-    /// @note ドラッグ開始時の値。1 フレームごとに加算すると誤差が積もるため元値から作り直す。
-    scene::EntityID m_dragEntity{};
-    float           m_dragStart = 0.0f;
-    float           m_dragDuration = 0.0f;
-    int             m_dragEdge = 0; ///< @note -1: 左端 / 0: 帯全体 / +1: 右端
+    std::vector<Track> m_tracks; ///< 現在の VFX ルートから集めたタイムライン行。
+    float m_scrubTime = -1.0f; ///< スクラブ中の時刻 [秒]。負なら通常再生。
+    float m_apiScrubTime = -1.0f; ///< Editor API が要求したタイムラインの再生位置 [s]。未指定なら負。
+    std::string m_apiRoot; ///< API のスクラブ要求に対応する VFX ルートの instanceId。
+    std::string m_apiProject; ///< API のスクラブ要求を受けたプロジェクトのルート。
+    scene::EntityID m_dragEntity{}; ///< ドラッグ開始時の値。1 フレームごとに加算すると誤差が積もるため元値から作り直す。
+    float           m_dragStart = 0.0f; ///< ドラッグ開始時のエフェクトの開始時刻 [s]。
+    float           m_dragDuration = 0.0f; ///< ドラッグ開始時のエフェクトの長さ [s]。
+    int             m_dragEdge = 0; ///< -1: 左端 / 0: 帯全体 / +1: 右端
     /// @note 直近フレームで書き込んだ値。離した瞬間に Undo を組むとき、
     /// @note m_tracks (フレーム頭の写し) は既に古いのでこちらを正とする。
-    float           m_dragResultStart = 0.0f;
-    float           m_dragResultDuration = 0.0f;
+    float           m_dragResultStart = 0.0f; ///< 現在のドラッグ結果が指定するエフェクトの開始時刻 [s]。
+    float           m_dragResultDuration = 0.0f; ///< 現在のドラッグ結果が指定するエフェクトの長さ [s]。
 };
 
-} /// @note namespace fbzz::editor
+} // namespace fbzz::editor

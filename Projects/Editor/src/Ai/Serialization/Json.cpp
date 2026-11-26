@@ -22,10 +22,14 @@ public:
     bool Parse(JsonValue& out)
     {
         SkipWhitespace();
-        if (!ParseValue(out)) return false;
+        if (!ParseValue(out)) {
+            return false;
+        }
         SkipWhitespace();
-        /// @note 末尾に余分なトークンがあれば不正な JSON とみなす。
-        if (m_pos != m_text.size()) return Fail("末尾に余分な文字があります");
+        // 末尾に余分なトークンがあれば不正な JSON とみなす。
+        if (m_pos != m_text.size()) {
+            return Fail("末尾に余分な文字があります");
+        }
         return true;
     }
 
@@ -49,20 +53,27 @@ private:
     {
         while (!AtEnd()) {
             const char c = Peek();
-            if (c == ' ' || c == '\t' || c == '\n' || c == '\r') ++m_pos;
-            else break;
+            if (c == ' ' || c == '\t' || c == '\n' || c == '\r') {
+                ++m_pos;
+            } else {
+                break;
+            }
         }
     }
 
     bool ParseValue(JsonValue& out)
     {
-        if (AtEnd()) return Fail("値がありません");
+        if (AtEnd()) {
+            return Fail("値がありません");
+        }
         switch (Peek()) {
             case '{': return ParseObject(out);
             case '[': return ParseArray(out);
             case '"': {
                 std::string s;
-                if (!ParseString(s)) return false;
+                if (!ParseString(s)) {
+                    return false;
+                }
                 out = JsonValue(std::move(s));
                 return true;
             }
@@ -75,26 +86,45 @@ private:
     bool ParseObject(JsonValue& out)
     {
         out = JsonValue::MakeObject();
-        /// @note '{'
+        // '{'
         ++m_pos;
         SkipWhitespace();
-        if (!AtEnd() && Peek() == '}') { ++m_pos; return true; }
+        if (!AtEnd() && Peek() == '}') {
+            ++m_pos;
+            return true;
+        }
         for (;;) {
             SkipWhitespace();
-            if (AtEnd() || Peek() != '"') return Fail("オブジェクトキーが必要です");
+            if (AtEnd() || Peek() != '"') {
+                return Fail("オブジェクトキーが必要です");
+            }
             std::string key;
-            if (!ParseString(key)) return false;
+            if (!ParseString(key)) {
+                return false;
+            }
             SkipWhitespace();
-            if (AtEnd() || Peek() != ':') return Fail("':' が必要です");
+            if (AtEnd() || Peek() != ':') {
+                return Fail("':' が必要です");
+            }
             ++m_pos;
             SkipWhitespace();
             JsonValue value;
-            if (!ParseValue(value)) return false;
+            if (!ParseValue(value)) {
+                return false;
+            }
             out.Set(std::move(key), std::move(value));
             SkipWhitespace();
-            if (AtEnd()) return Fail("オブジェクトが閉じていません");
-            if (Peek() == ',') { ++m_pos; continue; }
-            if (Peek() == '}') { ++m_pos; return true; }
+            if (AtEnd()) {
+                return Fail("オブジェクトが閉じていません");
+            }
+            if (Peek() == ',') {
+                ++m_pos;
+                continue;
+            }
+            if (Peek() == '}') {
+                ++m_pos;
+                return true;
+            }
             return Fail("',' か '}' が必要です");
         }
     }
@@ -102,33 +132,50 @@ private:
     bool ParseArray(JsonValue& out)
     {
         out = JsonValue::MakeArray();
-        /// @note '['
+        // '['
         ++m_pos;
         SkipWhitespace();
-        if (!AtEnd() && Peek() == ']') { ++m_pos; return true; }
+        if (!AtEnd() && Peek() == ']') {
+            ++m_pos;
+            return true;
+        }
         for (;;) {
             SkipWhitespace();
             JsonValue value;
-            if (!ParseValue(value)) return false;
+            if (!ParseValue(value)) {
+                return false;
+            }
             out.Push(std::move(value));
             SkipWhitespace();
-            if (AtEnd()) return Fail("配列が閉じていません");
-            if (Peek() == ',') { ++m_pos; continue; }
-            if (Peek() == ']') { ++m_pos; return true; }
+            if (AtEnd()) {
+                return Fail("配列が閉じていません");
+            }
+            if (Peek() == ',') {
+                ++m_pos;
+                continue;
+            }
+            if (Peek() == ']') {
+                ++m_pos;
+                return true;
+            }
             return Fail("',' か ']' が必要です");
         }
     }
 
     bool ParseString(std::string& out)
     {
-        /// @note 開き '"'
+        // 開き '"'
         ++m_pos;
         out.clear();
         while (!AtEnd()) {
             const char c = m_text[m_pos++];
-            if (c == '"') return true;
+            if (c == '"') {
+                return true;
+            }
             if (c == '\\') {
-                if (AtEnd()) return Fail("エスケープが途中で終わっています");
+                if (AtEnd()) {
+                    return Fail("エスケープが途中で終わっています");
+                }
                 const char esc = m_text[m_pos++];
                 switch (esc) {
                     case '"':  out.push_back('"');  break;
@@ -153,16 +200,22 @@ private:
     bool ParseUnicodeEscape(std::string& out)
     {
         std::uint32_t code = 0;
-        if (!ReadHex4(code)) return false;
-        /// @note 上位サロゲートなら続く \uXXXX と結合する。
+        if (!ReadHex4(code)) {
+            return false;
+        }
+        // 上位サロゲートなら続く \uXXXX と結合する。
         if (code >= 0xD800 && code <= 0xDBFF) {
             if (m_pos + 1 >= m_text.size() || m_text[m_pos] != '\\' || m_text[m_pos + 1] != 'u') {
                 return Fail("サロゲートペアが不完全です");
             }
             m_pos += 2;
             std::uint32_t low = 0;
-            if (!ReadHex4(low)) return false;
-            if (low < 0xDC00 || low > 0xDFFF) return Fail("下位サロゲートが不正です");
+            if (!ReadHex4(low)) {
+                return false;
+            }
+            if (low < 0xDC00 || low > 0xDFFF) {
+                return Fail("下位サロゲートが不正です");
+            }
             code = 0x10000 + ((code - 0xD800) << 10) + (low - 0xDC00);
         }
         AppendUtf8(out, code);
@@ -171,15 +224,22 @@ private:
 
     bool ReadHex4(std::uint32_t& out)
     {
-        if (m_pos + 4 > m_text.size()) return Fail("\\u の桁が足りません");
+        if (m_pos + 4 > m_text.size()) {
+            return Fail("\\u の桁が足りません");
+        }
         std::uint32_t value = 0;
         for (int i = 0; i < 4; ++i) {
             const char c = m_text[m_pos++];
             value <<= 4;
-            if (c >= '0' && c <= '9') value |= static_cast<std::uint32_t>(c - '0');
-            else if (c >= 'a' && c <= 'f') value |= static_cast<std::uint32_t>(c - 'a' + 10);
-            else if (c >= 'A' && c <= 'F') value |= static_cast<std::uint32_t>(c - 'A' + 10);
-            else return Fail("16進数ではありません");
+            if (c >= '0' && c <= '9') {
+                value |= static_cast<std::uint32_t>(c - '0');
+            } else if (c >= 'a' && c <= 'f') {
+                value |= static_cast<std::uint32_t>(c - 'a' + 10);
+            } else if (c >= 'A' && c <= 'F') {
+                value |= static_cast<std::uint32_t>(c - 'A' + 10);
+            } else {
+                return Fail("16進数ではありません");
+            }
         }
         out = value;
         return true;
@@ -206,26 +266,44 @@ private:
 
     bool ParseBool(JsonValue& out)
     {
-        if (m_text.compare(m_pos, 4, "true") == 0)  { m_pos += 4; out = JsonValue(true);  return true; }
-        if (m_text.compare(m_pos, 5, "false") == 0) { m_pos += 5; out = JsonValue(false); return true; }
+        if (m_text.compare(m_pos, 4, "true") == 0) {
+            m_pos += 4;
+            out = JsonValue(true);
+            return true;
+        }
+        if (m_text.compare(m_pos, 5, "false") == 0) {
+            m_pos += 5;
+            out = JsonValue(false);
+            return true;
+        }
         return Fail("true / false ではありません");
     }
 
     bool ParseNull(JsonValue& out)
     {
-        if (m_text.compare(m_pos, 4, "null") == 0) { m_pos += 4; out = JsonValue(nullptr); return true; }
+        if (m_text.compare(m_pos, 4, "null") == 0) {
+            m_pos += 4;
+            out = JsonValue(nullptr);
+            return true;
+        }
         return Fail("null ではありません");
     }
 
     bool ParseNumber(JsonValue& out)
     {
         const std::size_t start = m_pos;
-        if (!AtEnd() && Peek() == '-') ++m_pos;
-        if (AtEnd()) return Fail("数値ではありません");
+        if (!AtEnd() && Peek() == '-') {
+            ++m_pos;
+        }
+        if (AtEnd()) {
+            return Fail("数値ではありません");
+        }
         if (Peek() == '0') {
             ++m_pos;
         } else if (Peek() >= '1' && Peek() <= '9') {
-            while (!AtEnd() && Peek() >= '0' && Peek() <= '9') ++m_pos;
+            while (!AtEnd() && Peek() >= '0' && Peek() <= '9') {
+                ++m_pos;
+            }
         } else {
             return Fail("数値ではありません");
         }
@@ -234,30 +312,46 @@ private:
             hasFractionOrExponent = true;
             ++m_pos;
             const std::size_t digits = m_pos;
-            while (!AtEnd() && Peek() >= '0' && Peek() <= '9') ++m_pos;
-            if (m_pos == digits) return Fail("小数点の後に数字が必要です");
+            while (!AtEnd() && Peek() >= '0' && Peek() <= '9') {
+                ++m_pos;
+            }
+            if (m_pos == digits) {
+                return Fail("小数点の後に数字が必要です");
+            }
         }
         if (!AtEnd() && (Peek() == 'e' || Peek() == 'E')) {
             hasFractionOrExponent = true;
             ++m_pos;
-            if (!AtEnd() && (Peek() == '+' || Peek() == '-')) ++m_pos;
+            if (!AtEnd() && (Peek() == '+' || Peek() == '-')) {
+                ++m_pos;
+            }
             const std::size_t digits = m_pos;
-            while (!AtEnd() && Peek() >= '0' && Peek() <= '9') ++m_pos;
-            if (m_pos == digits) return Fail("指数の後に数字が必要です");
+            while (!AtEnd() && Peek() >= '0' && Peek() <= '9') {
+                ++m_pos;
+            }
+            if (m_pos == digits) {
+                return Fail("指数の後に数字が必要です");
+            }
         }
-        if (m_pos == start) return Fail("数値ではありません");
+        if (m_pos == start) {
+            return Fail("数値ではありません");
+        }
         const char* first = m_text.data() + start;
         const char* last  = m_text.data() + m_pos;
         if (!hasFractionOrExponent) {
             std::int64_t integer = 0;
             const auto result = std::from_chars(first, last, integer);
-            if (result.ec != std::errc{} || result.ptr != last) return Fail("整数が int64 範囲外です");
+            if (result.ec != std::errc{} || result.ptr != last) {
+                return Fail("整数が int64 範囲外です");
+            }
             out = JsonValue(integer);
             return true;
         }
         double value = 0.0;
         const auto result = std::from_chars(first, last, value);
-        if (result.ec != std::errc{} || result.ptr != last) return Fail("数値の解析に失敗しました");
+        if (result.ec != std::errc{} || result.ptr != last) {
+            return Fail("数値の解析に失敗しました");
+        }
         out = JsonValue(value);
         return true;
     }
@@ -277,7 +371,7 @@ void SerializeString(const std::string& s, std::string& out)
             case '\t': out += "\\t";  break;
             default:
                 if (static_cast<unsigned char>(c) < 0x20) {
-                    /// @note 制御文字は \u00XX でエスケープ (UTF-8 マルチバイトはそのまま通す)。
+                    // 制御文字は \u00XX でエスケープ (UTF-8 マルチバイトはそのまま通す)。
                     std::array<char, 8> buffer{};
                     std::snprintf(buffer.data(), buffer.size(), "\\u%04x", static_cast<unsigned>(static_cast<unsigned char>(c)));
                     out += buffer.data();
@@ -291,7 +385,7 @@ void SerializeString(const std::string& s, std::string& out)
 
 void SerializeNumber(double value, std::string& out)
 {
-    /// @note std::to_chars は最短往復表現を出す (1.0 → "1", 1.5 → "1.5")。JSON は非有限を許さないため 0 に丸める。
+    // std::to_chars は最短往復表現を出す (1.0 → "1", 1.5 → "1.5")。JSON は非有限を許さないため 0 に丸める。
     if (!(value == value) || value == std::numeric_limits<double>::infinity() || value == -std::numeric_limits<double>::infinity()) {
         out += "0";
         return;
@@ -307,15 +401,20 @@ void SerializeValue(const JsonValue& value, std::string& out)
         case JsonValue::Type::Null:   out += "null"; break;
         case JsonValue::Type::Bool:   out += value.AsBool() ? "true" : "false"; break;
         case JsonValue::Type::Number:
-            if (value.IsInteger()) out += std::to_string(value.AsInt64());
-            else SerializeNumber(value.AsNumber(), out);
+            if (value.IsInteger()) {
+                out += std::to_string(value.AsInt64());
+            } else {
+                SerializeNumber(value.AsNumber(), out);
+            }
             break;
         case JsonValue::Type::String: SerializeString(value.AsString(), out); break;
         case JsonValue::Type::Array: {
             out.push_back('[');
             bool first = true;
             for (const auto& element : value.AsArray()) {
-                if (!first) out.push_back(',');
+                if (!first) {
+                    out.push_back(',');
+                }
                 first = false;
                 SerializeValue(element, out);
             }
@@ -326,7 +425,9 @@ void SerializeValue(const JsonValue& value, std::string& out)
             out.push_back('{');
             bool first = true;
             for (const auto& member : value.AsObject()) {
-                if (!first) out.push_back(',');
+                if (!first) {
+                    out.push_back(',');
+                }
                 first = false;
                 SerializeString(member.first, out);
                 out.push_back(':');
@@ -344,7 +445,9 @@ constexpr char kBase64Alphabet[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqr
 
 bool JsonValue::TryGetInt64(std::int64_t& output) const
 {
-    if (m_type != Type::Number) return false;
+    if (m_type != Type::Number) {
+        return false;
+    }
     if (m_isInteger) {
         output = m_integer;
         return true;
@@ -352,7 +455,9 @@ bool JsonValue::TryGetInt64(std::int64_t& output) const
     constexpr double INT64_MIN_VALUE = -9223372036854775808.0;
     constexpr double INT64_MAX_EXCLUSIVE = 9223372036854775808.0;
     if (!std::isfinite(m_number) || std::trunc(m_number) != m_number
-        || m_number < INT64_MIN_VALUE || m_number >= INT64_MAX_EXCLUSIVE) return false;
+        || m_number < INT64_MIN_VALUE || m_number >= INT64_MAX_EXCLUSIVE) {
+        return false;
+    }
     output = static_cast<std::int64_t>(m_number);
     return true;
 }
@@ -360,7 +465,9 @@ bool JsonValue::TryGetInt64(std::int64_t& output) const
 bool JsonValue::TryGetInt32(int& output) const
 {
     std::int64_t value = 0;
-    if (!TryGetInt64(value) || value < std::numeric_limits<int>::min() || value > std::numeric_limits<int>::max()) return false;
+    if (!TryGetInt64(value) || value < std::numeric_limits<int>::min() || value > std::numeric_limits<int>::max()) {
+        return false;
+    }
     output = static_cast<int>(value);
     return true;
 }
@@ -369,7 +476,9 @@ std::optional<JsonValue> ParseJson(std::string_view text, std::string* error)
 {
     JsonValue out;
     Parser parser(text, error);
-    if (!parser.Parse(out)) return std::nullopt;
+    if (!parser.Parse(out)) {
+        return std::nullopt;
+    }
     return out;
 }
 
@@ -416,4 +525,4 @@ std::string Base64Encode(const std::vector<std::uint8_t>& data)
     return Base64Encode(data.data(), data.size());
 }
 
-} /// @note namespace fbzz::editor::ai
+} // namespace fbzz::editor::ai

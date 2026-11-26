@@ -46,7 +46,9 @@ protected:
     editor::OpResult Apply(editor::OpArgs args)
     {
         auto preview = Invoke("authoring.placement.preview", args);
-        if (!preview.ok) return preview;
+        if (!preview.ok) {
+            return preview;
+        }
         args.Set("expected", preview.data.Find("expected")->AsString());
         return Invoke("authoring.placement.apply", args);
     }

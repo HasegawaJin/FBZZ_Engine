@@ -75,7 +75,9 @@ TEST_F(ObjectPresetMenuTest, CreatesUsefulSpatialAmbientAndMusicAudioDefaultsWit
     AttachScene();
     const auto createAudio = [this](const char* id) {
         const auto* preset = editor::FindObjectPreset(id);
-        if (!preset) return static_cast<scene::AudioSourceComponent*>(nullptr);
+        if (!preset) {
+            return static_cast<scene::AudioSourceComponent*>(nullptr);
+        }
         auto* go = preset->create(Context());
         return go ? go->GetComponent<scene::AudioSourceComponent>() : nullptr;
     };

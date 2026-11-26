@@ -12,7 +12,7 @@ std::vector<Toast::Entry> Toast::s_entries;
 
 void Toast::Push(Level level, std::string message, float durationSec)
 {
-    /// @note 同一メッセージが連続で積まれた場合 (例: 監視ループの重複通知) は最新へ寄せて重複を避ける。
+    // 同一メッセージが連続で積まれた場合 (例: 監視ループの重複通知) は最新へ寄せて重複を避ける。
     for (auto& e : s_entries) {
         if (e.level == level && e.message == message) {
             e.age = 0.0f;
@@ -22,10 +22,11 @@ void Toast::Push(Level level, std::string message, float durationSec)
     }
     s_entries.push_back(Entry{ level, std::move(message), 0.0f, durationSec });
 
-    /// @note 溜まりすぎ防止 (古いものから捨てる)。
+    // 溜まりすぎ防止 (古いものから捨てる)。
     constexpr size_t kMaxVisible = 6;
-    if (s_entries.size() > kMaxVisible)
+    if (s_entries.size() > kMaxVisible) {
         s_entries.erase(s_entries.begin(), s_entries.begin() + (s_entries.size() - kMaxVisible));
+    }
 }
 
 namespace {
@@ -46,10 +47,10 @@ ImVec4 AccentColor(Toast::Level level)
 const char* Glyph(Toast::Level level)
 {
     switch (level) {
-    /// @note ✓
+    // ✓
     case Toast::Level::Success: return "\xE2\x9C\x93";
     case Toast::Level::Warning: return "!";
-    /// @note ×
+    // ×
     case Toast::Level::Error:   return "\xC3\x97";
     case Toast::Level::Info:
     default:                    return "i";
@@ -60,16 +61,19 @@ const char* Glyph(Toast::Level level)
 
 void Toast::Render()
 {
-    if (s_entries.empty()) return;
+    if (s_entries.empty()) {
+        return;
+    }
 
     const float dt = ImGui::GetIO().DeltaTime;
-    for (auto& e : s_entries)
+    for (auto& e : s_entries) {
         e.age += dt;
+    }
 
     const ImGuiViewport* vp = ImGui::GetMainViewport();
-    /// @note 画面端からの余白
+    // 画面端からの余白
     constexpr float kPad     = 12.0f;
-    /// @note トースト間の隙間
+    // トースト間の隙間
     constexpr float kGap     = 8.0f;
     constexpr float kWidth   = 320.0f;
     constexpr float kFadeIn  = 0.18f;
@@ -78,30 +82,31 @@ void Toast::Render()
     const float rightX  = vp->WorkPos.x + vp->WorkSize.x - kPad;
     float       bottomY = vp->WorkPos.y + vp->WorkSize.y - kPad;
 
-    /// @note 幅は kWidth 固定、高さは 0 指定で内容に合わせて自動調整する。AlwaysAutoResize は
-    ///       固定幅指定と競合してテキスト折返しが安定しないため使わない。
+    // 幅は kWidth 固定、高さは 0 指定で内容に合わせて自動調整する。AlwaysAutoResize は
+    // 固定幅指定と競合してテキスト折返しが安定しないため使わない。
     constexpr ImGuiWindowFlags kFlags =
         ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove |
         ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoFocusOnAppearing |
         ImGuiWindowFlags_NoNav | ImGuiWindowFlags_NoInputs;
 
-    /// @note 新しい通知ほど下に積む (発生位置の近くに見える)。
+    // 新しい通知ほど下に積む (発生位置の近くに見える)。
     for (int i = static_cast<int>(s_entries.size()) - 1; i >= 0; --i) {
         Entry& e = s_entries[i];
 
-        /// @note フェード係数を計算する。
+        // フェード係数を計算する。
         float alpha = 1.0f;
-        if (e.age < kFadeIn)
+        if (e.age < kFadeIn) {
             alpha = e.age / kFadeIn;
-        else if (e.age > e.duration - kFadeOut)
+        } else if (e.age > e.duration - kFadeOut) {
             alpha = std::max(0.0f, (e.duration - e.age) / kFadeOut);
+        }
         alpha = std::clamp(alpha, 0.0f, 1.0f);
 
         char id[32];
         std::snprintf(id, sizeof(id), "##toast_%d", i);
 
         ImGui::SetNextWindowBgAlpha(0.92f * alpha);
-        /// @note ピボット (1,1) = 右下基準。bottomY を下端に合わせて積み上げる。
+        // ピボット (1,1) = 右下基準。bottomY を下端に合わせて積み上げる。
         ImGui::SetNextWindowPos({ rightX, bottomY }, ImGuiCond_Always, { 1.0f, 1.0f });
         ImGui::SetNextWindowSize({ kWidth, 0.0f }, ImGuiCond_Always);
 
@@ -113,9 +118,10 @@ void Toast::Render()
             const ImVec2 wmin = ImGui::GetWindowPos();
             const ImVec2 wmax = { wmin.x + ImGui::GetWindowSize().x, wmin.y + ImGui::GetWindowSize().y };
 
-            /// @note 左端のアクセントバー。
+            // 左端のアクセントバー。
             ImDrawList* dl = ImGui::GetWindowDrawList();
-            ImVec4 barCol = accent; barCol.w *= alpha;
+            ImVec4 barCol = accent;
+            barCol.w *= alpha;
             dl->AddRectFilled(wmin, { wmin.x + 4.0f, wmax.y },
                               ImGui::GetColorU32(barCol), 6.0f, ImDrawFlags_RoundCornersLeft);
 
@@ -133,7 +139,7 @@ void Toast::Render()
         ImGui::PopStyleVar(3);
     }
 
-    /// @note 期限切れを除去する。
+    // 期限切れを除去する。
     s_entries.erase(
         std::remove_if(s_entries.begin(), s_entries.end(),
                        [](const Entry& e) { return e.age >= e.duration; }),

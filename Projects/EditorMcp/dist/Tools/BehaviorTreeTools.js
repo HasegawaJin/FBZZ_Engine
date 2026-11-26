@@ -105,7 +105,7 @@ export function RegisterBehaviorTreeQueryTools(server, bus) {
 }
 export function RegisterBehaviorTreeCommandTools(server, bus, permission) {
     const { run, writeAnnotations } = CreateCommandContext(bus, permission);
-    /// @note ── Behavior Tree の編集 ──
+    // Behavior Tree の編集操作を登録する。
     server.registerTool('bt_node_add', {
         description: 'Behavior Tree へノードを追加します。parentId 省略はルート作成で、'
             + '既にルートがあると拒否されます (木にルートは 1 つだけ)。'

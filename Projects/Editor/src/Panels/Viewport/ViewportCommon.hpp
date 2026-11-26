@@ -108,7 +108,7 @@ struct SceneIconInstance {
 
 /// @brief 表示すべきアイコンを投影して集める。
 /// @note 同じ GameObject に複数種のアイコンが付くと横へずらして重ならないようにする。
-/// @param out 毎回クリアされる。showSceneIcons が false なら空。
+/// @param[out] out 毎回クリアされる。showSceneIcons が false なら空。
 void CollectSceneIcons(const EditorContext& ctx, const ImVec2& vpMin, const ImVec2& vpSize,
                        std::vector<SceneIconInstance>& out);
 /// @return スクリーン上の当たり半径 [px]。
@@ -129,8 +129,8 @@ void DrawOrientationGizmo(EditorContext& ctx, const ImVec2& viewportMin, const I
 bool IsOrientationGizmoHovered();
 bool IsOrientationGizmoActive();
 /// @brief Scene Viewへ制御点の変換、編集開始、TargetPoint操作手順を重ねて描く。
-/// @param editable Scene Viewがauthoring操作を受け付ける状態か。
-/// @param blocked 別のOverlayまたはツールが同frameのmouse入力を所有しているか。
+/// @param[in] editable Scene Viewがauthoring操作を受け付ける状態か。
+/// @param[in] blocked 別のOverlayまたはツールが同frameのmouse入力を所有しているか。
 /// @return Overlay上または操作中にmouseを取得しているときtrue。
 bool DrawControlPointOverlay(EditorContext& ctx, const ImVec2& viewportMin,
                              const ImVec2& viewportSize, bool editable, bool blocked);
@@ -139,4 +139,4 @@ void DrawGizmo(EditorContext& ctx, const ImVec2& viewportMin, const ImVec2& view
 /// @return スナップドラッグ中は true。呼び出し側はギズモ・ピッキング・矩形選択をスキップすること。
 bool HandleViewportSnapping(EditorContext& ctx, const ImVec2& vpMin, const ImVec2& vpSize);
 
-} /// @note namespace fbzz::editor
+} // namespace fbzz::editor

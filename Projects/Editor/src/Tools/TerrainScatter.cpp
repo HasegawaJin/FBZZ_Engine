@@ -37,8 +37,10 @@ bool ValidTransform(const scene::Transform& transform)
 
 uint32_t Mix(uint32_t value)
 {
-    value ^= value >> 16; value *= 0x7feb352du;
-    value ^= value >> 15; value *= 0x846ca68bu;
+    value ^= value >> 16;
+    value *= 0x7feb352du;
+    value ^= value >> 15;
+    value *= 0x846ca68bu;
     return value ^ (value >> 16);
 }
 
@@ -57,18 +59,26 @@ bool ApplyPlacementCellBudget(std::vector<renderer::InstancePlacement>& staged, 
         const auto& placement = staged[slot];
         const auto world = targetWorld * math::Vector4{placement.position, 1.0f};
         scene::WorldCellId cell;
-        if (!scene::TryLocateWorldCell(grid, {world.x, world.y, world.z}, cell)) return false;
+        if (!scene::TryLocateWorldCell(grid, {world.x, world.y, world.z}, cell)) {
+            return false;
+        }
         ranked.push_back({cell, scene::WorldCellSeed(seed, cell, placement.id), slot});
     }
     std::sort(ranked.begin(), ranked.end(), [](const RankedPlacement& left, const RankedPlacement& right) {
-        if (left.cell != right.cell) return left.cell < right.cell;
-        if (left.rank != right.rank) return left.rank < right.rank;
+        if (left.cell != right.cell) {
+            return left.cell < right.cell;
+        }
+        if (left.rank != right.rank) {
+            return left.rank < right.rank;
+        }
         return left.slot < right.slot;
     });
     std::vector<uint8_t> kept(staged.size());
     uint32_t cellCount = 0;
     for (size_t index = 0; index < ranked.size(); ++index) {
-        if (index == 0 || ranked[index - 1].cell != ranked[index].cell) cellCount = 0;
+        if (index == 0 || ranked[index - 1].cell != ranked[index].cell) {
+            cellCount = 0;
+        }
         const auto slot = ranked[index].slot;
         if (cellCount++ < cap) {
             kept[slot] = 1;
@@ -82,9 +92,13 @@ bool ApplyPlacementCellBudget(std::vector<renderer::InstancePlacement>& staged, 
     }
     size_t output = 0;
     for (size_t slot = 0; slot < staged.size(); ++slot) {
-        if (kept[slot]) staged[output++] = staged[slot];
+        if (kept[slot]) {
+            staged[output++] = staged[slot];
+        }
     }
-    if (diagnostics) diagnostics->counts[static_cast<size_t>(TerrainPaintReason::ACCEPTED)] -= staged.size() - output;
+    if (diagnostics) {
+        diagnostics->counts[static_cast<size_t>(TerrainPaintReason::ACCEPTED)] -= staged.size() - output;
+    }
     staged.resize(output);
     return true;
 }
@@ -98,7 +112,7 @@ math::Quaternion PlacementRotation(const TerrainScatterSettings& settings, const
 {
     if (settings.alignDownslope) {
         const auto downhill = normal * normal.y - math::Vector3::UP;
-        /// @note ほぼ平坦な場所では勾配の方向が安定しないため、通常の yaw に戻す。
+        // ほぼ平坦な場所では勾配の方向が安定しないため、通常の yaw に戻す。
         if (downhill.LengthSq() > 0.000001f) {
             const float yaw = math::ToRad(std::lerp(-settings.downslopeJitter, settings.downslopeJitter, sample));
             return math::Quaternion::LookRotation(downhill.Normalized(), normal)
@@ -107,7 +121,9 @@ math::Quaternion PlacementRotation(const TerrainScatterSettings& settings, const
     }
     const float yaw = math::ToRad(std::lerp(settings.minYaw, settings.maxYaw, sample));
     const auto rotation = math::Quaternion::FromAxisAngle(math::Vector3::UP, yaw);
-    if (!settings.alignToNormal && !settings.alignDownslope) return rotation;
+    if (!settings.alignToNormal && !settings.alignDownslope) {
+        return rotation;
+    }
     const auto axis = math::Vector3::Cross(math::Vector3::UP, normal);
     return math::Quaternion{axis.x, axis.y, axis.z, 1.0f + normal.y}.Normalized() * rotation;
 }
@@ -117,12 +133,13 @@ math::Vector3 EulerRadians(const math::Quaternion& rotation)
 {
     const auto matrix = math::Matrix4::Rotate(rotation);
     const float pitch = std::asin(std::clamp(-matrix.m[1][2], -1.0f, 1.0f));
-    if (std::abs(std::cos(pitch)) <= 0.000001f)
+    if (std::abs(std::cos(pitch)) <= 0.000001f) {
         return {pitch, std::atan2(-matrix.m[2][0], matrix.m[0][0]), 0.0f};
+    }
     return {pitch, std::atan2(matrix.m[0][2], matrix.m[2][2]), std::atan2(matrix.m[1][0], matrix.m[1][1])};
 }
 
-} /// @note namespace terrain_scatter_detail
+} // namespace terrain_scatter_detail
 
 float SampleTerrainLayerWeight(const scene::TerrainComponent& terrain, float x, float z, int layer)
 {
@@ -153,7 +170,9 @@ struct ScatterPlane {
 template<typename CenterAt>
 float PolygonCoverageEdge(const math::Vector3& point, size_t count, CenterAt centerAt)
 {
-    if (count < 3) return -INFINITY;
+    if (count < 3) {
+        return -INFINITY;
+    }
     bool inside = false;
     float nearest = INFINITY;
     for (size_t i = 0, j = count - 1; i < count; j = i++) {
@@ -161,15 +180,18 @@ float PolygonCoverageEdge(const math::Vector3& point, size_t count, CenterAt cen
         const float lengthSq = delta.LengthSq();
         const float t = lengthSq > 0 ? std::clamp(math::Vector3::Dot(point - a, delta) / lengthSq, 0.0f, 1.0f) : 0;
         nearest = std::min(nearest, (point - (a + delta * t)).Length());
-        if ((a.z > point.z) != (b.z > point.z) && point.x < (b.x - a.x) * (point.z - a.z) / (b.z - a.z) + a.x)
+        if ((a.z > point.z) != (b.z > point.z) && point.x < (b.x - a.x) * (point.z - a.z) / (b.z - a.z) + a.x) {
             inside = !inside;
+        }
     }
     return !inside && nearest > 0.0001f ? -INFINITY : nearest;
 }
 
 float CoverageFromEdge(const TerrainScatterBrush& brush, float edge)
 {
-    if (edge < 0) return 0;
+    if (edge < 0) {
+        return 0;
+    }
     return brush.feather > 0 ? std::clamp(edge / (brush.radius * brush.feather), 0.0f, 1.0f) : 1.0f;
 }
 
@@ -188,8 +210,12 @@ public:
         : m_origin(terrain.worldPosition), m_inverse(terrain.worldRotation.Inverse()), m_brush(brush)
     {
         m_centers.reserve(brush.centers.size());
-        for (const auto& center : brush.centers) m_centers.push_back(Project(center));
-        if (brush.polygon || m_centers.size() <= 16) return;
+        for (const auto& center : brush.centers) {
+            m_centers.push_back(Project(center));
+        }
+        if (brush.polygon || m_centers.size() <= 16) {
+            return;
+        }
         m_cells.reserve(m_centers.size());
         for (const auto& center : m_centers) {
             Cell cell;
@@ -207,20 +233,27 @@ public:
     {
         const auto point = Project(world);
         float edge = -INFINITY;
-        if (m_brush.polygon)
+        if (m_brush.polygon) {
             edge = PolygonCoverageEdge(point, m_centers.size(), [&](size_t index) { return m_centers[index]; });
-        else {
+        } else {
             const auto accumulate = [&](const auto& centers) {
-                for (const auto& center : centers) edge = std::max(edge, m_brush.radius - (point - center).Length());
+                for (const auto& center : centers) {
+                    edge = std::max(edge, m_brush.radius - (point - center).Length());
+                }
             };
             Cell cell;
-            if (m_cells.empty() || !Locate(point, cell)) accumulate(m_centers);
-            else {
+            if (m_cells.empty() || !Locate(point, cell)) {
+                accumulate(m_centers);
+            } else {
                 if (cell.x < m_cellMin.x - 1 || cell.x > m_cellMax.x + 1
-                    || cell.z < m_cellMin.z - 1 || cell.z > m_cellMax.z + 1) return 0;
+                    || cell.z < m_cellMin.z - 1 || cell.z > m_cellMax.z + 1) {
+                    return 0;
+                }
                 for (int dz = -1; dz <= 1; ++dz) for (int dx = -1; dx <= 1; ++dx) {
                     const auto found = m_cells.find({cell.x + dx, cell.z + dz});
-                    if (found != m_cells.end()) accumulate(found->second);
+                    if (found != m_cells.end()) {
+                        accumulate(found->second);
+                    }
                 }
             }
         }
@@ -246,12 +279,14 @@ private:
 
     [[nodiscard]] bool Locate(const math::Vector3& point, Cell& out) const
     {
-        /// @note A cell is wider than the radius to cover rounding in the original float distance check.
+        // A cell is wider than the radius to cover rounding in the original float distance check.
         const double cellSize = 2.0 * m_brush.radius;
         const double x = static_cast<double>(point.x) / cellSize;
         const double z = static_cast<double>(point.z) / cellSize;
         constexpr double LIMIT = 1.0e9;
-        if (!(std::abs(x) < LIMIT && std::abs(z) < LIMIT)) return false;
+        if (!(std::abs(x) < LIMIT && std::abs(z) < LIMIT)) {
+            return false;
+        }
         out = {static_cast<int32_t>(std::floor(x)), static_cast<int32_t>(std::floor(z))};
         return true;
     }
@@ -263,7 +298,7 @@ private:
     std::unordered_map<Cell, std::vector<math::Vector3>, CellHash> m_cells;
     Cell m_cellMin{INT32_MAX, INT32_MAX}, m_cellMax{INT32_MIN, INT32_MIN};
 };
-} /// @note namespace terrain_scatter_detail
+} // namespace terrain_scatter_detail
 
 const char* TerrainPaintReasonLabel(TerrainPaintReason reason)
 {
@@ -279,28 +314,48 @@ float TerrainRegionCoverage(const scene::Transform& terrain, const TerrainScatte
     const auto inverse = terrain.worldRotation.Inverse();
     const auto project = [&](const auto& value) { return ProjectCoveragePoint(inverse, terrain.worldPosition, value); };
     const auto point = project(world);
-    if (brush.polygon)
+    if (brush.polygon) {
         return CoverageFromEdge(brush, PolygonCoverageEdge(point, brush.centers.size(), [&](size_t i) { return project(brush.centers[i]); }));
+    }
     float edge = -INFINITY;
-    for (const auto& center : brush.centers) edge = std::max(edge, brush.radius - (point - project(center)).Length());
+    for (const auto& center : brush.centers) {
+        edge = std::max(edge, brush.radius - (point - project(center)).Length());
+    }
     return CoverageFromEdge(brush, edge);
 }
 
 bool ValidateTerrainRegion(const scene::Transform& terrain, const TerrainScatterBrush& brush)
 {
     using namespace terrain_scatter_detail;
-    if (brush.centers.empty() || brush.centers.size() > TERRAIN_SCATTER_STROKE_LIMIT || !std::isfinite(brush.radius)
-        || brush.radius < 0.25f || brush.radius > TERRAIN_PAINT_MAX_BRUSH_RADIUS
-        || !std::isfinite(brush.feather) || brush.feather < 0 || brush.feather > 1) return false;
-    for (const auto& p : brush.centers) if (!Finite(p)) return false;
-    if (!brush.polygon) return true;
-    if (brush.centers.size() < 3) return false;
+    // 丸ブラシと多角形で共通の点数上限と減衰設定を確認する。
+    if (brush.centers.empty() || brush.centers.size() > TERRAIN_SCATTER_STROKE_LIMIT) {
+        return false;
+    }
+    if (!std::isfinite(brush.radius) || brush.radius < 0.25f || brush.radius > TERRAIN_PAINT_MAX_BRUSH_RADIUS) {
+        return false;
+    }
+    if (!std::isfinite(brush.feather) || brush.feather < 0 || brush.feather > 1) {
+        return false;
+    }
+    for (const auto& center : brush.centers) {
+        if (!Finite(center)) {
+            return false;
+        }
+    }
+    if (!brush.polygon) {
+        return true;
+    }
+    if (brush.centers.size() < 3) {
+        return false;
+    }
     const auto inverse = terrain.worldRotation.Inverse();
     std::vector<math::Vector3> points;
     points.reserve(brush.centers.size());
     for (const auto& p : brush.centers) {
         const auto point = inverse * (p - terrain.worldPosition);
-        if (!Finite(point)) return false;
+        if (!Finite(point)) {
+            return false;
+        }
         points.push_back(point);
     }
     const auto cross = [](const auto& a, const auto& b, const auto& c) { return (b.x - a.x) * (c.z - a.z) - (b.z - a.z) * (c.x - a.x); };
@@ -315,13 +370,17 @@ bool ValidateTerrainRegion(const scene::Transform& terrain, const TerrainScatter
     for (size_t i = 0; i < n; ++i) {
         const auto& a = points[i];
         const auto& b = points[(i + 1) % n];
-        if ((a - b).LengthSq() < 0.000001f) return false;
+        if ((a - b).LengthSq() < 0.000001f) {
+            return false;
+        }
         area += static_cast<double>(a.x) * b.z - static_cast<double>(a.z) * b.x;
         edges.push_back({i, (std::min)(a.x, b.x), (std::max)(a.x, b.x), (std::min)(a.z, b.z), (std::max)(a.z, b.z)});
     }
-    if (!std::isfinite(area) || std::abs(area) <= 0.0001) return false;
+    if (!std::isfinite(area) || std::abs(area) <= 0.0001) {
+        return false;
+    }
     std::sort(edges.begin(), edges.end(), [](const Edge& left, const Edge& right) { return left.minX < right.minX; });
-    /// @note Sorting by left edge avoids testing disjoint X intervals; touching intervals still need the crossing test.
+    // Sorting by left edge avoids testing disjoint X intervals; touching intervals still need the crossing test.
     for (size_t i = 0; i < n; ++i) {
         const auto& left = edges[i];
         const auto& a = points[left.index];
@@ -329,12 +388,16 @@ bool ValidateTerrainRegion(const scene::Transform& terrain, const TerrainScatter
         for (size_t j = i + 1; j < n && edges[j].minX <= left.maxX; ++j) {
             const auto& right = edges[j];
             if (left.minZ > right.maxZ || right.minZ > left.maxZ
-                || (left.index + 1) % n == right.index || (right.index + 1) % n == left.index) continue;
+                || (left.index + 1) % n == right.index || (right.index + 1) % n == left.index) {
+                continue;
+            }
             const auto& c = points[right.index];
             const auto& d = points[(right.index + 1) % n];
             const float first = cross(a,b,c) * cross(a,b,d);
             const float second = cross(c,d,a) * cross(c,d,b);
-            if (first <= 0 && second <= 0) return false;
+            if (first <= 0 && second <= 0) {
+                return false;
+            }
         }
     }
     return true;
@@ -348,53 +411,107 @@ bool BuildTerrainScatter(const scene::TerrainComponent& terrain,
     const std::function<TerrainPaintReason(const math::Vector3&)>& classify, const TerrainMapRaster* densityMap)
 {
     using namespace terrain_scatter_detail;
-    const auto fail = [&](const char* text) { reason = text; return false; };
+    const auto fail = [&](const char* text) {
+        reason = text;
+        return false;
+    };
+
+    // 範囲を検査する前に、全項目の非有限値を同じ診断で報告する。
     const float finiteValues[] = {settings.spacing, settings.density, settings.minHeight, settings.maxHeight,
         settings.minSlope, settings.maxSlope, settings.layerThreshold, settings.minScale, settings.maxScale,
         settings.minYaw, settings.maxYaw, settings.downslopeJitter, settings.embedDepth, settings.minimumDistance};
-    for (float value : finiteValues) if (!std::isfinite(value)) return fail("配置条件には有限の数値を指定してください。");
-    if (settings.spacing < 0.25f || settings.spacing > 10000.0f || settings.density < 0.0f || settings.density > 1.0f
-        || settings.minHeight > settings.maxHeight || settings.minSlope < 0.0f || settings.maxSlope > 90.0f
-        || settings.minSlope > settings.maxSlope || settings.layer < -1 || settings.layer >= terrain.LayerCount()
-        || settings.layerThreshold < 0.0f || settings.layerThreshold > 1.0f || settings.minScale < 0.01f
-        || settings.maxScale > 100.0f || settings.minScale > settings.maxScale || settings.minYaw < -360.0f
-        || settings.maxYaw > 360.0f || settings.minYaw > settings.maxYaw
-        || settings.downslopeJitter < 0.0f || settings.downslopeJitter > 180.0f
-        || settings.embedDepth < 0.0f || settings.embedDepth > 100.0f
-        || settings.minimumDistance < 0.0f || settings.minimumDistance > 10000.0f
-        || settings.maxInstances == 0 || settings.maxInstances > MAX_CANDIDATES
-        || settings.maxPlacementsPerCell > MAX_CANDIDATES)
-        return fail("配置条件の範囲または上下限が不正です。");
-    if (brush && settings.maxPlacementsPerCell != 0)
-        return fail("128mセルの配置予算は全地形散布で指定してください。");
-    if (!ValidTransform(terrainTransform) || !ValidTransform(targetTransform))
-        return fail("地形または配置先の Transform が非有限・非可逆です。");
-    const auto targetScale = targetTransform.worldScale;
-    if ((!brush || !brush->erase) && (targetScale.x <= 0.0f || std::abs(targetScale.y - targetScale.x) > targetScale.x * 0.00001f
-        || std::abs(targetScale.z - targetScale.x) > targetScale.x * 0.00001f
-        || settings.minScale / targetScale.x < 0.00001f))
-        return fail("配置先の world scale は正の一様 scale にしてください。");
-    if (terrain.columns < 2 || terrain.rows < 2 || terrain.columns > 4097 || terrain.rows > 4097
-        || terrain.heightData.size() != terrain.VertexCount() || !std::isfinite(terrain.cellSize) || terrain.cellSize <= 0.0f
-        || !std::isfinite(terrain.maxHeight) || (!terrain.holeData.empty() && terrain.holeData.size() != terrain.CellCount())
-        || ((!brush || !brush->erase) && settings.layer >= 0 && !terrain.HasValidSplat()))
-        return fail("地形の高さ・穴・層データが不正です。");
-    if (!brush) {
-        for (float value : terrain.heightData)
-            if (!std::isfinite(value) || !std::isfinite(value * terrain.maxHeight))
-                return fail("地形の高さに非有限値があります。");
+    for (float value : finiteValues) {
+        if (!std::isfinite(value)) {
+            return fail("配置条件には有限の数値を指定してください。");
+        }
     }
 
+    constexpr char INVALID_RANGE[] = "配置条件の範囲または上下限が不正です。";
+    const bool invalidSampling = settings.spacing < 0.25f || settings.spacing > 10000.0f
+        || settings.density < 0.0f || settings.density > 1.0f;
+    if (invalidSampling) {
+        return fail(INVALID_RANGE);
+    }
+    const bool invalidSurfaceFilter = settings.minHeight > settings.maxHeight
+        || settings.minSlope < 0.0f || settings.maxSlope > 90.0f || settings.minSlope > settings.maxSlope
+        || settings.layer < -1 || settings.layer >= terrain.LayerCount()
+        || settings.layerThreshold < 0.0f || settings.layerThreshold > 1.0f;
+    if (invalidSurfaceFilter) {
+        return fail(INVALID_RANGE);
+    }
+    const bool invalidPlacement = settings.minScale < 0.01f || settings.maxScale > 100.0f
+        || settings.minScale > settings.maxScale || settings.minYaw < -360.0f
+        || settings.maxYaw > 360.0f || settings.minYaw > settings.maxYaw
+        || settings.downslopeJitter < 0.0f || settings.downslopeJitter > 180.0f
+        || settings.embedDepth < 0.0f || settings.embedDepth > 100.0f;
+    if (invalidPlacement) {
+        return fail(INVALID_RANGE);
+    }
+    const bool invalidSpacingOrBudget = settings.minimumDistance < 0.0f || settings.minimumDistance > 10000.0f
+        || settings.maxInstances == 0 || settings.maxInstances > MAX_CANDIDATES
+        || settings.maxPlacementsPerCell > MAX_CANDIDATES;
+    if (invalidSpacingOrBudget) {
+        return fail(INVALID_RANGE);
+    }
+
+    // 配置先のスケールと地形データを確認する。消去ブラシでは新しい配置や層の検索を行わない。
+    if (brush && settings.maxPlacementsPerCell != 0) {
+        return fail("128mセルの配置予算は全地形散布で指定してください。");
+    }
+    if (!ValidTransform(terrainTransform) || !ValidTransform(targetTransform)) {
+        return fail("地形または配置先の Transform が非有限・非可逆です。");
+    }
+    const auto targetScale = targetTransform.worldScale;
+    const bool addsPlacements = !brush || !brush->erase;
+    if (addsPlacements) {
+        const bool invalidScale = targetScale.x <= 0.0f
+            || std::abs(targetScale.y - targetScale.x) > targetScale.x * 0.00001f
+            || std::abs(targetScale.z - targetScale.x) > targetScale.x * 0.00001f
+            || settings.minScale / targetScale.x < 0.00001f;
+        if (invalidScale) {
+            return fail("配置先の world scale は正の一様 scale にしてください。");
+        }
+    }
+
+    constexpr char INVALID_TERRAIN[] = "地形の高さ・穴・層データが不正です。";
+    const bool invalidDimensions = terrain.columns < 2 || terrain.rows < 2
+        || terrain.columns > 4097 || terrain.rows > 4097;
+    if (invalidDimensions || terrain.heightData.size() != terrain.VertexCount()) {
+        return fail(INVALID_TERRAIN);
+    }
+    const bool invalidHeightScale = !std::isfinite(terrain.cellSize) || terrain.cellSize <= 0.0f
+        || !std::isfinite(terrain.maxHeight);
+    if (invalidHeightScale) {
+        return fail(INVALID_TERRAIN);
+    }
+    if (!terrain.holeData.empty() && terrain.holeData.size() != terrain.CellCount()) {
+        return fail(INVALID_TERRAIN);
+    }
+    if (addsPlacements && settings.layer >= 0 && !terrain.HasValidSplat()) {
+        return fail(INVALID_TERRAIN);
+    }
+    if (!brush) {
+        for (float value : terrain.heightData) {
+            if (!std::isfinite(value) || !std::isfinite(value * terrain.maxHeight)) {
+                return fail("地形の高さに非有限値があります。");
+            }
+        }
+    }
+
+    // ブラシの範囲を地形平面へ写し、消去ならここで既存配置を間引く。
     const ScatterPlane plane{terrainTransform, terrainTransform.worldRotation.Inverse()};
     std::vector<math::Vector3> centers;
     std::optional<TerrainScatterCoverage> brushCoverage;
     if (brush) {
-        if (!ValidateTerrainRegion(terrainTransform, *brush))
+        if (!ValidateTerrainRegion(terrainTransform, *brush)) {
             return fail("ブラシは 1〜512 点、半径 0.25〜1024 m で指定してください。");
+        }
         centers.reserve(brush->centers.size());
         for (const auto& point : brush->centers) {
             const auto center = plane.Project(point);
-            if (!Finite(point) || !Finite(center)) return fail("ブラシの座標が不正です。");
+            if (!Finite(point) || !Finite(center)) {
+                return fail("ブラシの座標が不正です。");
+            }
             centers.push_back(center);
         }
         brushCoverage.emplace(terrainTransform, *brush);
@@ -408,16 +525,26 @@ bool BuildTerrainScatter(const scene::TerrainComponent& terrain,
             return true;
         }
     }
+    // ワールド間隔から格子の寸法を求め、添字や座標に変換できる範囲か確認する。
     const double width = static_cast<double>(terrain.columns - 1) * terrain.cellSize;
     const double depth = static_cast<double>(terrain.rows - 1) * terrain.cellSize;
     const double stepX = settings.spacing / std::abs(static_cast<double>(terrainTransform.worldScale.x));
     const double stepZ = settings.spacing / std::abs(static_cast<double>(terrainTransform.worldScale.z));
-    const double columns = std::ceil(width / stepX), rows = std::ceil(depth / stepZ);
-    if (!std::isfinite(columns) || !std::isfinite(rows) || columns < 1.0 || rows < 1.0
-        || columns > std::numeric_limits<uint32_t>::max() || rows > std::numeric_limits<uint32_t>::max()
-        || (!brush && columns * rows > MAX_CANDIDATES)
-        || width > std::numeric_limits<float>::max() || depth > std::numeric_limits<float>::max())
-        return fail("配置候補が 100 万件を超えます。間隔を広げてください。");
+    const double columns = std::ceil(width / stepX);
+    const double rows = std::ceil(depth / stepZ);
+    constexpr char INVALID_GRID[] = "配置候補が 100 万件を超えます。間隔を広げてください。";
+    const bool invalidGridDimensions = !std::isfinite(columns) || !std::isfinite(rows)
+        || columns < 1.0 || rows < 1.0
+        || columns > std::numeric_limits<uint32_t>::max() || rows > std::numeric_limits<uint32_t>::max();
+    if (invalidGridDimensions) {
+        return fail(INVALID_GRID);
+    }
+    if (!brush && columns * rows > MAX_CANDIDATES) {
+        return fail(INVALID_GRID);
+    }
+    if (width > std::numeric_limits<float>::max() || depth > std::numeric_limits<float>::max()) {
+        return fail(INVALID_GRID);
+    }
     const uint32_t nx = static_cast<uint32_t>(columns), nz = static_cast<uint32_t>(rows);
     const auto worldMatrix = terrainTransform.GetWorldMatrix();
     const auto targetInverseRotation = targetTransform.worldRotation.Inverse();
@@ -425,7 +552,7 @@ bool BuildTerrainScatter(const scene::TerrainComponent& terrain,
     std::unordered_set<uint64_t> occupied;
     std::unordered_set<uint32_t> usedIds;
     uint32_t nextId = 1;
-    /// @note 地形平面上の近傍だけを調べ、大量の既存配置でも全件対比較を避ける。
+    // 地形平面上の近傍だけを調べ、大量の既存配置でも全件対比較を避ける。
     std::map<std::pair<int64_t, int64_t>, std::vector<math::Vector3>> neighbors;
     const auto neighborhood = [&](const math::Vector3& position) {
         const auto p = plane.Project(position);
@@ -434,7 +561,9 @@ bool BuildTerrainScatter(const scene::TerrainComponent& terrain,
             static_cast<int64_t>(std::clamp(std::floor(p.z / distance), -1.0e12, 1.0e12))};
     };
     const auto remember = [&](const math::Vector3& position) {
-        if (settings.minimumDistance > 0.0f) neighbors[neighborhood(position)].push_back(plane.Project(position));
+        if (settings.minimumDistance > 0.0f) {
+            neighbors[neighborhood(position)].push_back(plane.Project(position));
+        }
     };
     const auto cellAt = [&](const math::Vector3& world) -> uint64_t {
         const auto p = plane.Project(world);
@@ -449,8 +578,12 @@ bool BuildTerrainScatter(const scene::TerrainComponent& terrain,
         for (const auto& placement : staged) {
             const auto point = targetWorld * math::Vector4{placement.position.x, placement.position.y, placement.position.z, 1.0f};
             const auto cell = cellAt({point.x, point.y, point.z});
-            if (cell != 0) occupied.insert(cell);
-            if (placement.active) remember({point.x, point.y, point.z});
+            if (cell != 0) {
+                occupied.insert(cell);
+            }
+            if (placement.active) {
+                remember({point.x, point.y, point.z});
+            }
             usedIds.insert(placement.id);
         }
     } else {
@@ -475,54 +608,76 @@ bool BuildTerrainScatter(const scene::TerrainComponent& terrain,
             const auto record = [&](TerrainPaintReason value) {
                 if (diagnostics) {
                     ++diagnostics->counts[static_cast<size_t>(value)];
-                    if (diagnostics->counts[static_cast<size_t>(value)] <= 64 && value != TerrainPaintReason::ACCEPTED)
+                    if (diagnostics->counts[static_cast<size_t>(value)] <= 64 && value != TerrainPaintReason::ACCEPTED) {
                         diagnostics->points.push_back({worldPosition, value});
+                    }
                 }
                 return true;
             };
-            if (terrain.IsHoleAtLocal(localX, localZ)) return record(TerrainPaintReason::HOLE);
+            if (terrain.IsHoleAtLocal(localX, localZ)) {
+                return record(TerrainPaintReason::HOLE);
+            }
             const float weight = settings.layer < 0 ? 1.0f : SampleTerrainLayerWeight(terrain, localX, localZ, settings.layer);
-            if (weight <= 0.0f || weight < settings.layerThreshold) return record(TerrainPaintReason::LAYER);
+            if (weight <= 0.0f || weight < settings.layerThreshold) {
+                return record(TerrainPaintReason::LAYER);
+            }
             const float coverage = brushCoverage ? brushCoverage->At(worldPosition) : 1.0f;
             const float densityWeight = densityMap ? densityMap->Sample(static_cast<float>(localX / width),
                 static_cast<float>(localZ / depth)) : 1.0f;
-            if (UnitRandom(key, 3) >= settings.density * weight * coverage * densityWeight) return record(TerrainPaintReason::DENSITY);
+            if (UnitRandom(key, 3) >= settings.density * weight * coverage * densityWeight) {
+                return record(TerrainPaintReason::DENSITY);
+            }
             math::Vector3 worldNormal;
-            if (!Finite(worldPosition) || !scene::TryTerrainNormalToWorld(terrainTransform, terrain.GetNormalAt(localX, localZ), worldNormal))
+            if (!Finite(worldPosition) || !scene::TryTerrainNormalToWorld(terrainTransform, terrain.GetNormalAt(localX, localZ), worldNormal)) {
                 return fail("配置点の座標または法線を有限の値で表せません。");
+            }
             const float slope = math::ToDeg(std::acos(std::clamp(worldNormal.y, -1.0f, 1.0f)));
-            if (worldPosition.y < settings.minHeight || worldPosition.y > settings.maxHeight) return record(TerrainPaintReason::HEIGHT);
-            if (slope < settings.minSlope || slope > settings.maxSlope) return record(TerrainPaintReason::SLOPE);
+            if (worldPosition.y < settings.minHeight || worldPosition.y > settings.maxHeight) {
+                return record(TerrainPaintReason::HEIGHT);
+            }
+            if (slope < settings.minSlope || slope > settings.maxSlope) {
+                return record(TerrainPaintReason::SLOPE);
+            }
             if (classify) { const auto rejected = classify(worldPosition); if (rejected != TerrainPaintReason::ACCEPTED) return record(rejected); }
-            if (accepts && !accepts(worldPosition)) return record(TerrainPaintReason::OBSTACLE);
+            if (accepts && !accepts(worldPosition)) {
+                return record(TerrainPaintReason::OBSTACLE);
+            }
             if (settings.minimumDistance > 0.0f) {
                 const auto cell = neighborhood(worldPosition);
                 const auto projected = plane.Project(worldPosition);
                 for (int64_t dz = -1; dz <= 1; ++dz) for (int64_t dx = -1; dx <= 1; ++dx) {
                     const auto found = neighbors.find({cell.first + dx, cell.second + dz});
                     if (found != neighbors.end()) for (const auto& other : found->second)
-                        if ((projected - other).LengthSq() < settings.minimumDistance * settings.minimumDistance) return record(TerrainPaintReason::SPACING);
+                        if ((projected - other).LengthSq() < settings.minimumDistance * settings.minimumDistance) {
+                            return record(TerrainPaintReason::SPACING);
+                        }
                 }
             }
             const auto embeddedPosition = worldPosition - worldNormal * settings.embedDepth;
             if (brush) {
                 const auto cell = cellAt(embeddedPosition);
-                if (occupied.contains(id) || (cell && !occupied.insert(cell).second)) return record(TerrainPaintReason::OCCUPIED);
+                if (occupied.contains(id) || (cell && !occupied.insert(cell).second)) {
+                    return record(TerrainPaintReason::OCCUPIED);
+                }
             }
-            if (settings.maxPlacementsPerCell == 0 && staged.size() >= settings.maxInstances)
+            if (settings.maxPlacementsPerCell == 0 && staged.size() >= settings.maxInstances) {
                 return fail("配置数が上限を超えます。密度を下げるか上限を増やしてください。");
+            }
             const auto rotation = PlacementRotation(settings, worldNormal, UnitRandom(key, 4));
             const float scale = std::lerp(settings.minScale, settings.maxScale, UnitRandom(key, 5)) / targetScale.x;
             uint32_t instanceId = static_cast<uint32_t>(id);
             if (brush && (id > static_cast<uint64_t>(std::numeric_limits<int>::max()) || !usedIds.insert(instanceId).second)) {
-                while (!usedIds.insert(nextId).second) ++nextId;
+                while (!usedIds.insert(nextId).second) {
+                    ++nextId;
+                }
                 instanceId = nextId++;
             }
             renderer::InstancePlacement placement{instanceId,
                 (targetInverseRotation * (embeddedPosition - targetTransform.worldPosition)) / targetScale.x,
                 EulerRadians((targetInverseRotation * rotation).Normalized()), {scale, scale, scale}, true};
-            if (!Finite(placement.position) || !Finite(placement.eulerRadians) || !Finite(placement.scale))
+            if (!Finite(placement.position) || !Finite(placement.eulerRadians) || !Finite(placement.scale)) {
                 return fail("配置先のローカル変換を有限の値で表せません。");
+            }
             record(TerrainPaintReason::ACCEPTED);
             staged.push_back(placement);
             remember(worldPosition);
@@ -538,52 +693,76 @@ bool BuildTerrainScatter(const scene::TerrainComponent& terrain,
         const float scaleX = std::abs(terrainTransform.worldScale.x), scaleZ = std::abs(terrainTransform.worldScale.z);
         if (brush->polygon) {
             math::Vector3 lo{INFINITY,0,INFINITY}, hi{-INFINITY,0,-INFINITY};
-            for (const auto& c : centers) { lo.x=std::min(lo.x,c.x);lo.z=std::min(lo.z,c.z);hi.x=std::max(hi.x,c.x);hi.z=std::max(hi.z,c.z); }
+            for (const auto& c : centers) {
+                lo.x=std::min(lo.x,c.x);
+                lo.z=std::min(lo.z,c.z);
+                hi.x=std::max(hi.x,c.x);
+                hi.z=std::max(hi.z,c.z);
+            }
             const auto x0=bound(lo.x,columns),x1=bound(hi.x,columns),z0=bound(lo.z,rows),z1=bound(hi.z,rows);
-            if ((x1-x0+1)*(z1-z0+1)>MAX_CANDIDATES) return fail("範囲の候補が100万件を超えます。範囲を分けてください。");
+            if ((x1-x0+1)*(z1-z0+1)>MAX_CANDIDATES) {
+                return fail("範囲の候補が100万件を超えます。範囲を分けてください。");
+            }
             for(uint64_t z=z0;z<=z1;++z) for(uint64_t x=x0;x<=x1;++x) {
                 const auto p=sample(static_cast<uint32_t>(x),static_cast<uint32_t>(z));
                 const auto w=worldMatrix*math::Vector4{p,1};
-                if (brushCoverage->At({w.x,w.y,w.z}) > 0.0f) covered.insert(z*nx+x);
+                if (brushCoverage->At({w.x,w.y,w.z}) > 0.0f) {
+                    covered.insert(z*nx+x);
+                }
             }
         }
         for (const auto& center : centers) {
-            if (brush->polygon) break;
+            if (brush->polygon) {
+                break;
+            }
             if (center.x + brush->radius < 0.0f || center.z + brush->radius < 0.0f
-                || center.x - brush->radius > width * scaleX || center.z - brush->radius > depth * scaleZ) continue;
+                || center.x - brush->radius > width * scaleX || center.z - brush->radius > depth * scaleZ) {
+                continue;
+            }
             const auto x0 = bound(static_cast<double>(center.x) - brush->radius, columns);
             const auto x1 = bound(static_cast<double>(center.x) + brush->radius, columns);
             const auto z0 = bound(static_cast<double>(center.z) - brush->radius, rows);
             const auto z1 = bound(static_cast<double>(center.z) + brush->radius, rows);
             const auto columnCount = x1 - x0 + 1, rowCount = z1 - z0 + 1;
-            if (columnCount > (MAX_CANDIDATES - visits) / rowCount)
+            if (columnCount > (MAX_CANDIDATES - visits) / rowCount) {
                 return fail("ブラシ候補が 100 万件を超えます。半径またはストロークを小さくしてください。");
+            }
             visits += columnCount * rowCount;
             for (uint64_t z = z0; z <= z1; ++z) {
                 for (uint64_t x = x0; x <= x1; ++x) {
                     const auto local = sample(static_cast<uint32_t>(x), static_cast<uint32_t>(z));
                     const math::Vector3 point{local.x * scaleX, 0.0f, local.z * scaleZ};
-                    if ((point - center).LengthSq() <= radiusSq) covered.insert(z * nx + x);
+                    if ((point - center).LengthSq() <= radiusSq) {
+                        covered.insert(z * nx + x);
+                    }
                 }
             }
         }
         std::vector<uint64_t> order(covered.begin(), covered.end());
         std::sort(order.begin(), order.end());
         for (uint64_t cell : order)
-            if (!place(static_cast<uint32_t>(cell % nx), static_cast<uint32_t>(cell / nx))) return false;
+            if (!place(static_cast<uint32_t>(cell % nx), static_cast<uint32_t>(cell / nx))) {
+                return false;
+            }
     } else if (!brush) {
         for (uint32_t z = 0; z < nz && settings.density > 0.0f; ++z) {
             for (uint32_t x = 0; x < nx; ++x)
-                if (!place(x, z)) return false;
+                if (!place(x, z)) {
+                    return false;
+                }
         }
     }
     if (settings.maxPlacementsPerCell != 0) {
         if (!ApplyPlacementCellBudget(staged, targetTransform.GetWorldMatrix(), settings.maxPlacementsPerCell,
-            settings.seed, diagnostics)) return fail("配置点が128mセルの座標範囲を超えます。");
-        if (staged.size() > settings.maxInstances) return fail("セル予算を適用しても全体の配置上限を超えます。");
+            settings.seed, diagnostics)) {
+            return fail("配置点が128mセルの座標範囲を超えます。");
+        }
+        if (staged.size() > settings.maxInstances) {
+            return fail("セル予算を適用しても全体の配置上限を超えます。");
+        }
     }
     placements = std::move(staged);
     reason.clear();
     return true;
 }
-} /// @note namespace fbzz::editor
+} // namespace fbzz::editor

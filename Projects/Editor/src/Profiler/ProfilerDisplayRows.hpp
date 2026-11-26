@@ -31,8 +31,13 @@ public:
 
     void Clear()
     {
-        m_rows.clear(); m_session = 0; m_serial = 0; m_context.clear();
-        m_initialized = false; m_limited = false; ++m_generation;
+        m_rows.clear();
+        m_session = 0;
+        m_serial = 0;
+        m_context.clear();
+        m_initialized = false;
+        m_limited = false;
+        ++m_generation;
     }
 
     /// @note Context/session changes clear identity; seek and Freeze changes clear values but preserve widget identity.
@@ -40,32 +45,44 @@ public:
         const std::vector<Row>& incoming)
     {
         if (!m_initialized || m_session != session || m_context != context) {
-            Clear(); m_initialized = true; m_session = session; m_context = context;
+            Clear();
+            m_initialized = true;
+            m_session = session;
+            m_context = context;
         } else if (serial < m_serial || frozen != m_frozen || (frozen && serial != m_serial)) {
             m_rows.clear();
-        } else if (serial == m_serial) return;
-        m_serial = serial; m_frozen = frozen; m_limited = false;
+        } else if (serial == m_serial) {
+            return;
+        }
+        m_serial = serial;
+        m_frozen = frozen;
+        m_limited = false;
         m_rows.erase(std::remove_if(m_rows.begin(), m_rows.end(), [&](const Entry& entry) {
             return serial > entry.lastSeenFrame && serial - entry.lastSeenFrame > RETAIN_FRAMES;
         }), m_rows.end());
-        if (m_rows.capacity() < m_maxRows) m_rows.reserve(m_maxRows);
+        if (m_rows.capacity() < m_maxRows) {
+            m_rows.reserve(m_maxRows);
+        }
         size_t bytes = m_rows.capacity() * sizeof(Entry) + m_context.capacity() + 1;
-        /// @note The temporary lookup's nodes and buckets are conservatively charged at 128 bytes per retained row.
+        // The temporary lookup's nodes and buckets are conservatively charged at 128 bytes per retained row.
         bytes += m_maxRows * 128;
         std::unordered_map<std::string_view, size_t> indices;
         indices.reserve(m_maxRows);
         for (size_t i = 0; i < m_rows.size(); ++i) {
-            auto& entry = m_rows[i]; entry.present = false;
-            bytes += entry.value.DynamicBytes(); indices.emplace(entry.value.key, i);
+            auto& entry = m_rows[i];
+            entry.present = false;
+            bytes += entry.value.DynamicBytes();
+            indices.emplace(entry.value.key, i);
         }
         for (const auto& row : incoming) {
             const auto found = indices.find(row.key);
             const size_t previous = found == indices.end() ? 0 : m_rows[found->second].value.DynamicBytes();
-            /// @note Copy growth is charged before allocating; oversized rows remain explicitly omitted.
+            // Copy growth is charged before allocating; oversized rows remain explicitly omitted.
             const size_t candidate = row.DynamicBytes() * 2 + 128;
             if (bytes - previous > m_maxBytes || candidate > m_maxBytes - (std::min)(bytes - previous, m_maxBytes) ||
                 (found == indices.end() && m_rows.size() == m_maxRows)) {
-                m_limited = true; continue;
+                m_limited = true;
+                continue;
             }
             if (found == indices.end()) {
                 m_rows.push_back({row, serial, true});
@@ -73,10 +90,14 @@ public:
                 bytes += m_rows.back().value.DynamicBytes();
             } else {
                 auto& entry = m_rows[found->second];
-                /// @note Erase before assignment: small-string storage can invalidate the lookup's string_view.
-                const size_t index = found->second; indices.erase(found);
-                entry.value = row; entry.lastSeenFrame = serial; entry.present = true;
-                indices.emplace(entry.value.key, index); bytes = bytes - previous + entry.value.DynamicBytes();
+                // Erase before assignment: small-string storage can invalidate the lookup's string_view.
+                const size_t index = found->second;
+                indices.erase(found);
+                entry.value = row;
+                entry.lastSeenFrame = serial;
+                entry.present = true;
+                indices.emplace(entry.value.key, index);
+                bytes = bytes - previous + entry.value.DynamicBytes();
             }
         }
     }
@@ -109,7 +130,9 @@ public:
     {
         std::unordered_map<std::string_view, size_t> ranks;
         ranks.reserve(m_keys.size());
-        for (size_t i = 0; i < m_keys.size(); ++i) ranks.emplace(m_keys[i], i);
+        for (size_t i = 0; i < m_keys.size(); ++i) {
+            ranks.emplace(m_keys[i], i);
+        }
         const auto rank = [&](const Row& row) {
             const auto found = ranks.find(key(row));
             return found == ranks.end() ? m_keys.size() : found->second;
@@ -117,10 +140,14 @@ public:
         std::stable_sort(rows.begin(), rows.end(), [&](const Row& a, const Row& b) { return rank(a) < rank(b); });
         if (changed || signature != m_signature || nowMs >= m_nextRefreshMs) {
             std::stable_sort(rows.begin(), rows.end(), less);
-            m_nextRefreshMs = nowMs + 100.0; m_signature = signature;
+            m_nextRefreshMs = nowMs + 100.0;
+            m_signature = signature;
         }
-        m_keys.clear(); m_keys.reserve(rows.size());
-        for (const auto& row : rows) m_keys.emplace_back(key(row));
+        m_keys.clear();
+        m_keys.reserve(rows.size());
+        for (const auto& row : rows) {
+            m_keys.emplace_back(key(row));
+        }
     }
 
 private:
@@ -129,4 +156,4 @@ private:
     int m_signature = -1;
 };
 
-} /// @note namespace fbzz::editor::detail
+} // namespace fbzz::editor::detail

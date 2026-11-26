@@ -40,8 +40,8 @@ private:
     enum class Tab { NONE, PREVIEW, GRAPH, RESOURCES };
 
     struct PassKey {
-        std::string name;
-        std::size_t occurrence = 0;
+        std::string name; ///< 描画パスの名前。
+        std::size_t occurrence = 0; ///< 同じ名前で実行されるパスを区別する出現順。
         bool operator==(const PassKey&) const = default;
     };
 
@@ -58,22 +58,22 @@ private:
     void DrawSelection(EditorContext& ctx);
     void DrawPreview(EditorContext& ctx);
     /// @brief ホイール拡大・ドラッグ移動・ダブルクリックで全体表示を持つ画像キャンバス。
-    /// @param overlay 画像に重ねる注記。nullptr なら出さない。
+    /// @param[in] overlay 画像に重ねる注記。nullptr なら出さない。
     void DrawImageCanvas(ImTextureID texture, float width, float height, const char* overlay);
     void DrawGraph(EditorContext& ctx);
     void DrawGallery(EditorContext& ctx);
-    /// @param inlineRow true なら直前の項目に続けて横へ流し、幅が尽きたら折り返す。
+    /// @param[in] inlineRow true なら直前の項目に続けて横へ流し、幅が尽きたら折り返す。
     void DrawViewSettings(Capture::ViewSettings& view, bool inlineRow);
     /// @brief パス 1 本の上書き (有効・カリング・追加 Read)。
     /// @note 一覧の行・図のノード・詳細帯・«無効化して一覧から消えたパス» の復帰行から共通で呼ぶ。
     void DrawPassOverride(EditorContext& ctx, const std::string& passName);
     void DrawPassTooltip(const Capture::PassInfo& pass) const;
     /// @brief リソースの生産者・消費者へ飛ぶメニュー項目。
-    /// @param passIndex 基準にするパス (m_passes 上)。NPOS ならフレーム末尾基準。
+    /// @param[in] passIndex 基準にするパス (m_passes 上)。NPOS ならフレーム末尾基準。
     void DrawResourceLinks(const std::string& resource, std::size_t passIndex);
 
     /// @brief 選択を差し替える。出力の固定と表示設定はここで持ち越す。
-    /// @param record 戻る / 進むの履歴へ積むか。履歴移動そのものでは積まない。
+    /// @param[in] record 戻る / 進むの履歴へ積むか。履歴移動そのものでは積まない。
     void SelectPass(const std::string& passName, std::size_t occurrence, bool record = true);
     /// @brief 選択を差し替え、一覧と図の双方でその位置まで送る。
     void RevealPass(std::size_t passIndex);
@@ -92,58 +92,52 @@ private:
     /// @return afterIndex の書き込みを読む実行パス。次の書き込みで打ち切る。
     [[nodiscard]] std::vector<std::size_t> ConsumersOf(const std::string& resource, std::size_t afterIndex) const;
 
-    Capture m_capture;
-    renderer::ResourceManager* m_resources = nullptr;
+    Capture m_capture; ///< 現在描画中のビューからパスとリソースを受け取り、プレビューへ渡す捕捉状態。
+    renderer::ResourceManager* m_resources = nullptr; ///< 捕捉した画像を解決・解放するときに借りる ResourceManager。
 
-    /// @brief 最後に中身があったフレームのパス一覧。実行パスが先、カリング分が末尾。
-    std::vector<Capture::PassInfo> m_passes;
-    /// @brief m_passes が今フレームの捕捉か。
-    bool m_live = false;
-    std::size_t m_executedCount = 0;
-    double m_totalCpuMs = 0.0;
-    double m_totalGpuMs = 0.0;
-    double m_slowestMs = 0.0;
+    std::vector<Capture::PassInfo> m_passes; ///< 最後に中身があったフレームのパス一覧。実行パスが先、カリング分が末尾。
+    bool m_live = false; ///< m_passes が今フレームの捕捉か。
+    std::size_t m_executedCount = 0; ///< 控えた一覧のうち、実行された描画パスの件数。
+    double m_totalCpuMs = 0.0; ///< 控えた描画パスの CPU 所要時間の合計 [ms]。
+    double m_totalGpuMs = 0.0; ///< 控えた描画パスの GPU 所要時間の合計 [ms]。
+    double m_slowestMs = 0.0; ///< パスの色分けに使う、控えた一覧で最も長い所要時間 [ms]。
 
-    /// @brief 表示順に並んだ «いま行になっているパス»。↑↓ の送り先。
-    std::vector<PassKey> m_visibleOrder;
-    std::vector<PassKey> m_history;
-    std::size_t m_historyPos = 0;
-    Tab m_tabRequest = Tab::NONE;
-    /// @note マウスで選んだ行は動かさない。キー送りや他タブから飛んだときだけ立てる。
-    bool m_scrollToSelected = false;
-    bool m_scrollToGraphNode = false;
+    std::vector<PassKey> m_visibleOrder; ///< 表示順に並んだ «いま行になっているパス»。↑↓ の送り先。
+    std::vector<PassKey> m_history; ///< 戻る・進む操作に使う選択パスの履歴。
+    std::size_t m_historyPos = 0; ///< m_history 内で現在表示している項目の添字。
+    Tab m_tabRequest = Tab::NONE; ///< 次の描画で選択するタブ。NONE なら切り替えなし。
+    bool m_scrollToSelected = false; ///< マウスで選んだ行は動かさない。キー送りや他タブから飛んだときだけ立てる。
+    bool m_scrollToGraphNode = false; ///< 別の UI から選択したパスをグラフ上で表示位置へ送る要求。
     /// @brief 出力名の固定。空なら各パスの主出力。
     /// @note 深度や G-Buffer を見たままパスを送るため。持たないパスでは主出力へ落ち、持つパスで復帰する。
-    std::string m_pinnedOutput;
+    std::string m_pinnedOutput; ///< 別のパスに移動しても優先したい出力リソースの名前。空なら主出力。
 
-    ImGuiTextFilter m_filter;
-    ImGuiTextFilter m_galleryFilter;
-    bool m_gameView = false;
-    bool m_capturedGameView = false;
-    bool m_snapshotGameView = false;
-    bool m_captureActive = false;
-    bool m_apiCapture = false;
-    bool m_apiGallery = false;
-    bool m_showCulled = true;
-    bool m_galleryIssuesOnly = false;
-    float m_tileZoom = 1.0f;
+    ImGuiTextFilter m_filter; ///< 描画パスの一覧に対する検索条件。
+    ImGuiTextFilter m_galleryFilter; ///< 捕捉画像ギャラリーに対する検索条件。
+    bool m_gameView = false; ///< 捕捉と表示の対象を Game View にするか。false なら Scene View。
+    bool m_capturedGameView = false; ///< 最新の捕捉データが Game View に対応するか。
+    bool m_snapshotGameView = false; ///< 表示用として保存したスナップショットが Game View に対応するか。
+    bool m_captureActive = false; ///< パネル表示または API 要求により捕捉中か。
+    bool m_apiCapture = false; ///< Editor API がパネル非表示中も捕捉を必要としているか。
+    bool m_apiGallery = false; ///< Editor API がギャラリー用の画像も必要としているか。
+    bool m_showCulled = true; ///< 実行されなかった描画パスも一覧に表示するか。
+    bool m_galleryIssuesOnly = false; ///< ギャラリーの表示対象を診断のある画像に絞るか。
+    float m_tileZoom = 1.0f; ///< ギャラリーのサムネイルの表示倍率。
 
-    /// @brief 最後に画像が取れた要求。捕捉が途切れても同じパスの間は絵を残す。
-    Capture::Request m_lastPreview;
-    bool m_lastPreviewValid = false;
-    bool m_lastPreviewGameView = false;
-    bool m_fit = true;
-    float m_zoom = 1.0f;
-    float m_panX = 0.0f;
-    float m_panY = 0.0f;
+    Capture::Request m_lastPreview; ///< 最後に画像が取れた要求。捕捉が途切れても同じパスの間は絵を残す。
+    bool m_lastPreviewValid = false; ///< 前回のプレビューが、現在も表示候補として利用できるか。
+    bool m_lastPreviewGameView = false; ///< 前回表示したプレビューが Game View に対応するか。
+    bool m_fit = true; ///< プレビュー画像全体をキャンバスの範囲へ合わせて表示するか。
+    float m_zoom = 1.0f; ///< 手動調整したプレビュー画像の表示倍率。
+    float m_panX = 0.0f; ///< プレビュー画像の横方向の表示オフセット。
+    float m_panY = 0.0f; ///< プレビュー画像の縦方向の表示オフセット。
 
-    bool m_graphHeat = true;
-    bool m_graphNeedsFit = true;
-    float m_graphZoom = 1.0f;
-    float m_graphPanX = 0.0f;
-    float m_graphPanY = 0.0f;
-    /// @brief 図の右クリックメニューの対象。
-    std::string m_graphMenuPass;
+    bool m_graphHeat = true; ///< 依存グラフを描画パスの計測時間で色分けするか。
+    bool m_graphNeedsFit = true; ///< 次の描画で依存グラフ全体をビューへ収める要求。
+    float m_graphZoom = 1.0f; ///< 描画パスの依存グラフの表示倍率。
+    float m_graphPanX = 0.0f; ///< 依存グラフの横方向の表示オフセット。
+    float m_graphPanY = 0.0f; ///< 依存グラフの縦方向の表示オフセット。
+    std::string m_graphMenuPass; ///< 図の右クリックメニューの対象。
 };
 
-} /// @note namespace fbzz::editor
+} // namespace fbzz::editor

@@ -31,7 +31,9 @@ const char* NormalMapConventionToString(NormalMapConvention value)
 
 NormalMapConvention StringToNormalMapConvention(std::string_view value)
 {
-    if (value == "OpenGL") return NormalMapConvention::OpenGL;
+    if (value == "OpenGL") {
+        return NormalMapConvention::OpenGL;
+    }
     return NormalMapConvention::DirectX;
 }
 
@@ -47,8 +49,12 @@ const char* FbxSourceDccToString(FbxSourceDcc value)
 
 FbxSourceDcc StringToFbxSourceDcc(std::string_view value)
 {
-    if (value == "Maya")    return FbxSourceDcc::Maya;
-    if (value == "Blender") return FbxSourceDcc::Blender;
+    if (value == "Maya") {
+        return FbxSourceDcc::Maya;
+    }
+    if (value == "Blender") {
+        return FbxSourceDcc::Blender;
+    }
     return FbxSourceDcc::Auto;
 }
 
@@ -69,32 +75,50 @@ const char* TextureCompressionToString(asset::TextureCompression value)
 
 asset::TextureCompression StringToTextureCompression(std::string_view value)
 {
-    if (value == "BC1")  return asset::TextureCompression::BC1;
-    if (value == "BC3")  return asset::TextureCompression::BC3;
-    if (value == "BC4")  return asset::TextureCompression::BC4;
-    if (value == "BC5")  return asset::TextureCompression::BC5;
-    if (value == "BC6H") return asset::TextureCompression::BC6H;
-    if (value == "BC7")  return asset::TextureCompression::BC7;
-    if (value == "None") return asset::TextureCompression::None;
+    if (value == "BC1") {
+        return asset::TextureCompression::BC1;
+    }
+    if (value == "BC3") {
+        return asset::TextureCompression::BC3;
+    }
+    if (value == "BC4") {
+        return asset::TextureCompression::BC4;
+    }
+    if (value == "BC5") {
+        return asset::TextureCompression::BC5;
+    }
+    if (value == "BC6H") {
+        return asset::TextureCompression::BC6H;
+    }
+    if (value == "BC7") {
+        return asset::TextureCompression::BC7;
+    }
+    if (value == "None") {
+        return asset::TextureCompression::None;
+    }
     return asset::TextureCompression::Auto;
 }
 
 toml::array ToTomlArray(const std::vector<std::string>& values)
 {
     toml::array arr;
-    for (const std::string& value : values)
+    for (const std::string& value : values) {
         arr.push_back(value);
+    }
     return arr;
 }
 
 std::vector<std::string> ReadStringArray(const toml::array* arr)
 {
     std::vector<std::string> values;
-    if (!arr) return values;
+    if (!arr) {
+        return values;
+    }
     values.reserve(arr->size());
     for (const auto& item : *arr) {
-        if (auto value = item.value<std::string>())
+        if (auto value = item.value<std::string>()) {
             values.push_back(*value);
+        }
     }
     return values;
 }
@@ -106,9 +130,11 @@ toml::array ToTomlArray(const std::vector<AnimationClipImportSettings>& clips)
 {
     toml::array arr;
     for (const AnimationClipImportSettings& clip : clips) {
-        if (clip.name.empty()) continue;
+        if (clip.name.empty()) {
+            continue;
+        }
         if (!clip.loop && clip.startFrame == 0.0 && clip.endFrame < 0.0 && clip.outputName.empty())
-            /// @note 既定と同じなら省略
+            // 既定と同じなら省略
             continue;
         toml::table entry;
         entry.insert("name", clip.name);
@@ -124,14 +150,22 @@ toml::array ToTomlArray(const std::vector<AnimationClipImportSettings>& clips)
 std::vector<AnimationClipImportSettings> ReadClipSettings(const toml::array* arr)
 {
     std::vector<AnimationClipImportSettings> clips;
-    if (!arr) return clips;
+    if (!arr) {
+        return clips;
+    }
     clips.reserve(arr->size());
     for (const auto& item : *arr) {
         const toml::table* entry = item.as_table();
-        if (!entry) continue;
+        if (!entry) {
+            continue;
+        }
         AnimationClipImportSettings settings;
-        if (auto value = (*entry)["name"].value<std::string>()) settings.name = *value;
-        if (settings.name.empty()) continue;
+        if (auto value = (*entry)["name"].value<std::string>()) {
+            settings.name = *value;
+        }
+        if (settings.name.empty()) {
+            continue;
+        }
         settings.loop = (*entry)["loop"].value_or(false);
         settings.startFrame = (*entry)["start_frame"].value_or(0.0);
         settings.endFrame = (*entry)["end_frame"].value_or(-1.0);
@@ -159,8 +193,8 @@ std::string Hex64(uint64_t value)
 
 std::string ComputeSettingsHash(const FbxImportOptions& options)
 {
-    /// @note インポータ版数をハッシュへ含める。これで版数を上げると settings_hash が変わり、
-    /// @note Library/Baked のコンテナも別キーになるので古い Bake が再利用されない。
+    // インポータ版数をハッシュへ含める。これで版数を上げると settings_hash が変わり、
+    // Library/Baked のコンテナも別キーになるので古い Bake が再利用されない。
     uint64_t hash = Fnv1a("iv:" + std::to_string(FbxMetaSerializer::kModelImporterVersion));
     hash = Fnv1a(FbxSourceDccToString(options.sourceDcc), hash);
     hash = Fnv1a(std::to_string(static_cast<int>(options.upAxis)), hash);
@@ -171,17 +205,20 @@ std::string ComputeSettingsHash(const FbxImportOptions& options)
     hash = Fnv1a(options.generateTexDescriptors ? "tex:1" : "tex:0", hash);
     hash = Fnv1a(TextureCompressionToString(options.defaultCompression), hash);
     hash = Fnv1a("root_motion:" + options.rootMotionNodeName, hash);
-    for (const std::string& meshName : options.selectedMeshNames)
+    for (const std::string& meshName : options.selectedMeshNames) {
         hash = Fnv1a("mesh:" + meshName, hash);
-    for (const std::string& animName : options.selectedAnimNames)
+    }
+    for (const std::string& animName : options.selectedAnimNames) {
         hash = Fnv1a("anim:" + animName, hash);
-    /// @note クリップ設定もハッシュへ含める。これで Loop Time を切り替えるだけで
-    /// @note settings_hash が変わり、既存の再インポート判定がそのまま走る
-    /// @note (専用の「再インポートが要るか」判定を足さなくて済む)。
+    }
+    // クリップ設定もハッシュへ含める。これで Loop Time を切り替えるだけで
+    // settings_hash が変わり、既存の再インポート判定がそのまま走る
+    // (専用の「再インポートが要るか」判定を足さなくて済む)。
     for (const AnimationClipImportSettings& clip : options.clipSettings) {
-        /// @note 既定値のクリップは .meta にもハッシュにも不要。
-        if (!clip.loop && clip.startFrame == 0.0 && clip.endFrame < 0.0 && clip.outputName.empty())
+        // 既定値のクリップは .meta にもハッシュにも不要。
+        if (!clip.loop && clip.startFrame == 0.0 && clip.endFrame < 0.0 && clip.outputName.empty()) {
             continue;
+        }
         hash = Fnv1a("clip:" + clip.name, hash);
         hash = Fnv1a(clip.loop ? "loop:1" : "loop:0", hash);
         hash = Fnv1a(std::to_string(clip.startFrame), hash);
@@ -197,7 +234,9 @@ std::string ComputeSettingsHash(const FbxImportOptions& options)
 std::string ComputeContentHash(const std::string& fbxAbsPath)
 {
     std::ifstream in(util::FileSystem::PathFromUtf8(fbxAbsPath), std::ios::binary);
-    if (!in) return {};
+    if (!in) {
+        return {};
+    }
 
     uint64_t hash  = 1469598103934665603ull;
     uint64_t total = 0;
@@ -209,10 +248,12 @@ std::string ComputeContentHash(const std::string& fbxAbsPath)
             hash *= 1099511628211ull;
         }
         total += static_cast<uint64_t>(read);
-        /// @note 最終ブロックを読み終えた (eofbit が立っている)
-        if (!in) break;
+        // 最終ブロックを読み終えた (eofbit が立っている)
+        if (!in) {
+            break;
+        }
     }
-    /// @note 長さも混ぜる。FNV は末尾のゼロ埋めに鈍いので、伸びただけの差を落とさないため。
+    // 長さも混ぜる。FNV は末尾のゼロ埋めに鈍いので、伸びただけの差を落とさないため。
     return Hex64(Fnv1a(std::to_string(total), hash));
 }
 
@@ -223,9 +264,13 @@ std::string ComputeLegacyStampHash(const std::string& fbxAbsPath)
     std::error_code ec;
     const fs::path path = util::FileSystem::PathFromUtf8(fbxAbsPath);
     const uintmax_t size = fs::file_size(path, ec);
-    if (ec) return {};
+    if (ec) {
+        return {};
+    }
     const auto writeTime = fs::last_write_time(path, ec);
-    if (ec) return {};
+    if (ec) {
+        return {};
+    }
 
     uint64_t hash = Fnv1a(util::FileSystem::NormalizePathSeparators(fbxAbsPath));
     hash = Fnv1a(std::to_string(size), hash);
@@ -237,13 +282,15 @@ toml::table LoadExistingRoot(const std::string& metaPath)
 {
     toml::table root;
     std::string text;
-    if (!util::FileSystem::ReadText(metaPath, text))
+    if (!util::FileSystem::ReadText(metaPath, text)) {
         return root;
+    }
 
     std::istringstream ss(text);
     const auto parsed = toml::parse(ss);
-    if (parsed)
+    if (parsed) {
         root = parsed.table();
+    }
     return root;
 }
 
@@ -277,7 +324,7 @@ void WriteOptionsToRoot(toml::table& root, const FbxImportOptions& options)
     root.insert_or_assign("model", std::move(model));
 }
 
-} /// @note namespace
+} // namespace
 
 std::string FbxMetaSerializer::MetaPathForSource(const std::string& fbxAbsPath)
 {
@@ -288,31 +335,42 @@ bool FbxMetaSerializer::LoadOptions(const std::string& fbxAbsPath, FbxImportOpti
 {
     const toml::table root = LoadExistingRoot(MetaPathForSource(fbxAbsPath));
     const toml::table* model = root["model"].as_table();
-    if (!model) return false;
+    if (!model) {
+        return false;
+    }
 
-    if (auto value = (*model)["source_dcc"].value<std::string>())
+    if (auto value = (*model)["source_dcc"].value<std::string>()) {
         outOptions.sourceDcc = StringToFbxSourceDcc(*value);
-    if (auto value = (*model)["up_axis"].value<int64_t>())
+    }
+    if (auto value = (*model)["up_axis"].value<int64_t>()) {
         outOptions.upAxis = static_cast<FbxUpAxis>(*value);
-    if (auto value = (*model)["normal_map_convention"].value<std::string>())
+    }
+    if (auto value = (*model)["normal_map_convention"].value<std::string>()) {
         outOptions.normalMapConvention = StringToNormalMapConvention(*value);
-    /// @note toml++ は保存時の C++ 型を保持するため、float で保存した既存 .meta は
-    /// @note `value<double>()` では取得できない。float / double の両方を受け入れ、
-    /// @note 保存形式に依存せず FBXImport へ設定値を渡す。
-    if (auto value = (*model)["unit_scale_multiplier"].value<float>())
+    }
+    // toml++ は保存時の C++ 型を保持するため、float で保存した既存 .meta は
+    // `value<double>()` では取得できない。float / double の両方を受け入れ、
+    // 保存形式に依存せず FBXImport へ設定値を渡す。
+    if (auto value = (*model)["unit_scale_multiplier"].value<float>()) {
         outOptions.unitScaleMultiplier = *value;
-    else if (auto value = (*model)["unit_scale_multiplier"].value<double>())
+    } else if (auto value = (*model)["unit_scale_multiplier"].value<double>()) {
         outOptions.unitScaleMultiplier = static_cast<float>(*value);
-    if (auto value = (*model)["generate_normals"].value<bool>())
+    }
+    if (auto value = (*model)["generate_normals"].value<bool>()) {
         outOptions.generateNormals = *value;
-    if (auto value = (*model)["generate_tangents"].value<bool>())
+    }
+    if (auto value = (*model)["generate_tangents"].value<bool>()) {
         outOptions.generateTangents = *value;
-    if (auto value = (*model)["generate_tex_descriptors"].value<bool>())
+    }
+    if (auto value = (*model)["generate_tex_descriptors"].value<bool>()) {
         outOptions.generateTexDescriptors = *value;
-    if (auto value = (*model)["default_compression"].value<std::string>())
+    }
+    if (auto value = (*model)["default_compression"].value<std::string>()) {
         outOptions.defaultCompression = StringToTextureCompression(*value);
-    if (auto value = (*model)["root_motion_node"].value<std::string>())
+    }
+    if (auto value = (*model)["root_motion_node"].value<std::string>()) {
         outOptions.rootMotionNodeName = *value;
+    }
 
     outOptions.selectedMeshNames = ReadStringArray((*model)["selected_meshes"].as_array());
     outOptions.selectedAnimNames = ReadStringArray((*model)["selected_animations"].as_array());
@@ -324,9 +382,12 @@ int FbxMetaSerializer::LoadImporterVersion(const std::string& fbxAbsPath)
 {
     const toml::table root = LoadExistingRoot(MetaPathForSource(fbxAbsPath));
     const toml::table* model = root["model"].as_table();
-    if (!model) return 0;
-    if (auto value = (*model)["importer_version"].value<int64_t>())
+    if (!model) {
+        return 0;
+    }
+    if (auto value = (*model)["importer_version"].value<int64_t>()) {
         return static_cast<int>(*value);
+    }
     return 0;
 }
 
@@ -340,8 +401,8 @@ bool FbxMetaSerializer::SaveOptions(const std::string& fbxAbsPath, const FbxImpo
 
 bool FbxMetaSerializer::SaveCacheInfo(const std::string& fbxAbsPath, const FbxImportOptions& options)
 {
-    /// @note guid の確定を .meta の読み込みより先に済ませる。GuidFromPath は guid が無ければ .meta を
-    /// @note 書いて発行するため、後から呼ぶとその書き込み前に読んだ root で上書きし発行した guid が消える。
+    // guid の確定を .meta の読み込みより先に済ませる。GuidFromPath は guid が無ければ .meta を
+    // 書いて発行するため、後から呼ぶとその書き込み前に読んだ root で上書きし発行した guid が消える。
     const std::string guid = asset::AssetDatabase::GuidFromPath(fbxAbsPath);
 
     ImportCacheStore::Entry entry;
@@ -349,14 +410,14 @@ bool FbxMetaSerializer::SaveCacheInfo(const std::string& fbxAbsPath, const FbxIm
     entry.settingsHash = ComputeSettingsHash(options);
     (void)SourceStamp(fbxAbsPath, entry.size, entry.mtime);
     if (!ImportCacheStore::Save(guid, entry)) {
-        /// @note 記録できないと IsOutdated が mtime 比較へ落ちるだけで、import 自体は成功している。
+        // 記録できないと IsOutdated が mtime 比較へ落ちるだけで、import 自体は成功している。
         FBZZ_LOG_WARN("FbxMetaSerializer: import cache not recorded [%s]", fbxAbsPath.c_str());
     }
 
     const std::string metaPath = MetaPathForSource(fbxAbsPath);
     toml::table root = LoadExistingRoot(metaPath);
     WriteOptionsToRoot(root, options);
-    /// @note 旧形式で .meta へ焼かれていた [cache] を落とし、保管場所を Library へ一本化する。
+    // 旧形式で .meta へ焼かれていた [cache] を落とし、保管場所を Library へ一本化する。
     root.erase("cache");
 
     return WriteRoot(metaPath, root);
@@ -364,21 +425,23 @@ bool FbxMetaSerializer::SaveCacheInfo(const std::string& fbxAbsPath, const FbxIm
 
 FbxMetaSerializer::CacheInfo FbxMetaSerializer::LoadCacheInfo(const std::string& fbxAbsPath)
 {
-    /// @note TryGetGuidFromPath を使う。判定のためだけに未 import の FBX へ .meta を発行しない。
+    // TryGetGuidFromPath を使う。判定のためだけに未 import の FBX へ .meta を発行しない。
     const ImportCacheStore::Entry entry =
         ImportCacheStore::Load(asset::AssetDatabase::TryGetGuidFromPath(fbxAbsPath));
     if (!entry.Empty())
         return { entry.contentHash, entry.settingsHash, entry.size, entry.mtime,
                  entry.legacyStamp };
 
-    /// @note 移行フォールバック: Library へ移す前は .meta の [cache] に焼いていた。
-    /// @note 記録が残っていれば読み、既存プロジェクトを丸ごと焼き直さずに済ませる。
-    /// @note 次の import で [cache] は落ちるので、以降この経路は通らない。
+    // 移行フォールバック: Library へ移す前は .meta の [cache] に焼いていた。
+    // 記録が残っていれば読み、既存プロジェクトを丸ごと焼き直さずに済ませる。
+    // 次の import で [cache] は落ちるので、以降この経路は通らない。
     CacheInfo info;
     const toml::table root = LoadExistingRoot(MetaPathForSource(fbxAbsPath));
     const toml::table* cache = root["cache"].as_table();
-    if (!cache) return info;
-    /// @note .meta 時代の source_hash も «パス + サイズ + 更新時刻» 形式。移行枠で受ける。
+    if (!cache) {
+        return info;
+    }
+    // .meta 時代の source_hash も «パス + サイズ + 更新時刻» 形式。移行枠で受ける。
     info.legacyStamp  = (*cache)["source_hash"].value_or(std::string{});
     info.settingsHash = (*cache)["settings_hash"].value_or(std::string{});
     return info;
@@ -396,9 +459,13 @@ bool FbxMetaSerializer::SourceStamp(const std::string& fbxAbsPath,
     std::error_code ec;
     const fs::path path = util::FileSystem::PathFromUtf8(fbxAbsPath);
     const uintmax_t size = fs::file_size(path, ec);
-    if (ec) return false;
+    if (ec) {
+        return false;
+    }
     const auto writeTime = fs::last_write_time(path, ec);
-    if (ec) return false;
+    if (ec) {
+        return false;
+    }
 
     outSize  = static_cast<uint64_t>(size);
     outMTime = static_cast<int64_t>(writeTime.time_since_epoch().count());
@@ -415,4 +482,4 @@ std::string FbxMetaSerializer::SettingsHash(const FbxImportOptions& options)
     return ComputeSettingsHash(options);
 }
 
-} /// @note namespace fbzz::editor
+} // namespace fbzz::editor

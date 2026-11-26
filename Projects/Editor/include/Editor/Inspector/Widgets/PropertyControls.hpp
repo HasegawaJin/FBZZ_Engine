@@ -11,7 +11,9 @@ namespace fbzz::editor::property {
 inline std::string Caption(const char* label)
 {
     std::string caption = label;
-    if (const auto marker = caption.find("##"); marker != std::string::npos) caption.resize(marker);
+    if (const auto marker = caption.find("##"); marker != std::string::npos) {
+        caption.resize(marker);
+    }
     return LOCT(caption.c_str());
 }
 
@@ -19,7 +21,9 @@ inline std::string Caption(const char* label)
 template<typename DrawControl>
 bool Draw(const char* label, DrawControl drawControl)
 {
-    if (label[0] == '#' && label[1] == '#') return drawControl(label);
+    if (label[0] == '#' && label[1] == '#') {
+        return drawControl(label);
+    }
 
     ImGui::PushID(label);
     const auto row = widgets::BeginPropertyRow();
@@ -154,7 +158,9 @@ bool AssetPathFieldWithLoad(const char* label, Args&&... args)
 /// @note Popup は呼び出し側の選択処理まで開いているため、フィールド ID は呼び出し前に確定する。
 inline bool BeginCombo(const char* label, const char* preview, ImGuiComboFlags flags = 0)
 {
-    if (label[0] == '#' && label[1] == '#') return ImGui::BeginCombo(label, preview, flags);
+    if (label[0] == '#' && label[1] == '#') {
+        return ImGui::BeginCombo(label, preview, flags);
+    }
     widgets::PlacePropertyValue(widgets::DrawPropertyLabel(Caption(label).c_str()));
     const std::string id = std::string("###") + label;
     return ImGui::BeginCombo(id.c_str(), preview, flags);
@@ -164,10 +170,12 @@ template<typename... Args>
 void LabelText(const char* label, const char* format, Args... args)
 {
     const int length = std::snprintf(nullptr, 0, format, args...);
-    if (length < 0) return;
+    if (length < 0) {
+        return;
+    }
     std::string text(static_cast<std::size_t>(length) + 1, '\0');
     std::snprintf(text.data(), text.size(), format, args...);
     widgets::ReadOnlyText(label, text.c_str());
 }
 
-} /// @note namespace fbzz::editor::property
+} // namespace fbzz::editor::property

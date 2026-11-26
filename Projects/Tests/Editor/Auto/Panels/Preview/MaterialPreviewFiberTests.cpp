@@ -59,7 +59,7 @@ protected:
 /// @brief Fiber shaders use the fiber flavor instead of the surface sphere.
 TEST_F(MaterialPreviewFiberTest, FiberShadersUseTheFiberFlavorInsteadOfTheSurfaceSphere)
 {
-    /// @note Surface へ流すと b5 が 0 のまま全画素 clip され、サムネイルが空になる。
+    // Surface へ流すと b5 が 0 のまま全画素 clip され、サムネイルが空になる。
     EXPECT_EQ(mp::DetectFlavor(FiberMaterial(ShaderPath("Shell.hlsl"), 0.0f)), mp::Flavor::Fiber);
     EXPECT_EQ(mp::DetectFlavor(FiberMaterial("guid:ffffffffffffffffffffffffffffffff|Assets/Shaders/Fiber/FiberShell.hlsl", 0.0f)),
               mp::Flavor::Unsupported);

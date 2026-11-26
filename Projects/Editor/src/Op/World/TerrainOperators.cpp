@@ -62,14 +62,18 @@ namespace {
 
 scene::GameObject* ResolveTerrainNode(const OpContext& context, const std::string& nodeId)
 {
-    if (context.ctx.activeScene == nullptr) return nullptr;
-    if (nodeId.empty()) return context.ctx.GetSelectedGO();
+    if (context.ctx.activeScene == nullptr) {
+        return nullptr;
+    }
+    if (nodeId.empty()) {
+        return context.ctx.GetSelectedGO();
+    }
     return context.ctx.activeScene->FindByGuid(nodeId);
 }
 
 bool IsValidTerrainDimension(int value)
 {
-    /// @note Inspector と同じ上限に揃え、Undo と GPU 再構築の巨大な一時確保を防ぐ。
+    // Inspector と同じ上限に揃え、Undo と GPU 再構築の巨大な一時確保を防ぐ。
     return value >= 2 && value <= 4097;
 }
 
@@ -96,13 +100,18 @@ std::unique_ptr<ICommand> MakeTerrainResizeCommand(
             return false;
         }
         auto* terrain = go->GetComponent<scene::TerrainComponent>();
-        if (terrain == nullptr) { reason = "対象地形がありません"; return false; }
+        if (terrain == nullptr) {
+            reason = "対象地形がありません";
+            return false;
+        }
         if (!TerrainAuthoringValuesEqual(*terrain, expected)) {
             reason = "対象地形の編集内容が変更されています";
             return false;
         }
         ApplyTerrainAuthoringSnapshot(*terrain, snapshot, geometry);
-        if (editorContext->markSceneDirty) editorContext->markSceneDirty();
+        if (editorContext->markSceneDirty) {
+            editorContext->markSceneDirty();
+        }
         reason.clear();
         return true;
     };
@@ -146,12 +155,18 @@ public:
         double value = 0.0, std::optional<double> rate = std::nullopt)
     {
         ++m_count;
-        if (m_issues.AsArray().size() >= MAX_REPORTED_ISSUES) return;
+        if (m_issues.AsArray().size() >= MAX_REPORTED_ISSUES) {
+            return;
+        }
         auto row = OpData::MakeObject();
         row.Set("code", OpData(code));
         row.Set("position", OpData(position));
-        if (metric) row.Set(metric, OpData(value));
-        if (rate) row.Set("rate", OpData(*rate));
+        if (metric) {
+            row.Set(metric, OpData(value));
+        }
+        if (rate) {
+            row.Set("rate", OpData(*rate));
+        }
         m_issues.Push(std::move(row));
     }
 
@@ -212,30 +227,38 @@ bool MakeRiverSections(const scene::WaterSplineSnapshot& mesh, float spacing, bo
         if (!sections.empty()) {
             const auto previous = sections.back();
             const double steps = std::ceil(DistanceXZ(section.Center(), previous.Center()) / spacing);
-            if (steps > MAX_RIVER_SAMPLES - sections.size()) return false;
+            if (steps > MAX_RIVER_SAMPLES - sections.size()) {
+                return false;
+            }
             for (std::size_t step = 1; step < static_cast<std::size_t>(steps); ++step) {
                 const float t = static_cast<float>(step) / static_cast<float>(steps);
                 sections.push_back({{std::lerp(previous.left.x, section.left.x, t), std::lerp(previous.left.y, section.left.y, t)},
                     {std::lerp(previous.right.x, section.right.x, t), std::lerp(previous.right.y, section.right.y, t)}});
             }
         }
-        if (sections.size() == MAX_RIVER_SAMPLES) return false;
+        if (sections.size() == MAX_RIVER_SAMPLES) {
+            return false;
+        }
         sections.push_back(section);
     }
-    if (reverse) std::reverse(sections.begin(), sections.end());
+    if (reverse) {
+        std::reverse(sections.begin(), sections.end());
+    }
     return true;
 }
 
 OpResult ValidateRiverRules(OpContext& context, const OpArgs& args)
 {
     auto* world = context.ctx.activeScene;
-    if (!world || (context.ctx.playMode && !context.ctx.playMode->IsInEditor()))
+    if (!world || (context.ctx.playMode && !context.ctx.playMode->IsInEditor())) {
         return OpResult::Err("NOT_EDITABLE", "Edit Scene で川を選択してください。");
+    }
     auto* owner = ResolveTerrainNode(context, args.GetString("node"));
     auto* water = owner ? owner->GetComponent<scene::WaterComponent>() : nullptr;
     if (!water || !owner->activeInHierarchy() || !water->enabled
-        || water->surfaceShape != scene::WaterSurfaceShape::SPLINE_RIVER)
+        || water->surfaceShape != scene::WaterSurfaceShape::SPLINE_RIVER) {
         return OpResult::Err("NO_RIVER", "有効な Spline River を指定してください。");
+    }
 
     const float spacing = args.GetFloat("sampleSpacing", DEFAULT_RIVER_SAMPLE_SPACING);
     const float maxUphillRise = args.GetFloat("maxUphillRise", DEFAULT_MAX_UPHILL_RISE);
@@ -249,21 +272,25 @@ OpResult ValidateRiverRules(OpContext& context, const OpArgs& args)
     const float bankProbeOffset = args.GetFloat("bankProbeOffset", DEFAULT_BANK_PROBE_OFFSET);
     for (const float value : {spacing, maxUphillRise, maxBuriedDepth, maxBedGap, maxOutletDifference,
             maxDownhillGrade, maxWidthChangeRate, maxDepthChangeRate, minBankRise, bankProbeOffset})
-        if (!std::isfinite(value)) return OpResult::Err("BAD_ARG", "検査しきい値は有限値で指定してください。");
+        if (!std::isfinite(value)) {
+            return OpResult::Err("BAD_ARG", "検査しきい値は有限値で指定してください。");
+        }
 
     scene::FlushWorldTransforms(*world);
     scene::WaterControlPointSnapshot points;
     scene::WaterSplineSnapshot mesh;
-    if (!BuildAuthoredWater(*owner, *water, points, mesh))
+    if (!BuildAuthoredWater(*owner, *water, points, mesh)) {
         return OpResult::Err("INVALID_RIVER", "川の制御点・変換・水面形状を確認してください。");
+    }
     const bool forward = std::any_of(points.points.begin(), points.points.end(),
         [](const auto& point) { return point.flowSpeed > 0.0f; });
     const bool reverse = std::any_of(points.points.begin(), points.points.end(),
         [](const auto& point) { return point.flowSpeed < 0.0f; });
     const bool mixed = forward && reverse;
     std::vector<RiverSection> sections;
-    if (!MakeRiverSections(mesh, spacing, reverse && !mixed, sections))
+    if (!MakeRiverSections(mesh, spacing, reverse && !mixed, sections)) {
         return OpResult::Err("SAMPLE_BUDGET", "標本が上限を超えました。sampleSpacing を広げるか、川を分けてください。");
+    }
 
     const auto terrainId = args.GetString("terrain");
     std::vector<std::pair<const scene::GameObject*, const scene::TerrainComponent*>> grounds;
@@ -271,20 +298,25 @@ OpResult ValidateRiverRules(OpContext& context, const OpArgs& args)
         const auto* ground = world->GetGameObject(id);
         const auto* terrain = world->GetComponent<scene::TerrainComponent>(id);
         if (ground && ground->activeInHierarchy() && terrain && terrain->enabled
-            && (terrainId.empty() || ground->instanceId == terrainId)) grounds.emplace_back(ground, terrain);
+            && (terrainId.empty() || ground->instanceId == terrainId)) {
+            grounds.emplace_back(ground, terrain);
+        }
     }
-    if (!terrainId.empty() && grounds.empty())
+    if (!terrainId.empty() && grounds.empty()) {
         return OpResult::Err("NO_TERRAIN", "指定した有効な Terrain が見つかりません。");
+    }
     const auto groundSamplesPerSection = minBankRise > 0.0f ? 3u : 1u;
-    if (grounds.size() > MAX_RIVER_TERRAIN_QUERIES / (sections.size() * groundSamplesPerSection))
+    if (grounds.size() > MAX_RIVER_TERRAIN_QUERIES / (sections.size() * groundSamplesPerSection)) {
         return OpResult::Err("SAMPLE_BUDGET", "地形照会上限を超えました。terrain を指定するか、sampleSpacing を広げてください。");
+    }
 
     const auto sampleTerrain = [&](const math::Vector2& xz) {
         float height = -std::numeric_limits<float>::infinity();
         for (const auto& [ground, terrain] : grounds) {
             scene::TerrainSurfaceSample sample;
-            if (scene::TrySampleTerrainWorld(*terrain, ground->transform, xz.x, xz.y, sample))
+            if (scene::TrySampleTerrainWorld(*terrain, ground->transform, xz.x, xz.y, sample)) {
                 height = (std::max)(height, sample.position.y);
+            }
         }
         return height;
     };
@@ -299,23 +331,31 @@ OpResult ValidateRiverRules(OpContext& context, const OpArgs& args)
         const auto& section = sections[i];
         const auto xz = section.Center();
         scene::WaterSplineSample sample;
-        if (!scene::TrySampleWaterSpline(mesh, xz.x, xz.y, sample))
+        if (!scene::TrySampleWaterSpline(mesh, xz.x, xz.y, sample)) {
             return OpResult::Err("INVALID_RIVER", "川の中心線で水面を取得できません。");
+        }
         const math::Vector3 position{xz.x, sample.baseHeight, xz.y};
-        if (mixed && i == 0) report.Add("MIXED_FLOW", position);
+        if (mixed && i == 0) {
+            report.Add("MIXED_FLOW", position);
+        }
         lowestOffset = (std::min)(lowestOffset, sample.baseHeightOffset);
         const double rise = static_cast<double>(sample.baseHeightOffset) - lowestOffset;
-        if (!mixed && rise > maxUphillRise) report.Add("UPHILL", position, "differenceMeters", rise);
+        if (!mixed && rise > maxUphillRise) {
+            report.Add("UPHILL", position, "differenceMeters", rise);
+        }
         downstream = position;
 
         const double width = DistanceXZ(section.left, section.right);
         if (i != 0) {
             const double distance = DistanceXZ(xz, sections[i - 1].Center());
             const auto checkRate = [&](const char* code, double change, float limit) {
-                if (limit > 0.0f && distance > 0.0 && change > limit * distance)
+                if (limit > 0.0f && distance > 0.0 && change > limit * distance) {
                     report.Add(code, position, "differenceMeters", change, change / distance);
+                }
             };
-            if (!mixed) checkRate("STEEP_DROP", static_cast<double>(previousSample.baseHeightOffset) - sample.baseHeightOffset, maxDownhillGrade);
+            if (!mixed) {
+                checkRate("STEEP_DROP", static_cast<double>(previousSample.baseHeightOffset) - sample.baseHeightOffset, maxDownhillGrade);
+            }
             checkRate("ABRUPT_WIDTH", std::abs(width - previousWidth), maxWidthChangeRate);
             checkRate("ABRUPT_DEPTH", std::abs(static_cast<double>(sample.depth) - previousSample.depth), maxDepthChangeRate);
         }
@@ -330,10 +370,16 @@ OpResult ValidateRiverRules(OpContext& context, const OpArgs& args)
         ++terrainSampleCount;
         const double groundAboveWater = static_cast<double>(terrainHeight) - sample.baseHeight;
         const double bedGap = -groundAboveWater - sample.depth;
-        if (groundAboveWater > maxBuriedDepth) report.Add("BURIED_SURFACE", position, "differenceMeters", groundAboveWater);
-        if (bedGap > maxBedGap) report.Add("FLOATING_BED", position, "differenceMeters", bedGap);
+        if (groundAboveWater > maxBuriedDepth) {
+            report.Add("BURIED_SURFACE", position, "differenceMeters", groundAboveWater);
+        }
+        if (bedGap > maxBedGap) {
+            report.Add("FLOATING_BED", position, "differenceMeters", bedGap);
+        }
 
-        if (minBankRise <= 0.0f || width <= 0.0) continue;
+        if (minBankRise <= 0.0f || width <= 0.0) {
+            continue;
+        }
         const double offset = 2.0 * bankProbeOffset / width;
         for (const auto& edge : {section.left, section.right}) {
             const double x = edge.x + (static_cast<double>(edge.x) - xz.x) * offset;
@@ -350,8 +396,9 @@ OpResult ValidateRiverRules(OpContext& context, const OpArgs& args)
                 continue;
             }
             const double relief = static_cast<double>(height) - terrainHeight;
-            if (relief < minBankRise)
+            if (relief < minBankRise) {
                 report.Add("LOW_BANK", {probe.x, height, probe.y}, "differenceMeters", minBankRise - relief);
+            }
         }
     }
 
@@ -360,34 +407,42 @@ OpResult ValidateRiverRules(OpContext& context, const OpArgs& args)
         auto* outlet = world->FindByGuid(outletId);
         auto* target = outlet ? outlet->GetComponent<scene::WaterComponent>() : nullptr;
         if (!target || !outlet->activeInHierarchy() || !target->enabled
-            || target->surfaceShape == scene::WaterSurfaceShape::SPLINE_RIVER)
+            || target->surfaceShape == scene::WaterSurfaceShape::SPLINE_RIVER) {
             return OpResult::Err("INVALID_OUTLET", "有効な湖・矩形水域・Horizon 海を流出先に指定してください。");
+        }
 
         bool inside = false;
         float outletHeight = outlet->transform.worldPosition.y;
         if (target->surfaceShape == scene::WaterSurfaceShape::SPLINE_LAKE) {
             scene::WaterControlPointSnapshot outletPoints;
             scene::WaterSplineSnapshot outletMesh;
-            if (!BuildAuthoredWater(*outlet, *target, outletPoints, outletMesh))
+            if (!BuildAuthoredWater(*outlet, *target, outletPoints, outletMesh)) {
                 return OpResult::Err("INVALID_OUTLET", "流出先の湖の形状を確認してください。");
+            }
             scene::WaterSplineSample sample;
             inside = scene::TrySampleWaterSpline(outletMesh, downstream.x, downstream.z, sample);
-            if (inside) outletHeight = sample.baseHeight;
+            if (inside) {
+                outletHeight = sample.baseHeight;
+            }
         } else {
-            /// @note Flow and waves are irrelevant to the authored outlet footprint.
+            // Flow and waves are irrelevant to the authored outlet footprint.
             scene::WaterComponent flat;
             flat.extentX = target->extentX;
             flat.extentZ = target->extentZ;
             flat.farOceanEnabled = target->farOceanEnabled;
             flat.enableGerstnerWaves = false;
             flat.waveCount = 0;
-            if (!scene::IsWaterSurfaceSupported(flat, outlet->transform))
+            if (!scene::IsWaterSurfaceSupported(flat, outlet->transform)) {
                 return OpResult::Err("INVALID_OUTLET", "流出先の寸法と変換を確認してください。");
+            }
             inside = scene::WaterSurfaceContainsXZ(flat, outlet->transform, downstream.x, downstream.z, 0.0f);
         }
         const double difference = static_cast<double>(downstream.y) - outletHeight;
-        if (!inside) report.Add("OUTLET_OUTSIDE", downstream);
-        else if (std::abs(difference) > maxOutletDifference) report.Add("OUTLET_HEIGHT", downstream, "differenceMeters", difference);
+        if (!inside) {
+            report.Add("OUTLET_OUTSIDE", downstream);
+        } else if (std::abs(difference) > maxOutletDifference) {
+            report.Add("OUTLET_HEIGHT", downstream, "differenceMeters", difference);
+        }
     }
 
     auto data = OpData::MakeObject();
@@ -430,27 +485,41 @@ void RegisterRiverRuleOperator(OperatorRegistry& registry)
 OpResult ValidateTerrainRelief(OpContext& context, const OpArgs& args)
 {
     auto* world = context.ctx.activeScene;
-    if (!world || (context.ctx.playMode && !context.ctx.playMode->IsInEditor()))
+    if (!world || (context.ctx.playMode && !context.ctx.playMode->IsInEditor())) {
         return OpResult::Err("NOT_EDITABLE", "Edit Scene で地形を選択してください。");
+    }
     const auto* owner = ResolveTerrainNode(context, args.GetString("node"));
     const auto* terrain = owner ? world->GetComponent<scene::TerrainComponent>(owner->GetID()) : nullptr;
-    if (!terrain || !owner->activeInHierarchy() || !terrain->enabled)
+    if (!terrain || !owner->activeInHierarchy() || !terrain->enabled) {
         return OpResult::Err("NO_TERRAIN", "有効な Terrain を指定してください。");
+    }
 
     const float maxSlope = args.GetFloat("maxSlopeDegrees", DEFAULT_MAX_TERRAIN_SLOPE);
     const float minRelief = args.GetFloat("minIsolatedRelief", DEFAULT_MIN_ISOLATED_RELIEF);
-    if (!std::isfinite(maxSlope) || !std::isfinite(minRelief))
+    if (!std::isfinite(maxSlope) || !std::isfinite(minRelief)) {
         return OpResult::Err("BAD_ARG", "検査しきい値は有限値で指定してください。");
+    }
+    // 起伏を測る前に、格子の頂点と穴の配列が寸法と一致することを確認する。
+    constexpr char INVALID_HEIGHT_FIELD[] = "地形の寸法または高さ場が不正です。";
     if (!IsValidTerrainDimension(terrain->columns) || !IsValidTerrainDimension(terrain->rows)
-        || terrain->heightData.size() != terrain->VertexCount()
-        || (!terrain->holeData.empty() && terrain->holeData.size() != terrain->CellCount())
-        || !std::isfinite(terrain->cellSize) || terrain->cellSize <= 0.0f
-        || !std::isfinite(terrain->maxHeight) || terrain->maxHeight <= 0.0f)
-        return OpResult::Err("INVALID_TERRAIN", "地形の寸法または高さ場が不正です。");
+        || terrain->heightData.size() != terrain->VertexCount()) {
+        return OpResult::Err("INVALID_TERRAIN", INVALID_HEIGHT_FIELD);
+    }
+    if (!terrain->holeData.empty() && terrain->holeData.size() != terrain->CellCount()) {
+        return OpResult::Err("INVALID_TERRAIN", INVALID_HEIGHT_FIELD);
+    }
+    const bool validGridScale = std::isfinite(terrain->cellSize) && terrain->cellSize > 0.0f
+        && std::isfinite(terrain->maxHeight) && terrain->maxHeight > 0.0f;
+    if (!validGridScale) {
+        return OpResult::Err("INVALID_TERRAIN", INVALID_HEIGHT_FIELD);
+    }
+
     float minHeight = terrain->heightData.front();
     float maxHeight = minHeight;
     for (const float height : terrain->heightData) {
-        if (!std::isfinite(height)) return OpResult::Err("INVALID_TERRAIN", "高さ場に非有限値があります。");
+        if (!std::isfinite(height)) {
+            return OpResult::Err("INVALID_TERRAIN", "高さ場に非有限値があります。");
+        }
         minHeight = (std::min)(minHeight, height);
         maxHeight = (std::max)(maxHeight, height);
     }
@@ -460,22 +529,24 @@ OpResult ValidateTerrainRelief(OpContext& context, const OpArgs& args)
     const auto up = pose.worldRotation * math::Vector3::UP;
     math::Vector3 normal;
     if (!scene::TryTerrainNormalToWorld(pose, math::Vector3::UP, normal)
-        || std::abs(up.x) > 0.00001f || std::abs(up.z) > 0.00001f)
+        || std::abs(up.x) > 0.00001f || std::abs(up.z) > 0.00001f) {
         return OpResult::Err("INVALID_TRANSFORM", "直立した地形の有効なワールド変換が必要です。");
+    }
     const float cell = terrain->cellSize;
     for (const float x : {0.0f, (terrain->columns - 1) * cell}) {
         for (const float z : {0.0f, (terrain->rows - 1) * cell}) {
             for (const float y : {minHeight * terrain->maxHeight, maxHeight * terrain->maxHeight}) {
                 const auto corner = ToTerrainWorld(pose, {x, y, z});
-                if (!std::isfinite(corner.x) || !std::isfinite(corner.y) || !std::isfinite(corner.z))
+                if (!std::isfinite(corner.x) || !std::isfinite(corner.y) || !std::isfinite(corner.z)) {
                     return OpResult::Err("INVALID_TRANSFORM", "地形のワールド範囲が非有限です。");
+                }
             }
         }
     }
 
     constexpr double RADIANS_PER_DEGREE = std::numbers::pi_v<double> / 180.0;
     const double gradeLimit = std::tan(maxSlope * RADIANS_PER_DEGREE);
-    /// @note The heightfield stores float samples; an exact boundary must survive their rounding and tan().
+    // The heightfield stores float samples; an exact boundary must survive their rounding and tan().
     const double gradeLimitSquared = gradeLimit * gradeLimit * (1.0 + 8.0 * std::numeric_limits<float>::epsilon());
     const double dx = static_cast<double>(cell) * std::abs(pose.worldScale.x);
     const double dz = static_cast<double>(cell) * std::abs(pose.worldScale.z);
@@ -497,14 +568,16 @@ OpResult ValidateTerrainRelief(OpContext& context, const OpArgs& args)
     int checkedVertices = 0;
     for (int z = 0; z + 1 < terrain->rows; ++z) {
         for (int x = 0; x + 1 < terrain->columns; ++x) {
-            if (terrain->IsHoleCell(x, z)) continue;
+            if (terrain->IsHoleCell(x, z)) {
+                continue;
+            }
             const double center = height(x, z);
             const double east = height(x + 1, z);
             const double south = height(x, z + 1);
             if (maxSlope > 0.0f) {
                 ++checkedCells;
                 const double diagonal = height(x + 1, z + 1);
-                /// @note TerrainSurfaceQuery splits the cell along the east-south edge.
+                // TerrainSurfaceQuery splits the cell along the east-south edge.
                 const double grade = (std::max)(gradeSquared(east - center, south - center),
                     gradeSquared(diagonal - south, diagonal - east));
                 if (grade > gradeLimitSquared) {
@@ -515,7 +588,9 @@ OpResult ValidateTerrainRelief(OpContext& context, const OpArgs& args)
                 }
             }
             if (minRelief <= 0.0f || x == 0 || z == 0 || terrain->IsHoleCell(x - 1, z)
-                || terrain->IsHoleCell(x, z - 1) || terrain->IsHoleCell(x - 1, z - 1)) continue;
+                || terrain->IsHoleCell(x, z - 1) || terrain->IsHoleCell(x - 1, z - 1)) {
+                continue;
+            }
             ++checkedVertices;
             const auto [lowest, highest] = std::minmax({east, south,
                 static_cast<double>(height(x - 1, z)), static_cast<double>(height(x, z - 1))});
@@ -552,9 +627,29 @@ void RegisterTerrainReliefOperator(OperatorRegistry& registry)
     registry.Register(std::move(op));
 }
 
+/// @brief タイルのローカル XZ 座標を軸に沿って変換できるか確認する。
+/// @param[in] pose 対象地形の最新のワールド Transform。
+/// @return ワールドスケールが正かつ有限で、地形が回転していなければ true。
+bool HasAxisAlignedTerrainAxes(const scene::Transform& pose)
+{
+    const auto& scale = pose.worldScale;
+    const bool validScale = std::isfinite(scale.x) && std::isfinite(scale.y) && std::isfinite(scale.z)
+        && scale.x > 0.0f && scale.y > 0.0f && scale.z > 0.0f;
+    if (!validScale) {
+        return false;
+    }
+    const auto& rotation = pose.worldRotation;
+    return rotation.x == 0.0f && rotation.y == 0.0f && rotation.z == 0.0f && std::abs(rotation.w) == 1.0f;
+}
+
 struct TerrainSeamTile {
-    const scene::TerrainComponent* terrain;
-    double x, y, z, stepX, stepZ, heightScale;
+    const scene::TerrainComponent* terrain; ///< ReadSeamTile で検査した非所有の地形コンポーネント。
+    double x; ///< 格子原点のワールド X 座標 [m]。
+    double y; ///< 格子原点のワールド Y 座標 [m]。
+    double z; ///< 格子原点のワールド Z 座標 [m]。
+    double stepX; ///< X 方向に隣り合う頂点のワールド間隔 [m]。
+    double stepZ; ///< Z 方向に隣り合う頂点のワールド間隔 [m]。
+    double heightScale; ///< 正規化した頂点の高さをワールド Y の変位 [m] へ変換する係数。
 
     double East() const { return x + stepX * (terrain->columns - 1); }
     double South() const { return z + stepZ * (terrain->rows - 1); }
@@ -563,19 +658,29 @@ struct TerrainSeamTile {
 bool ReadSeamTile(const scene::GameObject& owner, TerrainSeamTile& out)
 {
     const auto* terrain = owner.GetScene()->GetComponent<scene::TerrainComponent>(owner.GetID());
+    if (!terrain || !terrain->enabled || !owner.activeInHierarchy()) {
+        return false;
+    }
+
+    // 辺の頂点を添字で走査するため、格子の寸法と高さの換算係数を確認する。
+    if (!IsValidTerrainDimension(terrain->columns) || !IsValidTerrainDimension(terrain->rows)
+        || terrain->heightData.size() != terrain->VertexCount()) {
+        return false;
+    }
+    const bool validGridScale = std::isfinite(terrain->cellSize) && terrain->cellSize > 0.0f
+        && std::isfinite(terrain->maxHeight) && terrain->maxHeight > 0.0f;
+    if (!validGridScale) {
+        return false;
+    }
+
+    // 境界がワールド座標の軸に沿っているときだけ、頂点間隔で共有辺を計算できる。
     const auto& pose = owner.transform;
-    const auto& q = pose.worldRotation;
-    const auto scale = pose.worldScale;
     const auto position = pose.worldPosition;
-    if (!terrain || !terrain->enabled || !owner.activeInHierarchy()
-        || !IsValidTerrainDimension(terrain->columns) || !IsValidTerrainDimension(terrain->rows)
-        || terrain->heightData.size() != terrain->VertexCount()
-        || !std::isfinite(terrain->cellSize) || terrain->cellSize <= 0.0f
-        || !std::isfinite(terrain->maxHeight) || terrain->maxHeight <= 0.0f
-        || !std::isfinite(position.x) || !std::isfinite(position.y) || !std::isfinite(position.z)
-        || !std::isfinite(scale.x) || !std::isfinite(scale.y) || !std::isfinite(scale.z)
-        || scale.x <= 0.0f || scale.y <= 0.0f || scale.z <= 0.0f
-        || q.x != 0.0f || q.y != 0.0f || q.z != 0.0f || std::abs(q.w) != 1.0f) return false;
+    const bool finiteOrigin = std::isfinite(position.x) && std::isfinite(position.y) && std::isfinite(position.z);
+    if (!finiteOrigin || !HasAxisAlignedTerrainAxes(pose)) {
+        return false;
+    }
+    const auto scale = pose.worldScale;
     out = {terrain, position.x, position.y, position.z, static_cast<double>(scale.x) * terrain->cellSize,
         static_cast<double>(scale.z) * terrain->cellSize, static_cast<double>(scale.y) * terrain->maxHeight};
     constexpr double LIMIT = std::numeric_limits<float>::max();
@@ -627,7 +732,9 @@ struct TerrainSeamEdge {
         const int first = (std::min)(static_cast<int>(GridPosition(position)), Count() - 2);
         const int vertex = highSide ? first + 1 : first;
         const double outer = HeightSample(vertex), inner = HeightSample(vertex, 1);
-        if (!std::isfinite(outer) || !std::isfinite(inner)) return std::numeric_limits<double>::quiet_NaN();
+        if (!std::isfinite(outer) || !std::isfinite(inner)) {
+            return std::numeric_limits<double>::quiet_NaN();
+        }
         const double rise = highSide ? outer - inner : inner - outer;
         return rise * tile.heightScale / CrossStep();
     }
@@ -646,8 +753,9 @@ std::optional<std::pair<TerrainSeamEdge, TerrainSeamEdge>> FindTerrainSeam(const
         for (const bool highSide : {false, true}) {
             const TerrainSeamEdge a{first, alongZ, highSide}, b{second, alongZ, !highSide};
             const double overlap = (std::min)(a.End(), b.End()) - (std::max)(a.Origin(), b.Origin());
-            if (std::abs(a.Fixed() - b.Fixed()) <= SEAM_EDGE_TOLERANCE && overlap > SEAM_EDGE_TOLERANCE)
+            if (std::abs(a.Fixed() - b.Fixed()) <= SEAM_EDGE_TOLERANCE && overlap > SEAM_EDGE_TOLERANCE) {
                 return std::pair{a, b};
+            }
         }
     }
     return std::nullopt;
@@ -656,26 +764,32 @@ std::optional<std::pair<TerrainSeamEdge, TerrainSeamEdge>> FindTerrainSeam(const
 OpResult ValidateTerrainSeam(OpContext& context, const OpArgs& args)
 {
     auto* world = context.ctx.activeScene;
-    if (!world || (context.ctx.playMode && !context.ctx.playMode->IsInEditor()))
+    if (!world || (context.ctx.playMode && !context.ctx.playMode->IsInEditor())) {
         return OpResult::Err("NOT_EDITABLE", "Edit Scene で地形を選択してください。");
+    }
     const auto* owner = ResolveTerrainNode(context, args.GetString("node"));
     const auto* neighbor = world->FindByGuid(args.GetString("neighbor"));
-    if (!owner || !neighbor || owner == neighbor)
+    if (!owner || !neighbor || owner == neighbor) {
         return OpResult::Err("NO_TERRAIN", "別々の Terrain を node と neighbor に指定してください。");
+    }
     constexpr float DEFAULT_HEIGHT_TOLERANCE = 0.05f;
     const float tolerance = args.GetFloat("heightTolerance", DEFAULT_HEIGHT_TOLERANCE);
     const float slopeTolerance = args.GetFloat("maxCrossSlopeDifference", 0.0f);
-    if (!std::isfinite(tolerance) || !std::isfinite(slopeTolerance))
+    if (!std::isfinite(tolerance) || !std::isfinite(slopeTolerance)) {
         return OpResult::Err("BAD_ARG", "高さと角度の許容値は有限値で指定してください。");
+    }
     scene::FlushWorldTransforms(*world);
     TerrainSeamTile first{}, second{};
-    if (!ReadSeamTile(*owner, first) || !ReadSeamTile(*neighbor, second))
+    if (!ReadSeamTile(*owner, first) || !ReadSeamTile(*neighbor, second)) {
         return OpResult::Err("INVALID_TERRAIN", "正のスケールを持つ軸平行の有効 Terrain が必要です。");
+    }
 
-    /// @note Compare the union of both edge lattices. The difference is linear between consecutive samples.
+    // Compare the union of both edge lattices. The difference is linear between consecutive samples.
     /// @see https://dev.epicgames.com/documentation/unreal-engine/landscape-technical-guide-in-unreal-engine Epic Landscape Technical Guide: Landscape Components, shared edge vertices.
     const auto seam = FindTerrainSeam(first, second);
-    if (!seam) return OpResult::Err("NO_SHARED_EDGE", "指定した Terrain 同士に共有辺がありません。");
+    if (!seam) {
+        return OpResult::Err("NO_SHARED_EDGE", "指定した Terrain 同士に共有辺がありません。");
+    }
     const auto& [a, b] = *seam;
     const double start = (std::max)(a.Origin(), b.Origin());
     const double end = (std::min)(a.End(), b.End());
@@ -683,7 +797,9 @@ OpResult ValidateTerrainSeam(OpContext& context, const OpArgs& args)
     for (const auto& edge : {a, b}) {
         for (int i = 1; i + 1 < edge.Count(); ++i) {
             const double position = edge.Origin() + i * edge.Step();
-            if (position > start && position < end) positions.push_back(position);
+            if (position > start && position < end) {
+                positions.push_back(position);
+            }
         }
     }
     std::sort(positions.begin(), positions.end());
@@ -698,26 +814,32 @@ OpResult ValidateTerrainSeam(OpContext& context, const OpArgs& args)
         const double firstHeight = a.Height(position), secondHeight = b.Height(position);
         constexpr double LIMIT = std::numeric_limits<float>::max();
         if (!std::isfinite(firstHeight) || !std::isfinite(secondHeight)
-            || std::abs(firstHeight) > LIMIT || std::abs(secondHeight) > LIMIT)
+            || std::abs(firstHeight) > LIMIT || std::abs(secondHeight) > LIMIT) {
             return OpResult::Err("INVALID_TERRAIN", "境界の高さをワールド座標で表せません。");
+        }
         const double difference = std::abs(firstHeight - secondHeight);
         maxDifference = (std::max)(maxDifference, difference);
-        if (difference > tolerance)
+        if (difference > tolerance) {
             report.Add("TERRAIN_SEAM_STEP", worldPoint(position, firstHeight), "differenceMeters", difference);
+        }
     }
     int slopeSampleCount = 0;
     double maxSlopeDifference = 0.0;
     if (slopeTolerance > 0.0f) {
         for (std::size_t i = 1; i < positions.size(); ++i) {
             const double position = std::midpoint(positions[i - 1], positions[i]);
-            if (position <= positions[i - 1] || position >= positions[i]) continue;
+            if (position <= positions[i - 1] || position >= positions[i]) {
+                continue;
+            }
             const double difference = std::abs(a.CrossSlopeDegrees(position) - b.CrossSlopeDegrees(position));
-            if (!std::isfinite(difference))
+            if (!std::isfinite(difference)) {
                 return OpResult::Err("INVALID_TERRAIN", "境界に接する三角形の高さが不正です。");
+            }
             ++slopeSampleCount;
             maxSlopeDifference = (std::max)(maxSlopeDifference, difference);
-            if (difference > slopeTolerance)
+            if (difference > slopeTolerance) {
                 report.Add("TERRAIN_SEAM_SLOPE", worldPoint(position, a.Height(position)), "slopeDegrees", difference);
+            }
         }
     }
     auto data = OpData::MakeObject();
@@ -726,7 +848,9 @@ OpResult ValidateTerrainSeam(OpContext& context, const OpArgs& args)
     data.Set("sampleCount", OpData(static_cast<int>(positions.size())));
     data.Set("maxDifferenceMeters", OpData(maxDifference));
     data.Set("slopeSampleCount", OpData(slopeSampleCount));
-    if (slopeTolerance > 0.0f) data.Set("maxCrossSlopeDifferenceDegrees", OpData(maxSlopeDifference));
+    if (slopeTolerance > 0.0f) {
+        data.Set("maxCrossSlopeDifferenceDegrees", OpData(maxSlopeDifference));
+    }
     std::move(report).Finish(data);
     return OpResult::Data(std::move(data));
 }
@@ -757,7 +881,9 @@ EditorOperator TerrainMutation(const char* id, const char* label)
     op.undoLabel = label;
     op.params = {TerrainParameter("node", OpParamType::NodeId, "対象地形。省略時は選択中", std::string{})};
     op.poll = [](const OpContext& context, const OpArgs& args) {
-        if (context.ctx.playMode && context.ctx.playMode->GetState() != PlayState::Editor) return false;
+        if (context.ctx.playMode && context.ctx.playMode->GetState() != PlayState::Editor) {
+            return false;
+        }
         auto* go = ResolveTerrainNode(context, args.GetString("node"));
         return go && go->GetComponent<scene::TerrainComponent>();
     };
@@ -766,12 +892,15 @@ EditorOperator TerrainMutation(const char* id, const char* label)
 
 std::string ResolveTerrainInput(const EditorContext& context, const std::string& path)
 {
-    if (path.empty()) return {};
+    if (path.empty()) {
+        return {};
+    }
     const auto projectPath = ToProjectAssetDiskPath(context.projectRoot, path);
     std::error_code error;
-    if (!projectPath.empty() && std::filesystem::is_regular_file(std::filesystem::u8path(projectPath), error))
+    if (!projectPath.empty() && std::filesystem::is_regular_file(std::filesystem::u8path(projectPath), error)) {
         return projectPath;
-    /// @note SDKの共有素材も通常のアセット解決規則で読み、編集結果はプロジェクト側へ保存する。
+    }
+    // SDKの共有素材も通常のアセット解決規則で読み、編集結果はプロジェクト側へ保存する。
     return asset::AssetManager::ResolveAssetPath(path);
 }
 
@@ -784,7 +913,9 @@ OpResult CommitTerrain(OpContext& context, scene::GameObject& go, scene::Terrain
     auto command = MakeTerrainResizeCommand(context.ctx, go.instanceId, terrain, after, label, geometry);
     ApplyTerrainAuthoringSnapshot(terrain, after, geometry);
     result.command = RefreshTerrainPcg(context, pcgBounds, std::move(command));
-    if (context.ctx.markSceneDirty) context.ctx.markSceneDirty();
+    if (context.ctx.markSceneDirty) {
+        context.ctx.markSceneDirty();
+    }
     result.message = label;
     return result;
 }
@@ -835,8 +966,9 @@ OpResult CommitTerrainHeightEdit(OpContext& context, scene::GameObject& owner, T
         history = std::make_shared<History>(std::move(before), std::move(after), std::move(edit));
     }
     const auto swapHeights = [history](scene::TerrainComponent& target) {
-        for (auto& vertex : history->edit.vertices)
+        for (auto& vertex : history->edit.vertices) {
             std::swap(target.heightData[vertex.index], vertex.normalizedHeight);
+        }
         std::swap(history->expected, history->alternate);
         target.RequestHeightPreview(history->edit.region);
         target.colliderDirty = true;
@@ -855,7 +987,9 @@ OpResult CommitTerrainHeightEdit(OpContext& context, scene::GameObject& owner, T
             return false;
         }
         swapHeights(*target);
-        if (editor->markSceneDirty) editor->markSceneDirty();
+        if (editor->markSceneDirty) {
+            editor->markSceneDirty();
+        }
         reason.clear();
         return true;
     };
@@ -864,7 +998,9 @@ OpResult CommitTerrainHeightEdit(OpContext& context, scene::GameObject& owner, T
     std::vector<scene::WorldCellBounds> pcgBounds;
     CollectTerrainPcgBounds(owner, terrain, history->edit.region, pcgBounds);
     result.command = RefreshTerrainPcg(context, pcgBounds, std::move(command));
-    if (editor->markSceneDirty) editor->markSceneDirty();
+    if (editor->markSceneDirty) {
+        editor->markSceneDirty();
+    }
     return result;
 }
 
@@ -872,29 +1008,43 @@ bool ResolveMapSurfaces(scene::Scene& world, const scene::GameObject& owner, con
     std::vector<TerrainAnalysisSurface>& surfaces)
 {
     const auto* tiles = args.GetData("terrainTiles");
-    if (!ResolveTerrainAnalysisSurfaces(world, &owner, tiles, surfaces)) return false;
+    if (!ResolveTerrainAnalysisSurfaces(world, &owner, tiles, surfaces)) {
+        return false;
+    }
     if (tiles && !tiles->IsNull()) {
         const auto target = std::find_if(surfaces.begin(), surfaces.end(), [&](const auto& surface) { return surface.pose == &owner.transform; });
-        if (target == surfaces.end()) return false;
+        if (target == surfaces.end()) {
+            return false;
+        }
         std::iter_swap(surfaces.begin(), target);
         return true;
     }
-    if (!args.GetBool("includeNeighbors", true)) return true;
+    if (!args.GetBool("includeNeighbors", true)) {
+        return true;
+    }
 
     TerrainSeamTile first{};
-    if (!ReadSeamTile(owner, first)) return false;
+    if (!ReadSeamTile(owner, first)) {
+        return false;
+    }
     std::vector<TerrainSeamTile> connected{first};
     struct Candidate { TerrainSeamTile tile; const scene::Transform* pose; };
     std::vector<Candidate> candidates;
     for (const auto id : world.GetEntities<scene::TerrainComponent>()) {
         const auto* node = world.GetGameObject(id);
         TerrainSeamTile tile{};
-        if (node && node != &owner && ReadSeamTile(*node, tile)) candidates.push_back({tile, &node->transform});
+        if (node && node != &owner && ReadSeamTile(*node, tile)) {
+            candidates.push_back({tile, &node->transform});
+        }
     }
     for (std::size_t i = 0; i < connected.size(); ++i) {
         for (auto& candidate : candidates) {
-            if (!candidate.pose || !FindTerrainSeam(connected[i], candidate.tile)) continue;
-            if (surfaces.size() == 16) return false;
+            if (!candidate.pose || !FindTerrainSeam(connected[i], candidate.tile)) {
+                continue;
+            }
+            if (surfaces.size() == 16) {
+                return false;
+            }
             connected.push_back(candidate.tile);
             surfaces.push_back({candidate.tile.terrain, candidate.pose});
             candidate.pose = nullptr;
@@ -906,15 +1056,23 @@ bool ResolveMapSurfaces(scene::Scene& world, const scene::GameObject& owner, con
 std::filesystem::path TerrainAuthoringAssetPath(const EditorContext& context, const std::string& requested, std::string_view suffix,
     bool allowAbsolute = false)
 {
-    if (context.projectRoot.empty()) return {};
+    if (context.projectRoot.empty()) {
+        return {};
+    }
     const auto path = util::FileSystem::PathFromUtf8(requested);
-    if ((!allowAbsolute && path.has_root_path()) || !util::FileSystem::PathToUtf8(path.filename()).ends_with(suffix)) return {};
+    if ((!allowAbsolute && path.has_root_path()) || !util::FileSystem::PathToUtf8(path.filename()).ends_with(suffix)) {
+        return {};
+    }
     const auto project = util::FileSystem::PathFromUtf8(context.projectRoot);
     std::error_code error;
     const auto root = std::filesystem::weakly_canonical(project / "Assets", error);
-    if (error) return {};
+    if (error) {
+        return {};
+    }
     const auto output = std::filesystem::weakly_canonical(project / path, error);
-    if (error) return {};
+    if (error) {
+        return {};
+    }
     const auto relative = output.lexically_relative(root);
     return relative.empty() || relative.is_absolute() || *relative.begin() == ".." ? std::filesystem::path{} : output;
 }
@@ -935,8 +1093,9 @@ TerrainMapSettings ReadMapSettings(const OpArgs& args, const scene::GameObject& 
     settings.radius = args.GetFloat("radius", settings.radius);
     settings.flowFullArea = args.GetFloat("flowFullArea", settings.flowFullArea);
     settings.density = args.GetFloat("density", settings.density);
-    for (std::size_t i = 0; i < settings.preferences.size(); ++i)
+    for (std::size_t i = 0; i < settings.preferences.size(); ++i) {
         settings.preferences[i] = args.GetFloat(TERRAIN_MAP_NAMES[i], settings.preferences[i]);
+    }
     settings.flowRegion = ReadFlowRegion(args, owner);
     return settings;
 }
@@ -967,27 +1126,45 @@ bool PrepareTerrainHabitat(const OpArgs& args, scene::Scene& world, const scene:
             && (band.maximum == 0.0f || band.maximum >= band.minimum);
     };
     const auto& target = surfaces.front();
-    if (!std::isfinite(habitat.patchScale) || !std::isfinite(habitat.patchMin) || !std::isfinite(habitat.patchMax)
-        || habitat.patchMin > habitat.patchMax || habitat.seed < 0 || !validBand(habitat.water) || !validBand(habitat.path)
-        || habitat.pathLayer < -1 || habitat.pathLayer >= target.terrain->LayerCount()) return false;
+    // パッチノイズと、水域や通路からの距離条件をそれぞれ検査する。
+    const bool validPatchNoise = std::isfinite(habitat.patchScale) && std::isfinite(habitat.patchMin)
+        && std::isfinite(habitat.patchMax) && habitat.patchMin <= habitat.patchMax && habitat.seed >= 0;
+    if (!validPatchNoise) {
+        return false;
+    }
+    if (!validBand(habitat.water) || !validBand(habitat.path)) {
+        return false;
+    }
+    if (habitat.pathLayer < -1 || habitat.pathLayer >= target.terrain->LayerCount()) {
+        return false;
+    }
+
     const auto search = [](const TerrainHabitatBand& band) { return (std::max)(band.maximum, band.minimum > 0.0f ? band.minimum + band.fade : 0.0f); };
     const float waterSearch = search(habitat.water);
     const float pathSearch = habitat.pathLayer >= 0 ? search(habitat.path) : 0.0f;
-    if (habitat.patchScale <= 0.0f && !habitat.avoidWater && waterSearch == 0.0f && pathSearch == 0.0f) return true;
+    if (habitat.patchScale <= 0.0f && !habitat.avoidWater && waterSearch == 0.0f && pathSearch == 0.0f) {
+        return true;
+    }
 
     std::vector<std::pair<const scene::WaterComponent*, const scene::Transform*>> waters;
     if (waterSearch > 0.0f || habitat.avoidWater) {
         for (const auto id : world.GetEntities<scene::WaterComponent>()) {
             const auto* node = world.GetGameObject(id);
             const auto* water = world.GetComponent<scene::WaterComponent>(id);
-            if (node && node->activeInHierarchy() && water && water->enabled) waters.emplace_back(water, &node->transform);
+            if (node && node->activeInHierarchy() && water && water->enabled) {
+                waters.emplace_back(water, &node->transform);
+            }
         }
-        if (waters.size() > 128) return false;
+        if (waters.size() > 128) {
+            return false;
+        }
     }
     std::vector<TerrainPaintClearance> clearances;
     if ((!waters.empty() && waterSearch > 0.0f) || pathSearch > 0.0f) {
         TerrainSeamTile tile{};
-        if (!ReadSeamTile(owner, tile)) return false;
+        if (!ReadSeamTile(owner, tile)) {
+            return false;
+        }
         const float west = static_cast<float>(tile.x), east = static_cast<float>(tile.East());
         const float north = static_cast<float>(tile.z), south = static_cast<float>(tile.South());
         const std::array<math::Vector3, 4> corners{{{west, 0, north}, {east, 0, north}, {east, 0, south}, {west, 0, south}}};
@@ -995,18 +1172,21 @@ bool PrepareTerrainHabitat(const OpArgs& args, scene::Scene& world, const scene:
         const std::string pathMaterial = pathSearch > 0.0f ? target.terrain->layerMaterials[habitat.pathLayer] : std::string{};
         const auto pathGuid = asset::AssetDatabase::GuidFromRef(pathMaterial);
         for (const auto& surface : surfaces) {
-            const auto scale = surface.pose->worldScale;
-            const auto& rotation = surface.pose->worldRotation;
-            if (!IsValidTerrainDimension(surface.terrain->columns) || !IsValidTerrainDimension(surface.terrain->rows)
-                || !std::isfinite(surface.terrain->cellSize) || surface.terrain->cellSize <= 0.0f
-                || surface.terrain->heightData.size() != surface.terrain->VertexCount()
-                || !std::isfinite(scale.x) || !std::isfinite(scale.y) || !std::isfinite(scale.z)
-                || scale.x <= 0.0f || scale.y <= 0.0f || scale.z <= 0.0f
-                || rotation.x != 0.0f || rotation.y != 0.0f || rotation.z != 0.0f || std::abs(rotation.w) != 1.0f) return false;
+            // 距離を集計する範囲はワールドの XZ 軸に沿うため、各地形の格子も同じ向きに揃っている必要がある。
+            const auto& terrain = *surface.terrain;
+            const bool validGrid = IsValidTerrainDimension(terrain.columns) && IsValidTerrainDimension(terrain.rows)
+                && std::isfinite(terrain.cellSize) && terrain.cellSize > 0.0f
+                && terrain.heightData.size() == terrain.VertexCount();
+            if (!validGrid || !HasAxisAlignedTerrainAxes(*surface.pose)) {
+                return false;
+            }
+
             std::vector<int> layers;
             for (int layer = 0; layer < surface.terrain->LayerCount() && !pathMaterial.empty(); ++layer) {
                 const auto& material = surface.terrain->layerMaterials[layer];
-                if (material == pathMaterial || (!pathGuid.empty() && asset::AssetDatabase::GuidFromRef(material) == pathGuid)) layers.push_back(layer);
+                if (material == pathMaterial || (!pathGuid.empty() && asset::AssetDatabase::GuidFromRef(material) == pathGuid)) {
+                    layers.push_back(layer);
+                }
             }
             clearances.push_back(BuildTerrainPaintClearance(*surface.terrain, *surface.pose, region, layers, waters,
                 waterSearch, layers.empty() ? 0.0f : pathSearch, true));
@@ -1018,13 +1198,17 @@ bool PrepareTerrainHabitat(const OpArgs& args, scene::Scene& world, const scene:
             const float patch = SampleTerrainPatchNoise(point.x, point.z, habitat.patchScale, static_cast<std::uint32_t>(habitat.seed));
             density = HabitatTransition(patch, habitat.patchMin, habitat.patchMax == 1.0f ? 0.0f : habitat.patchMax, 0.12f);
         }
-        if (density == 0.0f) return 0.0f;
+        if (density == 0.0f) {
+            return 0.0f;
+        }
         float waterDistance = std::numeric_limits<float>::infinity(), pathDistance = waterDistance;
         for (const auto& [water, pose] : waters) {
             scene::WaterSurfaceHeightSample sample;
             if (scene::TrySampleWaterSurfaceHeightWorld(*water, *pose, point, 0.0f, sample) && sample.insideSurface
                 && !sample.excluded && point.y <= sample.position.y + 0.15f) {
-                if (habitat.avoidWater) return 0.0f;
+                if (habitat.avoidWater) {
+                    return 0.0f;
+                }
                 waterDistance = 0.0f;
                 break;
             }
@@ -1033,14 +1217,18 @@ bool PrepareTerrainHabitat(const OpArgs& args, scene::Scene& world, const scene:
             const auto& pose = *target.pose;
             const float x = (point.x - pose.worldPosition.x) / pose.worldScale.x;
             const float z = (point.z - pose.worldPosition.z) / pose.worldScale.z;
-            if (SampleTerrainLayerWeight(*target.terrain, x, z, habitat.pathLayer) >= 0.35f) pathDistance = 0.0f;
+            if (SampleTerrainLayerWeight(*target.terrain, x, z, habitat.pathLayer) >= 0.35f) {
+                pathDistance = 0.0f;
+            }
         }
         for (const auto& clearance : clearances) {
             math::Vector3 nearest;
-            if (waterSearch > 0.0f && waterDistance > 0.0f && clearance.NearestWater(point, waterSearch, nearest))
+            if (waterSearch > 0.0f && waterDistance > 0.0f && clearance.NearestWater(point, waterSearch, nearest)) {
                 waterDistance = (std::min)(waterDistance, std::hypot(point.x - nearest.x, point.z - nearest.z));
-            if (pathSearch > 0.0f && pathDistance > 0.0f)
+            }
+            if (pathSearch > 0.0f && pathDistance > 0.0f) {
                 pathDistance = (std::min)(pathDistance, clearance.PathDistance(point, pathSearch));
+            }
         }
         return density * HabitatTransition(waterDistance, habitat.water.minimum, habitat.water.maximum, habitat.water.fade)
             * (habitat.pathLayer < 0 ? 1.0f : HabitatTransition(pathDistance, habitat.path.minimum, habitat.path.maximum, habitat.path.fade));
@@ -1051,38 +1239,49 @@ bool PrepareTerrainHabitat(const OpArgs& args, scene::Scene& world, const scene:
 OpResult RunTerrainMap(OpContext& context, const OpArgs& args, OpKind kind)
 {
     auto* owner = ResolveTerrainNode(context, args.GetString("node"));
-    if (!owner || (kind == OpKind::Mutation && context.ctx.IsLocked(owner->GetID())))
+    if (!owner || (kind == OpKind::Mutation && context.ctx.IsLocked(owner->GetID()))) {
         return OpResult::Err("NO_TERRAIN", "Select a terrain that can be used for this operation.");
+    }
     auto& world = *context.ctx.activeScene;
     scene::FlushWorldTransforms(world);
     std::vector<TerrainAnalysisSurface> surfaces;
-    if (!ResolveMapSurfaces(world, *owner, args, surfaces))
+    if (!ResolveMapSurfaces(world, *owner, args, surfaces)) {
         return OpResult::Err("BAD_TERRAIN_TILES", "Use up to 16 active terrain tiles and include the target tile.");
+    }
 
     const auto channelName = args.GetString("channel", "Density");
     const auto channel = std::find(TERRAIN_MAP_NAMES.begin(), TERRAIN_MAP_NAMES.end(), channelName);
-    if (channel == TERRAIN_MAP_NAMES.end()) return OpResult::Err("BAD_CHANNEL", "Unknown terrain map channel.");
+    if (channel == TERRAIN_MAP_NAMES.end()) {
+        return OpResult::Err("BAD_CHANNEL", "Unknown terrain map channel.");
+    }
     const auto settings = ReadMapSettings(args, *owner);
     const auto mapChannel = static_cast<TerrainMapChannel>(channel - TERRAIN_MAP_NAMES.begin());
     std::function<float(const math::Vector3&)> habitat;
-    if (mapChannel == TerrainMapChannel::DENSITY && !PrepareTerrainHabitat(args, world, *owner, surfaces, habitat))
+    if (mapChannel == TerrainMapChannel::DENSITY && !PrepareTerrainHabitat(args, world, *owner, surfaces, habitat)) {
         return OpResult::Err("BAD_HABITAT", "Check the patch range, distance bands, path layer and water surface count.");
+    }
 
     auto& terrain = *owner->GetComponent<scene::TerrainComponent>();
     const int layer = args.GetInt("layer", -1);
-    if (kind == OpKind::Mutation && (layer < 0 || layer >= terrain.LayerCount()))
+    if (kind == OpKind::Mutation && (layer < 0 || layer >= terrain.LayerCount())) {
         return OpResult::Err("BAD_LAYER", "Select an existing terrain material layer.");
+    }
     std::filesystem::path exportPath;
     if (kind == OpKind::Action) {
         auto requested = args.GetString("path");
-        if (requested.empty()) requested = "Assets/Terrain/Maps/" + channelName + "_" + asset::AssetDatabase::GenerateGuid() + ".png";
+        if (requested.empty()) {
+            requested = "Assets/Terrain/Maps/" + channelName + "_" + asset::AssetDatabase::GenerateGuid() + ".png";
+        }
         exportPath = TerrainAuthoringAssetPath(context.ctx, requested, ".png");
-        if (exportPath.empty()) return OpResult::Err("BAD_PATH", "Enter a .png path under the project's Assets folder.");
+        if (exportPath.empty()) {
+            return OpResult::Err("BAD_PATH", "Enter a .png path under the project's Assets folder.");
+        }
     }
 
     TerrainMapRaster raster;
-    if (!BuildTerrainMap(surfaces, settings, mapChannel, raster, habitat))
+    if (!BuildTerrainMap(surfaces, settings, mapChannel, raster, habitat)) {
         return OpResult::Err("MAP_FAILED", "Check the heightfield, map settings, and positive world-aligned terrain transforms.");
+    }
     auto data = OpData::MakeObject();
     data.Set("width", raster.width);
     data.Set("height", raster.height);
@@ -1111,10 +1310,14 @@ OpResult RunTerrainMap(OpContext& context, const OpArgs& args, OpKind kind)
         image.columns = raster.width;
         image.rows = raster.height;
         image.heightData = std::move(raster.pixels);
-        if (!scene::SaveHeightMapToFile(path, image, true)) return OpResult::Err("WRITE_FAILED", "Could not save " + path);
+        if (!scene::SaveHeightMapToFile(path, image, true)) {
+            return OpResult::Err("WRITE_FAILED", "Could not save " + path);
+        }
         context.ctx.requestAssetBrowserRefresh = true;
         const auto guid = asset::AssetDatabase::GuidFromPath(path);
-        if (guid.empty()) return OpResult::Err("META_FAILED", "PNG saved but asset metadata could not be created: " + path);
+        if (guid.empty()) {
+            return OpResult::Err("META_FAILED", "PNG saved but asset metadata could not be created: " + path);
+        }
         data.Set("path", NormalizeAssetPath(path));
         data.Set("guid", guid);
         auto result = OpResult::Data(std::move(data));
@@ -1168,20 +1371,24 @@ void RegisterTerrainMapOperators(OperatorRegistry& registry)
     AddTerrainMapSamplingParameters(bake);
     const TerrainMapSettings defaults;
     AddRuleRange(bake, "density", "Maximum density", defaults.density, 0.0f, 1.0f);
-    for (std::size_t i = 0; i < defaults.preferences.size(); ++i)
+    for (std::size_t i = 0; i < defaults.preferences.size(); ++i) {
         AddRuleRange(bake, TERRAIN_MAP_NAMES[i], "Density preference: negative favors black, positive favors white", defaults.preferences[i], -1.0f, 1.0f);
+    }
     AddRuleRange(bake, "patchScale", "Habitat patch scale in world metres; 0 disables it", 0.0f, 0.0f, 2048.0f);
     AddRuleRange(bake, "patchMin", "Lowest accepted patch value", 0.0f, 0.0f, 1.0f);
     AddRuleRange(bake, "patchMax", "Highest accepted patch value", 1.0f, 0.0f, 1.0f);
     bake.params.push_back(TerrainParameter("patchSeed", OpParamType::Int, "World-aligned habitat seed", 1));
     bake.params.push_back(TerrainParameter("avoidWater", OpParamType::Bool, "Reject submerged samples", false));
     bake.params.push_back(TerrainParameter("pathLayer", OpParamType::Int, "Painted road/trail layer, or -1", -1));
-    for (const auto* name : {"waterMin", "pathMin"})
+    for (const auto* name : {"waterMin", "pathMin"}) {
         AddRuleRange(bake, name, "Minimum distance in world metres", 0.0f, 0.0f, 1000.0f);
-    for (const auto* name : {"waterMax", "pathMax"})
+    }
+    for (const auto* name : {"waterMax", "pathMax"}) {
         AddRuleRange(bake, name, "Maximum distance in world metres; 0 leaves it open", 0.0f, 0.0f, 1000.0f);
-    for (const auto* name : {"waterFade", "pathFade"})
+    }
+    for (const auto* name : {"waterFade", "pathFade"}) {
         AddRuleRange(bake, name, "Distance band transition width in world metres", 8.0f, 0.0f, 500.0f);
+    }
 
     auto preview = bake;
     preview.id = "terrain.maps.preview";
@@ -1211,28 +1418,45 @@ void RegisterTerrainMapOperators(OperatorRegistry& registry)
 bool ReadMaterialRules(const OpArgs& args, TerrainMaterialBakeSettings& settings)
 {
     const auto* rules = args.GetData("rules");
-    if (!rules || !rules->IsArray() || rules->AsArray().empty() || rules->AsArray().size() > 8) return false;
+    if (!rules || !rules->IsArray() || rules->AsArray().empty() || rules->AsArray().size() > 8) {
+        return false;
+    }
     const auto number = [](const OpData& data, float& value) {
-        if (data.IsInt()) { value = static_cast<float>(data.AsInt64()); return true; }
+        if (data.IsInt()) {
+            value = static_cast<float>(data.AsInt64());
+            return true;
+        }
         return data.TryGetFloat(value);
     };
     for (const auto& item : rules->AsArray()) {
         TerrainMaterialRule rule;
         const auto* layer = item.Find("layer");
-        if (!layer || !layer->TryGetInt32(rule.layer)) return false;
-        if (const auto* value = item.Find("weight"); value && !number(*value, rule.weight)) return false;
+        if (!layer || !layer->TryGetInt32(rule.layer)) {
+            return false;
+        }
+        if (const auto* value = item.Find("weight"); value && !number(*value, rule.weight)) {
+            return false;
+        }
         if (const auto* preferences = item.Find("preferences")) {
-            if (!preferences->IsArray() || preferences->AsArray().size() != rule.preferences.size()) return false;
+            if (!preferences->IsArray() || preferences->AsArray().size() != rule.preferences.size()) {
+                return false;
+            }
             for (std::size_t i = 0; i < rule.preferences.size(); ++i)
-                if (!number(preferences->AsArray()[i], rule.preferences[i])) return false;
+                if (!number(preferences->AsArray()[i], rule.preferences[i])) {
+                    return false;
+                }
         }
         settings.rules.push_back(rule);
     }
     if (const auto* protectedLayers = args.GetData("protectedLayers"); protectedLayers && !protectedLayers->IsNull()) {
-        if (!protectedLayers->IsArray() || protectedLayers->AsArray().size() > 8) return false;
+        if (!protectedLayers->IsArray() || protectedLayers->AsArray().size() > 8) {
+            return false;
+        }
         for (const auto& value : protectedLayers->AsArray()) {
             int layer = -1;
-            if (!value.TryGetInt32(layer) || std::find(settings.protectedLayers.begin(), settings.protectedLayers.end(), layer) != settings.protectedLayers.end()) return false;
+            if (!value.TryGetInt32(layer) || std::find(settings.protectedLayers.begin(), settings.protectedLayers.end(), layer) != settings.protectedLayers.end()) {
+                return false;
+            }
             settings.protectedLayers.push_back(layer);
         }
     }
@@ -1242,13 +1466,19 @@ bool ReadMaterialRules(const OpArgs& args, TerrainMaterialBakeSettings& settings
 OpResult RunTerrainMaterialBake(OpContext& context, const OpArgs& args)
 {
     auto* owner = ResolveTerrainNode(context, args.GetString("node"));
-    if (!owner || context.ctx.IsLocked(owner->GetID())) return OpResult::Err("NO_TERRAIN", "Select an editable terrain.");
+    if (!owner || context.ctx.IsLocked(owner->GetID())) {
+        return OpResult::Err("NO_TERRAIN", "Select an editable terrain.");
+    }
     auto& world = *context.ctx.activeScene;
     scene::FlushWorldTransforms(world);
     std::vector<TerrainAnalysisSurface> surfaces;
-    if (!ResolveMapSurfaces(world, *owner, args, surfaces)) return OpResult::Err("BAD_TERRAIN_TILES", "Select up to 16 active terrain tiles.");
+    if (!ResolveMapSurfaces(world, *owner, args, surfaces)) {
+        return OpResult::Err("BAD_TERRAIN_TILES", "Select up to 16 active terrain tiles.");
+    }
     TerrainMaterialBakeSettings settings;
-    if (!ReadMaterialRules(args, settings)) return OpResult::Err("BAD_RULES", "Check the material rules and protected layer list.");
+    if (!ReadMaterialRules(args, settings)) {
+        return OpResult::Err("BAD_RULES", "Check the material rules and protected layer list.");
+    }
     settings.strength = args.GetFloat("strength", settings.strength);
     settings.protectedThreshold = args.GetFloat("protectedThreshold", settings.protectedThreshold);
     const auto maps = ReadMapSettings(args, *owner);
@@ -1258,14 +1488,16 @@ OpResult RunTerrainMaterialBake(OpContext& context, const OpArgs& args)
         scene::TerrainComponent image;
         image.columns = std::clamp(terrain.columns, 2, 4097);
         image.rows = std::clamp(terrain.rows, 2, 4097);
-        if (!scene::LoadHeightMapFromFile(ResolveTerrainInput(context.ctx, file), image))
+        if (!scene::LoadHeightMapFromFile(ResolveTerrainInput(context.ctx, file), image)) {
             return OpResult::Err("BAD_PROTECTION_MASK", "Could not read the material protection mask.");
+        }
         protection = {image.columns, image.rows, std::move(image.heightData)};
         settings.protection = &protection;
     }
     auto after = terrain;
-    if (!BakeTerrainMaterials(after, surfaces, maps, settings))
+    if (!BakeTerrainMaterials(after, surfaces, maps, settings)) {
         return OpResult::Err("MATERIAL_BAKE_FAILED", "Check the layer indices, map settings and terrain transform.");
+    }
     if (after.splatIndices == terrain.splatIndices && after.splatWeights == terrain.splatWeights) {
         auto result = OpResult::Ok();
         result.noChange = true;
@@ -1277,7 +1509,9 @@ OpResult RunTerrainMaterialBake(OpContext& context, const OpArgs& args)
 
 void ApplyRiverCarvePlan(scene::TerrainComponent& terrain, const TerrainRiverCarvePlan& plan)
 {
-    for (const auto& vertex : plan.vertices) terrain.heightData[vertex.index] = vertex.normalizedHeight;
+    for (const auto& vertex : plan.vertices) {
+        terrain.heightData[vertex.index] = vertex.normalizedHeight;
+    }
     for (const auto& material : plan.materials) {
         std::copy(material.indices.begin(), material.indices.end(), terrain.splatIndices.data() + material.offset);
         std::copy(material.weights.begin(), material.weights.end(), terrain.splatWeights.data() + material.offset);
@@ -1304,20 +1538,28 @@ TerrainFlowCarveSettings ReadFlowCarveSettings(const OpArgs& args, const scene::
 OpResult RunTerrainFlowCarve(OpContext& context, const OpArgs& args, bool preview)
 {
     auto* owner = ResolveTerrainNode(context, args.GetString("node"));
-    if (!owner || (!preview && context.ctx.IsLocked(owner->GetID()))) return OpResult::Err("NO_TERRAIN", "Select an editable terrain.");
+    if (!owner || (!preview && context.ctx.IsLocked(owner->GetID()))) {
+        return OpResult::Err("NO_TERRAIN", "Select an editable terrain.");
+    }
     auto& world = *context.ctx.activeScene;
     scene::FlushWorldTransforms(world);
     std::vector<TerrainAnalysisSurface> surfaces;
-    if (!ResolveMapSurfaces(world, *owner, args, surfaces)) return OpResult::Err("BAD_TERRAIN_TILES", "Select up to 16 active terrain tiles.");
+    if (!ResolveMapSurfaces(world, *owner, args, surfaces)) {
+        return OpResult::Err("BAD_TERRAIN_TILES", "Select up to 16 active terrain tiles.");
+    }
     const auto settings = ReadFlowCarveSettings(args, *owner);
     const auto& bed = settings.bed;
     const auto& terrain = *surfaces.front().terrain;
     for (const int layer : {bed.bankLayer, bed.gentleBankLayer, bed.protectedLayer})
-        if (layer < -1 || layer >= terrain.LayerCount()) return OpResult::Err("BAD_LAYER", "Choose existing terrain layers or -1.");
+        if (layer < -1 || layer >= terrain.LayerCount()) {
+            return OpResult::Err("BAD_LAYER", "Choose existing terrain layers or -1.");
+        }
     TerrainRiverCarvePlan plan;
     std::string diagnostic;
     int reaches = 0;
-    if (!PlanTerrainFlowCarve(surfaces, settings, plan, reaches, diagnostic)) return OpResult::Err("FLOW_CARVE_FAILED", diagnostic);
+    if (!PlanTerrainFlowCarve(surfaces, settings, plan, reaches, diagnostic)) {
+        return OpResult::Err("FLOW_CARVE_FAILED", diagnostic);
+    }
     auto data = OpData::MakeObject();
     data.Set("reaches", reaches);
     data.Set("analysisSpacing", plan.analysisSpacing);
@@ -1360,7 +1602,9 @@ std::string TerrainNetworkFingerprint(const scene::TerrainComponent& terrain, co
     hash.Add(terrain.splatWeights);
     hash.Add(static_cast<std::uint64_t>(terrain.enabled));
     hash.Add(terrain.terrainAssetPath);
-    for (const auto& layer : terrain.layerMaterials) hash.Add(layer);
+    for (const auto& layer : terrain.layerMaterials) {
+        hash.Add(layer);
+    }
     return hash.Finish();
 }
 
@@ -1418,19 +1662,25 @@ bool BuildNetworkRivers(std::span<const TerrainRiverCarveSection> sections, cons
                 point.halfWidth * 2.0f, point.depth, speed});
             water.buoyancyDepth = (std::max)(water.buoyancyDepth, point.depth);
         };
-        for (const auto& point : points) addPoint(point);
+        for (const auto& point : points) {
+            addPoint(point);
+        }
         if (next) {
             const auto& join = points.back();
             const auto delta = next->center - join.center;
             const float length = std::hypot(delta.x, delta.y);
-            if (length <= 0.0f) return false;
+            if (length <= 0.0f) {
+                return false;
+            }
             const float t = (std::min)(0.5f, join.halfWidth / length);
             auto center = join.center + delta * t;
             if (straightJoin) {
-                /// @note A straight terminal overlap fits within the shared bed section when the downstream bend would fold the strip.
+                // A straight terminal overlap fits within the shared bed section when the downstream bend would fold the strip.
                 const auto incoming = join.center - points[points.size() - 2].center;
                 const float incomingLength = std::hypot(incoming.x, incoming.y);
-                if (incomingLength <= 0.0f) return false;
+                if (incomingLength <= 0.0f) {
+                    return false;
+                }
                 center = join.center + incoming * ((std::min)(t * length, incomingLength * 0.5f) / incomingLength);
             }
             addPoint({center, std::lerp(join.waterHeight, next->waterHeight, t),
@@ -1444,7 +1694,9 @@ bool BuildNetworkRivers(std::span<const TerrainRiverCarveSection> sections, cons
     };
     const auto appendStrips = [&](std::size_t cursor, std::size_t end, const TerrainRiverCarveSection* continuation) {
         while (cursor + 1 < end) {
-            if (rivers.size() == MAX_RIVERS) return false;
+            if (rivers.size() == MAX_RIVERS) {
+                return false;
+            }
             std::size_t limit = (std::min)(end, cursor + scene::WATER_SPLINE_MAX_CONTROL_POINTS - 1);
             for (;;) {
                 const auto points = sections.subspan(cursor, limit - cursor);
@@ -1464,7 +1716,9 @@ bool BuildNetworkRivers(std::span<const TerrainRiverCarveSection> sections, cons
                     rivers.push_back(std::move(river));
                     break;
                 }
-                if (points.size() == 2) return false;
+                if (points.size() == 2) {
+                    return false;
+                }
                 limit = cursor + (std::max)(std::size_t{2}, points.size() / 2);
             }
             cursor = limit - 1;
@@ -1473,23 +1727,33 @@ bool BuildNetworkRivers(std::span<const TerrainRiverCarveSection> sections, cons
     };
     for (std::size_t begin = 0; begin < sections.size();) {
         std::size_t end = begin + 1;
-        while (end < sections.size() && !sections[end].beginsReach) ++end;
+        while (end < sections.size() && !sections[end].beginsReach) {
+            ++end;
+        }
         const TerrainRiverCarveSection* continuation = nullptr;
         if (sections[begin].openEnd) {
             const auto downstream = std::find_if(sections.begin(), sections.end(), [&](const auto& point) {
                 return point.beginsReach && point.center == sections[end - 1].center;
             });
-            if (downstream == sections.end() || downstream + 1 == sections.end()) return false;
+            if (downstream == sections.end() || downstream + 1 == sections.end()) {
+                return false;
+            }
             continuation = &*(downstream + 1);
         }
         auto cursor = begin;
         for (const auto lip : waterfallLips) {
-            if (lip < begin || lip >= end) continue;
-            /// @note Water above and below the cliff remains queryable; the falling curtain is visual geometry.
-            if (!appendStrips(cursor, lip + 1, nullptr)) return false;
+            if (lip < begin || lip >= end) {
+                continue;
+            }
+            // Water above and below the cliff remains queryable; the falling curtain is visual geometry.
+            if (!appendStrips(cursor, lip + 1, nullptr)) {
+                return false;
+            }
             cursor = lip + 1;
         }
-        if (!appendStrips(cursor, end, continuation)) return false;
+        if (!appendStrips(cursor, end, continuation)) {
+            return false;
+        }
         begin = end;
     }
     return true;
@@ -1500,7 +1764,9 @@ bool PlanNetworkWaterfall(std::size_t lip, std::vector<TerrainNetworkRiver>& riv
 {
     const auto upper = std::find_if(rivers.begin(), rivers.end(), [&](const auto& river) { return river.lastSection == lip; });
     const auto lower = std::find_if(rivers.begin(), rivers.end(), [&](const auto& river) { return river.firstSection == lip + 1; });
-    if (upper == rivers.end() || lower == rivers.end()) return false;
+    if (upper == rivers.end() || lower == rivers.end()) {
+        return false;
+    }
     const auto getSection = [](const TerrainNetworkRiver& river, bool atStart, scene::WaterfallSection& section) {
         scene::Transform pose;
         pose.worldPosition = river.origin;
@@ -1510,11 +1776,15 @@ bool PlanNetworkWaterfall(std::size_t lip, std::vector<TerrainNetworkRiver>& riv
             && scene::GetWaterfallRiverSection(snapshot, atStart, !atStart, section);
     };
     scene::WaterfallGeometry geometry;
-    if (!getSection(*upper, false, geometry.source) || !getSection(*lower, true, geometry.receiver)) return false;
+    if (!getSection(*upper, false, geometry.source) || !getSection(*lower, true, geometry.receiver)) {
+        return false;
+    }
     scene::MeshBuilder mesh;
     if (!scene::BuildWaterfallGeometry(geometry, ground, mesh)) {
         geometry.rockAttached = true;
-        if (!scene::BuildWaterfallGeometry(geometry, ground, mesh)) return false;
+        if (!scene::BuildWaterfallGeometry(geometry, ground, mesh)) {
+            return false;
+        }
     }
     out.upstream = static_cast<std::size_t>(upper - rivers.begin());
     out.downstream = static_cast<std::size_t>(lower - rivers.begin());
@@ -1529,7 +1799,10 @@ bool ApplyTerrainNetworkBatch(TerrainNetworkEditBatch& batch, bool apply, std::s
     auto& ctx = *batch.context;
     auto* world = ctx.activeScene;
     if (!world || world->GetRenderSceneGeneration() != batch.generation
-        || (ctx.playMode && !ctx.playMode->IsInEditor())) { reason = "The edit scene changed."; return false; }
+        || (ctx.playMode && !ctx.playMode->IsInEditor())) {
+        reason = "The edit scene changed.";
+        return false;
+    }
     scene::FlushWorldTransforms(*world);
     std::vector<scene::TerrainComponent*> terrains;
     for (const auto& edit : batch.terrain) {
@@ -1551,21 +1824,36 @@ bool ApplyTerrainNetworkBatch(TerrainNetworkEditBatch& batch, bool apply, std::s
     for (auto& river : batch.rivers) {
         auto* owner = world->FindByGuid(river.guid);
         if (apply) {
-            if (owner) { reason = "A planned river GUID already exists."; return false; }
+            if (owner) {
+                reason = "A planned river GUID already exists.";
+                return false;
+            }
             continue;
         }
         auto* water = owner ? owner->GetComponent<scene::WaterComponent>() : nullptr;
-        if (!water || ctx.IsLocked(owner->GetID()) || owner->GetParent() || owner->GetChildCount() || !owner->activeSelf()
-            || owner->name != river.name || owner->tag != "Untagged" || owner->layer != 0 || !owner->prefabAssetPath.empty()
-            || owner->transform.position != river.origin || owner->transform.rotation != math::Quaternion::Identity()
-            || owner->transform.scale != math::Vector3::ONE
-            || world->GetComponentLifetime<scene::WaterComponent>(owner->GetID()) != river.lifetime) {
-            reason = "A generated river was edited.";
+        // Undo で削除する川は、同じルートオブジェクトと作成時の値を保持している必要がある。
+        constexpr char RIVER_EDITED[] = "A generated river was edited.";
+        if (!water || ctx.IsLocked(owner->GetID()) || owner->GetParent() || owner->GetChildCount()) {
+            reason = RIVER_EDITED;
+            return false;
+        }
+        const bool propertiesChanged = !owner->activeSelf() || owner->name != river.name
+            || owner->tag != "Untagged" || owner->layer != 0 || !owner->prefabAssetPath.empty();
+        if (propertiesChanged) {
+            reason = RIVER_EDITED;
+            return false;
+        }
+        const bool transformChanged = owner->transform.position != river.origin
+            || owner->transform.rotation != math::Quaternion::Identity() || owner->transform.scale != math::Vector3::ONE;
+        if (transformChanged || world->GetComponentLifetime<scene::WaterComponent>(owner->GetID()) != river.lifetime) {
+            reason = RIVER_EDITED;
             return false;
         }
         bool extraComponent = false;
         scene::ForEachRegisteredComponent([&]<typename T, typename Registration>() {
-            if constexpr (!std::is_same_v<T, scene::WaterComponent>) extraComponent |= owner->GetComponent<T>() != nullptr;
+            if constexpr (!std::is_same_v<T, scene::WaterComponent>) {
+                extraComponent |= owner->GetComponent<T>() != nullptr;
+            }
         });
         auto authored = *water;
         if (extraComponent || scene::SerializeReflected(authored) != scene::SerializeReflected(river.water)) {
@@ -1577,21 +1865,36 @@ bool ApplyTerrainNetworkBatch(TerrainNetworkEditBatch& batch, bool apply, std::s
     for (auto& visual : batch.visuals) {
         auto* owner = world->FindByGuid(visual.guid);
         if (apply) {
-            if (owner) { reason = "A planned waterfall GUID already exists."; return false; }
+            if (owner) {
+                reason = "A planned waterfall GUID already exists.";
+                return false;
+            }
             continue;
         }
         auto* waterfall = owner ? owner->GetComponent<scene::WaterfallComponent>() : nullptr;
-        if (!waterfall || ctx.IsLocked(owner->GetID()) || owner->GetParent()
-            || !owner->activeSelf() || owner->name != visual.name || owner->tag != "Untagged" || owner->layer != 0
-            || !owner->prefabAssetPath.empty() || owner->transform.position != visual.position
-            || owner->transform.rotation != math::Quaternion::Identity() || owner->transform.scale != math::Vector3::ONE
-            || world->GetComponentLifetime<scene::WaterfallComponent>(owner->GetID()) != visual.lifetime) {
-            reason = "A generated waterfall was edited.";
+        // 滝の子オブジェクトは許容し、後で WaterfallPart か確認する。
+        constexpr char WATERFALL_EDITED[] = "A generated waterfall was edited.";
+        if (!waterfall || ctx.IsLocked(owner->GetID()) || owner->GetParent()) {
+            reason = WATERFALL_EDITED;
+            return false;
+        }
+        const bool propertiesChanged = !owner->activeSelf() || owner->name != visual.name
+            || owner->tag != "Untagged" || owner->layer != 0 || !owner->prefabAssetPath.empty();
+        if (propertiesChanged) {
+            reason = WATERFALL_EDITED;
+            return false;
+        }
+        const bool transformChanged = owner->transform.position != visual.position
+            || owner->transform.rotation != math::Quaternion::Identity() || owner->transform.scale != math::Vector3::ONE;
+        if (transformChanged || world->GetComponentLifetime<scene::WaterfallComponent>(owner->GetID()) != visual.lifetime) {
+            reason = WATERFALL_EDITED;
             return false;
         }
         bool extraComponent = false;
         scene::ForEachRegisteredComponent([&]<typename T, typename Registration>() {
-            if constexpr (!std::is_same_v<T, scene::WaterfallComponent>) extraComponent |= owner->GetComponent<T>() != nullptr;
+            if constexpr (!std::is_same_v<T, scene::WaterfallComponent>) {
+                extraComponent |= owner->GetComponent<T>() != nullptr;
+            }
         });
         for (int child = 0; child < owner->GetChildCount(); ++child) {
             auto* object = owner->GetChild(child);
@@ -1606,7 +1909,11 @@ bool ApplyTerrainNetworkBatch(TerrainNetworkEditBatch& batch, bool apply, std::s
     if (apply) {
         for (auto& river : batch.rivers) {
             auto* owner = world->TryCreateGameObject(river.name);
-            if (!owner) { world->DestroyGameObjects(waterNodes); reason = "Could not create the river network."; return false; }
+            if (!owner) {
+                world->DestroyGameObjects(waterNodes);
+                reason = "Could not create the river network.";
+                return false;
+            }
             owner->instanceId = river.guid;
             owner->transform.position = river.origin;
             owner->AddComponent<scene::WaterComponent>(river.water);
@@ -1615,7 +1922,11 @@ bool ApplyTerrainNetworkBatch(TerrainNetworkEditBatch& batch, bool apply, std::s
         }
         for (auto& visual : batch.visuals) {
             auto* owner = world->TryCreateGameObject(visual.name);
-            if (!owner) { world->DestroyGameObjects(waterNodes); reason = "Could not create the waterfalls."; return false; }
+            if (!owner) {
+                world->DestroyGameObjects(waterNodes);
+                reason = "Could not create the waterfalls.";
+                return false;
+            }
             owner->instanceId = visual.guid;
             owner->transform.position = visual.position;
             owner->AddComponent<scene::WaterfallComponent>(visual.waterfall);
@@ -1640,32 +1951,44 @@ bool ApplyTerrainNetworkBatch(TerrainNetworkEditBatch& batch, bool apply, std::s
         }
     }
     scene::FlushWorldTransforms(*world);
-    if (ctx.markSceneDirty) ctx.markSceneDirty();
+    if (ctx.markSceneDirty) {
+        ctx.markSceneDirty();
+    }
     reason.clear();
     return true;
 }
 
 OpResult RunTerrainFlowNetwork(OpContext& context, const OpArgs& args, bool preview)
 {
-    if (!preview && !context.undo.IsRecordingEnabled())
+    if (!preview && !context.undo.IsRecordingEnabled()) {
         return OpResult::Err("UNDO_REQUIRED", "Enable Undo recording before applying a flow network.");
+    }
     auto* owner = ResolveTerrainNode(context, args.GetString("node"));
-    if (!owner) return OpResult::Err("NO_TERRAIN", "Select an editable terrain.");
+    if (!owner) {
+        return OpResult::Err("NO_TERRAIN", "Select an editable terrain.");
+    }
     auto& world = *context.ctx.activeScene;
     scene::FlushWorldTransforms(world);
     std::vector<TerrainAnalysisSurface> surfaces;
-    if (!ResolveMapSurfaces(world, *owner, args, surfaces)) return OpResult::Err("BAD_TERRAIN_TILES", "Select up to 16 active terrain tiles.");
+    if (!ResolveMapSurfaces(world, *owner, args, surfaces)) {
+        return OpResult::Err("BAD_TERRAIN_TILES", "Select up to 16 active terrain tiles.");
+    }
     std::vector<std::pair<std::string, scene::EntityID>> owners;
     for (const auto id : world.GetEntities<scene::TerrainComponent>()) {
         const auto* node = world.GetGameObject(id);
-        if (node && std::any_of(surfaces.begin(), surfaces.end(), [&](const auto& surface) { return surface.pose == &node->transform; }))
+        if (node && std::any_of(surfaces.begin(), surfaces.end(), [&](const auto& surface) { return surface.pose == &node->transform; })) {
             owners.emplace_back(node->instanceId, id);
+        }
     }
     std::sort(owners.begin(), owners.end(), [&](const auto& a, const auto& b) {
-        if ((a.second == owner->GetID()) != (b.second == owner->GetID())) return a.second == owner->GetID();
+        if ((a.second == owner->GetID()) != (b.second == owner->GetID())) {
+            return a.second == owner->GetID();
+        }
         return a.first < b.first;
     });
-    if (owners.size() != surfaces.size()) return OpResult::Err("BAD_TERRAIN_TILES", "Could not identify the terrain tiles.");
+    if (owners.size() != surfaces.size()) {
+        return OpResult::Err("BAD_TERRAIN_TILES", "Could not identify the terrain tiles.");
+    }
     surfaces.clear();
     auto batch = std::make_shared<TerrainNetworkEditBatch>();
     batch->context = &context.ctx;
@@ -1677,8 +2000,9 @@ OpResult RunTerrainFlowNetwork(OpContext& context, const OpArgs& args, bool prev
     for (const auto& [guid, id] : owners) {
         const auto* node = world.GetGameObject(id);
         const auto* terrain = world.GetComponent<scene::TerrainComponent>(id);
-        if (context.ctx.IsLocked(id) || node->IsRuntimeGenerated())
+        if (context.ctx.IsLocked(id) || node->IsRuntimeGenerated()) {
             return OpResult::Err("LOCKED_TERRAIN", "Unlock the participating terrain tiles before preparing a network.");
+        }
         auto& edit = batch->terrain.emplace_back();
         edit.guid = guid;
         edit.lifetime = world.GetComponentLifetime<scene::TerrainComponent>(id);
@@ -1694,17 +2018,22 @@ OpResult RunTerrainFlowNetwork(OpContext& context, const OpArgs& args, bool prev
     if (material.empty()) {
         const auto presets = WaterMaterialPresets();
         const auto river = std::find_if(presets.begin(), presets.end(), [](const auto& preset) { return std::string_view(preset.label) == "River"; });
-        if (river != presets.end()) material = river->path;
+        if (river != presets.end()) {
+            material = river->path;
+        }
     }
     token.Add(material);
     const bool buildWaterfalls = args.GetBool("buildWaterfalls", false);
     const float waterfallDrop = args.GetFloat("waterfallMinDrop", DEFAULT_WATERFALL_DROP);
     const float waterfallGrade = args.GetFloat("waterfallMinGrade", DEFAULT_WATERFALL_GRADE);
     if (buildWaterfalls && (!std::isfinite(waterfallDrop) || waterfallDrop < 0.5f || waterfallDrop > 1000.0f
-        || !std::isfinite(waterfallGrade) || waterfallGrade < 0.25f || waterfallGrade > 10.0f))
+        || !std::isfinite(waterfallGrade) || waterfallGrade < 0.25f || waterfallGrade > 10.0f)) {
         return OpResult::Err("BAD_WATERFALL_RULE", "Check the minimum waterfall drop and rise/run ratio.");
+    }
     token.Add(static_cast<std::uint64_t>(buildWaterfalls));
-    if (buildWaterfalls) token.Add(std::array{waterfallDrop, waterfallGrade});
+    if (buildWaterfalls) {
+        token.Add(std::array{waterfallDrop, waterfallGrade});
+    }
     std::vector<scene::WaterSplineSnapshot> sourceLakes;
     if (buildWaterfalls) {
         std::map<std::string, scene::EntityID> lakeOwners;
@@ -1712,15 +2041,18 @@ OpResult RunTerrainFlowNetwork(OpContext& context, const OpArgs& args, bool prev
             const auto* node = world.GetGameObject(id);
             const auto* water = world.GetComponent<scene::WaterComponent>(id);
             if (node && water && node->activeInHierarchy() && water->enabled && !water->farOceanEnabled
-                && water->surfaceShape == scene::WaterSurfaceShape::SPLINE_LAKE)
+                && water->surfaceShape == scene::WaterSurfaceShape::SPLINE_LAKE) {
                 lakeOwners.emplace(node->instanceId, id);
+            }
         }
         for (const auto& [guid, id] : lakeOwners) {
             auto* node = world.GetGameObject(id);
             auto* water = world.GetComponent<scene::WaterComponent>(id);
             scene::WaterControlPointSnapshot controls;
             scene::WaterSplineSnapshot snapshot;
-            if (!BuildAuthoredWater(*node, *water, controls, snapshot)) continue;
+            if (!BuildAuthoredWater(*node, *water, controls, snapshot)) {
+                continue;
+            }
             token.Add(guid);
             token.Add(snapshot.signature);
             sourceLakes.push_back(std::move(snapshot));
@@ -1728,42 +2060,54 @@ OpResult RunTerrainFlowNetwork(OpContext& context, const OpArgs& args, bool prev
     }
     token.Add(std::array{settings.region.center.x, settings.region.center.z, settings.region.size, settings.minArea, settings.depthScale,
         bed.bankWidth, bed.maxCut, bed.gentleGrade, bed.depositHeight});
-    for (const int layer : {bed.bankLayer, bed.gentleBankLayer, bed.protectedLayer})
+    for (const int layer : {bed.bankLayer, bed.gentleBankLayer, bed.protectedLayer}) {
         token.Add(static_cast<std::uint64_t>(static_cast<std::int64_t>(layer) + 1));
+    }
     const auto expected = token.Finish();
-    if (!preview && args.GetString("expected") != expected)
+    if (!preview && args.GetString("expected") != expected) {
         return OpResult::Err("STALE_PREVIEW", "The scene or settings changed. Generate a new network preview.");
+    }
 
     TerrainFlowNetworkPlan plan;
     std::string diagnostic;
-    if (!PlanTerrainFlowNetwork(surfaces, settings, plan, diagnostic, sourceLakes)) return OpResult::Err("FLOW_NETWORK_FAILED", diagnostic);
+    if (!PlanTerrainFlowNetwork(surfaces, settings, plan, diagnostic, sourceLakes)) {
+        return OpResult::Err("FLOW_NETWORK_FAILED", diagnostic);
+    }
     auto waterfallLips = buildWaterfalls ? FindTerrainWaterfallLips(plan.sections, waterfallDrop, waterfallGrade)
         : std::vector<std::size_t>{};
-    if (waterfallLips.size() > 32)
+    if (waterfallLips.size() > 32) {
         return OpResult::Err("WATERFALL_LIMIT", "Too many cliff drops. Raise the waterfall thresholds or shrink the region.");
+    }
     const auto candidateCount = waterfallLips.size();
     const auto plannedGround = [&](const math::Vector3& point) {
         float height = -std::numeric_limits<float>::infinity();
         for (std::size_t i = 0; i < surfaces.size(); ++i) {
             scene::TerrainSurfaceSample sample;
             if (scene::TrySampleTerrainWorld(*surfaces[i].terrain, *surfaces[i].pose,
-                    point.x, point.z, sample, plan.tiles[i].vertices)) height = (std::max)(height, sample.position.y);
+                    point.x, point.z, sample, plan.tiles[i].vertices)) {
+                height = (std::max)(height, sample.position.y);
+            }
         }
         return height;
     };
     for (;;) {
         batch->rivers.clear();
         batch->visuals.clear();
-        if (!BuildNetworkRivers(plan.sections, material, waterfallLips, batch->rivers))
+        if (!BuildNetworkRivers(plan.sections, material, waterfallLips, batch->rivers)) {
             return OpResult::Err("FLOW_WATER_FAILED", "A reach cannot form a valid Spline River. Narrow the drainage selection or raise the catchment threshold.");
+        }
         const auto remove = std::remove_if(waterfallLips.begin(), waterfallLips.end(), [&](std::size_t lip) {
             TerrainNetworkVisual visual;
-            if (!PlanNetworkWaterfall(lip, batch->rivers, plannedGround, visual)) return true;
+            if (!PlanNetworkWaterfall(lip, batch->rivers, plannedGround, visual)) {
+                return true;
+            }
             visual.name = "Flow Waterfall " + std::to_string(batch->visuals.size() + 1);
             batch->visuals.push_back(std::move(visual));
             return false;
         });
-        if (remove == waterfallLips.end()) break;
+        if (remove == waterfallLips.end()) {
+            break;
+        }
         waterfallLips.erase(remove, waterfallLips.end());
     }
     auto data = OpData::MakeObject();
@@ -1803,15 +2147,23 @@ OpResult RunTerrainFlowNetwork(OpContext& context, const OpArgs& args, bool prev
             };
             for (const auto& vertex : plan.tiles[i].vertices) {
                 if (vertex.normalizedHeight < terrain.heightData[vertex.index]) {
-                    if (cutCount++ % stride == 0) cut.Push(position(vertex.index));
-                } else if (depositCount++ % stride == 0) deposit.Push(position(vertex.index));
+                    if (cutCount++ % stride == 0) {
+                        cut.Push(position(vertex.index));
+                    }
+                } else if (depositCount++ % stride == 0) {
+                    deposit.Push(position(vertex.index));
+                }
             }
             for (const auto index : plan.tiles[i].protectedIndices)
-                if (protectedSamples++ % protectedStride == 0) protect.Push(position(index));
+                if (protectedSamples++ % protectedStride == 0) {
+                    protect.Push(position(index));
+                }
         }
         for (const auto& river : batch->rivers) {
             auto line = OpData::MakeArray();
-            for (const auto& point : river.water.splinePoints) line.Push(river.origin + point.localPosition);
+            for (const auto& point : river.water.splinePoints) {
+                line.Push(river.origin + point.localPosition);
+            }
             lines.Push(std::move(line));
         }
         data.Set("cut", std::move(cut));
@@ -1840,7 +2192,9 @@ OpResult RunTerrainFlowNetwork(OpContext& context, const OpArgs& args, bool prev
         result.message = "Flow network preview generated";
         return result;
     }
-    if (deepestCut > bed.maxCut) return OpResult::Err("FLOW_CUT_LIMIT", "The proposed excavation exceeds the maximum cut.");
+    if (deepestCut > bed.maxCut) {
+        return OpResult::Err("FLOW_CUT_LIMIT", "The proposed excavation exceeds the maximum cut.");
+    }
     if (batch->rivers.empty()) {
         auto result = OpResult::Data(std::move(data));
         result.noChange = true;
@@ -1869,7 +2223,10 @@ OpResult RunTerrainFlowNetwork(OpContext& context, const OpArgs& args, bool prev
         }
     }
     auto riverIds = OpData::MakeArray();
-    for (auto& river : batch->rivers) { river.guid = asset::AssetDatabase::GenerateGuid(); riverIds.Push(river.guid); }
+    for (auto& river : batch->rivers) {
+        river.guid = asset::AssetDatabase::GenerateGuid();
+        riverIds.Push(river.guid);
+    }
     data.Set("rivers", std::move(riverIds));
     auto waterfallIds = OpData::MakeArray();
     for (auto& visual : batch->visuals) {
@@ -1882,7 +2239,9 @@ OpResult RunTerrainFlowNetwork(OpContext& context, const OpArgs& args, bool prev
     auto command = std::make_unique<CheckedLambdaCommand>("Build Terrain Flow Network",
         [batch](std::string& reason) { return ApplyTerrainNetworkBatch(*batch, true, reason); },
         [batch](std::string& reason) { return ApplyTerrainNetworkBatch(*batch, false, reason); });
-    if (!command->TryExecute(diagnostic)) return OpResult::Err("FLOW_NETWORK_CONFLICT", diagnostic);
+    if (!command->TryExecute(diagnostic)) {
+        return OpResult::Err("FLOW_NETWORK_CONFLICT", diagnostic);
+    }
     std::vector<scene::WorldCellBounds> pcgBounds;
     for (const auto& edit : batch->terrain) {
         auto* tile = world.FindByGuid(edit.guid);
@@ -1891,14 +2250,15 @@ OpResult RunTerrainFlowNetwork(OpContext& context, const OpArgs& args, bool prev
         region.Include(edit.splatRegion);
         CollectTerrainPcgBounds(*tile, *terrain, region, pcgBounds);
     }
-    /// @note A river can change wetness even where the carve leaves the bed at its original height.
+    // A river can change wetness even where the carve leaves the bed at its original height.
     for (const auto& river : batch->rivers) {
         scene::Transform pose;
         pose.worldPosition = river.origin;
         scene::WaterSplineSnapshot snapshot;
         if (scene::BuildWaterSplineSnapshot(river.water.surfaceShape, river.water.splinePoints,
-                river.water.splineSamplesPerSegment, pose, snapshot, river.water.buoyancyDepth, 100.0f))
+                river.water.splineSamplesPerSegment, pose, snapshot, river.water.buoyancyDepth, 100.0f)) {
             pcgBounds.push_back({snapshot.worldBoundsMin, snapshot.worldBoundsMax});
+        }
     }
     auto result = OpResult::Data(std::move(data));
     result.command = RefreshTerrainPcg(context, pcgBounds, std::move(command));
@@ -1909,10 +2269,15 @@ OpResult RunTerrainFlowNetwork(OpContext& context, const OpArgs& args, bool prev
 template<class Container>
 bool WriteTerrainRecipeValue(Container& target, std::string_view key, const OpData& source, int depth)
 {
-    if (depth > 5) return false;
+    if (depth > 5) {
+        return false;
+    }
     const auto add = [&]<class T>(T&& value) {
-        if constexpr (std::is_same_v<Container, toml::table>) target.insert(key, std::forward<T>(value));
-        else target.push_back(std::forward<T>(value));
+        if constexpr (std::is_same_v<Container, toml::table>) {
+            target.insert(key, std::forward<T>(value));
+        } else {
+            target.push_back(std::forward<T>(value));
+        }
         return true;
     };
     switch (source.GetType()) {
@@ -1936,26 +2301,38 @@ bool WriteTerrainRecipeValue(Container& target, std::string_view key, const OpDa
 
 bool ReadTerrainRecipeValue(const toml::node& source, OpData& output, int depth)
 {
-    if (depth > 5) return false;
+    if (depth > 5) {
+        return false;
+    }
     if (const auto* table = source.as_table()) {
         output = OpData::MakeObject();
         for (const auto& [key, field] : *table) {
             OpData value;
-            if (!ReadTerrainRecipeValue(field, value, depth + 1)) return false;
+            if (!ReadTerrainRecipeValue(field, value, depth + 1)) {
+                return false;
+            }
             output.Set(std::string(key.str()), std::move(value));
         }
     } else if (const auto* array = source.as_array()) {
         output = OpData::MakeArray();
         for (const auto& field : *array) {
             OpData value;
-            if (!ReadTerrainRecipeValue(field, value, depth + 1)) return false;
+            if (!ReadTerrainRecipeValue(field, value, depth + 1)) {
+                return false;
+            }
             output.Push(std::move(value));
         }
-    } else if (const auto* flag = source.as_boolean()) output = flag->get();
-    else if (const auto* integer = source.as_integer()) output = integer->get();
-    else if (const auto* number = source.as_floating_point(); number && std::isfinite(number->get())) output = number->get();
-    else if (const auto* string = source.as_string(); string && string->get().size() < 512) output = string->get();
-    else return false;
+    } else if (const auto* flag = source.as_boolean()) {
+        output = flag->get();
+    } else if (const auto* integer = source.as_integer()) {
+        output = integer->get();
+    } else if (const auto* number = source.as_floating_point(); number && std::isfinite(number->get())) {
+        output = number->get();
+    } else if (const auto* string = source.as_string(); string && string->get().size() < 512) {
+        output = string->get();
+    } else {
+        return false;
+    }
     return true;
 }
 
@@ -1967,57 +2344,86 @@ bool RecipeLayerIndex(const OpData& value)
 
 bool ValidateTerrainRecipe(const OperatorRegistry& registry, const OpData& recipe)
 {
-    if (!recipe.IsObject() || recipe.AsObject().empty()) return false;
+    if (!recipe.IsObject() || recipe.AsObject().empty()) {
+        return false;
+    }
     std::map<std::string, double, std::less<>> common;
     for (const auto& [group, values] : recipe.AsObject()) {
         if (group == "layerMaterials") {
-            if (!values.IsArray() || values.AsArray().size() > scene::TERRAIN_MAX_LAYERS) return false;
+            if (!values.IsArray() || values.AsArray().size() > scene::TERRAIN_MAX_LAYERS) {
+                return false;
+            }
             for (const auto& ref : values.AsArray()) if (!ref.IsString()) return false;
             continue;
         }
         const char* operation = group == "flow" ? "terrain.flow.network.preview"
             : group == "materials" ? "terrain.maps.bake_materials" : group == "habitat" ? "terrain.maps.preview" : nullptr;
         const auto* spec = operation ? registry.Find(operation) : nullptr;
-        if (!spec || !values.IsObject()) return false;
+        if (!spec || !values.IsObject()) {
+            return false;
+        }
         OpArgs materialArgs;
         for (const auto& [key, value] : values.AsObject()) {
-            if (key == "node" || key == "terrainTiles" || key == "flowCenter" || key == "expected" || key == "path") return false;
+            if (key == "node" || key == "terrainTiles" || key == "flowCenter" || key == "expected" || key == "path") {
+                return false;
+            }
             const auto param = std::find_if(spec->params.begin(), spec->params.end(), [&](const auto& item) { return item.name == key; });
-            if (param == spec->params.end()) return false;
+            if (param == spec->params.end()) {
+                return false;
+            }
             if (param->type == OpParamType::Float || param->type == OpParamType::Int) {
                 const double numeric = value.IsInt() ? static_cast<double>(value.AsInt64()) : value.AsDouble(std::numeric_limits<double>::quiet_NaN());
                 if (!std::isfinite(numeric) || (param->type == OpParamType::Int && !value.IsInt())
-                    || (param->hasRange && (numeric < param->minValue || numeric > param->maxValue))) return false;
+                    || (param->hasRange && (numeric < param->minValue || numeric > param->maxValue))) {
+                    return false;
+                }
                 if (param->type == OpParamType::Int) {
                     int integer = 0;
                     if (!value.TryGetInt32(integer) || (key.ends_with("Layer") && !RecipeLayerIndex(value))
-                        || (key == "patchSeed" && integer < 0)) return false;
+                        || (key == "patchSeed" && integer < 0)) {
+                        return false;
+                    }
                 }
             } else if (param->type == OpParamType::String) {
-                if (!value.IsString() || (key == "channel" && value.AsString() != "Density")) return false;
+                if (!value.IsString() || (key == "channel" && value.AsString() != "Density")) {
+                    return false;
+                }
             } else if (param->type == OpParamType::Bool) {
-                if (!value.IsBool()) return false;
-            } else if (param->type == OpParamType::Data && group == "materials") materialArgs.Set(key, value);
-            else return false;
+                if (!value.IsBool()) {
+                    return false;
+                }
+            } else if (param->type == OpParamType::Data && group == "materials") {
+                materialArgs.Set(key, value);
+            } else {
+                return false;
+            }
             if (key == "includeNeighbors" || key == "flowSize" || key == "resolution" || key == "radius" || key == "flowFullArea") {
                 const double number = value.IsBool() ? static_cast<double>(value.AsBool())
                     : value.IsInt() ? static_cast<double>(value.AsInt64()) : value.AsDouble();
                 const auto [entry, inserted] = common.try_emplace(key, number);
-                if (!inserted && entry->second != number) return false;
+                if (!inserted && entry->second != number) {
+                    return false;
+                }
             }
         }
         if (group == "materials") {
             const auto* rules = materialArgs.GetData("rules");
             if (rules && (!rules->IsArray() || !rules->AsArray().empty())) {
                 TerrainMaterialBakeSettings settings;
-                if (!ReadMaterialRules(materialArgs, settings)) return false;
+                if (!ReadMaterialRules(materialArgs, settings)) {
+                    return false;
+                }
                 for (const auto& rule : settings.rules) {
-                    if (rule.layer < 0 || rule.layer >= scene::TERRAIN_MAX_LAYERS || rule.weight < 0.0f || rule.weight > 16.0f) return false;
+                    if (rule.layer < 0 || rule.layer >= scene::TERRAIN_MAX_LAYERS || rule.weight < 0.0f || rule.weight > 16.0f) {
+                        return false;
+                    }
                     for (float preference : rule.preferences) if (!std::isfinite(preference) || std::abs(preference) > 1.0f) return false;
                 }
             }
             if (const auto* layers = values.Find("protectedLayers")) {
-                if (!layers->IsArray() || layers->AsArray().size() > 8) return false;
+                if (!layers->IsArray() || layers->AsArray().size() > 8) {
+                    return false;
+                }
                 for (const auto& layer : layers->AsArray()) if (!RecipeLayerIndex(layer) || layer.AsInt() < 0) return false;
             }
         }
@@ -2030,27 +2436,41 @@ bool RemapTerrainRecipeLayers(OpData& recipe, const scene::TerrainComponent& ter
     const auto* references = recipe.Find("layerMaterials");
     const auto map = [&](int original, int& layer) {
         layer = original;
-        if (original < 0) return true;
-        if (!references) return original < terrain.LayerCount();
-        if (original >= static_cast<int>(references->AsArray().size())) return false;
+        if (original < 0) {
+            return true;
+        }
+        if (!references) {
+            return original < terrain.LayerCount();
+        }
+        if (original >= static_cast<int>(references->AsArray().size())) {
+            return false;
+        }
         const auto& reference = references->AsArray()[original].AsString();
-        if (reference.empty()) return original < terrain.LayerCount() && terrain.layerMaterials[original].empty();
+        if (reference.empty()) {
+            return original < terrain.LayerCount() && terrain.layerMaterials[original].empty();
+        }
         const auto guid = asset::AssetDatabase::GuidFromRef(reference);
         const auto found = std::find_if(terrain.layerMaterials.begin(), terrain.layerMaterials.end(), [&](const auto& current) {
             return current == reference || (!guid.empty() && asset::AssetDatabase::GuidFromRef(current) == guid);
         });
-        if (found == terrain.layerMaterials.end()) return false;
+        if (found == terrain.layerMaterials.end()) {
+            return false;
+        }
         layer = static_cast<int>(found - terrain.layerMaterials.begin());
         return true;
     };
     for (const auto* group : {"flow", "materials", "habitat"}) {
         const auto* stored = recipe.Find(group);
-        if (!stored) continue;
+        if (!stored) {
+            continue;
+        }
         auto values = *stored;
         for (const auto* key : {"rockLayer", "gravelLayer", "protectedLayer", "pathLayer"}) {
             if (const auto* old = values.Find(key)) {
                 int layer = -1;
-                if (!map(old->AsInt(), layer)) return false;
+                if (!map(old->AsInt(), layer)) {
+                    return false;
+                }
                 values.Set(key, layer);
             }
         }
@@ -2058,7 +2478,9 @@ bool RemapTerrainRecipeLayers(OpData& recipe, const scene::TerrainComponent& ter
             auto mapped = OpData::MakeArray();
             for (auto rule : rules->AsArray()) {
                 int layer = -1;
-                if (!map(rule.Find("layer")->AsInt(), layer)) return false;
+                if (!map(rule.Find("layer")->AsInt(), layer)) {
+                    return false;
+                }
                 rule.Set("layer", layer);
                 mapped.Push(std::move(rule));
             }
@@ -2068,18 +2490,23 @@ bool RemapTerrainRecipeLayers(OpData& recipe, const scene::TerrainComponent& ter
             auto mapped = OpData::MakeArray();
             for (const auto& old : layers->AsArray()) {
                 int layer = -1;
-                if (!map(old.AsInt(), layer)) return false;
-                if (std::none_of(mapped.AsArray().begin(), mapped.AsArray().end(), [&](const auto& value) { return value.AsInt() == layer; }))
+                if (!map(old.AsInt(), layer)) {
+                    return false;
+                }
+                if (std::none_of(mapped.AsArray().begin(), mapped.AsArray().end(), [&](const auto& value) { return value.AsInt() == layer; })) {
                     mapped.Push(layer);
+                }
             }
             values.Set("protectedLayers", std::move(mapped));
         }
-        /// @note layerMaterials is placed after the section keys by save, and Set only replaces existing keys here.
+        // layerMaterials is placed after the section keys by save, and Set only replaces existing keys here.
         recipe.Set(group, std::move(values));
     }
     if (references) {
         auto current = OpData::MakeArray();
-        for (const auto& reference : terrain.layerMaterials) current.Push(reference);
+        for (const auto& reference : terrain.layerMaterials) {
+            current.Push(reference);
+        }
         recipe.Set("layerMaterials", std::move(current));
     }
     return true;
@@ -2088,50 +2515,69 @@ bool RemapTerrainRecipeLayers(OpData& recipe, const scene::TerrainComponent& ter
 OpResult RunTerrainRecipe(OpContext& context, const OpArgs& args, bool save)
 {
     auto requested = args.GetString("path");
-    if (!save && asset::AssetDatabase::IsGuidRef(requested)) requested = asset::AssetManager::ResolveAssetPath(requested);
+    if (!save && asset::AssetDatabase::IsGuidRef(requested)) {
+        requested = asset::AssetManager::ResolveAssetPath(requested);
+    }
     const auto file = TerrainAuthoringAssetPath(context.ctx, requested, ".terrainrecipe.toml", true);
-    if (file.empty()) return OpResult::Err("BAD_PATH", "Choose an Assets path ending in .terrainrecipe.toml.");
+    if (file.empty()) {
+        return OpResult::Err("BAD_PATH", "Choose an Assets path ending in .terrainrecipe.toml.");
+    }
     const auto path = util::FileSystem::PathToUtf8(file);
     const auto node = args.GetString("node");
     const auto* owner = !node.empty() ? ResolveTerrainNode(context, node) : nullptr;
     const auto* terrain = owner ? owner->GetScene()->GetComponent<scene::TerrainComponent>(owner->GetID()) : nullptr;
-    if (!node.empty() && !terrain) return OpResult::Err("NO_TERRAIN", "The recipe target has no Terrain component.");
+    if (!node.empty() && !terrain) {
+        return OpResult::Err("NO_TERRAIN", "The recipe target has no Terrain component.");
+    }
     constexpr std::uintmax_t MAX_BYTES = 128 * 1024;
     OpData recipe;
     if (save) {
         const auto* input = args.GetData("recipe");
-        if (!input || !input->IsObject()) return OpResult::Err("BAD_RECIPE", "Supply a recipe object.");
+        if (!input || !input->IsObject()) {
+            return OpResult::Err("BAD_RECIPE", "Supply a recipe object.");
+        }
         recipe = *input;
         if (terrain) {
             auto references = OpData::MakeArray();
-            for (const auto& reference : terrain->layerMaterials) references.Push(reference);
+            for (const auto& reference : terrain->layerMaterials) {
+                references.Push(reference);
+            }
             recipe.Set("layerMaterials", std::move(references));
         }
     } else {
         std::string content;
         std::error_code error;
         const auto size = std::filesystem::file_size(file, error);
-        if (error || size > MAX_BYTES || !util::FileSystem::ReadText(path, content)) return OpResult::Err("READ_FAILED", "Could not read the recipe.");
+        if (error || size > MAX_BYTES || !util::FileSystem::ReadText(path, content)) {
+            return OpResult::Err("READ_FAILED", "Could not read the recipe.");
+        }
         const auto parsed = toml::parse(content, path);
         if (!parsed || parsed["format"].value<std::string>() != "fbzz.terrainrecipe" || parsed["version"].value<int>() != 1
-            || !parsed["recipe"].node() || !ReadTerrainRecipeValue(*parsed["recipe"].node(), recipe, 0))
+            || !parsed["recipe"].node() || !ReadTerrainRecipeValue(*parsed["recipe"].node(), recipe, 0)) {
             return OpResult::Err("BAD_RECIPE", "Unsupported or malformed terrain recipe.");
+        }
     }
-    if (!context.ctx.operators || !ValidateTerrainRecipe(*context.ctx.operators, recipe))
+    if (!context.ctx.operators || !ValidateTerrainRecipe(*context.ctx.operators, recipe)) {
         return OpResult::Err("BAD_RECIPE", "The recipe contains an unsupported or invalid operator argument.");
-    if (terrain && !RemapTerrainRecipeLayers(recipe, *terrain))
+    }
+    if (terrain && !RemapTerrainRecipeLayers(recipe, *terrain)) {
         return OpResult::Err("RECIPE_LAYER_MISSING", "Assign the recipe's materials to the selected terrain before loading it.");
+    }
     if (save) {
         toml::table table{{"format", "fbzz.terrainrecipe"}, {"version", 1}};
-        if (!WriteTerrainRecipeValue(table, "recipe", recipe, 0)) return OpResult::Err("BAD_RECIPE", "A recipe value cannot be saved.");
+        if (!WriteTerrainRecipeValue(table, "recipe", recipe, 0)) {
+            return OpResult::Err("BAD_RECIPE", "A recipe value cannot be saved.");
+        }
         std::ostringstream output;
         output << table;
         const auto content = output.str();
-        if (content.size() > MAX_BYTES || !util::FileSystem::WriteTextAtomic(path, content))
+        if (content.size() > MAX_BYTES || !util::FileSystem::WriteTextAtomic(path, content)) {
             return OpResult::Err("WRITE_FAILED", "Could not save the terrain recipe.");
+        }
         context.ctx.requestAssetBrowserRefresh = true;
-        if (asset::AssetDatabase::GuidFromPath(path).empty())
+        if (asset::AssetDatabase::GuidFromPath(path).empty()) {
             return OpResult::Err("META_FAILED", "Recipe saved but its asset metadata could not be created: " + path);
+        }
     }
     auto data = OpData::MakeObject();
     data.Set("path", NormalizeAssetPath(path));
@@ -2204,7 +2650,9 @@ void RegisterNaturalTerrainOperators(OperatorRegistry& registry)
         recipe.kind = save ? OpKind::Action : OpKind::Query;
         recipe.params = {TerrainParameter("path", OpParamType::String, "Project Assets path ending in .terrainrecipe.toml"),
             TerrainParameter("node", OpParamType::NodeId, "Optional terrain for material reference mapping", std::string{})};
-        if (save) recipe.params.push_back(TerrainParameter("recipe", OpParamType::Data, "Object containing flow, materials and habitat operator settings"));
+        if (save) {
+            recipe.params.push_back(TerrainParameter("recipe", OpParamType::Data, "Object containing flow, materials and habitat operator settings"));
+        }
         recipe.poll = [](const OpContext& context, const OpArgs&) { return !context.ctx.projectRoot.empty(); };
         recipe.exec = [save](OpContext& context, const OpArgs& args) { return RunTerrainRecipe(context, args, save); };
         registry.Register(std::move(recipe));
@@ -2216,28 +2664,35 @@ OpResult BlendTerrainSeam(OpContext& context, const OpArgs& args)
     auto* owner = ResolveTerrainNode(context, args.GetString("node"));
     auto& world = *context.ctx.activeScene;
     const auto* neighbor = world.FindByGuid(args.GetString("neighbor"));
-    if (!owner || !neighbor || owner == neighbor || context.ctx.IsLocked(owner->GetID()))
+    if (!owner || !neighbor || owner == neighbor || context.ctx.IsLocked(owner->GetID())) {
         return OpResult::Err("NO_TERRAIN", "編集可能な対象地形と別の参照地形を指定してください。");
+    }
     const int requestedRows = args.GetInt("blendRows", 6);
     const float strength = args.GetFloat("strength", 1.0f), limit = args.GetFloat("maxCorrection", 8.0f);
-    if (requestedRows < 1 || requestedRows > 64 || !std::isfinite(strength) || !std::isfinite(limit))
+    if (requestedRows < 1 || requestedRows > 64 || !std::isfinite(strength) || !std::isfinite(limit)) {
         return OpResult::Err("BAD_ARG", "行数と有限な補正量を指定してください。");
+    }
     scene::FlushWorldTransforms(world);
     TerrainSeamTile first{}, second{};
-    if (!ReadSeamTile(*owner, first) || !ReadSeamTile(*neighbor, second))
+    if (!ReadSeamTile(*owner, first) || !ReadSeamTile(*neighbor, second)) {
         return OpResult::Err("INVALID_TERRAIN", "正のスケールを持つ軸平行の有効 Terrain が必要です。");
+    }
     const auto seam = FindTerrainSeam(first, second);
-    if (!seam) return OpResult::Err("NO_SHARED_EDGE", "指定した Terrain 同士に共有辺がありません。");
+    if (!seam) {
+        return OpResult::Err("NO_SHARED_EDGE", "指定した Terrain 同士に共有辺がありません。");
+    }
     const auto& [a, b] = *seam;
     const double alongTolerance = (std::min)({SEAM_EDGE_TOLERANCE, a.Step() * 0.001, b.Step() * 0.001});
     if (a.Count() != b.Count() || std::abs(a.Origin() - b.Origin()) > alongTolerance
-        || std::abs(a.End() - b.End()) > alongTolerance || a.CrossCount() < 3)
+        || std::abs(a.End() - b.End()) > alongTolerance || a.CrossCount() < 3) {
         return OpResult::Err("UNALIGNED_SEAM", "両側の共有辺全体で頂点格子が揃い、対象に内側の行が必要です。");
+    }
     for (int vertex = 0; vertex < a.Count(); ++vertex) {
         const double firstHeight = first.y + a.HeightSample(vertex) * first.heightScale;
         const double secondHeight = second.y + b.HeightSample(vertex) * second.heightScale;
-        if (!std::isfinite(firstHeight) || !std::isfinite(secondHeight) || std::abs(firstHeight - secondHeight) > 0.05)
+        if (!std::isfinite(firstHeight) || !std::isfinite(secondHeight) || std::abs(firstHeight - secondHeight) > 0.05) {
             return OpResult::Err("SEAM_HEIGHT_MISMATCH", "補正前に共有辺の高さを 0.05 m 以内へ揃えてください。");
+        }
     }
 
     const int rows = (std::min)(requestedRows, a.CrossCount() - 2);
@@ -2248,20 +2703,29 @@ OpResult BlendTerrainSeam(OpContext& context, const OpArgs& args)
     }
     auto after = *first.terrain;
     int changed = 0;
-    /// @note Each edge triangle's gradient is controlled by one vertex of the first inner row. Skip outer border vertices.
+    // Each edge triangle's gradient is controlled by one vertex of the first inner row. Skip outer border vertices.
     for (int vertex = 1; vertex + 1 < a.Count(); ++vertex) {
         const double middle = a.Origin() + (vertex + (a.highSide ? -0.5 : 0.5)) * a.Step();
         const double gradient = b.CrossGradient(middle);
         const double target = a.HeightSample(vertex) * first.heightScale + (a.highSide ? -1.0 : 1.0) * gradient * a.CrossStep();
         const double correction = target - a.HeightSample(vertex, 1) * first.heightScale;
-        if (!std::isfinite(correction)) return OpResult::Err("INVALID_TERRAIN", "境界に接する三角形の高さが不正です。");
+        if (!std::isfinite(correction)) {
+            return OpResult::Err("INVALID_TERRAIN", "境界に接する三角形の高さが不正です。");
+        }
         const double delta = std::clamp(correction, -static_cast<double>(limit), static_cast<double>(limit)) * strength;
-        if (delta == 0.0) continue;
+        if (delta == 0.0) {
+            continue;
+        }
         for (int i = 0; i < rows; ++i) {
             auto& height = after.heightData[a.HeightIndex(vertex, i + 1)];
-            if (!std::isfinite(height)) return OpResult::Err("INVALID_TERRAIN", "補正範囲の高さが不正です。");
+            if (!std::isfinite(height)) {
+                return OpResult::Err("INVALID_TERRAIN", "補正範囲の高さが不正です。");
+            }
             const float next = static_cast<float>(std::clamp(height + delta * weights[i] / first.heightScale, -1.0, 1.0));
-            if (next != height) { height = next; ++changed; }
+            if (next != height) {
+                height = next;
+                ++changed;
+            }
         }
     }
     if (changed == 0) {
@@ -2282,25 +2746,29 @@ OpResult CarveTerrainRiver(OpContext& context, const OpArgs& args, bool preview)
     auto* ground = ResolveTerrainNode(context, args.GetString("terrain"));
     auto* water = river ? river->GetComponent<scene::WaterComponent>() : nullptr;
     const auto* terrain = ground ? ground->GetComponent<scene::TerrainComponent>() : nullptr;
-    if (!terrain || !terrain->enabled || !ground->activeInHierarchy() || (!preview && context.ctx.IsLocked(ground->GetID())))
+    if (!terrain || !terrain->enabled || !ground->activeInHierarchy() || (!preview && context.ctx.IsLocked(ground->GetID()))) {
         return OpResult::Err("NO_TERRAIN", "対象の Terrain を指定してください。");
+    }
     if (!water || !water->enabled || !river->activeInHierarchy() || water->farOceanEnabled
-        || water->surfaceShape != scene::WaterSurfaceShape::SPLINE_RIVER)
+        || water->surfaceShape != scene::WaterSurfaceShape::SPLINE_RIVER) {
         return OpResult::Err("NO_RIVER", "有効な Spline River を指定してください。");
+    }
     scene::FlushWorldTransforms(*context.ctx.activeScene);
     scene::WaterControlPointSnapshot controls;
     scene::WaterSplineSnapshot mesh;
     std::vector<RiverSection> outline;
     if (!BuildAuthoredWater(*river, *water, controls, mesh)
-        || !MakeRiverSections(mesh, std::numeric_limits<float>::max(), false, outline))
+        || !MakeRiverSections(mesh, std::numeric_limits<float>::max(), false, outline)) {
         return OpResult::Err("INVALID_RIVER", "川の制御点から水面を作れません。");
+    }
     std::vector<TerrainRiverCarveSection> sections;
     sections.reserve(outline.size());
     for (const auto& section : outline) {
         const auto center = section.Center();
         scene::WaterSplineSample sample;
-        if (!scene::TrySampleWaterSpline(mesh, center.x, center.y, sample))
+        if (!scene::TrySampleWaterSpline(mesh, center.x, center.y, sample)) {
             return OpResult::Err("INVALID_RIVER", "川の中心から高さと水深を取得できません。");
+        }
         sections.push_back({center, sample.baseHeight, static_cast<float>(0.5 * DistanceXZ(section.left, section.right)), sample.depth});
     }
     const TerrainRiverCarveSettings defaults;
@@ -2309,8 +2777,9 @@ OpResult CarveTerrainRiver(OpContext& context, const OpArgs& args, bool preview)
         args.GetFloat("endFade", defaults.endFade), args.GetFloat("maxCut", defaults.maxCut),
         args.GetInt("bankLayer", defaults.bankLayer), args.GetInt("protectedLayer", defaults.protectedLayer)};
     TerrainRiverCarvePlan plan;
-    if (!PlanTerrainRiverCarve(*terrain, ground->transform, sections, settings, plan))
+    if (!PlanTerrainRiverCarve(*terrain, ground->transform, sections, settings, plan)) {
         return OpResult::Err("BAD_RIVER_CARVE", "変換、掘削範囲、地形の高さ範囲、材質レイヤーを確認してください。");
+    }
 
     auto data = OpData::MakeObject();
     data.Set("changedVertices", static_cast<int64_t>(plan.vertices.size()));
@@ -2319,7 +2788,9 @@ OpResult CarveTerrainRiver(OpContext& context, const OpArgs& args, bool preview)
     data.Set("deepestCut", plan.deepestCut);
     data.Set("maxCut", settings.maxCut);
     data.Set("withinLimit", plan.deepestCut <= settings.maxCut);
-    if (preview) return OpResult::Data(std::move(data));
+    if (preview) {
+        return OpResult::Data(std::move(data));
+    }
     if (plan.deepestCut > settings.maxCut) {
         auto result = OpResult::Err("RIVER_CUT_LIMIT", "掘削が最大切り下げ量を超えています。");
         result.data = std::move(data);
@@ -2345,7 +2816,9 @@ void RegisterTerrainAuthoringOperators(OperatorRegistry& registry)
     carve.params[0] = TerrainParameter("node", OpParamType::NodeId, "対象の川。省略時は選択中", std::string{});
     carve.params.push_back(TerrainParameter("terrain", OpParamType::NodeId, "掘削する Terrain の GUID"));
     carve.poll = [](const OpContext& context, const OpArgs& args) {
-        if (context.ctx.playMode && context.ctx.playMode->GetState() != PlayState::Editor) return false;
+        if (context.ctx.playMode && context.ctx.playMode->GetState() != PlayState::Editor) {
+            return false;
+        }
         auto* river = ResolveTerrainNode(context, args.GetString("node"));
         auto* terrain = ResolveTerrainNode(context, args.GetString("terrain"));
         return river && river->GetComponent<scene::WaterComponent>()
@@ -2395,16 +2868,18 @@ void RegisterTerrainAuthoringOperators(OperatorRegistry& registry)
     ridge.exec = [defaults, heightHistory](OpContext& context, const OpArgs& args) {
         auto* owner = ResolveTerrainNode(context, args.GetString("node"));
         auto* terrain = owner ? owner->GetComponent<scene::TerrainComponent>() : nullptr;
-        if (!terrain || !terrain->enabled || !owner->activeInHierarchy() || context.ctx.IsLocked(owner->GetID()))
+        if (!terrain || !terrain->enabled || !owner->activeInHierarchy() || context.ctx.IsLocked(owner->GetID())) {
             return OpResult::Err("NO_TERRAIN", "編集可能な有効 Terrain を指定してください。");
+        }
         scene::FlushWorldTransforms(*context.ctx.activeScene);
         const TerrainRidgeSettings settings{args.GetVec3("start"), args.GetVec3("end"),
             args.GetFloat("height", defaults.height), args.GetFloat("leftWidth", defaults.leftWidth),
             args.GetFloat("rightWidth", defaults.rightWidth), args.GetFloat("bend", defaults.bend),
             args.GetFloat("peakAlong", defaults.peakAlong)};
         TerrainHeightEdit edit;
-        if (!PlanTerrainRidge(*terrain, owner->transform, settings, edit))
+        if (!PlanTerrainRidge(*terrain, owner->transform, settings, edit)) {
             return OpResult::Err("BAD_RELIEF", "尾根の寸法・地形の変換・編集予算を確認してください。");
+        }
         return CommitTerrainHeightEdit(context, *owner, std::move(edit), "Sculpt Terrain Ridge or Valley", *heightHistory);
     };
     registry.Register(std::move(ridge));
@@ -2423,10 +2898,13 @@ void RegisterTerrainAuthoringOperators(OperatorRegistry& registry)
     massif.exec = [](OpContext& context, const OpArgs& args) {
         auto* owner = ResolveTerrainNode(context, args.GetString("node"));
         const auto* terrain = owner ? owner->GetComponent<scene::TerrainComponent>() : nullptr;
-        if (!terrain || !terrain->enabled || !owner->activeInHierarchy() || context.ctx.IsLocked(owner->GetID()))
+        if (!terrain || !terrain->enabled || !owner->activeInHierarchy() || context.ctx.IsLocked(owner->GetID())) {
             return OpResult::Err("NO_TERRAIN", "編集可能な Terrain を指定してください。");
+        }
         const int seed = args.GetInt("seed", 1);
-        if (seed < 0) return OpResult::Err("BAD_SEED", "非負のシードを指定してください。");
+        if (seed < 0) {
+            return OpResult::Err("BAD_SEED", "非負のシードを指定してください。");
+        }
         scene::FlushWorldTransforms(*context.ctx.activeScene);
         TerrainMassifSettings settings;
         settings.spine = {args.GetVec3("start"), args.GetVec3("end"), args.GetFloat("height", 65.0f),
@@ -2435,8 +2913,9 @@ void RegisterTerrainAuthoringOperators(OperatorRegistry& registry)
         settings.seed = static_cast<std::uint32_t>(seed);
         settings.erosion = args.GetFloat("erosion", settings.erosion);
         auto after = *terrain;
-        if (!SculptTerrainMassif(after, owner->transform, settings))
+        if (!SculptTerrainMassif(after, owner->transform, settings)) {
             return OpResult::Err("BAD_MASSIF", "主尾根の長さ、裾幅、地形の変換と編集範囲を確認してください。");
+        }
         if (after.heightData == terrain->heightData) {
             auto result = OpResult::Ok();
             result.noChange = true;
@@ -2452,29 +2931,36 @@ void RegisterTerrainAuthoringOperators(OperatorRegistry& registry)
     alpine.params.push_back(TerrainParameter("path", OpParamType::String, "空は同梱AlpineRange。別のHeightMapへ差し替え可能", std::string{}));
     alpine.exec = [](OpContext& context, const OpArgs& args) {
         auto* go = ResolveTerrainNode(context, args.GetString("node"));
-        if (!go || !go->GetComponent<scene::TerrainComponent>()) return OpResult::Err("NO_TERRAIN", "対象地形がありません");
+        if (!go || !go->GetComponent<scene::TerrainComponent>()) {
+            return OpResult::Err("NO_TERRAIN", "対象地形がありません");
+        }
         const char* materialPaths[] = {"Assets/Terrain/Alpine/Grass.mat", "Assets/Terrain/Alpine/Rock.mat", "Assets/Terrain/Alpine/Snow.mat"};
         for (const char* material : materialPaths) {
             std::error_code error;
-            if (!std::filesystem::is_regular_file(std::filesystem::u8path(ResolveTerrainInput(context.ctx, material)), error))
+            if (!std::filesystem::is_regular_file(std::filesystem::u8path(ResolveTerrainInput(context.ctx, material)), error)) {
                 return OpResult::Err("MISSING_ASSETS", "Alpine素材を含むSDKを公開するか、Assets/Terrain/Alpineをプロジェクトへコピーしてください");
+            }
         }
         auto after = *go->GetComponent<scene::TerrainComponent>();
         after.Resize(513, 513);
         after.cellSize = 4.0f;
         after.maxHeight = 640.0f;
         auto path = args.GetString("path");
-        if (path.empty()) path = "Assets/Terrain/Alpine/AlpineRange_Height16.png";
-        if (!scene::LoadHeightMapFromFile(ResolveTerrainInput(context.ctx, path), after, true))
+        if (path.empty()) {
+            path = "Assets/Terrain/Alpine/AlpineRange_Height16.png";
+        }
+        if (!scene::LoadHeightMapFromFile(ResolveTerrainInput(context.ctx, path), after, true)) {
             return OpResult::Err("IMPORT_FAILED", "Alpine HeightMapを読み込めません。地形は未変更です");
+        }
         after.layerMaterials = {
             "guid:c1e517a39c8257bd81be5f88fdef2de8|Assets/Terrain/Alpine/Grass.mat",
             "guid:aaa2d58a9d655d1cb84ff5afcc0ff855|Assets/Terrain/Alpine/Rock.mat",
             "guid:cddccaae2812585a831e6439a2a0d14f|Assets/Terrain/Alpine/Snow.mat"};
         TerrainBiomeSettings settings;
         settings.snowHeight += go->transform.worldPosition.y;
-        if (!BakeTerrainBiome(after, go->transform, settings))
+        if (!BakeTerrainBiome(after, go->transform, settings)) {
             return OpResult::Err("BAD_TERRAIN", "地形の変換または高さが不正です");
+        }
         after.RequestMaterialRebuild();
         return CommitTerrain(context, *go, std::move(after), "Alpine Starter");
     };
@@ -2490,28 +2976,47 @@ void RegisterTerrainAuthoringOperators(OperatorRegistry& registry)
     import.params.push_back(TerrainParameter("maxHeight", OpParamType::Float, "白の高さ[m]。0は維持", 0.0f));
     import.exec = [](OpContext& context, const OpArgs& args) {
         auto* go = ResolveTerrainNode(context, args.GetString("node"));
-        if (!go || !go->GetComponent<scene::TerrainComponent>()) return OpResult::Err("NO_TERRAIN", "対象地形がありません");
+        if (!go || !go->GetComponent<scene::TerrainComponent>()) {
+            return OpResult::Err("NO_TERRAIN", "対象地形がありません");
+        }
         auto after = *go->GetComponent<scene::TerrainComponent>();
         const int columns = args.GetInt("columns", 0);
         const int rows = args.GetInt("rows", 0);
         const float cellSize = args.GetFloat("cellSize", 0.0f);
         const float maxHeight = args.GetFloat("maxHeight", 0.0f);
-        if ((columns && !IsValidTerrainDimension(columns)) || (rows && !IsValidTerrainDimension(rows))
-            || !std::isfinite(cellSize) || cellSize < 0.0f || cellSize > 100000.0f
-            || !std::isfinite(maxHeight) || maxHeight < 0.0f || maxHeight > 100000.0f)
-            return OpResult::Err("BAD_ARG", "寸法・格子間隔・高さの範囲が不正です");
+        // 0 は既存値を維持する指定。変更する寸法と尺度だけを範囲内に制限する。
+        constexpr char INVALID_IMPORT_SIZE[] = "寸法・格子間隔・高さの範囲が不正です";
+        if ((columns && !IsValidTerrainDimension(columns)) || (rows && !IsValidTerrainDimension(rows))) {
+            return OpResult::Err("BAD_ARG", INVALID_IMPORT_SIZE);
+        }
+        const auto validScaleArgument = [](float value) {
+            return std::isfinite(value) && value >= 0.0f && value <= 100000.0f;
+        };
+        if (!validScaleArgument(cellSize) || !validScaleArgument(maxHeight)) {
+            return OpResult::Err("BAD_ARG", INVALID_IMPORT_SIZE);
+        }
+
         const int nextColumns = columns ? columns : after.columns;
         const int nextRows = rows ? rows : after.rows;
-        if (!IsValidTerrainDimension(nextColumns) || !IsValidTerrainDimension(nextRows))
+        if (!IsValidTerrainDimension(nextColumns) || !IsValidTerrainDimension(nextRows)) {
             return OpResult::Err("BAD_ARG", "地形の頂点数は2〜4097で指定してください");
-        if (cellSize) after.cellSize = cellSize;
-        if (maxHeight) after.maxHeight = maxHeight;
-        if (!std::isfinite(after.cellSize) || after.cellSize <= 0.0f || !std::isfinite(after.maxHeight) || after.maxHeight <= 0.0f)
+        }
+        if (cellSize) {
+            after.cellSize = cellSize;
+        }
+        if (maxHeight) {
+            after.maxHeight = maxHeight;
+        }
+        if (!std::isfinite(after.cellSize) || after.cellSize <= 0.0f || !std::isfinite(after.maxHeight) || after.maxHeight <= 0.0f) {
             return OpResult::Err("BAD_ARG", "地形の格子間隔と高さは正の有限値が必要です");
-        if (after.columns != nextColumns || after.rows != nextRows) after.Resize(nextColumns, nextRows);
+        }
+        if (after.columns != nextColumns || after.rows != nextRows) {
+            after.Resize(nextColumns, nextRows);
+        }
         const auto path = ResolveTerrainInput(context.ctx, args.GetString("path"));
-        if (path.empty() || !scene::LoadHeightMapFromFile(path, after, args.GetBool("unipolar", true)))
+        if (path.empty() || !scene::LoadHeightMapFromFile(path, after, args.GetBool("unipolar", true))) {
             return OpResult::Err("IMPORT_FAILED", "高さ画像を読み込めません。地形は変更していません");
+        }
         return CommitTerrain(context, *go, std::move(after), "Import Terrain Heightmap");
     };
     registry.Register(std::move(import));
@@ -2533,10 +3038,13 @@ void RegisterTerrainAuthoringOperators(OperatorRegistry& registry)
     stamp.params.push_back(std::move(blend));
     stamp.exec = [heightHistory](OpContext& context, const OpArgs& args) {
         auto* go = ResolveTerrainNode(context, args.GetString("node"));
-        if (!go || !go->GetComponent<scene::TerrainComponent>()) return OpResult::Err("NO_TERRAIN", "対象地形がありません");
+        if (!go || !go->GetComponent<scene::TerrainComponent>()) {
+            return OpResult::Err("NO_TERRAIN", "対象地形がありません");
+        }
         math::Vector3 normal;
-        if (!scene::TryTerrainNormalToWorld(go->transform, math::Vector3::UP, normal))
+        if (!scene::TryTerrainNormalToWorld(go->transform, math::Vector3::UP, normal)) {
             return OpResult::Err("BAD_TERRAIN", "地形の変換が不正です");
+        }
         const auto& terrain = *go->GetComponent<scene::TerrainComponent>();
         TerrainHeightStampSettings settings;
         settings.centerLocal = ToTerrainLocal(go->transform, args.GetVec3("center"));
@@ -2548,21 +3056,28 @@ void RegisterTerrainAuthoringOperators(OperatorRegistry& registry)
         settings.strength = args.GetFloat("strength", 1.0f);
         settings.edgeFade = args.GetFloat("edgeFade", 0.1f);
         const auto blendName = args.GetString("blend", "add");
-        if (blendName == "replace") settings.blend = TerrainHeightStampBlend::REPLACE;
-        else if (blendName == "max") settings.blend = TerrainHeightStampBlend::MAXIMUM;
-        else if (blendName == "min") settings.blend = TerrainHeightStampBlend::MINIMUM;
-        if (!IsValidTerrainHeightStamp(terrain, settings))
+        if (blendName == "replace") {
+            settings.blend = TerrainHeightStampBlend::REPLACE;
+        } else if (blendName == "max") {
+            settings.blend = TerrainHeightStampBlend::MAXIMUM;
+        } else if (blendName == "min") {
+            settings.blend = TerrainHeightStampBlend::MINIMUM;
+        }
+        if (!IsValidTerrainHeightStamp(terrain, settings)) {
             return OpResult::Err("BAD_ARG", "貼り付け寸法・高さ・強度・ぼかし・中心座標が不正です");
+        }
         scene::TerrainComponent image;
-        /// @note 読み込みはクリック時だけ。貼り付けの格子密度へ再標本化し、毎フレームの画像I/Oを避ける。
+        // 読み込みはクリック時だけ。貼り付けの格子密度へ再標本化し、毎フレームの画像I/Oを避ける。
         image.columns = static_cast<int>(std::clamp(std::ceil(static_cast<double>(settings.width) / terrain.cellSize) + 1.0, 2.0, 4097.0));
         image.rows = static_cast<int>(std::clamp(std::ceil(static_cast<double>(settings.depth) / terrain.cellSize) + 1.0, 2.0, 4097.0));
         const auto path = ResolveTerrainInput(context.ctx, args.GetString("path"));
-        if (path.empty() || !scene::LoadHeightMapFromFile(path, image, args.GetBool("unipolar", true)))
+        if (path.empty() || !scene::LoadHeightMapFromFile(path, image, args.GetBool("unipolar", true))) {
             return OpResult::Err("IMPORT_FAILED", "高さ画像を読み込めません。地形は未変更です");
+        }
         TerrainHeightEdit edit;
-        if (!PlanTerrainHeightStamp(terrain, image, settings, edit))
+        if (!PlanTerrainHeightStamp(terrain, image, settings, edit)) {
             return OpResult::Err("BAD_TERRAIN", "高さデータが不正です。地形は未変更です");
+        }
         return CommitTerrainHeightEdit(context, *go, std::move(edit), "Stamp Terrain Heightmap", *heightHistory);
     };
     registry.Register(std::move(stamp));
@@ -2579,7 +3094,9 @@ void RegisterTerrainAuthoringOperators(OperatorRegistry& registry)
     biome.params.push_back(TerrainParameter("slopeFade", OpParamType::Float, "傾斜の遷移幅[度]", 10.0f));
     biome.exec = [](OpContext& context, const OpArgs& args) {
         auto* go = ResolveTerrainNode(context, args.GetString("node"));
-        if (!go || !go->GetComponent<scene::TerrainComponent>()) return OpResult::Err("NO_TERRAIN", "対象地形がありません");
+        if (!go || !go->GetComponent<scene::TerrainComponent>()) {
+            return OpResult::Err("NO_TERRAIN", "対象地形がありません");
+        }
         auto after = *go->GetComponent<scene::TerrainComponent>();
         TerrainBiomeSettings settings;
         settings.grassLayer = args.GetInt("grassLayer", 0);
@@ -2589,8 +3106,9 @@ void RegisterTerrainAuthoringOperators(OperatorRegistry& registry)
         settings.snowFade = args.GetFloat("snowFade", 60.0f);
         settings.rockSlope = args.GetFloat("rockSlope", 38.0f);
         settings.slopeFade = args.GetFloat("slopeFade", 10.0f);
-        if (!BakeTerrainBiome(after, go->transform, settings))
+        if (!BakeTerrainBiome(after, go->transform, settings)) {
             return OpResult::Err("BAD_ARG", "異なる3層と有限の標高・傾斜、正常な地形が必要です");
+        }
         return CommitTerrain(context, *go, std::move(after), "Bake Grass Rock Snow", false);
     };
     registry.Register(std::move(biome));
@@ -2603,19 +3121,23 @@ void RegisterTerrainAuthoringOperators(OperatorRegistry& registry)
     mask.params.push_back(TerrainParameter("invert", OpParamType::Bool, "白黒を反転", false));
     mask.exec = [](OpContext& context, const OpArgs& args) {
         auto* go = ResolveTerrainNode(context, args.GetString("node"));
-        if (!go || !go->GetComponent<scene::TerrainComponent>()) return OpResult::Err("NO_TERRAIN", "対象地形がありません");
+        if (!go || !go->GetComponent<scene::TerrainComponent>()) {
+            return OpResult::Err("NO_TERRAIN", "対象地形がありません");
+        }
         auto after = *go->GetComponent<scene::TerrainComponent>();
         const int layer = args.GetInt("layer", -1);
         const float strength = args.GetFloat("strength", 1.0f);
         if (layer < 0 || layer >= after.LayerCount() || !std::isfinite(strength) || strength < 0.0f || strength > 1.0f
-            || !IsValidTerrainDimension(after.columns) || !IsValidTerrainDimension(after.rows))
+            || !IsValidTerrainDimension(after.columns) || !IsValidTerrainDimension(after.rows)) {
             return OpResult::Err("BAD_ARG", "層番号・強度・地形寸法が不正です");
+        }
         scene::TerrainComponent image;
         image.columns = after.columns;
         image.rows = after.rows;
         const auto path = ResolveTerrainInput(context.ctx, args.GetString("path"));
-        if (path.empty() || !scene::LoadHeightMapFromFile(path, image, true))
+        if (path.empty() || !scene::LoadHeightMapFromFile(path, image, true)) {
             return OpResult::Err("IMPORT_FAILED", "マスク画像を読み込めません");
+        }
         after.EnsureSplat();
         for (size_t vertex = 0; vertex < image.heightData.size(); ++vertex) {
             const float coverage = args.GetBool("invert", false) ? 1.0f - image.heightData[vertex] : image.heightData[vertex];
@@ -2627,7 +3149,7 @@ void RegisterTerrainAuthoringOperators(OperatorRegistry& registry)
     registry.Register(std::move(mask));
 }
 
-} /// @note namespace
+} // namespace
 
 void RegisterTerrainOperators(OperatorRegistry& registry)
 {
@@ -2649,15 +3171,19 @@ void RegisterTerrainOperators(OperatorRegistry& registry)
         "複数の Terrain を解析する場合の GUID 配列。最大16", OpData{}));
     drainage.exec = [](OpContext& context, const OpArgs& args) {
         auto* world = context.ctx.activeScene;
-        if (!world) return OpResult::Err("NO_TERRAIN", "有効な Terrain を指定してください。");
+        if (!world) {
+            return OpResult::Err("NO_TERRAIN", "有効な Terrain を指定してください。");
+        }
         const auto* owner = ResolveTerrainNode(context, args.GetString("node"));
         std::vector<TerrainAnalysisSurface> surfaces;
-        if (!ResolveTerrainAnalysisSurfaces(*world, owner, args.GetData("terrainTiles"), surfaces))
+        if (!ResolveTerrainAnalysisSurfaces(*world, owner, args.GetData("terrainTiles"), surfaces)) {
             return OpResult::Err("NO_TERRAIN", "有効な Terrain を指定してください。");
+        }
         const int maxEdges = args.GetInt("maxEdges", 512);
         const float minArea = args.GetFloat("minArea", 16.0f);
-        if (maxEdges < 0 || maxEdges > 2048 || !std::isfinite(minArea) || minArea < 0)
+        if (maxEdges < 0 || maxEdges > 2048 || !std::isfinite(minArea) || minArea < 0) {
             return OpResult::Err("BAD_ARG", "maxEdges は0〜2048、minArea は有限の非負値です。");
+        }
         scene::FlushWorldTransforms(*world);
         TerrainShoreSettings settings;
         settings.seed = args.GetVec3("seed");
@@ -2666,8 +3192,9 @@ void RegisterTerrainOperators(OperatorRegistry& registry)
         settings.spacing = args.GetFloat("spacing", settings.spacing);
         TerrainDrainage graph;
         std::string diagnostic;
-        if (!BuildTerrainDrainage(surfaces, settings, graph, diagnostic, minArea))
+        if (!BuildTerrainDrainage(surfaces, settings, graph, diagnostic, minArea)) {
             return OpResult::Err("DRAINAGE_NOT_FOUND", diagnostic);
+        }
         const auto describe = [&](int index) {
             const auto& node = graph.nodes[index];
             const auto size = DrainageRiverSize(node, graph.step);
@@ -2691,8 +3218,12 @@ void RegisterTerrainOperators(OperatorRegistry& registry)
         int total = 0;
         for (std::size_t i = 0; i < graph.nodes.size(); ++i) {
             const auto& node = graph.nodes[i];
-            if (node.downstream < 0 || node.area < minArea) continue;
-            if (total++ >= maxEdges) continue;
+            if (node.downstream < 0 || node.area < minArea) {
+                continue;
+            }
+            if (total++ >= maxEdges) {
+                continue;
+            }
             auto edge = describe(static_cast<int>(i));
             edge.Set("destination", graph.nodes[node.downstream].ground);
             edges.Push(std::move(edge));
@@ -2733,23 +3264,28 @@ void RegisterTerrainOperators(OperatorRegistry& registry)
     op.params = { nodeParam, columnsParam, rowsParam };
     op.poll = [](const OpContext& context, const OpArgs& args) {
         scene::GameObject* go = ResolveTerrainNode(context, args.GetString("node"));
-        if (go == nullptr || go->GetComponent<scene::TerrainComponent>() == nullptr)
+        if (go == nullptr || go->GetComponent<scene::TerrainComponent>() == nullptr) {
             return false;
+        }
         return IsValidTerrainDimension(args.GetInt("columns"))
             && IsValidTerrainDimension(args.GetInt("rows"));
     };
 
     op.exec = [](OpContext& context, const OpArgs& args) -> OpResult {
         scene::GameObject* go = ResolveTerrainNode(context, args.GetString("node"));
-        if (go == nullptr) return OpResult::Err("NO_NODE", "対象の GameObject が見つかりません");
+        if (go == nullptr) {
+            return OpResult::Err("NO_NODE", "対象の GameObject が見つかりません");
+        }
         auto* terrain = go->GetComponent<scene::TerrainComponent>();
-        if (terrain == nullptr)
+        if (terrain == nullptr) {
             return OpResult::Err("NOT_PRESENT", "TerrainComponent が装着されていません");
+        }
 
         const int columns = args.GetInt("columns");
         const int rows = args.GetInt("rows");
-        if (!IsValidTerrainDimension(columns) || !IsValidTerrainDimension(rows))
+        if (!IsValidTerrainDimension(columns) || !IsValidTerrainDimension(rows)) {
             return OpResult::Err("BAD_ARG", "columns と rows は 2〜4097 で指定してください");
+        }
         if (terrain->columns == columns && terrain->rows == rows) {
             OpResult result;
             result.noChange = true;
@@ -2773,4 +3309,4 @@ void RegisterTerrainOperators(OperatorRegistry& registry)
     RegisterTerrainGrassOperators(registry);
 }
 
-} /// @note namespace fbzz::editor
+} // namespace fbzz::editor

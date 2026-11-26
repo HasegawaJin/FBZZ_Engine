@@ -61,7 +61,9 @@ bool DecodePngFrame(const std::uint8_t* bytes, std::size_t size, IcoImage& out)
     int channels = 0;
     stbi_uc* pixels = stbi_load_from_memory(bytes, static_cast<int>(size),
                                             &width, &height, &channels, 4);
-    if (!pixels) return false;
+    if (!pixels) {
+        return false;
+    }
     out.width  = width;
     out.height = height;
     out.rgba.assign(pixels, pixels + static_cast<std::size_t>(width) * height * 4);
@@ -99,7 +101,7 @@ bool DecodeDibFrame(const std::uint8_t* bytes, std::size_t size, IcoImage& out, 
         return false;
     }
     const std::int32_t width  = header.width;
-    /// @note AND マスクぶんを落とす
+    // AND マスクぶんを落とす
     const std::int32_t height = header.height / 2;
     if (width <= 0 || height <= 0) {
         outError = "invalid icon bitmap size";
@@ -126,7 +128,7 @@ bool DecodeDibFrame(const std::uint8_t* bytes, std::size_t size, IcoImage& out, 
     }
     const std::uint8_t* palette = indexed ? bytes + header.size : nullptr;
     const std::uint8_t* xorData = bytes + pixelOffset;
-    /// @note AND マスクは欠けている .ico もある。無ければ «全画素不透明» とみなす。
+    // AND マスクは欠けている .ico もある。無ければ «全画素不透明» とみなす。
     const std::size_t andOffset = pixelOffset + xorStride * height;
     const bool hasAndMask = andOffset + andStride * height <= size;
     const std::uint8_t* andData = hasAndMask ? bytes + andOffset : nullptr;
@@ -135,13 +137,16 @@ bool DecodeDibFrame(const std::uint8_t* bytes, std::size_t size, IcoImage& out, 
     out.height = height;
     out.rgba.assign(static_cast<std::size_t>(width) * height * 4u, 0u);
 
-    /// @note 32bpp でもアルファを一切書かない .ico がある。その場合だけ AND マスクへ倒す。
+    // 32bpp でもアルファを一切書かない .ico がある。その場合だけ AND マスクへ倒す。
     bool hasAlphaChannel = false;
     if (header.bitCount == 32) {
         for (std::int32_t y = 0; y < height && !hasAlphaChannel; ++y) {
             const std::uint8_t* row = xorData + xorStride * y;
             for (std::int32_t x = 0; x < width; ++x) {
-                if (row[x * 4 + 3] != 0) { hasAlphaChannel = true; break; }
+                if (row[x * 4 + 3] != 0) {
+                    hasAlphaChannel = true;
+                    break;
+                }
             }
         }
     }
@@ -172,9 +177,10 @@ bool DecodeDibFrame(const std::uint8_t* bytes, std::size_t size, IcoImage& out, 
                     r = palette[index * 4 + 2];
                 }
             }
-            /// @note AND マスクは «1 = 背景を透かす»。32bpp でアルファを持つ絵には掛けない。
-            if (andRow && !hasAlphaChannel && ((andRow[x / 8] >> (7 - (x & 7))) & 0x01u))
+            // AND マスクは «1 = 背景を透かす»。32bpp でアルファを持つ絵には掛けない。
+            if (andRow && !hasAlphaChannel && ((andRow[x / 8] >> (7 - (x & 7))) & 0x01u)) {
                 a = 0;
+            }
 
             dst[x * 4 + 0] = r;
             dst[x * 4 + 1] = g;
@@ -215,7 +221,9 @@ bool DecodeIcoBytes(const std::uint8_t* bytes, std::size_t size, IcoImage& out, 
         }
         IconDirEntry entry{};
         std::memcpy(&entry, bytes + entryOffset, sizeof(entry));
-        if (static_cast<std::size_t>(entry.imageOffset) + entry.bytesInRes > size) continue;
+        if (static_cast<std::size_t>(entry.imageOffset) + entry.bytesInRes > size) {
+            continue;
+        }
         entries.push_back(entry);
     }
     if (entries.empty()) {
@@ -223,8 +231,8 @@ bool DecodeIcoBytes(const std::uint8_t* bytes, std::size_t size, IcoImage& out, 
         return false;
     }
 
-    /// @note 面積が同じなら色深度が深い方を採る。16 色版と 32bit 版が同居する .ico で
-    ///       «小さくもないのに色が潰れている» サムネイルを出さないため。
+    // 面積が同じなら色深度が深い方を採る。16 色版と 32bit 版が同居する .ico で
+    // «小さくもないのに色が潰れている» サムネイルを出さないため。
     for (const IconDirEntry& entry : entries) {
         const std::uint32_t w = entry.width  == 0 ? 256u : entry.width;
         const std::uint32_t h = entry.height == 0 ? 256u : entry.height;
@@ -244,7 +252,9 @@ bool DecodeIcoBytes(const std::uint8_t* bytes, std::size_t size, IcoImage& out, 
         }
         return true;
     }
-    if (!DecodeDibFrame(frame, frameSize, out, outError)) return false;
+    if (!DecodeDibFrame(frame, frameSize, out, outError)) {
+        return false;
+    }
     return out.IsValid();
 }
 

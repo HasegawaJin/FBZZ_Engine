@@ -54,8 +54,12 @@ std::filesystem::path ResolvePreviewShader(const std::filesystem::path& requeste
 {
     const auto path = requested.generic_string();
     constexpr std::string_view SHADER_PREFIX = "Assets/Shaders/";
-    if (path.starts_with(SHADER_PREFIX)) return std::filesystem::path(FBZZ_GRAPHICS_SHADER_ROOT) / path.substr(SHADER_PREFIX.size());
-    if (path.starts_with("guid:")) return std::filesystem::u8path(asset::AssetManager::ResolveAssetPath(path));
+    if (path.starts_with(SHADER_PREFIX)) {
+        return std::filesystem::path(FBZZ_GRAPHICS_SHADER_ROOT) / path.substr(SHADER_PREFIX.size());
+    }
+    if (path.starts_with("guid:")) {
+        return std::filesystem::u8path(asset::AssetManager::ResolveAssetPath(path));
+    }
     return requested;
 }
 float RgbEnergy(const std::vector<float>& pixels)
@@ -86,7 +90,7 @@ protected:
         ASSERT_TRUE(m_temp.IsValid());
         m_project = m_temp.Path();
         std::error_code error;
-        /// @note Copy actual material/texture bytes and their GUIDs into a unique project; Engine shader metadata remains read-only.
+        // テスト専用プロジェクトに実際の材質・テクスチャと GUID をコピーし、エンジンのシェーダーメタデータは読み取りだけに使う。
         for (const char* relative : {"Assets/Materials/Water/WaterBubbles.mat", "Assets/Materials/Water/WaterBubbles.mat.meta",
                                     "Assets/Materials/Water/Lake.mat", "Assets/Materials/Water/Lake.mat.meta",
                                     "Assets/Textures/Particles/light_02.png", "Assets/Textures/Particles/light_02.png.meta",
@@ -99,7 +103,7 @@ protected:
         }
         const auto projectAssets = (m_project / "Assets").generic_string() + "/";
         asset::AssetManager::Init(*m_resources, projectAssets);
-        /// @note Explicitly index the source Engine shaders because standalone test runtime discovery need not find the source Assets root.
+        // 単体実行時にもソース側の Assets を参照できるよう、エンジンのシェーダーを明示的に索引へ登録する。
         asset::AssetDatabase::Init(projectAssets, (m_root / "Assets").generic_string());
         const auto texture = asset::AssetManager::ResolveAssetPath("guid:5a3f2a1eacdc4fd8add33d31f66254cb");
         ASSERT_TRUE(std::filesystem::equivalent(m_project / "Assets/Textures/Particles/light_02.png",
@@ -517,7 +521,7 @@ float4 PSMain(Pixel p) : SV_Target0 { return unsafeColor; }
         ASSERT_TRUE(asset::SaveMaterialAssetToFile(materialPath, water));
         asset::MaterialAssetAuthoring reloaded;
         ASSERT_TRUE(asset::LoadMaterialAssetFromFile(materialPath, reloaded));
-        /// @note The material codec canonicalizes project shader paths; preserve the authored file identity, not its absolute spelling.
+        // The material codec canonicalizes project shader paths; preserve the authored file identity, not its absolute spelling.
         const std::string expectedShaderReference = "Assets/Shaders/" + std::string(declaration.name) + ".hlsl";
         EXPECT_EQ(reloaded.shaderPath, expectedShaderReference);
         const std::string resolvedShaderPath = asset::AssetManager::ResolveAssetPath(reloaded.shaderPath);
@@ -600,7 +604,7 @@ TEST_F(MaterialPreviewShaderTest, ProjectGrassAndFurAppearanceEditReloadPreserve
         ASSERT_TRUE(asset::SaveMaterialAssetToFile(path, material));
         asset::MaterialAssetAuthoring reloaded;
         ASSERT_TRUE(asset::LoadMaterialAssetFromFile(path, reloaded));
-        /// @note Small integers use the existing float-exact on-disk normalization.
+        // Small integers use the existing float-exact on-disk normalization.
         ASSERT_TRUE(reloaded.params.contains("colorBands"));
         ASSERT_TRUE(reloaded.params.contains("enablePattern"));
         EXPECT_EQ(reloaded.params.at("colorBands"), material.params.at("colorBands"));

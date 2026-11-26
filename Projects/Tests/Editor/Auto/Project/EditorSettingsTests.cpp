@@ -69,7 +69,7 @@ private:
 /// @brief Loading a missing file keeps defaults.
 TEST_F(EditorSettingsTest, LoadingAMissingFileKeepsDefaults)
 {
-    /// @note 新規プロジェクトには設定が無い。既定値のまま素通りできること。
+    // 新規プロジェクトには設定が無い。既定値のまま素通りできること。
     EditorSettings settings;
     const bool showGridDefault = settings.showGrid;
 
@@ -110,7 +110,7 @@ TEST_F(EditorSettingsTest, RoundTripsSharedViewSettings)
 /// @brief Round-trips the baked sweep toggle.
 TEST_F(EditorSettingsTest, RoundTripsTheBakedSweepToggle)
 {
-    /// @note 起動時の Library/Baked 掃除。既定は on で、off にしたら残ること。
+    // 起動時の Library/Baked 掃除。既定は on で、off にしたら残ること。
     EditorSettings defaults;
     EXPECT_TRUE(defaults.sweepOrphanedBakedOnOpen);
 
@@ -150,7 +150,7 @@ TEST_F(EditorSettingsTest, RoundTripsTheHotReloadSoundToggle)
 /// @brief Keeps the camera out of the shared file.
 TEST_F(EditorSettingsTest, KeepsTheCameraOutOfTheSharedFile)
 {
-    /// @note カメラ位置は人ごとに違う。共有ファイルへ書くと全員の手元が常に差分になる。
+    // カメラ位置は人ごとに違う。共有ファイルへ書くと全員の手元が常に差分になる。
     EditorSettings saved;
     saved.cameraLastPx = 123.5f;
     ASSERT_TRUE(saved.Save(ConfigPathUtf8(), ProjectRootUtf8()));
@@ -192,8 +192,8 @@ TEST_F(EditorSettingsTest, RoundTripsTheCameraThroughTheLocalStateFile)
 /// @brief Local state wins over the shared file.
 TEST_F(EditorSettingsTest, LocalStateWinsOverTheSharedFile)
 {
-    /// @note 旧 editor_settings.toml に [camera] が残っていても、個人状態が勝つ。
-    ///       これが逆だと «開くたびに他人のカメラ位置へ飛ぶ»。
+    // 旧 editor_settings.toml に [camera] が残っていても、個人状態が勝つ。
+    // これが逆だと «開くたびに他人のカメラ位置へ飛ぶ»。
     WriteFile(ConfigPath(), "[camera]\nspeed = 99.0\n");
     WriteFile(LocalStatePath(), "[camera]\nspeed = 7.0\n");
 
@@ -206,7 +206,7 @@ TEST_F(EditorSettingsTest, LocalStateWinsOverTheSharedFile)
 /// @brief Falls back to the shared file when there is no local state.
 TEST_F(EditorSettingsTest, FallsBackToTheSharedFileWhenThereIsNoLocalState)
 {
-    /// @note 個人状態がまだ無い手元では、旧形式の値を拾って移行できる必要がある。
+    // 個人状態がまだ無い手元では、旧形式の値を拾って移行できる必要がある。
     WriteFile(ConfigPath(), "[camera]\nspeed = 99.0\n");
 
     EditorSettings loaded;
@@ -218,7 +218,7 @@ TEST_F(EditorSettingsTest, FallsBackToTheSharedFileWhenThereIsNoLocalState)
 /// @brief Unknown keys are ignored not fatal.
 TEST_F(EditorSettingsTest, UnknownKeysAreIgnoredNotFatal)
 {
-    /// @note 新しいエディターが書いた設定を古いエディターが読む場合。読める分だけ拾う。
+    // 新しいエディターが書いた設定を古いエディターが読む場合。読める分だけ拾う。
     WriteFile(ConfigPath(),
               "[view]\nshow_grid = false\nsome_future_flag = true\n"
               "[a_whole_new_section]\nx = 1\n");
@@ -245,7 +245,7 @@ TEST_F(EditorSettingsTest, MissingKeysKeepTheirDefaults)
 /// @brief Save creates the local state directory.
 TEST_F(EditorSettingsTest, SaveCreatesTheLocalStateDirectory)
 {
-    /// @note Library/ がまだ無い新規プロジェクトでも、個人状態を書けること。
+    // Library/ がまだ無い新規プロジェクトでも、個人状態を書けること。
     ASSERT_FALSE(std::filesystem::exists(LocalStatePath().parent_path()));
 
     EditorSettings saved;
@@ -258,7 +258,7 @@ TEST_F(EditorSettingsTest, SaveCreatesTheLocalStateDirectory)
 /// @brief Survives an empty project root.
 TEST_F(EditorSettingsTest, SurvivesAnEmptyProjectRoot)
 {
-    /// @note プロジェクト未確定の段階でも落ちないこと (個人状態は素通りする)。
+    // プロジェクト未確定の段階でも落ちないこと (個人状態は素通りする)。
     EditorSettings settings;
     settings.Load(ConfigPathUtf8(), "");
     EXPECT_TRUE(settings.Save(ConfigPathUtf8(), ""));

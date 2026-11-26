@@ -33,12 +33,16 @@ const std::vector<AssetBrowserPanel::Entry>& AssetBrowserPanel::VisibleEntries()
 
 std::vector<std::string> AssetBrowserPanel::TypeFilterExtensions() const
 {
-    /// @note 有効な種別すべての拡張子を連結する (PassesTypeFilter の OR 判定と同じ集合)。
-    if (m_typeFilterMask == 0) return {};
+    // 有効な種別すべての拡張子を連結する (PassesTypeFilter の OR 判定と同じ集合)。
+    if (m_typeFilterMask == 0) {
+        return {};
+    }
 
     std::vector<std::string> merged;
     for (int type = 1; type < static_cast<int>(TypeFilter::COUNT); ++type) {
-        if ((m_typeFilterMask & (1u << type)) == 0) continue;
+        if ((m_typeFilterMask & (1u << type)) == 0) {
+            continue;
+        }
         const auto exts = ExtensionsForTypeFilter(static_cast<TypeFilter>(type));
         merged.insert(merged.end(), exts.begin(), exts.end());
     }
@@ -47,9 +51,9 @@ std::vector<std::string> AssetBrowserPanel::TypeFilterExtensions() const
 
 std::vector<std::string> AssetBrowserPanel::ExtensionsForTypeFilter(TypeFilter type)
 {
-    /// @note MatchesTypeFilter を再利用しない: あちらは Entry を受け取る述語で、AssetSearch へ渡すのは
-    /// @note 拡張子の列。分類が二重管理になるが、索引側で先に絞る方が候補を大幅に減らせる
-    /// @note (全件を Entry 化してから捨てるのは無駄)。分類の対応は MatchesTypeFilter と揃えること。
+    // MatchesTypeFilter を再利用しない: あちらは Entry を受け取る述語で、AssetSearch へ渡すのは
+    // 拡張子の列。分類が二重管理になるが、索引側で先に絞る方が候補を大幅に減らせる
+    // (全件を Entry 化してから捨てるのは無駄)。分類の対応は MatchesTypeFilter と揃えること。
     switch (type) {
     case TypeFilter::Scene:     return { ".scene" };
     case TypeFilter::Material:  return { ".mat" };
@@ -76,19 +80,23 @@ void AssetBrowserPanel::DrawFilterMenu()
         const TypeFilter filter = static_cast<TypeFilter>(type);
         ImGui::PushID(type);
         bool enabled = IsTypeFilterActive(filter);
-        if (ImGui::Checkbox(TypeFilterLabel(filter), &enabled))
+        if (ImGui::Checkbox(TypeFilterLabel(filter), &enabled)) {
             ToggleTypeFilter(filter);
+        }
         ImGui::PopID();
     }
 
     ImGui::Separator();
-    if (ImGui::MenuItem("Clear All Filters", nullptr, false, m_typeFilterMask != 0))
+    if (ImGui::MenuItem("Clear All Filters", nullptr, false, m_typeFilterMask != 0)) {
         m_typeFilterMask = 0;
+    }
 }
 
 void AssetBrowserPanel::DrawFilterChips()
 {
-    if (m_typeFilterMask == 0) return;
+    if (m_typeFilterMask == 0) {
+        return;
+    }
 
     ImDrawList* dl = ImGui::GetWindowDrawList();
     const ImGuiStyle& st = ImGui::GetStyle();
@@ -98,15 +106,17 @@ void AssetBrowserPanel::DrawFilterChips()
     ImGui::Spacing();
     for (int type = 1; type < static_cast<int>(TypeFilter::COUNT); ++type) {
         const TypeFilter filter = static_cast<TypeFilter>(type);
-        if (!IsTypeFilterActive(filter)) continue;
+        if (!IsTypeFilterActive(filter)) {
+            continue;
+        }
 
         const char* label = TypeFilterLabel(filter);
-        /// @note ピルの幅 = ラベル + 左右パディング + 末尾の × ぶん。
+        // ピルの幅 = ラベル + 左右パディング + 末尾の × ぶん。
         const float labelW = ImGui::CalcTextSize(label).x;
         const float chipW  = labelW + st.FramePadding.x * 2.0f + ImGui::CalcTextSize(" x").x;
         const float chipH  = ImGui::GetFrameHeight();
 
-        /// @note 行に収まらなくなったら折り返す (種別を全部有効にしても横に溢れさせない)。
+        // 行に収まらなくなったら折り返す (種別を全部有効にしても横に溢れさせない)。
         if (ImGui::GetCursorPosX() > rowStartX &&
             ImGui::GetCursorPosX() + chipW > rowStartX + availWidth) {
             ImGui::NewLine();
@@ -114,15 +124,19 @@ void AssetBrowserPanel::DrawFilterChips()
 
         ImGui::PushID(type);
         const ImVec2 chipMin = ImGui::GetCursorScreenPos();
-        if (ImGui::InvisibleButton("##chip", { chipW, chipH })) ToggleTypeFilter(filter);
+        if (ImGui::InvisibleButton("##chip", { chipW, chipH })) {
+            ToggleTypeFilter(filter);
+        }
         const bool hovered = ImGui::IsItemHovered();
-        if (hovered) ImGui::SetMouseCursor(ImGuiMouseCursor_Hand);
+        if (hovered) {
+            ImGui::SetMouseCursor(ImGuiMouseCursor_Hand);
+        }
 
         const ImVec2 chipMax  = { chipMin.x + chipW, chipMin.y + chipH };
         const float  rounding = chipH * 0.5f;
-        /// @note 色はアクセント 1 色。ピルが並ぶ意味は「今この種別で絞っている」であって
-        /// @note 種別そのものの識別ではないので、種別ごとに色を変えない。
-        /// @note (色分けの意味はフォルダの Set Color に一本化している)
+        // 色はアクセント 1 色。ピルが並ぶ意味は「今この種別で絞っている」であって
+        // 種別そのものの識別ではないので、種別ごとに色を変えない。
+        // (色分けの意味はフォルダの Set Color に一本化している)
         dl->AddRectFilled(chipMin, chipMax,
                           EditorTheme::ColorU32(ThemeColor::Accent, hovered ? 0.45f : 0.28f),
                           rounding);
@@ -132,7 +146,9 @@ void AssetBrowserPanel::DrawFilterChips()
                     IM_COL32(245, 246, 250, 255), label);
         dl->AddText({ chipMin.x + st.FramePadding.x + labelW, chipMin.y + st.FramePadding.y },
                     IM_COL32(245, 246, 250, hovered ? 255 : 150), " x");
-        if (hovered) ImGui::SetTooltip("クリックで %s フィルタを外す", label);
+        if (hovered) {
+            ImGui::SetTooltip("クリックで %s フィルタを外す", label);
+        }
         ImGui::PopID();
 
         ImGui::SameLine(0.0f, st.ItemSpacing.x);
@@ -145,11 +161,12 @@ void AssetBrowserPanel::RefreshSearchResults()
     const std::string query(m_searchBuf.data());
     const int typeFilter = static_cast<int>(m_typeFilterMask);
 
-    /// @note 検索語もフィルタも変わっていなければ組み直さない: 毎フレーム数千件を走査すると、
-    /// @note 入力していない間もフレーム時間を食う。
+    // 検索語もフィルタも変わっていなければ組み直さない: 毎フレーム数千件を走査すると、
+    // 入力していない間もフレーム時間を食う。
     if (query == m_searchResultsQuery && typeFilter == m_searchResultsTypeFilter
-        && m_searchIndexRevision == AssetSearch::Revision())
+        && m_searchIndexRevision == AssetSearch::Revision()) {
         return;
+    }
 
     m_searchResultsQuery      = query;
     m_searchResultsTypeFilter = typeFilter;
@@ -157,10 +174,12 @@ void AssetBrowserPanel::RefreshSearchResults()
     m_searchResults.clear();
     InvalidateListCache();
 
-    if (query.empty() && !IsTypeFilterActive(TypeFilter::InstanceSet)) return;
+    if (query.empty() && !IsTypeFilterActive(TypeFilter::InstanceSet)) {
+        return;
+    }
 
-    /// @note 表示件数の上限。これを超えるヒットは絞り込みを促す: グリッドは ImGuiListClipper で
-    /// @note 間引くが Entry の構築自体は全件走るため、上限が無いと曖昧な 1 文字検索で数千件を組み立てる。
+    // 表示件数の上限。これを超えるヒットは絞り込みを促す: グリッドは ImGuiListClipper で
+    // 間引くが Entry の構築自体は全件走るため、上限が無いと曖昧な 1 文字検索で数千件を組み立てる。
     constexpr std::size_t MAX_SEARCH_RESULTS = 500;
 
     const std::vector<std::string> extensions = TypeFilterExtensions();
@@ -169,10 +188,11 @@ void AssetBrowserPanel::RefreshSearchResults()
 
     m_searchResults.reserve(hits.size());
     for (const auto& hit : hits) {
-        /// @note Asset Browser の表示規則 (生成物・中間物を隠す) は横断検索でも適用する: 索引は
-        /// @note 「参照されうるファイル」を広く持つが、ブラウザに出すのはユーザーが直接編集・選択する対象だけ。
-        if (!ShouldDisplayEntry(hit.entry.absolutePath, hit.entry.filename, false))
+        // Asset Browser の表示規則 (生成物・中間物を隠す) は横断検索でも適用する: 索引は
+        // 「参照されうるファイル」を広く持つが、ブラウザに出すのはユーザーが直接編集・選択する対象だけ。
+        if (!ShouldDisplayEntry(hit.entry.absolutePath, hit.entry.filename, false)) {
             continue;
+        }
 
         Entry entry;
         entry.path  = hit.entry.absolutePath;
@@ -180,7 +200,9 @@ void AssetBrowserPanel::RefreshSearchResults()
         entry.ext   = hit.entry.extension;
         entry.isDir = false;
         entry.isInstanceSet = entry.ext == ".fzdata" && IsInstanceSetFile(entry.path);
-        if (!PassesTypeFilter(entry)) continue;
+        if (!PassesTypeFilter(entry)) {
+            continue;
+        }
         m_searchResults.push_back(std::move(entry));
     }
 }
@@ -194,14 +216,14 @@ void AssetBrowserPanel::OnRenderContent(EditorContext& ctx)
         m_searchResultsQuery.clear();
         m_searchResultsTypeFilter = -1;
     }
-    /// @note フォーカスの申告は IPanel::OnRender が GetHotkeyScope() を見て行う。
-    /// @note Asset Browser は複数開けるが、フォーカスを持てるのはそのうち 1 枚だけなので、
-    /// @note «どれか 1 枚でも» を自前で OR する必要はない。
+    // フォーカスの申告は IPanel::OnRender が GetHotkeyScope() を見て行う。
+    // Asset Browser は複数開けるが、フォーカスを持てるのはそのうち 1 枚だけなので、
+    // «どれか 1 枚でも» を自前で OR する必要はない。
     HandleClipboardShortcuts(ctx);
 
     DrawImportSettingsModal(ctx);
 
-    /// @note Complete one bounded asynchronous CPU thumbnail job without waiting on the renderer thread.
+    // Complete one bounded asynchronous CPU thumbnail job without waiting on the renderer thread.
     {
         FBZZ_PROFILE_SCOPE("AssetBrowser::TextureQueue");
         DrainTexLoadQueue(ctx);
@@ -212,9 +234,9 @@ void AssetBrowserPanel::OnRenderContent(EditorContext& ctx)
         UpdateMounts(ctx);
     }
 
-    /// @note 一発フラグを世代番号へ移し替えてから、自分がまだ適用していない世代なら作り直す。
-    /// @note こうすると何枚開いていても、また閉じていた枚が開き直されたときも、
-    /// @note 同じ変更をちょうど 1 回ずつ反映できる。
+    // 一発フラグを世代番号へ移し替えてから、自分がまだ適用していない世代なら作り直す。
+    // こうすると何枚開いていても、また閉じていた枚が開き直されたときも、
+    // 同じ変更をちょうど 1 回ずつ反映できる。
     if (ctx.requestAssetBrowserRefresh) {
         ctx.requestAssetBrowserRefresh = false;
         ++ctx.assetBrowserRefreshGeneration;
@@ -222,39 +244,40 @@ void AssetBrowserPanel::OnRenderContent(EditorContext& ctx)
     if (m_appliedRefreshGeneration != ctx.assetBrowserRefreshGeneration) {
         m_appliedRefreshGeneration = ctx.assetBrowserRefreshGeneration;
         RefreshDirectory();
-        /// @note 横断検索の結果も作り直す (アセットが増減している可能性があるため)。
+        // 横断検索の結果も作り直す (アセットが増減している可能性があるため)。
         m_searchResultsQuery.clear();
         m_searchResultsTypeFilter = -1;
     }
 
-    /// @note Inspector 等の参照欄クリック → そのアセットのフォルダへ移動して選択する。Refresh の後に置く:
-    /// @note Reveal は自前で RefreshDirectory を呼ぶため、直後に一括 Refresh が走ると展開した
-    /// @note サブアセットまで組み直され、選択位置の計算がやり直しになる。
+    // Inspector 等の参照欄クリック → そのアセットのフォルダへ移動して選択する。Refresh の後に置く:
+    // Reveal は自前で RefreshDirectory を呼ぶため、直後に一括 Refresh が走ると展開した
+    // サブアセットまで組み直され、選択位置の計算がやり直しになる。
     HandleRevealRequest(ctx);
 
-    /// @note 横断検索の索引はプロジェクトルート基準。ルートが変わったときだけ再構築される。
+    // 横断検索の索引はプロジェクトルート基準。ルートが変わったときだけ再構築される。
     AssetSearch::SetProjectRoot(ctx.projectRoot);
 
     const float paneH = ImGui::GetContentRegionAvail().y;
     const float width = ImGui::GetContentRegionAvail().x;
     const float treeLimit = std::max(1.0f, width * 0.4f);
     const float treeWidth = std::min(m_treeWidth, treeLimit);
-    /// @note 一覧に検索欄と最低 2 枚のタイルを置けなくなる幅で、ツリーを呼び出し式にする。
+    // 一覧に検索欄と最低 2 枚のタイルを置けなくなる幅で、ツリーを呼び出し式にする。
     const float minimumContent = std::max(22.0f * ImGui::GetFontSize(), 2.0f * m_iconSize + 12.0f);
     const bool narrow = width - treeWidth - 6.0f < minimumContent;
     if (!narrow) {
-        if (ImGui::BeginChild("##tree", {treeWidth, paneH}, true))
+        if (ImGui::BeginChild("##tree", {treeWidth, paneH}, true)) {
             DrawFolderNavigator(ctx);
+        }
         ImGui::EndChild();
         ImGui::SameLine(0.0f, 0.0f);
         DrawTreeSplitter(treeWidth, treeLimit, paneH);
         ImGui::SameLine(0.0f, 0.0f);
     }
 
-    /// @name 右ペイン: コンテンツエリア
+    // 右ペイン: コンテンツエリア
     ImGui::BeginChild("##content", { 0.0f, paneH }, false);
-    /// @note ディレクトリ移動後にスクロールをトップへ戻す: 深いディレクトリで下にスクロールした後に
-    /// @note 親へ戻ると、前のスクロール位置が残りトップにある Fonts 等が見えなくなる。
+    // ディレクトリ移動後にスクロールをトップへ戻す: 深いディレクトリで下にスクロールした後に
+    // 親へ戻ると、前のスクロール位置が残りトップにある Fonts 等が見えなくなる。
     if (m_resetScroll) {
         ImGui::SetScrollY(0.0f);
         m_resetScroll = false;
@@ -266,18 +289,20 @@ void AssetBrowserPanel::OnRenderContent(EditorContext& ctx)
     };
     const ImGuiID contentDropId = ImGui::GetID("##content_drop_target");
 
-    /// @note Windows Explorer と同じく、通常ホイールは一覧スクロール、Ctrl+ホイールは表示サイズ変更に使う:
-    /// @note Size スライダーが検索欄を圧迫していたため、ポインターを一覧から離さず調整できる操作へ移した。
+    // Windows Explorer と同じく、通常ホイールは一覧スクロール、Ctrl+ホイールは表示サイズ変更に使う:
+    // Size スライダーが検索欄を圧迫していたため、ポインターを一覧から離さず調整できる操作へ移した。
     const ImGuiIO& io = ImGui::GetIO();
     if (m_viewMode == ViewMode::Grid && ImGui::IsWindowHovered(ImGuiHoveredFlags_ChildWindows)
         && io.KeyCtrl && std::fabs(io.MouseWheel) > 0.001f) {
         m_iconSize = std::clamp(m_iconSize + io.MouseWheel * 8.0f, 56.0f, 132.0f);
     }
 
-    /// @note パンくずリスト
+    // パンくずリスト
     if (narrow) {
         const toolbar::Action folders{"##folder_navigator", icons::kFolder, "/", LOCT("Browse folders")};
-        if (folders.Draw(true)) ImGui::OpenPopup("##folders");
+        if (folders.Draw(true)) {
+            ImGui::OpenPopup("##folders");
+        }
         const ImVec2 viewport = ImGui::GetWindowViewport()->WorkSize;
         const float font = ImGui::GetFontSize();
         ImGui::SetNextWindowSizeConstraints({std::min(13.0f * font, viewport.x), 0.0f},
@@ -285,7 +310,9 @@ void AssetBrowserPanel::OnRenderContent(EditorContext& ctx)
         if (ImGui::BeginPopup("##folders")) {
             const auto before = m_currentPath;
             DrawFolderNavigator(ctx);
-            if (m_currentPath != before) ImGui::CloseCurrentPopup();
+            if (m_currentPath != before) {
+                ImGui::CloseCurrentPopup();
+            }
             ImGui::EndPopup();
         }
         ImGui::SameLine();
@@ -297,10 +324,11 @@ void AssetBrowserPanel::OnRenderContent(EditorContext& ctx)
         const float spacing = ImGui::GetStyle().ItemSpacing.x;
         const int activeFilters = std::popcount(m_typeFilterMask);
         char filters[96];
-        if (activeFilters)
+        if (activeFilters) {
             std::snprintf(filters, sizeof(filters), "%s (%d)###asset_filters", LOCT("Filters"), activeFilters);
-        else
+        } else {
             std::snprintf(filters, sizeof(filters), "%s###asset_filters", LOCT("Filters"));
+        }
         const char* scope = m_searchAllFolders ? LOCT("All Assets") : LOCT("This Folder");
         const auto& scopeGlyph = m_searchAllFolders ? icons::kWorld : icons::kFolder;
         const bool dirty = AssetDirtyRegistry::HasAny();
@@ -334,7 +362,9 @@ void AssetBrowserPanel::OnRenderContent(EditorContext& ctx)
 
         toolbar::SameLineIfFits(scopeAction.Width(compact));
         const bool wasGlobal = m_searchAllFolders;
-        if (wasGlobal) ImGui::PushStyleColor(ImGuiCol_Button, ImGui::GetStyleColorVec4(ImGuiCol_ButtonActive));
+        if (wasGlobal) {
+            ImGui::PushStyleColor(ImGuiCol_Button, ImGui::GetStyleColorVec4(ImGuiCol_ButtonActive));
+        }
         ImGui::PushID("asset_scope");
         if (scopeAction.Draw(compact)) {
             m_searchAllFolders = !wasGlobal;
@@ -342,28 +372,44 @@ void AssetBrowserPanel::OnRenderContent(EditorContext& ctx)
             m_searchResultsTypeFilter = -1;
         }
         ImGui::PopID();
-        if (wasGlobal) ImGui::PopStyleColor();
+        if (wasGlobal) {
+            ImGui::PopStyleColor();
+        }
 
         toolbar::SameLineIfFits(filterAction.Width(compactFilter));
-        if (activeFilters) ImGui::PushStyleColor(ImGuiCol_Button, ImGui::GetStyleColorVec4(ImGuiCol_ButtonActive));
-        if (filterAction.Draw(compactFilter)) ImGui::OpenPopup("##type_filters");
-        if (activeFilters) ImGui::PopStyleColor();
+        if (activeFilters) {
+            ImGui::PushStyleColor(ImGuiCol_Button, ImGui::GetStyleColorVec4(ImGuiCol_ButtonActive));
+        }
+        if (filterAction.Draw(compactFilter)) {
+            ImGui::OpenPopup("##type_filters");
+        }
+        if (activeFilters) {
+            ImGui::PopStyleColor();
+        }
         if (ImGui::BeginPopup("##type_filters")) {
             DrawFilterMenu();
             ImGui::EndPopup();
         }
         toolbar::SameLineIfFits(createAction.Width(compactCreate));
-        if (createAction.Draw(compactCreate)) ImGui::OpenPopup("##create_asset");
+        if (createAction.Draw(compactCreate)) {
+            ImGui::OpenPopup("##create_asset");
+        }
         if (ImGui::BeginPopup("##create_asset")) {
             DrawCreateMenu(ctx, m_currentPath);
             ImGui::EndPopup();
         }
 
         toolbar::SameLineIfFits(viewAction.Width(compact));
-        if (viewAction.Draw(compact)) ImGui::OpenPopup("##asset_view");
+        if (viewAction.Draw(compact)) {
+            ImGui::OpenPopup("##asset_view");
+        }
         if (ImGui::BeginPopup("##asset_view")) {
-            if (ImGui::MenuItem(LOC("Grid"), nullptr, m_viewMode == ViewMode::Grid)) m_viewMode = ViewMode::Grid;
-            if (ImGui::MenuItem(LOC("List"), nullptr, m_viewMode == ViewMode::List)) m_viewMode = ViewMode::List;
+            if (ImGui::MenuItem(LOC("Grid"), nullptr, m_viewMode == ViewMode::Grid)) {
+                m_viewMode = ViewMode::Grid;
+            }
+            if (ImGui::MenuItem(LOC("List"), nullptr, m_viewMode == ViewMode::List)) {
+                m_viewMode = ViewMode::List;
+            }
             if (m_viewMode == ViewMode::Grid) {
                 ImGui::SetNextItemWidth(10.0f * ImGui::GetFontSize());
                 ImGui::SliderFloat(LOC("Thumbnail size"), &m_iconSize, 56.0f, 132.0f, "%.0f");
@@ -381,7 +427,9 @@ void AssetBrowserPanel::OnRenderContent(EditorContext& ctx)
                 }
             }
             ImGui::Separator();
-            if (ImGui::MenuItem(LOC("Refresh"))) RefreshDirectory();
+            if (ImGui::MenuItem(LOC("Refresh"))) {
+                RefreshDirectory();
+            }
             if (IsGlobalSearchActive()) {
                 ImGui::TextDisabled(LOCT("%d results"), static_cast<int>(m_searchResults.size()));
             } else {
@@ -393,19 +441,21 @@ void AssetBrowserPanel::OnRenderContent(EditorContext& ctx)
         }
         if (dirty) {
             toolbar::SameLineIfFits(saveAction.Width(compact));
-            if (saveAction.Draw(compact)) m_showSaveModifiedDialog = true;
+            if (saveAction.Draw(compact)) {
+                m_showSaveModifiedDialog = true;
+            }
         }
     }
 
     DrawSaveModifiedDialog();
 
-    /// @note 有効なフィルタを、種別色のピルとしてツールバー直下に並べる。
+    // 有効なフィルタを、種別色のピルとしてツールバー直下に並べる。
     DrawFilterChips();
     DrawTerrainPaintAction(ctx);
 
     ImGui::Separator();
 
-    /// @note 横断検索が有効なら結果を組み直す (検索語 / フィルタが変わったときのみ実走)。
+    // 横断検索が有効なら結果を組み直す (検索語 / フィルタが変わったときのみ実走)。
     {
         FBZZ_PROFILE_SCOPE("AssetBrowser::SearchRefresh");
         RefreshSearchResults();
@@ -428,51 +478,62 @@ void AssetBrowserPanel::OnRenderContent(EditorContext& ctx)
             FBZZ_PROFILE_SCOPE("AssetBrowser::FilterGrid");
             for (size_t i = 0; i < entries.size(); ++i) {
                 const auto& e = entries[i];
-                /// @note 横断検索の結果は AssetSearch 側で名前・タイプとも絞り済み。
-                /// @note ここで再度フィルタすると、部分列一致でヒットした項目まで落ちてしまう。
+                // 横断検索の結果は AssetSearch 側で名前・タイプとも絞り済み。
+                // ここで再度フィルタすると、部分列一致でヒットした項目まで落ちてしまう。
                 if (!globalSearch) {
-                    if (!filter.empty() && !util::StringUtils::ContainsCI(e.name, filter)) continue;
-                    if (!PassesTypeFilter(e)) continue;
+                    if (!filter.empty() && !util::StringUtils::ContainsCI(e.name, filter)) {
+                        continue;
+                    }
+                    if (!PassesTypeFilter(e)) {
+                        continue;
+                    }
                 }
                 visIndices.push_back(i);
             }
         }
 
-        if (visIndices.empty() && (!filter.empty() || m_typeFilterMask))
+        if (visIndices.empty() && (!filter.empty() || m_typeFilterMask)) {
             ImGui::TextDisabled("%s", LOCT("No matching assets"));
+        }
 
         const int totalRows = cols > 0
             ? static_cast<int>((visIndices.size() + cols - 1) / cols)
             : 0;
 
-        /// @note Reveal 要求の対象を表示範囲へ入れる: グリッドは ImGuiListClipper で間引くため、対象タイルが
-        /// @note 画面外だと描かれず SetScrollHereY を呼ぶ機会がない。可視インデックス列から行番号を割り出し、
-        /// @note ビューの中央へ来るようスクロール量を直接指定する。
+        // Reveal 要求の対象を表示範囲へ入れる: グリッドは ImGuiListClipper で間引くため、対象タイルが
+        // 画面外だと描かれず SetScrollHereY を呼ぶ機会がない。可視インデックス列から行番号を割り出し、
+        // ビューの中央へ来るようスクロール量を直接指定する。
         if (!m_scrollToPath.empty()) {
             for (size_t visible = 0; visible < visIndices.size(); ++visible) {
-                if (entries[visIndices[visible]].path != m_scrollToPath) continue;
+                if (entries[visIndices[visible]].path != m_scrollToPath) {
+                    continue;
+                }
                 const float targetY = static_cast<float>(visible / static_cast<size_t>(cols)) * rowH;
                 const float centered = targetY - (ImGui::GetContentRegionAvail().y - rowH) * 0.5f;
                 ImGui::SetScrollY(std::max(0.0f, centered));
                 break;
             }
-            /// @note 一覧に無かった場合も要求は捨てる (フィルタ・展開状態が合わないだけで、
-            /// @note 毎フレーム走査し続ける理由にはならない)。
+            // 一覧に無かった場合も要求は捨てる (フィルタ・展開状態が合わないだけで、
+            // 毎フレーム走査し続ける理由にはならない)。
             m_scrollToPath.clear();
         }
 
-        /// @note 展開した親アセット + 直後に並ぶサブアセット群を 1 本の帯として描くための判定。サブアセットは
-        /// @note RefreshDirectory が親の直後へ挿入するため、帯の範囲は「展開中の親から、連続する isSubAsset
-        /// @note が途切れるまで」という並び順だけで決まる (パス命名には依存させない)。横断検索の結果は
-        /// @note サブアセットを展開しないため、帯は常に無効。
+        // 展開した親アセット + 直後に並ぶサブアセット群を 1 本の帯として描くための判定。サブアセットは
+        // RefreshDirectory が親の直後へ挿入するため、帯の範囲は「展開中の親から、連続する isSubAsset
+        // が途切れるまで」という並び順だけで決まる (パス命名には依存させない)。横断検索の結果は
+        // サブアセットを展開しないため、帯は常に無効。
         const auto isBandParent = [this, &entries, globalSearch](size_t entryIndex) {
-            if (globalSearch) return false;
+            if (globalSearch) {
+                return false;
+            }
             const Entry& en = entries[entryIndex];
             return !en.isDir && !en.isSubAsset && en.hasSubAssets &&
                    m_expandedAssets.count(en.path) > 0;
         };
         const auto inBand = [&entries, &isBandParent, globalSearch](size_t entryIndex) {
-            if (globalSearch) return false;
+            if (globalSearch) {
+                return false;
+            }
             return entries[entryIndex].isSubAsset || isBandParent(entryIndex);
         };
 
@@ -483,23 +544,27 @@ void AssetBrowserPanel::OnRenderContent(EditorContext& ctx)
             for (int row = clipper.DisplayStart; row < clipper.DisplayEnd; ++row) {
                 for (int c = 0; c < cols; ++c) {
                     const int idx = row * cols + c;
-                    if (idx >= static_cast<int>(visIndices.size())) break;
-                    if (c > 0) ImGui::SameLine(0.0f, padding);
+                    if (idx >= static_cast<int>(visIndices.size())) {
+                        break;
+                    }
+                    if (c > 0) {
+                        ImGui::SameLine(0.0f, padding);
+                    }
 
                     const size_t entryIndex = visIndices[idx];
                     SubAssetBand band;
                     if (inBand(entryIndex)) {
                         band.active   = true;
                         band.isParent = isBandParent(entryIndex);
-                        /// @note 隣接するサブアセットの帯は、両側からセルの間隔の半分ずつ延ばして接続する。
+                        // 隣接するサブアセットの帯は、両側からセルの間隔の半分ずつ延ばして接続する。
                         band.bleed = padding * 0.5f;
                         const bool continuesLeft = entries[entryIndex].isSubAsset &&
                                                    idx > 0 && inBand(visIndices[idx - 1]);
-                        /// @note 右へ続く = 次の可視エントリがサブアセット (= 自分の子か兄弟)。
+                        // 右へ続く = 次の可視エントリがサブアセット (= 自分の子か兄弟)。
                         const bool continuesRight = idx + 1 < static_cast<int>(visIndices.size()) &&
                                                     entries[visIndices[idx + 1]].isSubAsset;
-                        /// @note 同じ行なら接合、行端なら折り返し。どちらも角は閉じないが、
-                        /// @note 矩形を伸ばすのは接合のときだけ (行端に余白を作らない)。
+                        // 同じ行なら接合、行端なら折り返し。どちらも角は閉じないが、
+                        // 矩形を伸ばすのは接合のときだけ (行端に余白を作らない)。
                         band.joinLeft  = continuesLeft  && c > 0;
                         band.wrapLeft  = continuesLeft  && c == 0;
                         band.joinRight = continuesRight && c < cols - 1;
@@ -517,20 +582,20 @@ void AssetBrowserPanel::OnRenderContent(EditorContext& ctx)
 
     DrawFindRefsPopup(ctx);
 
-    /// @note ループ外でナビゲートを処理
+    // ループ外でナビゲートを処理
     if (!m_pendingNavigate.empty()) {
         m_currentPath = util::FileSystem::NormalizePathSeparators(std::move(m_pendingNavigate));
         m_pendingNavigate.clear();
         RefreshDirectory();
     }
 
-    /// @note fzasset 展開トグル後の遅延 Refresh
+    // fzasset 展開トグル後の遅延 Refresh
     if (m_assetExpandDirty) {
         m_assetExpandDirty = false;
         RefreshDirectory();
     }
 
-    /// @note 一覧テーブルの子ウィンドウで行が無い場所も、表示中のフォルダを対象にする。
+    // 一覧テーブルの子ウィンドウで行が無い場所も、表示中のフォルダを対象にする。
     if (ImGui::IsWindowHovered(ImGuiHoveredFlags_ChildWindows) &&
         ImGui::IsMouseReleased(ImGuiMouseButton_Right) &&
         !ImGui::IsAnyItemHovered()) {
@@ -542,37 +607,41 @@ void AssetBrowserPanel::OnRenderContent(EditorContext& ctx)
         ImGui::Separator();
         DrawFolderDestinationMenu(ctx, directory);
         ImGui::Separator();
-        if (ImGui::MenuItem(LOC("Refresh"))) m_pendingMenuAction = [this] { RefreshDirectory(); };
+        if (ImGui::MenuItem(LOC("Refresh"))) {
+            m_pendingMenuAction = [this] { RefreshDirectory(); };
+        }
         DrawAssetLocationMenu(ctx, directory);
         ImGui::EndPopup();
     }
 
-    /// @note ヒエラルキーからエンティティをドロップ → Prefab 化
+    // ヒエラルキーからエンティティをドロップ → Prefab 化
     if (ImGui::BeginDragDropTargetCustom(ImRect(contentMin, contentMax), contentDropId)) {
         if (SaveHierarchyPayloadAsPrefab(
                 ImGui::AcceptDragDropPayload("FBZZ_HIERARCHY_ENTITY"), ctx, m_currentPath)) {
             RefreshDirectory();
         }
-        /// @note 空白領域へのドロップは現在フォルダへの移動として扱う: フォルダが表示されていない検索結果 /
-        /// @note List 表示でも移動先を失わないため。
+        // 空白領域へのドロップは現在フォルダへの移動として扱う: フォルダが表示されていない検索結果 /
+        // List 表示でも移動先を失わないため。
         if (const ImGuiPayload* p = ImGui::AcceptDragDropPayload("ASSET_PATH")) {
             std::string sourcePath;
-            if (ReadAssetDragPayload(p, sourcePath))
+            if (ReadAssetDragPayload(p, sourcePath)) {
                 QueueAssetMove(sourcePath, m_currentPath);
+            }
         }
         ImGui::EndDragDropTarget();
     }
 
-    /// @note 選択 FBX の内容プレビュー
+    // 選択 FBX の内容プレビュー
     DrawFbxContents(ctx);
 
     ImGui::EndChild();
 
-    /// @note ドロップ先フォルダの当たり判定が全て終わった後にコピーを確定する: ツリー / グリッドの
-    /// @note 各フォルダ描画で m_externalDrop.targetDir が決まり、いずれにもヒットしなければ
-    /// @note 現在フォルダへ取り込まれる。
-    if (m_externalDrop.active)
+    // ドロップ先フォルダの当たり判定が全て終わった後にコピーを確定する: ツリー / グリッドの
+    // 各フォルダ描画で m_externalDrop.targetDir が決まり、いずれにもヒットしなければ
+    // 現在フォルダへ取り込まれる。
+    if (m_externalDrop.active) {
         FinalizeExternalDrop();
+    }
     FinalizePendingAssetMove(ctx);
     if (m_pendingMenuAction) {
         auto action = std::exchange(m_pendingMenuAction, {});
@@ -582,7 +651,7 @@ void AssetBrowserPanel::OnRenderContent(EditorContext& ctx)
 
 void AssetBrowserPanel::DrawFolderNavigator(EditorContext& ctx)
 {
-    /// @note セクション見出し (FAVORITES / FOLDERS) を控えめなラベルで描く小ヘルパー。
+    // セクション見出し (FAVORITES / FOLDERS) を控えめなラベルで描く小ヘルパー。
     const auto sectionHeader = [](const char* label) {
         ImGui::Spacing();
         ImGui::PushStyleColor(ImGuiCol_Text, EditorTheme::Color(ThemeColor::TextMuted));
@@ -591,7 +660,7 @@ void AssetBrowserPanel::DrawFolderNavigator(EditorContext& ctx)
         ImGui::Separator();
     };
 
-    /// @note Favorites セクション
+    // Favorites セクション
     if (!ctx.assetBrowserBookmarks.empty()) {
         sectionHeader("FAVORITES");
         for (const auto& bk : ctx.assetBrowserBookmarks) {
@@ -599,7 +668,7 @@ void AssetBrowserPanel::DrawFolderNavigator(EditorContext& ctx)
             const std::string label = util::FileSystem::GetFilename(bk).empty()
                 ? bk : util::FileSystem::GetFilename(bk);
             const bool sel = util::FileSystem::SamePathText(m_currentPath, bk);
-            /// @note 先頭に星を付けてお気に入りであることを示す。
+            // 先頭に星を付けてお気に入りであることを示す。
             ImGui::PushStyleColor(ImGuiCol_Text, sel
                 ? ImGui::GetStyleColorVec4(ImGuiCol_Text)
                 : EditorTheme::Color(ThemeColor::Warning));
@@ -616,17 +685,17 @@ void AssetBrowserPanel::DrawFolderNavigator(EditorContext& ctx)
         }
     }
 
-    /// @note 見出しの行の右端に、ファイルまで木に並べるかのトグルを置く: sectionHeader は見出しの直後に
-    /// @note Separator を引くため SameLine で並べると罫線の後ろになり使えない。設定はツリーの内容を
-    /// @note 変えるものなので、グリッド側のツールバーではなくツリーの持ち物として置く。
+    // 見出しの行の右端に、ファイルまで木に並べるかのトグルを置く: sectionHeader は見出しの直後に
+    // Separator を引くため SameLine で並べると罫線の後ろになり使えない。設定はツリーの内容を
+    // 変えるものなので、グリッド側のツールバーではなくツリーの持ち物として置く。
     {
         ImGui::Spacing();
         ImGui::PushStyleColor(ImGuiCol_Text, EditorTheme::Color(ThemeColor::TextMuted));
         ImGui::TextUnformatted(LOCT("Folders"));
         ImGui::PopStyleColor();
 
-        /// @note 状態を控える: Push と Pop の条件に m_treeShowFiles を直接使うと、間に挟まるボタンが
-        /// @note その値を反転させ、push していない色を pop (またはその逆) してスタックが壊れて落ちる。
+        // 状態を控える: Push と Pop の条件に m_treeShowFiles を直接使うと、間に挟まるボタンが
+        // その値を反転させ、push していない色を pop (またはその逆) してスタックが壊れて落ちる。
         const bool showFiles = m_treeShowFiles;
         const toolbar::Action files{LOC("Show files"), icons::kDocument, "F", LOCT("Include files in the folder tree.")};
         const float right = ImGui::GetCursorScreenPos().x + ImGui::GetContentRegionAvail().x;
@@ -634,10 +703,15 @@ void AssetBrowserPanel::DrawFolderNavigator(EditorContext& ctx)
             ImGui::SameLine();
             ImGui::SetCursorScreenPos({right - files.Width(true), ImGui::GetCursorScreenPos().y});
         }
-        if (showFiles)
+        if (showFiles) {
             ImGui::PushStyleColor(ImGuiCol_Button, ImGui::GetStyleColorVec4(ImGuiCol_ButtonActive));
-        if (files.Draw(true)) m_treeShowFiles = !showFiles;
-        if (showFiles) ImGui::PopStyleColor();
+        }
+        if (files.Draw(true)) {
+            m_treeShowFiles = !showFiles;
+        }
+        if (showFiles) {
+            ImGui::PopStyleColor();
+        }
         ImGui::Separator();
     }
 
@@ -645,22 +719,26 @@ void AssetBrowserPanel::DrawFolderNavigator(EditorContext& ctx)
                                  | ImGuiTreeNodeFlags_SpanAvailWidth
                                  | ImGuiTreeNodeFlags_DefaultOpen;
     const bool rootIsCurrent = util::FileSystem::SamePathText(m_currentPath, m_rootPath);
-    if (rootIsCurrent) rootFlags |= ImGuiTreeNodeFlags_Selected;
+    if (rootIsCurrent) {
+        rootFlags |= ImGuiTreeNodeFlags_Selected;
+    }
 
-    /// @note 現在フォルダはアクセント色の塗りで強調する (既定の薄い選択色より目立たせる)。
-    if (rootIsCurrent)
+    // 現在フォルダはアクセント色の塗りで強調する (既定の薄い選択色より目立たせる)。
+    if (rootIsCurrent) {
         ImGui::PushStyleColor(ImGuiCol_Header, ImGui::GetStyleColorVec4(ImGuiCol_HeaderActive));
+    }
     bool rootOpen = DrawFolderNode("##root", "Assets", rootFlags);
-    if (rootIsCurrent)
+    if (rootIsCurrent) {
         ImGui::PopStyleColor();
-    /// @note エクスプローラーからのドロップが Assets ルート行に落ちたらルートを取り込み先にする。
+    }
+    // エクスプローラーからのドロップが Assets ルート行に落ちたらルートを取り込み先にする。
     ConsiderExternalDropTarget(m_rootPath, ImGui::GetItemRectMin(), ImGui::GetItemRectMax());
     if (ImGui::IsItemClicked(ImGuiMouseButton_Left) && !ImGui::IsItemToggledOpen()) {
         m_currentPath = m_rootPath;
         RefreshDirectory();
     }
     DrawEntryContextMenu(Entry{.path = m_rootPath, .name = "Assets", .isDir = true}, ctx, false);
-    /// @note Assets ルートへのドロップ
+    // Assets ルートへのドロップ
     if (ImGui::BeginDragDropTarget()) {
         if (SaveHierarchyPayloadAsPrefab(
                 ImGui::AcceptDragDropPayload("FBZZ_HIERARCHY_ENTITY"), ctx, m_rootPath)) {
@@ -668,8 +746,9 @@ void AssetBrowserPanel::DrawFolderNavigator(EditorContext& ctx)
         }
         if (const ImGuiPayload* p = ImGui::AcceptDragDropPayload("ASSET_PATH")) {
             std::string sourcePath;
-            if (ReadAssetDragPayload(p, sourcePath))
+            if (ReadAssetDragPayload(p, sourcePath)) {
                 QueueAssetMove(sourcePath, m_rootPath);
+            }
         }
         ImGui::EndDragDropTarget();
     }
@@ -681,8 +760,8 @@ void AssetBrowserPanel::DrawFolderNavigator(EditorContext& ctx)
         ImGui::TreePop();
     }
 
-    /// @name EXTERNAL: マウント (外部ソースフォルダ) を専用セクションに分離
-    /// @note 由来が異なる外部フォルダは見出しで分ける (以前は Assets ツリーの子に混ぜていた)。
+    // EXTERNAL: マウント (外部ソースフォルダ) を専用セクションに分離
+    // 由来が異なる外部フォルダは見出しで分ける (以前は Assets ツリーの子に混ぜていた)。
     if (!m_mounts.empty()) {
         sectionHeader("EXTERNAL");
         for (const AssetMount& mount : m_mounts) {
@@ -690,22 +769,27 @@ void AssetBrowserPanel::DrawFolderNavigator(EditorContext& ctx)
             ImGuiTreeNodeFlags mflags = ImGuiTreeNodeFlags_OpenOnArrow
                                       | ImGuiTreeNodeFlags_SpanAvailWidth;
             const bool mCurrent = util::FileSystem::SamePathText(m_currentPath, mount.path);
-            if (mCurrent) mflags |= ImGuiTreeNodeFlags_Selected;
-            if (mCurrent)
+            if (mCurrent) {
+                mflags |= ImGuiTreeNodeFlags_Selected;
+            }
+            if (mCurrent) {
                 ImGui::PushStyleColor(ImGuiCol_Header, ImGui::GetStyleColorVec4(ImGuiCol_HeaderActive));
-            /// @note 表示名は Assets 側の仮想名、ID は実パスにして同名マウントでも衝突しない。
+            }
+            // 表示名は Assets 側の仮想名、ID は実パスにして同名マウントでも衝突しない。
             const bool mOpen = DrawFolderNode(mount.path.c_str(), mount.name.c_str(), mflags);
-            if (mCurrent)
+            if (mCurrent) {
                 ImGui::PopStyleColor();
+            }
             ConsiderExternalDropTarget(mount.path, ImGui::GetItemRectMin(), ImGui::GetItemRectMax());
             if (ImGui::IsItemClicked(ImGuiMouseButton_Left) && !ImGui::IsItemToggledOpen()) {
                 m_currentPath = mount.path;
                 RefreshDirectory();
             }
-            if (ImGui::IsItemHovered())
+            if (ImGui::IsItemHovered()) {
                 ImGui::SetTooltip("%s\n\nExternal source folder mounted under Assets", mount.path.c_str());
+            }
             DrawEntryContextMenu(Entry{.path = mount.path, .name = mount.name, .isDir = true, .isMount = true}, ctx, false);
-            /// @note 外部フォルダへのドロップ → そのフォルダへ Prefab 保存
+            // 外部フォルダへのドロップ → そのフォルダへ Prefab 保存
             if (ImGui::BeginDragDropTarget()) {
                 if (SaveHierarchyPayloadAsPrefab(
                         ImGui::AcceptDragDropPayload("FBZZ_HIERARCHY_ENTITY"), ctx, mount.path)) {
@@ -713,8 +797,9 @@ void AssetBrowserPanel::DrawFolderNavigator(EditorContext& ctx)
                 }
                 if (const ImGuiPayload* p = ImGui::AcceptDragDropPayload("ASSET_PATH")) {
                     std::string sourcePath;
-                    if (ReadAssetDragPayload(p, sourcePath))
+                    if (ReadAssetDragPayload(p, sourcePath)) {
                         QueueAssetMove(sourcePath, mount.path);
+                    }
                 }
                 ImGui::EndDragDropTarget();
             }
@@ -732,18 +817,19 @@ void AssetBrowserPanel::DrawFolderNavigator(EditorContext& ctx)
 
 void AssetBrowserPanel::DrawTreeSplitter(float treeWidth, float treeLimit, float paneH)
 {
-    /// @name スプリッター: 左ツリーの幅をドラッグで可変にする
+    // スプリッター: 左ツリーの幅をドラッグで可変にする
     ImGui::InvisibleButton("##tree_splitter", { 6.0f, paneH });
     const bool splitActive = ImGui::IsItemActive();
-    if (ImGui::IsItemHovered() || splitActive)
+    if (ImGui::IsItemHovered() || splitActive) {
         ImGui::SetMouseCursor(ImGuiMouseCursor_ResizeEW);
+    }
     if (splitActive) {
-        /// @note 永続化は OnSaveSettings が担当する (パネルごとに別々の値を持つため)。
+        // 永続化は OnSaveSettings が担当する (パネルごとに別々の値を持つため)。
         m_treeWidth = std::clamp(treeWidth + ImGui::GetIO().MouseDelta.x,
                                  std::min(140.0f, treeLimit), std::min(420.0f, treeLimit));
     }
     {
-        /// @note ホバー / ドラッグ中だけアクセント色の縦線を見せる。
+        // ホバー / ドラッグ中だけアクセント色の縦線を見せる。
         ImDrawList* dl = ImGui::GetWindowDrawList();
         const ImVec2 p0 = ImGui::GetItemRectMin();
         const ImVec2 p1 = ImGui::GetItemRectMax();
@@ -769,7 +855,7 @@ void AssetBrowserPanel::DrawBreadcrumb(EditorContext&)
             crumbs.push_back({ "Assets", root });
             break;
         }
-        /// @note 外部マウントはディスク上の親へ辿らず、Assets の直下へ接続する。
+        // 外部マウントはディスク上の親へ辿らず、Assets の直下へ接続する。
         bool isMountRoot = false;
         for (const AssetMount& mount : m_mounts) {
             if (util::FileSystem::SamePathText(walk, mount.path)) {
@@ -779,15 +865,21 @@ void AssetBrowserPanel::DrawBreadcrumb(EditorContext&)
                 break;
             }
         }
-        if (isMountRoot) break;
+        if (isMountRoot) {
+            break;
+        }
         crumbs.push_back({ util::FileSystem::GetFilename(walk), walk });
         const size_t pos = walk.find_last_of('/');
-        if (pos == std::string::npos) break;
+        if (pos == std::string::npos) {
+            break;
+        }
         walk = walk.substr(0, pos);
     }
     std::reverse(crumbs.begin(), crumbs.end());
 
-    if (crumbs.empty()) return;
+    if (crumbs.empty()) {
+        return;
+    }
     const float gap = ImGui::GetStyle().ItemInnerSpacing.x;
     const float available = ImGui::GetContentRegionAvail().x;
     const auto& current = crumbs.back();
@@ -804,11 +896,14 @@ void AssetBrowserPanel::DrawBreadcrumb(EditorContext&)
 
         const float separator = ImGui::CalcTextSize("/").x + 2.0f * gap;
         float totalWidth = textSize.x;
-        for (std::size_t i = 0; i + 1 < crumbs.size(); ++i)
+        for (std::size_t i = 0; i + 1 < crumbs.size(); ++i) {
             totalWidth += toolbar::ButtonWidth(crumbs[i].label.c_str()) + separator;
+        }
         if (totalWidth > ImGui::GetContentRegionAvail().x) {
             const toolbar::Action ancestors{"##ancestors", icons::kDetail, "...", LOCT("Parent folders")};
-            if (ancestors.Draw(true)) ImGui::OpenPopup("##ancestor_list");
+            if (ancestors.Draw(true)) {
+                ImGui::OpenPopup("##ancestor_list");
+            }
             if (ImGui::BeginPopup("##ancestor_list")) {
                 for (std::size_t i = 0; i + 1 < crumbs.size(); ++i) {
                     ImGui::PushID(static_cast<int>(i));
@@ -848,13 +943,19 @@ void AssetBrowserPanel::DrawBreadcrumb(EditorContext&)
 bool AssetBrowserPanel::IsInstanceSetFile(const std::string& path)
 {
     const auto extension = util::StringUtils::ToLower(util::FileSystem::GetExtension(path));
-    if (extension == ".terrainpaint" || extension == ".meshinstances") return true;
-    /// @note Native writers place the top-level type before arrays or at the end. Avoid reading all placements for filtering.
+    if (extension == ".terrainpaint" || extension == ".meshinstances") {
+        return true;
+    }
+    // Native writers place the top-level type before arrays or at the end. Avoid reading all placements for filtering.
     std::ifstream file(util::FileSystem::PathFromUtf8(path), std::ios::binary | std::ios::ate);
-    if (!file) return false;
+    if (!file) {
+        return false;
+    }
     constexpr std::streamoff PROBE_BYTES = 4096;
     const std::streamoff size = file.tellg();
-    if (size <= 0) return false;
+    if (size <= 0) {
+        return false;
+    }
     const auto readType = [&](std::streamoff offset) {
         std::string bytes(static_cast<size_t>(std::min(size, PROBE_BYTES)), '\0');
         file.seekg(offset);
@@ -862,7 +963,9 @@ bool AssetBrowserPanel::IsInstanceSetFile(const std::string& path)
         std::string_view lines(bytes.data(), static_cast<size_t>(file.gcount()));
         if (offset != 0) {
             const auto newline = lines.find('\n');
-            if (newline == std::string_view::npos) return false;
+            if (newline == std::string_view::npos) {
+                return false;
+            }
             lines.remove_prefix(newline + 1);
         }
         while (!lines.empty()) {
@@ -878,13 +981,16 @@ bool AssetBrowserPanel::IsInstanceSetFile(const std::string& path)
                         const auto quote = line.find_first_not_of(" \t");
                         if (quote != std::string_view::npos && (line[quote] == '\'' || line[quote] == '"')) {
                             const auto end = line.find(line[quote], quote + 1);
-                            if (end != std::string_view::npos)
+                            if (end != std::string_view::npos) {
                                 return line.substr(quote + 1, end - quote - 1) == asset::InstanceSetAsset::TYPE_NAME;
+                            }
                         }
                     }
                 }
             }
-            if (newline == std::string_view::npos) break;
+            if (newline == std::string_view::npos) {
+                break;
+            }
             lines.remove_prefix(newline + 1);
         }
         return false;
@@ -894,23 +1000,37 @@ bool AssetBrowserPanel::IsInstanceSetFile(const std::string& path)
 
 void AssetBrowserPanel::DrawTerrainPaintAction(EditorContext& ctx)
 {
-    if (!ctx.terrainTool || !ctx.activeScene || (ctx.playMode && !ctx.playMode->IsInEditor())) return;
+    if (!ctx.terrainTool || !ctx.activeScene || (ctx.playMode && !ctx.playMode->IsInEditor())) {
+        return;
+    }
     std::vector<std::string> paths;
     const auto add = [&](const std::string& path) {
-        if (!util::FileSystem::IsChildPathText(path, m_rootPath)) return;
+        if (!util::FileSystem::IsChildPathText(path, m_rootPath)) {
+            return;
+        }
         const auto extension = util::StringUtils::ToLower(util::FileSystem::GetExtension(path));
-        if (extension != ".fzdata" && extension != ".terrainpaint" && extension != ".meshinstances") return;
+        if (extension != ".fzdata" && extension != ".terrainpaint" && extension != ".meshinstances") {
+            return;
+        }
         const auto hint = NormalizeAssetPath(path);
-        if (hint.starts_with("Assets/Terrain/Scatter/Painted/")) return;
+        if (hint.starts_with("Assets/Terrain/Scatter/Painted/")) {
+            return;
+        }
         const auto& entries = VisibleEntries();
         const auto found = std::find_if(entries.begin(), entries.end(), [&](const Entry& entry) { return entry.path == path; });
-        if (found != entries.end() ? found->isInstanceSet : IsInstanceSetFile(path)) paths.push_back(path);
+        if (found != entries.end() ? found->isInstanceSet : IsInstanceSetFile(path)) {
+            paths.push_back(path);
+        }
     };
-    if (m_selectedPaths.empty()) add(ctx.selectedAssetPath);
-    else for (const auto& path : m_selectedPaths) add(path);
+    if (m_selectedPaths.empty()) {
+        add(ctx.selectedAssetPath);
+    } else for (const auto& path : m_selectedPaths) {
+        add(path);
+    }
     if (paths.empty()) {
-        if (IsTypeFilterActive(TypeFilter::InstanceSet))
+        if (IsTypeFilterActive(TypeFilter::InstanceSet)) {
             ImGui::TextDisabled("Ctrl+click to mix. Switch to All Assets to browse the whole project.");
+        }
         return;
     }
     const std::string label = "Paint on Terrain (" + std::to_string(paths.size()) + ")";
@@ -920,7 +1040,9 @@ void AssetBrowserPanel::DrawTerrainPaintAction(EditorContext& ctx)
         auto sources = OpData::MakeArray();
         for (const auto& path : paths) {
             const auto guid = asset::AssetDatabase::GuidFromPath(path);
-            if (!guid.empty()) sources.Push(OpData("guid:" + guid + "|" + NormalizeAssetPath(path)));
+            if (!guid.empty()) {
+                sources.Push(OpData("guid:" + guid + "|" + NormalizeAssetPath(path)));
+            }
         }
         OpArgs args;
         args.Set("sources", std::move(sources));
@@ -934,20 +1056,30 @@ void AssetBrowserPanel::DrawTerrainPaintAction(EditorContext& ctx)
         ImGui::TextDisabled(paths.size() > TERRAIN_SCATTER_PALETTE_LIMIT ? "Select up to 16 assets."
             : paths.size() > 1 ? "Equal mix   |   One brush" : "Ctrl+click to mix assets");
     }
-    if (!m_terrainPaintStatus.empty()) ImGui::TextWrapped("%s", m_terrainPaintStatus.c_str());
+    if (!m_terrainPaintStatus.empty()) {
+        ImGui::TextWrapped("%s", m_terrainPaintStatus.c_str());
+    }
 }
 
 bool AssetBrowserPanel::PassesTypeFilter(const Entry& e) const
 {
-    /// @note サブアセットは親が表示されていれば常に表示
-    if (e.isSubAsset) return true;
-    if (m_typeFilterMask == 0 || e.isDir) return true;
+    // サブアセットは親が表示されていれば常に表示
+    if (e.isSubAsset) {
+        return true;
+    }
+    if (m_typeFilterMask == 0 || e.isDir) {
+        return true;
+    }
 
-    /// @note 有効なフィルタのいずれかに当てはまれば表示する (OR 結合): 1 つのファイルが 2 つの種別に
-    /// @note 同時に属することはないため、AND にすると 2 個目を有効にした瞬間に必ず 0 件になる。
+    // 有効なフィルタのいずれかに当てはまれば表示する (OR 結合): 1 つのファイルが 2 つの種別に
+    // 同時に属することはないため、AND にすると 2 個目を有効にした瞬間に必ず 0 件になる。
     for (int type = 1; type < static_cast<int>(TypeFilter::COUNT); ++type) {
-        if ((m_typeFilterMask & (1u << type)) == 0) continue;
-        if (MatchesTypeFilter(e, static_cast<TypeFilter>(type))) return true;
+        if ((m_typeFilterMask & (1u << type)) == 0) {
+            continue;
+        }
+        if (MatchesTypeFilter(e, static_cast<TypeFilter>(type))) {
+            return true;
+        }
     }
     return false;
 }
@@ -970,9 +1102,9 @@ bool AssetBrowserPanel::MatchesTypeFilter(const Entry& e, TypeFilter type)
                                      || e.ext == ".glb"    || e.ext == ".mesh";
     case TypeFilter::Shader:    return e.ext == ".hlsl" || e.ext == ".hlsli";
     case TypeFilter::Prefab:    return e.ext == ".prefab";
-    /// @note Animator Controller と Avatar Mask もアニメーション制作物として一緒に絞り込む: 上半身レイヤーを
-    /// @note 組むときは `.anim` / `.animcontroller` / `.mask` を行き来するため、同じフィルタで一望できないと
-    /// @note 毎回 All に戻すことになる。
+    // Animator Controller と Avatar Mask もアニメーション制作物として一緒に絞り込む: 上半身レイヤーを
+    // 組むときは `.anim` / `.animcontroller` / `.mask` を行き来するため、同じフィルタで一望できないと
+    // 毎回 All に戻すことになる。
     case TypeFilter::Animation: return e.ext == ".anim" || e.ext == ".animcontroller"
                                      || e.ext == ".animctrl" || e.ext == ".mask";
     case TypeFilter::Asset:     return e.ext == ".asset";
@@ -990,14 +1122,18 @@ void AssetBrowserPanel::InvalidateListCache()
 const AssetBrowserPanel::ListMetadata& AssetBrowserPanel::ListMetadataFor(const Entry& entry)
 {
     const auto [it, inserted] = m_listMetadata.try_emplace(entry.path);
-    if (!inserted) return it->second;
+    if (!inserted) {
+        return it->second;
+    }
     auto& metadata = it->second;
     const auto path = util::FileSystem::PathFromUtf8(entry.path);
     std::error_code error;
     if (!entry.isDir) {
         metadata.size = std::filesystem::file_size(path, error);
         metadata.sizeAvailable = !error;
-        if (error) metadata.size = 0;
+        if (error) {
+            metadata.size = 0;
+        }
     }
     const auto modified = std::filesystem::last_write_time(path, error);
     if (!error) {
@@ -1006,8 +1142,9 @@ const AssetBrowserPanel::ListMetadata& AssetBrowserPanel::ListMetadataFor(const 
             modified - std::filesystem::file_time_type::clock::now() + std::chrono::system_clock::now());
         const std::time_t time = std::chrono::system_clock::to_time_t(systemTime);
         char label[32]{};
-        if (const auto* local = std::localtime(&time))
+        if (const auto* local = std::localtime(&time)) {
             std::strftime(label, sizeof(label), "%Y-%m-%d %H:%M", local);
+        }
         metadata.modifiedLabel = label;
     }
     return metadata;
@@ -1022,7 +1159,9 @@ void AssetBrowserPanel::DrawListView(EditorContext& ctx, const std::string& filt
     constexpr ImGuiTableFlags kTableFlags =
         ImGuiTableFlags_BordersInnerH | ImGuiTableFlags_Resizable |
         ImGuiTableFlags_ScrollY | ImGuiTableFlags_RowBg | ImGuiTableFlags_Sortable;
-    if (!ImGui::BeginTable("##list", 4, kTableFlags)) return;
+    if (!ImGui::BeginTable("##list", 4, kTableFlags)) {
+        return;
+    }
 
     ImGui::TableSetupScrollFreeze(0, 1);
     ImGui::TableSetupColumn("Name",     ImGuiTableColumnFlags_WidthStretch | ImGuiTableColumnFlags_DefaultSort);
@@ -1042,14 +1181,16 @@ void AssetBrowserPanel::DrawListView(EditorContext& ctx, const std::string& filt
         m_listIndices.clear();
         for (size_t i = 0; i < entries.size(); ++i) {
             const auto& entry = entries[i];
-            /// @note 横断検索は索引のスコア順と部分列一致を維持する。
+            // 横断検索は索引のスコア順と部分列一致を維持する。
             if (!globalSearch && ((!filter.empty() && !util::StringUtils::ContainsCI(entry.name, filter))
-                || !PassesTypeFilter(entry))) continue;
+                || !PassesTypeFilter(entry))) {
+                continue;
+            }
             m_listIndices.push_back(i);
         }
     }
     if (rebuild && !globalSearch && col >= 0) {
-        /// @note 大文字小文字を無視した比較 (プラットフォーム拡張に依存しない)。
+        // 大文字小文字を無視した比較 (プラットフォーム拡張に依存しない)。
         auto ciCmp = [](const std::string& a, const std::string& b) -> int {
             const size_t n = std::min(a.size(), b.size());
             for (size_t i = 0; i < n; ++i) {
@@ -1063,8 +1204,10 @@ void AssetBrowserPanel::DrawListView(EditorContext& ctx, const std::string& filt
         std::stable_sort(m_listIndices.begin(), m_listIndices.end(), [&](size_t a, size_t b) {
             const Entry& ea = entries[a];
             const Entry& eb = entries[b];
-            /// @note フォルダ先頭固定 (昇降に関わらず)
-            if (ea.isDir != eb.isDir) return ea.isDir;
+            // フォルダ先頭固定 (昇降に関わらず)
+            if (ea.isDir != eb.isDir) {
+                return ea.isDir;
+            }
             int cmp = 0;
             switch (col) {
             case 1:  cmp = ciCmp(ea.ext, eb.ext); break;
@@ -1074,7 +1217,9 @@ void AssetBrowserPanel::DrawListView(EditorContext& ctx, const std::string& filt
                        cmp = (ta < tb) ? -1 : (ta > tb) ? 1 : 0; } break;
             default: cmp = ciCmp(ea.name, eb.name); break;
             }
-            if (cmp == 0) cmp = ciCmp(ea.name, eb.name);
+            if (cmp == 0) {
+                cmp = ciCmp(ea.name, eb.name);
+            }
             return asc ? (cmp < 0) : (cmp > 0);
         });
     }
@@ -1084,7 +1229,9 @@ void AssetBrowserPanel::DrawListView(EditorContext& ctx, const std::string& filt
     m_listGlobalSearch = globalSearch;
     m_listSortColumn = col;
     m_listSortAscending = asc;
-    if (specs) specs->SpecsDirty = false;
+    if (specs) {
+        specs->SpecsDirty = false;
+    }
     const auto& visIndices = m_listIndices;
     if (visIndices.empty() && (!filter.empty() || m_typeFilterMask)) {
         ImGui::TableNextRow();
@@ -1092,13 +1239,15 @@ void AssetBrowserPanel::DrawListView(EditorContext& ctx, const std::string& filt
         ImGui::TextWrapped("%s", LOCT("No matching assets"));
     }
 
-    /// @note Reveal 要求の対象行。間引かれていても必ず描かせてからスクロールを合わせる: ImGuiListClipper は
-    /// @note 表示範囲外の行を一切描かないため、IncludeItemByIndex で対象行だけ描画対象へ戻さないと
-    /// @note SetScrollHereY を呼ぶ機会が来ない。
+    // Reveal 要求の対象行。間引かれていても必ず描かせてからスクロールを合わせる: ImGuiListClipper は
+    // 表示範囲外の行を一切描かないため、IncludeItemByIndex で対象行だけ描画対象へ戻さないと
+    // SetScrollHereY を呼ぶ機会が来ない。
     int scrollToRow = -1;
     if (!m_scrollToPath.empty()) {
         for (size_t visible = 0; visible < visIndices.size(); ++visible) {
-            if (entries[visIndices[visible]].path != m_scrollToPath) continue;
+            if (entries[visIndices[visible]].path != m_scrollToPath) {
+                continue;
+            }
             scrollToRow = static_cast<int>(visible);
             break;
         }
@@ -1107,17 +1256,21 @@ void AssetBrowserPanel::DrawListView(EditorContext& ctx, const std::string& filt
 
     ImGuiListClipper clipper;
     clipper.Begin(static_cast<int>(visIndices.size()));
-    if (scrollToRow >= 0) clipper.IncludeItemByIndex(scrollToRow);
+    if (scrollToRow >= 0) {
+        clipper.IncludeItemByIndex(scrollToRow);
+    }
     while (clipper.Step()) {
         for (int i = clipper.DisplayStart; i < clipper.DisplayEnd; ++i) {
             const Entry& e = entries[visIndices[i]];
             ImGui::PushID(i);
             ImGui::TableNextRow();
             ImGui::TableSetColumnIndex(0);
-            if (i == scrollToRow) ImGui::SetScrollHereY(0.5f);
+            if (i == scrollToRow) {
+                ImGui::SetScrollHereY(0.5f);
+            }
 
-            /// @note 主選択 (Inspector に出ている 1 件) もハイライト対象にする: グリッドでは主選択が強調されるのに、
-            /// @note リストでは Ctrl 選択したものしか光らず「選んだはずの行が光らない」状態だった。
+            // 主選択 (Inspector に出ている 1 件) もハイライト対象にする: グリッドでは主選択が強調されるのに、
+            // リストでは Ctrl 選択したものしか光らず「選んだはずの行が光らない」状態だった。
             const bool primarySelected = !e.isDir && e.path == ctx.selectedAssetPath;
             const bool selected = primarySelected || m_selectedPaths.count(e.path) > 0;
             const bool emphasized = primarySelected || m_selectedPaths.size() <= 1;
@@ -1131,15 +1284,17 @@ void AssetBrowserPanel::DrawListView(EditorContext& ctx, const std::string& filt
                     ImGuiSelectableFlags_AllowOverlap, { 0.0f, 0.0f })) {
                 HandleEntryClick(e, ctx, true);
             }
-            if (selected) ImGui::PopStyleColor();
+            if (selected) {
+                ImGui::PopStyleColor();
+            }
             const bool hov = ImGui::IsItemHovered();
-            /// @note HandleEntryClick は Selectable が離された行でしか呼ばれず、押下フレームの
-            /// @note リセットを通らない。ここで戻さないと一度ドラッグした後のクリック選択が全部捨てられる。
+            // HandleEntryClick は Selectable が離された行でしか呼ばれず、押下フレームの
+            // リセットを通らない。ここで戻さないと一度ドラッグした後のクリック選択が全部捨てられる。
             if (hov && ImGui::IsMouseClicked(ImGuiMouseButton_Left)) {
                 m_entryDragStarted    = false;
                 m_doubleClickConsumed = false;
             }
-            /// @note グリッドと同じ ASSET_PATH を発行し、List 表示でもファイル / フォルダを整理できるようにする。
+            // グリッドと同じ ASSET_PATH を発行し、List 表示でもファイル / フォルダを整理できるようにする。
             if (!e.isMount && !e.isPackageAsset && ImGui::BeginDragDropSource()) {
                 m_entryDragStarted = true;
                 PublishAssetDrag(e, ctx);
@@ -1148,14 +1303,15 @@ void AssetBrowserPanel::DrawListView(EditorContext& ctx, const std::string& filt
             if (e.isDir && ImGui::BeginDragDropTarget()) {
                 if (const ImGuiPayload* p = ImGui::AcceptDragDropPayload("ASSET_PATH")) {
                     std::string sourcePath;
-                    if (ReadAssetDragPayload(p, sourcePath))
+                    if (ReadAssetDragPayload(p, sourcePath)) {
                         QueueAssetMove(sourcePath, e.path);
+                    }
                 }
                 ImGui::EndDragDropTarget();
             }
-            /// @note 色を付けたフォルダだけ、行の左端にその色のバーを立てる。
-            /// @note グリッドのカードと同じ手がかりを List にも通す。
-            /// @note 主選択のアクセントバーはこの上に重ねて描かれ、そちらが優先される。
+            // 色を付けたフォルダだけ、行の左端にその色のバーを立てる。
+            // グリッドのカードと同じ手がかりを List にも通す。
+            // 主選択のアクセントバーはこの上に重ねて描かれ、そちらが優先される。
             if (ImVec4 folderColor; e.isDir && TryGetFolderColor(ctx, e.path, folderColor)) {
                 ImDrawList* rowDl = ImGui::GetWindowDrawList();
                 const ImVec2 rowMin = ImGui::GetItemRectMin();
@@ -1164,25 +1320,27 @@ void AssetBrowserPanel::DrawListView(EditorContext& ctx, const std::string& filt
                                      { rowMin.x + 3.0f, rowMax.y - 1.0f },
                                      ImGui::ColorConvertFloat4ToU32(folderColor));
             }
-            /// @note 主選択の行だけ左端にアクセントバーを立て、複数選択の中の「現在の対象」を示す。
+            // 主選択の行だけ左端にアクセントバーを立て、複数選択の中の「現在の対象」を示す。
             if (selected && emphasized) {
                 ui::DrawSelectionAccent(ImGui::GetWindowDrawList(),
                                         ImGui::GetItemRectMin(), ImGui::GetItemRectMax(),
                                         true, true, 2.0f);
             }
-            /// @note エクスプローラーからのドロップがこのフォルダ行に落ちたら取り込み先にする。
-            if (e.isDir)
+            // エクスプローラーからのドロップがこのフォルダ行に落ちたら取り込み先にする。
+            if (e.isDir) {
                 ConsiderExternalDropTarget(e.path, ImGui::GetItemRectMin(), ImGui::GetItemRectMax());
-            if (hov && ImGui::IsMouseDoubleClicked(0))
+            }
+            if (hov && ImGui::IsMouseDoubleClicked(0)) {
                 HandleEntryDoubleClick(e, ctx, true);
+            }
             DrawEntryContextMenu(e, ctx);
 
             ImGui::SameLine();
-            /// @note サブアセットは親の下にぶら下がる形で字下げし、罫線で従属関係を示す。
+            // サブアセットは親の下にぶら下がる形で字下げし、罫線で従属関係を示す。
             if (e.isSubAsset) {
                 ImGui::Dummy({ 14.0f, 0.0f });
                 ImGui::SameLine(0.0f, 0.0f);
-                /// @note └
+                // └
                 ImGui::TextDisabled("\xe2\x94\x94");
                 ImGui::SameLine();
             }
@@ -1190,15 +1348,16 @@ void AssetBrowserPanel::DrawListView(EditorContext& ctx, const std::string& filt
             ImVec4 folderTint;
             const bool tintedFolder = e.isDir && TryGetFolderColor(ctx, e.path, folderTint);
             if (DrawOriginalTypeIcon(ImGui::GetCursorScreenPos(), ImGui::GetTextLineHeight(), e,
-                                     tintedFolder ? &folderTint : nullptr))
+                                     tintedFolder ? &folderTint : nullptr)) {
                 ImGui::Dummy({ ImGui::GetTextLineHeight(), ImGui::GetTextLineHeight() });
-            else
+            } else {
                 ImGui::TextColored(col, "%s", e.isDir ? "[D]" : EntryLabel(e));
+            }
             ImGui::SameLine();
             ImGui::TextUnformatted(e.name.c_str());
 
-            /// @note 横断検索中は所在フォルダを併記する: 名前だけでは同名アセットを区別できず、
-            /// @note 「どこの Player.mat か」が分からない。
+            // 横断検索中は所在フォルダを併記する: 名前だけでは同名アセットを区別できず、
+            // 「どこの Player.mat か」が分からない。
             if (globalSearch) {
                 ImGui::SameLine();
                 const std::string folder = AssetDirectory(e.path);
@@ -1219,19 +1378,22 @@ void AssetBrowserPanel::DrawListView(EditorContext& ctx, const std::string& filt
                 const auto& metadata = ListMetadataFor(e);
                 const auto fsz = metadata.size;
                 if (metadata.sizeAvailable) {
-                    if (fsz < 1024)
+                    if (fsz < 1024) {
                         ImGui::TextDisabled("%zu B", fsz);
-                    else if (fsz < (1 << 20))
+                    } else if (fsz < (1 << 20)) {
                         ImGui::TextDisabled("%.1f KB", fsz / 1024.0);
-                    else
+                    } else {
                         ImGui::TextDisabled("%.1f MB", fsz / (1024.0 * 1024.0));
+                    }
                 }
             }
 
             ImGui::TableSetColumnIndex(3);
             {
                 const auto& metadata = ListMetadataFor(e);
-                if (!metadata.modifiedLabel.empty()) ImGui::TextDisabled("%s", metadata.modifiedLabel.c_str());
+                if (!metadata.modifiedLabel.empty()) {
+                    ImGui::TextDisabled("%s", metadata.modifiedLabel.c_str());
+                }
             }
 
             ImGui::PopID();
@@ -1269,10 +1431,15 @@ void AssetBrowserPanel::DrawSaveModifiedDialog()
             bool sel = std::find(m_saveModifiedExcluded.begin(), m_saveModifiedExcluded.end(), item.path)
                 == m_saveModifiedExcluded.end();
             if (ImGui::Checkbox("##chk", &sel)) {
-                if (sel) std::erase(m_saveModifiedExcluded, item.path);
-                else m_saveModifiedExcluded.push_back(item.path);
+                if (sel) {
+                    std::erase(m_saveModifiedExcluded, item.path);
+                } else {
+                    m_saveModifiedExcluded.push_back(item.path);
+                }
             }
-            if (sel) selectedPaths.push_back(item.path);
+            if (sel) {
+                selectedPaths.push_back(item.path);
+            }
             ImGui::SameLine();
             ImGui::TextColored({ 1.0f, 0.75f, 0.2f, 1.0f }, "[%s]", item.typeLabel.c_str());
             ImGui::SameLine();
@@ -1280,23 +1447,29 @@ void AssetBrowserPanel::DrawSaveModifiedDialog()
             ImGui::PopID();
         }
 
-        if (m_saveModifiedFailures > 0)
+        if (m_saveModifiedFailures > 0) {
             ImGui::TextWrapped("Could not save %d asset(s). The edits are still pending.", m_saveModifiedFailures);
+        }
         ImGui::Separator();
         ImGui::BeginDisabled(selectedPaths.empty());
         if (ImGui::Button("Save Selected")) {
             m_saveModifiedFailures = 0;
             for (const auto& path : selectedPaths) {
-                if (AssetDirtyRegistry::IsDirty(path) && !AssetDirtyRegistry::Save(path))
+                if (AssetDirtyRegistry::IsDirty(path) && !AssetDirtyRegistry::Save(path)) {
                     ++m_saveModifiedFailures;
+                }
             }
-            if (m_saveModifiedFailures == 0) ImGui::CloseCurrentPopup();
+            if (m_saveModifiedFailures == 0) {
+                ImGui::CloseCurrentPopup();
+            }
         }
         ImGui::EndDisabled();
         ImGui::SameLine();
         if (ImGui::Button("Save All")) {
             m_saveModifiedFailures = AssetDirtyRegistry::SaveAll();
-            if (m_saveModifiedFailures == 0 && !AssetDirtyRegistry::HasAny()) ImGui::CloseCurrentPopup();
+            if (m_saveModifiedFailures == 0 && !AssetDirtyRegistry::HasAny()) {
+                ImGui::CloseCurrentPopup();
+            }
         }
         ImGui::SameLine();
         if (ImGui::Button("Discard All")) {
@@ -1304,10 +1477,12 @@ void AssetBrowserPanel::DrawSaveModifiedDialog()
             ImGui::CloseCurrentPopup();
         }
         ImGui::SameLine();
-        if (ImGui::Button("Cancel") || ImGui::IsKeyPressed(ImGuiKey_Escape)) ImGui::CloseCurrentPopup();
+        if (ImGui::Button("Cancel") || ImGui::IsKeyPressed(ImGuiKey_Escape)) {
+            ImGui::CloseCurrentPopup();
+        }
 
         ImGui::EndPopup();
     }
 }
 
-} /// @note namespace fbzz::editor
+} // namespace fbzz::editor

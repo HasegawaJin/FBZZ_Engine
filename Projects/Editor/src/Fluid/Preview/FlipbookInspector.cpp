@@ -51,7 +51,9 @@ constexpr ImU32  kCurrentColor    = IM_COL32(255, 230, 80, 255);
 /// @note Project ごとの Generated 配下へ出し、Engine 同梱 Assets を誤って変更しない。
 std::string ProceduralVFXOutputDirectory(const std::string& projectRoot)
 {
-    if (projectRoot.empty()) return "Assets/Textures/Generated/VFX";
+    if (projectRoot.empty()) {
+        return "Assets/Textures/Generated/VFX";
+    }
     return projectRoot + "/Assets/Textures/Generated/VFX";
 }
 
@@ -59,9 +61,12 @@ std::string ProceduralVFXOutputDirectory(const std::string& projectRoot)
 /// @note [textures] は guid: 参照でも保存されるため、projectRoot を継ぎ足すだけでは開けない。
 std::string ResolveTextureDiskPath(const std::string& projectRoot, const std::string& reference)
 {
-    if (reference.empty()) return {};
-    if (std::string resolved = asset::AssetManager::ResolveAssetPath(reference); !resolved.empty())
+    if (reference.empty()) {
+        return {};
+    }
+    if (std::string resolved = asset::AssetManager::ResolveAssetPath(reference); !resolved.empty()) {
         return resolved;
+    }
     return ToProjectAssetDiskPath(projectRoot, reference);
 }
 
@@ -100,17 +105,22 @@ const AtlasPreview& ResolveAtlasPreview(const std::string& reference,
                                         renderer::IImGuiRenderer* imguiRenderer)
 {
     static const AtlasPreview kNone;
-    if (reference.empty() || resources == nullptr || imguiRenderer == nullptr) return kNone;
-    /// @note デバイスリセット後は過去のテクスチャ ID が全て無効になる。
+    if (reference.empty() || resources == nullptr || imguiRenderer == nullptr) {
+        return kNone;
+    }
+    // デバイスリセット後は過去のテクスチャ ID が全て無効になる。
     const std::uint64_t version = resources->GetResetVersion();
-    if (s_atlasPreview.reference == reference && s_atlasPreview.resetVersion == version)
+    if (s_atlasPreview.reference == reference && s_atlasPreview.resetVersion == version) {
         return s_atlasPreview;
+    }
 
     s_atlasPreview              = {};
     s_atlasPreview.reference    = reference;
     s_atlasPreview.resetVersion = version;
     const auto handle = resources->LoadTexture(asset::AssetManager::ResolveAssetPath(reference));
-    if (!handle.IsValid()) return s_atlasPreview;
+    if (!handle.IsValid()) {
+        return s_atlasPreview;
+    }
     s_atlasPreview.textureId = imguiRenderer->GetImTextureID(handle, *resources);
     if (const renderer::ITexture* texture = resources->Get(handle)) {
         s_atlasPreview.width  = static_cast<int>(texture->GetWidth());
@@ -153,10 +163,16 @@ void DrawChecker(ImDrawList* drawList, const ImVec2& min, const ImVec2& max, flo
 
 void DrawStatus(const std::string& status, bool isError)
 {
-    if (status.empty()) return;
-    if (isError) ImGui::PushStyleColor(ImGuiCol_Text, kErrorColor);
+    if (status.empty()) {
+        return;
+    }
+    if (isError) {
+        ImGui::PushStyleColor(ImGuiCol_Text, kErrorColor);
+    }
     ImGui::TextWrapped("%s", status.c_str());
-    if (isError) ImGui::PopStyleColor();
+    if (isError) {
+        ImGui::PopStyleColor();
+    }
 }
 
 void DisabledWrapped(const char* text)
@@ -173,7 +189,9 @@ bool WarningRow(const char* text, const char* fixLabel = nullptr)
     ImGui::PushStyleColor(ImGuiCol_Text, kWarningColor);
     ImGui::TextWrapped("! %s", text);
     ImGui::PopStyleColor();
-    if (fixLabel == nullptr) return false;
+    if (fixLabel == nullptr) {
+        return false;
+    }
     ImGui::Indent();
     const bool fixed = ImGui::SmallButton(fixLabel);
     ImGui::Unindent();
@@ -183,7 +201,9 @@ bool WarningRow(const char* text, const char* fixLabel = nullptr)
 /// @note Random Row では行の全列が再生対象になり、Start / End は使われない。
 int PlayedSpan(const ParticleFlipbookSettings& flipbook, const asset::FlipbookFrameRange& range)
 {
-    if (flipbook.spriteRandomRow && range.rows > 1) return range.columns - 1;
+    if (flipbook.spriteRandomRow && range.rows > 1) {
+        return range.columns - 1;
+    }
     return range.last - range.first;
 }
 
@@ -252,10 +272,11 @@ void DrawSummary(const ParticleFlipbookSettings& flipbook, const asset::Flipbook
     char buffer[128];
     std::snprintf(buffer, sizeof(buffer), "%d x %d = %d frames", range.columns, range.rows, count);
     text = buffer;
-    if (flipbook.spriteRandomRow && range.rows > 1)
+    if (flipbook.spriteRandomRow && range.rows > 1) {
         std::snprintf(buffer, sizeof(buffer), "  |  %d frames per row, row picked per particle", range.columns);
-    else
+    } else {
         std::snprintf(buffer, sizeof(buffer), "  |  plays %d-%d (%d)", range.first, range.last, played);
+    }
     text += buffer;
     if (atlas.width > 0 && atlas.height > 0) {
         std::snprintf(buffer, sizeof(buffer), "  |  %d x %d px/frame",
@@ -311,8 +332,9 @@ bool DrawAtlasGrid(ParticleFlipbookSettings& flipbook, const AtlasPreview& atlas
 
     ImDrawList* drawList = ImGui::GetWindowDrawList();
     DrawChecker(drawList, origin, end, 10.0f);
-    if (atlas.textureId != nullptr)
+    if (atlas.textureId != nullptr) {
         drawList->AddImage(widgets::ToImTextureID(atlas.textureId), origin, end);
+    }
 
     const float cellWidth  = size.x / static_cast<float>(columns);
     const float cellHeight = size.y / static_cast<float>(rows);
@@ -325,10 +347,12 @@ bool DrawAtlasGrid(ParticleFlipbookSettings& flipbook, const AtlasPreview& atlas
         return ImVec2{ a.x + cellWidth, a.y + cellHeight };
     };
 
-    /// @note 再生されないコマを沈める。何が再生されるかを «範囲の数字» ではなく絵で読ませる。
+    // 再生されないコマを沈める。何が再生されるかを «範囲の数字» ではなく絵で読ませる。
     if (!rowDriven) {
         for (int frame = 0; frame < frameCount; ++frame) {
-            if (frame >= range.first && frame <= range.last) continue;
+            if (frame >= range.first && frame <= range.last) {
+                continue;
+            }
             drawList->AddRectFilled(cellMin(frame), cellMax(frame), kInactiveCell);
         }
     }
@@ -361,7 +385,9 @@ bool DrawAtlasGrid(ParticleFlipbookSettings& flipbook, const AtlasPreview& atlas
     }
     drawList->AddRect(cellMin(live.frame), cellMax(live.frame), kCurrentColor, 0.0f, 0, 2.5f);
 
-    if (!hovered) return false;
+    if (!hovered) {
+        return false;
+    }
 
     const ImVec2 mouse = ImGui::GetIO().MousePos;
     const int column = std::clamp(static_cast<int>((mouse.x - origin.x) / cellWidth), 0, columns - 1);
@@ -378,10 +404,14 @@ bool DrawAtlasGrid(ParticleFlipbookSettings& flipbook, const AtlasPreview& atlas
                      { zoom, zoom * cellAspect }, uv.min, uv.max);
     }
     ImGui::Text("Frame %d  (column %d, row %d)", frame, column, row);
-    if (!rowDriven) ImGui::TextDisabled("Click: Start  /  Right-Click or Shift+Click: End");
+    if (!rowDriven) {
+        ImGui::TextDisabled("Click: Start  /  Right-Click or Shift+Click: End");
+    }
     ImGui::EndTooltip();
 
-    if (rowDriven) return false;
+    if (rowDriven) {
+        return false;
+    }
     const bool leftClicked = ImGui::IsMouseClicked(ImGuiMouseButton_Left);
     const bool setEnd = ImGui::IsMouseClicked(ImGuiMouseButton_Right)
         || (leftClicked && ImGui::GetIO().KeyShift);
@@ -390,14 +420,15 @@ bool DrawAtlasGrid(ParticleFlipbookSettings& flipbook, const AtlasPreview& atlas
             flipbook.spriteStartFrame = frame;
             flipbook.spriteEndFrame   = range.first;
         } else {
-            /// @note 最終コマは «最後まで» (0) で保存する。後から行を足してもそのまま最後まで流れる。
+            // 最終コマは «最後まで» (0) で保存する。後から行を足してもそのまま最後まで流れる。
             flipbook.spriteEndFrame = frame == frameCount - 1 ? 0 : (std::max)(frame, 1);
         }
         changed = true;
     } else if (leftClicked) {
         flipbook.spriteStartFrame = frame;
-        if (flipbook.spriteEndFrame > 0 && flipbook.spriteEndFrame < frame)
+        if (flipbook.spriteEndFrame > 0 && flipbook.spriteEndFrame < frame) {
             flipbook.spriteEndFrame = (std::max)(frame, 1);
+        }
         changed = true;
     }
     return changed;
@@ -413,8 +444,8 @@ asset::FlipbookFrameSample SamplePreview(const ParticleFlipbookSettings& flipboo
     const float age        = state.time - cycleIndex * lifetime;
     float seed = state.seed;
     if (!state.lockSeed) {
-        /// @note Random Row / Random Start の «ばらけ方» は 1 粒子を見続けても分からない。
-        /// @note       周回ごとに別の粒子として乱数を引き直す (黄金比で散らすと偏りが出にくい)。
+        // Random Row / Random Start の «ばらけ方» は 1 粒子を見続けても分からない。
+        // 周回ごとに別の粒子として乱数を引き直す (黄金比で散らすと偏りが出にくい)。
         const float shifted = state.seed + cycleIndex * 0.6180339f;
         seed = shifted - std::floor(shifted);
     }
@@ -431,7 +462,7 @@ void DrawFramePreview(const AtlasPreview& atlas, const asset::FlipbookFrameRange
     DrawChecker(drawList, origin, end, side / 8.0f);
 
     if (atlas.textureId != nullptr) {
-        /// @note コマの縦横比を保って枠へ収める。正方形へ引き伸ばすと細長いコマの動きが読めない。
+        // コマの縦横比を保って枠へ収める。正方形へ引き伸ばすと細長いコマの動きが読めない。
         const float cellWidth  = atlas.width > 0 ? static_cast<float>(atlas.width) / static_cast<float>(range.columns) : 1.0f;
         const float cellHeight = atlas.height > 0 ? static_cast<float>(atlas.height) / static_cast<float>(range.rows) : 1.0f;
         const float scale = side / (std::max)(cellWidth, cellHeight);
@@ -439,7 +470,7 @@ void DrawFramePreview(const AtlasPreview& atlas, const asset::FlipbookFrameRange
         const ImVec2 a{ origin.x + (side - size.x) * 0.5f, origin.y + (side - size.y) * 0.5f };
         const ImVec2 b{ a.x + size.x, a.y + size.y };
         const ImTextureID id = widgets::ToImTextureID(atlas.textureId);
-        /// @note Frame Blending は 2 コマを不透明度で重ねた近似で見せる (シェーダーは線形補間)。
+        // Frame Blending は 2 コマを不透明度で重ねた近似で見せる (シェーダーは線形補間)。
         const FrameUv current = FrameUvRect(sample.frame, range.columns, range.rows);
         const int currentAlpha = static_cast<int>(255.0f * (1.0f - sample.blend) + 0.5f);
         drawList->AddImage(id, a, b, current.min, current.max, IM_COL32(255, 255, 255, currentAlpha));
@@ -461,10 +492,13 @@ void DrawFramePreview(const AtlasPreview& atlas, const asset::FlipbookFrameRange
 void DrawPreviewControls(const asset::FlipbookFrameSample& live)
 {
     ImGui::BeginGroup();
-    if (ImGui::SmallButton(s_preview.playing ? "Pause" : "Play"))
+    if (ImGui::SmallButton(s_preview.playing ? "Pause" : "Play")) {
         s_preview.playing = !s_preview.playing;
+    }
     ImGui::SameLine();
-    if (ImGui::SmallButton("Restart")) s_preview.time = 0.0f;
+    if (ImGui::SmallButton("Restart")) {
+        s_preview.time = 0.0f;
+    }
 
     const float width    = ImGui::GetFontSize() * 9.0f;
     const float lifetime = (std::max)(s_preview.lifetime, 0.05f);
@@ -488,10 +522,11 @@ void DrawPreviewControls(const asset::FlipbookFrameSample& live)
         ImGui::SetNextItemWidth(width);
         property::SliderFloat("Seed##preview", &s_preview.seed, 0.0f, 1.0f, "%.2f");
     }
-    if (live.blend > 0.0f)
+    if (live.blend > 0.0f) {
         ImGui::Text("Frame %d > %d  (%.0f%%)", live.frame, live.nextFrame, live.blend * 100.0f);
-    else
+    } else {
         ImGui::Text("Frame %d", live.frame);
+    }
     ImGui::EndGroup();
 }
 
@@ -512,13 +547,19 @@ bool DrawFlipbookIssues(ParticleFlipbookSettings& flipbook, const asset::Materia
         std::snprintf(text, sizeof(text),
                       "Start Frame %d がコマ数 %d を超えています (最終コマに丸めて再生されます)",
                       flipbook.spriteStartFrame, frameCount);
-        if (WarningRow(text, "Reset Start##start")) { flipbook.spriteStartFrame = 0; changed = true; }
+        if (WarningRow(text, "Reset Start##start")) {
+            flipbook.spriteStartFrame = 0;
+            changed = true;
+        }
     }
     if (flipbook.spriteEndFrame >= frameCount) {
         std::snprintf(text, sizeof(text),
                       "End Frame %d がコマ数 %d を超えています (最終コマに丸めて再生されます)",
                       flipbook.spriteEndFrame, frameCount);
-        if (WarningRow(text, "Play To Last##end")) { flipbook.spriteEndFrame = 0; changed = true; }
+        if (WarningRow(text, "Play To Last##end")) {
+            flipbook.spriteEndFrame = 0;
+            changed = true;
+        }
     }
     if (flipbook.spriteEndFrame > 0 && flipbook.spriteEndFrame < flipbook.spriteStartFrame
         && flipbook.spriteStartFrame < frameCount) {
@@ -548,8 +589,9 @@ bool DrawFlipbookIssues(ParticleFlipbookSettings& flipbook, const asset::Materia
         }
     }
     if (frameCount <= 1
-        && (flipbook.flipbookFrameBlending || flipbook.spriteRandomStartFrame || flipbook.motionVectorFlipbook))
+        && (flipbook.flipbookFrameBlending || flipbook.spriteRandomStartFrame || flipbook.motionVectorFlipbook)) {
         WarningRow("1 枚絵 (1 x 1) なので、フリップブックの再生設定は効きません");
+    }
     if (atlas.width > 0 && atlas.height > 0
         && (atlas.width % columns != 0 || atlas.height % rows != 0)) {
         std::snprintf(text, sizeof(text),
@@ -557,8 +599,9 @@ bool DrawFlipbookIssues(ParticleFlipbookSettings& flipbook, const asset::Materia
                       atlas.width, atlas.height, columns, rows);
         WarningRow(text);
     }
-    if (flipbook.motionVectorFlipbook && TextureSlot(material, "tex5").empty())
+    if (flipbook.motionVectorFlipbook && TextureSlot(material, "tex5").empty()) {
         WarningRow("Motion Vector アトラス (tex5) が未設定のため、Motion Vector Blending は効きません");
+    }
     ImGui::PopID();
     return changed;
 }
@@ -569,8 +612,12 @@ bool DrawFlipbookIssues(ParticleFlipbookSettings& flipbook, const asset::Materia
 bool SplitSequenceStem(const std::string& stem, std::string& prefix, std::string& digits)
 {
     std::size_t cut = stem.size();
-    while (cut > 0 && std::isdigit(static_cast<unsigned char>(stem[cut - 1]))) --cut;
-    if (cut == stem.size()) return false;
+    while (cut > 0 && std::isdigit(static_cast<unsigned char>(stem[cut - 1]))) {
+        --cut;
+    }
+    if (cut == stem.size()) {
+        return false;
+    }
     prefix = stem.substr(0, cut);
     digits = stem.substr(cut);
     return true;
@@ -578,7 +625,9 @@ bool SplitSequenceStem(const std::string& stem, std::string& prefix, std::string
 
 std::string ToLowerAscii(std::string value)
 {
-    for (char& c : value) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+    for (char& c : value) {
+        c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+    }
     return value;
 }
 
@@ -601,17 +650,26 @@ std::vector<std::string> CollectSequenceFrames(const std::string& firstFrameDisk
     std::error_code ec;
     for (fs::directory_iterator it(first.parent_path(), ec), last; !ec && it != last; it.increment(ec)) {
         std::error_code typeError;
-        if (!it->is_regular_file(typeError)) continue;
+        if (!it->is_regular_file(typeError)) {
+            continue;
+        }
         const fs::path& path = it->path();
-        if (ToLowerAscii(util::FileSystem::PathToUtf8(path.extension())) != extension) continue;
+        if (ToLowerAscii(util::FileSystem::PathToUtf8(path.extension())) != extension) {
+            continue;
+        }
         std::string candidatePrefix;
         std::string candidateDigits;
-        if (!SplitSequenceStem(util::FileSystem::PathToUtf8(path.stem()), candidatePrefix, candidateDigits))
+        if (!SplitSequenceStem(util::FileSystem::PathToUtf8(path.stem()), candidatePrefix, candidateDigits)) {
             continue;
-        /// @note 桁が多すぎる番号は日付などで、連番ではない。
-        if (candidatePrefix != prefix || candidateDigits.size() > 9) continue;
+        }
+        // 桁が多すぎる番号は日付などで、連番ではない。
+        if (candidatePrefix != prefix || candidateDigits.size() > 9) {
+            continue;
+        }
         long long number = 0;
-        for (const char c : candidateDigits) number = number * 10 + (c - '0');
+        for (const char c : candidateDigits) {
+            number = number * 10 + (c - '0');
+        }
         numbered.emplace_back(number, util::FileSystem::PathToUtf8(path));
     }
     if (ec) {
@@ -620,21 +678,32 @@ std::vector<std::string> CollectSequenceFrames(const std::string& firstFrameDisk
     }
     std::sort(numbered.begin(), numbered.end());
     frames.reserve(numbered.size());
-    for (auto& [number, path] : numbered) frames.push_back(std::move(path));
-    if (frames.size() < 2) error = "連番が 1 枚しか見つかりません";
+    for (auto& [number, path] : numbered) {
+        frames.push_back(std::move(path));
+    }
+    if (frames.size() < 2) {
+        error = "連番が 1 枚しか見つかりません";
+    }
     return frames;
 }
 
 std::string SequenceAtlasOutputPath(const std::string& firstFrameDiskPath)
 {
-    if (firstFrameDiskPath.empty()) return {};
+    if (firstFrameDiskPath.empty()) {
+        return {};
+    }
     const std::filesystem::path first = util::FileSystem::PathFromUtf8(firstFrameDiskPath);
     std::string prefix;
     std::string digits;
-    if (!SplitSequenceStem(util::FileSystem::PathToUtf8(first.stem()), prefix, digits)) return {};
-    while (!prefix.empty() && (prefix.back() == '_' || prefix.back() == '-' || prefix.back() == ' ' || prefix.back() == '.'))
+    if (!SplitSequenceStem(util::FileSystem::PathToUtf8(first.stem()), prefix, digits)) {
+        return {};
+    }
+    while (!prefix.empty() && (prefix.back() == '_' || prefix.back() == '-' || prefix.back() == ' ' || prefix.back() == '.')) {
         prefix.pop_back();
-    if (prefix.empty()) prefix = "Sequence";
+    }
+    if (prefix.empty()) {
+        prefix = "Sequence";
+    }
     return util::FileSystem::PathToUtf8(first.parent_path() / util::FileSystem::PathFromUtf8(prefix + "_Atlas.png"));
 }
 
@@ -664,12 +733,15 @@ bool DrawSequenceBaker(asset::MaterialAssetAuthoring& material, const std::strin
     }
 
     property::DragInt("Columns##bake", &state.columns, 0.1f, 0, 64, state.columns == 0 ? "Auto" : "%d");
-    if (ImGui::IsItemHovered())
+    if (ImGui::IsItemHovered()) {
         ImGui::SetTooltip("0 (Auto) なら正方形に近い並びを選びます。行数はコマ数から決まります。");
+    }
     property::Checkbox("Overwrite##bake", &state.overwrite);
 
     const std::string outputPath = state.frames.empty() ? std::string{} : SequenceAtlasOutputPath(state.frames.front());
-    if (!outputPath.empty()) ImGui::TextDisabled("Output: %s", FileNameOf(outputPath).c_str());
+    if (!outputPath.empty()) {
+        ImGui::TextDisabled("Output: %s", FileNameOf(outputPath).c_str());
+    }
 
     ImGui::BeginDisabled(state.frames.size() < 2 || outputPath.empty());
     if (ImGui::Button("Bake & Assign##sequence", { -1.0f, 0.0f })) {
@@ -719,8 +791,9 @@ bool DrawProceduralGenerator(asset::MaterialAssetAuthoring& material, const std:
     ImGui::BeginDisabled(distortionPreset);
     property::Checkbox("Generate Motion Vectors", &procedural.generateMotionVectors);
     ImGui::EndDisabled();
-    if (distortionPreset)
+    if (distortionPreset) {
         ImGui::TextDisabled("Distortion は RG 自体が変位なので Motion Vector を生成しません。");
+    }
     ImGui::TextDisabled("生成した PNG をこの .mat の albedo へ割り当て、\n"
                         "プリセットに対応するブレンドとフリップブック設定を焼きます。");
 
@@ -757,12 +830,13 @@ bool DrawProceduralGenerator(asset::MaterialAssetAuthoring& material, const std:
             } else {
                 flipbook.flipbookMode = ParticleFlipbookMode::Lifetime;
                 particle.distortion   = false;
-                if (settings.preset == asset::ProceduralFlipbookPreset::Fire)
+                if (settings.preset == asset::ProceduralFlipbookPreset::Fire) {
                     material.blendMode = renderer::BlendMode::ADDITIVE;
-                else if (settings.preset == asset::ProceduralFlipbookPreset::Explosion)
+                } else if (settings.preset == asset::ProceduralFlipbookPreset::Explosion) {
                     material.blendMode = renderer::BlendMode::PREMULTIPLIED;
-                else
+                } else {
                     material.blendMode = renderer::BlendMode::ALPHA_BLEND;
+                }
 
                 if (procedural.generateMotionVectors) {
                     asset::FlipbookMotionVectorSettings mvSettings;
@@ -801,9 +875,11 @@ bool DrawMotionVectorSection(asset::MaterialAssetAuthoring& material, const std:
     if (ImGui::IsItemHovered())
         ImGui::SetTooltip("コマ間を速度場で warp してブレンドします。少ないコマ数でも滑らかに流れます。\n"
                           "有効にすると GPU シミュレーションは使えません (CPU へ縮退)。");
-    if (!flipbook.motionVectorFlipbook) return changed;
+    if (!flipbook.motionVectorFlipbook) {
+        return changed;
+    }
 
-    /// @note アトラスは [textures] tex5。ParticlePass が同じスロットから読む。
+    // アトラスは [textures] tex5。ParticlePass が同じスロットから読む。
     changed |= property::AssetPathField("Motion Vector Atlas (tex5)", material.textures["tex5"],
                                        widgets::kTextureAssetFilter, projectRoot);
     changed |= property::DragFloat("Motion Strength", &flipbook.motionVectorStrength, 0.0002f, 0.0f, 1.0f, "%.4f");
@@ -811,8 +887,8 @@ bool DrawMotionVectorSection(asset::MaterialAssetAuthoring& material, const std:
         ImGui::SetTooltip("MV アトラスの最大移動量 (Atlas UV)。生成時に自動で設定されます。\n"
                           "生成した値以外にすると、コマの補間が行き過ぎたり足りなくなったりします。");
 
-    /// @note MV アトラスは外部ツールでしか作れず «機能はあるのに使えない» 状態だったため、
-    /// @note       現在の albedo から生成してそのまま割り当てられるようにする。
+    // MV アトラスは外部ツールでしか作れず «機能はあるのに使えない» 状態だったため、
+    // 現在の albedo から生成してそのまま割り当てられるようにする。
     const std::string atlasPath = ResolveTextureDiskPath(projectRoot, TextureSlot(material, "albedo"));
     ImGui::BeginDisabled(atlasPath.empty());
     if (ImGui::Button("Generate From Texture", { -1.0f, 0.0f })) {
@@ -828,18 +904,20 @@ bool DrawMotionVectorSection(asset::MaterialAssetAuthoring& material, const std:
         if (result.success) {
             material.textures["tex5"] = NormalizeAssetPath(result.outputPath);
             flipbook.motionVectorStrength = result.recommendedStrength;
-            /// @note Frame Blending が無いと spriteBlend が 0 のままで、MV が一切効かない。
+            // Frame Blending が無いと spriteBlend が 0 のままで、MV が一切効かない。
             flipbook.flipbookFrameBlending = true;
             changed = true;
         }
     }
     ImGui::EndDisabled();
-    if (atlasPath.empty()) ImGui::TextDisabled("albedo を設定すると生成できます。");
+    if (atlasPath.empty()) {
+        ImGui::TextDisabled("albedo を設定すると生成できます。");
+    }
     DrawStatus(s_motionVectorStatus, s_motionVectorStatusIsError);
     return changed;
 }
 
-} /// @note namespace
+} // namespace
 
 std::vector<std::string> CollectFlipbookSequenceFrames(const std::string& firstFramePath, std::string& error)
 {
@@ -865,12 +943,16 @@ bool DrawFlipbookInspector(asset::MaterialAssetAuthoring& material, const std::s
     const AtlasPreview& atlas = ResolveAtlasPreview(albedo, resources, imguiRenderer);
     const std::string albedoDiskPath = ResolveTextureDiskPath(projectRoot, albedo);
 
-    /// @name 概要とプレビュー
+    // 概要とプレビュー
     DrawSummary(flipbook, asset::ResolveFlipbookRange(flipbook), atlas);
 
-    if (s_preview.playing) s_preview.time += ImGui::GetIO().DeltaTime;
-    /// @note 長時間開いたままでも float の精度が落ちないよう巻き戻す。
-    if (s_preview.time > 3600.0f) s_preview.time = 0.0f;
+    if (s_preview.playing) {
+        s_preview.time += ImGui::GetIO().DeltaTime;
+    }
+    // 長時間開いたままでも float の精度が落ちないよう巻き戻す。
+    if (s_preview.time > 3600.0f) {
+        s_preview.time = 0.0f;
+    }
     const asset::FlipbookFrameSample live = SamplePreview(flipbook, s_preview);
 
     if (atlas.textureId != nullptr || flipbook.FrameCount() > 1) {
@@ -882,7 +964,7 @@ bool DrawFlipbookInspector(asset::MaterialAssetAuthoring& material, const std::s
         ImGui::TextDisabled("albedo にアトラスを設定すると、コマ割りとアニメーションをここで確認できます。");
     }
 
-    /// @name グリッド
+    // グリッド
     int grid[2] = { flipbook.spriteColumns, flipbook.spriteRows };
     if (property::DragInt2("Columns / Rows", grid, 0.1f, 1, 64)) {
         flipbook.spriteColumns = std::clamp(grid[0], 1, 64);
@@ -905,8 +987,9 @@ bool DrawFlipbookInspector(asset::MaterialAssetAuthoring& material, const std::s
         }
     }
     ImGui::EndDisabled();
-    if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled))
+    if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled)) {
         ImGui::SetTooltip("albedo のタイル境界の不連続からコマ割りを推定します。");
+    }
     if (ImGui::BeginPopup("##gridCandidates")) {
         ImGui::TextDisabled("Candidates (best first)");
         for (const asset::FlipbookGridCandidate& candidate : s_gridDetect.candidates) {
@@ -925,7 +1008,7 @@ bool DrawFlipbookInspector(asset::MaterialAssetAuthoring& material, const std::s
     }
     DrawStatus(s_gridDetect.status, s_gridDetect.statusIsError);
 
-    /// @name 再生範囲
+    // 再生範囲
     const asset::FlipbookFrameRange range = asset::ResolveFlipbookRange(flipbook);
     const int  frameCount = range.columns * range.rows;
     const bool rowDriven  = flipbook.spriteRandomRow && range.rows > 1;
@@ -942,7 +1025,7 @@ bool DrawFlipbookInspector(asset::MaterialAssetAuthoring& material, const std::s
         int last  = flipbook.spriteEndFrame;
         if (ImGui::DragIntRange2("Frames", &first, &last, 0.1f, 0, frameCount - 1, "Start %d", "End %d")) {
             flipbook.spriteStartFrame = first;
-            /// @note End = 0 は «最後まで» の意味になるので、範囲を明示している間は 1 以上に保つ。
+            // End = 0 は «最後まで» の意味になるので、範囲を明示している間は 1 以上に保つ。
             flipbook.spriteEndFrame = (std::max)(last, 1);
             changed = true;
         }
@@ -957,7 +1040,7 @@ bool DrawFlipbookInspector(asset::MaterialAssetAuthoring& material, const std::s
         ImGui::TextDisabled("アトラスをクリックで Start、右クリック / Shift+クリックで End。");
     }
 
-    /// @name 再生のしかた
+    // 再生のしかた
     static constexpr const char* kModeItems[] = { "Lifetime", "FPS", "Random", "Ping Pong" };
     int mode = static_cast<int>(flipbook.flipbookMode);
     if (property::Combo("Mode", &mode, kModeItems, IM_ARRAYSIZE(kModeItems))) {
@@ -969,8 +1052,9 @@ bool DrawFlipbookInspector(asset::MaterialAssetAuthoring& material, const std::s
                           "FPS      : 一定の速さでループ (炎・電撃)\n"
                           "Random   : 粒子ごとに 1 コマを固定 (破片・バリエーション)\n"
                           "Ping Pong: 往復再生 (明滅・脈動)");
-    if (IsTimedMode(flipbook.flipbookMode))
+    if (IsTimedMode(flipbook.flipbookMode)) {
         changed |= property::DragFloat("FPS", &flipbook.flipbookFramesPerSecond, 0.1f, 0.0f, 240.0f, "%.1f");
+    }
 
     changed |= property::Checkbox("Frame Blending", &flipbook.flipbookFrameBlending);
     if (ImGui::IsItemHovered())
@@ -990,10 +1074,10 @@ bool DrawFlipbookInspector(asset::MaterialAssetAuthoring& material, const std::s
 
     changed |= DrawFlipbookIssues(flipbook, material, atlas);
 
-    /// @name Motion Vector
+    // Motion Vector
     changed |= DrawMotionVectorSection(material, projectRoot);
 
-    /// @name アトラスを作る
+    // アトラスを作る
     if (ImGui::TreeNode("Bake Atlas From Image Sequence")) {
         changed |= DrawSequenceBaker(material, projectRoot);
         ImGui::TreePop();
@@ -1007,4 +1091,4 @@ bool DrawFlipbookInspector(asset::MaterialAssetAuthoring& material, const std::s
     return changed;
 }
 
-} /// @note namespace fbzz::editor
+} // namespace fbzz::editor

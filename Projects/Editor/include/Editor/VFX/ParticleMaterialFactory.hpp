@@ -15,10 +15,10 @@
 namespace fbzz::editor {
 
 /// テクスチャに対応する Particle 用 .mat を用意する (`Assets/Materials/Particles/` 配下に stem とブレンドから決定的な名前で生成し、複製されない)。
-/// @param projectRoot プロジェクトルート (EditorContext::projectRoot)
-/// @param texturePath Assets 起点 / 絶対パスどちらでもよいテクスチャ参照
-/// @param blend       .mat へ焼くブレンド。既定は加算 (ParticleFallback.mat と同じ)。
-/// @param outError    失敗理由 (任意)
+/// @param[in] projectRoot プロジェクトルート (EditorContext::projectRoot)
+/// @param[in] texturePath Assets 起点 / 絶対パスどちらでもよいテクスチャ参照
+/// @param[in] blend .mat へ焼くブレンド。既定は加算 (ParticleFallback.mat と同じ)。
+/// @param[out] outError 失敗理由 (任意)
 /// @return Assets 起点の .mat パス。失敗時は空文字列
 /// @note blend の既定値は .mat 側が正本のため。作成前は初期値を持たないことがあり、
 ///       作った後は Material の Inspector で変更する。
@@ -42,7 +42,7 @@ namespace fbzz::editor {
 /// テクスチャが来たときは EnsureParticleMaterial で .mat へ包んでからパスを書き込む。
 /// @note 素材欄が .mat しか受けないと、手持ちの .png を貼れず「ドロップしたのに何も
 ///       起きない」で止まる。受け口の側で吸収する。
-/// @param blendForNewMaterial テクスチャから .mat を新規生成するときのブレンド。
+/// @param[in] blendForNewMaterial テクスチャから .mat を新規生成するときのブレンド。
 ///                            既存 .mat を選んだ場合は使われない。
 /// @return true if materialPath was changed
 bool ParticleMaterialField(const char* label, std::string& materialPath,

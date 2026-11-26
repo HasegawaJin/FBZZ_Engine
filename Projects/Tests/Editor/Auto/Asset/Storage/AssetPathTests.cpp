@@ -34,7 +34,7 @@ TEST_F(AssetPathTest, ConvertsBackslashesToForwardSlashes)
 /// @brief Capitalises a lower case assets prefix.
 TEST_F(AssetPathTest, CapitalisesALowerCaseAssetsPrefix)
 {
-    /// @note 索引のキーは大小を吸収するが、保存される文字列は 1 通りに揃えたい。
+    // 索引のキーは大小を吸収するが、保存される文字列は 1 通りに揃えたい。
     EXPECT_EQ(NormalizeAssetPath("assets/Models/Player.fbx"), "Assets/Models/Player.fbx");
 }
 
@@ -57,7 +57,7 @@ TEST_F(AssetPathTest, TrimsAnAbsolutePathWithALowerCaseAssetsSegment)
 /// @brief Leaves a path with no assets segment alone.
 TEST_F(AssetPathTest, LeavesAPathWithNoAssetsSegmentAlone)
 {
-    /// @note Assets の外 (エンジン内蔵の素材など) は勝手に切り詰めない。
+    // Assets の外 (エンジン内蔵の素材など) は勝手に切り詰めない。
     EXPECT_EQ(NormalizeAssetPath("C:/proj/Library/Baked/abc/Player.fzasset"),
               "C:/proj/Library/Baked/abc/Player.fzasset");
     EXPECT_EQ(NormalizeAssetPath(""), "");
@@ -87,7 +87,7 @@ TEST_F(AssetPathTest, ReturnsThePathUnchangedWithoutAProjectRoot)
 /// @brief Does not join a path outside assets.
 TEST_F(AssetPathTest, DoesNotJoinAPathOutsideAssets)
 {
-    /// @note "Assets/" 起点でないものにプロジェクトルートを足すと、存在しない場所を指す。
+    // "Assets/" 起点でないものにプロジェクトルートを足すと、存在しない場所を指す。
     EXPECT_EQ(ToProjectAssetDiskPath("C:/proj/GreenWare", "C:/elsewhere/Player.fbx"),
               "C:/elsewhere/Player.fbx");
 }

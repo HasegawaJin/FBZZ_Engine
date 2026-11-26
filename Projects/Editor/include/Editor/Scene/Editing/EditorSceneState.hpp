@@ -39,17 +39,22 @@ struct EditorSceneState {
     const ComponentOrder& GetComponentOrder(std::string_view instanceId) const
     {
         const auto it = componentOrders.find(std::string(instanceId));
-        if (it != componentOrders.end()) return it->second;
+        if (it != componentOrders.end()) {
+            return it->second;
+        }
         static const ComponentOrder empty;
         return empty;
     }
 
     void EnsureComponentOrder(std::string_view instanceId, std::string_view componentKey)
     {
-        if (instanceId.empty() || componentKey.empty()) return;
+        if (instanceId.empty() || componentKey.empty()) {
+            return;
+        }
         auto& order = componentOrders[std::string(instanceId)];
-        if (std::find(order.begin(), order.end(), componentKey) == order.end())
+        if (std::find(order.begin(), order.end(), componentKey) == order.end()) {
             order.emplace_back(componentKey);
+        }
     }
 
     /// draggedKey を targetKey の直前 / 直後へ差し込む。
@@ -60,21 +65,29 @@ struct EditorSceneState {
                             std::string_view targetKey,
                             bool insertAfter)
     {
-        if (draggedKey.empty() || targetKey.empty() || draggedKey == targetKey) return false;
+        if (draggedKey.empty() || targetKey.empty() || draggedKey == targetKey) {
+            return false;
+        }
         EnsureComponentOrder(instanceId, draggedKey);
         EnsureComponentOrder(instanceId, targetKey);
 
         auto& order = componentOrders[std::string(instanceId)];
         const auto dragged = std::find(order.begin(), order.end(), draggedKey);
-        if (dragged == order.end()) return false;
+        if (dragged == order.end()) {
+            return false;
+        }
 
         const std::string value = *dragged;
-        /// @note 先に抜いてから挿入位置を引き直す。抜く前に求めた iterator は erase で無効になる。
+        // 先に抜いてから挿入位置を引き直す。抜く前に求めた iterator は erase で無効になる。
         order.erase(dragged);
         auto target = std::find(order.begin(), order.end(), targetKey);
-        if (target == order.end()) return false;
-        /// @note end() への ++ は起きない (target は必ず有効要素を指す)
-        if (insertAfter) ++target;
+        if (target == order.end()) {
+            return false;
+        }
+        // end() への ++ は起きない (target は必ず有効要素を指す)
+        if (insertAfter) {
+            ++target;
+        }
         order.insert(target, value);
         return true;
     }
@@ -86,9 +99,13 @@ struct EditorSceneState {
     void PruneComponentOrder(std::string_view instanceId,
                              const std::vector<std::string>& presentKeys)
     {
-        if (instanceId.empty()) return;
+        if (instanceId.empty()) {
+            return;
+        }
         const auto it = componentOrders.find(std::string(instanceId));
-        if (it == componentOrders.end()) return;
+        if (it == componentOrders.end()) {
+            return;
+        }
 
         const std::unordered_set<std::string> present(presentKeys.begin(), presentKeys.end());
         ComponentOrder& order = it->second;
@@ -97,16 +114,22 @@ struct EditorSceneState {
                                        return !present.contains(key);
                                    }),
                     order.end());
-        if (order.empty()) componentOrders.erase(it);
+        if (order.empty()) {
+            componentOrders.erase(it);
+        }
     }
 
     void SetComponentOrder(std::string_view instanceId, ComponentOrder order)
     {
-        if (instanceId.empty()) return;
+        if (instanceId.empty()) {
+            return;
+        }
         ComponentOrder unique;
         unique.reserve(order.size());
         for (std::string& key : order) {
-            if (key.empty() || std::find(unique.begin(), unique.end(), key) != unique.end()) continue;
+            if (key.empty() || std::find(unique.begin(), unique.end(), key) != unique.end()) {
+                continue;
+            }
             unique.push_back(std::move(key));
         }
         componentOrders[std::string(instanceId)] = std::move(unique);
@@ -115,7 +138,9 @@ struct EditorSceneState {
     void CopyComponentOrder(std::string_view sourceInstanceId,
                             std::string_view targetInstanceId)
     {
-        if (sourceInstanceId.empty() || targetInstanceId.empty()) return;
+        if (sourceInstanceId.empty() || targetInstanceId.empty()) {
+            return;
+        }
         const auto it = componentOrders.find(std::string(sourceInstanceId));
         if (it == componentOrders.end()) {
             componentOrders.erase(std::string(targetInstanceId));
@@ -128,8 +153,11 @@ struct EditorSceneState {
     {
         const std::unordered_set<std::string> valid(instanceIds.begin(), instanceIds.end());
         for (auto it = componentOrders.begin(); it != componentOrders.end();) {
-            if (!valid.contains(it->first)) it = componentOrders.erase(it);
-            else ++it;
+            if (!valid.contains(it->first)) {
+                it = componentOrders.erase(it);
+            } else {
+                ++it;
+            }
         }
         const auto pruneIds = [&valid](InstanceIds& ids) {
             ids.erase(std::remove_if(ids.begin(), ids.end(),
@@ -146,9 +174,9 @@ struct EditorSceneState {
     }
 
 private:
-    std::unordered_map<std::string, ComponentOrder> componentOrders;
-    InstanceIds hiddenObjects;
-    InstanceIds lockedObjects;
+    std::unordered_map<std::string, ComponentOrder> componentOrders; ///< GameObject の instanceId ごとの Inspector コンポーネント表示順。
+    InstanceIds hiddenObjects; ///< Editor で非表示にした GameObject の instanceId。サイドカーへ保存する。
+    InstanceIds lockedObjects; ///< Editor の編集操作をロックした GameObject の instanceId。サイドカーへ保存する。
 };
 
 } // namespace fbzz::editor

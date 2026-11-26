@@ -69,11 +69,17 @@ void DrawLegend(renderer::NavMeshDrawMode mode)
     int count = static_cast<int>(std::size(kSolid));
     switch (mode) {
     case renderer::NavMeshDrawMode::Areas:
-        entries = kAreas; count = static_cast<int>(std::size(kAreas)); break;
+        entries = kAreas;
+        count = static_cast<int>(std::size(kAreas));
+        break;
     case renderer::NavMeshDrawMode::Portals:
-        entries = kPortals; count = static_cast<int>(std::size(kPortals)); break;
+        entries = kPortals;
+        count = static_cast<int>(std::size(kPortals));
+        break;
     case renderer::NavMeshDrawMode::Voxels:
-        entries = kVoxels; count = static_cast<int>(std::size(kVoxels)); break;
+        entries = kVoxels;
+        count = static_cast<int>(std::size(kVoxels));
+        break;
     default: break;
     }
 
@@ -90,10 +96,22 @@ void DrawLegend(renderer::NavMeshDrawMode mode)
 
 const char* BakeStateLabel(const scene::NavMeshSurfaceComponent& surface, ImVec4& outColor)
 {
-    if (surface.bakeState == scene::NavMeshBakeState::Baking) { outColor = kWarnColor; return "Baking"; }
-    if (surface.needsBake)                                    { outColor = kWarnColor; return "Queued"; }
-    if (!surface.bakeStats.failReason.empty())                { outColor = kErrColor;  return "Failed"; }
-    if (surface.navMesh.IsValid())                            { outColor = kOkColor;   return "Baked"; }
+    if (surface.bakeState == scene::NavMeshBakeState::Baking) {
+        outColor = kWarnColor;
+        return "Baking";
+    }
+    if (surface.needsBake) {
+        outColor = kWarnColor;
+        return "Queued";
+    }
+    if (!surface.bakeStats.failReason.empty()) {
+        outColor = kErrColor;
+        return "Failed";
+    }
+    if (surface.navMesh.IsValid()) {
+        outColor = kOkColor;
+        return "Baked";
+    }
     outColor = kDimColor;
     return "Not baked";
 }
@@ -106,7 +124,7 @@ bool ErosionIsInactive(const scene::NavMeshSurfaceComponent& surface)
     return static_cast<int>((std::max(0.0f, surface.agentRadius) / cellSize) * 2.0f) <= 0;
 }
 
-} /// @note namespace
+} // namespace
 
 void NavigationPanel::OnRenderContent(EditorContext& ctx)
 {
@@ -133,10 +151,13 @@ void NavigationPanel::DrawToolbar(EditorContext& ctx)
     int bakingCount  = 0;
     for (scene::EntityID eid : scene.GetEntities<scene::NavMeshSurfaceComponent>()) {
         auto* surface = scene.GetComponent<scene::NavMeshSurfaceComponent>(eid);
-        if (!surface) continue;
+        if (!surface) {
+            continue;
+        }
         ++surfaceCount;
-        if (surface->bakeState == scene::NavMeshBakeState::Baking || surface->needsBake)
+        if (surface->bakeState == scene::NavMeshBakeState::Baking || surface->needsBake) {
             ++bakingCount;
+        }
     }
 
     ImGui::BeginDisabled(surfaceCount == 0 || bakingCount > 0);
@@ -144,7 +165,9 @@ void NavigationPanel::DrawToolbar(EditorContext& ctx)
         int queued = 0;
         for (scene::EntityID eid : scene.GetEntities<scene::NavMeshSurfaceComponent>()) {
             auto* surface = scene.GetComponent<scene::NavMeshSurfaceComponent>(eid);
-            if (!surface || !surface->enabled) continue;
+            if (!surface || !surface->enabled) {
+                continue;
+            }
             surface->needsBake = true;
             ++queued;
         }
@@ -154,8 +177,11 @@ void NavigationPanel::DrawToolbar(EditorContext& ctx)
     ImGui::SetItemTooltip("シーン内の有効な NavMesh Surface をすべて再ベイクします。");
 
     ImGui::SameLine();
-    if (bakingCount > 0) ImGui::TextColored(kWarnColor, "%d / %d baking...", bakingCount, surfaceCount);
-    else                 ImGui::TextColored(kDimColor, "%d surface(s)", surfaceCount);
+    if (bakingCount > 0) {
+        ImGui::TextColored(kWarnColor, "%d / %d baking...", bakingCount, surfaceCount);
+    } else {
+        ImGui::TextColored(kDimColor, "%d surface(s)", surfaceCount);
+    }
 }
 
 void NavigationPanel::DrawOverlaySettings(EditorContext& ctx)
@@ -169,8 +195,9 @@ void NavigationPanel::DrawOverlaySettings(EditorContext& ctx)
     ImGui::BeginDisabled(!render.showNavMesh);
     int mode = static_cast<int>(render.navMeshDrawMode);
     ImGui::SetNextItemWidth(160.0f);
-    if (property::Combo("Draw Mode", &mode, kDrawModeNames, static_cast<int>(std::size(kDrawModeNames))))
+    if (property::Combo("Draw Mode", &mode, kDrawModeNames, static_cast<int>(std::size(kDrawModeNames)))) {
         render.navMeshDrawMode = static_cast<renderer::NavMeshDrawMode>(mode);
+    }
     ImGui::SetItemTooltip(
         "Solid: 面と外周を読む既定値\n"
         "Transparent: 地形との高さのズレを見る\n"
@@ -185,8 +212,9 @@ void NavigationPanel::DrawOverlaySettings(EditorContext& ctx)
         "広いシーンで遠くまで描くと、遠景の細かいポリゴンが画面を埋めて\n"
         "手前の形が読めなくなります (描画コストもそのぶん増えます)。");
 
-    if (render.navMeshDrawMode == renderer::NavMeshDrawMode::Voxels)
+    if (render.navMeshDrawMode == renderer::NavMeshDrawMode::Voxels) {
         ImGui::TextColored(kDimColor, "Voxels はカメラ周辺のみ描画します (最大 60 m)。");
+    }
 
     ImGui::Spacing();
     DrawLegend(render.navMeshDrawMode);
@@ -196,13 +224,16 @@ void NavigationPanel::DrawOverlaySettings(EditorContext& ctx)
 void NavigationPanel::RefreshStaleCache(EditorContext& ctx)
 {
     const double now = ImGui::GetTime();
-    if (m_lastHashTime >= 0.0 && now - m_lastHashTime < kStaleCheckInterval) return;
+    if (m_lastHashTime >= 0.0 && now - m_lastHashTime < kStaleCheckInterval) {
+        return;
+    }
     m_lastHashTime = now;
 
     m_sourceHashes.clear();
     scene::Scene& scene = *ctx.activeScene;
-    for (scene::EntityID eid : scene.GetEntities<scene::NavMeshSurfaceComponent>())
+    for (scene::EntityID eid : scene.GetEntities<scene::NavMeshSurfaceComponent>()) {
         m_sourceHashes[eid.index] = scene::HashNavMeshBakeSources(scene, eid);
+    }
 }
 
 void NavigationPanel::DrawSurfaceList(EditorContext& ctx)
@@ -213,7 +244,9 @@ void NavigationPanel::DrawSurfaceList(EditorContext& ctx)
     for (scene::EntityID eid : scene.GetEntities<scene::NavMeshSurfaceComponent>()) {
         auto* surface = scene.GetComponent<scene::NavMeshSurfaceComponent>(eid);
         auto* go      = scene.GetGameObject(eid);
-        if (!surface || !go) continue;
+        if (!surface || !go) {
+            continue;
+        }
         any = true;
 
         ImGui::PushID(static_cast<int>(eid.index));
@@ -232,7 +265,9 @@ void NavigationPanel::DrawSurfaceList(EditorContext& ctx)
             const bool busy = surface->needsBake
                            || surface->bakeState == scene::NavMeshBakeState::Baking;
             ImGui::BeginDisabled(busy);
-            if (ImGui::Button("Bake")) surface->needsBake = true;
+            if (ImGui::Button("Bake")) {
+                surface->needsBake = true;
+            }
             ImGui::EndDisabled();
             ImGui::SameLine();
             if (ImGui::Button("Select")) {
@@ -272,8 +307,9 @@ void NavigationPanel::DrawSurfaceList(EditorContext& ctx)
                 surface->collectObjects = static_cast<scene::NavMeshCollectObjects>(collectIdx);
                 changed = true;
             }
-            if (surface->collectObjects == scene::NavMeshCollectObjects::Volume)
+            if (surface->collectObjects == scene::NavMeshCollectObjects::Volume) {
                 changed |= widgets::DragVec3("Size", surface->size, 0.5f);
+            }
 
             ImGui::SetNextItemWidth(160.0f);
             changed |= property::DragFloat("Cell Size", &surface->cellSize, 0.05f, 0.1f, 10.0f, "%.2f m");
@@ -299,7 +335,9 @@ void NavigationPanel::DrawSurfaceList(EditorContext& ctx)
                     surface->agentRadius, surface->cellSize, surface->agentRadius * 2.0f);
             }
 
-            if (changed && ctx.markSceneDirty) ctx.markSceneDirty();
+            if (changed && ctx.markSceneDirty) {
+                ctx.markSceneDirty();
+            }
 
             const scene::NavMeshBakeStats& stats = surface->bakeStats;
             if (stats.cellsX > 0) {
@@ -343,36 +381,45 @@ void NavigationPanel::DrawAgentDiagnostics(EditorContext& ctx)
     std::vector<int> surfaceTypes;
     for (scene::EntityID eid : scene.GetEntities<scene::NavMeshSurfaceComponent>()) {
         auto* surface = scene.GetComponent<scene::NavMeshSurfaceComponent>(eid);
-        if (surface && surface->enabled && surface->navMesh.IsValid())
+        if (surface && surface->enabled && surface->navMesh.IsValid()) {
             surfaceTypes.push_back(surface->agentTypeId);
+        }
     }
 
     int agentCount = 0;
     std::vector<int> orphanTypes;
     for (scene::EntityID eid : scene.GetEntities<scene::NavMeshAgentComponent>()) {
         auto* agent = scene.GetComponent<scene::NavMeshAgentComponent>(eid);
-        if (!agent) continue;
-        ++agentCount;
-        if (std::find(surfaceTypes.begin(), surfaceTypes.end(), agent->agentTypeId) != surfaceTypes.end())
+        if (!agent) {
             continue;
-        if (std::find(orphanTypes.begin(), orphanTypes.end(), agent->agentTypeId) == orphanTypes.end())
+        }
+        ++agentCount;
+        if (std::find(surfaceTypes.begin(), surfaceTypes.end(), agent->agentTypeId) != surfaceTypes.end()) {
+            continue;
+        }
+        if (std::find(orphanTypes.begin(), orphanTypes.end(), agent->agentTypeId) == orphanTypes.end()) {
             orphanTypes.push_back(agent->agentTypeId);
+        }
     }
 
     int modifierCount = 0;
     for (scene::EntityID eid : scene.GetEntities<scene::NavMeshModifierComponent>()) {
-        if (scene.GetComponent<scene::NavMeshModifierComponent>(eid)) ++modifierCount;
+        if (scene.GetComponent<scene::NavMeshModifierComponent>(eid)) {
+            ++modifierCount;
+        }
     }
     int linkCount = 0;
     for (scene::EntityID eid : scene.GetEntities<scene::NavMeshOffMeshLinkComponent>()) {
-        if (scene.GetComponent<scene::NavMeshOffMeshLinkComponent>(eid)) ++linkCount;
+        if (scene.GetComponent<scene::NavMeshOffMeshLinkComponent>(eid)) {
+            ++linkCount;
+        }
     }
 
     ImGui::TextColored(kDimColor, "Agents %d   Modifiers %d   Off-Mesh Links %d",
                        agentCount, modifierCount, linkCount);
 
-    /// @note agentTypeId が食い違うと A* は静かに経路なしを返す。Agent 側にも Surface 側にも
-    ///       エラーは出ないので、両方を並べて見るこの画面が唯一の気付き所。
+    // agentTypeId が食い違うと A* は静かに経路なしを返す。Agent 側にも Surface 側にも
+    // エラーは出ないので、両方を並べて見るこの画面が唯一の気付き所。
     for (int type : orphanTypes) {
         ImGui::PushTextWrapPos(0.0f);
         ImGui::TextColored(kWarnColor,
@@ -382,4 +429,4 @@ void NavigationPanel::DrawAgentDiagnostics(EditorContext& ctx)
     }
 }
 
-} /// @note namespace fbzz::editor
+} // namespace fbzz::editor

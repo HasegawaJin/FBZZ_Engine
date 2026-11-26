@@ -28,4 +28,4 @@ scene::GameObject* CreateScriptObject(EditorContext& ctx, const std::string& scr
 /// @brief スクリプト型名から GameObject 名を作る ("EnemyComponent" → "Enemy")。
 [[nodiscard]] std::string ScriptObjectName(const std::string& scriptTypeName);
 
-} /// @note namespace fbzz::editor
+} // namespace fbzz::editor

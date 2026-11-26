@@ -23,14 +23,14 @@ struct HierarchyTraversal {
         return (static_cast<std::uint64_t>(id.generation) << 32) | id.index;
     }
 
-    EntitySet visited;
-    std::vector<scene::EntityID> roots;
-    std::vector<scene::EntityID> recoveredRoots;
-    std::unordered_map<const scene::GameObject*, int> hiddenCounts;
-    std::unordered_map<const scene::GameObject*, bool> visibleChildren;
-    EntitySet selected;
-    EntitySet locked;
-    EntitySet revealed;
+    EntitySet visited; ///< 表示巡回を済ませた EntityKey の集合。循環した枝で同じ行を二重に描かない。
+    std::vector<scene::EntityID> roots; ///< Hierarchy の起点となる通常のルートエンティティ。
+    std::vector<scene::EntityID> recoveredRoots; ///< ルートから辿れず、別の表示起点として回収したエンティティ。
+    std::unordered_map<const scene::GameObject*, int> hiddenCounts; ///< 各オブジェクトの下で非表示にされている生成オブジェクトの件数。
+    std::unordered_map<const scene::GameObject*, bool> visibleChildren; ///< 各オブジェクトに現在のフィルターで表示できる子がいるかの索引。
+    EntitySet selected; ///< 現在の選択対象を EntityKey で引くための集合。
+    EntitySet locked; ///< ロック状態にある対象を EntityKey で引くための集合。
+    EntitySet revealed; ///< Hierarchy で表示を要求された分岐を EntityKey で引くための集合。
 
     /// @note Scene 世代または構造が変わったときだけルート順と生成物の集計を失効させる。
     void BeginFrame(scene::Scene& scene, bool showGeneratedObjects);
@@ -41,9 +41,9 @@ struct HierarchyTraversal {
     }
 
 private:
-    uint64_t m_sceneGeneration = 0;
-    uint64_t m_revision = 0;
-    bool m_showGeneratedObjects = false;
+    uint64_t m_sceneGeneration = 0; ///< ルート順と生成物を数えたときのシーンの世代番号。
+    uint64_t m_revision = 0; ///< ルート順と生成物を数えたときのシーン構造のリビジョン。
+    bool m_showGeneratedObjects = false; ///< キャッシュを作成したときに生成オブジェクトの表示を許可していたか。
 };
 
 } // namespace fbzz::editor

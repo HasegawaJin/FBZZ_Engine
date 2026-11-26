@@ -17,9 +17,11 @@ namespace fbzz::editor {
 
 const OpValue* OpArgs::Find(std::string_view name) const
 {
-    /// @note The small argument map uses linear lookup to avoid allocating a temporary string or requiring heterogeneous hash policies.
+    // The small argument map uses linear lookup to avoid allocating a temporary string or requiring heterogeneous hash policies.
     for (const auto& [key, value] : m_values)
-        if (key == name) return &value;
+        if (key == name) {
+            return &value;
+        }
     return nullptr;
 }
 
@@ -32,43 +34,67 @@ bool OpArgs::Has(std::string_view name) const
 bool OpArgs::GetBool(std::string_view name, bool fallback) const
 {
     const OpValue* v = Find(name);
-    if (v == nullptr) return fallback;
-    if (const bool* b = std::get_if<bool>(v)) return *b;
+    if (v == nullptr) {
+        return fallback;
+    }
+    if (const bool* b = std::get_if<bool>(v)) {
+        return *b;
+    }
     return fallback;
 }
 
 int OpArgs::GetInt(std::string_view name, int fallback) const
 {
     const OpValue* v = Find(name);
-    if (v == nullptr) return fallback;
-    if (const int* i = std::get_if<int>(v)) return *i;
-    /// @note 数値は JSON 側から float で来ることがあるため、縮小変換を許す。
-    if (const float* f = std::get_if<float>(v)) return static_cast<int>(*f);
+    if (v == nullptr) {
+        return fallback;
+    }
+    if (const int* i = std::get_if<int>(v)) {
+        return *i;
+    }
+    // 数値は JSON 側から float で来ることがあるため、縮小変換を許す。
+    if (const float* f = std::get_if<float>(v)) {
+        return static_cast<int>(*f);
+    }
     return fallback;
 }
 
 float OpArgs::GetFloat(std::string_view name, float fallback) const
 {
     const OpValue* v = Find(name);
-    if (v == nullptr) return fallback;
-    if (const float* f = std::get_if<float>(v)) return *f;
-    if (const int* i = std::get_if<int>(v)) return static_cast<float>(*i);
+    if (v == nullptr) {
+        return fallback;
+    }
+    if (const float* f = std::get_if<float>(v)) {
+        return *f;
+    }
+    if (const int* i = std::get_if<int>(v)) {
+        return static_cast<float>(*i);
+    }
     return fallback;
 }
 
 std::string OpArgs::GetString(std::string_view name, std::string fallback) const
 {
     const OpValue* v = Find(name);
-    if (v == nullptr) return fallback;
-    if (const std::string* s = std::get_if<std::string>(v)) return *s;
+    if (v == nullptr) {
+        return fallback;
+    }
+    if (const std::string* s = std::get_if<std::string>(v)) {
+        return *s;
+    }
     return fallback;
 }
 
 math::Vector3 OpArgs::GetVec3(std::string_view name, math::Vector3 fallback) const
 {
     const OpValue* v = Find(name);
-    if (v == nullptr) return fallback;
-    if (const math::Vector3* vec = std::get_if<math::Vector3>(v)) return *vec;
+    if (v == nullptr) {
+        return fallback;
+    }
+    if (const math::Vector3* vec = std::get_if<math::Vector3>(v)) {
+        return *vec;
+    }
     return fallback;
 }
 
@@ -92,8 +118,9 @@ OpResult ValidateArgs(const EditorOperator& op, const OpArgs& args)
             continue;
         }
 
-        if (param.type == OpParamType::Data && !args.GetData(param.name))
+        if (param.type == OpParamType::Data && !args.GetData(param.name)) {
             return OpResult::Err("BAD_ARG", param.name + " は構造化データです");
+        }
 
         if (!param.enumValues.empty()) {
             const std::string value = args.GetString(param.name);
@@ -102,7 +129,9 @@ OpResult ValidateArgs(const EditorOperator& op, const OpArgs& args)
             if (!known) {
                 std::string allowed;
                 for (const std::string& candidate : param.enumValues) {
-                    if (!allowed.empty()) allowed += " / ";
+                    if (!allowed.empty()) {
+                        allowed += " / ";
+                    }
                     allowed += candidate;
                 }
                 return OpResult::Err("BAD_ARG",
@@ -139,7 +168,7 @@ void OperatorRegistry::Register(EditorOperator op)
         return;
     }
 
-    /// @note Duplicate IDs replace the previous registration with a diagnostic rather than executing both handlers for one action.
+    // Duplicate IDs replace the previous registration with a diagnostic rather than executing both handlers for one action.
     auto it = std::find_if(m_operators.begin(), m_operators.end(),
                            [&op](const EditorOperator& e) { return e.id == op.id; });
     if (it != m_operators.end()) {
@@ -155,7 +184,9 @@ void OperatorRegistry::Register(EditorOperator op)
 const EditorOperator* OperatorRegistry::Find(std::string_view id) const
 {
     for (const auto& op : m_operators)
-        if (op.id == id) return &op;
+        if (op.id == id) {
+            return &op;
+        }
     return nullptr;
 }
 
@@ -163,10 +194,16 @@ bool OperatorRegistry::CanInvoke(std::string_view id, const OpContext& context,
                                  const OpArgs& args) const
 {
     const EditorOperator* op = Find(id);
-    if (op == nullptr) return false;
+    if (op == nullptr) {
+        return false;
+    }
     if (context.ctx.playMode && !context.ctx.playMode->IsInEditor() && op->kind == OpKind::Mutation &&
-        id != "script.configure.apply" && id != "script.set_enabled") return false;
-    if (!op->poll) return true;
+        id != "script.configure.apply" && id != "script.set_enabled") {
+        return false;
+    }
+    if (!op->poll) {
+        return true;
+    }
     return op->poll(context, args);
 }
 
@@ -178,14 +215,16 @@ OpResult OperatorRegistry::Invoke(std::string_view id, OpContext& context, const
                              "未登録の操作です: " + std::string(id));
     }
     if (context.ctx.playMode && !context.ctx.playMode->IsInEditor() && op->kind == OpKind::Mutation &&
-        id != "script.configure.apply" && id != "script.set_enabled")
+        id != "script.configure.apply" && id != "script.set_enabled") {
         return OpResult::Err("PLAY_MUTATION_UNSUPPORTED", "Play supports temporary managed settings transactions only; stop Play to author this operation.");
+    }
 
-    /// @note Invalid arguments return BAD_ARG before availability polling, allowing callers to distinguish repairable input from current UI state.
-    if (OpResult argCheck = ValidateArgs(*op, args); !argCheck.ok)
+    // Invalid arguments return BAD_ARG before availability polling, allowing callers to distinguish repairable input from current UI state.
+    if (OpResult argCheck = ValidateArgs(*op, args); !argCheck.ok) {
         return argCheck;
+    }
 
-    /// @note Availability uses the same poll for UI and execution before mutation begins.
+    // Availability uses the same poll for UI and execution before mutation begins.
     if (op->poll && !op->poll(context, args)) {
         return OpResult::Err("NOT_AVAILABLE",
                              "現在この操作は実行できません: " + op->id);
@@ -193,13 +232,13 @@ OpResult OperatorRegistry::Invoke(std::string_view id, OpContext& context, const
 
     OpResult result = op->exec(context, args);
 
-    /// @note Returned commands already applied their edit; Push records them in the active Edit or checked Play history without executing them again.
+    // Returned commands already applied their edit; Push records them in the active Edit or checked Play history without executing them again.
     if (result.ok && result.command) {
         context.undo.Push(std::move(result.command));
         return result;
     }
 
-    /// @note Both Edit and temporary Play mutations require history while recording is enabled; explicit noChange results carry no command.
+    // Both Edit and temporary Play mutations require history while recording is enabled; explicit noChange results carry no command.
     if (result.ok && !result.noChange
         && op->kind == OpKind::Mutation && context.undo.IsRecordingEnabled()) {
         FBZZ_LOG_WARN("OperatorRegistry: Mutation が Undo コマンドを返しませんでした (id=%s)。"
@@ -214,17 +253,20 @@ OpResult OperatorRegistry::Invoke(std::string_view id, OpContext& context, const
 
 bool CanInvokeOperator(EditorContext& ctx, std::string_view id, const OpArgs& args)
 {
-    if (ctx.operators == nullptr || ctx.undoStack == nullptr) return false;
+    if (ctx.operators == nullptr || ctx.undoStack == nullptr) {
+        return false;
+    }
     const OpContext context{ ctx, *ctx.undoStack };
     return ctx.operators->CanInvoke(id, context, args);
 }
 
 OpResult InvokeOperator(EditorContext& ctx, std::string_view id, const OpArgs& args)
 {
-    if (ctx.operators == nullptr || ctx.undoStack == nullptr)
+    if (ctx.operators == nullptr || ctx.undoStack == nullptr) {
         return OpResult::Err("NO_REGISTRY", "Operator レジストリが未初期化です");
+    }
     OpContext context{ ctx, *ctx.undoStack };
     return ctx.operators->Invoke(id, context, args);
 }
 
-} /// @note namespace fbzz::editor
+} // namespace fbzz::editor

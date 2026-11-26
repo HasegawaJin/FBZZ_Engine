@@ -53,7 +53,7 @@ TEST(ImageCompare, CountsOnlyPixelsBeyondTheThreshold)
 {
     const RgbaImage baseline = Solid(10, 10, 100, 100, 100);
     RgbaImage actual = baseline;
-    /// @note 1 画素だけ大きく、残り全部をしきい値未満だけずらす。
+    // 1 画素だけ大きく、残り全部をしきい値未満だけずらす。
     actual.pixels[0] = 255;
     for (size_t index = 4; index < actual.pixels.size(); index += 4) actual.pixels[index] = 105;
 

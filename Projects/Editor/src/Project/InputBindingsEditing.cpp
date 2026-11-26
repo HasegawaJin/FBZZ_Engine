@@ -13,11 +13,15 @@ void ApplyBindings(const input::InputBindingsDocument& document)
 {
     const bool enabled = input::InputActionMap::IsEnabled();
     input::InputActionMap::Clear();
-    for (const auto& axis : document.axes) input::InputActionMap::AddAxis(axis);
-    for (const auto& action : document.actions) input::InputActionMap::AddAction(action);
+    for (const auto& axis : document.axes) {
+        input::InputActionMap::AddAxis(axis);
+    }
+    for (const auto& action : document.actions) {
+        input::InputActionMap::AddAction(action);
+    }
     input::InputActionMap::SetEnabled(enabled);
 }
-} /// @note namespace
+} // namespace
 
 input::InputBindingsDocument CaptureInputBindings()
 {
@@ -30,7 +34,9 @@ input::InputBindingsDocument CaptureInputBindings()
 std::unique_ptr<ICommand> CommitInputBindingsEdit(EditorContext& context,
     const input::InputBindingsDocument& before, const input::InputBindingsDocument& after)
 {
-    if (before.ToToml() == after.ToToml()) return nullptr;
+    if (before.ToToml() == after.ToToml()) {
+        return nullptr;
+    }
     const auto apply = [&context, project = context.projectRoot](const auto& expected, const auto& next, std::string& reason) {
         if (context.projectRoot != project || CaptureInputBindings().ToToml() != expected.ToToml()) {
             reason = "Input bindings or project changed after this history entry.";
@@ -45,4 +51,4 @@ std::unique_ptr<ICommand> CommitInputBindingsEdit(EditorContext& context,
     ApplyBindings(after);
     return command;
 }
-} /// @note namespace fbzz::editor
+} // namespace fbzz::editor

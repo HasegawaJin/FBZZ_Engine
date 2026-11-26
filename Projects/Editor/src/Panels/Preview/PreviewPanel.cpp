@@ -30,7 +30,9 @@ namespace {
 std::string LowerPreviewExtension(std::string_view path)
 {
     const size_t dot = path.find_last_of('.');
-    if (dot == std::string_view::npos) return {};
+    if (dot == std::string_view::npos) {
+        return {};
+    }
     std::string extension(path.substr(dot));
     std::transform(extension.begin(), extension.end(), extension.begin(),
                    [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
@@ -60,20 +62,26 @@ bool PreviewPanel::DrawPreview(EditorContext& ctx,
         const auto material = asset::ReadMaterialAuthoring(handle);
         return material != nullptr && m_materialPreview.Draw(ctx, material->Data(), previewHeight);
     }
-    if (extension == ".ico")
+    if (extension == ".ico") {
         return DrawIconPreview(ctx, assetPath, previewHeight);
-    if (extension == ".mask" || extension == ".maskpreset")
+    }
+    if (extension == ".mask" || extension == ".maskpreset") {
         return m_animationMaskPreview.DrawPreview(ctx, assetPath, previewHeight);
+    }
     return DrawAnimationPreviewWidget(ctx, previewHeight);
 }
 
 bool PreviewPanel::DrawIconPreview(EditorContext& ctx, std::string_view assetPath, float previewHeight)
 {
-    if (!ctx.resources || !ctx.imguiRenderer) return false;
+    if (!ctx.resources || !ctx.imguiRenderer) {
+        return false;
+    }
 
     const std::string path(assetPath);
     if (path != m_iconPreview.path) {
-        if (m_iconPreview.texture.IsValid()) ctx.resources->Release(m_iconPreview.texture);
+        if (m_iconPreview.texture.IsValid()) {
+            ctx.resources->Release(m_iconPreview.texture);
+        }
         m_iconPreview = {};
         m_iconPreview.path = path;
     }
@@ -98,7 +106,9 @@ bool PreviewPanel::DrawIconPreview(EditorContext& ctx, std::string_view assetPat
     }
 
     void* rawId = ctx.imguiRenderer->GetImTextureID(m_iconPreview.texture, *ctx.resources);
-    if (!rawId) return false;
+    if (!rawId) {
+        return false;
+    }
 
     ImGui::TextDisabled("%d x %d  |  %d size%s in file",
                         m_iconPreview.width, m_iconPreview.height,
@@ -110,7 +120,7 @@ bool PreviewPanel::DrawIconPreview(EditorContext& ctx, std::string_view assetPat
     const ImVec2 origin = ImGui::GetCursorScreenPos();
     ImGui::Dummy({ side, side });
 
-    /// @note アイコンは透明部分を持つのが前提なので、市松を敷いて «抜け» を見せる。
+    // アイコンは透明部分を持つのが前提なので、市松を敷いて «抜け» を見せる。
     ImDrawList* drawList = ImGui::GetWindowDrawList();
     constexpr float kCell = 12.0f;
     drawList->AddRectFilled(origin, { origin.x + side, origin.y + side }, IM_COL32(58, 60, 66, 255), 4.0f);

@@ -21,15 +21,23 @@ GpuDisplaySummary SummarizeGpuDisplay(const renderer::GpuProfilerSnapshot& snaps
     GpuDisplaySummary result;
     result.totalAvailable = snapshot.supported && snapshot.available && snapshot.totalGpuTimeAvailable
         && std::isfinite(snapshot.totalGpuMs) && snapshot.totalGpuMs >= 0.0;
-    if (result.totalAvailable) result.totalMs = snapshot.totalGpuMs;
+    if (result.totalAvailable) {
+        result.totalMs = snapshot.totalGpuMs;
+    }
     result.partial = !snapshot.complete || snapshot.droppedPassCount != 0;
     bool ageMissing = false;
     for (const auto& pass : snapshot.passes) {
-        if (!IsGpuPassMeasured(snapshot, pass)) { ++result.unavailableIntervals; continue; }
+        if (!IsGpuPassMeasured(snapshot, pass)) {
+            ++result.unavailableIntervals;
+            continue;
+        }
         result.passSumMs += pass.gpuMs;
         ++result.measuredIntervals;
         const uint64_t source = pass.metadata.applicationFrameSerial;
-        if (source == 0 || applicationSerial == 0 || source > applicationSerial) { ageMissing = true; continue; }
+        if (source == 0 || applicationSerial == 0 || source > applicationSerial) {
+            ageMissing = true;
+            continue;
+        }
         const uint64_t age = applicationSerial - source;
         result.youngestAge = result.ageAvailable ? (std::min)(result.youngestAge, age) : age;
         result.oldestAge = (std::max)(result.oldestAge, age);
@@ -51,9 +59,15 @@ std::vector<GpuPassGroup> BuildGpuPassGroups(const renderer::GpuProfilerSnapshot
             return source.name == pass.name && source.metadata == pass.metadata
                 && source.physicalFrameSerial == pass.physicalFrameSerial && source.deviceEpoch == pass.deviceEpoch;
         });
-        if (found == groups.end()) { groups.push_back({&pass}); found = groups.end() - 1; }
+        if (found == groups.end()) {
+            groups.push_back({&pass});
+            found = groups.end() - 1;
+        }
         ++found->intervalCount;
-        if (IsGpuPassMeasured(snapshot, pass)) { found->gpuMs += pass.gpuMs; ++found->measuredIntervals; }
+        if (IsGpuPassMeasured(snapshot, pass)) {
+            found->gpuMs += pass.gpuMs;
+            ++found->measuredIntervals;
+        }
         found->available = found->measuredIntervals != 0 && std::isfinite(found->gpuMs);
         found->partial = found->measuredIntervals != found->intervalCount || !std::isfinite(found->gpuMs);
     }
@@ -79,11 +93,14 @@ std::string GpuPassRowKey(const renderer::GpuPassProfile& pass)
 
 std::vector<GpuDisplayRow> BuildGpuDisplayRows(const renderer::GpuProfilerSnapshot& snapshot)
 {
-    if (!snapshot.supported || !snapshot.available) return {};
+    if (!snapshot.supported || !snapshot.available) {
+        return {};
+    }
     auto groups = BuildGpuPassGroups(snapshot);
     std::stable_sort(groups.begin(), groups.end(), [](const GpuPassGroup& a, const GpuPassGroup& b) {
-        if (a.source->metadata.applicationFrameSerial != b.source->metadata.applicationFrameSerial)
+        if (a.source->metadata.applicationFrameSerial != b.source->metadata.applicationFrameSerial) {
             return a.source->metadata.applicationFrameSerial > b.source->metadata.applicationFrameSerial;
+        }
         return a.source->physicalFrameSerial > b.source->physicalFrameSerial;
     });
     std::vector<GpuDisplayRow> rows;
@@ -109,11 +126,12 @@ std::vector<GpuHistoryDisplaySample> BuildGpuObservationPlot(const std::vector<G
         for (const auto& sample : samples) if (sample.observedSerial == frame) result.push_back(sample);
         if (begin == result.size()) {
             GpuHistoryDisplaySample gap;
-            gap.observedSerial = frame; gap.ms = (std::numeric_limits<float>::quiet_NaN)();
+            gap.observedSerial = frame;
+            gap.ms = (std::numeric_limits<float>::quiet_NaN)();
             result.push_back(gap);
         }
     }
     return result;
 }
 
-} /// @note namespace fbzz::editor::detail
+} // namespace fbzz::editor::detail

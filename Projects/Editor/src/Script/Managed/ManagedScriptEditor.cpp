@@ -44,7 +44,9 @@ bool IsManagedSource(const std::filesystem::path& path, bool includeMetadata)
 {
     std::string name = util::FileSystem::PathToUtf8(path.filename());
     for (char& character : name)
-        if (character >= 'A' && character <= 'Z') character = static_cast<char>(character + ('a' - 'A'));
+        if (character >= 'A' && character <= 'Z') {
+            character = static_cast<char>(character + ('a' - 'A'));
+        }
     return name.ends_with(".cs") || (includeMetadata && name.ends_with(".cs.meta"));
 }
 
@@ -73,24 +75,34 @@ bool IsManagedReparsePoint(const std::filesystem::path& path)
 
 bool IsManagedCacheScope(std::wstring_view scope)
 {
-    if (scope.empty() || scope.size() > 64) return false;
+    if (scope.empty() || scope.size() > 64) {
+        return false;
+    }
     std::wstring upper;
     upper.reserve(scope.size());
     for (const wchar_t value : scope) {
         const bool letter = (value >= L'a' && value <= L'z') || (value >= L'A' && value <= L'Z');
-        if (!letter && !(value >= L'0' && value <= L'9') && value != L'-' && value != L'_') return false;
+        if (!letter && !(value >= L'0' && value <= L'9') && value != L'-' && value != L'_') {
+            return false;
+        }
         upper.push_back(value >= L'a' && value <= L'z' ? static_cast<wchar_t>(value - L'a' + L'A') : value);
     }
     if (upper == L"CON" || upper == L"PRN" || upper == L"AUX" || upper == L"NUL"
-        || upper.starts_with(L"GENERATION-")) return false;
+        || upper.starts_with(L"GENERATION-")) {
+        return false;
+    }
     return !(upper.size() == 4 && (upper.starts_with(L"COM") || upper.starts_with(L"LPT"))
         && upper[3] >= L'1' && upper[3] <= L'9');
 }
 
 bool IsOwnedManagedGenerationName(std::string name)
 {
-    if (name.ends_with(".pending")) name.resize(name.size() - 8);
-    if (!name.starts_with("generation-")) return false;
+    if (name.ends_with(".pending")) {
+        name.resize(name.size() - 8);
+    }
+    if (!name.starts_with("generation-")) {
+        return false;
+    }
     const std::string suffix = name.substr(11);
     const std::size_t separator = suffix.find('-');
     return separator != std::string::npos && separator != 0 && separator + 1 < suffix.size() &&
@@ -101,7 +113,9 @@ bool IsOwnedManagedGenerationName(std::string name)
 std::string OwnedGenerationLedger(const std::vector<std::filesystem::path>& paths)
 {
     std::string text;
-    for (const auto& path : paths) text += util::FileSystem::PathToUtf8(path) + '\n';
+    for (const auto& path : paths) {
+        text += util::FileSystem::PathToUtf8(path) + '\n';
+    }
     return text;
 }
 
@@ -114,7 +128,9 @@ std::vector<ManagedBuildDiagnostic> ParseManagedDiagnostics(const std::string& l
     while (offset < log.size()) {
         const std::size_t end = log.find('\n', offset);
         std::string line = log.substr(offset, end == std::string::npos ? end : end - offset);
-        if (!line.empty() && line.back() == '\r') line.pop_back();
+        if (!line.empty() && line.back() == '\r') {
+            line.pop_back();
+        }
         std::smatch match;
         if (std::regex_match(line, match, diagnosticPattern)) {
             ManagedBuildDiagnostic diagnostic;
@@ -127,7 +143,9 @@ std::vector<ManagedBuildDiagnostic> ParseManagedDiagnostics(const std::string& l
                 const auto readNumber = [](const std::string& text) {
                     int value = 0;
                     for (const char digit : text) {
-                        if (value > 100000000) return 0;
+                        if (value > 100000000) {
+                            return 0;
+                        }
                         value = value * 10 + digit - '0';
                     }
                     return value;
@@ -139,7 +157,9 @@ std::vector<ManagedBuildDiagnostic> ParseManagedDiagnostics(const std::string& l
             }
             diagnostics.push_back(std::move(diagnostic));
         }
-        if (end == std::string::npos) break;
+        if (end == std::string::npos) {
+            break;
+        }
         offset = end + 1;
     }
     return diagnostics;
@@ -152,16 +172,22 @@ std::string ParseManagedBuildLogPath(const std::string& log)
     while (offset < log.size()) {
         const std::size_t end = log.find('\n', offset);
         std::string_view line(log.data() + offset, (end == std::string::npos ? log.size() : end) - offset);
-        if (!line.empty() && line.back() == '\r') line.remove_suffix(1);
+        if (!line.empty() && line.back() == '\r') {
+            line.remove_suffix(1);
+        }
         const std::size_t marker = line.rfind(" log=");
-        if (marker != std::string_view::npos && line.starts_with("RESULT ")) result = std::string(line.substr(marker + 5));
-        if (end == std::string::npos) break;
+        if (marker != std::string_view::npos && line.starts_with("RESULT ")) {
+            result = std::string(line.substr(marker + 5));
+        }
+        if (end == std::string::npos) {
+            break;
+        }
         offset = end + 1;
     }
     return result;
 }
 
-} /// @note namespace
+} // namespace
 
 static bool ComputeManagedSourceFingerprintImpl(const std::filesystem::path& project,
     const std::filesystem::path& inputManifest, std::uint64_t& fingerprint, bool includeMetadata,
@@ -177,53 +203,89 @@ static bool ComputeManagedSourceFingerprintImpl(const std::filesystem::path& pro
     const bool manifestExists = std::filesystem::exists(inputManifest, error);
     if (manifestExists) {
         std::ifstream manifest(inputManifest, std::ios::binary);
-        if (!manifest) return false;
+        if (!manifest) {
+            return false;
+        }
         std::string line;
         while (std::getline(manifest, line)) {
-            if (cancellation.stop_requested()) return false;
-            if (!line.empty() && line.back() == '\r') line.pop_back();
-            if (line.size() < 3 || line[1] != '|' || (line[0] != 'F' && line[0] != 'P' && line[0] != 'D' && line[0] != 'R')) return false;
+            if (cancellation.stop_requested()) {
+                return false;
+            }
+            if (!line.empty() && line.back() == '\r') {
+                line.pop_back();
+            }
+            if (line.size() < 3 || line[1] != '|' || (line[0] != 'F' && line[0] != 'P' && line[0] != 'D' && line[0] != 'R')) {
+                return false;
+            }
             const std::filesystem::path path = std::filesystem::u8path(line.substr(2));
-            if (!path.is_absolute()) return false;
-            if (line[0] == 'P') projects.push_back(path);
-            else if (line[0] == 'D') importDirectories.push_back(path);
-            else if (line[0] == 'R') recursiveImportDirectories.push_back(path);
-            else if (includeMetadata || !util::FileSystem::PathToUtf8(path.filename()).ends_with(".cs.meta"))
+            if (!path.is_absolute()) {
+                return false;
+            }
+            if (line[0] == 'P') {
+                projects.push_back(path);
+            } else if (line[0] == 'D') {
+                importDirectories.push_back(path);
+            } else if (line[0] == 'R') {
+                recursiveImportDirectories.push_back(path);
+            } else if (includeMetadata || !util::FileSystem::PathToUtf8(path.filename()).ends_with(".cs.meta")) {
                 sources.push_back(path);
+            }
         }
-        if (!manifest.eof()) return false;
+        if (!manifest.eof()) {
+            return false;
+        }
     }
-    if (error) return false;
+    if (error) {
+        return false;
+    }
     std::sort(projects.begin(), projects.end());
     projects.erase(std::unique(projects.begin(), projects.end()), projects.end());
     for (const std::filesystem::path& dependency : projects) {
-        if (cancellation.stop_requested()) return false;
+        if (cancellation.stop_requested()) {
+            return false;
+        }
         sources.push_back(dependency);
-        /// @note 新しく追加された上位の暗黙 import も、前回 manifest の有無に依存せず検出する。
+        // 新しく追加された上位の暗黙 import も、前回 manifest の有無に依存せず検出する。
         for (std::filesystem::path parent = dependency.parent_path(); !parent.empty();) {
             for (const char* name : { "Directory.Build.props", "Directory.Build.targets", "Directory.Packages.props", "global.json", "NuGet.Config", ".editorconfig" }) {
                 sources.push_back(parent / name);
-                if (dependency == project) rootInputs.push_back(parent / name);
+                if (dependency == project) {
+                    rootInputs.push_back(parent / name);
+                }
             }
             const std::filesystem::path next = parent.parent_path();
-            if (next == parent) break;
+            if (next == parent) {
+                break;
+            }
             parent = next;
         }
         if (!std::filesystem::exists(dependency.parent_path(), error)) {
-            if (error) return false;
+            if (error) {
+                return false;
+            }
             continue;
         }
-        if (IsManagedReparsePoint(dependency.parent_path())) continue;
+        if (IsManagedReparsePoint(dependency.parent_path())) {
+            continue;
+        }
         std::filesystem::recursive_directory_iterator iterator(dependency.parent_path(), error);
-        if (error) return false;
+        if (error) {
+            return false;
+        }
         for (; iterator != std::filesystem::recursive_directory_iterator(); iterator.increment(error)) {
-            if (cancellation.stop_requested()) return false;
-            if (error) return false;
+            if (cancellation.stop_requested()) {
+                return false;
+            }
+            if (error) {
+                return false;
+            }
             if (IsManagedReparsePoint(iterator->path())) {
                 iterator.disable_recursion_pending();
                 continue;
             }
-            if (error) return false;
+            if (error) {
+                return false;
+            }
             if (iterator->is_directory(error) && SkipManagedDirectory(iterator->path())) {
                 iterator.disable_recursion_pending();
                 continue;
@@ -232,62 +294,107 @@ static bool ComputeManagedSourceFingerprintImpl(const std::filesystem::path& pro
                 (IsManagedSource(iterator->path(), includeMetadata) || IsManagedConfiguration(iterator->path())))
             {
                 sources.push_back(iterator->path());
-                if (dependency == project) rootInputs.push_back(iterator->path());
+                if (dependency == project) {
+                    rootInputs.push_back(iterator->path());
+                }
             }
-            if (error) return false;
+            if (error) {
+                return false;
+            }
         }
-        if (error) return false;
+        if (error) {
+            return false;
+        }
     }
     std::sort(importDirectories.begin(), importDirectories.end());
     importDirectories.erase(std::unique(importDirectories.begin(), importDirectories.end()), importDirectories.end());
     for (const std::filesystem::path& directory : importDirectories) {
-        if (cancellation.stop_requested()) return false;
+        if (cancellation.stop_requested()) {
+            return false;
+        }
         sources.push_back(directory);
         if (!std::filesystem::exists(directory, error)) {
-            if (error) return false;
+            if (error) {
+                return false;
+            }
             continue;
         }
-        if (IsManagedReparsePoint(directory)) continue;
-        std::filesystem::directory_iterator iterator(directory, error);
-        if (error) return false;
-        for (; iterator != std::filesystem::directory_iterator(); iterator.increment(error)) {
-            if (cancellation.stop_requested()) return false;
-            if (error) return false;
-            if (!IsManagedReparsePoint(iterator->path()) && iterator->is_regular_file(error) && IsManagedConfiguration(iterator->path()))
-                sources.push_back(iterator->path());
-            if (error) return false;
+        if (IsManagedReparsePoint(directory)) {
+            continue;
         }
-        if (error) return false;
+        std::filesystem::directory_iterator iterator(directory, error);
+        if (error) {
+            return false;
+        }
+        for (; iterator != std::filesystem::directory_iterator(); iterator.increment(error)) {
+            if (cancellation.stop_requested()) {
+                return false;
+            }
+            if (error) {
+                return false;
+            }
+            if (!IsManagedReparsePoint(iterator->path()) && iterator->is_regular_file(error) && IsManagedConfiguration(iterator->path())) {
+                sources.push_back(iterator->path());
+            }
+            if (error) {
+                return false;
+            }
+        }
+        if (error) {
+            return false;
+        }
     }
     for (const std::filesystem::path& directory : recursiveImportDirectories) {
-        if (cancellation.stop_requested()) return false;
+        if (cancellation.stop_requested()) {
+            return false;
+        }
         sources.push_back(directory);
         if (!std::filesystem::exists(directory, error)) {
-            if (error) return false;
+            if (error) {
+                return false;
+            }
             continue;
         }
-        if (IsManagedReparsePoint(directory)) continue;
+        if (IsManagedReparsePoint(directory)) {
+            continue;
+        }
         std::filesystem::recursive_directory_iterator iterator(directory, error);
-        if (error) return false;
+        if (error) {
+            return false;
+        }
         for (; iterator != std::filesystem::recursive_directory_iterator(); iterator.increment(error)) {
-            if (cancellation.stop_requested()) return false;
-            if (error) return false;
+            if (cancellation.stop_requested()) {
+                return false;
+            }
+            if (error) {
+                return false;
+            }
             if (IsManagedReparsePoint(iterator->path()) || (iterator->is_directory(error) && SkipManagedDirectory(iterator->path()))) {
                 iterator.disable_recursion_pending();
                 continue;
             }
-            if (iterator->is_regular_file(error) && IsManagedConfiguration(iterator->path())) sources.push_back(iterator->path());
-            if (error) return false;
+            if (iterator->is_regular_file(error) && IsManagedConfiguration(iterator->path())) {
+                sources.push_back(iterator->path());
+            }
+            if (error) {
+                return false;
+            }
         }
-        if (error) return false;
+        if (error) {
+            return false;
+        }
     }
     for (std::filesystem::path& source : sources) {
         source = std::filesystem::absolute(source, error).lexically_normal();
-        if (error) return false;
+        if (error) {
+            return false;
+        }
     }
     for (auto& source : rootInputs) {
         source = std::filesystem::absolute(source, error).lexically_normal();
-        if (error) return false;
+        if (error) {
+            return false;
+        }
     }
     std::sort(rootInputs.begin(), rootInputs.end());
     rootInputs.erase(std::unique(rootInputs.begin(), rootInputs.end()), rootInputs.end());
@@ -300,37 +407,66 @@ static bool ComputeManagedSourceFingerprintImpl(const std::filesystem::path& pro
     bool rootInput = false;
     const auto append = [&hash, &sourceHash, &metadata, &rootHash, &rootInput](unsigned char value) {
         hash = (hash ^ value) * 1099511628211ULL;
-        if (!metadata) sourceHash = (sourceHash ^ value) * 1099511628211ULL;
-        if (rootInput) rootHash = (rootHash ^ value) * 1099511628211ULL;
+        if (!metadata) {
+            sourceHash = (sourceHash ^ value) * 1099511628211ULL;
+        }
+        if (rootInput) {
+            rootHash = (rootHash ^ value) * 1099511628211ULL;
+        }
     };
     std::array<char, 8192> buffer{};
     for (const std::filesystem::path& source : sources) {
-        if (cancellation.stop_requested()) return false;
+        if (cancellation.stop_requested()) {
+            return false;
+        }
         metadata = util::FileSystem::PathToUtf8(source.filename()).ends_with(".cs.meta");
         rootInput = std::binary_search(rootInputs.begin(), rootInputs.end(), source);
-        for (const unsigned char value : util::FileSystem::PathToUtf8(source)) append(value);
+        for (const unsigned char value : util::FileSystem::PathToUtf8(source)) {
+            append(value);
+        }
         append(0);
         const bool exists = std::filesystem::exists(source, error);
-        if (error) return false;
-        append(exists ? 1 : 0);
-        if (!exists) continue;
-        if (std::filesystem::is_directory(source, error)) continue;
-        if (error) return false;
-        std::ifstream stream(source, std::ios::binary);
-        if (!stream) return false;
-        while (stream) {
-            if (cancellation.stop_requested()) return false;
-            stream.read(buffer.data(), static_cast<std::streamsize>(buffer.size()));
-            for (std::streamsize index = 0; index < stream.gcount(); ++index)
-                append(static_cast<unsigned char>(buffer[static_cast<std::size_t>(index)]));
+        if (error) {
+            return false;
         }
-        if (!stream.eof()) return false;
+        append(exists ? 1 : 0);
+        if (!exists) {
+            continue;
+        }
+        if (std::filesystem::is_directory(source, error)) {
+            continue;
+        }
+        if (error) {
+            return false;
+        }
+        std::ifstream stream(source, std::ios::binary);
+        if (!stream) {
+            return false;
+        }
+        while (stream) {
+            if (cancellation.stop_requested()) {
+                return false;
+            }
+            stream.read(buffer.data(), static_cast<std::streamsize>(buffer.size()));
+            for (std::streamsize index = 0; index < stream.gcount(); ++index) {
+                append(static_cast<unsigned char>(buffer[static_cast<std::size_t>(index)]));
+            }
+        }
+        if (!stream.eof()) {
+            return false;
+        }
         append(0);
     }
     fingerprint = hash;
-    if (withoutMetadata) *withoutMetadata = sourceHash;
-    if (rootInputFingerprint) *rootInputFingerprint = rootHash;
-    if (hasInputManifest) *hasInputManifest = manifestExists;
+    if (withoutMetadata) {
+        *withoutMetadata = sourceHash;
+    }
+    if (rootInputFingerprint) {
+        *rootInputFingerprint = rootHash;
+    }
+    if (hasInputManifest) {
+        *hasInputManifest = manifestExists;
+    }
     return true;
 }
 
@@ -369,7 +505,9 @@ public:
                     &snapshot.rootInputFingerprint, &snapshot.hasInputManifest);
                 {
                     std::lock_guard lock(m_mutex);
-                    if (cancellation.stop_requested()) return;
+                    if (cancellation.stop_requested()) {
+                        return;
+                    }
                     m_snapshot = snapshot;
                     m_hasSnapshot = true;
                 }
@@ -383,7 +521,9 @@ public:
 
     void Stop() override
     {
-        if (!m_thread.joinable()) return;
+        if (!m_thread.joinable()) {
+            return;
+        }
         m_thread.request_stop();
         m_wakeup.notify_all();
         m_thread.join();
@@ -402,7 +542,9 @@ public:
     bool Poll(ManagedSourceSnapshot& snapshot) override
     {
         std::unique_lock lock(m_mutex, std::try_to_lock);
-        if (!lock.owns_lock() || !m_hasSnapshot) return false;
+        if (!lock.owns_lock() || !m_hasSnapshot) {
+            return false;
+        }
         snapshot = m_snapshot;
         m_hasSnapshot = false;
         return true;
@@ -417,7 +559,7 @@ private:
     std::jthread m_thread;
 };
 
-} /// @note namespace
+} // namespace
 
 bool ManagedBuildHistory::IsTerminal(ManagedBuildState state)
 {
@@ -428,15 +570,27 @@ bool ManagedBuildHistory::IsTerminal(ManagedBuildState state)
 ManagedBuildRequest ManagedBuildHistory::WithCurrentTiming(const ManagedBuildRequest& request)
 {
     ManagedBuildRequest timed = request;
-    if (IsTerminal(request.state)) return timed;
+    if (IsTerminal(request.state)) {
+        return timed;
+    }
     const auto now = std::chrono::steady_clock::now();
     const double stage = std::chrono::duration<double, std::milli>(now - request.stageStartedAt).count();
     timed.elapsedMilliseconds = std::chrono::duration<double, std::milli>(now - request.queuedAt).count();
-    if (request.state == ManagedBuildState::QUEUED) timed.queueMilliseconds += stage;
-    if (request.state == ManagedBuildState::COMPILING) timed.compileMilliseconds += stage;
-    if (request.state == ManagedBuildState::APPLYING) timed.applyMilliseconds += stage;
-    if (request.state == ManagedBuildState::SCANNING) timed.sourceMilliseconds += stage;
-    if (request.state == ManagedBuildState::VALIDATING) timed.validationMilliseconds += stage;
+    if (request.state == ManagedBuildState::QUEUED) {
+        timed.queueMilliseconds += stage;
+    }
+    if (request.state == ManagedBuildState::COMPILING) {
+        timed.compileMilliseconds += stage;
+    }
+    if (request.state == ManagedBuildState::APPLYING) {
+        timed.applyMilliseconds += stage;
+    }
+    if (request.state == ManagedBuildState::SCANNING) {
+        timed.sourceMilliseconds += stage;
+    }
+    if (request.state == ManagedBuildState::VALIDATING) {
+        timed.validationMilliseconds += stage;
+    }
     return timed;
 }
 
@@ -481,10 +635,12 @@ const ManagedBuildRequest* ManagedBuildHistory::Latest() const
 std::string ManagedBuildHistory::Queue(std::uint64_t fingerprint, bool automatic, std::uint64_t previousGeneration)
 {
     if (const ManagedBuildRequest* latest = Latest(); latest && !IsTerminal(latest->state)) {
-        if (latest->effectiveSourceFingerprint == fingerprint) return latest->managedRequestId;
+        if (latest->effectiveSourceFingerprint == fingerprint) {
+            return latest->managedRequestId;
+        }
         Transition(latest->managedRequestId, ManagedBuildState::SUPERSEDED, "SOURCE_SUPERSEDED", "A newer source version was requested");
     }
-    /// @note メインスレッドだけで発行し、プロジェクト切替でも要求 ID を再利用しない。
+    // メインスレッドだけで発行し、プロジェクト切替でも要求 ID を再利用しない。
     static std::uint64_t nextRequest = 0;
     ManagedBuildRequest request;
     request.managedRequestId = "managed:" + std::to_string(++nextRequest);
@@ -495,7 +651,9 @@ std::string ManagedBuildHistory::Queue(std::uint64_t fingerprint, bool automatic
     request.queuedAt = std::chrono::steady_clock::now();
     request.stageStartedAt = request.queuedAt;
     m_history.push_back(std::move(request));
-    if (m_history.size() > MAX_HISTORY) m_history.pop_front();
+    if (m_history.size() > MAX_HISTORY) {
+        m_history.pop_front();
+    }
     return m_history.back().managedRequestId;
 }
 
@@ -511,7 +669,9 @@ bool ManagedBuildHistory::CompleteCompile(std::string_view requestId, std::uint6
     bool success, bool assemblyExists, int exitCode, const std::string& log)
 {
     ManagedBuildRequest* request = FindMutable(requestId);
-    if (!request) return false;
+    if (!request) {
+        return false;
+    }
     request->exitCode = exitCode;
     request->diagnostics = ParseManagedDiagnostics(log);
     request->logFilePath = ParseManagedBuildLogPath(log);
@@ -520,7 +680,9 @@ bool ManagedBuildHistory::CompleteCompile(std::string_view requestId, std::uint6
     request->log = log.size() <= MAX_RECORDED_LOG_BYTES ? log :
         "[earlier output truncated]\n" + log.substr(log.size() - MAX_RECORDED_LOG_BYTES);
     request->logRetainedBytes = request->log.size();
-    if (IsTerminal(request->state)) return false;
+    if (IsTerminal(request->state)) {
+        return false;
+    }
     if (currentFingerprint != request->effectiveSourceFingerprint) {
         Transition(requestId, ManagedBuildState::SUPERSEDED, "SOURCE_SUPERSEDED", "Compiled source has been superseded");
         return false;
@@ -572,9 +734,13 @@ bool ManagedBuildHistory::CanRetryDiscoveredGraph(std::string_view requestId, co
 bool ManagedBuildHistory::RetryDiscoveredGraph(std::string_view requestId, const ManagedSourceSnapshot& captured,
     const ManagedSourceSnapshot& current, bool success, bool assemblyExists, int exitCode, const std::string& log)
 {
-    if (!success || !assemblyExists || exitCode || !CanRetryDiscoveredGraph(requestId, captured, current)) return false;
+    if (!success || !assemblyExists || exitCode || !CanRetryDiscoveredGraph(requestId, captured, current)) {
+        return false;
+    }
     SetEffectiveFingerprint(requestId, current.fingerprint);
-    if (!CompleteCompile(requestId, current.fingerprint, success, assemblyExists, exitCode, log)) return false;
+    if (!CompleteCompile(requestId, current.fingerprint, success, assemblyExists, exitCode, log)) {
+        return false;
+    }
     ManagedBuildRequest* request = FindMutable(requestId);
     ++request->inputDiscoveryRetries;
     request->candidateId.clear();
@@ -585,8 +751,9 @@ bool ManagedBuildHistory::RetryDiscoveredGraph(std::string_view requestId, const
 
 void ManagedBuildHistory::SetEffectiveFingerprint(std::string_view requestId, std::uint64_t fingerprint)
 {
-    if (ManagedBuildRequest* request = FindMutable(requestId); request && !IsTerminal(request->state))
+    if (ManagedBuildRequest* request = FindMutable(requestId); request && !IsTerminal(request->state)) {
         request->effectiveSourceFingerprint = fingerprint;
+    }
 }
 
 void ManagedBuildHistory::BindSourceFingerprint(std::string_view requestId, std::uint64_t fingerprint)
@@ -627,15 +794,24 @@ void ManagedScriptEditor::Init(const std::filesystem::path& projectRoot, const s
     std::error_code error;
     std::vector<std::filesystem::path> projects;
     std::filesystem::directory_iterator iterator(projectRoot, error);
-    if (error) return;
-    for (; iterator != std::filesystem::directory_iterator(); iterator.increment(error)) {
-        if (error) return;
-        const std::filesystem::path path = iterator->path();
-        if (path.extension() == ".csproj" && path.stem().wstring().ends_with(L".Scripts"))
-            projects.push_back(path);
+    if (error) {
+        return;
     }
-    if (error) return;
-    if (projects.empty()) return;
+    for (; iterator != std::filesystem::directory_iterator(); iterator.increment(error)) {
+        if (error) {
+            return;
+        }
+        const std::filesystem::path path = iterator->path();
+        if (path.extension() == ".csproj" && path.stem().wstring().ends_with(L".Scripts")) {
+            projects.push_back(path);
+        }
+    }
+    if (error) {
+        return;
+    }
+    if (projects.empty()) {
+        return;
+    }
     if (projects.size() != 1) {
         m_availabilityDiagnostic = "Expected one <Project>.Scripts.csproj in the project root";
         FBZZ_LOG_ERROR("C# Scripts: expected one <Project>.Scripts.csproj in the project root");
@@ -647,7 +823,9 @@ void ManagedScriptEditor::Init(const std::filesystem::path& projectRoot, const s
         FBZZ_LOG_ERROR("C# Scripts: executable SDK binding rejected: %s", m_availabilityDiagnostic.c_str());
         return;
     }
-    m_engineRoot = binding.root; m_agentBuild = binding.agentBuild; m_hostDirectory = binding.hostDirectory;
+    m_engineRoot = binding.root;
+    m_agentBuild = binding.agentBuild;
+    m_hostDirectory = binding.hostDirectory;
     m_configuration = binding.configuration;
     if (!std::filesystem::is_regular_file(m_hostDirectory / "Fbzz.ManagedHost.dll", error) || error
         || !scene::ManagedScriptRuntime::Instance().Initialize(m_hostDirectory)) {
@@ -664,7 +842,7 @@ void ManagedScriptEditor::Init(const std::filesystem::path& projectRoot, const s
             FBZZ_LOG_ERROR("C# Scripts: %s", m_availabilityDiagnostic.c_str());
             return;
         }
-        /// @note Separate host API versions must not rewrite each other's evaluated inputs or generation receipts.
+        // Separate host API versions must not rewrite each other's evaluated inputs or generation receipts.
         auto scopePath = projectRoot;
         for (const auto& part : {std::filesystem::path("Library"), std::filesystem::path("ManagedScripts"),
                 std::filesystem::path(m_configuration), std::filesystem::path(cacheScope)}) {
@@ -687,8 +865,12 @@ void ManagedScriptEditor::Init(const std::filesystem::path& projectRoot, const s
     std::ifstream owned(m_outputRoot / "owned-generations.txt", std::ios::binary);
     std::string ownedPath;
     while (std::getline(owned, ownedPath)) {
-        if (!ownedPath.empty() && ownedPath.back() == '\r') ownedPath.pop_back();
-        if (!ownedPath.empty()) m_ownedGenerations.push_back(std::filesystem::u8path(ownedPath));
+        if (!ownedPath.empty() && ownedPath.back() == '\r') {
+            ownedPath.pop_back();
+        }
+        if (!ownedPath.empty()) {
+            m_ownedGenerations.push_back(std::filesystem::u8path(ownedPath));
+        }
     }
     std::string metadataDiagnostic;
     if (!LoadManagedScriptDisplayNames(m_projectRoot, metadataDiagnostic))
@@ -732,7 +914,9 @@ void ManagedScriptEditor::QueueBuild(std::uint64_t fingerprint, bool automatic, 
 
 bool ManagedScriptEditor::RequestBuild(std::string& requestId)
 {
-    if (!m_ready) return false;
+    if (!m_ready) {
+        return false;
+    }
     const bool explicitApply = m_publication->RequestExplicitApply();
     m_availabilityDiagnostic.clear();
     if (explicitApply && m_sourceSnapshot.valid && m_sourceSnapshot.fingerprint == m_buildFingerprint && m_compiler->GetState() == Compiler::State::Idle) {
@@ -746,7 +930,8 @@ bool ManagedScriptEditor::RequestBuild(std::string& requestId)
             m_metadataVerificationRevision = m_sourceWatcher->RequestRefresh();
             m_builds.Transition(m_pendingRequestId, ManagedBuildState::VALIDATING,
                 "EXPLICIT_EDIT_APPLY", "Rechecking retained compiled code before applying it to Edit objects.");
-            requestId = m_pendingRequestId; return true;
+            requestId = m_pendingRequestId;
+            return true;
         }
     }
     if (!m_sourceRequestId.empty()) {
@@ -773,16 +958,24 @@ bool ManagedScriptEditor::RequestBuild(std::string& requestId)
 void ManagedScriptEditor::BeginPlaySession()
 {
     m_publication->BeginPlay(m_sourceSnapshot);
-    m_playSession = true; m_parkedAppliedGeneration = m_appliedGeneration; m_parkedAssemblyDirectory = m_appliedAssemblyDirectory;
+    m_playSession = true;
+    m_parkedAppliedGeneration = m_appliedGeneration;
+    m_parkedAssemblyDirectory = m_appliedAssemblyDirectory;
 }
 void ManagedScriptEditor::EndPlaySession()
 {
-    if (!m_playSession) return;
+    if (!m_playSession) {
+        return;
+    }
     const bool newerAssembly = m_appliedAssemblyDirectory != m_parkedAssemblyDirectory;
     const bool workPending = IsBusy();
-    if (newerAssembly) m_latestPlayAssemblyDirectory = m_appliedAssemblyDirectory;
+    if (newerAssembly) {
+        m_latestPlayAssemblyDirectory = m_appliedAssemblyDirectory;
+    }
     m_appliedGeneration = scene::ManagedScriptRuntime::Instance().GetAppliedGeneration();
-    m_appliedAssemblyDirectory = m_parkedAssemblyDirectory; m_parkedAssemblyDirectory.clear(); m_playSession = false;
+    m_appliedAssemblyDirectory = m_parkedAssemblyDirectory;
+    m_parkedAssemblyDirectory.clear();
+    m_playSession = false;
     m_publication->EndPlay(newerAssembly, workPending, m_ready ? m_sourceWatcher->RequestRefresh() : 0);
     if (m_ready) {
         m_availabilityDiagnostic = "Verifying source changes across Play/Stop before automatic Edit apply.";
@@ -826,8 +1019,10 @@ void ManagedScriptEditor::RejectPending(const char* code, const std::string& dia
 
 void ManagedScriptEditor::SaveOwnedGenerations()
 {
-    if (m_outputRoot.empty()) return;
-    /// @note 新しいビルドの所有を同期保存する前に、古い非同期 ledger 保存を完了させて上書きの逆転を防ぐ。
+    if (m_outputRoot.empty()) {
+        return;
+    }
+    // 新しいビルドの所有を同期保存する前に、古い非同期 ledger 保存を完了させて上書きの逆転を防ぐ。
     CompleteGenerationCleanup(true);
     FBZZ_PROFILE_SCOPE("ManagedHotReload::SaveOwnership");
     if (!util::FileSystem::WriteTextAtomic(util::FileSystem::PathToUtf8(m_outputRoot / "owned-generations.txt"),
@@ -837,8 +1032,12 @@ void ManagedScriptEditor::SaveOwnedGenerations()
 
 void ManagedScriptEditor::CleanupOwnedGenerations()
 {
-    if (m_generationCleanup.valid() || m_generationOwnershipSave.valid()) return;
-    if (m_outputRoot.empty() || m_ownedGenerations.empty()) return;
+    if (m_generationCleanup.valid() || m_generationOwnershipSave.valid()) {
+        return;
+    }
+    if (m_outputRoot.empty() || m_ownedGenerations.empty()) {
+        return;
+    }
     const auto compilingPending = m_compilingRequestId.empty() ? std::filesystem::path{}
         : std::filesystem::path(m_buildOutput.wstring() + L".pending");
     const auto retained = [this, &compilingPending](const std::filesystem::path& path) {
@@ -847,18 +1046,22 @@ void ManagedScriptEditor::CleanupOwnedGenerations()
             || path == m_pendingAssembly.parent_path()
             || (!m_compilingRequestId.empty() && (path == m_buildOutput || path == compilingPending));
     };
-    /// @note 生存世代は削除候補ではない。退役済み候補と root を所有する worker だけが filesystem I/O を行う。
+    // 生存世代は削除候補ではない。退役済み候補と root を所有する worker だけが filesystem I/O を行う。
     /// @see Docs/design/csharp-scripting.md 編集時のコード差し替え。
     std::vector<std::filesystem::path> candidates;
     for (const auto& path : m_ownedGenerations) if (!retained(path)) candidates.push_back(path);
-    if (candidates.empty()) return;
+    if (candidates.empty()) {
+        return;
+    }
     FBZZ_PROFILE_SCOPE("ManagedHotReload::QueueGenerationCleanup");
-    /// @note 候補は current/previous/parked/pending/compiling の外へ退役済みで、以後 active 世代へ戻らない。
+    // 候補は current/previous/parked/pending/compiling の外へ退役済みで、以後 active 世代へ戻らない。
     m_generationCleanup = TaskSystem::Submit([outputRoot = m_outputRoot, candidates = std::move(candidates)] {
         std::vector<std::filesystem::path> completed;
         std::error_code error;
         const std::filesystem::path root = std::filesystem::weakly_canonical(outputRoot, error);
-        if (error) return completed;
+        if (error) {
+            return completed;
+        }
         for (const auto& candidate : candidates) {
             const std::filesystem::path path = std::filesystem::weakly_canonical(candidate, error);
             const std::string name = util::FileSystem::PathToUtf8(candidate.filename());
@@ -867,11 +1070,13 @@ void ManagedScriptEditor::CleanupOwnedGenerations()
                 completed.push_back(candidate);
                 continue;
             }
-            /// @note 所有 ledger の直下だけを削除し、Windows junction を含む reparse point をたどらない。
-            if (IsManagedReparsePoint(candidate)) continue;
+            // 所有 ledger の直下だけを削除し、Windows junction を含む reparse point をたどらない。
+            if (IsManagedReparsePoint(candidate)) {
+                continue;
+            }
             std::filesystem::remove_all(candidate, error);
             if (error) {
-                /// @note collectible DLL が開いていれば所有を残し、次の Edit の回収機会へ延期する。
+                // collectible DLL が開いていれば所有を残し、次の Edit の回収機会へ延期する。
                 error.clear();
                 continue;
             }
@@ -884,22 +1089,28 @@ void ManagedScriptEditor::CleanupOwnedGenerations()
 void ManagedScriptEditor::CompleteGenerationCleanup(bool wait)
 {
     if (m_generationCleanup.valid()) {
-        if (!wait && m_generationCleanup.wait_for(std::chrono::seconds(0)) != std::future_status::ready) return;
+        if (!wait && m_generationCleanup.wait_for(std::chrono::seconds(0)) != std::future_status::ready) {
+            return;
+        }
         FBZZ_PROFILE_SCOPE("ManagedHotReload::CollectGenerationCleanup");
         const auto completed = m_generationCleanup.get();
         if (!completed.empty()) {
             std::erase_if(m_ownedGenerations, [&completed](const auto& path) {
                 return std::find(completed.begin(), completed.end(), path) != completed.end();
             });
-            /// @note 回収後の ledger 書き込みもフレームへ同期 I/O を持ち込まない。次の回収とビルド保存はこの完了を確認する。
+            // 回収後の ledger 書き込みもフレームへ同期 I/O を持ち込まない。次の回収とビルド保存はこの完了を確認する。
             m_generationOwnershipSave = TaskSystem::Submit([outputRoot = m_outputRoot,
                     text = OwnedGenerationLedger(m_ownedGenerations)] {
                 return util::FileSystem::WriteTextAtomic(util::FileSystem::PathToUtf8(outputRoot / "owned-generations.txt"), text);
             });
         }
     }
-    if (!m_generationOwnershipSave.valid()) return;
-    if (!wait && m_generationOwnershipSave.wait_for(std::chrono::seconds(0)) != std::future_status::ready) return;
+    if (!m_generationOwnershipSave.valid()) {
+        return;
+    }
+    if (!wait && m_generationOwnershipSave.wait_for(std::chrono::seconds(0)) != std::future_status::ready) {
+        return;
+    }
     if (!m_generationOwnershipSave.get()) FBZZ_LOG_WARN("C# Scripts: generation ownership could not be recorded");
 }
 
@@ -907,13 +1118,19 @@ void ManagedScriptEditor::LoadPrevious()
 {
     std::ifstream stream(m_outputRoot / "current.txt", std::ios::binary);
     std::string generation;
-    if (!std::getline(stream, generation) || generation.empty()) return;
-    /// @note receipt の内容は世代ディレクトリ名だけとし、プロジェクト外の DLL を指定できない。
+    if (!std::getline(stream, generation) || generation.empty()) {
+        return;
+    }
+    // receipt の内容は世代ディレクトリ名だけとし、プロジェクト外の DLL を指定できない。
     if (!std::all_of(generation.begin(), generation.end(), [](unsigned char value) {
         return (value >= '0' && value <= '9') || (value >= 'a' && value <= 'z') || value == '-';
-    })) return;
+    })) {
+        return;
+    }
     const std::filesystem::path directory = m_outputRoot / generation;
-    if (!IsAssembly(directory, m_project)) return;
+    if (!IsAssembly(directory, m_project)) {
+        return;
+    }
     const std::filesystem::path assembly = directory / (m_project.stem().wstring() + L".dll");
     scene::ManagedScriptRuntime& runtime = scene::ManagedScriptRuntime::Instance();
     if (!runtime.Load(assembly))
@@ -921,19 +1138,25 @@ void ManagedScriptEditor::LoadPrevious()
             runtime.LastDiagnostic().c_str());
     else if (!runtime.LastDiagnostic().empty())
         FBZZ_LOG_WARN("C# Scripts: %s", runtime.LastDiagnostic().c_str());
-    if (runtime.GetAppliedGeneration() != 0) m_appliedAssemblyDirectory = directory;
+    if (runtime.GetAppliedGeneration() != 0) {
+        m_appliedAssemblyDirectory = directory;
+    }
 }
 
 void ManagedScriptEditor::StartBuild()
 {
     FBZZ_PROFILE_SCOPE("ManagedHotReload::StartBuild");
-    if (!m_sourceRequestId.empty() || m_initialSourcePending) return;
+    if (!m_sourceRequestId.empty() || m_initialSourcePending) {
+        return;
+    }
     if (m_startVerificationRevision == 0) {
         m_startVerificationRevision = m_sourceWatcher->RequestRefresh();
         m_builds.Transition(m_queuedRequestId, ManagedBuildState::SCANNING);
         return;
     }
-    if (!m_sourceSnapshot.valid || m_sourceSnapshot.revision < m_startVerificationRevision) return;
+    if (!m_sourceSnapshot.valid || m_sourceSnapshot.revision < m_startVerificationRevision) {
+        return;
+    }
     if (m_sourceSnapshot.fingerprint != m_observedFingerprint) {
         QueueBuild(m_sourceSnapshot.fingerprint, true, 0.3f);
         return;
@@ -972,7 +1195,9 @@ void ManagedScriptEditor::StartBuild()
 
 void ManagedScriptEditor::ApplyPending(scene::Scene* scene)
 {
-    if (m_pendingAssembly.empty() || !m_sourceSnapshot.valid || m_metadataVerificationRevision != 0) return;
+    if (m_pendingAssembly.empty() || !m_sourceSnapshot.valid || m_metadataVerificationRevision != 0) {
+        return;
+    }
     FBZZ_PROFILE_SCOPE("ManagedHotReload::Apply");
     if (m_sourceSnapshot.fingerprint != m_buildFingerprint) {
         QueueBuild(m_sourceSnapshot.fingerprint, true, 0.3f);
@@ -1016,7 +1241,9 @@ void ManagedScriptEditor::ApplyPending(scene::Scene* scene)
     m_previousAssemblyDirectory = m_appliedAssemblyDirectory;
     m_appliedAssemblyDirectory = m_pendingAssembly.parent_path();
     m_appliedGeneration = runtime.GetAppliedGeneration();
-    if (!m_playSession) m_latestPlayAssemblyDirectory.clear();
+    if (!m_playSession) {
+        m_latestPlayAssemblyDirectory.clear();
+    }
     m_builds.MarkApplied(m_pendingRequestId, m_appliedGeneration);
     if (!runtime.LastDiagnostic().empty())
         FBZZ_LOG_WARN("C# Scripts: %s", runtime.LastDiagnostic().c_str());
@@ -1032,11 +1259,14 @@ void ManagedScriptEditor::Tick(scene::Scene* scene, bool inEditor, float deltaSe
 {
     FBZZ_PROFILE_SCOPE("HotReload::ManagedScripts");
     CompleteGenerationCleanup(false);
-    if (m_playSession) m_appliedGeneration = scene::ManagedScriptRuntime::Instance().GetAppliedGeneration();
+    if (m_playSession) {
+        m_appliedGeneration = scene::ManagedScriptRuntime::Instance().GetAppliedGeneration();
+    }
     if (!m_ready) {
         m_discoverySeconds += deltaSeconds;
-        if (m_discoverySeconds >= 0.5f && m_availabilityDiagnostic == "No <Project>.Scripts.csproj is available in the project root")
+        if (m_discoverySeconds >= 0.5f && m_availabilityDiagnostic == "No <Project>.Scripts.csproj is available in the project root") {
             Init(m_projectRoot, m_engineRoot);
+        }
         return;
     }
     {
@@ -1074,8 +1304,7 @@ void ManagedScriptEditor::Tick(scene::Scene* scene, bool inEditor, float deltaSe
                 m_metadataVerificationRevision = 0;
                 m_initialSourcePending = true;
             }
-        }
-        else {
+        } else {
             m_availabilityDiagnostic.clear();
             if (inEditor && m_publication->VerifyStoppedSource(snapshot) == ManagedStopVerification::CHANGED)
                 FBZZ_LOG_INFO("C# Scripts: source changed across Play/Stop; request Build C# Scripts to validate/apply it to Edit explicitly.");
@@ -1089,7 +1318,7 @@ void ManagedScriptEditor::Tick(scene::Scene* scene, bool inEditor, float deltaSe
                 if (snapshot.withoutMetadataFingerprint != m_metadataSourceFingerprint) {
                     QueueBuild(snapshot.fingerprint, true, 0.3f);
                 } else {
-                    /// @note importer 自身の metadata 変更だけを同じ要求の有効版へ取り込む。
+                    // importer 自身の metadata 変更だけを同じ要求の有効版へ取り込む。
                     m_observedFingerprint = snapshot.fingerprint;
                     m_buildFingerprint = snapshot.fingerprint;
                     m_builds.SetEffectiveFingerprint(m_pendingRequestId, snapshot.fingerprint);
@@ -1107,8 +1336,9 @@ void ManagedScriptEditor::Tick(scene::Scene* scene, bool inEditor, float deltaSe
             }
         }
     }
-    if (inEditor && m_publication->HasStopVerification() && m_sourceSnapshot.valid)
+    if (inEditor && m_publication->HasStopVerification() && m_sourceSnapshot.valid) {
         m_availabilityDiagnostic = "Waiting for a fresh post-Stop source snapshot before automatic Edit apply.";
+    }
     const Compiler::State state = m_compiler->GetState();
     if (state == Compiler::State::Done || state == Compiler::State::Failed || state == Compiler::State::Cancelled) {
         if (!m_publication->HasCompileVerification()) {
@@ -1116,7 +1346,9 @@ void ManagedScriptEditor::Tick(scene::Scene* scene, bool inEditor, float deltaSe
             m_builds.Transition(m_compilingRequestId, ManagedBuildState::VALIDATING);
             return;
         }
-        if (!m_publication->TryCompleteCompileVerification(m_sourceSnapshot.revision)) return;
+        if (!m_publication->TryCompleteCompileVerification(m_sourceSnapshot.revision)) {
+            return;
+        }
         if (!m_sourceSnapshot.valid) {
             FBZZ_LOG_ERROR("C# Scripts: cannot verify the source version after compilation");
             m_builds.Transition(m_compilingRequestId, ManagedBuildState::FAILED,
@@ -1127,17 +1359,23 @@ void ManagedScriptEditor::Tick(scene::Scene* scene, bool inEditor, float deltaSe
             return;
         }
         const std::uint64_t currentFingerprint = m_sourceSnapshot.fingerprint;
-        if (state == Compiler::State::Cancelled)
+        if (state == Compiler::State::Cancelled) {
             m_builds.Transition(m_compilingRequestId, ManagedBuildState::FAILED, "BUILD_CANCELLED", "Build was cancelled");
+        }
         if (m_builds.RetryDiscoveredGraph(m_compilingRequestId, m_compileSnapshot, m_sourceSnapshot,
             state == Compiler::State::Done, IsAssembly(m_buildOutput, m_project), m_compiler->GetExitCode(), m_compiler->GetLog())) {
             m_observedFingerprint = currentFingerprint;
             m_buildFingerprint = currentFingerprint;
             m_queuedRequestId = m_compilingRequestId;
-            m_buildPending = true; m_debounceSeconds = 0.0f; m_startVerificationRevision = 0;
+            m_buildPending = true;
+            m_debounceSeconds = 0.0f;
+            m_startVerificationRevision = 0;
             m_buildOutput.clear();
-            m_compiler->Reset(); m_compilingRequestId.clear();
-            if (inEditor) CleanupOwnedGenerations();
+            m_compiler->Reset();
+            m_compilingRequestId.clear();
+            if (inEditor) {
+                CleanupOwnedGenerations();
+            }
             return;
         }
         const bool compiled = m_builds.CompleteCompile(m_compilingRequestId, currentFingerprint,
@@ -1147,7 +1385,7 @@ void ManagedScriptEditor::Tick(scene::Scene* scene, bool inEditor, float deltaSe
             m_pendingRequestId = m_compilingRequestId;
             m_manifestPrepared = false;
         } else if (state == Compiler::State::Failed) {
-            /// @note AgentBuild の BUSY はコードの失敗ではなく、競合が終わってから同じ版を再試行する。
+            // AgentBuild の BUSY はコードの失敗ではなく、競合が終わってから同じ版を再試行する。
             const ManagedBuildRequest* request = m_builds.Find(m_compilingRequestId);
             if (request && request->state == ManagedBuildState::QUEUED) {
                 FBZZ_LOG_INFO("C# Scripts: waiting for the shared build entry; previous generation retained");
@@ -1167,14 +1405,17 @@ void ManagedScriptEditor::Tick(scene::Scene* scene, bool inEditor, float deltaSe
         if (!m_publication->CanAutomaticallyApply(inEditor)) {
             if (!m_pendingAssembly.empty()) m_builds.Transition(m_pendingRequestId, ManagedBuildState::DEFERRED,
                 "EDIT_GENERATION_PARKED", "Original Edit objects/history are restored. Request Build C# Scripts to validate/apply newer code explicitly.");
-        } else ApplyPending(scene);
+        } else {
+            ApplyPending(scene);
+        }
     }
     if (m_buildPending) {
         m_debounceSeconds -= deltaSeconds;
-        if (m_debounceSeconds <= 0.0f && !otherBuildRunning && m_compiler->GetState() == Compiler::State::Idle)
+        if (m_debounceSeconds <= 0.0f && !otherBuildRunning && m_compiler->GetState() == Compiler::State::Idle) {
             StartBuild();
+        }
     }
-    /// @note Play/Pause・Stop復元中は新しい削除を投入しない。Edit の再試行は worker へ送り、フレームでは待たない。
+    // Play/Pause・Stop復元中は新しい削除を投入しない。Edit の再試行は worker へ送り、フレームでは待たない。
     /// @see Docs/design/csharp-scripting.md collectible世代の回収と所有ディレクトリ。
     m_cleanupSeconds = inEditor ? m_cleanupSeconds + deltaSeconds : 0.0f;
     if (inEditor && m_cleanupSeconds >= 1.0f) {
@@ -1186,15 +1427,21 @@ void ManagedScriptEditor::Tick(scene::Scene* scene, bool inEditor, float deltaSe
 void ManagedScriptEditor::Shutdown(scene::Scene* scene)
 {
     m_sourceWatcher->Stop();
-    if (m_compiler->GetState() == Compiler::State::Building) m_compiler->Cancel();
-    if (m_ready) scene::ManagedScriptRuntime::Instance().Unload(scene);
+    if (m_compiler->GetState() == Compiler::State::Building) {
+        m_compiler->Cancel();
+    }
+    if (m_ready) {
+        scene::ManagedScriptRuntime::Instance().Unload(scene);
+    }
     if (const ManagedBuildRequest* request = m_builds.Latest())
         m_builds.Transition(request->managedRequestId, ManagedBuildState::FAILED,
             "MANAGED_BUILD_SHUTDOWN", "Project was closed before the request completed");
     m_ready = false;
     m_buildPending = false;
     m_appliedGeneration = 0;
-    m_playSession = false; m_parkedAssemblyDirectory.clear(); m_latestPlayAssemblyDirectory.clear();
+    m_playSession = false;
+    m_parkedAssemblyDirectory.clear();
+    m_latestPlayAssemblyDirectory.clear();
     m_publication->Reset();
     m_availabilityDiagnostic = "C# build service is shut down";
     m_collectionWaiting = false;
@@ -1214,4 +1461,4 @@ void ManagedScriptEditor::Shutdown(scene::Scene* scene)
     CompleteGenerationCleanup(true);
 }
 
-} /// @note namespace fbzz::editor
+} // namespace fbzz::editor

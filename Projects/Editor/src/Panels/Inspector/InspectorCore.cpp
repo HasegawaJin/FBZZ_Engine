@@ -45,19 +45,29 @@ constexpr ImU32 kScriptAccent = IM_COL32(120, 190, 255, 255);
 std::string ScriptOrderKey(const scene::ScriptComponent& sc, int index)
 {
     const auto typeNameOf = [](const scene::ScriptEntry& entry) -> std::string {
-        if (entry.script) return entry.script->GetTypeName();
-        if (entry.serialized) return entry.serialized->type;
+        if (entry.script) {
+            return entry.script->GetTypeName();
+        }
+        if (entry.serialized) {
+            return entry.serialized->type;
+        }
         return "Unknown";
     };
-    if (index < 0 || index >= static_cast<int>(sc.scripts.size())) return {};
+    if (index < 0 || index >= static_cast<int>(sc.scripts.size())) {
+        return {};
+    }
 
     const std::string type = typeNameOf(sc.scripts[static_cast<std::size_t>(index)]);
     int sameTypeBefore = 0;
     for (int i = 0; i < index; ++i)
-        if (typeNameOf(sc.scripts[static_cast<std::size_t>(i)]) == type) ++sameTypeBefore;
+        if (typeNameOf(sc.scripts[static_cast<std::size_t>(i)]) == type) {
+            ++sameTypeBefore;
+        }
 
     std::string key = "Script:" + type;
-    if (sameTypeBefore > 0) key += "#" + std::to_string(sameTypeBefore);
+    if (sameTypeBefore > 0) {
+        key += "#" + std::to_string(sameTypeBefore);
+    }
     return key;
 }
 
@@ -99,19 +109,23 @@ bool SyncScriptOrderToDisplay(scene::ScriptComponent& sc,
                               const std::string& instanceId)
 {
     const int count = static_cast<int>(sc.scripts.size());
-    if (count < 2) return false;
+    if (count < 2) {
+        return false;
+    }
 
     const std::vector<std::string> displayOrder =
         ctx.editorSceneState.GetComponentOrder(instanceId);
 
-    /// @note 表示順に現れるスクリプトキーを拾い、その順に並べたい index 列を作る。
-    /// @note        併せて「リストのどの席がスクリプトだったか」も覚えておく (後でキーを埋め直す)。
+    // 表示順に現れるスクリプトキーを拾い、その順に並べたい index 列を作る。
+    // 併せて「リストのどの席がスクリプトだったか」も覚えておく (後でキーを埋め直す)。
     std::vector<int>         desired;
     std::vector<std::size_t> scriptSlots;
     desired.reserve(static_cast<std::size_t>(count));
     for (std::size_t slot = 0; slot < displayOrder.size(); ++slot) {
         for (int i = 0; i < count; ++i) {
-            if (ScriptOrderKey(sc, i) != displayOrder[slot]) continue;
+            if (ScriptOrderKey(sc, i) != displayOrder[slot]) {
+                continue;
+            }
             if (std::find(desired.begin(), desired.end(), i) == desired.end()) {
                 desired.push_back(i);
                 scriptSlots.push_back(slot);
@@ -119,27 +133,35 @@ bool SyncScriptOrderToDisplay(scene::ScriptComponent& sc,
             break;
         }
     }
-    /// @note 表示順に載っていないカード (追加直後など) は現状の順で末尾へ回す。
+    // 表示順に載っていないカード (追加直後など) は現状の順で末尾へ回す。
     for (int i = 0; i < count; ++i)
-        if (std::find(desired.begin(), desired.end(), i) == desired.end())
+        if (std::find(desired.begin(), desired.end(), i) == desired.end()) {
             desired.push_back(i);
+        }
 
     bool alreadySorted = true;
     for (int i = 0; i < count; ++i)
-        if (desired[static_cast<std::size_t>(i)] != i) { alreadySorted = false; break; }
-    if (alreadySorted) return false;
+        if (desired[static_cast<std::size_t>(i)] != i) {
+            alreadySorted = false;
+            break;
+        }
+    if (alreadySorted) {
+        return false;
+    }
 
     std::vector<scene::ScriptEntry> reordered;
     reordered.reserve(static_cast<std::size_t>(count));
-    for (const int index : desired)
+    for (const int index : desired) {
         reordered.push_back(std::move(sc.scripts[static_cast<std::size_t>(index)]));
+    }
     sc.scripts = std::move(reordered);
 
-    /// @note 並べ替え後の配列順で振り直したキーを、元のスクリプト席へ順に埋め戻す。
+    // 並べ替え後の配列順で振り直したキーを、元のスクリプト席へ順に埋め戻す。
     if (!scriptSlots.empty()) {
         std::vector<std::string> rewritten = displayOrder;
-        for (std::size_t n = 0; n < scriptSlots.size(); ++n)
+        for (std::size_t n = 0; n < scriptSlots.size(); ++n) {
             rewritten[scriptSlots[n]] = ScriptOrderKey(sc, static_cast<int>(n));
+        }
         ctx.editorSceneState.SetComponentOrder(instanceId, std::move(rewritten));
     }
     return true;
@@ -154,16 +176,19 @@ bool DrawScriptRequirementBanner(scene::GameObject& go,
                                  EditorContext& ctx)
 {
     std::vector<scene::ScriptRequirementIssue> issues;
-    /// @note 任意コンポーネント (FBZZ_OPTIONAL_COMPONENT) も拾って情報として並べる。
+    // 任意コンポーネント (FBZZ_OPTIONAL_COMPONENT) も拾って情報として並べる。
     scene::CollectScriptRequirementIssues(go, script, issues, true);
-    if (issues.empty()) return false;
+    if (issues.empty()) {
+        return false;
+    }
 
-    /// @note 「足せば直る」必須のものだけを Fix の対象にする。
-    /// @note        unknown (宣言側の綴り違い) と addable=false (内部型) はボタンを出しても直らない。
+    // 「足せば直る」必須のものだけを Fix の対象にする。
+    // unknown (宣言側の綴り違い) と addable=false (内部型) はボタンを出しても直らない。
     std::vector<std::string> fixable;
     for (const auto& issue : issues)
-        if (!issue.optional && !issue.unknown && issue.addable)
+        if (!issue.optional && !issue.unknown && issue.addable) {
             fixable.push_back(issue.componentType);
+        }
 
     const bool hasError = std::any_of(issues.begin(), issues.end(),
         [](const scene::ScriptRequirementIssue& i) { return !i.optional; });
@@ -197,15 +222,18 @@ bool DrawScriptRequirementBanner(scene::GameObject& go,
 
     bool added = false;
     if (ImGui::SmallButton("Fix")) {
-        /// @note fixable は「登録済み・追加可能・未アタッチ」だけを残した集合なので、
-        /// @note        押された時点で必ず 1 個以上増える。コマンドが null になるのは
-        /// @note        Undo を記録できない文脈 (Play 中など) のときだけ。
+        // fixable は「登録済み・追加可能・未アタッチ」だけを残した集合なので、
+        // 押された時点で必ず 1 個以上増える。コマンドが null になるのは
+        // Undo を記録できない文脈 (Play 中など) のときだけ。
         auto command = AddMissingComponentsWithUndo(go, ctx, fixable);
-        if (command && ctx.undoStack) ctx.undoStack->Push(std::move(command));
+        if (command && ctx.undoStack) {
+            ctx.undoStack->Push(std::move(command));
+        }
         added = true;
     }
-    if (ImGui::IsItemHovered())
+    if (ImGui::IsItemHovered()) {
         ImGui::SetTooltip("Add the missing components with their default setup");
+    }
 
     ImGui::Spacing();
     return added;
@@ -217,9 +245,11 @@ bool DrawScriptRequirementBanner(scene::GameObject& go,
 bool ResolveUIImageNativeSize(const scene::UIImage& image, EditorContext& ctx,
                               math::Vector2& outSize)
 {
-    /// @note 今 Viewport に出ている絵に合わせる。ボタンの状態差し替え中はそちらが正。
+    // 今 Viewport に出ている絵に合わせる。ボタンの状態差し替え中はそちらが正。
     const std::string& source = image.EffectiveTexturePath();
-    if (source.empty() || ctx.resources == nullptr) return false;
+    if (source.empty() || ctx.resources == nullptr) {
+        return false;
+    }
 
     std::string texturePath;
     std::string spriteId;
@@ -227,13 +257,17 @@ bool ResolveUIImageNativeSize(const scene::UIImage& image, EditorContext& ctx,
     const auto handle =
         ctx.resources->LoadTexture(asset::AssetManager::ResolveAssetPath(texturePath));
     const renderer::ITexture* texture = handle.IsValid() ? ctx.resources->Get(handle) : nullptr;
-    if (texture == nullptr) return false;
+    if (texture == nullptr) {
+        return false;
+    }
 
     const asset::ResolvedSprite resolved = asset::ResolveSpriteReference(
         source,
         static_cast<float>(texture->GetWidth()),
         static_cast<float>(texture->GetHeight()));
-    if (resolved.sizePixels.x <= 0.0f || resolved.sizePixels.y <= 0.0f) return false;
+    if (resolved.sizePixels.x <= 0.0f || resolved.sizePixels.y <= 0.0f) {
+        return false;
+    }
 
     const float pixelsPerUnit = resolved.pixelsPerUnit > 0.0f
         ? resolved.pixelsPerUnit : scene::kUIReferencePixelsPerUnit;
@@ -263,8 +297,9 @@ void TrackTransformEdit(scene::GameObject& go, EditorContext& ctx, const char* d
         edit.active = true;
     }
 
-    if (!ImGui::IsItemDeactivatedAfterEdit() || !edit.active || edit.id != go.GetID())
+    if (!ImGui::IsItemDeactivatedAfterEdit() || !edit.active || edit.id != go.GetID()) {
         return;
+    }
 
     const scene::Transform before = edit.before;
     const scene::Transform after = go.transform;
@@ -276,7 +311,9 @@ void TrackTransformEdit(scene::GameObject& go, EditorContext& ctx, const char* d
         auto apply = [scene, instanceId, markDirty](const scene::Transform& value) {
             if (auto* target = scene->FindByGuid(instanceId)) {
                 target->transform = value;
-                if (markDirty) markDirty();
+                if (markDirty) {
+                    markDirty();
+                }
             }
         };
         ctx.undoStack->Push(std::make_unique<LambdaCommand>(
@@ -286,7 +323,9 @@ void TrackTransformEdit(scene::GameObject& go, EditorContext& ctx, const char* d
     }
 
     edit.active = false;
-    if (!TransformAuthoringValuesEqual(before, after) && ctx.markSceneDirty) ctx.markSceneDirty();
+    if (!TransformAuthoringValuesEqual(before, after) && ctx.markSceneDirty) {
+        ctx.markSceneDirty();
+    }
 }
 
 /// @note  Transform の値クリップボードは EditorContext::transformClipboard にある
@@ -301,11 +340,17 @@ void PushTransformSnapshotUndo(scene::GameObject& go,
                                const scene::Transform& before,
                                const char* desc)
 {
-    if (ctx.markSceneDirty) ctx.markSceneDirty();
-    if (!ctx.activeScene || !ctx.undoStack || !ctx.undoStack->IsRecordingEnabled()) return;
+    if (ctx.markSceneDirty) {
+        ctx.markSceneDirty();
+    }
+    if (!ctx.activeScene || !ctx.undoStack || !ctx.undoStack->IsRecordingEnabled()) {
+        return;
+    }
 
     const scene::Transform after = go.transform;
-    if (TransformAuthoringValuesEqual(before, after)) return;
+    if (TransformAuthoringValuesEqual(before, after)) {
+        return;
+    }
 
     scene::Scene*     scene      = ctx.activeScene;
     const std::string instanceId = go.instanceId;
@@ -314,7 +359,9 @@ void PushTransformSnapshotUndo(scene::GameObject& go,
     auto apply = [scene, instanceId, markDirty](const scene::Transform& value) {
         if (auto* target = scene->FindByGuid(instanceId)) {
             target->transform = value;
-            if (markDirty) markDirty();
+            if (markDirty) {
+                markDirty();
+            }
         }
     };
     ctx.undoStack->Push(std::make_unique<LambdaCommand>(desc,
@@ -335,7 +382,9 @@ bool& UniformScaleLock() { static bool locked = false; return locked; }
 {
     bool requested = false;
     if (ImGui::BeginPopupContextItem(popupId)) {
-        if (ImGui::MenuItem("Reset")) requested = true;
+        if (ImGui::MenuItem("Reset")) {
+            requested = true;
+        }
         ImGui::EndPopup();
     }
     return requested;
@@ -347,41 +396,54 @@ bool& UniformScaleLock() { static bool locked = false; return locked; }
 /// @note  Docs/design/editor-operator-model.md
 void DrawTransformHeaderMenu(scene::GameObject& go, EditorContext& ctx)
 {
-    if (!ImGui::BeginPopup("##transform_hdr_ctx")) return;
+    if (!ImGui::BeginPopup("##transform_hdr_ctx")) {
+        return;
+    }
     DrawComponentMenuHeading(LOCT("Transform"));
 
-    /// @note 対象は「今 Inspector が映しているノード」。選択と一致しない場合があるため明示する。
+    // 対象は「今 Inspector が映しているノード」。選択と一致しない場合があるため明示する。
     OpArgs args;
     args.Set("node", go.instanceId);
 
     const auto item = [&ctx, &args](const char* operatorId, const char* label) {
         const bool enabled = CanInvokeOperator(ctx, operatorId, args);
-        if (ImGui::MenuItem(LOC(label), nullptr, false, enabled))
+        if (ImGui::MenuItem(LOC(label), nullptr, false, enabled)) {
             InvokeOperator(ctx, operatorId, args);
+        }
     };
 
     item("transform.copy", "Copy Transform");
-    if (DrawPasteComponentValuesMenuItem("Paste Transform", CanInvokeOperator(ctx, "transform.paste", args)))
+    if (DrawPasteComponentValuesMenuItem("Paste Transform", CanInvokeOperator(ctx, "transform.paste", args))) {
         InvokeOperator(ctx, "transform.paste", args);
+    }
     ImGui::Separator();
     item("transform.reset", "Reset Transform");
     ImGui::EndPopup();
 }
 
-} /// @note namespace
+} // namespace
 
 bool SetUIImageNativeSize(scene::GameObject& object, EditorContext& context)
 {
     const auto* image = object.GetComponent<scene::UIImage>();
-    if (!image || (image->anchoring.stretchX && image->anchoring.stretchY)) return false;
+    if (!image || (image->anchoring.stretchX && image->anchoring.stretchY)) {
+        return false;
+    }
     math::Vector2 size{};
-    if (!ResolveUIImageNativeSize(*image, context, size)) return false;
+    if (!ResolveUIImageNativeSize(*image, context, size)) {
+        return false;
+    }
     auto& transform = object.transform;
     const auto before = transform;
-    if (!image->anchoring.stretchX) transform.scale.x = size.x;
-    if (!image->anchoring.stretchY) transform.scale.y = size.y;
-    if (!TransformAuthoringValuesEqual(before, transform))
+    if (!image->anchoring.stretchX) {
+        transform.scale.x = size.x;
+    }
+    if (!image->anchoring.stretchY) {
+        transform.scale.y = size.y;
+    }
+    if (!TransformAuthoringValuesEqual(before, transform)) {
         PushTransformSnapshotUndo(object, context, before, "Set Native Size");
+    }
     return true;
 }
 
@@ -392,13 +454,14 @@ std::string GetScriptOrderKey(const scene::ScriptComponent& component, int index
 
 void DrawTransformInspectors(scene::GameObject* go, EditorContext& ctx)
 {
-    /// @note Transform は常に有効なのでチェックボックスを持たない。帯はテーマのアクセント色にして、
-    /// @note        「必ず一番上にある基準のカード」であることを他のコンポーネントと区別する。
+    // Transform は常に有効なのでチェックボックスを持たない。帯はテーマのアクセント色にして、
+    // 「必ず一番上にある基準のカード」であることを他のコンポーネントと区別する。
     const widgets::ComponentHeaderResult transformHeader =
         widgets::ComponentHeader("Transform", EditorTheme::ColorU32(ThemeColor::Accent), nullptr);
-    /// @note ⋯ / ヘッダー右クリック: Copy / Paste / Reset (開閉状態に関わらず有効)
-    if (transformHeader.menuClicked)
+    // ⋯ / ヘッダー右クリック: Copy / Paste / Reset (開閉状態に関わらず有効)
+    if (transformHeader.menuClicked) {
         ImGui::OpenPopup("##transform_hdr_ctx");
+    }
     DrawTransformHeaderMenu(*go, ctx);
 
     widgets::ComponentBodyScope transformBody{};
@@ -423,19 +486,21 @@ void DrawTransformInspectors(scene::GameObject* go, EditorContext& ctx)
             math::Vector3 euler = widgets::QuatToEulerDeg(t.rotation);
             float rotZ = euler.z;
             const auto rotationRow = widgets::BeginPropertyField("Rotation");
-            if (ImGui::DragFloat("##rz", &rotZ, 0.5f, -360.0f, 360.0f, "Z %.1f deg", valueAlignment))
+            if (ImGui::DragFloat("##rz", &rotZ, 0.5f, -360.0f, 360.0f, "Z %.1f deg", valueAlignment)) {
                 t.rotation = widgets::EulerDegToQuat({ euler.x, euler.y, rotZ });
+            }
             TrackTransformEdit(*go, ctx, "Change Rotation");
             widgets::EndPropertyField(rotationRow);
 
-            /// @note 実測サイズの文字以外は scale.xy が矩形そのものなので寸法として出す
-            /// @note        (絵を持たない Mask や Scroll View もここでしか大きさを決められない)。
-            /// @note        ストレッチしている軸は親から決まるので触らせない (「効かない欄」になる)。
+            // 実測サイズの文字以外は scale.xy が矩形そのものなので寸法として出す
+            // (絵を持たない Mask や Scroll View もここでしか大きさを決められない)。
+            // ストレッチしている軸は親から決まるので触らせない (「効かない欄」になる)。
             const scene::UIAnchor* uiAnchor = nullptr;
-            if (const auto* image = go->GetComponent<scene::UIImage>())
+            if (const auto* image = go->GetComponent<scene::UIImage>()) {
                 uiAnchor = &image->anchoring;
-            else if (const auto* text = go->GetComponent<scene::UIText>())
+            } else if (const auto* text = go->GetComponent<scene::UIText>()) {
                 uiAnchor = &text->anchoring;
+            }
             const bool stretchX = uiAnchor && uiAnchor->stretchX;
             const bool stretchY = uiAnchor && uiAnchor->stretchY;
 
@@ -451,15 +516,17 @@ void DrawTransformInspectors(scene::GameObject* go, EditorContext& ctx)
             }
 
             if (auto* uiImage = go->GetComponent<scene::UIImage>()) {
-                /// @note 絵を貼った直後にまずやりたいのは「元の絵の比率に戻す」で、
-                /// @note        それを手計算させないための 1 手。解決できないうちは押させない。
+                // 絵を貼った直後にまずやりたいのは「元の絵の比率に戻す」で、
+                // それを手計算させないための 1 手。解決できないうちは押させない。
                 math::Vector2 nativeSize{};
                 const bool hasNativeSize =
                     ResolveUIImageNativeSize(*uiImage, ctx, nativeSize);
-                /// @note 両軸ストレッチなら原寸に戻す先が無い。
+                // 両軸ストレッチなら原寸に戻す先が無い。
                 const bool canSetNative = hasNativeSize && !(stretchX && stretchY);
                 ImGui::BeginDisabled(!canSetNative);
-                if (ImGui::SmallButton("Set Native Size")) SetUIImageNativeSize(*go, ctx);
+                if (ImGui::SmallButton("Set Native Size")) {
+                    SetUIImageNativeSize(*go, ctx);
+                }
                 ImGui::EndDisabled();
                 if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled)) {
                     ImGui::SetTooltip(!hasNativeSize
@@ -470,14 +537,14 @@ void DrawTransformInspectors(scene::GameObject* go, EditorContext& ctx)
                 }
             }
         } else {
-            /// @note ラベルを左・値を右にそろえ、成分は軸色付き (X 赤 / Y 緑 / Z 青) にする。Transform だけ
-            /// @note        ImGui 既定の «値 → ラベル» 順で直下のコンポーネント行と左端が食い違っていたため。
-            /// @note        軸色は «どの成分を掴んでいるか» を数え直さずに判別するためのもの。
+            // ラベルを左・値を右にそろえ、成分は軸色付き (X 赤 / Y 緑 / Z 青) にする。Transform だけ
+            // ImGui 既定の «値 → ラベル» 順で直下のコンポーネント行と左端が食い違っていたため。
+            // 軸色は «どの成分を掴んでいるか» を数え直さずに判別するためのもの。
             const float lockSpace = ImGui::GetFrameHeight() + ImGui::GetStyle().ItemSpacing.x;
 
-            /// @note 「地色 + ラベル + 右クリックのリセット要求」までを 1 か所にまとめる。
-            /// @note        リセットは値ウィジェットより先に問い合わせる必要がある (ImGui の
-            /// @note        コンテキストメニューは「直前のアイテム」= ラベルに紐づくため)。
+            // 「地色 + ラベル + 右クリックのリセット要求」までを 1 か所にまとめる。
+            // リセットは値ウィジェットより先に問い合わせる必要がある (ImGui の
+            // コンテキストメニューは「直前のアイテム」= ラベルに紐づくため)。
             const auto beginRow = [&](const char* label,
                                       const char* popupId,
                                       bool& outResetRequested,
@@ -494,7 +561,7 @@ void DrawTransformInspectors(scene::GameObject* go, EditorContext& ctx)
                 ImGui::PopID();
             };
 
-            /// @name Position
+            // Position
             {
                 bool resetRequested = false;
                 const widgets::PropertyRowScope row =
@@ -509,7 +576,7 @@ void DrawTransformInspectors(scene::GameObject* go, EditorContext& ctx)
                 endRow(row);
             }
 
-            /// @name Rotation (内部は Quaternion、UI はオイラー角)
+            // Rotation (内部は Quaternion、UI はオイラー角)
             {
                 bool resetRequested = false;
                 const widgets::PropertyRowScope row =
@@ -524,7 +591,7 @@ void DrawTransformInspectors(scene::GameObject* go, EditorContext& ctx)
                 endRow(row);
             }
 
-            /// @name Scale (等比リンク付き)
+            // Scale (等比リンク付き)
             {
                 bool resetRequested = false;
                 const widgets::PropertyRowScope row =
@@ -539,9 +606,9 @@ void DrawTransformInspectors(scene::GameObject* go, EditorContext& ctx)
                 endRow(row);
             }
 
-            /// @name ワールド座標 (読み取り専用)
-            /// @note 上の 3 行はローカル値で、階層下では「Position が 0,0,0 なのに原点にいない」が
-            /// @note        普通に起きる。編集はローカル側でしかできないので、こちらは表示専用。
+            // ワールド座標 (読み取り専用)
+            // 上の 3 行はローカル値で、階層下では「Position が 0,0,0 なのに原点にいない」が
+            // 普通に起きる。編集はローカル側でしかできないので、こちらは表示専用。
             if (const scene::GameObject* parent = go->GetParent()) {
                 ImGui::PushID("world");
                 const widgets::PropertyRowScope row = widgets::BeginPropertyRow();
@@ -563,9 +630,9 @@ void DrawTransformInspectors(scene::GameObject* go, EditorContext& ctx)
                 ImGui::PopID();
             }
 
-            /// @note 非一様スケール + 半径ベースのコライダーの注意書き。球とカプセルは半径ひとつで
-            /// @note        形が決まり、軸ごとの倍率を掛けられない。«見た目は潰れているのに当たり判定は
-            /// @note        真球» は値を眺めても気付けず、原因不明の当たり判定バグとして時間を溶かす。
+            // 非一様スケール + 半径ベースのコライダーの注意書き。球とカプセルは半径ひとつで
+            // 形が決まり、軸ごとの倍率を掛けられない。«見た目は潰れているのに当たり判定は
+            // 真球» は値を眺めても気付けず、原因不明の当たり判定バグとして時間を溶かす。
             const bool nonUniform =
                 std::fabs(t.scale.x - t.scale.y) > 0.001f ||
                 std::fabs(t.scale.y - t.scale.z) > 0.001f;
@@ -595,7 +662,9 @@ void BeginScriptInspectorFrame(scene::GameObject* go, EditorContext& ctx)
 {
     s_scriptFrame = {};
     auto* sc = go ? go->GetComponent<scene::ScriptComponent>() : nullptr;
-    if (!sc) return;
+    if (!sc) {
+        return;
+    }
 
     s_scriptFrame.active = true;
     s_scriptFrame.canTrackUndo =
@@ -604,16 +673,16 @@ void BeginScriptInspectorFrame(scene::GameObject* go, EditorContext& ctx)
         ctx.undoStack->IsRecordingEnabled() && (!ctx.playMode || ctx.playMode->IsInEditor());
     s_scriptFrame.activeBefore = ImGui::GetActiveID();
 
-    /// @note 眺めているだけのフレームでスナップショットを取らない。操作の開始候補
-    /// @note        (クリック / Enter / Space) が来たフレームだけ各スクリプトの現在値を控える。
+    // 眺めているだけのフレームでスナップショットを取らない。操作の開始候補
+    // (クリック / Enter / Space) が来たフレームだけ各スクリプトの現在値を控える。
     const bool mayStartEdit =
         !s_scriptUndo.active &&
         (ImGui::IsMouseClicked(ImGuiMouseButton_Left) ||
          ImGui::IsKeyPressed(ImGuiKey_Enter) ||
          ImGui::IsKeyPressed(ImGuiKey_Space));
 
-    /// @note index → 描画前スナップショット。どのスクリプトが編集対象になるかは
-    /// @note        ActiveID が確定するまで分からないため、候補フレームでは全件控えておく。
+    // index → 描画前スナップショット。どのスクリプトが編集対象になるかは
+    // ActiveID が確定するまで分からないため、候補フレームでは全件控えておく。
     if (s_scriptFrame.canTrackUndo && mayStartEdit) {
         s_scriptFrame.beforeSnapshots.reserve(sc->scripts.size());
         for (const auto& e : sc->scripts)
@@ -628,29 +697,32 @@ void DrawScriptCard(scene::GameObject* go, EditorContext& ctx, int index)
     FBZZ_PROFILE_SCOPE("Inspector::ScriptCard");
 
     auto* sc = go->GetComponent<scene::ScriptComponent>();
-    if (!sc || index < 0 || index >= static_cast<int>(sc->scripts.size())) return;
+    if (!sc || index < 0 || index >= static_cast<int>(sc->scripts.size())) {
+        return;
+    }
 
     const int i = index;
     auto& entry = sc->scripts[static_cast<size_t>(i)];
 
-    /// @note 並び替えはエンジン Component とまったく同じ仕組み (COMPONENT スコープ) に乗せる。
-    /// @note        カード 1 枚 = 並び順の 1 席。専用スコープにすると Component との相対位置を
-    /// @note        変えられなくなる。
+    // 並び替えはエンジン Component とまったく同じ仕組み (COMPONENT スコープ) に乗せる。
+    // カード 1 枚 = 並び順の 1 席。専用スコープにすると Component との相対位置を
+    // 変えられなくなる。
     const std::string orderKey = ScriptOrderKey(*sc, i);
     const widgets::ComponentReorderTarget reorder =
         MakeComponentReorderTarget(go, ctx, orderKey.c_str());
 
-    /// @note ⋯ メニューの Move Up / Move Down。1 つ隣へずらすだけならメニューの方が確実。
-    /// @note        端の判定 (hasPrev / hasNext) は operator の poll が引数を見て答える。
-    /// @note        ここで書くと同じ判定が 2 箇所になる。淡色表示もその答えを使う。
+    // ⋯ メニューの Move Up / Move Down。1 つ隣へずらすだけならメニューの方が確実。
+    // 端の判定 (hasPrev / hasNext) は operator の poll が引数を見て答える。
+    // ここで書くと同じ判定が 2 箇所になる。淡色表示もその答えを使う。
     const auto drawMoveMenuItems = [&]() {
         OpArgs args;
         args.Set("node", go->instanceId);
         args.Set("component", orderKey);
         const auto item = [&ctx, &args](const char* operatorId, const char* label) {
             const bool enabled = CanInvokeOperator(ctx, operatorId, args);
-            if (ImGui::MenuItem(label, nullptr, false, enabled))
+            if (ImGui::MenuItem(label, nullptr, false, enabled)) {
                 InvokeOperator(ctx, operatorId, args);
+            }
         };
         item("component.move_up", "Move Up");
         item("component.move_down", "Move Down");
@@ -665,7 +737,9 @@ void DrawScriptCard(scene::GameObject* go, EditorContext& ctx, int index)
                 requirementFocus.scriptId == entry.script->InspectionId();
             const bool navigateRequirement = requirementTarget && requirementFocus.scrollPending;
             const float requirementCardY = ImGui::GetCursorPosY();
-            if (navigateRequirement) ImGui::SetNextItemOpen(true, ImGuiCond_Always);
+            if (navigateRequirement) {
+                ImGui::SetNextItemOpen(true, ImGuiCond_Always);
+            }
             const std::string displayName = scene::ScriptFactory::DisplayName(entry.script->GetTypeName());
             const bool temporary = ctx.playMode && !ctx.playMode->IsInEditor();
             scene::ManagedScriptAdapter* managed = scene::ManagedScriptRuntime::Instance().FindAdapter(entry.script.get());
@@ -685,16 +759,20 @@ void DrawScriptCard(scene::GameObject* go, EditorContext& ctx, int index)
                                          !temporary, temporary ? widgets::ComponentReorderTarget{} : reorder, toggle);
             if (managed && hdr.enabledChanged) {
                 const auto result = ApplyManagedInspectorEnabled(ctx, enabledTargets, enabled);
-                if (!result.ok) DrawManagedDiagnostic("切り替えできません", result.message);
+                if (!result.ok) {
+                    DrawManagedDiagnostic("切り替えできません", result.message);
+                }
             }
-            if (hdr.menuClicked)
+            if (hdr.menuClicked) {
                 ImGui::OpenPopup("##script_opts");
+            }
 
             if (ImGui::BeginPopup("##script_opts")) {
                 DrawComponentMenuHeading(displayName.c_str());
                 drawMoveMenuItems();
-                if (DrawRemoveComponentMenuItem())
+                if (DrawRemoveComponentMenuItem()) {
                     s_scriptFrame.removeIndex = i;
+                }
                 ImGui::EndPopup();
             }
 
@@ -702,8 +780,8 @@ void DrawScriptCard(scene::GameObject* go, EditorContext& ctx, int index)
                 const widgets::ComponentBodyScope body =
                     widgets::BeginComponentBody(hdr, kScriptAccent);
                 ImGui::Spacing();
-                /// @note FBZZ_EXECUTE_ALWAYS の宣言はスクリプト側にしか無く、Inspector からは
-                /// @note        「今シーンが勝手に書き換わっている」ことの説明が付かない。カード上で名指しする。
+                // FBZZ_EXECUTE_ALWAYS の宣言はスクリプト側にしか無く、Inspector からは
+                // 「今シーンが勝手に書き換わっている」ことの説明が付かない。カード上で名指しする。
                 if (entry.script->ExecuteInEditMode()) {
                     ImGui::PushStyleColor(ImGuiCol_Text, EditorTheme::Color(ThemeColor::Info));
                     ImGui::TextUnformatted("Runs in Edit Mode");
@@ -714,10 +792,12 @@ void DrawScriptCard(scene::GameObject* go, EditorContext& ctx, int index)
                             "Values it writes become part of the scene and are saved with it.");
                     ImGui::Spacing();
                 }
-                /// @note 不足している必須コンポーネントはフィールドより先に出す。値をいじっても
-                /// @note        直らない類の問題なので、パラメーター調整に入る前に目に入る位置へ置く。
+                // 不足している必須コンポーネントはフィールドより先に出す。値をいじっても
+                // 直らない類の問題なので、パラメーター調整に入る前に目に入る位置へ置く。
                 if (DrawScriptRequirementBanner(*go, *entry.script, ctx)) {
-                    if (ctx.markSceneDirty) ctx.markSceneDirty();
+                    if (ctx.markSceneDirty) {
+                        ctx.markSceneDirty();
+                    }
                 }
                 if (requirementTarget) {
                     ImGui::TextColored({1.0f, 0.72f, 0.25f, 1}, "必須設定の確認箇所");
@@ -730,8 +810,12 @@ void DrawScriptCard(scene::GameObject* go, EditorContext& ctx, int index)
                 }
                 if (managed && ctx.managedScripts && ctx.managedScripts->RequiresExplicitEditApply()) {
                     ImGui::TextDisabled("最新の C# コードが未適用です");
-                    if (ImGui::IsItemHovered()) ImGui::SetTooltip("編集時の値を保持しています。最新コードを検証してから適用します。");
-                    if (ImGui::SmallButton("最新コードを適用")) InvokeOperator(ctx, "script.managed_build");
+                    if (ImGui::IsItemHovered()) {
+                        ImGui::SetTooltip("編集時の値を保持しています。最新コードを検証してから適用します。");
+                    }
+                    if (ImGui::SmallButton("最新コードを適用")) {
+                        InvokeOperator(ctx, "script.managed_build");
+                    }
                 }
                 if (managed && (managed->IsRuntimeFaulted() || managed->RequirementsBlocked())) {
                     DrawManagedDiagnostic("C# Script は停止中です", managed->FaultDiagnostic().empty()
@@ -742,19 +826,23 @@ void DrawScriptCard(scene::GameObject* go, EditorContext& ctx, int index)
                     resume.Set("scriptId", CaptureManagedSettingsTarget(ctx, *go, entry).scriptId);
                     resume.Set("enabled", true);
                     ImGui::BeginDisabled(!CanInvokeOperator(ctx, "script.resume", resume));
-                    if (ImGui::Button("修復後に再検証して再開")) InvokeOperator(ctx, "script.resume", resume);
+                    if (ImGui::Button("修復後に再検証して再開")) {
+                        InvokeOperator(ctx, "script.resume", resume);
+                    }
                     ImGui::EndDisabled();
                     ImGui::Spacing();
                 }
                 ImGuiReflector nativeReflector;
                 std::unique_ptr<ManagedSettingsReflector> managedReflector;
-                if (managed) managedReflector = std::make_unique<ManagedSettingsReflector>(ctx, *go, entry);
+                if (managed) {
+                    managedReflector = std::make_unique<ManagedSettingsReflector>(ctx, *go, entry);
+                }
                 ImGuiReflector& reflector = managed ? static_cast<ImGuiReflector&>(*managedReflector) : nativeReflector;
                 if (requirementTarget) {
                     reflector.m_focusField = requirementFocus.field;
                     reflector.m_focusScrollRequested = navigateRequirement;
                 }
-                /// @note アセットスロットの "..." パス検索用
+                // アセットスロットの "..." パス検索用
                 reflector.m_projectRoot = ctx.projectRoot;
                 if (ctx.activeScene) {
                     reflector.m_goNameResolver = [scene = ctx.activeScene](scene::EntityID id) -> std::string {
@@ -765,12 +853,13 @@ void DrawScriptCard(scene::GameObject* go, EditorContext& ctx, int index)
                         const auto* target = scene->GetGameObject(id);
                         return target ? target->instanceId : std::string{};
                     };
-                    /// @note ◎ピッカー用の候補一覧。シーンの全 GameObject を (ID, 名前) で列挙する。
+                    // ◎ピッカー用の候補一覧。シーンの全 GameObject を (ID, 名前) で列挙する。
                     reflector.m_goListProvider =
                         [scene = ctx.activeScene]() -> std::vector<std::pair<scene::EntityID, std::string>> {
                             std::vector<std::pair<scene::EntityID, std::string>> out;
-                            for (auto& go : scene->GameObjects())
+                            for (auto& go : scene->GameObjects()) {
                                 out.emplace_back(go.GetID(), go.name);
+                            }
                             return out;
                         };
                     reflector.m_tagListProvider =
@@ -778,90 +867,104 @@ void DrawScriptCard(scene::GameObject* go, EditorContext& ctx, int index)
                             std::vector<std::string> tags;
                             for (auto& object : scene->GameObjects()) {
                                 if (!object.tag.empty() &&
-                                    std::find(tags.begin(), tags.end(), object.tag) == tags.end())
+                                    std::find(tags.begin(), tags.end(), object.tag) == tags.end()) {
                                     tags.push_back(object.tag);
+                                }
                             }
                             std::sort(tags.begin(), tags.end());
                             return tags;
                         };
-                    /// @note 型付き参照 (FBZZ_REF<T>) の型チェック: 対象 GO が typeName の
-                    /// @note        Script かコンポーネントを持つか。typeName が空 (任意 GameObject) なら常に true。
-                    /// @note        ドロップ検証とピッカーの絞り込みが同じ 1 本を使う。
+                    // 型付き参照 (FBZZ_REF<T>) の型チェック: 対象 GO が typeName の
+                    // Script かコンポーネントを持つか。typeName が空 (任意 GameObject) なら常に true。
+                    // ドロップ検証とピッカーの絞り込みが同じ 1 本を使う。
                     reflector.m_refTypeValidator =
                         [scene = ctx.activeScene](scene::EntityID id, const char* typeName) -> bool {
-                            if (!typeName || !typeName[0]) return true;
-                            auto* target = scene->GetGameObject(id);
-                            if (!target) return false;
-                            if (auto* sc = target->GetComponent<scene::ScriptComponent>()) {
-                                /// @note 名前一致ではなく IsA で判定するのは、FBZZ_REF(EnemyAiBase, ...) の
-                                /// @note        スロットへ MiteComponent を持つ GO を落とせるようにするため。
-                                /// @note        基底型で受ける参照は継承鎖のどこで一致してもよい。
-                                for (const auto& entry : sc->scripts)
-                                    if (entry.script && entry.script->IsA(typeName))
-                                        return true;
+                            if (!typeName || !typeName[0]) {
+                                return true;
                             }
-                            /// @note コンポーネント参照 (FBZZ_REF(LightComponent, ...) 等)。
-                            /// @note        突き合わせるのは ComponentRegistry の serializedName で、
-                            /// @note        これは登録マクロの #Type — FBZZ_REF に書いた型名と同じ文字列になる。
+                            auto* target = scene->GetGameObject(id);
+                            if (!target) {
+                                return false;
+                            }
+                            if (auto* sc = target->GetComponent<scene::ScriptComponent>()) {
+                                // 名前一致ではなく IsA で判定するのは、FBZZ_REF(EnemyAiBase, ...) の
+                                // スロットへ MiteComponent を持つ GO を落とせるようにするため。
+                                // 基底型で受ける参照は継承鎖のどこで一致してもよい。
+                                for (const auto& entry : sc->scripts)
+                                    if (entry.script && entry.script->IsA(typeName)) {
+                                        return true;
+                                    }
+                            }
+                            // コンポーネント参照 (FBZZ_REF(LightComponent, ...) 等)。
+                            // 突き合わせるのは ComponentRegistry の serializedName で、
+                            // これは登録マクロの #Type — FBZZ_REF に書いた型名と同じ文字列になる。
                             return HasRegisteredComponentByName(*target, typeName);
                         };
                 }
-                /// @note どのスクリプトが編集対象になったかは、その Reflect() の描画中に
-                /// @note        ActiveID が確定したかどうかで判別する。index だけを後から推測すると
-                /// @note        複数スクリプトを付けた GameObject で取り違える。
+                // どのスクリプトが編集対象になったかは、その Reflect() の描画中に
+                // ActiveID が確定したかどうかで判別する。index だけを後から推測すると
+                // 複数スクリプトを付けた GameObject で取り違える。
                 const ImGuiID activeBeforeScript = ImGui::GetActiveID();
                 if (managed) {
                     managedReflector->Draw();
                     managedReflector->Finish();
                     managedReflector->DrawActions();
-                } else entry.script->Reflect(reflector);
+                } else {
+                    entry.script->Reflect(reflector);
+                }
                 if (navigateRequirement) {
-                    if (!reflector.m_focusFound)
+                    if (!reflector.m_focusFound) {
                         ImGui::SetScrollFromPosY(requirementCardY, 0.2f);
+                    }
                     requirementFocus.scrollPending = false;
                 }
-                if (!managed && reflector.m_changed)
+                if (!managed && reflector.m_changed) {
                     entry.script->ExecuteProfiledCallback(&scene::Script::OnValidate, scene::ScriptCallbackKind::VALIDATE, "OnValidate");
+                }
                 const ImGuiID activeAfterScript = ImGui::GetActiveID();
-                if (!managed && activeAfterScript != 0 && activeAfterScript != activeBeforeScript)
+                if (!managed && activeAfterScript != 0 && activeAfterScript != activeBeforeScript) {
                     s_scriptFrame.editingIndex = i;
+                }
 
                 ImGui::Spacing();
                 widgets::EndComponentBody(body);
             }
             ImGui::Spacing();
         } else if (entry.serialized && !entry.serialized->type.empty()) {
-            /// @note C# のビルド適用中はシリアライズ済みフィールドを保持していることを示す。
+            // C# のビルド適用中はシリアライズ済みフィールドを保持していることを示す。
             const bool isBuilding = ctx.managedBuildBusy;
             const std::string header = (isBuilding ? "Building... " : "Missing Script: ")
                                        + scene::ScriptFactory::DisplayName(entry.serialized->type);
-            /// @note 帯を警告色にして、正常なスクリプトカードと一目で区別できるようにする。
+            // 帯を警告色にして、正常なスクリプトカードと一目で区別できるようにする。
             const ImU32 accent = EditorTheme::ColorU32(
                 isBuilding ? ThemeColor::Warning : ThemeColor::Danger);
-            /// @note DLL 未ロードのカードも並び替え対象にする。実行順は serialized のまま保存されるため、
-            /// @note        ビルドが通っていない間に整えられないと «直せるのはビルド成功後だけ» という
-            /// @note        余計な待ちが生まれる。
+            // DLL 未ロードのカードも並び替え対象にする。実行順は serialized のまま保存されるため、
+            // ビルドが通っていない間に整えられないと «直せるのはビルド成功後だけ» という
+            // 余計な待ちが生まれる。
             const widgets::ComponentHeaderResult hdr =
                 widgets::ComponentHeader(header.c_str(), accent, &entry.serialized->enabled,
                                          true, reorder);
-            if (hdr.menuClicked)
+            if (hdr.menuClicked) {
                 ImGui::OpenPopup("##missing_script_opts");
+            }
 
             if (ImGui::BeginPopup("##missing_script_opts")) {
                 DrawComponentMenuHeading(header.c_str());
                 drawMoveMenuItems();
-                if (DrawRemoveComponentMenuItem())
+                if (DrawRemoveComponentMenuItem()) {
                     s_scriptFrame.removeIndex = i;
+                }
                 ImGui::EndPopup();
             }
 
             if (hdr.open) {
                 const widgets::ComponentBodyScope body = widgets::BeginComponentBody(hdr, accent);
                 ImGui::Spacing();
-                if (isBuilding)
-                ImGui::TextDisabled("C# scripts are being applied. Serialized fields are preserved.");
-                else
-                ImGui::TextDisabled("Script type is unavailable. Serialized fields are preserved.");
+                if (isBuilding) {
+                    ImGui::TextDisabled("C# scripts are being applied. Serialized fields are preserved.");
+                } else {
+                    ImGui::TextDisabled("Script type is unavailable. Serialized fields are preserved.");
+                }
                 ImGui::Spacing();
                 widgets::EndComponentBody(body);
             }
@@ -874,11 +977,15 @@ void DrawScriptCard(scene::GameObject* go, EditorContext& ctx, int index)
 
 void EndScriptInspectorFrame(scene::GameObject* go, EditorContext& ctx)
 {
-    if (!s_scriptFrame.active) return;
+    if (!s_scriptFrame.active) {
+        return;
+    }
     s_scriptFrame.active = false;
 
     auto* sc = go ? go->GetComponent<scene::ScriptComponent>() : nullptr;
-    if (!sc) return;
+    if (!sc) {
+        return;
+    }
 
     if (s_scriptFrame.removeIndex >= 0 &&
         s_scriptFrame.removeIndex < static_cast<int>(sc->scripts.size())) {
@@ -889,12 +996,14 @@ void EndScriptInspectorFrame(scene::GameObject* go, EditorContext& ctx)
         }
     }
 
-    /// @note 表示順 (Component 順リスト) を正として実行順を追従させる。
-    /// @note        移動を検知する専用経路を作るとドラッグ / メニュー / Undo / Redo の 4 か所へ
-    /// @note        同じ同期を書き写すことになる。毎フレーム導出すればどの経路でも必ず追従する
-    /// @note        (一致していれば比較だけで終わる)。
+    // 表示順 (Component 順リスト) を正として実行順を追従させる。
+    // 移動を検知する専用経路を作るとドラッグ / メニュー / Undo / Redo の 4 か所へ
+    // 同じ同期を書き写すことになる。毎フレーム導出すればどの経路でも必ず追従する
+    // (一致していれば比較だけで終わる)。
     if (SyncScriptOrderToDisplay(*sc, ctx, go->instanceId)) {
-        if (ctx.markSceneDirty) ctx.markSceneDirty();
+        if (ctx.markSceneDirty) {
+            ctx.markSceneDirty();
+        }
     }
 
     if (!s_scriptFrame.canTrackUndo) {
@@ -904,18 +1013,23 @@ void EndScriptInspectorFrame(scene::GameObject* go, EditorContext& ctx)
 
     ScriptUndoTracker& undo = s_scriptUndo;
 
-    /// @note 対象スクリプトの現在値を撮る (追跡中のものを Undo コマンドの after にする)。
+    // 対象スクリプトの現在値を撮る (追跡中のものを Undo コマンドの after にする)。
     const auto captureTracked = [&]() -> std::string {
         if (undo.scriptIndex < 0 ||
-            undo.scriptIndex >= static_cast<int>(sc->scripts.size()))
+            undo.scriptIndex >= static_cast<int>(sc->scripts.size())) {
             return {};
+        }
         auto& e = sc->scripts[static_cast<std::size_t>(undo.scriptIndex)];
-        if (!e.script || e.script->GetTypeName() != undo.typeName) return {};
+        if (!e.script || e.script->GetTypeName() != undo.typeName) {
+            return {};
+        }
         return CaptureScriptSnapshot(*e.script);
     };
 
     auto pushCommand = [&](const std::string& before, const std::string& after) {
-        if (before == after || before.empty()) return;
+        if (before == after || before.empty()) {
+            return;
+        }
 
         scene::Scene* scene       = ctx.activeScene;
         const std::string guid    = undo.instanceId;
@@ -923,19 +1037,27 @@ void EndScriptInspectorFrame(scene::GameObject* go, EditorContext& ctx)
         const int         index   = undo.scriptIndex;
         const auto        markDirty = ctx.markSceneDirty;
 
-        /// @note GameObject* も Script* も Undo までの間に無効化され得るので、
-        /// @note        GUID → ScriptComponent → index の順で毎回引き直す。型名も照合して、
-        /// @note        間にスクリプトを付け外しされていた場合に別物へ書き込むのを防ぐ。
+        // GameObject* も Script* も Undo までの間に無効化され得るので、
+        // GUID → ScriptComponent → index の順で毎回引き直す。型名も照合して、
+        // 間にスクリプトを付け外しされていた場合に別物へ書き込むのを防ぐ。
         auto apply = [scene, guid, type, index, markDirty](const std::string& snapshot) {
             auto* target = scene->FindByGuid(guid);
-            if (!target) return;
+            if (!target) {
+                return;
+            }
             auto* comp = target->GetComponent<scene::ScriptComponent>();
-            if (!comp || index < 0 || index >= static_cast<int>(comp->scripts.size())) return;
+            if (!comp || index < 0 || index >= static_cast<int>(comp->scripts.size())) {
+                return;
+            }
             auto& e = comp->scripts[static_cast<std::size_t>(index)];
-            if (!e.script || e.script->GetTypeName() != type) return;
+            if (!e.script || e.script->GetTypeName() != type) {
+                return;
+            }
             ApplyScriptSnapshot(*e.script, snapshot);
                                 e.script->ExecuteProfiledCallback(&scene::Script::OnValidate, scene::ScriptCallbackKind::VALIDATE, "OnValidate");
-            if (markDirty) markDirty();
+            if (markDirty) {
+                markDirty();
+            }
         };
 
         ctx.undoStack->Push(std::make_unique<LambdaCommand>(
@@ -952,7 +1074,7 @@ void EndScriptInspectorFrame(scene::GameObject* go, EditorContext& ctx)
         editingIndex >= 0 &&
         editingIndex < static_cast<int>(beforeSnapshots.size()) &&
         editingIndex < static_cast<int>(sc->scripts.size())) {
-        /// @note 編集開始: 対象スクリプトの控えを Undo の before にする。
+        // 編集開始: 対象スクリプトの控えを Undo の before にする。
         auto& e = sc->scripts[static_cast<std::size_t>(editingIndex)];
         undo.activeId    = activeAfter;
         undo.before      = beforeSnapshots[static_cast<std::size_t>(editingIndex)];
@@ -961,7 +1083,7 @@ void EndScriptInspectorFrame(scene::GameObject* go, EditorContext& ctx)
         undo.scriptIndex = editingIndex;
         undo.active      = true;
     } else if (undo.active && activeAfter != undo.activeId) {
-        /// @note 編集終了 (別のウィジェットへ移った / 入力欄から離れた)。
+        // 編集終了 (別のウィジェットへ移った / 入力欄から離れた)。
         pushCommand(undo.before, captureTracked());
         undo.active = false;
     }
@@ -973,17 +1095,22 @@ void DrawScriptInspectors(scene::GameObject* go, EditorContext& ctx)
 {
     FBZZ_PROFILE_SCOPE("Inspector::Scripts");
     auto* sc = go ? go->GetComponent<scene::ScriptComponent>() : nullptr;
-    if (!sc) return;
+    if (!sc) {
+        return;
+    }
 
     if (ctx.playMode && !ctx.playMode->IsInEditor()) {
         for (int i = 0; i < static_cast<int>(sc->scripts.size()); ++i)
-            if (scene::ManagedScriptRuntime::Instance().FindAdapter(sc->scripts[static_cast<size_t>(i)].script.get())) DrawScriptCard(go, ctx, i);
+            if (scene::ManagedScriptRuntime::Instance().FindAdapter(sc->scripts[static_cast<size_t>(i)].script.get())) {
+                DrawScriptCard(go, ctx, i);
+            }
         return;
     }
     BeginScriptInspectorFrame(go, ctx);
-    for (int i = 0; i < static_cast<int>(sc->scripts.size()); ++i)
+    for (int i = 0; i < static_cast<int>(sc->scripts.size()); ++i) {
         DrawScriptCard(go, ctx, i);
+    }
     EndScriptInspectorFrame(go, ctx);
 }
 
-} /// @note namespace fbzz::editor
+} // namespace fbzz::editor

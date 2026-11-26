@@ -58,15 +58,25 @@ namespace {
 /// @return 型が演算子に合わない場合は false。
 bool PropertyValueMatches(const JsonValue& actual, const JsonValue& expected, const std::string& op)
 {
-    if (op == "equals") return SerializeJson(actual) == SerializeJson(expected);
-    if (op == "notEquals") return SerializeJson(actual) != SerializeJson(expected);
+    if (op == "equals") {
+        return SerializeJson(actual) == SerializeJson(expected);
+    }
+    if (op == "notEquals") {
+        return SerializeJson(actual) != SerializeJson(expected);
+    }
     if (op == "contains") {
         return actual.IsString() && expected.IsString()
             && LowerAscii(actual.AsString()).find(LowerAscii(expected.AsString())) != std::string::npos;
     }
-    if (!actual.IsNumber() || !expected.IsNumber()) return false;
-    if (op == "greater") return actual.AsNumber() > expected.AsNumber();
-    if (op == "less") return actual.AsNumber() < expected.AsNumber();
+    if (!actual.IsNumber() || !expected.IsNumber()) {
+        return false;
+    }
+    if (op == "greater") {
+        return actual.AsNumber() > expected.AsNumber();
+    }
+    if (op == "less") {
+        return actual.AsNumber() < expected.AsNumber();
+    }
     return false;
 }
 
@@ -85,11 +95,15 @@ Outcome FindSceneNodes(scene::Scene& activeScene, const JsonValue& payload)
     }
 
     std::vector<std::string> requiredComponents;
-    /// @note 旧 comp 入力との互換性を維持する。
-    if (!component.empty()) requiredComponents.push_back(component);
+    // 旧 comp 入力との互換性を維持する。
+    if (!component.empty()) {
+        requiredComponents.push_back(component);
+    }
     if (componentsValue != nullptr && componentsValue->IsArray()) {
         for (const JsonValue& value : componentsValue->AsArray()) {
-            if (value.IsString()) requiredComponents.push_back(value.AsString());
+            if (value.IsString()) {
+                requiredComponents.push_back(value.AsString());
+            }
         }
     }
     for (const std::string& required : requiredComponents) {
@@ -108,16 +122,22 @@ Outcome FindSceneNodes(scene::Scene& activeScene, const JsonValue& payload)
 
     const JsonValue* limitValue = payload.Find("limit");
     int limit = 100;
-    if (limitValue && (!limitValue->TryGetInt32(limit) || limit < 1 || limit > 500)) return Outcome::Err("BAD_ARG", "limit は 1..500 の page 件数です");
+    if (limitValue && (!limitValue->TryGetInt32(limit) || limit < 1 || limit > 500)) {
+        return Outcome::Err("BAD_ARG", "limit は 1..500 の page 件数です");
+    }
     int64_t offset = 0;
-    if (const JsonValue* start = payload.Find("offset"); start && (!start->TryGetInt64(offset) || offset < 0)) return Outcome::Err("BAD_ARG", "offset は 0 以上の整数です");
+    if (const JsonValue* start = payload.Find("offset"); start && (!start->TryGetInt64(offset) || offset < 0)) {
+        return Outcome::Err("BAD_ARG", "offset は 0 以上の整数です");
+    }
     const std::string nameNeedle = LowerAscii(name);
     JsonValue matches = JsonValue::MakeArray();
     int total = 0;
 
     std::function<void(GameObject*, const std::string&)> visit;
     visit = [&](GameObject* go, const std::string& parentPath) {
-        if (go == nullptr) return;
+        if (go == nullptr) {
+            return;
+        }
         const std::string nodePath = parentPath.empty() ? go->name : parentPath + "/" + go->name;
         const bool nameMatches = name.empty()
             || LowerAscii(go->name).find(nameNeedle) != std::string::npos;
@@ -158,7 +178,9 @@ Outcome FindSceneNodes(scene::Scene& activeScene, const JsonValue& payload)
                 match.Set("activeInHierarchy", JsonValue(go->activeInHierarchy()));
                 match.Set("layer", JsonValue(go->layer));
                 match.Set("path", JsonValue(nodePath));
-                if (GameObject* parent = go->GetParent()) match.Set("parent", JsonValue(parent->instanceId));
+                if (GameObject* parent = go->GetParent()) {
+                    match.Set("parent", JsonValue(parent->instanceId));
+                }
                 matches.Push(std::move(match));
             }
         }
@@ -167,16 +189,21 @@ Outcome FindSceneNodes(scene::Scene& activeScene, const JsonValue& payload)
         }
     };
 
-    for (GameObject* root : activeScene.GetRootGameObjects()) visit(root, "");
+    for (GameObject* root : activeScene.GetRootGameObjects()) {
+        visit(root, "");
+    }
 
     JsonValue result = JsonValue::MakeObject();
     const auto returned = static_cast<int64_t>(matches.AsArray().size());
     result.Set("matches", std::move(matches));
     result.Set("count", JsonValue(total));
     const bool more = offset < total && returned < total - offset;
-    result.Set("offset", JsonValue(offset)); result.Set("limit", JsonValue(limit)); result.Set("returned", JsonValue(returned));
+    result.Set("offset", JsonValue(offset));
+    result.Set("limit", JsonValue(limit));
+    result.Set("returned", JsonValue(returned));
     result.Set("nextOffset", more ? JsonValue(offset + returned) : JsonValue{});
-    result.Set("truncated", JsonValue(more)); result.Set("sample", JsonValue("request"));
+    result.Set("truncated", JsonValue(more));
+    result.Set("sample", JsonValue("request"));
     return Outcome::Ok(std::move(result));
 }
 
@@ -184,13 +211,19 @@ Outcome FindSceneNodes(scene::Scene& activeScene, const JsonValue& payload)
 /// @note 反射不可の型は既定値のみ復元する。
 void RestoreComponents(GameObject& go, const JsonValue& snapshot)
 {
-    if (!snapshot.IsArray()) return;
+    if (!snapshot.IsArray()) {
+        return;
+    }
     for (const JsonValue& entry : snapshot.AsArray()) {
         const std::string type = StringField(entry, "type");
-        if (type.empty()) continue;
+        if (type.empty()) {
+            continue;
+        }
         AddComponentByName(go, type);
         const JsonValue* fields = entry.Find("fields");
-        if (fields == nullptr || !fields->IsObject()) continue;
+        if (fields == nullptr || !fields->IsObject()) {
+            continue;
+        }
         for (const auto& member : fields->AsObject()) {
             std::string ignored;
             WriteComponentField(go, type, member.first, member.second, ignored);
@@ -200,18 +233,24 @@ void RestoreComponents(GameObject& go, const JsonValue& snapshot)
 
 GameObject* FindColliderOwner(scene::Scene& activeScene, const physics::Collider* collider)
 {
-    if (collider == nullptr) return nullptr;
+    if (collider == nullptr) {
+        return nullptr;
+    }
     for (GameObject& go : activeScene.GameObjects()) {
         GameObject* owner = nullptr;
         scene::ForEachRegisteredComponent([&]<typename T, typename Reg>() {
-            if (owner != nullptr) return;
+            if (owner != nullptr) {
+                return;
+            }
             if constexpr (std::is_base_of_v<scene::ColliderComponent, T>) {
                 if (T* component = go.GetComponent<T>(); component != nullptr && component->collider.get() == collider) {
                     owner = &go;
                 }
             }
         });
-        if (owner != nullptr) return owner;
+        if (owner != nullptr) {
+            return owner;
+        }
     }
     return nullptr;
 }
@@ -222,8 +261,11 @@ JsonValue BuildSceneSnapshot(scene::Scene& activeScene)
     JsonValue nodes = JsonValue::MakeArray();
     int generatedCount = 0;
     for (GameObject& go : activeScene.GameObjects()) {
-        /// @note ランタイム生成物は保存されず再生状態で差分が出るため snapshot 対象外。
-        if (go.IsRuntimeGenerated()) { ++generatedCount; continue; }
+        // ランタイム生成物は保存されず再生状態で差分が出るため snapshot 対象外。
+        if (go.IsRuntimeGenerated()) {
+            ++generatedCount;
+            continue;
+        }
         JsonValue node = JsonValue::MakeObject();
         node.Set("id", JsonValue(go.instanceId));
         node.Set("name", JsonValue(go.name));
@@ -231,7 +273,9 @@ JsonValue BuildSceneSnapshot(scene::Scene& activeScene)
         node.Set("active", JsonValue(go.activeSelf()));
         node.Set("activeInHierarchy", JsonValue(go.activeInHierarchy()));
         node.Set("layer", JsonValue(go.layer));
-        if (GameObject* parent = go.GetParent()) node.Set("parent", JsonValue(parent->instanceId));
+        if (GameObject* parent = go.GetParent()) {
+            node.Set("parent", JsonValue(parent->instanceId));
+        }
 
         JsonValue transform = JsonValue::MakeObject();
         transform.Set("position", VectorToJson(go.transform.position));
@@ -245,8 +289,10 @@ JsonValue BuildSceneSnapshot(scene::Scene& activeScene)
     JsonValue result = JsonValue::MakeObject();
     result.Set("nodes", std::move(nodes));
     result.Set("count", JsonValue(static_cast<int>(activeScene.GameObjectCount()) - generatedCount));
-    /// @note 除外件数は出す。snapshot に無いことを不整合と読ませないため。
-    if (generatedCount > 0) result.Set("excludedGenerated", JsonValue(generatedCount));
+    // 除外件数は出す。snapshot に無いことを不整合と読ませないため。
+    if (generatedCount > 0) {
+        result.Set("excludedGenerated", JsonValue(generatedCount));
+    }
     return result;
 }
 
@@ -265,17 +311,23 @@ JsonValue PhysicsHitToJson(scene::Scene& activeScene, const physics::World::Rayc
 
 Outcome DoPhysicsRaycast(editor::EditorContext& ctx, const JsonValue& payload)
 {
-    if (ctx.runtime == nullptr || ctx.activeScene == nullptr) return Outcome::Err("NO_PHYSICS", "Physics World または Scene が未設定です");
+    if (ctx.runtime == nullptr || ctx.activeScene == nullptr) {
+        return Outcome::Err("NO_PHYSICS", "Physics World または Scene が未設定です");
+    }
     math::Vector3 origin;
     math::Vector3 direction;
     if (!ReadVec3(payload, "origin", origin) || !ReadVec3(payload, "direction", direction)) {
         return Outcome::Err("BAD_ARG", "origin / direction が必要です");
     }
-    if (direction.LengthSq() <= 0.00000001f) return Outcome::Err("BAD_ARG", "direction はゼロベクトルにできません");
+    if (direction.LengthSq() <= 0.00000001f) {
+        return Outcome::Err("BAD_ARG", "direction はゼロベクトルにできません");
+    }
     const JsonValue* distanceValue = payload.Find("maxDistance");
     const float maxDistance = distanceValue != nullptr && distanceValue->IsNumber()
         ? static_cast<float>(distanceValue->AsNumber()) : 0.0f;
-    if (maxDistance <= 0.0f) return Outcome::Err("BAD_ARG", "maxDistance は正数で指定してください");
+    if (maxDistance <= 0.0f) {
+        return Outcome::Err("BAD_ARG", "maxDistance は正数で指定してください");
+    }
 
     physics::World::RaycastHit hit{};
     const JsonValue* radiusValue = payload.Find("sphereRadius");
@@ -285,26 +337,38 @@ Outcome DoPhysicsRaycast(editor::EditorContext& ctx, const JsonValue& payload)
         : ctx.runtime->GetPhysicsWorld().Raycast(origin, direction.Normalized(), maxDistance, hit);
     JsonValue result = JsonValue::MakeObject();
     result.Set("hit", JsonValue(didHit));
-    if (didHit) result.Set("result", PhysicsHitToJson(*ctx.activeScene, hit));
+    if (didHit) {
+        result.Set("result", PhysicsHitToJson(*ctx.activeScene, hit));
+    }
     return Outcome::Ok(std::move(result));
 }
 
 Outcome DoPhysicsOverlapSphere(editor::EditorContext& ctx, const JsonValue& payload)
 {
-    if (ctx.runtime == nullptr || ctx.activeScene == nullptr) return Outcome::Err("NO_PHYSICS", "Physics World または Scene が未設定です");
+    if (ctx.runtime == nullptr || ctx.activeScene == nullptr) {
+        return Outcome::Err("NO_PHYSICS", "Physics World または Scene が未設定です");
+    }
     math::Vector3 center;
-    if (!ReadVec3(payload, "center", center)) return Outcome::Err("BAD_ARG", "center が必要です");
+    if (!ReadVec3(payload, "center", center)) {
+        return Outcome::Err("BAD_ARG", "center が必要です");
+    }
     const JsonValue* radiusValue = payload.Find("radius");
     const float radius = radiusValue != nullptr && radiusValue->IsNumber()
         ? static_cast<float>(radiusValue->AsNumber()) : 0.0f;
-    if (radius <= 0.0f) return Outcome::Err("BAD_ARG", "radius は正数で指定してください");
+    if (radius <= 0.0f) {
+        return Outcome::Err("BAD_ARG", "radius は正数で指定してください");
+    }
 
     JsonValue matches = JsonValue::MakeArray();
     std::vector<std::string> emittedIds;
     for (const physics::ColliderInstance* instance : ctx.runtime->GetPhysicsWorld().OverlapSphere(center, radius)) {
-        if (instance == nullptr) continue;
+        if (instance == nullptr) {
+            continue;
+        }
         GameObject* owner = FindColliderOwner(*ctx.activeScene, instance->collider);
-        if (owner == nullptr || std::find(emittedIds.begin(), emittedIds.end(), owner->instanceId) != emittedIds.end()) continue;
+        if (owner == nullptr || std::find(emittedIds.begin(), emittedIds.end(), owner->instanceId) != emittedIds.end()) {
+            continue;
+        }
         emittedIds.push_back(owner->instanceId);
         JsonValue match = JsonValue::MakeObject();
         match.Set("id", JsonValue(owner->instanceId));
@@ -339,14 +403,22 @@ JsonValue CollisionEventToJson(scene::Scene& activeScene, const physics::Collisi
 
 Outcome DoPhysicsEvents(editor::EditorContext& ctx)
 {
-    if (ctx.runtime == nullptr || ctx.activeScene == nullptr) return Outcome::Err("NO_PHYSICS", "Physics World または Scene が未設定です");
+    if (ctx.runtime == nullptr || ctx.activeScene == nullptr) {
+        return Outcome::Err("NO_PHYSICS", "Physics World または Scene が未設定です");
+    }
     const physics::World& world = ctx.runtime->GetPhysicsWorld();
     JsonValue enter = JsonValue::MakeArray();
     JsonValue stay = JsonValue::MakeArray();
     JsonValue exit = JsonValue::MakeArray();
-    for (const auto& event : world.GetEnterEvents()) enter.Push(CollisionEventToJson(*ctx.activeScene, event));
-    for (const auto& event : world.GetStayEvents()) stay.Push(CollisionEventToJson(*ctx.activeScene, event));
-    for (const auto& event : world.GetExitEvents()) exit.Push(CollisionEventToJson(*ctx.activeScene, event));
+    for (const auto& event : world.GetEnterEvents()) {
+        enter.Push(CollisionEventToJson(*ctx.activeScene, event));
+    }
+    for (const auto& event : world.GetStayEvents()) {
+        stay.Push(CollisionEventToJson(*ctx.activeScene, event));
+    }
+    for (const auto& event : world.GetExitEvents()) {
+        exit.Push(CollisionEventToJson(*ctx.activeScene, event));
+    }
     JsonValue result = JsonValue::MakeObject();
     result.Set("enter", std::move(enter));
     result.Set("stay", std::move(stay));
@@ -357,40 +429,54 @@ Outcome DoPhysicsEvents(editor::EditorContext& ctx)
 Outcome DoMaterialInspect(editor::EditorContext& ctx, const JsonValue& payload)
 {
     scene::Scene* sourceScene = ctx.activeScene;
-    if (!sourceScene) return Outcome::Err("NO_SCENE", "アクティブシーンがありません");
+    if (!sourceScene) {
+        return Outcome::Err("NO_SCENE", "アクティブシーンがありません");
+    }
     const uint64_t sourceGeneration = sourceScene->GetRenderSceneGeneration();
     const std::string id = StringField(payload, "id");
     GameObject* go = sourceScene->FindByGuid(id);
-    if (!go) return Outcome::Err("NODE_NOT_FOUND", "NodeId が見つかりません: " + id);
+    if (!go) {
+        return Outcome::Err("NODE_NOT_FOUND", "NodeId が見つかりません: " + id);
+    }
     auto* material = go->GetComponent<scene::MaterialComponent>();
-    if (!material) return Outcome::Err("NOT_PRESENT", "MaterialComponent が装着されていません");
+    if (!material) {
+        return Outcome::Err("NOT_PRESENT", "MaterialComponent が装着されていません");
+    }
     const auto sourceAuthoring = material->ReadAuthoring();
     (void)material->EnsureMaterialAsset();
-    if (ctx.activeScene != sourceScene || sourceScene->GetRenderSceneGeneration() != sourceGeneration)
+    if (ctx.activeScene != sourceScene || sourceScene->GetRenderSceneGeneration() != sourceGeneration) {
         return Outcome::Err("CONFLICT", "Material source scene changed while resolving its asset");
+    }
     go = sourceScene->FindByGuid(id);
     material = go ? go->GetComponent<scene::MaterialComponent>() : nullptr;
-    if (!material || material->ReadAuthoring() != sourceAuthoring)
+    if (!material || material->ReadAuthoring() != sourceAuthoring) {
         return Outcome::Err("CONFLICT", "Material authoring owner changed while resolving its asset");
+    }
     const auto materialHandle = material->GetMaterialAsset();
     const bool enabled = material->enabled;
     const auto assetSnapshot = asset::ReadMaterialAuthoring(materialHandle);
     const std::string shaderPath = assetSnapshot ? assetSnapshot->Data().shaderPath : std::string{};
-    if (ctx.activeScene != sourceScene || sourceScene->GetRenderSceneGeneration() != sourceGeneration)
+    if (ctx.activeScene != sourceScene || sourceScene->GetRenderSceneGeneration() != sourceGeneration) {
         return Outcome::Err("CONFLICT", "Material source scene changed while reading its asset");
+    }
     go = sourceScene->FindByGuid(id);
     material = go ? go->GetComponent<scene::MaterialComponent>() : nullptr;
-    if (!material || material->ReadAuthoring() != sourceAuthoring || material->GetMaterialAsset() != materialHandle)
+    if (!material || material->ReadAuthoring() != sourceAuthoring || material->GetMaterialAsset() != materialHandle) {
         return Outcome::Err("CONFLICT", "Material authoring owner changed while reading its asset");
+    }
     JsonValue overrides = JsonValue::MakeObject();
     for (const auto& [name, values] : sourceAuthoring->Data().paramOverrides) {
         JsonValue value = JsonValue::MakeArray();
-        for (float element : values) value.Push(JsonValue(element));
+        for (float element : values) {
+            value.Push(JsonValue(element));
+        }
         overrides.Set(name, std::move(value));
     }
     for (const auto& [name, values] : sourceAuthoring->Data().integerParamOverrides) {
         JsonValue value = JsonValue::MakeArray();
-        for (const int64_t element : values) value.Push(JsonValue(static_cast<double>(element)));
+        for (const int64_t element : values) {
+            value.Push(JsonValue(static_cast<double>(element)));
+        }
         overrides.Set(name, std::move(value));
     }
     JsonValue result = JsonValue::MakeObject();
@@ -427,7 +513,9 @@ void AddValidationIssue(JsonValue& issues, const char* severity, const char* cod
 Outcome DoSceneValidate(editor::EditorContext& ctx)
 {
     namespace fs = std::filesystem;
-    if (ctx.activeScene == nullptr) return Outcome::Err("NO_SCENE", "アクティブシーンがありません");
+    if (ctx.activeScene == nullptr) {
+        return Outcome::Err("NO_SCENE", "アクティブシーンがありません");
+    }
     JsonValue issues = JsonValue::MakeArray();
     std::unordered_map<std::string, std::vector<GameObject*>> names;
     std::unordered_set<std::string> guids;
@@ -477,7 +565,9 @@ Outcome DoSceneValidate(editor::EditorContext& ctx)
         }
     }
     for (const auto& [name, objects] : names) {
-        if (name.empty() || objects.size() < 2) continue;
+        if (name.empty() || objects.size() < 2) {
+            continue;
+        }
         for (const GameObject* go : objects) {
             AddValidationIssue(issues, "warning", "DUPLICATE_NAME", *go, "同じ階層名が複数あります: " + go->name);
             ++warnings;
@@ -503,10 +593,14 @@ Outcome DoSceneValidate(editor::EditorContext& ctx)
 Outcome DoSceneList(editor::EditorContext& ctx)
 {
     namespace fs = std::filesystem;
-    if (ctx.projectRoot.empty()) return Outcome::Err("NO_PROJECT", "projectRoot が未設定です");
+    if (ctx.projectRoot.empty()) {
+        return Outcome::Err("NO_PROJECT", "projectRoot が未設定です");
+    }
     std::error_code ec;
     const fs::path root = fs::weakly_canonical(fs::path(ctx.projectRoot), ec);
-    if (ec) return Outcome::Err("BAD_PATH", "projectRoot の解決に失敗しました");
+    if (ec) {
+        return Outcome::Err("BAD_PATH", "projectRoot の解決に失敗しました");
+    }
 
     const fs::path currentPath = ctx.currentScenePath.empty()
         ? fs::path{} : fs::weakly_canonical(fs::path(ctx.currentScenePath), ec);
@@ -516,33 +610,46 @@ Outcome DoSceneList(editor::EditorContext& ctx)
     std::string currentRelative;
     for (fs::recursive_directory_iterator it(root, fs::directory_options::skip_permission_denied, ec), end;
          it != end; it.increment(ec)) {
-        if (ec) { ec.clear(); continue; }
-        const fs::path& path = it->path();
-        if (it->is_directory(ec)) {
-            /// @note 生成物・VCS ディレクトリへは降りない (走査時間と応答量を無駄にする)。
-            const std::string name = path.filename().string();
-            if (name == "Library" || name == "Baked" || name == ".git" || name == "node_modules")
-                it.disable_recursion_pending();
+        if (ec) {
+            ec.clear();
             continue;
         }
-        if (LowerAscii(path.extension().string()) != ".scene") continue;
+        const fs::path& path = it->path();
+        if (it->is_directory(ec)) {
+            // 生成物・VCS ディレクトリへは降りない (走査時間と応答量を無駄にする)。
+            const std::string name = path.filename().string();
+            if (name == "Library" || name == "Baked" || name == ".git" || name == "node_modules") {
+                it.disable_recursion_pending();
+            }
+            continue;
+        }
+        if (LowerAscii(path.extension().string()) != ".scene") {
+            continue;
+        }
         const fs::path relative = fs::relative(path, root, ec);
-        if (ec) { ec.clear(); continue; }
+        if (ec) {
+            ec.clear();
+            continue;
+        }
         const bool isCurrent = !currentPath.empty() && path == currentPath;
-        if (isCurrent) currentRelative = relative.generic_string();
+        if (isCurrent) {
+            currentRelative = relative.generic_string();
+        }
         JsonValue entry = JsonValue::MakeObject();
         entry.Set("path", JsonValue(relative.generic_string()));
         entry.Set("name", JsonValue(path.stem().string()));
         entry.Set("sizeBytes", JsonValue(static_cast<int>(fs::file_size(path, ec))));
         ec.clear();
-        if (isCurrent) entry.Set("isCurrent", JsonValue(true));
+        if (isCurrent) {
+            entry.Set("isCurrent", JsonValue(true));
+        }
         scenes.Push(std::move(entry));
     }
 
     JsonValue result = JsonValue::MakeObject();
     result.Set("count", JsonValue(static_cast<int>(scenes.AsArray().size())));
     result.Set("current", JsonValue(currentRelative));
-    /// @note dirty のときは scene.open が拒否される。先に知れないと 1 往復無駄になる。
+    // dirty のときは scene.open が拒否される。先に知れないと 1 往復無駄になる。
     result.Set("dirty", JsonValue(ctx.sceneDirty));
     result.Set("prefabEditMode", JsonValue(ctx.InPrefabEditMode()));
     result.Set("scenes", std::move(scenes));
@@ -553,22 +660,32 @@ Outcome DoSceneList(editor::EditorContext& ctx)
 /// @note 未保存変更は discardUnsaved を明示しない限り拒否する。確認モーダルを開くと人が操作するまでバスの drain が止まるため。
 Outcome DoSceneOpen(editor::EditorContext& ctx, const JsonValue& payload, bool dryRun)
 {
-    if (!ctx.openScenePathImmediate) return Outcome::Err("NO_HOST", "シーンを開く機能が未接続です");
-    if (ctx.InPrefabEditMode()) return Outcome::Err("PREFAB_EDIT_MODE", "Prefab 編集モード中はシーンを切り替えられません");
-    if (ctx.playMode != nullptr && !ctx.playMode->IsInEditor())
+    if (!ctx.openScenePathImmediate) {
+        return Outcome::Err("NO_HOST", "シーンを開く機能が未接続です");
+    }
+    if (ctx.InPrefabEditMode()) {
+        return Outcome::Err("PREFAB_EDIT_MODE", "Prefab 編集モード中はシーンを切り替えられません");
+    }
+    if (ctx.playMode != nullptr && !ctx.playMode->IsInEditor()) {
         return Outcome::Err("INVALID_PLAY_STATE", "Play 中はシーンを切り替えられません。先に play_control stop を実行してください");
+    }
 
     const std::string requested = StringField(payload, "path");
-    if (requested.empty()) return Outcome::Err("BAD_ARG", "path が必要です");
+    if (requested.empty()) {
+        return Outcome::Err("BAD_ARG", "path が必要です");
+    }
     std::filesystem::path absolute;
     std::string relative;
-    if (!ResolveProjectFile(ctx, requested, absolute, relative))
+    if (!ResolveProjectFile(ctx, requested, absolute, relative)) {
         return Outcome::Err("BAD_PATH", "path は projectRoot 配下で指定してください: " + requested);
-    if (LowerAscii(absolute.extension().string()) != ".scene")
+    }
+    if (LowerAscii(absolute.extension().string()) != ".scene") {
         return Outcome::Err("BAD_PATH", ".scene を指定してください: " + relative);
+    }
     std::error_code ec;
-    if (!std::filesystem::is_regular_file(absolute, ec))
+    if (!std::filesystem::is_regular_file(absolute, ec)) {
         return Outcome::Err("SCENE_NOT_FOUND", "シーンが見つかりません: " + relative);
+    }
 
     const JsonValue* discardValue = payload.Find("discardUnsaved");
     const bool discardUnsaved = discardValue != nullptr && discardValue->AsBool();
@@ -584,13 +701,14 @@ Outcome DoSceneOpen(editor::EditorContext& ctx, const JsonValue& payload, bool d
         return preview;
     }
 
-    if (!ctx.openScenePathImmediate(absolute.generic_string()))
+    if (!ctx.openScenePathImmediate(absolute.generic_string())) {
         return Outcome::Err("OPEN_FAILED", "シーンの読み込みに失敗しました: " + relative);
+    }
 
     JsonValue result = JsonValue::MakeObject();
     result.Set("opened", JsonValue(relative));
     result.Set("discarded", JsonValue(discardUnsaved));
-    /// @note 開き直すと Undo スタックは破棄される (別シーンの EntityID を持つコマンドは復元できない)。
+    // 開き直すと Undo スタックは破棄される (別シーンの EntityID を持つコマンドは復元できない)。
     result.Set("undoCleared", JsonValue(true));
     return Outcome::Ok(std::move(result));
 }
@@ -599,24 +717,31 @@ Outcome DoSceneOpen(editor::EditorContext& ctx, const JsonValue& payload, bool d
 /// @note path 省略で上書き、指定で別名保存 (以降のカレントもそのパスになる)。
 Outcome DoSceneSave(editor::EditorContext& ctx, const JsonValue& payload, bool dryRun)
 {
-    if (!ctx.saveScenePathImmediate) return Outcome::Err("NO_HOST", "シーン保存機能が未接続です");
-    if (ctx.InPrefabEditMode()) return Outcome::Err("PREFAB_EDIT_MODE", "Prefab 編集モード中はシーンを保存できません");
-    /// @note Play 中に保存すると、走っているシーン (遷移後は別ファイルの中身) を currentScenePath へ書き込んでしまう。
-    if (ctx.playMode != nullptr && !ctx.playMode->IsInEditor())
+    if (!ctx.saveScenePathImmediate) {
+        return Outcome::Err("NO_HOST", "シーン保存機能が未接続です");
+    }
+    if (ctx.InPrefabEditMode()) {
+        return Outcome::Err("PREFAB_EDIT_MODE", "Prefab 編集モード中はシーンを保存できません");
+    }
+    // Play 中に保存すると、走っているシーン (遷移後は別ファイルの中身) を currentScenePath へ書き込んでしまう。
+    if (ctx.playMode != nullptr && !ctx.playMode->IsInEditor()) {
         return Outcome::Err("INVALID_PLAY_STATE", "Play 中はシーンを保存できません。先に play_control stop を実行してください");
+    }
 
     const std::string requested = StringField(payload, "path");
     std::string relative;
     std::string absolute;
     if (!requested.empty()) {
         std::filesystem::path resolved;
-        if (!ResolveProjectFile(ctx, requested, resolved, relative))
+        if (!ResolveProjectFile(ctx, requested, resolved, relative)) {
             return Outcome::Err("BAD_PATH", "path は projectRoot 配下で指定してください: " + requested);
-        if (LowerAscii(resolved.extension().string()) != ".scene")
+        }
+        if (LowerAscii(resolved.extension().string()) != ".scene") {
             return Outcome::Err("BAD_PATH", ".scene を指定してください: " + relative);
+        }
         absolute = resolved.generic_string();
     } else if (ctx.currentScenePath.empty()) {
-        /// @note 名前の決定は設計判断なので機械的に埋めない。AI に明示させる。
+        // 名前の決定は設計判断なので機械的に埋めない。AI に明示させる。
         return Outcome::Err("NO_SCENE_PATH", "現在のシーンは未保存です。path を指定してください");
     }
 
@@ -626,8 +751,9 @@ Outcome DoSceneSave(editor::EditorContext& ctx, const JsonValue& payload, bool d
         return preview;
     }
 
-    if (!ctx.saveScenePathImmediate(absolute))
+    if (!ctx.saveScenePathImmediate(absolute)) {
         return Outcome::Err("SAVE_FAILED", "シーンの保存に失敗しました");
+    }
 
     JsonValue result = JsonValue::MakeObject();
     result.Set("saved", JsonValue(relative.empty() ? ctx.currentScenePath : relative));
@@ -644,7 +770,9 @@ Outcome DoPresetCatalog(const JsonValue& payload)
     const std::string category = LowerAscii(StringField(payload, "category"));
     JsonValue presets = JsonValue::MakeArray();
     for (const editor::ObjectPreset& preset : editor::ObjectPresetCatalog()) {
-        if (!category.empty() && LowerAscii(std::string(preset.category)) != category) continue;
+        if (!category.empty() && LowerAscii(std::string(preset.category)) != category) {
+            continue;
+        }
         JsonValue entry = JsonValue::MakeObject();
         entry.Set("id", JsonValue(std::string(preset.id)));
         entry.Set("category", JsonValue(std::string(preset.category)));
@@ -681,14 +809,17 @@ std::unique_ptr<ICommand> BuildCreateObjectCommand(editor::EditorContext& ctx,
         }
         const GameObject* parent = request.parentGuid.empty()
             ? nullptr : ctx.activeScene->FindByGuid(request.parentGuid);
-        if (editor::IsInsidePrefabInstance(parent))
+        if (editor::IsInsidePrefabInstance(parent)) {
             detailSink->Set("warning", JsonValue(std::string(editor::PrefabInstanceChildWarning())));
+        }
     }
 
     return editor::MakeCreateObjectCommand(
                 ctx, request, "AI: " + editor::CreateObjectLabel(request), false,
         [createdSink](const std::vector<std::string>& ids) {
-            if (createdSink && !ids.empty()) *createdSink = ids.front();
+            if (createdSink && !ids.empty()) {
+                *createdSink = ids.front();
+            }
         });
 }
 
@@ -697,12 +828,15 @@ std::unique_ptr<ICommand> BuildPresetCreateCommand([[maybe_unused]] editor::Edit
     [[maybe_unused]] std::shared_ptr<std::string> createdSink, [[maybe_unused]] JsonValue* detailSink)
 {
     scene::Scene* scene = ctx.activeScene;
-    if (scene == nullptr) { err = Outcome::Err("NO_SCENE", "アクティブシーンがありません"); return nullptr; }
+    if (scene == nullptr) {
+        err = Outcome::Err("NO_SCENE", "アクティブシーンがありません");
+        return nullptr;
+    }
     [[maybe_unused]] const auto markDirty = [&ctx]() { if (ctx.markSceneDirty) ctx.markSceneDirty(); };
 
-    /// @name Create プリセット
-    /// @note Hierarchy・GameObject メニュー・node.create_preset Operator と同じ MakeCreateObjectCommand を通す。
-    /// @note Operator を直接呼ばないのは、dryRun と transaction では適用を UndoStack::Execute に任せる必要があるため。
+    // Create プリセット
+    // Hierarchy・GameObject メニュー・node.create_preset Operator と同じ MakeCreateObjectCommand を通す。
+    // Operator を直接呼ばないのは、dryRun と transaction では適用を UndoStack::Execute に任せる必要があるため。
     if (type == "preset.create") {
         editor::CreateObjectRequest request;
         request.source      = editor::CreateObjectSource::Preset;
@@ -722,10 +856,13 @@ std::unique_ptr<ICommand> BuildNodeCreateCommand([[maybe_unused]] editor::Editor
     [[maybe_unused]] std::shared_ptr<std::string> createdSink, [[maybe_unused]] JsonValue* detailSink)
 {
     scene::Scene* scene = ctx.activeScene;
-    if (scene == nullptr) { err = Outcome::Err("NO_SCENE", "アクティブシーンがありません"); return nullptr; }
+    if (scene == nullptr) {
+        err = Outcome::Err("NO_SCENE", "アクティブシーンがありません");
+        return nullptr;
+    }
     [[maybe_unused]] const auto markDirty = [&ctx]() { if (ctx.markSceneDirty) ctx.markSceneDirty(); };
 
-    /// @note プリセット empty と同じ実体。名前を省略すると兄弟の中で一意な "GameObject (N)" になる。
+    // プリセット empty と同じ実体。名前を省略すると兄弟の中で一意な "GameObject (N)" になる。
     if (type == "node.create") {
         editor::CreateObjectRequest request;
         request.source     = editor::CreateObjectSource::Preset;
@@ -744,7 +881,10 @@ std::unique_ptr<ICommand> BuildNodeDuplicateCommand([[maybe_unused]] editor::Edi
     [[maybe_unused]] std::shared_ptr<std::string> createdSink, [[maybe_unused]] JsonValue* detailSink)
 {
     scene::Scene* scene = ctx.activeScene;
-    if (scene == nullptr) { err = Outcome::Err("NO_SCENE", "アクティブシーンがありません"); return nullptr; }
+    if (scene == nullptr) {
+        err = Outcome::Err("NO_SCENE", "アクティブシーンがありません");
+        return nullptr;
+    }
     [[maybe_unused]] const auto markDirty = [&ctx]() { if (ctx.markSceneDirty) ctx.markSceneDirty(); };
 
     if (type == "node.duplicate") {
@@ -762,7 +902,7 @@ std::unique_ptr<ICommand> BuildNodeDuplicateCommand([[maybe_unused]] editor::Edi
                 err = Outcome::Err("NODE_NOT_FOUND", "parent が見つかりません: " + requestedParentId);
                 return nullptr;
             }
-            /// @note 元ノード配下へ複製すると、コピー中に生成物を再帰走査へ取り込み得るため禁止する。
+            // 元ノード配下へ複製すると、コピー中に生成物を再帰走査へ取り込み得るため禁止する。
             if (requestedParent == source || requestedParent->IsDescendantOf(*source)) {
                 err = Outcome::Err("BAD_DUPLICATE_PARENT", "複製先に元ノード自身またはその子孫は指定できません");
                 return nullptr;
@@ -776,10 +916,14 @@ std::unique_ptr<ICommand> BuildNodeDuplicateCommand([[maybe_unused]] editor::Edi
             [context, scene, sourceId, requestedParentId, requestedName,
              duplicateGuid, createdSink, markDirty]() {
                 GameObject* sourceObject = scene->FindByGuid(sourceId);
-                if (sourceObject == nullptr) return;
+                if (sourceObject == nullptr) {
+                    return;
+                }
                 EntityID parentId{};
                 if (!requestedParentId.empty()) {
-                    if (GameObject* parent = scene->FindByGuid(requestedParentId)) parentId = parent->GetID();
+                    if (GameObject* parent = scene->FindByGuid(requestedParentId)) {
+                        parentId = parent->GetID();
+                    }
                 } else if (GameObject* parent = sourceObject->GetParent()) {
                     parentId = parent->GetID();
                 }
@@ -790,11 +934,20 @@ std::unique_ptr<ICommand> BuildNodeDuplicateCommand([[maybe_unused]] editor::Edi
                     parentId,
                     true);
                 GameObject* duplicate = scene->GetGameObject(duplicateId);
-                if (duplicate == nullptr) return;
-                if (duplicateGuid->empty()) *duplicateGuid = duplicate->instanceId;
-                else duplicate->instanceId = *duplicateGuid;
-                if (!requestedName.empty()) duplicate->name = requestedName;
-                if (createdSink) *createdSink = duplicate->instanceId;
+                if (duplicate == nullptr) {
+                    return;
+                }
+                if (duplicateGuid->empty()) {
+                    *duplicateGuid = duplicate->instanceId;
+                } else {
+                    duplicate->instanceId = *duplicateGuid;
+                }
+                if (!requestedName.empty()) {
+                    duplicate->name = requestedName;
+                }
+                if (createdSink) {
+                    *createdSink = duplicate->instanceId;
+                }
                 editor::SelectEntity(*context, duplicateId);
                 markDirty();
             },
@@ -819,7 +972,10 @@ std::unique_ptr<ICommand> BuildPrefabInstantiateCommand([[maybe_unused]] editor:
     [[maybe_unused]] std::shared_ptr<std::string> createdSink, [[maybe_unused]] JsonValue* detailSink)
 {
     scene::Scene* scene = ctx.activeScene;
-    if (scene == nullptr) { err = Outcome::Err("NO_SCENE", "アクティブシーンがありません"); return nullptr; }
+    if (scene == nullptr) {
+        err = Outcome::Err("NO_SCENE", "アクティブシーンがありません");
+        return nullptr;
+    }
     [[maybe_unused]] const auto markDirty = [&ctx]() { if (ctx.markSceneDirty) ctx.markSceneDirty(); };
 
     if (type == "prefab.instantiate") {
@@ -852,22 +1008,35 @@ std::unique_ptr<ICommand> BuildPrefabInstantiateCommand([[maybe_unused]] editor:
         return std::make_unique<LambdaCommand>("AI: Instantiate Prefab",
             [scene, prefabPath, parentId, rootGuids, createdSink, markDirty]() {
                 std::vector<EntityID> roots;
-                if (!editor::PrefabSerializer::Instantiate(*scene, prefabPath.generic_string(), roots)) return;
+                if (!editor::PrefabSerializer::Instantiate(*scene, prefabPath.generic_string(), roots)) {
+                    return;
+                }
                 for (size_t index = 0; index < roots.size(); ++index) {
                     GameObject* root = scene->GetGameObject(roots[index]);
-                    if (root == nullptr) continue;
-                    if (index < rootGuids->size()) root->instanceId = (*rootGuids)[index];
-                    else rootGuids->push_back(root->instanceId);
+                    if (root == nullptr) {
+                        continue;
+                    }
+                    if (index < rootGuids->size()) {
+                        root->instanceId = (*rootGuids)[index];
+                    } else {
+                        rootGuids->push_back(root->instanceId);
+                    }
                     if (!parentId.empty()) {
-                        if (GameObject* parent = scene->FindByGuid(parentId)) root->SetParent(*parent);
+                        if (GameObject* parent = scene->FindByGuid(parentId)) {
+                            root->SetParent(*parent);
+                        }
                     }
                 }
-                if (createdSink && !rootGuids->empty()) *createdSink = rootGuids->front();
+                if (createdSink && !rootGuids->empty()) {
+                    *createdSink = rootGuids->front();
+                }
                 markDirty();
             },
             [scene, rootGuids, markDirty]() {
                 for (const std::string& guid : *rootGuids) {
-                    if (GameObject* root = scene->FindByGuid(guid)) scene->DestroyGameObject(root->GetID());
+                    if (GameObject* root = scene->FindByGuid(guid)) {
+                        scene->DestroyGameObject(root->GetID());
+                    }
                 }
                 markDirty();
             });
@@ -882,34 +1051,40 @@ std::unique_ptr<ICommand> BuildPrefabCreateCommand([[maybe_unused]] editor::Edit
     [[maybe_unused]] std::shared_ptr<std::string> createdSink, [[maybe_unused]] JsonValue* detailSink)
 {
     scene::Scene* scene = ctx.activeScene;
-    if (scene == nullptr) { err = Outcome::Err("NO_SCENE", "アクティブシーンがありません"); return nullptr; }
+    if (scene == nullptr) {
+        err = Outcome::Err("NO_SCENE", "アクティブシーンがありません");
+        return nullptr;
+    }
     [[maybe_unused]] const auto markDirty = [&ctx]() { if (ctx.markSceneDirty) ctx.markSceneDirty(); };
 
     if (type == "prefab.create") {
-        /// @note 選択 (または payload.ids) から `.prefab` を作りソースをインスタンス接続する。
-        /// @note Hierarchy / AssetBrowser D&D と同じ SaveSelectionAndConnect を通すため、青色表示・Apply/Revert 接続も自動で付く。
+        // 選択 (または payload.ids) から `.prefab` を作りソースをインスタンス接続する。
+        // Hierarchy / AssetBrowser D&D と同じ SaveSelectionAndConnect を通すため、青色表示・Apply/Revert 接続も自動で付く。
         namespace fs = std::filesystem;
         if (ctx.projectRoot.empty()) {
             err = Outcome::Err("NO_PROJECT", "projectRoot が未設定です");
             return nullptr;
         }
 
-        /// @note 対象ノード: payload.ids があればそれを、無ければ現在の選択を使う。
+        // 対象ノード: payload.ids があればそれを、無ければ現在の選択を使う。
         std::vector<std::string> selectionGuids;
         if (const JsonValue* ids = payload.Find("ids"); ids != nullptr && ids->IsArray()) {
             for (const JsonValue& v : ids->AsArray())
-                if (v.IsString() && !v.AsString().empty()) selectionGuids.push_back(v.AsString());
+                if (v.IsString() && !v.AsString().empty()) {
+                    selectionGuids.push_back(v.AsString());
+                }
         } else {
             for (EntityID id : ctx.selectedEntities)
-                if (GameObject* go = scene->GetGameObject(id); go != nullptr && !go->instanceId.empty())
+                if (GameObject* go = scene->GetGameObject(id); go != nullptr && !go->instanceId.empty()) {
                     selectionGuids.push_back(go->instanceId);
+                }
         }
         if (selectionGuids.empty()) {
             err = Outcome::Err("NO_SELECTION", "prefab 化する対象がありません (ids か選択を指定してください)");
             return nullptr;
         }
 
-        /// @note 保存先 `.prefab` パスを projectRoot 配下へ正規化する (まだ存在しなくてよい)。
+        // 保存先 `.prefab` パスを projectRoot 配下へ正規化する (まだ存在しなくてよい)。
         const std::string requestedPath = StringField(payload, "path");
         if (requestedPath.empty()) {
             err = Outcome::Err("BAD_PATH", "保存先 path (.prefab) を指定してください");
@@ -932,27 +1107,38 @@ std::unique_ptr<ICommand> BuildPrefabCreateCommand([[maybe_unused]] editor::Edit
         auto connectedGuids = std::make_shared<std::vector<std::string>>();
         return std::make_unique<LambdaCommand>("AI: Create Prefab",
             [scene, selectionGuids, diskPath, connectedGuids, createdSink, markDirty]() {
-                /// @note guid → EntityID を毎回解決する (redo でも最新 Scene に追随)。
+                // guid → EntityID を毎回解決する (redo でも最新 Scene に追随)。
                 std::vector<EntityID> selection;
                 for (const std::string& guid : selectionGuids)
-                    if (GameObject* go = scene->FindByGuid(guid)) selection.push_back(go->GetID());
-                if (selection.empty()) return;
+                    if (GameObject* go = scene->FindByGuid(guid)) {
+                        selection.push_back(go->GetID());
+                    }
+                if (selection.empty()) {
+                    return;
+                }
 
                 std::vector<EntityID> roots;
-                if (!editor::PrefabSerializer::SaveSelectionAndConnect(*scene, selection, diskPath, roots))
+                if (!editor::PrefabSerializer::SaveSelectionAndConnect(*scene, selection, diskPath, roots)) {
                     return;
+                }
 
                 connectedGuids->clear();
                 for (EntityID id : roots)
-                    if (GameObject* go = scene->GetGameObject(id)) connectedGuids->push_back(go->instanceId);
-                if (createdSink && !connectedGuids->empty()) *createdSink = connectedGuids->front();
+                    if (GameObject* go = scene->GetGameObject(id)) {
+                        connectedGuids->push_back(go->instanceId);
+                    }
+                if (createdSink && !connectedGuids->empty()) {
+                    *createdSink = connectedGuids->front();
+                }
                 markDirty();
             },
             [scene, diskPath, connectedGuids, markDirty]() {
                 std::error_code rec;
                 std::filesystem::remove(std::filesystem::path(diskPath), rec);
                 for (const std::string& guid : *connectedGuids)
-                    if (GameObject* go = scene->FindByGuid(guid)) go->prefabAssetPath.clear();
+                    if (GameObject* go = scene->FindByGuid(guid)) {
+                        go->prefabAssetPath.clear();
+                    }
                 markDirty();
             });
     }
@@ -966,18 +1152,24 @@ std::unique_ptr<ICommand> BuildPrefabApplyCommand([[maybe_unused]] editor::Edito
     [[maybe_unused]] std::shared_ptr<std::string> createdSink, [[maybe_unused]] JsonValue* detailSink)
 {
     scene::Scene* scene = ctx.activeScene;
-    if (scene == nullptr) { err = Outcome::Err("NO_SCENE", "アクティブシーンがありません"); return nullptr; }
+    if (scene == nullptr) {
+        err = Outcome::Err("NO_SCENE", "アクティブシーンがありません");
+        return nullptr;
+    }
     [[maybe_unused]] const auto markDirty = [&ctx]() { if (ctx.markSceneDirty) ctx.markSceneDirty(); };
 
     if (type == "prefab.apply") {
-        /// @note インスタンスの現在状態を元 `.prefab` へ書き戻す (ディスクのみ変更)。
+        // インスタンスの現在状態を元 `.prefab` へ書き戻す (ディスクのみ変更)。
         if (ctx.projectRoot.empty()) {
             err = Outcome::Err("NO_PROJECT", "projectRoot が未設定です");
             return nullptr;
         }
         const std::string id = StringField(payload, "id");
         GameObject* go = scene->FindByGuid(id);
-        if (go == nullptr) { err = Outcome::Err("NODE_NOT_FOUND", "NodeId が見つかりません: " + id); return nullptr; }
+        if (go == nullptr) {
+            err = Outcome::Err("NODE_NOT_FOUND", "NodeId が見つかりません: " + id);
+            return nullptr;
+        }
         if (go->prefabAssetPath.empty()) {
             err = Outcome::Err("NOT_PREFAB_INSTANCE", "prefab インスタンスではありません: " + id);
             return nullptr;
@@ -986,7 +1178,7 @@ std::unique_ptr<ICommand> BuildPrefabApplyCommand([[maybe_unused]] editor::Edito
         const std::string projectRoot = ctx.projectRoot;
         auto beforeContent = std::make_shared<std::string>();
         auto existedBefore = std::make_shared<bool>(false);
-        /// @note Propagate は他インスタンスを作り直すため、アセットだけ戻してもシーンは新定義のまま残る。シーンのスナップショットも併せて持つ。
+        // Propagate は他インスタンスを作り直すため、アセットだけ戻してもシーンは新定義のまま残る。シーンのスナップショットも併せて持つ。
         auto beforeScene = std::make_shared<std::string>();
         auto afterScene  = std::make_shared<std::string>();
         auto captured    = std::make_shared<bool>(false);
@@ -994,14 +1186,16 @@ std::unique_ptr<ICommand> BuildPrefabApplyCommand([[maybe_unused]] editor::Edito
             [scene, id, projectRoot, beforeContent, existedBefore,
              beforeScene, afterScene, captured, markDirty]() {
                 GameObject* target = scene->FindByGuid(id);
-                if (target == nullptr || target->prefabAssetPath.empty()) return;
+                if (target == nullptr || target->prefabAssetPath.empty()) {
+                    return;
+                }
                 if (!*captured) {
-                    /// @note Apply 前のアセット内容とシーンを退避して undo で書き戻せるようにする。
+                    // Apply 前のアセット内容とシーンを退避して undo で書き戻せるようにする。
                     const std::string disk =
                         editor::ToProjectAssetDiskPath(projectRoot, target->prefabAssetPath);
                     *existedBefore = util::FileSystem::ReadText(disk, *beforeContent);
                     *beforeScene = editor::SceneIO::Serialize(*scene);
-                    /// @note Apply だけでは同じ `.prefab` の他インスタンスが新定義へ揃わず、画面の実体だけ古いままになる。
+                    // Apply だけでは同じ `.prefab` の他インスタンスが新定義へ揃わず、画面の実体だけ古いままになる。
                     (void)editor::PrefabSerializer::ApplyAndPropagate(
                         *scene, target->GetID(), projectRoot);
                     *afterScene = editor::SceneIO::Serialize(*scene);
@@ -1013,15 +1207,20 @@ std::unique_ptr<ICommand> BuildPrefabApplyCommand([[maybe_unused]] editor::Edito
             },
             [scene, id, projectRoot, beforeContent, existedBefore,
              beforeScene, markDirty]() {
-                /// @note アセットを戻し、伝播で作り直された実体もシーンごと戻す。
+                // アセットを戻し、伝播で作り直された実体もシーンごと戻す。
                 if (GameObject* target = scene->FindByGuid(id);
                     target != nullptr && !target->prefabAssetPath.empty()) {
                     const std::string disk =
                         editor::ToProjectAssetDiskPath(projectRoot, target->prefabAssetPath);
-                    if (*existedBefore) util::FileSystem::WriteText(disk, *beforeContent);
-                    else std::filesystem::remove(std::filesystem::path(disk));
+                    if (*existedBefore) {
+                        util::FileSystem::WriteText(disk, *beforeContent);
+                    } else {
+                        std::filesystem::remove(std::filesystem::path(disk));
+                    }
                 }
-                if (!beforeScene->empty()) editor::SceneIO::Deserialize(*scene, *beforeScene);
+                if (!beforeScene->empty()) {
+                    editor::SceneIO::Deserialize(*scene, *beforeScene);
+                }
                 markDirty();
             });
     }
@@ -1035,18 +1234,24 @@ std::unique_ptr<ICommand> BuildPrefabRevertCommand([[maybe_unused]] editor::Edit
     [[maybe_unused]] std::shared_ptr<std::string> createdSink, [[maybe_unused]] JsonValue* detailSink)
 {
     scene::Scene* scene = ctx.activeScene;
-    if (scene == nullptr) { err = Outcome::Err("NO_SCENE", "アクティブシーンがありません"); return nullptr; }
+    if (scene == nullptr) {
+        err = Outcome::Err("NO_SCENE", "アクティブシーンがありません");
+        return nullptr;
+    }
     [[maybe_unused]] const auto markDirty = [&ctx]() { if (ctx.markSceneDirty) ctx.markSceneDirty(); };
 
     if (type == "prefab.revert") {
-        /// @note インスタンスを元 `.prefab` の定義へ戻す。シーン変更のため前後スナップショットで undo する。
+        // インスタンスを元 `.prefab` の定義へ戻す。シーン変更のため前後スナップショットで undo する。
         if (ctx.projectRoot.empty()) {
             err = Outcome::Err("NO_PROJECT", "projectRoot が未設定です");
             return nullptr;
         }
         const std::string id = StringField(payload, "id");
         GameObject* go = scene->FindByGuid(id);
-        if (go == nullptr) { err = Outcome::Err("NODE_NOT_FOUND", "NodeId が見つかりません: " + id); return nullptr; }
+        if (go == nullptr) {
+            err = Outcome::Err("NODE_NOT_FOUND", "NodeId が見つかりません: " + id);
+            return nullptr;
+        }
         if (go->prefabAssetPath.empty()) {
             err = Outcome::Err("NOT_PREFAB_INSTANCE", "prefab インスタンスではありません: " + id);
             return nullptr;
@@ -1058,14 +1263,17 @@ std::unique_ptr<ICommand> BuildPrefabRevertCommand([[maybe_unused]] editor::Edit
         auto captured = std::make_shared<bool>(false);
         return std::make_unique<LambdaCommand>("AI: Revert Prefab",
             [scene, id, projectRoot, before, after, captured, markDirty]() {
-                /// @note 初回は revert を実行して前後スナップショットを取り、redo 以降は after を復元する。
+                // 初回は revert を実行して前後スナップショットを取り、redo 以降は after を復元する。
                 if (!*captured) {
                     *before = editor::SceneIO::Serialize(*scene);
                     GameObject* target = scene->FindByGuid(id);
-                    if (target == nullptr) return;
-                    std::vector<EntityID> newRoots;
-                    if (!editor::PrefabSerializer::Revert(*scene, target->GetID(), newRoots, projectRoot))
+                    if (target == nullptr) {
                         return;
+                    }
+                    std::vector<EntityID> newRoots;
+                    if (!editor::PrefabSerializer::Revert(*scene, target->GetID(), newRoots, projectRoot)) {
+                        return;
+                    }
                     *after = editor::SceneIO::Serialize(*scene);
                     *captured = true;
                 } else if (!after->empty()) {
@@ -1074,7 +1282,9 @@ std::unique_ptr<ICommand> BuildPrefabRevertCommand([[maybe_unused]] editor::Edit
                 markDirty();
             },
             [scene, before, captured, markDirty]() {
-                if (*captured && !before->empty()) editor::SceneIO::Deserialize(*scene, *before);
+                if (*captured && !before->empty()) {
+                    editor::SceneIO::Deserialize(*scene, *before);
+                }
                 markDirty();
             });
     }
@@ -1088,14 +1298,20 @@ std::unique_ptr<ICommand> BuildMaterialAssignCommand([[maybe_unused]] editor::Ed
     [[maybe_unused]] std::shared_ptr<std::string> createdSink, [[maybe_unused]] JsonValue* detailSink)
 {
     scene::Scene* scene = ctx.activeScene;
-    if (scene == nullptr) { err = Outcome::Err("NO_SCENE", "アクティブシーンがありません"); return nullptr; }
+    if (scene == nullptr) {
+        err = Outcome::Err("NO_SCENE", "アクティブシーンがありません");
+        return nullptr;
+    }
     [[maybe_unused]] const auto markDirty = [&ctx]() { if (ctx.markSceneDirty) ctx.markSceneDirty(); };
 
     if (type == "material.assign") {
         namespace fs = std::filesystem;
         const std::string id = StringField(payload, "id");
         GameObject* go = scene->FindByGuid(id);
-        if (go == nullptr) { err = Outcome::Err("NODE_NOT_FOUND", "NodeId が見つかりません: " + id); return nullptr; }
+        if (go == nullptr) {
+            err = Outcome::Err("NODE_NOT_FOUND", "NodeId が見つかりません: " + id);
+            return nullptr;
+        }
         fs::path materialFile;
         std::string materialPath;
         if (!ResolveProjectFile(ctx, StringField(payload, "path"), materialFile, materialPath)
@@ -1109,18 +1325,27 @@ std::unique_ptr<ICommand> BuildMaterialAssignCommand([[maybe_unused]] editor::Ed
         return std::make_unique<LambdaCommand>("AI: Assign Material",
             [context = &ctx, scene, id, materialPath, markDirty]() {
                 GameObject* target = scene->FindByGuid(id);
-                if (target == nullptr) return;
+                if (target == nullptr) {
+                    return;
+                }
                 scene::MaterialComponent* material = target->GetComponent<scene::MaterialComponent>();
-                if (material == nullptr) material = &target->AddComponent<scene::MaterialComponent>(scene::MaterialComponent{});
+                if (material == nullptr) {
+                    material = &target->AddComponent<scene::MaterialComponent>(scene::MaterialComponent{});
+                }
                 const auto result = editor::material_edit_detail::AssignSlotReference(
                     editor::material_edit_detail::SlotTarget(*context, *target, 0), materialPath);
-                if (result == asset::detail::MaterialAuthoringCommitResult::COMMITTED) markDirty();
+                if (result == asset::detail::MaterialAuthoringCommitResult::COMMITTED) {
+                    markDirty();
+                }
             },
             [context = &ctx, scene, id, wasPresent, oldPath, markDirty]() {
                 GameObject* target = scene->FindByGuid(id);
-                if (target == nullptr) return;
-                if (!wasPresent) target->RemoveComponent<scene::MaterialComponent>();
-                else if (auto* material = target->GetComponent<scene::MaterialComponent>()) {
+                if (target == nullptr) {
+                    return;
+                }
+                if (!wasPresent) {
+                    target->RemoveComponent<scene::MaterialComponent>();
+                } else if (auto* material = target->GetComponent<scene::MaterialComponent>()) {
                     (void)editor::material_edit_detail::AssignSlotReference(
                         editor::material_edit_detail::SlotTarget(*context, *target, 0), oldPath);
                 }
@@ -1137,7 +1362,10 @@ std::unique_ptr<ICommand> BuildMaterialOverrideCommand([[maybe_unused]] editor::
     [[maybe_unused]] std::shared_ptr<std::string> createdSink, [[maybe_unused]] JsonValue* detailSink)
 {
     scene::Scene* scene = ctx.activeScene;
-    if (scene == nullptr) { err = Outcome::Err("NO_SCENE", "アクティブシーンがありません"); return nullptr; }
+    if (scene == nullptr) {
+        err = Outcome::Err("NO_SCENE", "アクティブシーンがありません");
+        return nullptr;
+    }
     [[maybe_unused]] const auto markDirty = [&ctx]() { if (ctx.markSceneDirty) ctx.markSceneDirty(); };
 
     if (type == "material.override") {
@@ -1145,30 +1373,42 @@ std::unique_ptr<ICommand> BuildMaterialOverrideCommand([[maybe_unused]] editor::
         const std::string parameter = StringField(payload, "parameter");
         const JsonValue* value = payload.Find("value");
         GameObject* go = scene->FindByGuid(id);
-        if (go == nullptr) { err = Outcome::Err("NODE_NOT_FOUND", "NodeId が見つかりません: " + id); return nullptr; }
+        if (go == nullptr) {
+            err = Outcome::Err("NODE_NOT_FOUND", "NodeId が見つかりません: " + id);
+            return nullptr;
+        }
         auto* material = go->GetComponent<scene::MaterialComponent>();
-        if (material == nullptr) { err = Outcome::Err("NOT_PRESENT", "MaterialComponent が装着されていません"); return nullptr; }
+        if (material == nullptr) {
+            err = Outcome::Err("NOT_PRESENT", "MaterialComponent が装着されていません");
+            return nullptr;
+        }
         if (parameter.empty() || value == nullptr || !value->IsArray() || value->AsArray().empty() || value->AsArray().size() > 16384) {
             err = Outcome::Err("BAD_ARG", "parameter と1〜16384要素の value が必要です");
             return nullptr;
         }
         std::vector<double> newValue;
         for (const JsonValue& element : value->AsArray()) {
-            if (!element.IsNumber()) { err = Outcome::Err("BAD_ARG", "value は数値配列です"); return nullptr; }
+            if (!element.IsNumber()) {
+                err = Outcome::Err("BAD_ARG", "value は数値配列です");
+                return nullptr;
+            }
             newValue.push_back(element.AsNumber());
         }
         const uint64_t sourceGeneration = scene->GetRenderSceneGeneration();
         const auto sourceAuthoring = material->ReadAuthoring();
         auto* resources = ctx.resources;
         if (!resources) {
-            err = Outcome::Err("REFLECTION_UNAVAILABLE", "Material と Shader の読み込みが必要です"); return nullptr;
+            err = Outcome::Err("REFLECTION_UNAVAILABLE", "Material と Shader の読み込みが必要です");
+            return nullptr;
         }
         const uint64_t resourceInstance = resources->GetInstanceId();
         const uint64_t resourceReset = resources->GetResetVersion();
         const auto resolveSource = [&]() -> scene::MaterialComponent* {
             if (ctx.activeScene != scene || scene->GetRenderSceneGeneration() != sourceGeneration
                 || ctx.resources != resources || resources->GetInstanceId() != resourceInstance
-                || resources->GetResetVersion() != resourceReset) return nullptr;
+                || resources->GetResetVersion() != resourceReset) {
+                return nullptr;
+            }
             auto* owner = scene->FindByGuid(id);
             auto* current = owner ? owner->GetComponent<scene::MaterialComponent>() : nullptr;
             return current && current->ReadAuthoring() == sourceAuthoring ? current : nullptr;
@@ -1176,29 +1416,36 @@ std::unique_ptr<ICommand> BuildMaterialOverrideCommand([[maybe_unused]] editor::
         const bool resolved = material->EnsureMaterialAsset();
         material = resolveSource();
         if (!material) {
-            err = Outcome::Err("CONFLICT", "Material authoring owner changed while resolving its asset"); return nullptr;
+            err = Outcome::Err("CONFLICT", "Material authoring owner changed while resolving its asset");
+            return nullptr;
         }
         if (!resolved) {
-            err = Outcome::Err("REFLECTION_UNAVAILABLE", "Material と Shader の読み込みが必要です"); return nullptr;
+            err = Outcome::Err("REFLECTION_UNAVAILABLE", "Material と Shader の読み込みが必要です");
+            return nullptr;
         }
         const auto assetHandle = material->GetMaterialAsset();
         const auto assetSnapshot = asset::ReadMaterialAuthoring(assetHandle);
         const std::string shaderPath = assetSnapshot ? assetSnapshot->Data().shaderPath : std::string{};
         if (!assetSnapshot) {
-            err = Outcome::Err("REFLECTION_UNAVAILABLE", "Material authoring snapshot is unavailable"); return nullptr;
+            err = Outcome::Err("REFLECTION_UNAVAILABLE", "Material authoring snapshot is unavailable");
+            return nullptr;
         }
         material = resolveSource();
         if (!material || material->GetMaterialAsset() != assetHandle) {
-            err = Outcome::Err("CONFLICT", "Material asset binding changed before shader resolution"); return nullptr;
+            err = Outcome::Err("CONFLICT", "Material asset binding changed before shader resolution");
+            return nullptr;
         }
         const auto handle = resources->LoadShader(shaderPath);
         material = resolveSource();
         if (!material || material->GetMaterialAsset() != assetHandle) {
-            err = Outcome::Err("CONFLICT", "Material source changed during shader creation"); return nullptr;
+            err = Outcome::Err("CONFLICT", "Material source changed during shader creation");
+            return nullptr;
         }
         const uint64_t shaderVersion = resources->GetShaderVersion();
         const auto descriptor = [&]() -> std::optional<renderer::ShaderDescriptor> {
-            if (const auto* shader = resources->Get(handle)) return shader->GetDescriptor();
+            if (const auto* shader = resources->Get(handle)) {
+                return shader->GetDescriptor();
+            }
             return std::nullopt;
         }();
         const auto hasCurrentShaderSource = [&]() {
@@ -1208,7 +1455,8 @@ std::unique_ptr<ICommand> BuildMaterialOverrideCommand([[maybe_unused]] editor::
                 && resources->GetShaderVersion() == shaderVersion;
         };
         if (!hasCurrentShaderSource()) {
-            err = Outcome::Err("CONFLICT", "Material or shader changed while resolving parameter reflection"); return nullptr;
+            err = Outcome::Err("CONFLICT", "Material or shader changed while resolving parameter reflection");
+            return nullptr;
         }
         const auto* variable = descriptor ? descriptor->FindVar(parameter) : nullptr;
         if (!variable || !asset::ValidateMaterialValues(*variable, newValue)) {
@@ -1217,7 +1465,8 @@ std::unique_ptr<ICommand> BuildMaterialOverrideCommand([[maybe_unused]] editor::
         }
         const bool integer = variable->varType != renderer::ShaderVarType::Float;
         if (!hasCurrentShaderSource()) {
-            err = Outcome::Err("CONFLICT", "Material authoring changed while validating parameter values"); return nullptr;
+            err = Outcome::Err("CONFLICT", "Material authoring changed while validating parameter values");
+            return nullptr;
         }
         const auto authoring = sourceAuthoring;
         const auto oldFloat = authoring->Data().paramOverrides.find(parameter);
@@ -1232,8 +1481,9 @@ std::unique_ptr<ICommand> BuildMaterialOverrideCommand([[maybe_unused]] editor::
                     auto edit = component->BeginAuthoringEdit();
                     update(edit.Draft());
                     const auto result = edit.Commit(*component);
-                    if (result == asset::detail::MaterialAuthoringCommitResult::COMMITTED) markDirty();
-                    else if (result == asset::detail::MaterialAuthoringCommitResult::CONFLICT)
+                    if (result == asset::detail::MaterialAuthoringCommitResult::COMMITTED) {
+                        markDirty();
+                    } else if (result == asset::detail::MaterialAuthoringCommitResult::CONFLICT)
                         FBZZ_LOG_WARN("AI material override edit conflicted with another authoring edit");
                 }
             }
@@ -1245,19 +1495,29 @@ std::unique_ptr<ICommand> BuildMaterialOverrideCommand([[maybe_unused]] editor::
                     draft.integerParamOverrides.erase(parameter);
                     if (integer) {
                         auto& values = draft.integerParamOverrides[parameter];
-                        for (const double value : newValue) values.push_back(static_cast<int64_t>(value));
+                        for (const double value : newValue) {
+                            values.push_back(static_cast<int64_t>(value));
+                        }
                     } else {
                         auto& values = draft.paramOverrides[parameter];
-                        for (const double value : newValue) values.push_back(static_cast<float>(value));
+                        for (const double value : newValue) {
+                            values.push_back(static_cast<float>(value));
+                        }
                     }
                 });
             },
             [apply, parameter, hadFloat, hadInteger, floatValue, integerValue]() {
                 apply([&](scene::MaterialSlotAuthoring& draft) {
-                    if (hadFloat) draft.paramOverrides[parameter] = floatValue;
-                    else draft.paramOverrides.erase(parameter);
-                    if (hadInteger) draft.integerParamOverrides[parameter] = integerValue;
-                    else draft.integerParamOverrides.erase(parameter);
+                    if (hadFloat) {
+                        draft.paramOverrides[parameter] = floatValue;
+                    } else {
+                        draft.paramOverrides.erase(parameter);
+                    }
+                    if (hadInteger) {
+                        draft.integerParamOverrides[parameter] = integerValue;
+                    } else {
+                        draft.integerParamOverrides.erase(parameter);
+                    }
                 });
             });
     }
@@ -1271,7 +1531,10 @@ std::unique_ptr<ICommand> BuildMaterialSetShaderCommand([[maybe_unused]] editor:
     [[maybe_unused]] std::shared_ptr<std::string> createdSink, [[maybe_unused]] JsonValue* detailSink)
 {
     scene::Scene* scene = ctx.activeScene;
-    if (scene == nullptr) { err = Outcome::Err("NO_SCENE", "アクティブシーンがありません"); return nullptr; }
+    if (scene == nullptr) {
+        err = Outcome::Err("NO_SCENE", "アクティブシーンがありません");
+        return nullptr;
+    }
     [[maybe_unused]] const auto markDirty = [&ctx]() { if (ctx.markSceneDirty) ctx.markSceneDirty(); };
 
     if (type == "material.asset.setShader") {
@@ -1298,10 +1561,12 @@ std::unique_ptr<ICommand> BuildMaterialSetShaderCommand([[maybe_unused]] editor:
         asset::MaterialAssetAuthoring newAsset = oldAsset;
         newAsset.shaderPath = shaderPath;
         editor::EditorContext* context = &ctx;
-        /// @note Unload はスロットを解放して世代を進めるため、配ってある AssetHandle が一斉に死ぬ。ReloadPath はハンドルを保ったまま実体を差し替える。
+        // Unload はスロットを解放して世代を進めるため、配ってある AssetHandle が一斉に死ぬ。ReloadPath はハンドルを保ったまま実体を差し替える。
         const auto applyToDisk = [context](const fs::path& file,
                                            const asset::MaterialAssetAuthoring& value) {
-            if (!asset::SaveMaterialAssetToFile(file.generic_string(), value)) return;
+            if (!asset::SaveMaterialAssetToFile(file.generic_string(), value)) {
+                return;
+            }
             asset::AssetManager::ReloadPath(file.generic_string());
             context->requestAssetBrowserRefresh = true;
         };
@@ -1319,22 +1584,34 @@ std::unique_ptr<ICommand> BuildNodeRenameCommand([[maybe_unused]] editor::Editor
     [[maybe_unused]] std::shared_ptr<std::string> createdSink, [[maybe_unused]] JsonValue* detailSink)
 {
     scene::Scene* scene = ctx.activeScene;
-    if (scene == nullptr) { err = Outcome::Err("NO_SCENE", "アクティブシーンがありません"); return nullptr; }
+    if (scene == nullptr) {
+        err = Outcome::Err("NO_SCENE", "アクティブシーンがありません");
+        return nullptr;
+    }
     [[maybe_unused]] const auto markDirty = [&ctx]() { if (ctx.markSceneDirty) ctx.markSceneDirty(); };
 
-    /// @note 実体は SceneEditUtils の `MakeRenameNodeCommand`。Hierarchy パネルのインラインリネームも同じ経路を通るため Undo の重さ・復元の仕方は変わらない。
+    // 実体は SceneEditUtils の `MakeRenameNodeCommand`。Hierarchy パネルのインラインリネームも同じ経路を通るため Undo の重さ・復元の仕方は変わらない。
     /// @see Docs/design/editor-operator-model.md
     if (type == "node.rename") {
         const std::string id = StringField(payload, "id");
         const std::string name = StringField(payload, "name");
         GameObject* go = scene->FindByGuid(id);
-        if (go == nullptr) { err = Outcome::Err("NODE_NOT_FOUND", "NodeId が見つかりません: " + id); return nullptr; }
-        if (name.empty()) { err = Outcome::Err("BAD_ARG", "name が空です"); return nullptr; }
-        /// @note 履歴ラベルだけ AI 用にする (editor_get_undo_history で自分の編集を識別できる)。
-        /// @note dryRun でもここまでは通るため適用は UndoStack::Execute に任せる (applyNow=true だと dryRun が実際に書き換えてしまう)。
+        if (go == nullptr) {
+            err = Outcome::Err("NODE_NOT_FOUND", "NodeId が見つかりません: " + id);
+            return nullptr;
+        }
+        if (name.empty()) {
+            err = Outcome::Err("BAD_ARG", "name が空です");
+            return nullptr;
+        }
+        // 履歴ラベルだけ AI 用にする (editor_get_undo_history で自分の編集を識別できる)。
+        // dryRun でもここまでは通るため適用は UndoStack::Execute に任せる (applyNow=true だと dryRun が実際に書き換えてしまう)。
         auto command = MakeRenameNodeCommand(ctx, go->GetID(), name,
                         "AI: Rename Node", false);
-        if (!command) { err = Outcome::Err("NO_CHANGE", "名前が変わりません: " + name); return nullptr; }
+        if (!command) {
+            err = Outcome::Err("NO_CHANGE", "名前が変わりません: " + name);
+            return nullptr;
+        }
         return command;
     }
 
@@ -1347,15 +1624,24 @@ std::unique_ptr<ICommand> BuildNodeSetActiveCommand([[maybe_unused]] editor::Edi
     [[maybe_unused]] std::shared_ptr<std::string> createdSink, [[maybe_unused]] JsonValue* detailSink)
 {
     scene::Scene* scene = ctx.activeScene;
-    if (scene == nullptr) { err = Outcome::Err("NO_SCENE", "アクティブシーンがありません"); return nullptr; }
+    if (scene == nullptr) {
+        err = Outcome::Err("NO_SCENE", "アクティブシーンがありません");
+        return nullptr;
+    }
     [[maybe_unused]] const auto markDirty = [&ctx]() { if (ctx.markSceneDirty) ctx.markSceneDirty(); };
 
     if (type == "node.setActive") {
         const std::string id = StringField(payload, "id");
         const JsonValue* activeValue = payload.Find("active");
         GameObject* go = scene->FindByGuid(id);
-        if (go == nullptr) { err = Outcome::Err("NODE_NOT_FOUND", "NodeId が見つかりません: " + id); return nullptr; }
-        if (activeValue == nullptr || !activeValue->IsBool()) { err = Outcome::Err("BAD_ARG", "active (真偽) が必要です"); return nullptr; }
+        if (go == nullptr) {
+            err = Outcome::Err("NODE_NOT_FOUND", "NodeId が見つかりません: " + id);
+            return nullptr;
+        }
+        if (activeValue == nullptr || !activeValue->IsBool()) {
+            err = Outcome::Err("BAD_ARG", "active (真偽) が必要です");
+            return nullptr;
+        }
         const bool active = activeValue->AsBool();
         const bool oldActive = go->activeSelf();
         return std::make_unique<LambdaCommand>("AI: Set Node Active",
@@ -1372,15 +1658,24 @@ std::unique_ptr<ICommand> BuildNodeSetTagCommand([[maybe_unused]] editor::Editor
     [[maybe_unused]] std::shared_ptr<std::string> createdSink, [[maybe_unused]] JsonValue* detailSink)
 {
     scene::Scene* scene = ctx.activeScene;
-    if (scene == nullptr) { err = Outcome::Err("NO_SCENE", "アクティブシーンがありません"); return nullptr; }
+    if (scene == nullptr) {
+        err = Outcome::Err("NO_SCENE", "アクティブシーンがありません");
+        return nullptr;
+    }
     [[maybe_unused]] const auto markDirty = [&ctx]() { if (ctx.markSceneDirty) ctx.markSceneDirty(); };
 
     if (type == "node.setTag") {
         const std::string id = StringField(payload, "id");
         GameObject* go = scene->FindByGuid(id);
-        if (go == nullptr) { err = Outcome::Err("NODE_NOT_FOUND", "NodeId が見つかりません: " + id); return nullptr; }
+        if (go == nullptr) {
+            err = Outcome::Err("NODE_NOT_FOUND", "NodeId が見つかりません: " + id);
+            return nullptr;
+        }
         const JsonValue* tagValue = payload.Find("tag");
-        if (tagValue == nullptr || !tagValue->IsString() || tagValue->AsString().empty()) { err = Outcome::Err("BAD_ARG", "tag (文字列) が必要です"); return nullptr; }
+        if (tagValue == nullptr || !tagValue->IsString() || tagValue->AsString().empty()) {
+            err = Outcome::Err("BAD_ARG", "tag (文字列) が必要です");
+            return nullptr;
+        }
         const std::string tag = tagValue->AsString();
         auto oldTag = std::make_shared<std::string>(go->tag);
         return std::make_unique<LambdaCommand>("AI: Set Node Tag",
@@ -1397,17 +1692,29 @@ std::unique_ptr<ICommand> BuildNodeSetLayerCommand([[maybe_unused]] editor::Edit
     [[maybe_unused]] std::shared_ptr<std::string> createdSink, [[maybe_unused]] JsonValue* detailSink)
 {
     scene::Scene* scene = ctx.activeScene;
-    if (scene == nullptr) { err = Outcome::Err("NO_SCENE", "アクティブシーンがありません"); return nullptr; }
+    if (scene == nullptr) {
+        err = Outcome::Err("NO_SCENE", "アクティブシーンがありません");
+        return nullptr;
+    }
     [[maybe_unused]] const auto markDirty = [&ctx]() { if (ctx.markSceneDirty) ctx.markSceneDirty(); };
 
     if (type == "node.setLayer") {
         const std::string id = StringField(payload, "id");
         GameObject* go = scene->FindByGuid(id);
-        if (go == nullptr) { err = Outcome::Err("NODE_NOT_FOUND", "NodeId が見つかりません: " + id); return nullptr; }
+        if (go == nullptr) {
+            err = Outcome::Err("NODE_NOT_FOUND", "NodeId が見つかりません: " + id);
+            return nullptr;
+        }
         const JsonValue* layerValue = payload.Find("layer");
         int layer = 0;
-        if (layerValue == nullptr || !layerValue->TryGetInt32(layer)) { err = Outcome::Err("BAD_ARG", "layer (整数) が必要です"); return nullptr; }
-        if (layer < 0 || layer > 31) { err = Outcome::Err("BAD_ARG", "layer は 0〜31 です"); return nullptr; }
+        if (layerValue == nullptr || !layerValue->TryGetInt32(layer)) {
+            err = Outcome::Err("BAD_ARG", "layer (整数) が必要です");
+            return nullptr;
+        }
+        if (layer < 0 || layer > 31) {
+            err = Outcome::Err("BAD_ARG", "layer は 0〜31 です");
+            return nullptr;
+        }
         const int oldLayer = go->layer;
         return std::make_unique<LambdaCommand>("AI: Set Node Layer",
             [scene, id, layer, markDirty]()    { if (GameObject* g = scene->FindByGuid(id)) g->layer = layer; markDirty(); },
@@ -1423,7 +1730,10 @@ std::unique_ptr<ICommand> BuildNodeReparentCommand([[maybe_unused]] editor::Edit
     [[maybe_unused]] std::shared_ptr<std::string> createdSink, [[maybe_unused]] JsonValue* detailSink)
 {
     scene::Scene* scene = ctx.activeScene;
-    if (scene == nullptr) { err = Outcome::Err("NO_SCENE", "アクティブシーンがありません"); return nullptr; }
+    if (scene == nullptr) {
+        err = Outcome::Err("NO_SCENE", "アクティブシーンがありません");
+        return nullptr;
+    }
     [[maybe_unused]] const auto markDirty = [&ctx]() { if (ctx.markSceneDirty) ctx.markSceneDirty(); };
 
     if (type == "node.reparent") {
@@ -1433,9 +1743,18 @@ std::unique_ptr<ICommand> BuildNodeReparentCommand([[maybe_unused]] editor::Edit
         const int index = (indexValue != nullptr && indexValue->IsNumber()) ? indexValue->AsInt() : 0;
         GameObject* go = scene->FindByGuid(id);
         GameObject* parentGo = scene->FindByGuid(parent);
-        if (go == nullptr) { err = Outcome::Err("NODE_NOT_FOUND", "NodeId が見つかりません: " + id); return nullptr; }
-        if (parentGo == nullptr) { err = Outcome::Err("NODE_NOT_FOUND", "parent が見つかりません: " + parent); return nullptr; }
-        if (go == parentGo || parentGo->IsDescendantOf(*go)) { err = Outcome::Err("BAD_REPARENT", "循環する親子関係です"); return nullptr; }
+        if (go == nullptr) {
+            err = Outcome::Err("NODE_NOT_FOUND", "NodeId が見つかりません: " + id);
+            return nullptr;
+        }
+        if (parentGo == nullptr) {
+            err = Outcome::Err("NODE_NOT_FOUND", "parent が見つかりません: " + parent);
+            return nullptr;
+        }
+        if (go == parentGo || parentGo->IsDescendantOf(*go)) {
+            err = Outcome::Err("BAD_REPARENT", "循環する親子関係です");
+            return nullptr;
+        }
         GameObject* oldParent = go->GetParent();
         auto oldParentGuid = std::make_shared<std::string>(oldParent ? oldParent->instanceId : std::string{});
         const int oldSibling = go->GetSiblingIndex();
@@ -1443,14 +1762,22 @@ std::unique_ptr<ICommand> BuildNodeReparentCommand([[maybe_unused]] editor::Edit
             [scene, id, parent, index, markDirty]() {
                 GameObject* g = scene->FindByGuid(id);
                 GameObject* p = scene->FindByGuid(parent);
-                if (g && p) { g->SetParent(*p); g->SetSiblingIndex(index); }
+                if (g && p) {
+                    g->SetParent(*p);
+                    g->SetSiblingIndex(index);
+                }
                 markDirty();
             },
             [scene, id, oldParentGuid, oldSibling, markDirty]() {
                 GameObject* g = scene->FindByGuid(id);
-                if (!g) return;
-                if (oldParentGuid->empty()) g->ClearParent();
-                else if (GameObject* p = scene->FindByGuid(*oldParentGuid)) g->SetParent(*p);
+                if (!g) {
+                    return;
+                }
+                if (oldParentGuid->empty()) {
+                    g->ClearParent();
+                } else if (GameObject* p = scene->FindByGuid(*oldParentGuid)) {
+                    g->SetParent(*p);
+                }
                 g->SetSiblingIndex(oldSibling);
                 markDirty();
             });
@@ -1465,13 +1792,19 @@ std::unique_ptr<ICommand> BuildTransformSetCommand([[maybe_unused]] editor::Edit
     [[maybe_unused]] std::shared_ptr<std::string> createdSink, [[maybe_unused]] JsonValue* detailSink)
 {
     scene::Scene* scene = ctx.activeScene;
-    if (scene == nullptr) { err = Outcome::Err("NO_SCENE", "アクティブシーンがありません"); return nullptr; }
+    if (scene == nullptr) {
+        err = Outcome::Err("NO_SCENE", "アクティブシーンがありません");
+        return nullptr;
+    }
     [[maybe_unused]] const auto markDirty = [&ctx]() { if (ctx.markSceneDirty) ctx.markSceneDirty(); };
 
     if (type == "transform.set") {
         const std::string id = StringField(payload, "id");
         GameObject* go = scene->FindByGuid(id);
-        if (go == nullptr) { err = Outcome::Err("NODE_NOT_FOUND", "NodeId が見つかりません: " + id); return nullptr; }
+        if (go == nullptr) {
+            err = Outcome::Err("NODE_NOT_FOUND", "NodeId が見つかりません: " + id);
+            return nullptr;
+        }
         math::Vector3 pos, rotDeg, scl;
         const bool hasPos   = ReadVec3(payload, "pos", pos);
         const bool hasRot   = ReadVec3(payload, "rot", rotDeg);
@@ -1481,29 +1814,48 @@ std::unique_ptr<ICommand> BuildTransformSetCommand([[maybe_unused]] editor::Edit
             err = Outcome::Err("BAD_ARG", "pos/rot/scale は長さ3の数値配列です");
             return nullptr;
         }
-        if (!hasPos && !hasRot && !hasScale) { err = Outcome::Err("BAD_ARG", "pos/rot/scale のいずれかが必要です"); return nullptr; }
+        if (!hasPos && !hasRot && !hasScale) {
+            err = Outcome::Err("BAD_ARG", "pos/rot/scale のいずれかが必要です");
+            return nullptr;
+        }
         const math::Vector3    oldPos = go->transform.position;
         const math::Quaternion oldRot = go->transform.rotation;
         const math::Vector3    oldScale = go->transform.scale;
-        /// @note rot は Euler 度で受け取り Quaternion へ変換する (Inspector と同じ表現)。
+        // rot は Euler 度で受け取り Quaternion へ変換する (Inspector と同じ表現)。
         const math::Quaternion newRot = hasRot
             ? math::Quaternion::FromEuler({ math::ToRad(rotDeg.x), math::ToRad(rotDeg.y), math::ToRad(rotDeg.z) })
             : oldRot;
         return std::make_unique<LambdaCommand>("AI: Set Transform",
             [scene, id, hasPos, hasRot, hasScale, pos, newRot, scl, markDirty]() {
                 GameObject* g = scene->FindByGuid(id);
-                if (!g) return;
-                if (hasPos)   g->transform.position = pos;
-                if (hasRot)   g->transform.rotation = newRot;
-                if (hasScale) g->transform.scale = scl;
+                if (!g) {
+                    return;
+                }
+                if (hasPos) {
+                    g->transform.position = pos;
+                }
+                if (hasRot) {
+                    g->transform.rotation = newRot;
+                }
+                if (hasScale) {
+                    g->transform.scale = scl;
+                }
                 markDirty();
             },
             [scene, id, hasPos, hasRot, hasScale, oldPos, oldRot, oldScale, markDirty]() {
                 GameObject* g = scene->FindByGuid(id);
-                if (!g) return;
-                if (hasPos)   g->transform.position = oldPos;
-                if (hasRot)   g->transform.rotation = oldRot;
-                if (hasScale) g->transform.scale = oldScale;
+                if (!g) {
+                    return;
+                }
+                if (hasPos) {
+                    g->transform.position = oldPos;
+                }
+                if (hasRot) {
+                    g->transform.rotation = oldRot;
+                }
+                if (hasScale) {
+                    g->transform.scale = oldScale;
+                }
                 markDirty();
             });
     }
@@ -1517,14 +1869,20 @@ std::unique_ptr<ICommand> BuildNodeDeleteCommand([[maybe_unused]] editor::Editor
     [[maybe_unused]] std::shared_ptr<std::string> createdSink, [[maybe_unused]] JsonValue* detailSink)
 {
     scene::Scene* scene = ctx.activeScene;
-    if (scene == nullptr) { err = Outcome::Err("NO_SCENE", "アクティブシーンがありません"); return nullptr; }
+    if (scene == nullptr) {
+        err = Outcome::Err("NO_SCENE", "アクティブシーンがありません");
+        return nullptr;
+    }
     [[maybe_unused]] const auto markDirty = [&ctx]() { if (ctx.markSceneDirty) ctx.markSceneDirty(); };
 
     if (type == "node.delete") {
         const std::string id = StringField(payload, "id");
         GameObject* go = scene->FindByGuid(id);
-        if (go == nullptr) { err = Outcome::Err("NODE_NOT_FOUND", "NodeId が見つかりません: " + id); return nullptr; }
-        /// @note 単一ノードのスナップショット (子階層は Undo 対象外。MVP の制約)。
+        if (go == nullptr) {
+            err = Outcome::Err("NODE_NOT_FOUND", "NodeId が見つかりません: " + id);
+            return nullptr;
+        }
+        // 単一ノードのスナップショット (子階層は Undo 対象外。MVP の制約)。
         auto snapshot = std::make_shared<JsonValue>(SnapshotComponents(*go));
         auto name = std::make_shared<std::string>(go->name);
         auto tag = std::make_shared<std::string>(go->tag);
@@ -1538,14 +1896,18 @@ std::unique_ptr<ICommand> BuildNodeDeleteCommand([[maybe_unused]] editor::Editor
         const int sibling = go->GetSiblingIndex();
         return std::make_unique<LambdaCommand>("AI: Delete Node",
             [scene, id, markDirty]() {
-                if (GameObject* g = scene->FindByGuid(id)) scene->DestroyGameObject(g->GetID());
+                if (GameObject* g = scene->FindByGuid(id)) {
+                    scene->DestroyGameObject(g->GetID());
+                }
                 markDirty();
             },
             [scene, id, name, tag, layer, active, pos, rot, scl, parentGuid, sibling, snapshot, markDirty]() {
                 GameObject* created = scene->TryCreateGameObject(*name);
-                if (!created) return;
+                if (!created) {
+                    return;
+                }
                 GameObject& go = *created;
-                /// @note NodeId を保って再生成し、参照の安定性を維持する。
+                // NodeId を保って再生成し、参照の安定性を維持する。
                 go.instanceId = id;
                 go.tag = *tag;
                 go.layer = layer;
@@ -1555,7 +1917,7 @@ std::unique_ptr<ICommand> BuildNodeDeleteCommand([[maybe_unused]] editor::Editor
                 if (!parentGuid->empty()) { if (GameObject* p = scene->FindByGuid(*parentGuid)) go.SetParent(*p); }
                 go.SetSiblingIndex(sibling);
                 RestoreComponents(go, *snapshot);
-                /// @note active は SetParent 後に適用し、activeInHierarchy の再計算を正しく行う。
+                // active は SetParent 後に適用し、activeInHierarchy の再計算を正しく行う。
                 go.SetActive(active);
                 markDirty();
             });
@@ -1570,31 +1932,46 @@ std::unique_ptr<ICommand> BuildComponentAddCommand([[maybe_unused]] editor::Edit
     [[maybe_unused]] std::shared_ptr<std::string> createdSink, [[maybe_unused]] JsonValue* detailSink)
 {
     scene::Scene* scene = ctx.activeScene;
-    if (scene == nullptr) { err = Outcome::Err("NO_SCENE", "アクティブシーンがありません"); return nullptr; }
+    if (scene == nullptr) {
+        err = Outcome::Err("NO_SCENE", "アクティブシーンがありません");
+        return nullptr;
+    }
     [[maybe_unused]] const auto markDirty = [&ctx]() { if (ctx.markSceneDirty) ctx.markSceneDirty(); };
 
     if (type == "component.add") {
         const std::string id = StringField(payload, "id");
         const std::string comp = StringField(payload, "comp");
         GameObject* go = scene->FindByGuid(id);
-        if (go == nullptr) { err = Outcome::Err("NODE_NOT_FOUND", "NodeId が見つかりません: " + id); return nullptr; }
+        if (go == nullptr) {
+            err = Outcome::Err("NODE_NOT_FOUND", "NodeId が見つかりません: " + id);
+            return nullptr;
+        }
         const TypeInfo info = InspectComponentType(*go, comp);
-        if (!info.known)   { err = Outcome::Err("UNKNOWN_COMPONENT", "未知のコンポーネント: " + comp); return nullptr; }
-        if (!info.addable) { err = Outcome::Err("NOT_ADDABLE", "追加できないコンポーネント: " + comp); return nullptr; }
-        /// @note Inspector の Add Component と同じ既定値・依存で付ける。Undo は依存も含めて増えた型だけを外す
-        /// @note (元から在ったものは消さない)。
+        if (!info.known) {
+            err = Outcome::Err("UNKNOWN_COMPONENT", "未知のコンポーネント: " + comp);
+            return nullptr;
+        }
+        if (!info.addable) {
+            err = Outcome::Err("NOT_ADDABLE", "追加できないコンポーネント: " + comp);
+            return nullptr;
+        }
+        // Inspector の Add Component と同じ既定値・依存で付ける。Undo は依存も含めて増えた型だけを外す
+        // (元から在ったものは消さない)。
         auto added = std::make_shared<std::vector<std::string>>();
         return std::make_unique<LambdaCommand>("AI: Add Component",
             [scene, id, comp, added, markDirty]() {
                 GameObject* g = scene->FindByGuid(id);
-                if (!g) return;
+                if (!g) {
+                    return;
+                }
                 *added = editor::AddRegisteredComponentByNameTracked(*g, comp);
                 markDirty();
             },
             [scene, id, added, markDirty]() {
                 if (GameObject* g = scene->FindByGuid(id))
-                    for (auto it = added->rbegin(); it != added->rend(); ++it)
+                    for (auto it = added->rbegin(); it != added->rend(); ++it) {
                         RemoveComponentByName(*g, *it);
+                    }
                 markDirty();
             });
     }
@@ -1608,39 +1985,59 @@ std::unique_ptr<ICommand> BuildComponentRemoveCommand([[maybe_unused]] editor::E
     [[maybe_unused]] std::shared_ptr<std::string> createdSink, [[maybe_unused]] JsonValue* detailSink)
 {
     scene::Scene* scene = ctx.activeScene;
-    if (scene == nullptr) { err = Outcome::Err("NO_SCENE", "アクティブシーンがありません"); return nullptr; }
+    if (scene == nullptr) {
+        err = Outcome::Err("NO_SCENE", "アクティブシーンがありません");
+        return nullptr;
+    }
     [[maybe_unused]] const auto markDirty = [&ctx]() { if (ctx.markSceneDirty) ctx.markSceneDirty(); };
 
     if (type == "component.remove") {
         const std::string id = StringField(payload, "id");
         const std::string comp = StringField(payload, "comp");
         GameObject* go = scene->FindByGuid(id);
-        if (go == nullptr) { err = Outcome::Err("NODE_NOT_FOUND", "NodeId が見つかりません: " + id); return nullptr; }
+        if (go == nullptr) {
+            err = Outcome::Err("NODE_NOT_FOUND", "NodeId が見つかりません: " + id);
+            return nullptr;
+        }
         const TypeInfo info = InspectComponentType(*go, comp);
-        if (!info.known)   { err = Outcome::Err("UNKNOWN_COMPONENT", "未知のコンポーネント: " + comp); return nullptr; }
-        if (!info.present) { err = Outcome::Err("NOT_PRESENT", "そのコンポーネントは装着されていません: " + comp); return nullptr; }
-        /// @note Inspector の Remove と同じ依存規則で止める。AI 経路だけ壊れた組み合わせを作れないようにする。
+        if (!info.known) {
+            err = Outcome::Err("UNKNOWN_COMPONENT", "未知のコンポーネント: " + comp);
+            return nullptr;
+        }
+        if (!info.present) {
+            err = Outcome::Err("NOT_PRESENT", "そのコンポーネントは装着されていません: " + comp);
+            return nullptr;
+        }
+        // Inspector の Remove と同じ依存規則で止める。AI 経路だけ壊れた組み合わせを作れないようにする。
         std::string blocker;
         scene::ForEachRegisteredComponent([&]<typename T, typename Reg>() {
-            if (std::string_view(Reg::serializedName) == comp) blocker = FindComponentRemovalBlocker(*go, typeid(T));
+            if (std::string_view(Reg::serializedName) == comp) {
+                blocker = FindComponentRemovalBlocker(*go, typeid(T));
+            }
         });
         if (!blocker.empty()) {
             err = Outcome::Err("REQUIRED_BY", comp + " は " + blocker + " が必要としているため外せません");
             return nullptr;
         }
-        /// @note Undo 用に単一エントリのスナップショットを作る (RestoreComponents で再構築)。
+        // Undo 用に単一エントリのスナップショットを作る (RestoreComponents で再構築)。
         JsonValue entry = JsonValue::MakeObject();
         entry.Set("type", JsonValue(comp));
-        if (auto fields = ReadComponentFields(*go, comp)) entry.Set("fields", *fields);
+        if (auto fields = ReadComponentFields(*go, comp)) {
+            entry.Set("fields", *fields);
+        }
         auto snapshot = std::make_shared<JsonValue>(JsonValue::MakeArray());
         snapshot->Push(std::move(entry));
         return std::make_unique<LambdaCommand>("AI: Remove Component",
             [scene, id, comp, markDirty]() {
-                if (GameObject* g = scene->FindByGuid(id)) RemoveComponentByName(*g, comp);
+                if (GameObject* g = scene->FindByGuid(id)) {
+                    RemoveComponentByName(*g, comp);
+                }
                 markDirty();
             },
             [scene, id, snapshot, markDirty]() {
-                if (GameObject* g = scene->FindByGuid(id)) RestoreComponents(*g, *snapshot);
+                if (GameObject* g = scene->FindByGuid(id)) {
+                    RestoreComponents(*g, *snapshot);
+                }
                 markDirty();
             });
     }
@@ -1654,7 +2051,10 @@ std::unique_ptr<ICommand> BuildComponentSetCommand([[maybe_unused]] editor::Edit
     [[maybe_unused]] std::shared_ptr<std::string> createdSink, [[maybe_unused]] JsonValue* detailSink)
 {
     scene::Scene* scene = ctx.activeScene;
-    if (scene == nullptr) { err = Outcome::Err("NO_SCENE", "アクティブシーンがありません"); return nullptr; }
+    if (scene == nullptr) {
+        err = Outcome::Err("NO_SCENE", "アクティブシーンがありません");
+        return nullptr;
+    }
     [[maybe_unused]] const auto markDirty = [&ctx]() { if (ctx.markSceneDirty) ctx.markSceneDirty(); };
 
     if (type == "component.set") {
@@ -1663,17 +2063,38 @@ std::unique_ptr<ICommand> BuildComponentSetCommand([[maybe_unused]] editor::Edit
         const std::string field = StringField(payload, "field");
         const JsonValue* valuePtr = payload.Find("value");
         GameObject* go = scene->FindByGuid(id);
-        if (go == nullptr) { err = Outcome::Err("NODE_NOT_FOUND", "NodeId が見つかりません: " + id); return nullptr; }
-        if (field.empty() || valuePtr == nullptr) { err = Outcome::Err("BAD_ARG", "field / value が必要です"); return nullptr; }
+        if (go == nullptr) {
+            err = Outcome::Err("NODE_NOT_FOUND", "NodeId が見つかりません: " + id);
+            return nullptr;
+        }
+        if (field.empty() || valuePtr == nullptr) {
+            err = Outcome::Err("BAD_ARG", "field / value が必要です");
+            return nullptr;
+        }
         const TypeInfo info = InspectComponentType(*go, comp);
-        if (!info.known)       { err = Outcome::Err("UNKNOWN_COMPONENT", "未知のコンポーネント: " + comp); return nullptr; }
-        if (!info.present)     { err = Outcome::Err("NOT_PRESENT", "そのコンポーネントは装着されていません: " + comp); return nullptr; }
-        if (!info.reflectable) { err = Outcome::Err("NOT_REFLECTABLE", "反射できないコンポーネント: " + comp); return nullptr; }
+        if (!info.known) {
+            err = Outcome::Err("UNKNOWN_COMPONENT", "未知のコンポーネント: " + comp);
+            return nullptr;
+        }
+        if (!info.present) {
+            err = Outcome::Err("NOT_PRESENT", "そのコンポーネントは装着されていません: " + comp);
+            return nullptr;
+        }
+        if (!info.reflectable) {
+            err = Outcome::Err("NOT_REFLECTABLE", "反射できないコンポーネント: " + comp);
+            return nullptr;
+        }
         auto oldFields = ReadComponentFields(*go, comp);
         const JsonValue* oldValue = oldFields ? oldFields->Find(field) : nullptr;
-        if (oldValue == nullptr) { err = Outcome::Err("UNKNOWN_FIELD", "未知のフィールド: " + field); return nullptr; }
-        if (!CompatibleJsonType(*oldValue, *valuePtr)) { err = Outcome::Err("TYPE_MISMATCH", "field '" + field + "' の型が一致しません"); return nullptr; }
-        /// @note Sprite 参照は解決できないと静かにアトラス全面になる。書き込む前にここで検証する。
+        if (oldValue == nullptr) {
+            err = Outcome::Err("UNKNOWN_FIELD", "未知のフィールド: " + field);
+            return nullptr;
+        }
+        if (!CompatibleJsonType(*oldValue, *valuePtr)) {
+            err = Outcome::Err("TYPE_MISMATCH", "field '" + field + "' の型が一致しません");
+            return nullptr;
+        }
+        // Sprite 参照は解決できないと静かにアトラス全面になる。書き込む前にここで検証する。
         if (valuePtr->IsString()) {
             const std::string reference = valuePtr->AsString();
             std::string spriteTexturePath;
@@ -1692,14 +2113,18 @@ std::unique_ptr<ICommand> BuildComponentSetCommand([[maybe_unused]] editor::Edit
         return std::make_unique<LambdaCommand>("AI: Set Component Field",
             [scene, id, comp, field, newVal, markDirty]() {
                 GameObject* g = scene->FindByGuid(id);
-                if (!g) return;
+                if (!g) {
+                    return;
+                }
                 std::string ignored;
                 WriteComponentField(*g, comp, field, *newVal, ignored);
                 markDirty();
             },
             [scene, id, comp, field, oldVal, markDirty]() {
                 GameObject* g = scene->FindByGuid(id);
-                if (!g) return;
+                if (!g) {
+                    return;
+                }
                 std::string ignored;
                 WriteComponentField(*g, comp, field, *oldVal, ignored);
                 markDirty();
@@ -1714,10 +2139,11 @@ Outcome DoSceneTreeQuery(editor::EditorContext& ctx, const JsonValue& payload)
 {
     scene::Scene* activeScene = ctx.activeScene;
     Outcome outcome = Outcome::Err("UNKNOWN", "未対応の要求です");
-    if (activeScene == nullptr) { outcome = Outcome::Err("NO_SCENE", "アクティブシーンがありません"); }
-    else {
-        /// @note includeGenerated: 実行時に作られた GO (VFX ノード実体、Water splash) をツリーへ含めるか。既定は含めない。
-        /// @note 生成物は編集しても保存されないため、混ぜると context を無駄に消費するだけの編集を誘発する。
+    if (activeScene == nullptr) {
+        outcome = Outcome::Err("NO_SCENE", "アクティブシーンがありません");
+    } else {
+        // includeGenerated: 実行時に作られた GO (VFX ノード実体、Water splash) をツリーへ含めるか。既定は含めない。
+        // 生成物は編集しても保存されないため、混ぜると context を無駄に消費するだけの編集を誘発する。
         const JsonValue* includeValue = payload.Find("includeGenerated");
         const bool includeGenerated = includeValue != nullptr && includeValue->AsBool();
         struct Builder {
@@ -1729,14 +2155,17 @@ Outcome DoSceneTreeQuery(editor::EditorContext& ctx, const JsonValue& payload)
                 node.Set("active", JsonValue(go->activeSelf()));
                 node.Set("activeInHierarchy", JsonValue(go->activeInHierarchy()));
                 node.Set("layer", JsonValue(go->layer));
-                /// @note 生成物を含める指定のときだけ印を付ける。既定応答では常に false になるため出さず冗長さを避ける。
-                if (includeGenerated && go->IsRuntimeGenerated())
+                // 生成物を含める指定のときだけ印を付ける。既定応答では常に false になるため出さず冗長さを避ける。
+                if (includeGenerated && go->IsRuntimeGenerated()) {
                     node.Set("runtimeGenerated", JsonValue(true));
+                }
                 JsonValue children = JsonValue::MakeArray();
                 int hiddenGenerated = 0;
                 for (int i = 0; i < go->GetChildCount(); ++i) {
                     GameObject* child = go->GetChild(i);
-                    if (child == nullptr) continue;
+                    if (child == nullptr) {
+                        continue;
+                    }
                     if (!includeGenerated && child->IsRuntimeGenerated()) {
                         ++hiddenGenerated;
                         continue;
@@ -1744,16 +2173,21 @@ Outcome DoSceneTreeQuery(editor::EditorContext& ctx, const JsonValue& payload)
                     children.Push(Node(child, includeGenerated));
                 }
                 node.Set("children", std::move(children));
-                /// @note 「出ていない = 存在しない」と読ませないための件数。
-                if (hiddenGenerated > 0)
+                // 「出ていない = 存在しない」と読ませないための件数。
+                if (hiddenGenerated > 0) {
                     node.Set("hiddenGeneratedChildren", JsonValue(hiddenGenerated));
+                }
                 return node;
             }
         };
         JsonValue roots = JsonValue::MakeArray();
         for (GameObject* go : activeScene->GetRootGameObjects()) {
-            if (go == nullptr) continue;
-            if (!includeGenerated && go->IsRuntimeGenerated()) continue;
+            if (go == nullptr) {
+                continue;
+            }
+            if (!includeGenerated && go->IsRuntimeGenerated()) {
+                continue;
+            }
             roots.Push(Builder::Node(go, includeGenerated));
         }
         JsonValue result = JsonValue::MakeObject();
@@ -1770,8 +2204,9 @@ Outcome DoNodeComponentsQuery(editor::EditorContext& ctx, const JsonValue& paylo
     Outcome outcome = Outcome::Err("UNKNOWN", "未対応の要求です");
     const std::string nodeId = StringField(payload, "id");
     GameObject* go = (activeScene != nullptr) ? activeScene->FindByGuid(nodeId) : nullptr;
-    if (go == nullptr) { outcome = Outcome::Err("NODE_NOT_FOUND", "NodeId が見つかりません: " + nodeId); }
-    else {
+    if (go == nullptr) {
+        outcome = Outcome::Err("NODE_NOT_FOUND", "NodeId が見つかりません: " + nodeId);
+    } else {
         JsonValue result = JsonValue::MakeObject();
         result.Set("id", JsonValue(nodeId));
         result.Set("name", JsonValue(go->name));
@@ -1785,17 +2220,21 @@ Outcome DoNodeComponentsQuery(editor::EditorContext& ctx, const JsonValue& paylo
     }
     return outcome;
 }
-} /// @note namespace
+} // namespace
 
 void RegisterSceneHandlers(BusHandlerTable& table)
 {
     table.AddQuery("scene.tree", [](BusCall& call) { return DoSceneTreeQuery(call.ctx, call.payload); });
     table.AddQuery("scene.find", [](BusCall& call) {
-        if (call.ctx.activeScene == nullptr) return Outcome::Err("NO_SCENE", "アクティブシーンがありません");
+        if (call.ctx.activeScene == nullptr) {
+            return Outcome::Err("NO_SCENE", "アクティブシーンがありません");
+        }
         return FindSceneNodes(*call.ctx.activeScene, call.payload);
     });
     table.AddQuery("scene.snapshot", [](BusCall& call) {
-        if (call.ctx.activeScene == nullptr) return Outcome::Err("NO_SCENE", "アクティブシーンがありません");
+        if (call.ctx.activeScene == nullptr) {
+            return Outcome::Err("NO_SCENE", "アクティブシーンがありません");
+        }
         return Outcome::Ok(BuildSceneSnapshot(*call.ctx.activeScene));
     });
     table.AddQuery("scene.validate", [](BusCall& call) { return DoSceneValidate(call.ctx); });
@@ -1807,7 +2246,7 @@ void RegisterSceneHandlers(BusHandlerTable& table)
     table.AddQuery("physics.events", [](BusCall& call) { return DoPhysicsEvents(call.ctx); });
     table.AddQuery("preset.catalog", [](BusCall& call) { return DoPresetCatalog(call.payload); });
 
-    /// @note シーンの入出力は Undo でシーンが閉じる方が事故になるため UndoStack へ載せない。
+    // シーンの入出力は Undo でシーンが閉じる方が事故になるため UndoStack へ載せない。
     table.AddCommand("scene.open", [](BusCall& call) { return DoSceneOpen(call.ctx, call.payload, call.dryRun); });
     table.AddCommand("scene.save", [](BusCall& call) { return DoSceneSave(call.ctx, call.payload, call.dryRun); });
 
@@ -1833,4 +2272,4 @@ void RegisterSceneHandlers(BusHandlerTable& table)
     table.AddBuilder("component.set", BuildComponentSetCommand);
 }
 
-} /// @note namespace fbzz::editor::ai::bus
+} // namespace fbzz::editor::ai::bus

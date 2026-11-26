@@ -39,9 +39,9 @@ struct PlaytestHooks {
 class PlaytestRunner {
 public:
     /// @brief シナリオを検証して開始する。実行中なら拒否する。
-    /// @param scenarioPath 相対パス (replay の入力列) の基準。インラインなら空。
-    /// @param projectRoot  基準画像 (`projectRoot/Tests/Golden`) の置き場の基準。
-    /// @param outputDirectory レポートと実画像・差分画像の出力先。
+    /// @param[in] scenarioPath 相対パス (replay の入力列) の基準。インラインなら空。
+    /// @param[in] projectRoot 基準画像 (`projectRoot/Tests/Golden`) の置き場の基準。
+    /// @param[in] outputDirectory レポートと実画像・差分画像の出力先。
     /// @return 形式が不正・実行中なら false と error。
     bool Start(const ai::JsonValue& scenario, const std::filesystem::path& scenarioPath,
                const std::filesystem::path& projectRoot, const std::filesystem::path& outputDirectory,
@@ -75,7 +75,7 @@ private:
                  ai::JsonValue& result, std::string& errorCode, std::string& errorMessage);
     bool CaptureResult(const ai::JsonValue& step, const ai::JsonValue& result, std::string& error);
     void Finish(PlaytestState state, const PlaytestHooks* hooks);
-    /// @param result 非 null なら報告の手順に "result" として残す (bus の query の応答)。
+    /// @param[in] result 非 null なら報告の手順に "result" として残す (bus の query の応答)。
     void RecordStep(bool ok, const std::string& message, const ai::JsonValue* result = nullptr);
     StepResult Fail(const std::string& message, const ai::JsonValue* result = nullptr);
 
@@ -91,8 +91,7 @@ private:
     size_t   m_stepIndex = 0;
     uint64_t m_frame = 0;
     bool     m_prepared = false;
-    /// @note 手順の途中状態。次の手順へ進むときに必ず 0 / 空へ戻す。
-    uint64_t m_waitFrames = 0;
+    uint64_t m_waitFrames = 0; ///< 手順の途中状態。次の手順へ進むときに必ず 0 / 空へ戻す。
     uint64_t m_stepFrame = 0;
     int      m_stepPhase = 0;
     ai::JsonValue m_replayEvents;
@@ -101,9 +100,8 @@ private:
 
     ai::JsonValue m_stepLog = ai::JsonValue::MakeArray();
     ai::JsonValue m_images = ai::JsonValue::MakeArray();
-    /// @note 成功応答から明示保存した値だけを保持し、Start ごとに破棄する。
-    ai::JsonValue m_captures = ai::JsonValue::MakeObject();
+    ai::JsonValue m_captures = ai::JsonValue::MakeObject(); ///< 成功応答から明示保存した値だけを保持し、Start ごとに破棄する。
     std::string   m_failure;
 };
 
-} /// @note namespace fbzz::editor::playtest
+} // namespace fbzz::editor::playtest

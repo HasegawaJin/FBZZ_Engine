@@ -184,4 +184,4 @@ void ProjectInspectorUndoValues(scene::TerrainGridComponent& component, Inspecto
     values.Value("defaultChunkSize", component.defaultChunkSize);
 }
 
-} /// @note namespace fbzz::editor
+} // namespace fbzz::editor

@@ -61,7 +61,9 @@ public:
     ComScope() : m_result(CoInitializeEx(nullptr, COINIT_MULTITHREADED)) {}
     ~ComScope()
     {
-        if (SUCCEEDED(m_result)) CoUninitialize();
+        if (SUCCEEDED(m_result)) {
+            CoUninitialize();
+        }
     }
     ComScope(const ComScope&) = delete;
     ComScope& operator=(const ComScope&) = delete;
@@ -93,7 +95,9 @@ bool SavePngRgba8(const std::filesystem::path& path, std::uint32_t width, std::u
 std::string PathKey(const std::string& path)
 {
     std::string key = util::FileSystem::NormalizePathSeparators(path);
-    for (char& c : key) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+    for (char& c : key) {
+        c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+    }
     return key;
 }
 
@@ -110,9 +114,15 @@ bool PrepareFluidBakeStage(const std::filesystem::path& finalDirectory,
 {
     std::error_code error;
     std::filesystem::create_directories(finalDirectory, error);
-    if (error) { outError = "出力先を作れません: " + error.message(); return false; }
+    if (error) {
+        outError = "出力先を作れません: " + error.message();
+        return false;
+    }
     std::filesystem::create_directories(stageParent, error);
-    if (error) { outError = "仮出力先を作れません: " + error.message(); return false; }
+    if (error) {
+        outError = "仮出力先を作れません: " + error.message();
+        return false;
+    }
     const auto stamp = std::chrono::steady_clock::now().time_since_epoch().count();
     outStage = stageParent / (".fluid-bake-stage-" + std::to_string(id) + "-" + std::to_string(stamp));
     if (!std::filesystem::create_directories(outStage, error) || error) {
@@ -128,20 +138,34 @@ bool PrepareFluidBakeStage(const std::filesystem::path& finalDirectory,
     };
     for (const char* suffix : suffixes) {
         if (!includeDerived && (std::string_view(suffix) == ".mat"
-            || std::string_view(suffix) == ".mat.meta")) continue;
+            || std::string_view(suffix) == ".mat.meta")) {
+            continue;
+        }
         const auto source = finalDirectory / (stem + suffix);
-        if (!std::filesystem::exists(source, error)) { error.clear(); continue; }
+        if (!std::filesystem::exists(source, error)) {
+            error.clear();
+            continue;
+        }
         std::filesystem::copy_file(source, outStage / source.filename(),
                                    std::filesystem::copy_options::overwrite_existing, error);
-        if (error) { outError = "既存のアセット設定を仮出力へ写せません: " + error.message(); return false; }
+        if (error) {
+            outError = "既存のアセット設定を仮出力へ写せません: " + error.message();
+            return false;
+        }
     }
     if (includeDerived && !vfxPath.empty()) {
         const auto vfx = util::FileSystem::PathFromUtf8(vfxPath);
         for (const auto& source : { vfx, std::filesystem::path(vfx.string() + ".meta") }) {
-            if (!std::filesystem::exists(source, error)) { error.clear(); continue; }
+            if (!std::filesystem::exists(source, error)) {
+                error.clear();
+                continue;
+            }
             std::filesystem::copy_file(source, outStage / source.filename(),
                                        std::filesystem::copy_options::overwrite_existing, error);
-            if (error) { outError = "既存の VFX 設定を仮出力へ写せません: " + error.message(); return false; }
+            if (error) {
+                outError = "既存の VFX 設定を仮出力へ写せません: " + error.message();
+                return false;
+            }
         }
     }
     return true;
@@ -164,12 +188,17 @@ bool PublishFluidBakeStage(const std::filesystem::path& stage,
     std::vector<Entry> entries;
     std::error_code error;
     for (std::filesystem::directory_iterator it(stage, error), end; !error && it != end; it.increment(error)) {
-        if (!it->is_regular_file()) continue;
+        if (!it->is_regular_file()) {
+            continue;
+        }
         const auto name = it->path().filename();
         const std::string file = util::FileSystem::PathToUtf8(name);
         if (file.ends_with(".meta")) {
             const auto assetFile = stage / util::FileSystem::PathFromUtf8(file.substr(0, file.size() - 5));
-            if (!std::filesystem::exists(assetFile, error)) { error.clear(); continue; }
+            if (!std::filesystem::exists(assetFile, error)) {
+                error.clear();
+                continue;
+            }
         }
         const bool isVfx = !vfxPath.empty() && (file == util::FileSystem::GetFilename(vfxPath)
             || file == util::FileSystem::GetFilename(vfxPath) + ".meta");
@@ -178,13 +207,24 @@ bool PublishFluidBakeStage(const std::filesystem::path& stage,
             : finalDirectory / name;
         entries.push_back({ it->path(), target, stage / "backup" / name });
     }
-    if (error) { outError = "仮出力を列挙できません: " + error.message(); return false; }
+    if (error) {
+        outError = "仮出力を列挙できません: " + error.message();
+        return false;
+    }
     const auto priority = [](const Entry& entry) {
         const std::string name = entry.target.filename().string();
-        if (name.ends_with(".vfx.meta")) return 5;
-        if (name.ends_with(".vfx")) return 4;
-        if (name.ends_with(".mat.meta")) return 3;
-        if (name.ends_with(".mat")) return 2;
+        if (name.ends_with(".vfx.meta")) {
+            return 5;
+        }
+        if (name.ends_with(".vfx")) {
+            return 4;
+        }
+        if (name.ends_with(".mat.meta")) {
+            return 3;
+        }
+        if (name.ends_with(".mat")) {
+            return 2;
+        }
         return name.ends_with(".meta") ? 1 : 0;
     };
     std::stable_sort(entries.begin(), entries.end(), [&](const Entry& a, const Entry& b) {
@@ -192,50 +232,75 @@ bool PublishFluidBakeStage(const std::filesystem::path& stage,
     });
     for (const Entry& entry : entries) {
         const bool exists = std::filesystem::exists(entry.target, error);
-        if (error) break;
+        if (error) {
+            break;
+        }
         if (exists && !std::filesystem::is_regular_file(entry.target, error)) {
             outError = "Bake 出力先がファイルではありません: "
                 + util::FileSystem::PathToUtf8(entry.target);
             return false;
         }
-        if (error) break;
+        if (error) {
+            break;
+        }
     }
-    if (error) { outError = "Bake 出力先を確認できません: " + error.message(); return false; }
+    if (error) {
+        outError = "Bake 出力先を確認できません: " + error.message();
+        return false;
+    }
     std::filesystem::create_directories(stage / "backup", error);
-    if (error) { outError = "復旧用フォルダを作れません: " + error.message(); return false; }
+    if (error) {
+        outError = "復旧用フォルダを作れません: " + error.message();
+        return false;
+    }
     for (Entry& entry : entries) {
         std::filesystem::create_directories(entry.target.parent_path(), error);
-        if (error) break;
+        if (error) {
+            break;
+        }
         if (std::filesystem::exists(entry.target, error)) {
             std::filesystem::rename(entry.target, entry.backup, error);
-            if (error) break;
+            if (error) {
+                break;
+            }
             entry.backedUp = true;
         }
         std::filesystem::rename(entry.source, entry.target, error);
-        if (error) break;
+        if (error) {
+            break;
+        }
         entry.published = true;
         outPaths.push_back(util::FileSystem::PathToUtf8(entry.target));
     }
-    if (!error) return true;
+    if (!error) {
+        return true;
+    }
     outError = "Bake 出力を確定できません: " + error.message();
     for (auto it = entries.rbegin(); it != entries.rend(); ++it) {
         std::error_code rollback;
-        if (it->published) std::filesystem::remove(it->target, rollback);
-        if (it->backedUp) std::filesystem::rename(it->backup, it->target, rollback);
+        if (it->published) {
+            std::filesystem::remove(it->target, rollback);
+        }
+        if (it->backedUp) {
+            std::filesystem::rename(it->backup, it->target, rollback);
+        }
         if (rollback) {
             outRollbackIncomplete = true;
             outError += " / 復旧失敗: " + rollback.message();
         }
     }
-    if (outRollbackIncomplete)
+    if (outRollbackIncomplete) {
         outError += " / 復旧用ファイル: " + util::FileSystem::PathToUtf8(stage / "backup");
+    }
     outPaths.clear();
     return false;
 }
 
 void RemoveFluidBakeStage(std::filesystem::path stage)
 {
-    if (stage.empty()) return;
+    if (stage.empty()) {
+        return;
+    }
     std::thread([stage = std::move(stage)]() {
         std::error_code error;
         std::filesystem::remove_all(stage, error);
@@ -269,7 +334,9 @@ struct PreviewOutcome {
 
 fluid::FluidShading EffectiveShading(const fluid::FluidRecipe& recipe)
 {
-    if (recipe.kind == fluid::FluidKind::Liquid) return fluid::FluidShading::Liquid;
+    if (recipe.kind == fluid::FluidKind::Liquid) {
+        return fluid::FluidShading::Liquid;
+    }
     return recipe.render.shading == fluid::FluidShading::Liquid ? fluid::FluidShading::Smoke : recipe.render.shading;
 }
 
@@ -289,9 +356,13 @@ std::vector<std::uint8_t> CompositeFrame(const asset::FluidFrameImage& frame, fl
             const float background = (((x / checker) + (y / checker)) & 1) != 0 ? 0.22f : 0.12f;
             for (int c = 0; c < 3; ++c) {
                 float value = 0.0f;
-                if (premultiplied) value = rgba[c] + background * (1.0f - rgba[3]);
-                else if (additive) value = background + rgba[c] * rgba[3];
-                else               value = rgba[c] * rgba[3] + background * (1.0f - rgba[3]);
+                if (premultiplied) {
+                    value = rgba[c] + background * (1.0f - rgba[3]);
+                } else if (additive) {
+                    value = background + rgba[c] * rgba[3];
+                } else {
+                    value = rgba[c] * rgba[3] + background * (1.0f - rgba[3]);
+                }
                 pixels[pixel * 4 + c] = static_cast<std::uint8_t>(std::clamp(value, 0.0f, 1.0f) * 255.0f + 0.5f);
             }
             pixels[pixel * 4 + 3] = 255;
@@ -308,7 +379,9 @@ void BlitTile(const std::vector<std::uint8_t>& tile, int tileSize, int sheetWidt
         const std::size_t source = static_cast<std::size_t>(y) * tileSize * 4;
         const std::size_t destination =
             (static_cast<std::size_t>(originY + y) * sheetWidth + originX) * 4;
-        if (destination + static_cast<std::size_t>(tileSize) * 4 > sheet.size()) return;
+        if (destination + static_cast<std::size_t>(tileSize) * 4 > sheet.size()) {
+            return;
+        }
         std::copy_n(tile.begin() + static_cast<std::ptrdiff_t>(source), static_cast<std::size_t>(tileSize) * 4,
                     sheet.begin() + static_cast<std::ptrdiff_t>(destination));
     }
@@ -321,7 +394,9 @@ PreviewOutcome RunFlatPreview(const fluid::FluidRecipe& source, const FluidPrevi
                               const std::atomic<bool>& cancel)
 {
     fluid::FluidRecipe recipe = source;
-    if (request.seed != 0) recipe.seed = request.seed;
+    if (request.seed != 0) {
+        recipe.seed = request.seed;
+    }
     const fluid::FluidStepPlan plan = fluid::MakeFluidStepPlan(recipe);
     const int frame = request.frame >= 0 ? std::clamp(request.frame, 0, plan.frameCount - 1)
                                          : plan.FrameOfTime(request.time);
@@ -343,25 +418,32 @@ PreviewOutcome RunFlatPreview(const fluid::FluidRecipe& source, const FluidPrevi
     const int sheetWidth = tile * columns;
     const int sheetHeight = tile * rows;
     std::vector<std::uint8_t> sheet(static_cast<std::size_t>(sheetWidth) * sheetHeight * 4, 0);
-    for (std::size_t i = 3; i < sheet.size(); i += 4) sheet[i] = 255;
+    for (std::size_t i = 3; i < sheet.size(); i += 4) {
+        sheet[i] = 255;
+    }
 
     const auto blit = [&](const asset::FluidFrameImage& image, int index) {
-        if (image.size <= 0) return;
+        if (image.size <= 0) {
+            return;
+        }
         const std::vector<std::uint8_t> pixels = CompositeFrame(image, shading);
         BlitTile(pixels, image.size, sheetWidth, (index % columns) * tile, (index / columns) * tile, sheet);
     };
 
     if (seedSheet) {
-        /// @note seed だけを振った試し。«ばらつきが欲しい» は乱数ではなく seed の並べ方で満たす —
-/// @note 気に入った 1 枚の seed をそのまま .fluid へ書けば、同じ絵が何度でも焼ける。
+        // seed だけを振った試し。«ばらつきが欲しい» は乱数ではなく seed の並べ方で満たす —
+// 気に入った 1 枚の seed をそのまま .fluid へ書けば、同じ絵が何度でも焼ける。
         for (int i = 0; i < variants; ++i) {
-            if (cancel.load(std::memory_order_relaxed)) return { false, "キャンセルしました" };
+            if (cancel.load(std::memory_order_relaxed)) {
+                return { false, "キャンセルしました" };
+            }
             fluid::FluidRecipe variant = recipe;
             variant.seed = recipe.seed + static_cast<std::uint32_t>(i);
             asset::FluidFrameImage image;
             std::atomic<float> inner{ 0.0f };
-            if (!asset::RenderFluidBakeFrame(variant, frame, tile, image, &inner, &cancel))
+            if (!asset::RenderFluidBakeFrame(variant, frame, tile, image, &inner, &cancel)) {
                 return { false, "プレビューを描けませんでした" };
+            }
             blit(image, i);
             progress.store(0.95f * static_cast<float>(i + 1) / static_cast<float>(variants),
                            std::memory_order_relaxed);
@@ -378,13 +460,16 @@ PreviewOutcome RunFlatPreview(const fluid::FluidRecipe& source, const FluidPrevi
         if (!asset::RenderFluidBakeFrames(recipe, wanted, tile, images, &progress, &cancel))
             return { false, cancel.load(std::memory_order_relaxed) ? "キャンセルしました"
                                                                    : "プレビューを描けませんでした" };
-        for (std::size_t i = 0; i < images.size(); ++i) blit(images[i], static_cast<int>(i));
+        for (std::size_t i = 0; i < images.size(); ++i) {
+            blit(images[i], static_cast<int>(i));
+        }
     }
 
     std::string error;
     if (!SavePngRgba8(pngPath, static_cast<std::uint32_t>(sheetWidth), static_cast<std::uint32_t>(sheetHeight),
-                      sheet, error))
+                      sheet, error)) {
         return { false, error };
+    }
     progress.store(1.0f, std::memory_order_relaxed);
     PreviewOutcome outcome;
     outcome.success = true;
@@ -470,28 +555,40 @@ struct FluidBakeService::Impl {
 
     [[nodiscard]] bool KeyBusy(const std::string& key) const
     {
-        if (key.empty()) return false;
+        if (key.empty()) {
+            return false;
+        }
         for (const auto& job : active) {
-            if (job->key == key) return true;
+            if (job->key == key) {
+                return true;
+            }
             for (const auto& file : job->effectFiles)
-                if (PathKey(file) == key) return true;
+                if (PathKey(file) == key) {
+                    return true;
+                }
         }
         for (const Orphan& orphan : orphans)
-            if (orphan.key == key) return true;
+            if (orphan.key == key) {
+                return true;
+            }
         return false;
     }
 
     [[nodiscard]] const Finished* FindFinished(std::uint32_t id) const
     {
         for (const Finished& record : finished)
-            if (record.status.id == id) return &record;
+            if (record.status.id == id) {
+                return &record;
+            }
         return nullptr;
     }
 
     Job& Add(std::unique_ptr<Job> job, FluidJobKind kind)
     {
         job->status.id = nextId++;
-        if (nextId == 0) nextId = 1;
+        if (nextId == 0) {
+            nextId = 1;
+        }
         job->status.kind = kind;
         job->status.state = FluidJobState::Queued;
         job->status.message = "待機中";
@@ -502,19 +599,27 @@ struct FluidBakeService::Impl {
     void Retire(Job& job, Finished record)
     {
         record.status = job.status;
-        if (volumeJob == &job) volumeJob = nullptr;
+        if (volumeJob == &job) {
+            volumeJob = nullptr;
+        }
         const auto it = std::find_if(active.begin(), active.end(),
                                      [&](const std::unique_ptr<Job>& entry) { return entry.get() == &job; });
-        if (it != active.end()) active.erase(it);
+        if (it != active.end()) {
+            active.erase(it);
+        }
         finished.push_back(std::move(record));
-        while (finished.size() > kFinishedJobsKept) finished.pop_front();
+        while (finished.size() > kFinishedJobsKept) {
+            finished.pop_front();
+        }
     }
 
     void Fail(Job& job, std::string message)
     {
         job.status.state = FluidJobState::Failed;
         job.status.message = std::move(message);
-        if (!job.preserveStageOnFailure) RemoveFluidBakeStage(job.stageDirectory);
+        if (!job.preserveStageOnFailure) {
+            RemoveFluidBakeStage(job.stageDirectory);
+        }
         Retire(job, {});
     }
 
@@ -528,8 +633,9 @@ struct FluidBakeService::Impl {
         if (!job.projectRoot.empty()) {
             const auto assets = util::FileSystem::PathFromUtf8(job.projectRoot) / "Assets";
             if (util::FileSystem::IsChildPathText(util::FileSystem::PathToUtf8(job.finalDirectory),
-                                                   util::FileSystem::PathToUtf8(assets)))
+                                                   util::FileSystem::PathToUtf8(assets))) {
                 stageParent = util::FileSystem::PathFromUtf8(job.projectRoot) / "Library" / "FluidBakeStage";
+            }
         }
         std::string error;
         if (!PrepareFluidBakeStage(job.finalDirectory, stageParent, job.outputStem, job.status.id,
@@ -543,7 +649,9 @@ struct FluidBakeService::Impl {
 
     [[nodiscard]] std::string FinalOutputPath(const Job& job, const std::string& staged) const
     {
-        if (staged.empty()) return {};
+        if (staged.empty()) {
+            return {};
+        }
         return util::FileSystem::PathToUtf8(job.finalDirectory
             / util::FileSystem::PathFromUtf8(staged).filename());
     }
@@ -559,7 +667,9 @@ struct FluidBakeService::Impl {
             return false;
         }
         for (const std::string& file : files) {
-            if (std::filesystem::path(file).extension() == ".meta") continue;
+            if (std::filesystem::path(file).extension() == ".meta") {
+                continue;
+            }
             job.status.outputs.push_back(file);
             if (!job.status.draft) {
                 (void)asset::AssetDatabase::GuidFromPath(file);
@@ -652,7 +762,10 @@ struct FluidBakeService::Impl {
             }
         }
         std::string publishError;
-        if (!PublishStage(job, publishError)) { Fail(job, publishError); return; }
+        if (!PublishStage(job, publishError)) {
+            Fail(job, publishError);
+            return;
+        }
         result.albedoPath = FinalOutputPath(job, result.albedoPath);
         result.motionVectorPath = FinalOutputPath(job, result.motionVectorPath);
         result.vectorFieldPath = FinalOutputPath(job, result.vectorFieldPath);
@@ -735,11 +848,15 @@ struct FluidBakeService::Impl {
             }
         }
         std::string publishError;
-        if (!PublishStage(job, publishError)) { Fail(job, publishError); return; }
+        if (!PublishStage(job, publishError)) {
+            Fail(job, publishError);
+            return;
+        }
         for (std::string* path : { &result.colorPath, &result.motionPath, &result.sixWayPositivePath,
                                    &result.sixWayNegativePath, &result.sixWayAlbedoColorPath,
-                                   &result.sixWayEmissionColorPath })
+                                   &result.sixWayEmissionColorPath }) {
             *path = FinalOutputPath(job, *path);
+        }
         record.volume = result;
         bakerResultJob = job.status.id;
         job.status.progress = 1.0f;
@@ -764,7 +881,9 @@ struct FluidBakeService::Impl {
             volumeJob = &job;
             return;
         }
-        if (!PrepareStage(job)) return;
+        if (!PrepareStage(job)) {
+            return;
+        }
         asset::VolumeFlipbookBakeSettings working = job.volumeSettings;
         working.outputDirectory = util::FileSystem::PathToUtf8(job.stageDirectory);
         std::string error;
@@ -772,7 +891,7 @@ struct FluidBakeService::Impl {
             Fail(job, error);
             return;
         }
-        /// @note Begin で baker の前の Atlas は捨てられる。
+        // Begin で baker の前の Atlas は捨てられる。
         bakerResultJob = 0;
         job.status.state = FluidJobState::Running;
         job.status.message = "焼いています";
@@ -822,7 +941,9 @@ struct FluidBakeService::Impl {
             job.status.state = FluidJobState::Encoding;
             job.status.message = "書き出しています (BC7 圧縮)";
         }
-        if (!baker.IsBusy()) FinishVolumeBake(job, ctx);
+        if (!baker.IsBusy()) {
+            FinishVolumeBake(job, ctx);
+        }
     }
 
     /// @note RecordPreview で描いた次のフレームで読み戻す (理由は VolumeFlipbookBaker.hpp を参照)。
@@ -835,7 +956,9 @@ struct FluidBakeService::Impl {
             std::uint32_t width = 0;
             std::uint32_t height = 0;
             if (baker.ReadbackPreview(*ctx.renderer, *ctx.resources, pixels, width, height)) {
-                for (std::size_t i = 3; i < pixels.size(); i += 4) pixels[i] = 255;
+                for (std::size_t i = 3; i < pixels.size(); i += 4) {
+                    pixels[i] = 255;
+                }
                 std::string error;
                 const std::filesystem::path png = util::FileSystem::PathFromUtf8(job.status.previewPngPath);
                 if (!SavePngRgba8(png, width, height, pixels, error)) {
@@ -879,7 +1002,9 @@ struct FluidBakeService::Impl {
         std::shared_ptr<asset::FluidBakeTiming> timing = job.timing;
         std::shared_ptr<std::atomic<bool>> cancel = job.cancel;
         if (job.status.kind == FluidJobKind::Bake) {
-            if (!PrepareStage(job)) return;
+            if (!PrepareStage(job)) {
+                return;
+            }
             const std::filesystem::path base = job.stageDirectory / job.outputStem;
             const std::string basePath = util::FileSystem::PathToUtf8(base);
             job.status.message = job.effectLayers.empty() ? "焼いています"
@@ -904,10 +1029,11 @@ struct FluidBakeService::Impl {
     {
         std::string abs = path.empty() ? std::string{} : asset::AssetManager::ResolveAssetPath(path);
         if ((abs.empty() || !util::FileSystem::Exists(abs)) && !path.empty()) {
-            if (util::FileSystem::Exists(path))
+            if (util::FileSystem::Exists(path)) {
                 abs = path;
-            else if (!ctx.projectRoot.empty())
+            } else if (!ctx.projectRoot.empty()) {
                 abs = ToProjectAssetDiskPath(ctx.projectRoot, path);
+            }
         }
         if (abs.empty() || !util::FileSystem::Exists(abs)) {
             outError = { "FLUID_NOT_FOUND", ".fluid が見つかりません: " + path };
@@ -940,15 +1066,19 @@ std::uint32_t FluidBakeService::EnqueueBake(const EditorContext& ctx, const Flui
 {
     std::string abs;
     fluid::FluidRecipe recipe;
-    if (!m_impl->ResolveFluid(ctx, request.fluidPath, abs, recipe, outError)) return 0;
-    if (request.draft && request.recipeOverride) recipe = *request.recipeOverride;
+    if (!m_impl->ResolveFluid(ctx, request.fluidPath, abs, recipe, outError)) {
+        return 0;
+    }
+    if (request.draft && request.recipeOverride) {
+        recipe = *request.recipeOverride;
+    }
     const bool volume = recipe.bake.mode == fluid::FluidBakeMode::Volume3D;
     if (volume && (ctx.renderer == nullptr || ctx.resources == nullptr)) {
         outError = { "NO_RENDERER", "3D の焼きにはレンダラーが要ります" };
         return 0;
     }
-    /// @note 3D は Baker がパスから .fluid を読み直すので、メモリ上の seed 差し替えは効かない。
-    /// @note 黙って «指定と違う seed» で焼くより、できないと言う。
+    // 3D は Baker がパスから .fluid を読み直すので、メモリ上の seed 差し替えは効かない。
+    // 黙って «指定と違う seed» で焼くより、できないと言う。
     if (volume && request.seed != 0) {
         outError = { "BAD_ARG", "3D の焼きは seed の差し替えに対応していません (.fluid の seed を変えてください)" };
         return 0;
@@ -958,7 +1088,9 @@ std::uint32_t FluidBakeService::EnqueueBake(const EditorContext& ctx, const Flui
     job->fluidAbs = abs;
     job->projectRoot = ctx.projectRoot;
     job->recipe = recipe;
-    if (request.seed != 0) job->recipe.seed = request.seed;
+    if (request.seed != 0) {
+        job->recipe.seed = request.seed;
+    }
     if (request.draft) {
         if (ctx.projectRoot.empty()) {
             outError = { "BAD_PATH", "仮 Bake にはプロジェクトが要ります" };
@@ -985,7 +1117,9 @@ std::uint32_t FluidBakeService::EnqueueBake(const EditorContext& ctx, const Flui
     job->bakeRequest = request;
     job->status.fluidPath = abs;
     job->status.seed = job->recipe.seed;
-    if (volume) job->volumeSettings = asset::MakeVolumeBakeSettings(job->recipe, job->fluidAbs);
+    if (volume) {
+        job->volumeSettings = asset::MakeVolumeBakeSettings(job->recipe, job->fluidAbs);
+    }
     const asset::FluidBakeBudget budget = volume
         ? asset::EstimateVolumeBakeBudget(job->volumeSettings)
         : asset::EstimateFluidBakeBudget(job->recipe);
@@ -1009,9 +1143,14 @@ std::uint32_t FluidBakeService::EnqueueEffectTemplate(const EditorContext& ctx, 
     std::error_code error;
     const auto assets = std::filesystem::weakly_canonical(
         util::FileSystem::PathFromUtf8(ctx.projectRoot) / "Assets", error);
-    if (error) { outError = { "BAD_PATH", "Assets の場所を解決できません" }; return 0; }
+    if (error) {
+        outError = { "BAD_PATH", "Assets の場所を解決できません" };
+        return 0;
+    }
     auto folder = util::FileSystem::PathFromUtf8(directory);
-    if (!folder.is_absolute()) folder = util::FileSystem::PathFromUtf8(ctx.projectRoot) / folder;
+    if (!folder.is_absolute()) {
+        folder = util::FileSystem::PathFromUtf8(ctx.projectRoot) / folder;
+    }
     folder = std::filesystem::weakly_canonical(folder, error);
     if (error || !util::FileSystem::IsChildPathText(util::FileSystem::PathToUtf8(folder),
                                                    util::FileSystem::PathToUtf8(assets))) {
@@ -1056,7 +1195,9 @@ std::uint32_t FluidBakeService::EnqueuePreview(const EditorContext& ctx, const F
 {
     std::string abs;
     fluid::FluidRecipe recipe;
-    if (!m_impl->ResolveFluid(ctx, request.fluidPath, abs, recipe, outError)) return 0;
+    if (!m_impl->ResolveFluid(ctx, request.fluidPath, abs, recipe, outError)) {
+        return 0;
+    }
     const bool volume = recipe.bake.mode == fluid::FluidBakeMode::Volume3D;
     if (volume && (ctx.renderer == nullptr || ctx.resources == nullptr)) {
         outError = { "NO_RENDERER", "3D のプレビューにはレンダラーが要ります" };
@@ -1076,11 +1217,13 @@ std::uint32_t FluidBakeService::EnqueuePreview(const EditorContext& ctx, const F
     job->fluidAbs = abs;
     job->projectRoot = ctx.projectRoot;
     job->recipe = recipe;
-    if (request.seed != 0) job->recipe.seed = request.seed;
+    if (request.seed != 0) {
+        job->recipe.seed = request.seed;
+    }
     job->volume = volume;
     job->previewRequest = request;
     job->previewRequest.size = std::clamp(request.size, 32, 2048);
-    /// @note 見るコマはここで決めてしまう。2D も 3D も «焼きの第 n コマ» を指す 1 つの番号で話す。
+    // 見るコマはここで決めてしまう。2D も 3D も «焼きの第 n コマ» を指す 1 つの番号で話す。
     const fluid::FluidStepPlan plan = fluid::MakeFluidStepPlan(job->recipe);
     job->previewRequest.frame = request.frame >= 0 ? std::clamp(request.frame, 0, plan.frameCount - 1)
                                                    : plan.FrameOfTime(request.time);
@@ -1120,7 +1263,9 @@ bool FluidBakeService::Cancel(std::uint32_t id)
     Impl& impl = *m_impl;
     const auto it = std::find_if(impl.active.begin(), impl.active.end(),
                                  [id](const std::unique_ptr<Impl::Job>& job) { return job->status.id == id; });
-    if (it == impl.active.end()) return false;
+    if (it == impl.active.end()) {
+        return false;
+    }
     Impl::Job& job = **it;
     job.cancel->store(true, std::memory_order_relaxed);
     if (job.status.state != FluidJobState::Queued) {
@@ -1136,7 +1281,7 @@ bool FluidBakeService::Cancel(std::uint32_t id)
             RemoveFluidBakeStage(std::move(job.stageDirectory));
         }
         if (job.flatBake.valid() || job.flatPreview.valid()) {
-            /// @note 進行中の WIC 書き込みだけは中断できない。終われば仮出力を破棄する。
+            // 進行中の WIC 書き込みだけは中断できない。終われば仮出力を破棄する。
             impl.orphans.push_back({ job.effectLayers.empty() ? job.key : PathKey(job.fluidAbs),
                                      std::move(job.stageDirectory),
                                      std::move(job.flatBake), std::move(job.flatPreview) });
@@ -1151,16 +1296,22 @@ bool FluidBakeService::Cancel(std::uint32_t id)
 const FluidJobStatus* FluidBakeService::Find(std::uint32_t id) const
 {
     for (const auto& job : m_impl->active)
-        if (job->status.id == id) return &job->status;
+        if (job->status.id == id) {
+            return &job->status;
+        }
     const Impl::Finished* record = m_impl->FindFinished(id);
     return record != nullptr ? &record->status : nullptr;
 }
 
 bool FluidBakeService::IsBusy(const std::string& fluidPath) const
 {
-    if (fluidPath.empty()) return false;
+    if (fluidPath.empty()) {
+        return false;
+    }
     std::string abs = asset::AssetManager::ResolveAssetPath(fluidPath);
-    if (abs.empty() || !util::FileSystem::Exists(abs)) abs = fluidPath;
+    if (abs.empty() || !util::FileSystem::Exists(abs)) {
+        abs = fluidPath;
+    }
     return m_impl->KeyBusy(PathKey(abs));
 }
 
@@ -1172,8 +1323,8 @@ bool FluidBakeService::IsAnyBusy() const
 void FluidBakeService::Tick(EditorContext& ctx)
 {
     Impl& impl = *m_impl;
-    /// @note 門を閉じた本人 (Fluid Editor) が居なくなったら開け直す。閉じたまま残ると、次にプレビューを
-    /// @note 見る誰かが «前のソルバーのまま» 動かなくなる。
+    // 門を閉じた本人 (Fluid Editor) が居なくなったら開け直す。閉じたまま残ると、次にプレビューを
+    // 見る誰かが «前のソルバーのまま» 動かなくなる。
     if (!impl.previewSwitchAsked && !impl.previewSwitchAllowed) {
         impl.previewSwitchAllowed = true;
         impl.baker.AllowPreviewSwitch(true);
@@ -1184,7 +1335,9 @@ void FluidBakeService::Tick(EditorContext& ctx)
         const auto ready = [](auto& future) {
             return !future.valid() || future.wait_for(std::chrono::seconds(0)) == std::future_status::ready;
         };
-        if (!ready(orphan.bake) || !ready(orphan.preview)) return false;
+        if (!ready(orphan.bake) || !ready(orphan.preview)) {
+            return false;
+        }
         RemoveFluidBakeStage(std::move(orphan.stageDirectory));
         return true;
     });
@@ -1193,16 +1346,22 @@ void FluidBakeService::Tick(EditorContext& ctx)
         impl.reloadQueue.pop_front();
     }
 
-    /// @note Retire が active を縮めるので、id を控えてから 1 件ずつ引き直す。
+    // Retire が active を縮めるので、id を控えてから 1 件ずつ引き直す。
     std::vector<std::uint32_t> ids;
     ids.reserve(impl.active.size());
-    for (const auto& job : impl.active) ids.push_back(job->status.id);
+    for (const auto& job : impl.active) {
+        ids.push_back(job->status.id);
+    }
     for (const std::uint32_t id : ids) {
         const auto it = std::find_if(impl.active.begin(), impl.active.end(),
                                      [id](const std::unique_ptr<Impl::Job>& job) { return job->status.id == id; });
-        if (it == impl.active.end()) continue;
+        if (it == impl.active.end()) {
+            continue;
+        }
         Impl::Job& job = **it;
-        if (job.volume) continue;
+        if (job.volume) {
+            continue;
+        }
         if (job.status.state == FluidJobState::Queued) {
             impl.StartFlatJob(job);
             continue;
@@ -1248,38 +1407,60 @@ void FluidBakeService::Tick(EditorContext& ctx)
         }
     }
 
-    if (ctx.renderer == nullptr || ctx.resources == nullptr) return;
+    if (ctx.renderer == nullptr || ctx.resources == nullptr) {
+        return;
+    }
     if (impl.volumeJob == nullptr && !impl.baker.IsBusy()) {
         for (const auto& job : impl.active) {
-            if (!job->volume || job->status.state != FluidJobState::Queued) continue;
+            if (!job->volume || job->status.state != FluidJobState::Queued) {
+                continue;
+            }
             impl.StartVolumeJob(*job, ctx);
-            /// @note Begin に失敗したジョブは Retire 済みで、active のイテレーターは無効になっている。
+            // Begin に失敗したジョブは Retire 済みで、active のイテレーターは無効になっている。
             break;
         }
     }
-    if (impl.volumeJob == nullptr) return;
+    if (impl.volumeJob == nullptr) {
+        return;
+    }
     Impl::Job& job = *impl.volumeJob;
-    if (job.status.kind == FluidJobKind::Bake) impl.TickVolumeBake(job, ctx);
-    else                                       impl.TickVolumePreview(job, ctx);
+    if (job.status.kind == FluidJobKind::Bake) {
+        impl.TickVolumeBake(job, ctx);
+    } else {
+        impl.TickVolumePreview(job, ctx);
+    }
 }
 
 void FluidBakeService::Shutdown(EditorContext& ctx)
 {
     Impl& impl = *m_impl;
     std::vector<std::uint32_t> ids;
-    for (const auto& job : impl.active) ids.push_back(job->status.id);
-    for (const std::uint32_t id : ids) (void)Cancel(id);
+    for (const auto& job : impl.active) {
+        ids.push_back(job->status.id);
+    }
+    for (const std::uint32_t id : ids) {
+        (void)Cancel(id);
+    }
     renderer::ResourceManager* resources = ctx.resources != nullptr ? ctx.resources : impl.bakerResources;
-    if (resources != nullptr) impl.baker.Release(*resources);
-    else                      impl.baker.Cancel();
+    if (resources != nullptr) {
+        impl.baker.Release(*resources);
+    } else {
+        impl.baker.Cancel();
+    }
     impl.bakerResources = nullptr;
-    /// @note Encoding 中の Cancel は Tick で確定するため、終了時だけ worker の停止後に仮出力を掃除する。
+    // Encoding 中の Cancel は Tick で確定するため、終了時だけ worker の停止後に仮出力を掃除する。
     for (const auto& job : impl.active)
-        if (!job->stageDirectory.empty()) RemoveFluidBakeStage(job->stageDirectory);
-    /// @note 中断直後に残る 2D の WIC 書き込みはここで待つ (future の破棄が完了を待つ)。
+        if (!job->stageDirectory.empty()) {
+            RemoveFluidBakeStage(job->stageDirectory);
+        }
+    // 中断直後に残る 2D の WIC 書き込みはここで待つ (future の破棄が完了を待つ)。
     for (Impl::Orphan& orphan : impl.orphans) {
-        if (orphan.bake.valid()) orphan.bake.wait();
-        if (orphan.preview.valid()) orphan.preview.wait();
+        if (orphan.bake.valid()) {
+            orphan.bake.wait();
+        }
+        if (orphan.preview.valid()) {
+            orphan.preview.wait();
+        }
         RemoveFluidBakeStage(std::move(orphan.stageDirectory));
     }
     impl.orphans.clear();
@@ -1305,7 +1486,9 @@ const asset::VolumeFlipbookBakeSettings* FluidBakeService::FindVolumeSettings(st
 
 bool FluidBakeService::TakeBakedVolumeFlipbook(std::uint32_t id, asset::BakedVolumeFlipbook& out)
 {
-    if (id == 0 || id != m_impl->bakerResultJob) return false;
+    if (id == 0 || id != m_impl->bakerResultJob) {
+        return false;
+    }
     return m_impl->baker.TakeBakedFlipbook(out);
 }
 
@@ -1319,7 +1502,9 @@ bool FluidBakeService::RecordVolumePreview(EditorContext& ctx, const asset::Volu
                                            float time, const asset::VolumePreviewOptions& options,
                                            const fluid::FluidRecipe* recipe, std::uint64_t recipeRevision)
 {
-    if (!IsVolumeBakerFree() || ctx.renderer == nullptr || ctx.resources == nullptr) return false;
+    if (!IsVolumeBakerFree() || ctx.renderer == nullptr || ctx.resources == nullptr) {
+        return false;
+    }
     m_impl->bakerResources = ctx.resources;
     m_impl->baker.RecordPreview(*ctx.renderer, *ctx.resources, settings, time, options, recipe, recipeRevision);
     return true;
@@ -1334,8 +1519,10 @@ void FluidBakeService::AllowVolumePreviewSwitch(bool allow)
 {
     Impl& impl = *m_impl;
     impl.previewSwitchAsked = true;
-    /// @note 焼きが握っている間の切り替えはその焼きのもの。プレビューの都合で止めない。
-    if (!IsVolumeBakerFree()) return;
+    // 焼きが握っている間の切り替えはその焼きのもの。プレビューの都合で止めない。
+    if (!IsVolumeBakerFree()) {
+        return;
+    }
     impl.previewSwitchAllowed = allow;
     impl.baker.AllowPreviewSwitch(allow);
 }

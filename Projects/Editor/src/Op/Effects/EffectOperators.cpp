@@ -24,8 +24,12 @@ namespace {
 
 scene::GameObject* ResolveEffectNode(const OpContext& context, const std::string& nodeId)
 {
-    if (context.ctx.activeScene == nullptr) return nullptr;
-    if (nodeId.empty()) return context.ctx.GetSelectedGO();
+    if (context.ctx.activeScene == nullptr) {
+        return nullptr;
+    }
+    if (nodeId.empty()) {
+        return context.ctx.GetSelectedGO();
+    }
     return context.ctx.activeScene->FindByGuid(nodeId);
 }
 
@@ -41,7 +45,7 @@ bool IsVFXAction(const std::string& action)
         || action == "restart" || action == "stop" || action == "trigger";
 }
 
-} /// @note namespace
+} // namespace
 
 void RegisterEffectOperators(OperatorRegistry& registry)
 {
@@ -82,7 +86,9 @@ void RegisterEffectOperators(OperatorRegistry& registry)
     op.params = { nodeParam, actionParam, countParam, nameParam };
     op.poll = [](const OpContext& context, const OpArgs& args) {
         scene::GameObject* go = ResolveEffectNode(context, args.GetString("node"));
-        if (go == nullptr) return false;
+        if (go == nullptr) {
+            return false;
+        }
         const std::string action = args.GetString("action");
         const bool hasParticle = go->GetComponent<scene::ParticleEmitter>() != nullptr;
         const bool hasVFX = go->GetComponent<scene::VFXComponent>() != nullptr;
@@ -98,21 +104,29 @@ void RegisterEffectOperators(OperatorRegistry& registry)
 
     op.exec = [](OpContext& context, const OpArgs& args) -> OpResult {
         scene::GameObject* go = ResolveEffectNode(context, args.GetString("node"));
-        if (go == nullptr) return OpResult::Err("NO_NODE", "対象の GameObject が見つかりません");
+        if (go == nullptr) {
+            return OpResult::Err("NO_NODE", "対象の GameObject が見つかりません");
+        }
 
         const std::string action = args.GetString("action");
         bool applied = false;
         if (auto* particle = go->GetComponent<scene::ParticleEmitter>();
             particle != nullptr && IsParticleAction(action)) {
-            if (action == "play")         particle->Play();
-            else if (action == "pause")   particle->Pause();
-            else if (action == "restart") particle->Play(true);
-            else if (action == "stop")    particle->Stop();
-            else if (action == "clear")   particle->ClearParticles();
-            else {
+            if (action == "play") {
+                particle->Play();
+            } else if (action == "pause") {
+                particle->Pause();
+            } else if (action == "restart") {
+                particle->Play(true);
+            } else if (action == "stop") {
+                particle->Stop();
+            } else if (action == "clear") {
+                particle->ClearParticles();
+            } else {
                 const int count = args.GetInt("count", 10);
-                if (count < 1 || count > 100000)
+                if (count < 1 || count > 100000) {
                     return OpResult::Err("BAD_ARG", "count は 1〜100000 です");
+                }
                 particle->Burst(count);
             }
             applied = true;
@@ -120,26 +134,35 @@ void RegisterEffectOperators(OperatorRegistry& registry)
 
         if (auto* vfx = go->GetComponent<scene::VFXComponent>();
             vfx != nullptr && IsVFXAction(action)) {
-            if (action == "play" || action == "resume") vfx->Resume();
-            else if (action == "pause")                  vfx->Pause();
-            else if (action == "restart")                vfx->Restart();
-            else if (action == "stop")                   vfx->Stop();
-            else {
+            if (action == "play" || action == "resume") {
+                vfx->Resume();
+            } else if (action == "pause") {
+                vfx->Pause();
+            } else if (action == "restart") {
+                vfx->Restart();
+            } else if (action == "stop") {
+                vfx->Stop();
+            } else {
                 const std::string name = args.GetString("name");
-                if (name.empty()) return OpResult::Err("BAD_ARG", "trigger には name が必要です");
+                if (name.empty()) {
+                    return OpResult::Err("BAD_ARG", "trigger には name が必要です");
+                }
                 vfx->Trigger(name);
             }
             applied = true;
         }
 
-        if (applied) return OpResult::Ok();
+        if (applied) {
+            return OpResult::Ok();
+        }
         if (go->GetComponent<scene::ParticleEmitter>() != nullptr
-            || go->GetComponent<scene::VFXComponent>() != nullptr)
+            || go->GetComponent<scene::VFXComponent>() != nullptr) {
             return OpResult::Err("BAD_ARG", "対象コンポーネントに対応しない action です");
+        }
         return OpResult::Err("NOT_PRESENT", "ParticleEmitter または VFXComponent がありません");
     };
 
     registry.Register(std::move(op));
 }
 
-} /// @note namespace fbzz::editor
+} // namespace fbzz::editor

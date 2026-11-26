@@ -83,4 +83,4 @@ public:
     /// @}
 };
 
-} /// @note namespace fbzz::editor
+} // namespace fbzz::editor

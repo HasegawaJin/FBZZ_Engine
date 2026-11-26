@@ -20,4 +20,4 @@ namespace fbzz::editor {
     return buffer;
 }
 
-} ///< @note namespace fbzz::editor
+} ///< namespace fbzz::editor

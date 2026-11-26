@@ -125,7 +125,7 @@ protected:
             ASSERT_NE(kind, nullptr) << responseText;
             ASSERT_TRUE(kind->IsString()) << responseText;
             ASSERT_TRUE(kind->AsString() == "query" || kind->AsString() == "command" || kind->AsString() == "undoable") << responseText;
-            /// @note undoable は native 内部の区分で、wire では command として送る。
+            // undoable は native 内部の区分で、wire では command として送る。
             types.push_back({type->AsString(), kind->AsString() == "query" ? "query" : "command"});
         }
     }

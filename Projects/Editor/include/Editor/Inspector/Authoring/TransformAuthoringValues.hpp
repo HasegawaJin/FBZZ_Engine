@@ -11,4 +11,4 @@ namespace fbzz::editor {
 /// @note ローカル position / rotation / scale のみを厳密比較し、派生した world 値は比較しない。
 [[nodiscard]] bool TransformAuthoringValuesEqual(const scene::Transform& lhs, const scene::Transform& rhs);
 
-} /// @note namespace fbzz::editor
+} // namespace fbzz::editor

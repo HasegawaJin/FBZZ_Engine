@@ -326,4 +326,4 @@ bool BuildTerrainDrainage(std::span<const TerrainAnalysisSurface> surfaces,
 /// @return River width and bed depth in world metres derived from contributing area, independently of spill fill.
 math::Vector2 DrainageRiverSize(const TerrainDrainageNode& node, float step);
 
-} /// @note namespace fbzz::editor
+} // namespace fbzz::editor

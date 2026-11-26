@@ -21,4 +21,4 @@ namespace fbzz::editor {
 /// @see https://learn.microsoft.com/windows/win32/api/processthreadsapi/nf-processthreadsapi-createprocessw Explicit application name avoids executable search and whitespace ambiguity.
 [[nodiscard]] bool LaunchPixUi(const std::filesystem::path& executable, std::string& error);
 
-} /// @note namespace fbzz::editor
+} // namespace fbzz::editor

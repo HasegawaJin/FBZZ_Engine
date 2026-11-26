@@ -51,13 +51,19 @@ namespace fbzz::editor {
 bool LoadTerrainScatterDensityMap(const std::string& projectRoot, const std::string& reference,
     const scene::TerrainComponent& terrain, TerrainMapRaster& out)
 {
-    if (reference.empty()) return false;
+    if (reference.empty()) {
+        return false;
+    }
     auto path = asset::AssetManager::ResolveAssetPath(reference);
-    if (path.empty()) path = ToProjectAssetDiskPath(projectRoot, reference);
+    if (path.empty()) {
+        path = ToProjectAssetDiskPath(projectRoot, reference);
+    }
     scene::TerrainComponent image;
     image.columns = std::clamp(terrain.columns, 2, 513);
     image.rows = std::clamp(terrain.rows, 2, 513);
-    if (!scene::LoadHeightMapFromFile(path, image, true)) return false;
+    if (!scene::LoadHeightMapFromFile(path, image, true)) {
+        return false;
+    }
     out = {image.columns, image.rows, std::move(image.heightData)};
     return true;
 }
@@ -66,8 +72,11 @@ namespace terrain_scatter_operators {
 OpParam Parameter(const char* name, OpParamType type, OpValue fallback, const char* description)
 {
     OpParam param;
-    param.name = name; param.type = type; param.required = false;
-    param.defaultValue = std::move(fallback); param.desc = description;
+    param.name = name;
+    param.type = type;
+    param.required = false;
+    param.defaultValue = std::move(fallback);
+    param.desc = description;
     return param;
 }
 
@@ -97,7 +106,9 @@ std::shared_ptr<uint64_t> ScatterLifetime(uint64_t lifetime)
     auto& lifetimes = ScatterLifetimes();
     std::erase_if(lifetimes, [](const auto& entry) { return entry.second.expired(); });
     auto& entry = lifetimes[lifetime];
-    if (auto shared = entry.lock()) return shared;
+    if (auto shared = entry.lock()) {
+        return shared;
+    }
     auto shared = std::make_shared<uint64_t>(lifetime);
     entry = shared;
     return shared;
@@ -120,13 +131,17 @@ struct ScatterChange {
 
 asset::MeshInstancesAsset* ResolvePlacement(const std::string& path)
 {
-    if (util::FileSystem::GetExtension(asset::AssetManager::ResolveAssetPath(path)) != ".meshinstances") return nullptr;
+    if (util::FileSystem::GetExtension(asset::AssetManager::ResolveAssetPath(path)) != ".meshinstances") {
+        return nullptr;
+    }
     return asset::AssetManager::Get(asset::AssetManager::Load<asset::MeshInstancesAsset>(path));
 }
 
 void PublishPlacementDraft(const ScatterChange& change, const std::shared_ptr<asset::MeshInstancesAsset>& value)
 {
-    if (auto* current = ResolvePlacement(change.diskPath)) *current = *value;
+    if (auto* current = ResolvePlacement(change.diskPath)) {
+        *current = *value;
+    }
     AssetDirtyRegistry::RegisterDraft(change.diskPath, change.after.m_instanceSetRef.path, "MESH INSTANCES", value,
         [path = change.diskPath](const asset::MeshInstancesAsset& draft) {
             const auto* current = ResolvePlacement(path);
@@ -150,16 +165,20 @@ public:
     {
         if (m_context.activeScene != m_scene || m_scene->GetRenderSceneGeneration() != m_sceneGeneration
             || AssetDirtyRegistry::DiscardEpoch() != m_discardEpoch) {
-            reason = "配置したシーンまたは未保存データの世代が変わりました。"; return false;
+            reason = "配置したシーンまたは未保存データの世代が変わりました。";
+            return false;
         }
         for (const auto& change : m_changes) {
             const auto* currentAsset = ResolvePlacement(change.diskPath);
             const auto& expectedAsset = m_applied || !change.beforeAsset ? change.afterAsset : change.beforeAsset;
             if (!currentAsset || !expectedAsset || !asset::MeshInstancesAssetsEqual(*currentAsset, *expectedAsset)) {
-                reason = "配置アセットの内容が変更されています。"; return false;
+                reason = "配置アセットの内容が変更されています。";
+                return false;
             }
             auto* node = m_scene->FindByGuid(change.node);
-            if (!m_applied && !change.newName.empty() && !node) continue;
+            if (!m_applied && !change.newName.empty() && !node) {
+                continue;
+            }
             const auto* component = node ? node->GetComponent<scene::InstancedMeshComponent>() : nullptr;
             const auto* expected = m_applied ? &change.after : (change.before ? &*change.before : nullptr);
             const auto& snapshot = m_applied ? change.afterSnapshot : change.beforeSnapshot;
@@ -167,7 +186,8 @@ public:
                     ? (!component || !SameComponent(*component, *expected, snapshot)
                         || m_scene->GetComponentLifetime<scene::InstancedMeshComponent>(node->GetID()) != *change.lifetime)
                     : component != nullptr)) {
-                reason = "配置先の Component または配置アセットが変更されています。"; return false;
+                reason = "配置先の Component または配置アセットが変更されています。";
+                return false;
             }
         }
         return true;
@@ -175,35 +195,47 @@ public:
 private:
     bool Apply(bool after, std::string& reason)
     {
-        if (after == m_applied || !ValidateHistory(reason)) return false;
+        if (after == m_applied || !ValidateHistory(reason)) {
+            return false;
+        }
         size_t createCount = 0;
         for (const auto& change : m_changes) {
             if (after) {
                 if (!util::FileSystem::Exists(util::FileSystem::PathFromUtf8(change.diskPath))
                     || (!change.beforeAsset && change.after.Snapshot() != change.afterSnapshot)) {
-                    reason = "生成した配置アセットが削除または変更されています。"; return false;
+                    reason = "生成した配置アセットが削除または変更されています。";
+                    return false;
                 }
-                if (!change.newName.empty()) ++createCount;
+                if (!change.newName.empty()) {
+                    ++createCount;
+                }
             } else if (!change.newName.empty()) {
                 auto* node = m_scene->FindByGuid(change.node);
                 bool edited = node->GetChildCount() != 0 || !IsPaintOwnerTransform(*node)
                     || node->name != change.newName || node->tag != "Untagged" || node->layer != 0 || !node->activeSelf();
                 scene::ForEachRegisteredComponent([&]<typename T, typename Registration>() {
-                    if constexpr (!std::is_same_v<T, scene::InstancedMeshComponent>)
+                    if constexpr (!std::is_same_v<T, scene::InstancedMeshComponent>) {
                         edited = edited || node->GetComponent<T>() != nullptr;
+                    }
                 });
                 if (edited) {
-                    reason = "自動生成した配置先が編集されているため削除できません。"; return false;
+                    reason = "自動生成した配置先が編集されているため削除できません。";
+                    return false;
                 }
             }
         }
         if (createCount && !m_scene->CanCreateGameObjects(createCount)) {
-            reason = "配置先の GameObject 上限を超えます。"; return false;
+            reason = "配置先の GameObject 上限を超えます。";
+            return false;
         }
         for (const auto& change : m_changes) {
-            if (after) PublishPlacementDraft(change, change.afterAsset);
-            else if (change.beforeAsset) PublishPlacementDraft(change, change.beforeAsset);
-            else AssetDirtyRegistry::MarkClean(change.diskPath);
+            if (after) {
+                PublishPlacementDraft(change, change.afterAsset);
+            } else if (change.beforeAsset) {
+                PublishPlacementDraft(change, change.beforeAsset);
+            } else {
+                AssetDirtyRegistry::MarkClean(change.diskPath);
+            }
         }
         for (const auto& change : m_changes) {
             auto* node = m_scene->FindByGuid(change.node);
@@ -217,18 +249,27 @@ private:
             }
             const auto* value = after ? &change.after : (change.before ? &*change.before : nullptr);
             if (value) {
-                if (auto* current = node->GetComponent<scene::InstancedMeshComponent>()) *current = *value;
-                else {
+                if (auto* current = node->GetComponent<scene::InstancedMeshComponent>()) {
+                    *current = *value;
+                } else {
                     node->AddComponent<scene::InstancedMeshComponent>(*value);
-                    if (*change.lifetime) ScatterLifetimes().erase(*change.lifetime);
+                    if (*change.lifetime) {
+                        ScatterLifetimes().erase(*change.lifetime);
+                    }
                     *change.lifetime = m_scene->GetComponentLifetime<scene::InstancedMeshComponent>(node->GetID());
                     ScatterLifetimes()[*change.lifetime] = change.lifetime;
                 }
-            } else node->RemoveComponent<scene::InstancedMeshComponent>();
+            } else {
+                node->RemoveComponent<scene::InstancedMeshComponent>();
+            }
         }
         m_applied = after;
-        if (!after) PruneSelection(m_context);
-        if (m_context.markSceneDirty) m_context.markSceneDirty();
+        if (!after) {
+            PruneSelection(m_context);
+        }
+        if (m_context.markSceneDirty) {
+            m_context.markSceneDirty();
+        }
         return true;
     }
     EditorContext& m_context;
@@ -240,19 +281,26 @@ private:
 
 bool ReadBrushPoints(const OpData& stroke, std::vector<math::Vector3>& points)
 {
-    if (!stroke.IsArray() || stroke.AsArray().empty() || stroke.AsArray().size() > TERRAIN_SCATTER_STROKE_LIMIT) return false;
+    if (!stroke.IsArray() || stroke.AsArray().empty() || stroke.AsArray().size() > TERRAIN_SCATTER_STROKE_LIMIT) {
+        return false;
+    }
     points.reserve(stroke.AsArray().size());
     for (const auto& value : stroke.AsArray()) {
         if (value.IsVec3()) {
             points.push_back(value.AsVec3());
             continue;
         }
-        if (!value.IsArray() || value.AsArray().size() != 3) return false;
+        if (!value.IsArray() || value.AsArray().size() != 3) {
+            return false;
+        }
         const auto& xyz = value.AsArray();
         float coordinates[3]{};
         for (size_t i = 0; i < 3; ++i) {
-            if (xyz[i].IsInt()) coordinates[i] = static_cast<float>(xyz[i].AsInt64());
-            else if (!xyz[i].TryGetFloat(coordinates[i])) return false;
+            if (xyz[i].IsInt()) {
+                coordinates[i] = static_cast<float>(xyz[i].AsInt64());
+            } else if (!xyz[i].TryGetFloat(coordinates[i])) {
+                return false;
+            }
         }
         points.emplace_back(coordinates[0], coordinates[1], coordinates[2]);
     }
@@ -265,14 +313,22 @@ bool ReadSettings(const OpArgs& args, TerrainScatterSettings& settings)
     settings.density = args.GetFloat("density", settings.density);
     const int seed = args.GetInt("seed", 1), maxInstances = args.GetInt("maxInstances", 100000);
     const int cellCap = args.GetInt("maxPlacementsPerCell", 0);
-    if (seed < 0 || maxInstances < 1 || cellCap < 0) return false;
-    settings.seed = static_cast<uint32_t>(seed); settings.maxInstances = static_cast<uint32_t>(maxInstances);
+    if (seed < 0 || maxInstances < 1 || cellCap < 0) {
+        return false;
+    }
+    settings.seed = static_cast<uint32_t>(seed);
+    settings.maxInstances = static_cast<uint32_t>(maxInstances);
     settings.maxPlacementsPerCell = static_cast<uint32_t>(cellCap);
-    settings.minHeight = args.GetFloat("minHeight", settings.minHeight); settings.maxHeight = args.GetFloat("maxHeight", settings.maxHeight);
-    settings.minSlope = args.GetFloat("minSlope", settings.minSlope); settings.maxSlope = args.GetFloat("maxSlope", settings.maxSlope);
-    settings.layer = args.GetInt("layer", settings.layer); settings.layerThreshold = args.GetFloat("layerThreshold", settings.layerThreshold);
-    settings.minScale = args.GetFloat("minScale", settings.minScale); settings.maxScale = args.GetFloat("maxScale", settings.maxScale);
-    settings.minYaw = args.GetFloat("minYaw", settings.minYaw); settings.maxYaw = args.GetFloat("maxYaw", settings.maxYaw);
+    settings.minHeight = args.GetFloat("minHeight", settings.minHeight);
+    settings.maxHeight = args.GetFloat("maxHeight", settings.maxHeight);
+    settings.minSlope = args.GetFloat("minSlope", settings.minSlope);
+    settings.maxSlope = args.GetFloat("maxSlope", settings.maxSlope);
+    settings.layer = args.GetInt("layer", settings.layer);
+    settings.layerThreshold = args.GetFloat("layerThreshold", settings.layerThreshold);
+    settings.minScale = args.GetFloat("minScale", settings.minScale);
+    settings.maxScale = args.GetFloat("maxScale", settings.maxScale);
+    settings.minYaw = args.GetFloat("minYaw", settings.minYaw);
+    settings.maxYaw = args.GetFloat("maxYaw", settings.maxYaw);
     settings.alignToNormal = args.GetBool("alignToNormal", settings.alignToNormal);
     settings.alignDownslope = args.GetBool("alignDownslope", settings.alignDownslope);
     settings.downslopeJitter = args.GetFloat("downslopeJitter", settings.downslopeJitter);
@@ -295,42 +351,55 @@ std::optional<OpResult> StageSet(EditorContext& ctx, const asset::InstanceSetAss
             const auto* other = ctx.activeScene->GetComponent<scene::InstancedMeshComponent>(id);
             if (node && node->instanceId != change.node && other
                 && asset::AssetManager::ResolveAssetPath(other->m_instanceSetRef.path)
-                    == asset::AssetManager::ResolveAssetPath(previous->m_instanceSetRef.path)) reuse = false;
+                    == asset::AssetManager::ResolveAssetPath(previous->m_instanceSetRef.path)) {
+                reuse = false;
+            }
         }
     }
     std::string reference;
     if (reuse) {
         change.diskPath = asset::AssetManager::ResolveAssetPath(previous->m_instanceSetRef.path);
         const auto* current = ResolvePlacement(change.diskPath);
-        if (!current) return OpResult::Err("LOAD_FAILED", "現在の配置を読み込めません。");
+        if (!current) {
+            return OpResult::Err("LOAD_FAILED", "現在の配置を読み込めません。");
+        }
         change.beforeAsset = std::make_shared<asset::MeshInstancesAsset>(*current);
         staged = *current;
         reference = previous->m_instanceSetRef.path;
     }
-    if (!staged.instances.Replace(definition.Parts(), definition.LodHeights(), placements))
+    if (!staged.instances.Replace(definition.Parts(), definition.LodHeights(), placements)) {
         return OpResult::Err("INVALID_TEMPLATE", "配置またはテンプレートの mesh・材質・LOD が不正です。");
+    }
     staged.terrainPaintRef = source;
     if (!reuse) {
         const auto relative = folder + asset::AssetDatabase::GenerateGuid() + ".meshinstances";
         change.diskPath = util::FileSystem::PathToUtf8(util::FileSystem::PathFromUtf8(ctx.projectRoot) / relative);
-        if (!asset::SaveMeshInstancesAsset(change.diskPath, staged))
+        if (!asset::SaveMeshInstancesAsset(change.diskPath, staged)) {
             return OpResult::Err("WRITE_FAILED", "生成した配置を保存できませんでした: " + change.diskPath);
+        }
         const auto guid = asset::AssetDatabase::GuidFromPath(change.diskPath);
-        if (guid.empty()) return OpResult::Err("META_FAILED", "配置の .meta を作成できませんでした: " + change.diskPath);
+        if (guid.empty()) {
+            return OpResult::Err("META_FAILED", "配置の .meta を作成できませんでした: " + change.diskPath);
+        }
         reference = "guid:" + guid + "|" + relative;
         const auto* loaded = ResolvePlacement(change.diskPath);
-        if (!loaded) return OpResult::Err("LOAD_FAILED", "生成した配置を読み込めませんでした: " + change.diskPath);
+        if (!loaded) {
+            return OpResult::Err("LOAD_FAILED", "生成した配置を読み込めませんでした: " + change.diskPath);
+        }
         staged = *loaded;
     }
     change.afterAsset = std::make_shared<asset::MeshInstancesAsset>(std::move(staged));
-    if (previous) change.before = *previous;
+    if (previous) {
+        change.before = *previous;
+    }
     change.beforeSnapshot = previous ? previous->Snapshot() : nullptr;
     change.after = previous ? *previous : scene::InstancedMeshComponent{};
     change.after.m_instanceSetRef = {reference, asset::InstanceSetAsset::TYPE_NAME};
     change.after.ResetOverrides();
     change.afterSnapshot = change.afterAsset->instances.Snapshot();
-    if (!change.afterSnapshot)
+    if (!change.afterSnapshot) {
         return OpResult::Err("LOAD_FAILED", "生成した配置を読み込めませんでした: " + change.diskPath);
+    }
     return std::nullopt;
 }
 
@@ -345,7 +414,9 @@ OpResult PublishStroke(EditorContext& ctx, std::vector<ScatterChange> changes, s
     const std::string reference = changes.front().after.m_instanceSetRef.path;
     auto command = std::make_unique<ScatterCommand>(ctx, std::move(changes));
     std::string reason;
-    if (!command->TryExecute(reason)) return OpResult::Err("SCATTER_FAILED", reason);
+    if (!command->TryExecute(reason)) {
+        return OpResult::Err("SCATTER_FAILED", reason);
+    }
     ctx.requestAssetBrowserRefresh = true;
     result.command = std::move(command);
     result.data = OpData::MakeObject();
@@ -362,15 +433,19 @@ OpResult Scatter(OpContext& context, const OpArgs& args)
     auto* terrainNode = ctx.activeScene->FindByGuid(args.GetString("terrain"));
     auto* targetNode = ctx.activeScene->FindByGuid(args.GetString("target"));
     auto* terrain = terrainNode ? terrainNode->GetComponent<scene::TerrainComponent>() : nullptr;
-    if (!terrain || !terrain->enabled || !targetNode)
+    if (!terrain || !terrain->enabled || !targetNode) {
         return OpResult::Err("NO_TARGET", "有効な Terrain と配置先 GameObject を指定してください。");
+    }
     const auto* previous = targetNode->GetComponent<scene::InstancedMeshComponent>();
     const auto* stroke = args.GetData("stroke");
     std::vector<math::Vector3> points;
-    if (stroke && !ReadBrushPoints(*stroke, points))
+    if (stroke && !ReadBrushPoints(*stroke, points)) {
         return OpResult::Err("BAD_ARG", "stroke は 1〜512 個の XYZ 座標で指定してください。");
+    }
     const bool erase = args.GetBool("erase");
-    if (erase && !stroke) return OpResult::Err("BAD_ARG", "消去には stroke が必要です。");
+    if (erase && !stroke) {
+        return OpResult::Err("BAD_ARG", "消去には stroke が必要です。");
+    }
     const auto previousReference = previous ? previous->m_instanceSetRef.path : std::string{};
     if (erase && previousReference.empty()) {
         OpResult result;
@@ -381,35 +456,47 @@ OpResult Scatter(OpContext& context, const OpArgs& args)
     const std::string reference = args.GetString("source");
     const std::string source = (reference.empty() || (stroke && !previousReference.empty())) ? previousReference : reference;
     auto* definition = source.empty() ? nullptr : ResolveSet(source);
-    if (!definition || !definition->Snapshot())
+    if (!definition || !definition->Snapshot()) {
         return OpResult::Err("NO_TEMPLATE", "有効な .terrainpaint / .meshinstances または旧配置素材を指定してください。");
+    }
     TerrainScatterSettings settings;
-    if (!ReadSettings(args, settings)) return OpResult::Err("BAD_ARG", "seed または maxInstances が範囲外です。");
+    if (!ReadSettings(args, settings)) {
+        return OpResult::Err("BAD_ARG", "seed または maxInstances が範囲外です。");
+    }
     TerrainMapRaster densityMap;
     const auto densityPath = args.GetString("densityMap");
-    if (!erase && !densityPath.empty() && !LoadTerrainScatterDensityMap(ctx.projectRoot, densityPath, *terrain, densityMap))
+    if (!erase && !densityPath.empty() && !LoadTerrainScatterDensityMap(ctx.projectRoot, densityPath, *terrain, densityMap)) {
         return OpResult::Err("DENSITY_MAP_LOAD_FAILED", "Could not read the placement density map.");
+    }
     std::vector<renderer::InstancePlacement> placements;
     if (stroke && !previousReference.empty()) {
         const auto snapshot = previous->Snapshot();
-        if (!snapshot) return OpResult::Err("INVALID_TEMPLATE", "現在の配置を読み込めません。");
+        if (!snapshot) {
+            return OpResult::Err("INVALID_TEMPLATE", "現在の配置を読み込めません。");
+        }
         for (const auto& placement : snapshot->placements)
-            if (placement.active) placements.push_back(placement);
+            if (placement.active) {
+                placements.push_back(placement);
+            }
     }
     const size_t oldCount = placements.size();
     const TerrainScatterBrush brush{points, args.GetFloat("brushRadius", 5.0f), erase};
     std::string reason;
     scene::FlushWorldTransforms(*ctx.activeScene);
     if (!BuildTerrainScatter(*terrain, terrainNode->transform, targetNode->transform, settings, placements, reason,
-            stroke ? &brush : nullptr, {}, nullptr, {}, densityMap.pixels.empty() ? nullptr : &densityMap))
+            stroke ? &brush : nullptr, {}, nullptr, {}, densityMap.pixels.empty() ? nullptr : &densityMap)) {
         return OpResult::Err("INVALID_SCATTER", reason);
-    if (stroke && oldCount == placements.size()) return PublishStroke(ctx, {}, 0, 0, erase);
+    }
+    if (stroke && oldCount == placements.size()) {
+        return PublishStroke(ctx, {}, 0, 0, erase);
+    }
     ScatterChange change;
     change.node = targetNode->instanceId;
     const auto lifetime = ctx.activeScene->GetComponentLifetime<scene::InstancedMeshComponent>(targetNode->GetID());
     change.lifetime = lifetime ? ScatterLifetime(lifetime) : std::make_shared<uint64_t>(0);
-    if (auto failure = StageSet(ctx, *definition, placements, "Assets/Terrain/Scatter/", previous, change, reference, stroke != nullptr))
+    if (auto failure = StageSet(ctx, *definition, placements, "Assets/Terrain/Scatter/", previous, change, reference, stroke != nullptr)) {
         return std::move(*failure);
+    }
     const size_t changed = erase ? oldCount - placements.size() : placements.size() - oldCount;
     std::vector<ScatterChange> changes;
     changes.push_back(std::move(change));
@@ -437,22 +524,30 @@ struct PaintPlan {
 
 OpResult PlanPaint(EditorContext& ctx, const OpArgs& args, PaintPlan& plan)
 {
-    if (!ctx.activeScene) return OpResult::Err("NO_TARGET", "シーンがありません。");
+    if (!ctx.activeScene) {
+        return OpResult::Err("NO_TARGET", "シーンがありません。");
+    }
     auto& scene = *ctx.activeScene;
     auto* terrainNode = scene.FindByGuid(args.GetString("terrain"));
     const auto* terrain = terrainNode ? terrainNode->GetComponent<scene::TerrainComponent>() : nullptr;
-    if (!terrain || !terrain->enabled) return OpResult::Err("NO_TARGET", "有効な Terrain を指定してください。");
+    if (!terrain || !terrain->enabled) {
+        return OpResult::Err("NO_TARGET", "有効な Terrain を指定してください。");
+    }
     const auto* sources = args.GetData("sources");
     const auto* stroke = args.GetData("stroke");
     std::vector<math::Vector3> points;
     if (!sources || !sources->IsArray() || sources->AsArray().empty()
-        || sources->AsArray().size() > TERRAIN_SCATTER_PALETTE_LIMIT || !stroke || !ReadBrushPoints(*stroke, points))
+        || sources->AsArray().size() > TERRAIN_SCATTER_PALETTE_LIMIT || !stroke || !ReadBrushPoints(*stroke, points)) {
         return OpResult::Err("BAD_ARG", "素材とストロークを指定してください。");
+    }
     TerrainScatterSettings settings;
-    if (!ReadSettings(args, settings)) return OpResult::Err("BAD_ARG", "seed または maxInstances が範囲外です。");
+    if (!ReadSettings(args, settings)) {
+        return OpResult::Err("BAD_ARG", "seed または maxInstances が範囲外です。");
+    }
     const auto* weights = args.GetData("weights");
-    if (weights && (!weights->IsArray() || weights->AsArray().size() != sources->AsArray().size()))
+    if (weights && (!weights->IsArray() || weights->AsArray().size() != sources->AsArray().size())) {
         return OpResult::Err("BAD_ARG", "weights は素材と同じ件数で指定してください。");
+    }
     plan.erase = args.GetBool("erase");
     const TerrainScatterBrush brush{points, args.GetFloat("brushRadius", 5.0f), plan.erase, args.GetBool("polygon"), args.GetFloat("feather", 0)};
     plan.folder = "Assets/Terrain/Scatter/Painted/" + asset::AssetDatabase::DeriveGuid(terrainNode->instanceId, "Terrain Paint") + "/";
@@ -461,28 +556,38 @@ OpResult PlanPaint(EditorContext& ctx, const OpArgs& args, PaintPlan& plan)
         float weight = 1.0f;
         if (weights) {
             const auto& value = weights->AsArray()[index];
-            if (value.IsInt()) weight = static_cast<float>(value.AsInt64());
-            else if (!value.TryGetFloat(weight)) return OpResult::Err("BAD_ARG", "配合比は数値で指定してください。");
+            if (value.IsInt()) {
+                weight = static_cast<float>(value.AsInt64());
+            } else if (!value.TryGetFloat(weight)) {
+                return OpResult::Err("BAD_ARG", "配合比は数値で指定してください。");
+            }
         }
-        if (!std::isfinite(weight) || weight < 0.0f || weight > 100.0f)
+        if (!std::isfinite(weight) || weight < 0.0f || weight > 100.0f) {
             return OpResult::Err("BAD_ARG", "配合比は 0〜100 で指定してください。");
+        }
         const auto reference = sources->AsArray()[index].AsString();
         const auto guid = asset::AssetDatabase::GuidFromRef(reference);
         const auto sourcePath = asset::AssetDatabase::PathFromGuid(guid);
         const auto* definition = sourcePath.empty() ? nullptr : ResolveSet(reference);
         if (!definition || !definition->Snapshot()
-            || util::FileSystem::IsChildPathText(sourcePath, ctx.projectRoot + "/Assets/Terrain/Scatter/Painted"))
+            || util::FileSystem::IsChildPathText(sourcePath, ctx.projectRoot + "/Assets/Terrain/Scatter/Painted")) {
             return OpResult::Err("NO_TEMPLATE", "有効な Terrain Paint 素材を選んでください。");
-        if (std::any_of(palette.begin(), palette.end(), [&](const PaintSet& set) { return set.guid == guid; })) continue;
+        }
+        if (std::any_of(palette.begin(), palette.end(), [&](const PaintSet& set) { return set.guid == guid; })) {
+            continue;
+        }
         PaintSet set;
         set.guid = guid;
         set.reference = reference;
-        if (util::FileSystem::GetExtension(sourcePath) == ".terrainpaint")
+        if (util::FileSystem::GetExtension(sourcePath) == ".terrainpaint") {
             set.paintAsset = asset::AssetManager::Get(asset::AssetManager::Load<asset::TerrainPaintAsset>(reference));
+        }
         set.sourceIndex = index;
         set.weight = weight;
         set.name = util::FileSystem::PathToUtf8(util::FileSystem::PathFromUtf8(sourcePath).stem());
-        if (set.paintAsset) set.name = set.paintAsset->name;
+        if (set.paintAsset) {
+            set.name = set.paintAsset->name;
+        }
         set.definition = definition;
         set.ownerId = asset::AssetDatabase::DeriveGuid(terrainNode->instanceId, "Terrain Paint/" + guid);
         set.owner = scene.FindByGuid(set.ownerId);
@@ -491,12 +596,17 @@ OpResult PlanPaint(EditorContext& ctx, const OpArgs& args, PaintPlan& plan)
             const auto snapshot = current ? current->Snapshot() : nullptr;
             const auto* placement = current ? ResolvePlacement(current->m_instanceSetRef.path) : nullptr;
             if (!snapshot || !placement || asset::AssetDatabase::GuidFromRef(placement->terrainPaintRef) != guid
-                || (!plan.erase && !IsPaintOwnerTransform(*set.owner)))
+                || (!plan.erase && !IsPaintOwnerTransform(*set.owner))) {
                 return OpResult::Err("PLACEMENT_CHANGED", "配置先が編集されています。配置先の参照と Transform を確認してください。");
+            }
             set.definition = ResolveSet(current->m_instanceSetRef.path);
-            if (!set.definition) return OpResult::Err("NO_TEMPLATE", "現在の配置定義を読み込めません。");
+            if (!set.definition) {
+                return OpResult::Err("NO_TEMPLATE", "現在の配置定義を読み込めません。");
+            }
             for (const auto& item : snapshot->placements)
-                if (item.active) set.placements.push_back(item);
+                if (item.active) {
+                    set.placements.push_back(item);
+                }
         }
         set.beforeCount = set.placements.size();
         palette.push_back(std::move(set));
@@ -505,30 +615,40 @@ OpResult PlanPaint(EditorContext& ctx, const OpArgs& args, PaintPlan& plan)
     scene::FlushWorldTransforms(scene);
     std::string reason;
     std::vector<renderer::InstancePlacement> validation;
-    auto validationSettings=settings; validationSettings.density=0;
-    if(!BuildTerrainScatter(*terrain,terrainNode->transform,scene::Transform{},validationSettings,validation,reason,&brush))
+    auto validationSettings=settings;
+    validationSettings.density=0;
+    if(!BuildTerrainScatter(*terrain,terrainNode->transform,scene::Transform{},validationSettings,validation,reason,&brush)) {
         return OpResult::Err("INVALID_SCATTER",reason);
+    }
     if (plan.erase) {
-        /// @note 移行済み配置は来歴か部品の一致で選ぶ。葉と幹を分けた旧配置も同じ素材で編集できる。
+        // 移行済み配置は来歴か部品の一致で選ぶ。葉と幹を分けた旧配置も同じ素材で編集できる。
         const auto selectedCount = palette.size();
         std::unordered_set<const scene::GameObject*> selectedOwners;
         for (const auto& source : palette)
-            if (source.owner) selectedOwners.insert(source.owner);
+            if (source.owner) {
+                selectedOwners.insert(source.owner);
+            }
         for (const auto id : scene.GetEntities<scene::InstancedMeshComponent>()) {
             auto* owner = scene.GetGameObject(id);
             const auto* component = scene.GetComponent<scene::InstancedMeshComponent>(id);
             if (!owner || !owner->activeInHierarchy() || !component || !component->m_enabled
-                || selectedOwners.contains(owner)) continue;
+                || selectedOwners.contains(owner)) {
+                continue;
+            }
             const auto* definition = ResolveSet(component->m_instanceSetRef.path);
             const auto snapshot = component->Snapshot();
-            if (!definition || !snapshot) continue;
+            if (!definition || !snapshot) {
+                continue;
+            }
             const auto* placement = ResolvePlacement(component->m_instanceSetRef.path);
             const auto provenance = placement ? asset::AssetDatabase::GuidFromRef(placement->terrainPaintRef) : std::string{};
             const auto parts = definition->Parts();
             for (size_t sourceIndex = 0; sourceIndex < selectedCount; ++sourceIndex) {
                 const auto& source = palette[sourceIndex];
                 if (!provenance.empty()) {
-                    if (provenance != source.guid) continue;
+                    if (provenance != source.guid) {
+                        continue;
+                    }
                 } else {
                     const auto expected = source.definition->Parts();
                     const bool matching = !parts.empty() && std::all_of(parts.begin(), parts.end(), [&](const auto& part) {
@@ -536,7 +656,9 @@ OpResult PlanPaint(EditorContext& ctx, const OpArgs& args, PaintPlan& plan)
                             return part.meshPath == other.meshPath && part.materialPath == other.materialPath && part.lod == other.lod;
                         });
                     });
-                    if (!matching && (!placement || !source.guid.empty())) continue;
+                    if (!matching && (!placement || !source.guid.empty())) {
+                        continue;
+                    }
                 }
                 PaintSet set;
                 set.guid = source.guid;
@@ -545,7 +667,9 @@ OpResult PlanPaint(EditorContext& ctx, const OpArgs& args, PaintPlan& plan)
                 set.sourceIndex = source.sourceIndex;
                 set.weight = source.weight;
                 set.paintAsset = source.paintAsset;
-                set.owner = owner; set.ownerId = owner->instanceId; set.definition = definition;
+                set.owner = owner;
+                set.ownerId = owner->instanceId;
+                set.definition = definition;
                 for (const auto& item : snapshot->placements) if (item.active) set.placements.push_back(item);
                 set.beforeCount = set.placements.size();
                 palette.push_back(std::move(set));
@@ -553,18 +677,27 @@ OpResult PlanPaint(EditorContext& ctx, const OpArgs& args, PaintPlan& plan)
             }
         }
         for (auto& set : palette) {
-            if (!set.owner) continue;
+            if (!set.owner) {
+                continue;
+            }
             const auto before = set.placements;
-            if (!BuildTerrainScatter(*terrain, terrainNode->transform, set.owner->transform, settings, set.placements, reason, &brush))
+            if (!BuildTerrainScatter(*terrain, terrainNode->transform, set.owner->transform, settings, set.placements, reason, &brush)) {
                 return OpResult::Err("INVALID_SCATTER", reason);
+            }
             std::unordered_set<uint32_t> retained;
-            for (const auto& item : set.placements) retained.insert(item.id);
+            for (const auto& item : set.placements) {
+                retained.insert(item.id);
+            }
             for (const auto& item : before) if (!retained.contains(item.id)) set.removed.push_back(item);
         }
     } else {
         double totalWeight = 0.0;
-        for (const auto& set : palette) totalWeight += set.weight;
-        if (totalWeight == 0.0) return OpResult::Ok();
+        for (const auto& set : palette) {
+            totalWeight += set.weight;
+        }
+        if (totalWeight == 0.0) {
+            return OpResult::Ok();
+        }
         const bool equalWeights = std::all_of(palette.begin(), palette.end(), [&](const PaintSet& set) {
             return set.weight == palette.front().weight;
         });
@@ -577,28 +710,38 @@ OpResult PlanPaint(EditorContext& ctx, const OpArgs& args, PaintPlan& plan)
         math::Vector3 low{INFINITY, 0, INFINITY}, high{-INFINITY, 0, -INFINITY};
         for (const auto& point : points) {
             const auto p = project(point);
-            low.x = std::min(low.x, p.x); low.z = std::min(low.z, p.z);
-            high.x = std::max(high.x, p.x); high.z = std::max(high.z, p.z);
+            low.x = std::min(low.x, p.x);
+            low.z = std::min(low.z, p.z);
+            high.x = std::max(high.x, p.x);
+            high.z = std::max(high.z, p.z);
         }
         margin += brush.radius;
         for (const auto id : scene.GetEntities<scene::InstancedMeshComponent>()) {
             const auto* owner = scene.GetGameObject(id);
             const auto* component = scene.GetComponent<scene::InstancedMeshComponent>(id);
-            if (!owner || !owner->activeInHierarchy() || !component || !component->m_enabled) continue;
+            if (!owner || !owner->activeInHierarchy() || !component || !component->m_enabled) {
+                continue;
+            }
             const auto snapshot = component->Snapshot();
-            if (!snapshot) continue;
+            if (!snapshot) {
+                continue;
+            }
             const auto* stored = ResolvePlacement(component->m_instanceSetRef.path);
             const auto* paint = stored && util::FileSystem::GetExtension(asset::AssetManager::ResolveAssetPath(stored->terrainPaintRef)) == ".terrainpaint"
                 ? asset::AssetManager::Get(asset::AssetManager::Load<asset::TerrainPaintAsset>(stored->terrainPaintRef)) : nullptr;
             const bool grass = paint && paint->category == asset::TerrainPaintCategory::GRASS;
             const auto world = owner->transform.GetWorldMatrix();
             for (const auto& item : snapshot->placements) {
-                if (!item.active) continue;
+                if (!item.active) {
+                    continue;
+                }
                 auto obstacle = item;
                 const auto position = world * math::Vector4{item.position.x, item.position.y, item.position.z, 1.0f};
                 obstacle.position = {position.x, position.y, position.z};
                 const auto p = project(obstacle.position);
-                if (p.x < low.x - margin || p.x > high.x + margin || p.z < low.z - margin || p.z > high.z + margin) continue;
+                if (p.x < low.x - margin || p.x > high.x + margin || p.z < low.z - margin || p.z > high.z + margin) {
+                    continue;
+                }
                 candidates.push_back(obstacle);
                 groundCover.push_back(grass);
             }
@@ -608,30 +751,41 @@ OpResult PlanPaint(EditorContext& ctx, const OpArgs& args, PaintPlan& plan)
         if (args.GetBool("avoidWater", true)) for (const auto id : scene.GetEntities<scene::WaterComponent>()) {
             const auto* owner = scene.GetGameObject(id);
             const auto* component = scene.GetComponent<scene::WaterComponent>(id);
-            if (owner && owner->activeInHierarchy() && component && component->enabled)
+            if (owner && owner->activeInHierarchy() && component && component->enabled) {
                 water.emplace_back(component, &owner->transform);
+            }
         }
         const int excludedLayer = args.GetInt("excludedLayer", -1);
-        if (excludedLayer < -1 || excludedLayer >= terrain->LayerCount())
+        if (excludedLayer < -1 || excludedLayer >= terrain->LayerCount()) {
             return OpResult::Err("BAD_ARG", "除外する地形レイヤーが範囲外です。");
+        }
         std::vector<int> excludedLayers;
-        if (excludedLayer >= 0) excludedLayers.push_back(excludedLayer);
+        if (excludedLayer >= 0) {
+            excludedLayers.push_back(excludedLayer);
+        }
         if (args.GetBool("avoidPaths", true)) for (int i = 0; i < terrain->LayerCount(); ++i) {
             auto name = asset::AssetManager::ResolveAssetPath(terrain->layerMaterials[i]);
             std::transform(name.begin(), name.end(), name.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
             const auto stem = util::FileSystem::PathToUtf8(util::FileSystem::PathFromUtf8(name).stem());
-            if (stem.find("path") != std::string::npos || stem.find("road") != std::string::npos || stem.find("trail") != std::string::npos)
+            if (stem.find("path") != std::string::npos || stem.find("road") != std::string::npos || stem.find("trail") != std::string::npos) {
                 excludedLayers.push_back(i);
+            }
         }
         if(const auto* materials=args.GetData("excludedMaterials")) {
-            if(!materials->IsArray()||materials->AsArray().size()>256)return OpResult::Err("BAD_ARG","除外する地表素材を確認してください。");
+            if(!materials->IsArray()||materials->AsArray().size()>256) {
+                return OpResult::Err("BAD_ARG","除外する地表素材を確認してください。");
+            }
             for(const auto& ref:materials->AsArray()) {
-                if(!ref.IsString()||ref.AsString().empty())return OpResult::Err("BAD_ARG","除外する地表素材が不正です。");
+                if(!ref.IsString()||ref.AsString().empty()) {
+                    return OpResult::Err("BAD_ARG","除外する地表素材が不正です。");
+                }
                 const auto guid=asset::AssetDatabase::GuidFromRef(ref.AsString());
                 const auto path=asset::AssetManager::ResolveAssetPath(ref.AsString());
                 for(int i=0;i<terrain->LayerCount();++i) {
                     if((!guid.empty()&&asset::AssetDatabase::GuidFromRef(terrain->layerMaterials[i])==guid)
-                        ||(!path.empty()&&util::FileSystem::SamePathText(asset::AssetManager::ResolveAssetPath(terrain->layerMaterials[i]),path)))excludedLayers.push_back(i);
+                        ||(!path.empty()&&util::FileSystem::SamePathText(asset::AssetManager::ResolveAssetPath(terrain->layerMaterials[i]),path))) {
+                        excludedLayers.push_back(i);
+                    }
                 }
             }
         }
@@ -644,40 +798,63 @@ OpResult PlanPaint(EditorContext& ctx, const OpArgs& args, PaintPlan& plan)
         for (const auto id : scene.GetEntities<scene::MeshRenderer>()) {
             const auto* owner = scene.GetGameObject(id);
             const auto* meshRenderer = scene.GetComponent<scene::MeshRenderer>(id);
-            if (!owner || !owner->activeInHierarchy() || !meshRenderer || !meshRenderer->enabled) continue;
+            if (!owner || !owner->activeInHierarchy() || !meshRenderer || !meshRenderer->enabled) {
+                continue;
+            }
             if (const auto* material = scene.GetComponent<scene::MaterialComponent>(id)) {
-                if (!material->enabled || !material->IsVisible()) continue;
+                if (!material->enabled || !material->IsVisible()) {
+                    continue;
+                }
                 const auto snapshot = material->ReadAuthoring();
-                if (!snapshot) continue;
+                if (!snapshot) {
+                    continue;
+                }
                 const auto& values = snapshot->Data();
                 const auto* definition = asset::AssetManager::Get(material->GetMaterialAsset());
-                if (!definition && !material->GetMaterialPath().empty())
+                if (!definition && !material->GetMaterialPath().empty()) {
                     definition = asset::AssetManager::Get(asset::AssetManager::Load<asset::MaterialAsset>(material->GetMaterialPath()));
+                }
                 const auto blend = values.hasBlendModeOverride ? values.blendModeOverride
                     : definition ? definition->Authoring().blendMode : renderer::BlendMode::OPAQUE_BLEND;
-                if (blend != renderer::BlendMode::OPAQUE_BLEND) continue;
+                if (blend != renderer::BlendMode::OPAQUE_BLEND) {
+                    continue;
+                }
             }
             const auto scale = owner->transform.worldScale;
             if (!std::isfinite(scale.x) || !std::isfinite(scale.y) || !std::isfinite(scale.z)
-                || std::abs(scale.x) < 0.00001f || std::abs(scale.y) < 0.00001f || std::abs(scale.z) < 0.00001f) continue;
+                || std::abs(scale.x) < 0.00001f || std::abs(scale.y) < 0.00001f || std::abs(scale.z) < 0.00001f) {
+                continue;
+            }
             const auto* mesh = meshRenderer->mesh;
-            if (!mesh && ctx.resources) mesh = scene::ResolveMeshPath(meshRenderer->meshPath, *ctx.resources);
-            if (!mesh || mesh->boundsRadius <= 0.0f) continue;
+            if (!mesh && ctx.resources) {
+                mesh = scene::ResolveMeshPath(meshRenderer->meshPath, *ctx.resources);
+            }
+            if (!mesh || mesh->boundsRadius <= 0.0f) {
+                continue;
+            }
             obstacles.push_back({math::Matrix4::Inverse(owner->transform.GetWorldMatrix()), mesh->boundsCenter, mesh->boundsExtents});
         }
         const auto classify = [&](const math::Vector3& position) {
             for (const auto& [surface, transform] : water) {
                 scene::WaterSurfaceHeightSample sample;
                 if (scene::TrySampleWaterSurfaceHeightWorld(*surface, *transform, position, 0.0f, sample)
-                    && sample.insideSurface && !sample.excluded && position.y <= sample.position.y + 0.15f) return TerrainPaintReason::WATER;
+                    && sample.insideSurface && !sample.excluded && position.y <= sample.position.y + 0.15f) {
+                    return TerrainPaintReason::WATER;
+                }
             }
-            if(clearance.NearWater(position,sourceWater))return TerrainPaintReason::WATER;
-            if(clearance.NearPath(position,sourcePath))return TerrainPaintReason::PATH;
+            if(clearance.NearWater(position,sourceWater)) {
+                return TerrainPaintReason::WATER;
+            }
+            if(clearance.NearPath(position,sourcePath)) {
+                return TerrainPaintReason::PATH;
+            }
             for (const auto& obstacle : obstacles) {
                 const auto local = obstacle.inverse * math::Vector4{position + math::Vector3{0, 0.5f, 0}, 1};
                 const auto delta = math::Vector3{local.x, local.y, local.z} - obstacle.center;
                 if (std::abs(delta.x) <= obstacle.extents.x && std::abs(delta.z) <= obstacle.extents.z
-                    && std::abs(delta.y) <= obstacle.extents.y) return TerrainPaintReason::OBSTACLE;
+                    && std::abs(delta.y) <= obstacle.extents.y) {
+                    return TerrainPaintReason::OBSTACLE;
+                }
             }
             if (!excludedLayers.empty()) {
                 const auto point = terrainNode->transform.worldRotation.Inverse() * (position - terrainNode->transform.worldPosition);
@@ -689,7 +866,9 @@ OpResult PlanPaint(EditorContext& ctx, const OpArgs& args, PaintPlan& plan)
                 const float fx = std::clamp(gx - x, 0.0f, 1.0f), fz = std::clamp(gz - z, 0.0f, 1.0f);
                 for (int layer : excludedLayers) {
                     const auto weight = [&](int dx, int dz) { return terrain->GetLayerWeightAtGrid(x + dx, z + dz, layer); };
-                    if (std::lerp(std::lerp(weight(0, 0), weight(1, 0), fx), std::lerp(weight(0, 1), weight(1, 1), fx), fz) >= 0.35f) return TerrainPaintReason::PATH;
+                    if (std::lerp(std::lerp(weight(0, 0), weight(1, 0), fx), std::lerp(weight(0, 1), weight(1, 1), fx), fz) >= 0.35f) {
+                        return TerrainPaintReason::PATH;
+                    }
                 }
             }
             return TerrainPaintReason::ACCEPTED;
@@ -697,39 +876,60 @@ OpResult PlanPaint(EditorContext& ctx, const OpArgs& args, PaintPlan& plan)
         const bool assetSettings = std::any_of(palette.begin(), palette.end(), [](const PaintSet& set) { return set.paintAsset != nullptr; });
         if (assetSettings) {
             for (auto& set : palette) {
-                if (set.weight == 0.0f) continue;
+                if (set.weight == 0.0f) {
+                    continue;
+                }
                 sourceWater=sourcePath=0;
                 auto sourceSettings = settings;
                 if (set.paintAsset) {
                     const auto& p = set.paintAsset->placement;
-                    sourceWater=p.waterClearance;sourcePath=p.pathClearance;
+                    sourceWater=p.waterClearance;
+                    sourcePath=p.pathClearance;
                     sourceSettings.spacing = p.spacing;
                     sourceSettings.density *= p.density;
-                    sourceSettings.minScale = p.minScale; sourceSettings.maxScale = p.maxScale;
-                    sourceSettings.minYaw = p.minYaw; sourceSettings.maxYaw = p.maxYaw;
-                    sourceSettings.minSlope = p.minSlope; sourceSettings.maxSlope = p.maxSlope;
-                    sourceSettings.alignToNormal = p.alignToNormal; sourceSettings.alignDownslope = p.alignDownslope;
-                    sourceSettings.downslopeJitter = p.downslopeJitter; sourceSettings.embedDepth = p.embedDepth;
+                    sourceSettings.minScale = p.minScale;
+                    sourceSettings.maxScale = p.maxScale;
+                    sourceSettings.minYaw = p.minYaw;
+                    sourceSettings.maxYaw = p.maxYaw;
+                    sourceSettings.minSlope = p.minSlope;
+                    sourceSettings.maxSlope = p.maxSlope;
+                    sourceSettings.alignToNormal = p.alignToNormal;
+                    sourceSettings.alignDownslope = p.alignDownslope;
+                    sourceSettings.downslopeJitter = p.downslopeJitter;
+                    sourceSettings.embedDepth = p.embedDepth;
                 }
-                if (sourceSettings.minSlope > sourceSettings.maxSlope) continue;
+                if (sourceSettings.minSlope > sourceSettings.maxSlope) {
+                    continue;
+                }
                 sourceSettings.density *= static_cast<float>(set.weight / totalWeight);
                 const bool grass = set.paintAsset && set.paintAsset->category == asset::TerrainPaintCategory::GRASS;
-                if (set.paintAsset && set.paintAsset->category == asset::TerrainPaintCategory::TREE)
+                if (set.paintAsset && set.paintAsset->category == asset::TerrainPaintCategory::TREE) {
                     sourceSettings.minimumDistance = std::max(sourceSettings.minimumDistance, sourceSettings.spacing * 0.45f);
-                for (unsigned char character : set.guid) sourceSettings.seed = sourceSettings.seed * 16777619u ^ character;
+                }
+                for (unsigned char character : set.guid) {
+                    sourceSettings.seed = sourceSettings.seed * 16777619u ^ character;
+                }
                 std::vector<renderer::InstancePlacement> sourceCandidates;
                 for (size_t i = 0; i < candidates.size(); ++i) if (groundCover[i] == grass) sourceCandidates.push_back(candidates[i]);
                 const size_t before = sourceCandidates.size();
-                if (!BuildTerrainScatter(*terrain, terrainNode->transform, scene::Transform{}, sourceSettings, sourceCandidates, reason, &brush, {}, &plan.diagnostics, classify))
+                if (!BuildTerrainScatter(*terrain, terrainNode->transform, scene::Transform{}, sourceSettings, sourceCandidates, reason, &brush, {}, &plan.diagnostics, classify)) {
                     return OpResult::Err("INVALID_SCATTER", reason);
-                if (set.placements.size() + sourceCandidates.size() - before > settings.maxInstances)
+                }
+                if (set.placements.size() + sourceCandidates.size() - before > settings.maxInstances) {
                     return OpResult::Err("INVALID_SCATTER", "配置数が上限を超えます。上限を増やしてください。");
+                }
                 std::unordered_set<uint32_t> usedIds;
-                for (const auto& item : set.placements) usedIds.insert(item.id);
+                for (const auto& item : set.placements) {
+                    usedIds.insert(item.id);
+                }
                 uint32_t nextId = 1;
                 for (size_t i = before; i < sourceCandidates.size(); ++i) {
-                    if (usedIds.insert(sourceCandidates[i].id).second) continue;
-                    while (!usedIds.insert(nextId).second) ++nextId;
+                    if (usedIds.insert(sourceCandidates[i].id).second) {
+                        continue;
+                    }
+                    while (!usedIds.insert(nextId).second) {
+                        ++nextId;
+                    }
                     sourceCandidates[i].id = nextId++;
                 }
                 plan.diagnostics.sources[set.sourceIndex]+=sourceCandidates.size()-before;
@@ -739,11 +939,12 @@ OpResult PlanPaint(EditorContext& ctx, const OpArgs& args, PaintPlan& plan)
             }
             return OpResult::Ok();
         }
-        if (!BuildTerrainScatter(*terrain, terrainNode->transform, scene::Transform{}, settings, candidates, reason, &brush, {}, &plan.diagnostics, classify))
+        if (!BuildTerrainScatter(*terrain, terrainNode->transform, scene::Transform{}, settings, candidates, reason, &brush, {}, &plan.diagnostics, classify)) {
             return OpResult::Err("INVALID_SCATTER", reason);
+        }
         for (size_t index = existingCount; index < candidates.size(); ++index) {
             const auto& item = candidates[index];
-            /// @note 配合を変えても候補位置と総密度は同じ。GUID 順の累積比だけで素材を割り当てる。
+            // 配合を変えても候補位置と総密度は同じ。GUID 順の累積比だけで素材を割り当てる。
             uint32_t key = item.id;
             key ^= key >> 16;
             key *= 0x7feb352du;
@@ -774,74 +975,100 @@ OpResult PaintPalette(OpContext& context, const OpArgs& args)
     auto& ctx = context.ctx;
     auto& scene = *ctx.activeScene;
     PaintPlan plan;
-    if (auto result = PlanPaint(ctx, args, plan); !result.ok) return result;
+    if (auto result = PlanPaint(ctx, args, plan); !result.ok) {
+        return result;
+    }
     std::vector<ScatterChange> changes;
     size_t count = 0, changed = 0;
     for (const auto& set : plan.sets) {
         count += set.placements.size();
-        if (set.placements.size() == set.beforeCount) continue;
+        if (set.placements.size() == set.beforeCount) {
+            continue;
+        }
         changed += plan.erase ? set.beforeCount - set.placements.size() : set.placements.size() - set.beforeCount;
         ScatterChange change;
         change.node = set.ownerId;
         const auto* previous = set.owner ? set.owner->GetComponent<scene::InstancedMeshComponent>() : nullptr;
-        if (!set.owner) change.newName = set.name + " (Terrain Paint)";
+        if (!set.owner) {
+            change.newName = set.name + " (Terrain Paint)";
+        }
         change.lifetime = set.owner
             ? ScatterLifetime(scene.GetComponentLifetime<scene::InstancedMeshComponent>(set.owner->GetID()))
             : std::make_shared<uint64_t>(0);
-        if (auto failure = StageSet(ctx, *set.definition, set.placements, plan.folder + set.guid + "/", previous, change, set.reference))
+        if (auto failure = StageSet(ctx, *set.definition, set.placements, plan.folder + set.guid + "/", previous, change, set.reference)) {
             return std::move(*failure);
+        }
         changes.push_back(std::move(change));
     }
     return PublishStroke(ctx, std::move(changes), count, changed, plan.erase);
 }
-} /// @note namespace terrain_scatter_operators
+} // namespace terrain_scatter_operators
 
 OpResult CommitTerrainInstanceEdits(EditorContext& ctx, std::vector<TerrainInstanceEdit> edits, size_t affected)
 {
     using namespace terrain_scatter_operators;
-    if (!ctx.activeScene) return OpResult::Err("NO_TARGET", "シーンがありません。");
+    if (!ctx.activeScene) {
+        return OpResult::Err("NO_TARGET", "シーンがありません。");
+    }
     std::vector<ScatterChange> changes;
     size_t count = 0;
     for (auto& edit : edits) {
         auto* owner = ctx.activeScene->FindByGuid(edit.owner);
         const auto* previous = owner ? owner->GetComponent<scene::InstancedMeshComponent>() : nullptr;
-        if ((!previous && edit.newName.empty()) || (owner && !edit.newName.empty()))
+        if ((!previous && edit.newName.empty()) || (owner && !edit.newName.empty())) {
             return OpResult::Err("PLACEMENT_CHANGED", "配置先が変更されています。");
+        }
         const auto* definition = ResolveSet(edit.definition);
-        if (!definition) return OpResult::Err("NO_TEMPLATE", "配置素材を解決できません。");
-        ScatterChange change; change.node = edit.owner; change.newName = edit.newName;
+        if (!definition) {
+            return OpResult::Err("NO_TEMPLATE", "配置素材を解決できません。");
+        }
+        ScatterChange change;
+        change.node = edit.owner;
+        change.newName = edit.newName;
         change.lifetime = previous ? ScatterLifetime(ctx.activeScene->GetComponentLifetime<scene::InstancedMeshComponent>(owner->GetID()))
             : std::make_shared<uint64_t>(0);
-        if (auto failure = StageSet(ctx, *definition, edit.placements, "Assets/Terrain/Scatter/Edited/", previous, change, edit.provenance))
+        if (auto failure = StageSet(ctx, *definition, edit.placements, "Assets/Terrain/Scatter/Edited/", previous, change, edit.provenance)) {
             return std::move(*failure);
-        count += edit.placements.size(); changes.push_back(std::move(change));
+        }
+        count += edit.placements.size();
+        changes.push_back(std::move(change));
     }
     auto result = PublishStroke(ctx, std::move(changes), count, affected, false);
-    if (result.ok && !result.noChange) result.message = std::to_string(affected) + " 個の配置を編集しました。保存で確定します。";
+    if (result.ok && !result.noChange) {
+        result.message = std::to_string(affected) + " 個の配置を編集しました。保存で確定します。";
+    }
     return result;
 }
 
 bool BuildTerrainPaintPreview(EditorContext& ctx, const OpArgs& args, std::vector<TerrainPaintPreviewPoint>& points,
     size_t& total, std::string& reason, TerrainPaintDiagnostics* diagnostics)
 {
-    if(diagnostics)*diagnostics={};
+    if(diagnostics) {
+        *diagnostics={};
+    }
     points.clear();
     total = 0;
     terrain_scatter_operators::PaintPlan plan;
     const auto result = terrain_scatter_operators::PlanPaint(ctx, args, plan);
     reason = result.message;
-    if (!result.ok) return false;
+    if (!result.ok) {
+        return false;
+    }
     if(plan.erase)for(const auto& set:plan.sets)plan.diagnostics.sources[set.sourceIndex]+=set.removed.size();
-    if(diagnostics)*diagnostics=std::move(plan.diagnostics);
+    if(diagnostics) {
+        *diagnostics=std::move(plan.diagnostics);
+    }
     for (const auto& set : plan.sets) total += plan.erase ? set.removed.size() : set.placements.size() - set.beforeCount;
-    /// @note プレビューの描画数は一定に保ち、ストローク全体から等間隔に拾う。
+    // プレビューの描画数は一定に保ち、ストローク全体から等間隔に拾う。
     constexpr size_t DISPLAY_LIMIT = 384;
     const size_t stride = std::max<size_t>(1, (total + DISPLAY_LIMIT - 1) / DISPLAY_LIMIT);
     size_t index = 0;
     for (const auto& set : plan.sets) {
         const auto& placements = plan.erase ? set.removed : set.placements;
         for (size_t i = plan.erase ? 0 : set.beforeCount; i < placements.size(); ++i) {
-            if (index++ % stride != 0) continue;
+            if (index++ % stride != 0) {
+                continue;
+            }
             const auto world = set.owner ? set.owner->transform.GetWorldMatrix() : math::Matrix4::Identity();
             const auto p = world * math::Vector4{placements[i].position, 1.0f};
             points.push_back({{p.x, p.y, p.z}, set.sourceIndex, placements[i], world,
@@ -858,10 +1085,13 @@ void RegisterTerrainScatterOperators(OperatorRegistry& registry)
     RegisterTerrainInstanceEditingOperators(registry);
     using namespace terrain_scatter_operators;
     EditorOperator op;
-    op.id = "terrain.scatter"; op.label = "Scatter Trees and Rocks"; op.category = "Terrain";
+    op.id = "terrain.scatter";
+    op.label = "Scatter Trees and Rocks";
+    op.category = "Terrain";
     op.desc = "地形から木や岩を配置し、独立した配置アセットへ確定する。stroke 指定時は範囲を追加または消去する。";
     op.caution = "stroke 省略時は配置先を全置換する。Undo で戻せる。生成アセットは Undo 後も残る。";
-    op.kind = OpKind::Mutation; op.undoLabel = "Scatter Terrain Instances";
+    op.kind = OpKind::Mutation;
+    op.undoLabel = "Scatter Terrain Instances";
     op.params = {
         Parameter("terrain", OpParamType::NodeId, std::string{}, "配置する Terrain の instanceId。"),
         Parameter("target", OpParamType::NodeId, std::string{}, "配置先の instanceId。空の GameObject にも追加可能。"),
@@ -888,7 +1118,8 @@ void RegisterTerrainScatterOperators(OperatorRegistry& registry)
         Parameter("erase", OpParamType::Bool, false, "true は stroke の円内の既存配置を消去する。"),
         Parameter("maxInstances", OpParamType::Int, 100000, "配置上限。1〜1000000。超過時は全体を拒否。"),
         Parameter("maxPlacementsPerCell", OpParamType::Int, 0, "全地形散布の128mセルあたりの配置上限。0で制限なし。")};
-    op.params[0].required = true; op.params[1].required = true;
+    op.params[0].required = true;
+    op.params[1].required = true;
     op.poll = [](const OpContext& context, const OpArgs&) {
         return context.ctx.activeScene && !context.ctx.projectRoot.empty()
             && (!context.ctx.playMode || context.ctx.playMode->IsInEditor());
@@ -912,7 +1143,9 @@ void RegisterTerrainScatterOperators(OperatorRegistry& registry)
     paint.params.push_back(Parameter("excludedMaterials", OpParamType::Data, std::monostate{}, "除外する地表材質の GUID 参照配列。"));
     paint.params.push_back(Parameter("minimumDistance", OpParamType::Float, 0.0f, "既存と新規の配置の最小間隔 [world m]。"));
     for (auto& parameter : paint.params) {
-        if (parameter.name != "stroke") continue;
+        if (parameter.name != "stroke") {
+            continue;
+        }
         parameter.required = true;
         parameter.desc = "world XYZ の円の中心列 (1〜512 点)。";
     }
@@ -932,18 +1165,23 @@ void RegisterTerrainScatterOperators(OperatorRegistry& registry)
     };
     palette.exec = [](OpContext& context, const OpArgs& args) {
         const auto* values = args.GetData("sources");
-        if (!values || !values->IsArray() || values->AsArray().empty() || values->AsArray().size() > TERRAIN_SCATTER_PALETTE_LIMIT)
+        if (!values || !values->IsArray() || values->AsArray().empty() || values->AsArray().size() > TERRAIN_SCATTER_PALETTE_LIMIT) {
             return OpResult::Err("BAD_ARG", "配置素材を 1〜16 件選んでください。");
+        }
         std::vector<std::string> references;
         for (const auto& value : values->AsArray()) {
             const auto reference = value.AsString();
-            if (asset::AssetDatabase::GuidFromRef(reference).empty())
+            if (asset::AssetDatabase::GuidFromRef(reference).empty()) {
                 return OpResult::Err("NO_TEMPLATE", "配置素材の GUID 参照を指定してください。");
+            }
             references.push_back(reference);
         }
         auto& ctx = context.ctx;
-        if (ctx.mapEditingMode) ActivateMapTool(ctx, EditorContext::MapTool::TerrainPaint);
-        else ctx.showTerrainTool = true;
+        if (ctx.mapEditingMode) {
+            ActivateMapTool(ctx, EditorContext::MapTool::TerrainPaint);
+        } else {
+            ctx.showTerrainTool = true;
+        }
         ctx.terrainTool->SetPaintPalette(std::move(references), !ctx.mapEditingMode);
         OpArgs panel;
         panel.Set("panel", std::string("Scene"));
@@ -954,4 +1192,4 @@ void RegisterTerrainScatterOperators(OperatorRegistry& registry)
     registry.Register(std::move(paint));
     registry.Register(std::move(palette));
 }
-} /// @note namespace fbzz::editor
+} // namespace fbzz::editor

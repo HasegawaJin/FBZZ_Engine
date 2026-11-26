@@ -36,7 +36,7 @@ namespace fbzz::editor {
 
 void EditorApp::RegisterBuiltinOperators()
 {
-    /// @note 引数付き操作は params を宣言し、EditorContext だけで完結する操作は OperatorGroups へ置く。
+    // 引数付き操作は params を宣言し、EditorContext だけで完結する操作は OperatorGroups へ置く。
     auto add = [this](const char* id, const char* label, const char* category,
                       const char* desc, OpKind kind,
                       OpExec exec, OpPoll poll = {}, OpCheck checked = {}, OpDialog dialog = OpDialog::UNSPECIFIED) {
@@ -53,7 +53,7 @@ void EditorApp::RegisterBuiltinOperators()
         m_operators.Register(std::move(op));
     };
 
-    /// @note 表示トグルは enabled の省略で反転、指定時はその値へ変更する。
+    // 表示トグルは enabled の省略で反転、指定時はその値へ変更する。
     const auto addWindowToggle = [this](const char* id, const char* label, const char* desc,
                                         bool EditorContext::*field) {
         EditorOperator op;
@@ -82,14 +82,14 @@ void EditorApp::RegisterBuiltinOperators()
         m_operators.Register(std::move(op));
     };
 
-    /// @name 共通の述語
-    /// @note メニュー・ホットキー・パレットは同じ条件を共有する。
+    // 共通の述語
+    // メニュー・ホットキー・パレットは同じ条件を共有する。
     const auto hasScene      = [](const OpContext& c, const OpArgs&) { return c.ctx.activeScene != nullptr; };
     const auto inPrefabEdit  = [](const OpContext& c, const OpArgs&) { return c.ctx.InPrefabEditMode(); };
     const auto hasSelection  = [](const OpContext& c, const OpArgs&) { return !c.ctx.selectedEntities.empty(); };
     const auto inEditor      = [this](const OpContext&, const OpArgs&) { return m_playMode.IsInEditor(); };
 
-    /// @note 「シーンを編集できる状態か」— Play 中と Prefab 編集中は対象が違う。
+    // 「シーンを編集できる状態か」— Play 中と Prefab 編集中は対象が違う。
     const auto canEditScene = [hasScene, inEditor](const OpContext& c, const OpArgs& a) {
         return hasScene(c, a) && inEditor(c, a);
     };
@@ -97,8 +97,8 @@ void EditorApp::RegisterBuiltinOperators()
         return canEditScene(c, a) && hasSelection(c, a);
     };
 
-    /// @name File
-    /// @note Prefab 編集中にシーンを新規作成/切り替えできてはいけない。
+    // File
+    // Prefab 編集中にシーンを新規作成/切り替えできてはいけない。
     add("scene.new", "New Scene", "File",
         "編集中のシーンを閉じて新しいシーンを作る。未保存の変更があれば確認する。",
         OpKind::Action,
@@ -112,17 +112,20 @@ void EditorApp::RegisterBuiltinOperators()
         [hasScene, inPrefabEdit](const OpContext& c, const OpArgs& a) { return hasScene(c, a) && !inPrefabEdit(c, a); },
         {}, OpDialog::REQUIRED);
 
-    /// @note Prefab 編集中は SaveScene が SavePrefabEdit へ読み替わるため、ここでは禁じない。
-    /// @note Ctrl+S はインライン編集した未保存アセットも一緒に保存する。
+    // Prefab 編集中は SaveScene が SavePrefabEdit へ読み替わるため、ここでは禁じない。
+    // Ctrl+S はインライン編集した未保存アセットも一緒に保存する。
     add("scene.save", "Save", "File",
         "現在のシーンと未保存のアセットを保存する (Prefab 編集中は編集中の Prefab を保存する)。",
         OpKind::Action,
         [this](OpContext&, const OpArgs&) {
-            if (RejectWhileSceneSaving()) return OpResult::Err("SCENE_SAVE_BUSY", "Scene save is in progress.");
+            if (RejectWhileSceneSaving()) {
+                return OpResult::Err("SCENE_SAVE_BUSY", "Scene save is in progress.");
+            }
             const int failedAssets = AssetDirtyRegistry::SaveAll();
             SaveScene(true);
-            if (failedAssets != 0 || AssetDirtyRegistry::HasAny())
+            if (failedAssets != 0 || AssetDirtyRegistry::HasAny()) {
                 return OpResult::Err("ASSET_SAVE_FAILED", "Some assets could not be saved.");
+            }
             return OpResult::Ok();
         },
         hasScene, {}, OpDialog::POSSIBLE);
@@ -138,8 +141,9 @@ void EditorApp::RegisterBuiltinOperators()
         "未保存の編集を持つアセットをまとめて保存する。",
         OpKind::Action,
         [](OpContext&, const OpArgs&) {
-            if (AssetDirtyRegistry::SaveAll() != 0 || AssetDirtyRegistry::HasAny())
+            if (AssetDirtyRegistry::SaveAll() != 0 || AssetDirtyRegistry::HasAny()) {
                 return OpResult::Err("ASSET_SAVE_FAILED", "Some assets could not be saved.");
+            }
             return OpResult::Ok();
         },
         [](const OpContext&, const OpArgs&) { return AssetDirtyRegistry::HasAny(); });
@@ -149,7 +153,7 @@ void EditorApp::RegisterBuiltinOperators()
         OpKind::Action,
         [this](OpContext&, const OpArgs&) { RequestExit(); return OpResult::Ok(); }, {}, {}, OpDialog::POSSIBLE);
 
-    /// @name Edit
+    // Edit
     add("edit.undo", "Undo", "Edit",
         "直前の編集を取り消す。",
         OpKind::Action,
@@ -162,7 +166,7 @@ void EditorApp::RegisterBuiltinOperators()
         [](OpContext& c, const OpArgs&) { return c.undo.Redo() ? OpResult::Ok() : OpResult::Err("REDO_CONFLICT", c.undo.LastDiagnostic()); },
         [](const OpContext& c, const OpArgs&) { return c.undo.CanRedo(); });
 
-    /// @note Mutation は Undo コマンドを返し、レジストリだけが UndoStack へ積む。
+    // Mutation は Undo コマンドを返し、レジストリだけが UndoStack へ積む。
     add("edit.delete_selected", "Delete Selected", "Edit",
         "選択中の GameObject を削除する。",
         OpKind::Mutation,
@@ -228,7 +232,7 @@ void EditorApp::RegisterBuiltinOperators()
             return canEditScene(c, a) && c.ctx.selectedEntities.size() == 1;
         });
 
-    /// @name Selection
+    // Selection
     add("select.all", "Select All", "Selection",
         "ロックされていない全 GameObject を選択する。",
         OpKind::Action,
@@ -237,13 +241,16 @@ void EditorApp::RegisterBuiltinOperators()
             std::unordered_set<const scene::GameObject*> locked;
             locked.reserve(c.ctx.lockedEntities.size());
             for (const auto id : c.ctx.lockedEntities)
-                if (const auto* object = scene.GetGameObject(id)) locked.insert(object);
+                if (const auto* object = scene.GetGameObject(id)) {
+                    locked.insert(object);
+                }
             std::vector<scene::EntityID> all;
             all.reserve(scene.GameObjectCount());
             for (auto& go : scene.GameObjects())
-                if (!locked.contains(&go))
+                if (!locked.contains(&go)) {
                     all.push_back(go.GetID());
-            /// @note 全選択で Hierarchy を先頭へ飛ばさない (どこを見ていたか分からなくなる)。
+                }
+            // 全選択で Hierarchy を先頭へ飛ばさない (どこを見ていたか分からなくなる)。
             SelectEntities(c.ctx, std::move(all), SelectionReveal::Skip);
             return OpResult::Ok();
         },
@@ -268,15 +275,16 @@ void EditorApp::RegisterBuiltinOperators()
         OpKind::Action,
         [this](OpContext&, const OpArgs&) { NavigateSelectionHistory(1); return OpResult::Ok(); });
 
-    /// @name Viewport
+    // Viewport
     add("view.frame_selected", "Frame Selected", "Viewport",
         "選択中のオブジェクトが収まる位置へ Scene View カメラを寄せる。",
         OpKind::Action,
         [](OpContext& c, const OpArgs&) {
             math::Vector3 center{};
             float radius = 0.0f;
-            if (!ComputeSelectionBounds(c.ctx, center, radius))
+            if (!ComputeSelectionBounds(c.ctx, center, radius)) {
                 return OpResult::Err("NO_BOUNDS", "選択からバウンズを計算できませんでした");
+            }
             c.ctx.focusTargetPosition    = center;
             c.ctx.focusTargetRadius      = radius;
             c.ctx.requestFocusOnSelected = true;
@@ -284,13 +292,14 @@ void EditorApp::RegisterBuiltinOperators()
         },
         hasSelection);
 
-    /// @note 軸ビュー操作はメニュー・パレット・ホットキー・AI で同じ経路を共有する。
+    // 軸ビュー操作はメニュー・パレット・ホットキー・AI で同じ経路を共有する。
     add("view.toggle_projection", "Toggle Orthographic", "Viewport",
         "Scene View を遠近投影 / 平行投影で切り替える。",
         OpKind::Action,
         [](OpContext& c, const OpArgs&) {
-            if (!c.ctx.editorCamera)
+            if (!c.ctx.editorCamera) {
                 return OpResult::Err("NO_CAMERA", "Scene View カメラがありません");
+            }
             SetEditorCameraProjection(c.ctx,
                 IsEditorCameraOrthographic(c.ctx) ? renderer::ProjectionMode::Perspective
                                                   : renderer::ProjectionMode::Orthographic);
@@ -314,21 +323,22 @@ void EditorApp::RegisterBuiltinOperators()
             "注視点を保ったまま、その軸の真正面へ視点を向ける。",
             OpKind::Action,
             [view](OpContext& c, const OpArgs&) {
-                if (!c.ctx.editorCamera)
+                if (!c.ctx.editorCamera) {
                     return OpResult::Err("NO_CAMERA", "Scene View カメラがありません");
+                }
                 SetEditorCameraAxisView(c.ctx, view);
                 return OpResult::Ok();
             });
     }
 
-    /// @name Gizmo
-    /// @note 右ドラッグ中の W/A/S/D はカメラ移動と衝突するため、poll でギズモ切替を無効にする。
+    // Gizmo
+    // 右ドラッグ中の W/A/S/D はカメラ移動と衝突するため、poll でギズモ切替を無効にする。
     const auto gizmoEnabled = [inEditor](const OpContext& c, const OpArgs& a) {
         return !ImGui::IsMouseDown(ImGuiMouseButton_Right)
             && (inEditor(c, a) || (c.ctx.playMode && c.ctx.playMode->CanEditTemporaryScene(c.ctx.activeScene)));
     };
 
-    /// @note 排他的なギズモモードは checked を通じて現在値を公開する。
+    // 排他的なギズモモードは checked を通じて現在値を公開する。
     add("gizmo.move", "Gizmo: Move", "Gizmo",
         "ギズモを移動モードにする。",
         OpKind::Action,
@@ -371,7 +381,7 @@ void EditorApp::RegisterBuiltinOperators()
                 : EditorContext::GizmoSpace::World;
             return OpResult::Ok();
         }, gizmoEnabled,
-        /// @note チェック = Local (World が既定なので、切り替わっている側を示す)。
+        // チェック = Local (World が既定なので、切り替わっている側を示す)。
         [](const OpContext& c, const OpArgs&) {
             return c.ctx.gizmoSpace == EditorContext::GizmoSpace::Local;
         });
@@ -398,9 +408,9 @@ void EditorApp::RegisterBuiltinOperators()
         }, gizmoEnabled,
         [](const OpContext& c, const OpArgs&) { return c.ctx.snapEnabled; });
 
-    /// @name Play
+    // Play
     RegisterStandalonePlayOperators(m_operators);
-    /// @note C# ビルド適用中とシェーダー再コンパイル中は Play 開始を拒否する。
+    // C# ビルド適用中とシェーダー再コンパイル中は Play 開始を拒否する。
     const auto buildBusy = [](const OpContext& c, const OpArgs&) {
         return (c.ctx.packageBuild && c.ctx.packageBuild->IsRunning()) || c.ctx.managedBuildBusy
             || c.ctx.hotReloadState == EditorContext::HotReloadState::Compiling
@@ -424,14 +434,18 @@ void EditorApp::RegisterBuiltinOperators()
             return m_pendingShadowBakePlayScene || m_standalonePlay.IsActive() || (hasScene(c, a) && !inEditor(c, a));
         });
 
-    /// @note 開始と停止を 1 キーへまとめたもの。停止は常に許し、開始だけ buildBusy を見る。
+    // 開始と停止を 1 キーへまとめたもの。停止は常に許し、開始だけ buildBusy を見る。
     add("play.toggle", "Play / Stop", "Play",
         "Play モードを開始/停止する。",
         OpKind::Action,
         [this](OpContext& c, const OpArgs&) { TogglePlayMode(c.source == OpInvocationSource::INTERACTIVE); return OpResult::Ok(); },
         [this, hasScene, inEditor, buildBusy](const OpContext& c, const OpArgs& a) {
-            if (m_standalonePlay.IsActive() || m_pendingShadowBakePlayScene) return true;
-            if (!hasScene(c, a)) return false;
+            if (m_standalonePlay.IsActive() || m_pendingShadowBakePlayScene) {
+                return true;
+            }
+            if (!hasScene(c, a)) {
+                return false;
+            }
             return inEditor(c, a) ? !buildBusy(c, a) : true;
         });
 
@@ -450,7 +464,7 @@ void EditorApp::RegisterBuiltinOperators()
     ManagedScriptEditor::RegisterOperator(m_operators);
     RegisterPackageBuildOperators(m_operators);
 
-    /// @name Tools
+    // Tools
     add("tools.map_editing_mode", "Map Editing Mode", "Tools",
         "マップ編集用のレイアウトへ切り替える。",
         OpKind::Action,
@@ -484,7 +498,7 @@ void EditorApp::RegisterBuiltinOperators()
     addWindowToggle("tools.terrain", "Terrain Tool",
         "地形編集ツールウィンドウの表示。", &EditorContext::showTerrainTool);
 
-    /// @name Panels
+    // Panels
     add("panel.command_palette", "Command Palette", "Panels",
         "コマンドパレットを開く。",
         OpKind::Action,
@@ -500,13 +514,13 @@ void EditorApp::RegisterBuiltinOperators()
         {},
         [this](const OpContext&, const OpArgs&) { return m_showShortcutsOverlay; });
 
-    /// @name EditorApp に依存しない操作群
-    /// @note パネル操作は m_panels を必要とするため EditorApp のメンバーとして別ファイルへ置く。
+    // EditorApp に依存しない操作群
+    // パネル操作は m_panels を必要とするため EditorApp のメンバーとして別ファイルへ置く。
     RegisterPanelOperators();
     RegisterWorkspaceOperators();
     RegisterProfilerOperators(m_operators);
 
-    /// @note EditorContext と UndoStack だけで完結する登録関数はパネル実装へ依存しない。
+    // EditorContext と UndoStack だけで完結する登録関数はパネル実装へ依存しない。
     RegisterNodeOperators(m_operators);
     RegisterTargetPointMoveOperator(m_operators);
     RegisterControlPointOperators(m_operators);
@@ -550,4 +564,4 @@ OpResult EditorApp::InvokeOperator(std::string_view id, const OpArgs& args)
     return m_operators.Invoke(id, context, args);
 }
 
-} /// @note namespace fbzz::editor
+} // namespace fbzz::editor

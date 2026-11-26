@@ -27,12 +27,13 @@ ImU32 CullColor(int index)
 /// @note 桁が伸びても値の列幅が暴れないよう K / M へ丸める。
 void FormatCount(char* buf, size_t size, uint64_t value)
 {
-    if (value >= 1000000)
+    if (value >= 1000000) {
         std::snprintf(buf, size, "%.2fM", static_cast<double>(value) / 1000000.0);
-    else if (value >= 10000)
+    } else if (value >= 10000) {
         std::snprintf(buf, size, "%.1fK", static_cast<double>(value) / 1000.0);
-    else
+    } else {
         std::snprintf(buf, size, "%llu", static_cast<unsigned long long>(value));
+    }
 }
 
 /// @brief 1 行 = 左にラベル / 右端へ値 (+ 淡い単位)。
@@ -66,39 +67,43 @@ void CullBar(const int* culled, int count, int total, float height)
     ImDrawList* dl = ImGui::GetWindowDrawList();
     dl->AddRectFilled(origin, { origin.x + width, origin.y + height },
                       EditorTheme::ColorU32(ThemeColor::Field, 0.8f), 2.0f);
-    if (total <= 0) return;
+    if (total <= 0) {
+        return;
+    }
 
     float x = origin.x;
     for (int i = 0; i < count; ++i) {
         const float w = width * static_cast<float>(culled[i]) / static_cast<float>(total);
-        if (w <= 0.0f) continue;
+        if (w <= 0.0f) {
+            continue;
+        }
         dl->AddRectFilled({ x, origin.y }, { x + w, origin.y + height }, CullColor(i));
         x += w;
     }
-    /// @note 描画された分は溝の色のまま残し、境界だけ立てて「ここから先が実描画」を示す。
+    // 描画された分は溝の色のまま残し、境界だけ立てて「ここから先が実描画」を示す。
     if (x > origin.x + 0.5f)
         dl->AddLine({ x, origin.y }, { x, origin.y + height },
                     EditorTheme::ColorU32(ThemeColor::Canvas), 1.0f);
 }
 
-} /// @note namespace
+} // namespace
 
 void DrawStatsOverlay(EditorContext& ctx, const char* windowId,
     const renderer::RenderDebugOverlay::RenderStats& stats, const renderer::GpuProfilerSnapshot& gpu,
     uint64_t frame)
 {
-    /// @note 目標フレーム時間を「予算」として扱う。色分けもグラフの基準線もこれ 1 本に揃える。
+    // 目標フレーム時間を「予算」として扱う。色分けもグラフの基準線もこれ 1 本に揃える。
     const int   targetFps = ctx.projectSettings.app.targetFps > 0 ? ctx.projectSettings.app.targetFps : 60;
     const float targetMs  = 1000.0f / static_cast<float>(targetFps);
 
-    /// @note 左下に配置 (タブバー・ツールバーと重ならないよう上マージンを考慮)。右上は ImGuizmo の
-    /// @note       ビューキューブと重なりやすく、左下はほぼ空きスペースになるため視認性が高い。
+    // 左下に配置 (タブバー・ツールバーと重ならないよう上マージンを考慮)。右上は ImGuizmo の
+    // ビューキューブと重なりやすく、左下はほぼ空きスペースになるため視認性が高い。
     const float  fontH   = ImGui::GetFontSize();
     const float  margin  = fontH * 0.7f;
     const ImVec2 winPos  = ImGui::GetWindowPos();
     const ImVec2 winSize = ImGui::GetWindowSize();
     ImGui::SetNextWindowPos({ winPos.x + margin, winPos.y + winSize.y - margin },
-                            /// @note pivot: 左下
+                            // pivot: 左下
                             ImGuiCond_Always, { 0.0f, 1.0f });
     ImGui::SetNextWindowSize({ fontH * 16.5f, 0.0f }, ImGuiCond_Always);
 
@@ -124,30 +129,38 @@ void DrawStatsOverlay(EditorContext& ctx, const char* windowId,
         char buf[32];
         char value[48];
 
-        /// @note フレーム時間は Analysis > Rendering と同じ部品・同じ履歴で描く。
+        // フレーム時間は Analysis > Rendering と同じ部品・同じ履歴で描く。
         widgets::FrameTimeHero(targetMs);
         widgets::FrameTimeGraph(targetMs, fontH * 1.7f);
-        /// @note Pass sums retain their asynchronous source and are never substituted for a GPU frame total.
+        // Pass sums retain their asynchronous source and are never substituted for a GPU frame total.
         const auto summary = detail::SummarizeGpuDisplay(gpu, frame);
         if (summary.totalAvailable) {
             std::snprintf(value, sizeof(value), "%.2f", summary.totalMs);
             StatRow("GPU frame total", value, EditorTheme::Color(ThemeColor::Text), "ms");
-        } else StatRow("GPU frame total", "unavailable", EditorTheme::Color(ThemeColor::TextMuted));
+        } else {
+            StatRow("GPU frame total", "unavailable", EditorTheme::Color(ThemeColor::TextMuted));
+        }
         if (summary.passSumAvailable) {
             std::snprintf(value, sizeof(value), "%.2f%s", summary.passSumMs, summary.partial ? " partial" : "");
             StatRow("GPU pass sum", value, EditorTheme::Color(summary.partial ? ThemeColor::Warning : ThemeColor::Text), "ms");
-        } else StatRow("GPU pass sum", gpu.supported ? "unavailable" : "unsupported", EditorTheme::Color(ThemeColor::TextMuted));
+        } else {
+            StatRow("GPU pass sum", gpu.supported ? "unavailable" : "unsupported", EditorTheme::Color(ThemeColor::TextMuted));
+        }
         if (summary.ageAvailable) {
             std::snprintf(value, sizeof(value), "%llu-%llu", static_cast<unsigned long long>(summary.youngestAge),
                 static_cast<unsigned long long>(summary.oldestAge));
             StatRow("GPU sample age", value, EditorTheme::Color(ThemeColor::TextMuted), "frames");
-        } else StatRow("GPU sample age", "unavailable", EditorTheme::Color(ThemeColor::TextMuted));
+        } else {
+            StatRow("GPU sample age", "unavailable", EditorTheme::Color(ThemeColor::TextMuted));
+        }
         if (gpu.supported && gpu.available) {
             std::snprintf(value, sizeof(value), "%llu", static_cast<unsigned long long>(gpu.physicalFrameSerial));
             StatRow("GPU physical frame", value, EditorTheme::Color(ThemeColor::TextMuted));
-        } else StatRow("GPU physical frame", "unavailable", EditorTheme::Color(ThemeColor::TextMuted));
+        } else {
+            StatRow("GPU physical frame", "unavailable", EditorTheme::Color(ThemeColor::TextMuted));
+        }
 
-        /// @note 視点を動かすたびに動く 3 つ。ここだけは絵を見ながら追う価値がある。
+        // 視点を動かすたびに動く 3 つ。ここだけは絵を見ながら追う価値がある。
         std::snprintf(value, sizeof(value), "%d", stats.drawCalls);
         StatRow("Draw calls", value, EditorTheme::Color(ThemeColor::Text));
         FormatCount(value, sizeof(value), static_cast<uint64_t>(std::max(stats.triangleCount, 0)));
@@ -174,9 +187,10 @@ void DrawStatsOverlay(EditorContext& ctx, const char* windowId,
               : (cullRate >= 30.0f) ? EditorTheme::Color(ThemeColor::Warning)
                                     : EditorTheme::Color(ThemeColor::TextMuted),
                 buf);
-        /// @note 残りの色は実描画を表すため、GPU 未確定候補があるフレームはバーを出さない。
-        if (stats.gpuVisibilityUnknownObjects==0)
+        // 残りの色は実描画を表すため、GPU 未確定候補があるフレームはバーを出さない。
+        if (stats.gpuVisibilityUnknownObjects==0) {
             CullBar(culled, 4, stats.totalObjects, fontH * 0.4f);
+        }
         if (stats.gpuVisibilityUnknownObjects>0) {
             FormatCount(value, sizeof(value), static_cast<uint64_t>(stats.gpuVisibilityUnknownObjects));
             StatRow("GPU visibility unknown", value, EditorTheme::Color(ThemeColor::TextMuted));
@@ -188,4 +202,4 @@ void DrawStatsOverlay(EditorContext& ctx, const char* windowId,
     ImGui::PopStyleColor(2);
 }
 
-} /// @note namespace fbzz::editor
+} // namespace fbzz::editor

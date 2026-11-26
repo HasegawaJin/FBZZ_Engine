@@ -36,7 +36,7 @@ protected:
         ASSERT_TRUE(util::FileSystem::EnsureDirectory(File("Assets/Scenes")));
         ASSERT_TRUE(util::FileSystem::WriteText(File("Assets/Scenes/Main.scene"), "scene = []\n"));
         ASSERT_TRUE(util::FileSystem::EnsureDirectory(File("NativeBuild")));
-        /// @note 有効なディスク事前確認を作るだけ。実CMakeを起動せず初回Tickの起動失敗を確認する。
+        // 有効なディスク事前確認を作るだけ。実CMakeを起動せず初回Tickの起動失敗を確認する。
         ASSERT_TRUE(util::FileSystem::WriteText(File("NativeBuild/cmake.exe"), "not an executable"));
         ASSERT_TRUE(util::FileSystem::WriteText(File("NativeBuild/build.config"),
             "cmake_exe=cmake.exe\nbuild_dir=.\nexe_debug=Debug/Game.exe\nexe_release=Release/Game.exe\n"));
@@ -144,7 +144,7 @@ TEST_F(PackageBuildTest, EditorTickWithoutRenderingTerminatesFailureAndPreserves
     ASSERT_TRUE(util::FileSystem::WriteText(File("Builds/Package/PackageGame.exe"), "previous executable"));
     ASSERT_TRUE(util::FileSystem::WriteText(File("Builds/Package/Managed/game.managed.toml"), "previous managed manifest"));
     ASSERT_TRUE(Invoke("build.package").ok);
-    /// @note 描画やOnRenderContentは呼ばず、Editor updateと同じTickだけで進行する。
+    // 描画やOnRenderContentは呼ばず、Editor updateと同じTickだけで進行する。
     m_package.Tick();
     const auto status = Invoke("build.package_status");
     ASSERT_TRUE(status.ok);
@@ -172,7 +172,7 @@ TEST_F(PackageBuildTest, PlayPausedRestoreAndPendingCompilersRejectBeforeAnyStar
     play.Stop(scene);
     EXPECT_TRUE(play.HasPendingRestore());
     EXPECT_FALSE(Invoke("build.package").ok);
-    /// @note 配布開始の検問だけを検証し、ResourceManagerを必要とする復元I/Oはこのfixtureで駆動しない。
+    // 配布開始の検問だけを検証し、ResourceManagerを必要とする復元I/Oはこのfixtureで駆動しない。
     Context().playMode = nullptr;
     scene::ScriptProfiler::SetExecutionMode(false);
     Context().packageOtherBuildBusy = [] { return true; };

@@ -18,7 +18,7 @@ namespace {
 /// @note 潜り込み、どの枝がどこへ伸びているのか読めなくなるため 100px 強の余白を持たせる。
 /// @note 移行前は BehaviorTreePanel 側の定数と AI 側の直書き 300.0f に分かれていた。
 constexpr float kNodeMinWidth  = 196.0f;
-constexpr float kNodeColumnStep = kNodeMinWidth + 104.0f;   ///< @note 300: テンプレートの手置き座標と一致
+constexpr float kNodeColumnStep = kNodeMinWidth + 104.0f;   ///< 300: テンプレートの手置き座標と一致
 /// @note ノード高さ (タイトル + 本文 4 行 + ピン 2 行) が収まる縦間隔。
 constexpr float kNodeRowStep = 170.0f;
 
@@ -27,7 +27,9 @@ std::vector<GraphEdge> ParentEdges(const fbzz::ai::BehaviorTreeAsset& asset)
 {
     std::vector<GraphEdge> edges;
     for (const auto& node : asset.nodes)
-        if (node.parentId != 0) edges.push_back({ node.parentId, node.id });
+        if (node.parentId != 0) {
+            edges.push_back({ node.parentId, node.id });
+        }
     return edges;
 }
 
@@ -45,7 +47,9 @@ std::vector<const fbzz::ai::BTNodeDef*> ChildrenOf(const fbzz::ai::BehaviorTreeA
 {
     std::vector<const fbzz::ai::BTNodeDef*> children;
     for (const auto& node : asset.nodes)
-        if (node.parentId == parentId) children.push_back(&node);
+        if (node.parentId == parentId) {
+            children.push_back(&node);
+        }
     std::sort(children.begin(), children.end(),
         [](const fbzz::ai::BTNodeDef* a, const fbzz::ai::BTNodeDef* b) { return a->order < b->order; });
     return children;
@@ -55,19 +59,24 @@ std::unordered_map<int, int> BuildChildCounts(const fbzz::ai::BehaviorTreeAsset&
 {
     std::unordered_map<int, int> counts;
     counts.reserve(asset.nodes.size());
-    for (const auto& node : asset.nodes)
+    for (const auto& node : asset.nodes) {
         ++counts[node.parentId];
+    }
     return counts;
 }
 
 bool IsDescendant(const fbzz::ai::BehaviorTreeAsset& asset, int ancestorId, int childId)
 {
     int current = childId;
-    /// @note ノード数を上限にすれば、既に壊れて循環しているデータでも止まる。
+    // ノード数を上限にすれば、既に壊れて循環しているデータでも止まる。
     for (std::size_t guard = 0; guard <= asset.nodes.size() && current != 0; ++guard) {
-        if (current == ancestorId) return true;
+        if (current == ancestorId) {
+            return true;
+        }
         const fbzz::ai::BTNodeDef* node = asset.FindNode(current);
-        if (node == nullptr) return false;
+        if (node == nullptr) {
+            return false;
+        }
         current = node->parentId;
     }
     return false;
@@ -78,15 +87,21 @@ std::unordered_set<int> CollectLinkTargets(const fbzz::ai::BehaviorTreeAsset& as
 {
     std::unordered_map<int, const fbzz::ai::BTNodeDef*> nodes;
     nodes.reserve(asset.nodes.size());
-    for (const auto& node : asset.nodes) nodes.try_emplace(node.id, &node);
+    for (const auto& node : asset.nodes) {
+        nodes.try_emplace(node.id, &node);
+    }
     const auto source = nodes.find(sourceId);
-    if (source == nodes.end() || sourceId == 0) return {};
+    if (source == nodes.end() || sourceId == 0) {
+        return {};
+    }
 
     std::unordered_set<int> forbidden;
     if (fromParent) {
         for (int id = sourceId; id != 0 && forbidden.insert(id).second;) {
             const auto node = nodes.find(id);
-            if (node == nodes.end()) break;
+            if (node == nodes.end()) {
+                break;
+            }
             id = node->second->parentId;
         }
     } else {
@@ -100,20 +115,28 @@ std::unordered_set<int> CollectLinkTargets(const fbzz::ai::BehaviorTreeAsset& as
             pending.pop_back();
             const auto [first, last] = children.equal_range(id);
             for (auto child = first; child != last; ++child)
-                if (forbidden.insert(child->second).second) pending.push_back(child->second);
+                if (forbidden.insert(child->second).second) {
+                    pending.push_back(child->second);
+                }
         }
     }
 
     std::unordered_set<int> targets;
     for (const auto& [id, node] : nodes) {
-        if (id == 0 || forbidden.contains(id)) continue;
+        if (id == 0 || forbidden.contains(id)) {
+            continue;
+        }
         const auto* parent = fromParent ? source->second : node;
         const auto* child = fromParent ? node : source->second;
         const int limit = fbzz::ai::BTNodeMaxChildren(parent->type);
-        if (limit == 0) continue;
+        if (limit == 0) {
+            continue;
+        }
         const auto count = childCounts.find(parent->id);
         if (limit > 0 && child->parentId != parent->id && count != childCounts.end()
-            && count->second >= limit) continue;
+            && count->second >= limit) {
+            continue;
+        }
         targets.insert(id);
     }
     return targets;
@@ -134,38 +157,47 @@ bool FindNodeType(std::string_view name, fbzz::ai::BTNodeType& out)
 std::string TryReparentNode(fbzz::ai::BehaviorTreeAsset& asset, int childId, int newParentId)
 {
     fbzz::ai::BTNodeDef* child = asset.FindNode(childId);
-    if (child == nullptr) return "ノードが見つかりません";
-    if (childId == newParentId) return "自分自身を親にはできません";
+    if (child == nullptr) {
+        return "ノードが見つかりません";
+    }
+    if (childId == newParentId) {
+        return "自分自身を親にはできません";
+    }
 
     if (newParentId != 0) {
         const fbzz::ai::BTNodeDef* parent = asset.FindNode(newParentId);
-        if (parent == nullptr) return "親ノードが見つかりません";
-        /// @note 子孫を親にすると循環する。BT は木なので必ず弾く。
-        if (IsDescendant(asset, childId, newParentId))
+        if (parent == nullptr) {
+            return "親ノードが見つかりません";
+        }
+        // 子孫を親にすると循環する。BT は木なので必ず弾く。
+        if (IsDescendant(asset, childId, newParentId)) {
             return "自分の子孫を親にはできません (循環します)";
+        }
 
         const int maxChildren = fbzz::ai::BTNodeMaxChildren(parent->type);
         if (maxChildren == 0)
             return std::string(fbzz::ai::BTNodeTypeName(parent->type))
                  + " は葉ノードなので子を持てません";
-        /// @note 既に自分がその親の子なら、付け替えても数は増えない。
+        // 既に自分がその親の子なら、付け替えても数は増えない。
         const bool alreadyChild = child->parentId == newParentId;
         if (maxChildren > 0 && !alreadyChild && ChildCount(asset, newParentId) >= maxChildren)
             return std::string(fbzz::ai::BTNodeTypeName(parent->type)) + " が持てる子は "
                  + std::to_string(maxChildren) + " 個までです";
     } else {
-        /// @note 親なし = ルート。木にルートは 1 つだけ。
+        // 親なし = ルート。木にルートは 1 つだけ。
         for (const auto& node : asset.nodes)
-            if (node.parentId == 0 && node.id != childId)
+            if (node.parentId == 0 && node.id != childId) {
                 return "ルートは 1 つだけです (既存のルートへ繋いでください)";
+            }
     }
 
     child->parentId = newParentId;
-    /// @note 末尾へ追加する。優先度は order なので、後から Inspector か D&D で並べ替える。
+    // 末尾へ追加する。優先度は order なので、後から Inspector か D&D で並べ替える。
     int nextOrder = 0;
     for (const auto& node : asset.nodes)
-        if (node.parentId == newParentId && node.id != childId)
+        if (node.parentId == newParentId && node.id != childId) {
             nextOrder = (std::max)(nextOrder, node.order + 1);
+        }
     child->order = nextOrder;
     return {};
 }
@@ -187,35 +219,39 @@ AddNodeResult AddNode(fbzz::ai::BehaviorTreeAsset& asset,
     node.editorX = editorX;
     node.editorY = editorY;
 
-    /// @note ルートがまだ無ければ、指定によらず最初のノードがルートになる。
+    // ルートがまだ無ければ、指定によらず最初のノードがルートになる。
     const bool hasRoot = std::any_of(asset.nodes.begin(), asset.nodes.end(),
         [](const fbzz::ai::BTNodeDef& item) { return item.parentId == 0; });
     node.parentId = 0;
     asset.nodes.push_back(node);
     result.nodeId = node.id;
 
-    /// @note 最初のノード = ルート。親付けは不要。
-    if (!hasRoot) return result;
+    // 最初のノード = ルート。親付けは不要。
+    if (!hasRoot) {
+        return result;
+    }
 
     if (parentId == 0) {
         result.rejectReason = "ルートは既にあります。parentId を指定してください";
     } else {
         result.rejectReason = TryReparentNode(asset, node.id, parentId);
     }
-    if (result.rejectReason.empty()) return result;
+    if (result.rejectReason.empty()) {
+        return result;
+    }
 
     if (orphanOnReject) {
-        /// @note 孤立ノードとして残す。作った直後に消えると「追加できなかった」のか
-        /// @note 「見えていない」のか区別できない。ルートが 2 つになるのは Validate が拒否し、
-        /// @note 理由は警告バナーに出る。
+        // 孤立ノードとして残す。作った直後に消えると「追加できなかった」のか
+        // 「見えていない」のか区別できない。ルートが 2 つになるのは Validate が拒否し、
+        // 理由は警告バナーに出る。
         result.leftOrphan = true;
         return result;
     }
 
-    /// @note 追加そのものを取り消す。呼び出しが成否で完結してほしい API 経路向け。
+    // 追加そのものを取り消す。呼び出しが成否で完結してほしい API 経路向け。
     std::erase_if(asset.nodes,
         [id = node.id](const fbzz::ai::BTNodeDef& item) { return item.id == id; });
-    /// @note 採番も戻して id に穴を空けない
+    // 採番も戻して id に穴を空けない
     asset.nextNodeId = node.id;
     result.nodeId = 0;
     return result;
@@ -223,7 +259,9 @@ AddNodeResult AddNode(fbzz::ai::BehaviorTreeAsset& asset,
 
 int RemoveSubtree(fbzz::ai::BehaviorTreeAsset& asset, int nodeId)
 {
-    if (asset.FindNode(nodeId) == nullptr) return 0;
+    if (asset.FindNode(nodeId) == nullptr) {
+        return 0;
+    }
 
     const std::vector<GraphEdge> edges = ParentEdges(asset);
     const std::vector<int> doomed = CollectReachable(std::vector<int>{ nodeId }, edges);
@@ -258,8 +296,8 @@ DuplicateResult DuplicateSubtree(fbzz::ai::BehaviorTreeAsset& asset,
     const std::vector<GraphEdge> edges = ParentEdges(asset);
     const std::vector<int> subtree = CollectReachable(std::vector<int>{ nodeId }, edges);
 
-    /// @note id の再割当と内部リンクの保持は framework の共通実装に任せる。
-    /// @note クリップボード・Template 取り込み・レイヤー複製と同じ規則で動く。
+    // id の再割当と内部リンクの保持は framework の共通実装に任せる。
+    // クリップボード・Template 取り込み・レイヤー複製と同じ規則で動く。
     int nextId = asset.nextNodeId - 1;
     const GraphExtractResult extracted = ExtractSubgraph(subtree, edges, nextId);
     asset.nextNodeId = nextId + 1;
@@ -267,22 +305,26 @@ DuplicateResult DuplicateSubtree(fbzz::ai::BehaviorTreeAsset& asset,
     std::vector<fbzz::ai::BTNodeDef> copies;
     for (const auto& node : asset.nodes) {
         const auto mapped = extracted.idMap.find(node.id);
-        if (mapped == extracted.idMap.end()) continue;
+        if (mapped == extracted.idMap.end()) {
+            continue;
+        }
         fbzz::ai::BTNodeDef copy = node;
         copy.id = mapped->second;
         const auto mappedParent = extracted.idMap.find(node.parentId);
-        /// @note 部分木の根だけは元の親のまま (兄弟として並ぶ)。
+        // 部分木の根だけは元の親のまま (兄弟として並ぶ)。
         copy.parentId = mappedParent == extracted.idMap.end() ? node.parentId
                                                               : mappedParent->second;
         copy.editorX += offsetX;
         copy.editorY += offsetY;
         copies.push_back(std::move(copy));
     }
-    for (auto& copy : copies) asset.nodes.push_back(std::move(copy));
+    for (auto& copy : copies) {
+        asset.nodes.push_back(std::move(copy));
+    }
 
     result.idMap = extracted.idMap;
 
-    /// @note 複製した根を親の末尾へ回す (order を採り直す)。
+    // 複製した根を親の末尾へ回す (order を採り直す)。
     const auto rootCopy = extracted.idMap.find(nodeId);
     if (rootCopy != extracted.idMap.end()) {
         result.newRootId    = rootCopy->second;
@@ -293,16 +335,20 @@ DuplicateResult DuplicateSubtree(fbzz::ai::BehaviorTreeAsset& asset,
 
 void AutoLayout(fbzz::ai::BehaviorTreeAsset& asset)
 {
-    if (asset.nodes.empty()) return;
+    if (asset.nodes.empty()) {
+        return;
+    }
 
     std::vector<int> nodeIds;
     std::vector<GraphLayoutEdge> edges;
     for (const auto& node : asset.nodes) {
         nodeIds.push_back(node.id);
-        if (node.parentId != 0) edges.push_back({ node.parentId, node.id });
+        if (node.parentId != 0) {
+            edges.push_back({ node.parentId, node.id });
+        }
     }
 
-    /// @note 木なので列 = 深さがそのまま階層になり、DAG より整った結果になる。
+    // 木なので列 = 深さがそのまま階層になり、DAG より整った結果になる。
     const std::vector<int> roots = asset.FindRootIds();
     GraphLayoutOptions options;
     options.columnStep = kNodeColumnStep;
@@ -312,7 +358,9 @@ void AutoLayout(fbzz::ai::BehaviorTreeAsset& asset)
 
     for (auto& node : asset.nodes) {
         const auto found = layout.find(node.id);
-        if (found == layout.end()) continue;
+        if (found == layout.end()) {
+            continue;
+        }
         node.editorX = found->second.x;
         node.editorY = found->second.y;
     }

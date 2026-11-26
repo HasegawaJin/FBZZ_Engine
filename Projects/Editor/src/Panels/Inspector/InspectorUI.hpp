@@ -8,4 +8,4 @@
 
 namespace fbzz::editor {
 void BindWaterObjectReferenceFields(ComponentImGuiReflector& reflector, scene::Scene* world);
-} /// @note namespace fbzz::editor
+} // namespace fbzz::editor

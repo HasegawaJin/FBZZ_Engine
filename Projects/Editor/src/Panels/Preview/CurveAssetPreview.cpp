@@ -28,7 +28,9 @@ ImU32 ToImColor(const math::Vector4& color)
 
 void DrawCurve(ImDrawList* draw, const scene::ParticleCurve& curve, ImVec2 origin, ImVec2 size)
 {
-    if (!draw || size.x <= 0.0f || size.y <= 0.0f) return;
+    if (!draw || size.x <= 0.0f || size.y <= 0.0f) {
+        return;
+    }
     const ImVec2 max{ origin.x + size.x, origin.y + size.y };
     draw->PushClipRect(origin, max, true);
     draw->AddRectFilled(origin, max, IM_COL32(22, 25, 32, 255), 3.0f);
@@ -38,11 +40,13 @@ void DrawCurve(ImDrawList* draw, const scene::ParticleCurve& curve, ImVec2 origi
     const uint32_t count = std::min<uint32_t>(curve.keyCount, static_cast<uint32_t>(curve.keys.size()));
     for (uint32_t i = 0; i < count; ++i) {
         const float value = curve.keys[i].value;
-        if (!std::isfinite(value)) continue;
+        if (!std::isfinite(value)) {
+            continue;
+        }
         minimum = std::min(minimum, value);
         maximum = std::max(maximum, value);
     }
-    /// @note 定数曲線でも上下の余白を確保し、ゼロ線と曲線を判別できるようにする。
+    // 定数曲線でも上下の余白を確保し、ゼロ線と曲線を判別できるようにする。
     const float padding = std::max((maximum - minimum) * 0.12f, 0.1f);
     minimum -= padding;
     maximum += padding;
@@ -70,7 +74,9 @@ void DrawCurve(ImDrawList* draw, const scene::ParticleCurve& curve, ImVec2 origi
 
     if (size.x >= 70.0f && size.y >= 60.0f) {
         for (uint32_t i = 0; i < count; ++i) {
-            if (!std::isfinite(curve.keys[i].time) || !std::isfinite(curve.keys[i].value)) continue;
+            if (!std::isfinite(curve.keys[i].time) || !std::isfinite(curve.keys[i].value)) {
+                continue;
+            }
             const ImVec2 point{ origin.x + std::clamp(curve.keys[i].time, 0.0f, 1.0f) * size.x,
                                 toY(curve.keys[i].value) };
             draw->AddCircleFilled(point, 3.0f, IM_COL32(240, 245, 255, 255));
@@ -83,7 +89,9 @@ void DrawCurve(ImDrawList* draw, const scene::ParticleCurve& curve, ImVec2 origi
 void DrawGradient(ImDrawList* draw, const scene::ParticleGradient& gradient,
                   ImVec2 origin, ImVec2 size)
 {
-    if (!draw || size.x <= 0.0f || size.y <= 0.0f) return;
+    if (!draw || size.x <= 0.0f || size.y <= 0.0f) {
+        return;
+    }
     const ImVec2 max{ origin.x + size.x, origin.y + size.y };
     draw->PushClipRect(origin, max, true);
     constexpr float checkerSize = 8.0f;
@@ -97,7 +105,7 @@ void DrawGradient(ImDrawList* draw, const scene::ParticleGradient& gradient,
                                                  : IM_COL32(104, 104, 104, 255));
         }
     }
-    /// @note Evaluate は色空間と Step / Smooth 補間を反映する。透明度は市松背景へ重ねる。
+    // Evaluate は色空間と Step / Smooth 補間を反映する。透明度は市松背景へ重ねる。
     const int samples = std::clamp(static_cast<int>(size.x), 24, 256);
     for (int i = 0; i < samples; ++i) {
         const float time = (static_cast<float>(i) + 0.5f) / static_cast<float>(samples);
@@ -109,4 +117,4 @@ void DrawGradient(ImDrawList* draw, const scene::ParticleGradient& gradient,
     draw->PopClipRect();
 }
 
-} /// @note namespace fbzz::editor::curvepreview
+} // namespace fbzz::editor::curvepreview

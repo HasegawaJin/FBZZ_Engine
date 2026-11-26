@@ -19,7 +19,7 @@ void AssetDirtyRegistry::Register(const std::string& absPath,
     const auto revision = ++s_nextRevision;
     for (auto& entry : s_dirty) {
         if (entry.path == absPath) {
-            /// @note saveFunc だけ更新 (最新の in-memory 状態をキャプチャしたクロージャで上書き)
+            // saveFunc だけ更新 (最新の in-memory 状態をキャプチャしたクロージャで上書き)
             entry.saveFunc    = std::move(saveFunc);
             entry.displayPath = displayPath;
             entry.typeLabel = typeLabel;
@@ -43,7 +43,9 @@ void AssetDirtyRegistry::MarkClean(const std::string& absPath)
 bool AssetDirtyRegistry::IsDirty(const std::string& absPath)
 {
     for (const auto& d : s_dirty)
-        if (d.path == absPath) return true;
+        if (d.path == absPath) {
+            return true;
+        }
     return false;
 }
 
@@ -60,18 +62,24 @@ const std::vector<DirtyAsset>& AssetDirtyRegistry::GetAll()
 bool AssetDirtyRegistry::Save(const std::string& absPath)
 {
     const std::string path = absPath;
-    /// @note saveFunc をコピーしてから呼ぶ: 中で Register が呼ばれると s_dirty が再確保され、イテレータ (と entry への参照) が無効化されうる。
+    // saveFunc をコピーしてから呼ぶ: 中で Register が呼ばれると s_dirty が再確保され、イテレータ (と entry への参照) が無効化されうる。
     std::function<bool()> saveFunc;
     std::uint64_t revision = 0;
     for (const auto& entry : s_dirty) {
-        if (entry.path != path) continue;
+        if (entry.path != path) {
+            continue;
+        }
         saveFunc = entry.saveFunc;
         revision = entry.revision;
         break;
     }
-    if (!saveFunc) return false;
-    if (!saveFunc()) return false;
-    /// @note ローカルの保存コールバックが登録を更新・解除しても、新しい版を取り除かない。
+    if (!saveFunc) {
+        return false;
+    }
+    if (!saveFunc()) {
+        return false;
+    }
+    // ローカルの保存コールバックが登録を更新・解除しても、新しい版を取り除かない。
     std::erase_if(s_dirty, [&](const DirtyAsset& entry) {
         return entry.path == path && entry.revision == revision;
     });
@@ -81,12 +89,16 @@ bool AssetDirtyRegistry::Save(const std::string& absPath)
 int AssetDirtyRegistry::SaveAll()
 {
     int failed = 0;
-    /// @note 保存側が自分の登録を解除しても、残りのパスを安定してたどる。
+    // 保存側が自分の登録を解除しても、残りのパスを安定してたどる。
     std::vector<std::string> paths;
     paths.reserve(s_dirty.size());
-    for (const auto& entry : s_dirty) paths.push_back(entry.path);
+    for (const auto& entry : s_dirty) {
+        paths.push_back(entry.path);
+    }
     for (const auto& path : paths)
-        if (IsDirty(path) && !Save(path)) ++failed;
+        if (IsDirty(path) && !Save(path)) {
+            ++failed;
+        }
     return failed;
 }
 
@@ -96,7 +108,9 @@ void AssetDirtyRegistry::DiscardAll()
     s_dirty.clear();
     ++s_discardEpoch;
     for (auto& entry : discarded)
-        if (entry.discardFunc) entry.discardFunc();
+        if (entry.discardFunc) {
+            entry.discardFunc();
+        }
 }
 
 std::uint64_t AssetDirtyRegistry::DiscardEpoch()
@@ -104,4 +118,4 @@ std::uint64_t AssetDirtyRegistry::DiscardEpoch()
     return s_discardEpoch;
 }
 
-} /// @note namespace fbzz::editor
+} // namespace fbzz::editor

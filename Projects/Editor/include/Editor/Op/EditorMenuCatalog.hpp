@@ -22,19 +22,29 @@ inline std::string_view PanelMenuCategory(const IPanel& panel)
     const std::string_view name = panel.GetWindowName();
     if (name == "Scene" || name == "Game" || name == "UI" || name == "Scene Hierarchy"
         || name == "Inspector" || name == "Asset Browser" || name == "Console"
-        || name == "Search" || name == "Undo History") return {};
-    if (name == "Animation Graph" || name == "Animation Mask Preview" || name == "Sequence")
+        || name == "Search" || name == "Undo History") {
+        return {};
+    }
+    if (name == "Animation Graph" || name == "Animation Mask Preview" || name == "Sequence") {
         return "Animation";
-    if (name == "VFX Timeline" || name == "Fluid Editor" || name == "SFX Editor")
+    }
+    if (name == "VFX Timeline" || name == "Fluid Editor" || name == "SFX Editor") {
         return "Effects & Audio";
+    }
     if (name == "Preview" || name == "Sprite Editor" || name == "Dependency View"
-        || name.starts_with("Asset Browser ")) return "Assets";
-    if (name == "Navigation" || name == "Behavior Tree") return "AI & Navigation";
+        || name.starts_with("Asset Browser ")) {
+        return "Assets";
+    }
+    if (name == "Navigation" || name == "Behavior Tree") {
+        return "AI & Navigation";
+    }
     if (name == "Analysis" || name == "Script Profiler" || name == "Memory Debug"
-        || name == "Render Pass Viewer" || name == "Build Output" || name == "Script Requirements")
+        || name == "Render Pass Viewer" || name == "Build Output" || name == "Script Requirements") {
         return "Diagnostics";
-    if (name == "Hotkey Editor" || name == "Project Settings" || name == "AI Settings")
+    }
+    if (name == "Hotkey Editor" || name == "Project Settings" || name == "AI Settings") {
         return "Settings";
+    }
     const char* category = panel.GetMenuCategory();
     return category && category[0] != '\0' ? std::string_view(category) : "Other Panels";
 }
@@ -53,11 +63,14 @@ inline std::vector<PanelMenuGroup> BuildPanelMenu(const std::vector<std::unique_
 {
     std::vector<PanelMenuGroup> groups;
     for (const char* category : { "", "Animation", "Effects & Audio", "Assets", "AI & Navigation",
-                                 "Diagnostics", "Settings", "Other Panels" })
+                                 "Diagnostics", "Settings", "Other Panels" }) {
         groups.push_back({category, {}});
+    }
     for (const auto& ownedPanel : panels) {
         IPanel* panel = ownedPanel.get();
-        if (!panel || !panel->ShowInViewMenu()) continue;
+        if (!panel || !panel->ShowInViewMenu()) {
+            continue;
+        }
         const std::string_view category = PanelMenuCategory(*panel);
         auto group = std::find_if(groups.begin(), groups.end(), [&category](const PanelMenuGroup& candidate) {
             return candidate.category == category;
@@ -142,4 +155,4 @@ inline constexpr EditorMenuAction DEVELOPER_VIEW_MODES[] = {
     {"render.set_view_mode", "Ray Instance ID", "ray_instance_id"},
 };
 
-} /// @note namespace fbzz::editor
+} // namespace fbzz::editor

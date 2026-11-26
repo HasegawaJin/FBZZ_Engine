@@ -42,10 +42,13 @@ const ImVec4 kErrorColor { 1.00f, 0.42f, 0.42f, 1.0f };
 
 bool ScenesEqual(const std::vector<SceneEntry>& lhs, const std::vector<SceneEntry>& rhs)
 {
-    if (lhs.size() != rhs.size()) return false;
+    if (lhs.size() != rhs.size()) {
+        return false;
+    }
     for (std::size_t i = 0; i < lhs.size(); ++i) {
-        if (lhs[i].path != rhs[i].path || lhs[i].enabled != rhs[i].enabled)
+        if (lhs[i].path != rhs[i].path || lhs[i].enabled != rhs[i].enabled) {
             return false;
+        }
     }
     return true;
 }
@@ -69,7 +72,9 @@ bool BrowseForFolder(HWND hwnd, std::string& outPath)
     bi.ulFlags   = BIF_RETURNONLYFSDIRS | BIF_NEWDIALOGSTYLE;
 
     PIDLIST_ABSOLUTE pidl = SHBrowseForFolderW(&bi);
-    if (!pidl) return false;
+    if (!pidl) {
+        return false;
+    }
 
     wchar_t path[MAX_PATH]{};
     SHGetPathFromIDListW(pidl, path);
@@ -82,7 +87,9 @@ bool BrowseForFolder(HWND hwnd, std::string& outPath)
 /// @see ShellExecuteW https://learn.microsoft.com/en-us/windows/win32/api/shellapi/nf-shellapi-shellexecutew
 void RevealInExplorer(const std::string& path)
 {
-    if (path.empty()) return;
+    if (path.empty()) {
+        return;
+    }
     const std::wstring wpath = util::FileSystem::PathFromUtf8(path).wstring();
     ShellExecuteW(nullptr, L"open", L"explorer.exe", wpath.c_str(), nullptr, SW_SHOWNORMAL);
 }
@@ -90,9 +97,13 @@ void RevealInExplorer(const std::string& path)
 /// @note プロジェクト相対パスの実体があるか。空パスは「未設定」なので false。
 bool SceneExists(const std::string& projectRoot, const std::string& relativePath)
 {
-    if (projectRoot.empty() || relativePath.empty()) return false;
+    if (projectRoot.empty() || relativePath.empty()) {
+        return false;
+    }
     const std::filesystem::path p = util::FileSystem::PathFromUtf8(relativePath);
-    if (p.is_absolute()) return util::FileSystem::Exists(p);
+    if (p.is_absolute()) {
+        return util::FileSystem::Exists(p);
+    }
     return util::FileSystem::Exists(util::FileSystem::PathFromUtf8(projectRoot) / p);
 }
 
@@ -110,7 +121,9 @@ void IconPreviewBox(void* texId, float side, const char* emptyLabel)
     drawList->AddRectFilled(boxMin, boxMax, IM_COL32(70, 70, 70, 255));
     for (int y = 0; boxMin.y + static_cast<float>(y) * cell < boxMax.y; ++y) {
         for (int x = 0; boxMin.x + static_cast<float>(x) * cell < boxMax.x; ++x) {
-            if (((x + y) & 1) == 0) continue;
+            if (((x + y) & 1) == 0) {
+                continue;
+            }
             const ImVec2 cellMin{ boxMin.x + static_cast<float>(x) * cell,
                                   boxMin.y + static_cast<float>(y) * cell };
             drawList->AddRectFilled(cellMin, { cellMin.x + cell, cellMin.y + cell },
@@ -130,7 +143,7 @@ void IconPreviewBox(void* texId, float side, const char* emptyLabel)
     drawList->AddRect(boxMin, boxMax, ImGui::GetColorU32(ImGuiCol_Border), 3.0f);
 }
 
-} /// @note namespace
+} // namespace
 
 /// @note 永続化 (EditorSettings 経由)
 
@@ -150,11 +163,12 @@ void BuildSettingsPanel::OnSaveSettings(EditorSettings& settings) const
 
 void BuildSettingsPanel::OnRenderContent(EditorContext& ctx)
 {
-    /// @note ディスクを読む事前チェックは、開いた瞬間とビルド前後だけ取り直す。
-    if (ImGui::IsWindowAppearing() || !m_checksValid)
+    // ディスクを読む事前チェックは、開いた瞬間とビルド前後だけ取り直す。
+    if (ImGui::IsWindowAppearing() || !m_checksValid) {
         RefreshChecks(ctx);
+    }
 
-    /// @note 1 回の操作 (テキスト入力の確定・チェックの切り替え) を 1 Undo にまとめる。
+    // 1 回の操作 (テキスト入力の確定・チェックの切り替え) を 1 Undo にまとめる。
     struct UndoTracker {
         ImGuiID       activeId = 0;
         BuildSettings before;
@@ -182,14 +196,16 @@ void BuildSettingsPanel::OnRenderContent(EditorContext& ctx)
     const ImGuiID activeAfter = ImGui::GetActiveID();
 
     auto pushCommand = [&](const BuildSettings& before, const BuildSettings& after) {
-        if (!ctx.undoStack || BuildSettingsEqual(before, after)) return;
+        if (!ctx.undoStack || BuildSettingsEqual(before, after)) {
+            return;
+        }
         BuildSettingsPanel* panel  = this;
         EditorContext*      target = &ctx;
         auto apply = [panel, target](const BuildSettings& value) {
             panel->m_settings = value;
             panel->m_checksValid = false;
-            /// @note Undo / Redo も編集と同じ重みで保存要求を出す: 落として開き直したとき、
-            /// @note 戻したはずの設定が復活していると追跡できない。
+            // Undo / Redo も編集と同じ重みで保存要求を出す: 落として開き直したとき、
+            // 戻したはずの設定が復活していると追跡できない。
             target->requestEditorSettingsSave = true;
         };
         ctx.undoStack->Push(std::make_unique<LambdaCommand>(
@@ -210,11 +226,12 @@ void BuildSettingsPanel::OnRenderContent(EditorContext& ctx)
         pushCommand(beforeDraw, m_settings);
     }
 
-    /// @note チェックはディスクを読むため全変更では作り直さない: 結果が変わるのは構成とシーン一覧だけで、
-    /// @note 製品名を 1 文字打つたびに build.config を読み直す理由はない。
+    // チェックはディスクを読むため全変更では作り直さない: 結果が変わるのは構成とシーン一覧だけで、
+    // 製品名を 1 文字打つたびに build.config を読み直す理由はない。
     if (m_settings.developmentBuild != beforeDraw.developmentBuild ||
-        !ScenesEqual(m_settings.scenes, beforeDraw.scenes))
+        !ScenesEqual(m_settings.scenes, beforeDraw.scenes)) {
         m_checksValid = false;
+    }
 }
 
 /// @note Scenes in Build
@@ -245,23 +262,25 @@ void BuildSettingsPanel::DrawScenesInBuild(EditorContext& ctx)
         ImGui::PushID(i);
 
         ImGui::Checkbox("##enabled", &entry.enabled);
-        if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayShort))
+        if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayShort)) {
             ImGui::SetTooltip("Include this scene in the build");
+        }
 
         ImGui::SameLine();
         const bool selected = (m_selectedSceneIdx == i);
         const float labelWidth = ImGui::GetContentRegionAvail().x - toolbarW
                                - ImGui::GetStyle().ItemSpacing.x * 2.0f;
         if (ImGui::Selectable("##row", selected, ImGuiSelectableFlags_AllowOverlap,
-                              { labelWidth, 0.0f }))
+                              { labelWidth, 0.0f })) {
             m_selectedSceneIdx = i;
+        }
 
         ImGui::SameLine(0.0f, 0.0f);
         ImGui::SetCursorPosX(ImGui::GetCursorPosX() - labelWidth);
 
         const bool missing = !SceneExists(ctx.projectRoot, entry.path);
-        /// @note 起動シーンに印を付ける: このリストの並びは起動順ではなく、実際の起動シーンは
-        /// @note ProjectSettings 側にしかない。印が無いと Unity の慣習で「先頭が開始シーン」と読み違える。
+        // 起動シーンに印を付ける: このリストの並びは起動順ではなく、実際の起動シーンは
+        // ProjectSettings 側にしかない。印が無いと Unity の慣習で「先頭が開始シーン」と読み違える。
         const bool isStart = !entry.path.empty() && entry.path == startScene;
         const ImVec4 color = missing        ? kErrorColor
                            : isStart        ? kOkColor
@@ -270,15 +289,24 @@ void BuildSettingsPanel::DrawScenesInBuild(EditorContext& ctx)
         ImGui::PushStyleColor(ImGuiCol_Text, color);
         ImGui::Text("%d  %s%s", i, entry.path.c_str(), isStart ? "   [START]" : "");
         ImGui::PopStyleColor();
-        if (missing && ImGui::IsItemHovered(ImGuiHoveredFlags_DelayShort))
+        if (missing && ImGui::IsItemHovered(ImGuiHoveredFlags_DelayShort)) {
             ImGui::SetTooltip("File not found under the project root");
+        }
 
         ImGui::SameLine();
         ImGui::SetCursorPosX(ImGui::GetContentRegionMax().x - toolbarW);
         const widgets::ListRowButtons buttons = widgets::ListRowToolbar(i, count, true, false);
-        if (buttons.moveUp)   { moveFrom = i; moveTo = i - 1; }
-        if (buttons.moveDown) { moveFrom = i; moveTo = i + 1; }
-        if (buttons.remove)   { removeIdx = i; }
+        if (buttons.moveUp) {
+            moveFrom = i;
+            moveTo = i - 1;
+        }
+        if (buttons.moveDown) {
+            moveFrom = i;
+            moveTo = i + 1;
+        }
+        if (buttons.remove) {
+            removeIdx = i;
+        }
 
         ImGui::PopID();
     }
@@ -297,8 +325,9 @@ void BuildSettingsPanel::DrawScenesInBuild(EditorContext& ctx)
 
     const bool hasCurrentScene = !ctx.currentScenePath.empty() && !ctx.projectRoot.empty();
     ImGui::BeginDisabled(!hasCurrentScene);
-    if (ImGui::Button("Add Open Scene"))
+    if (ImGui::Button("Add Open Scene")) {
         AddScene(ctx, ctx.currentScenePath);
+    }
     ImGui::EndDisabled();
 
     ImGui::SameLine();
@@ -307,8 +336,9 @@ void BuildSettingsPanel::DrawScenesInBuild(EditorContext& ctx)
         const std::filesystem::path scenesDir =
             util::FileSystem::PathFromUtf8(ctx.projectRoot) / L"Assets";
         for (const std::filesystem::path& file : util::FileSystem::ListFilesRecursive(scenesDir)) {
-            if (file.extension() == L".scene")
+            if (file.extension() == L".scene") {
                 AddScene(ctx, util::FileSystem::PathToUtf8(file));
+            }
         }
     }
     ImGui::EndDisabled();
@@ -328,9 +358,11 @@ void BuildSettingsPanel::DrawScenesInBuild(EditorContext& ctx)
 
 bool BuildSettingsPanel::AddScene(const EditorContext& ctx, const std::string& absolutePath)
 {
-    if (absolutePath.empty() || ctx.projectRoot.empty()) return false;
+    if (absolutePath.empty() || ctx.projectRoot.empty()) {
+        return false;
+    }
 
-    /// @note 相対パスで持つ: プロジェクトを別 PC へ持っていっても同じ構成でビルドできる。
+    // 相対パスで持つ: プロジェクトを別 PC へ持っていっても同じ構成でビルドできる。
     const std::filesystem::path scene = util::FileSystem::PathFromUtf8(absolutePath);
     const std::filesystem::path root  = util::FileSystem::PathFromUtf8(ctx.projectRoot);
     const std::filesystem::path rel   = util::FileSystem::RelativePath(scene, root);
@@ -339,7 +371,9 @@ bool BuildSettingsPanel::AddScene(const EditorContext& ctx, const std::string& a
     const bool exists = std::any_of(
         m_settings.scenes.begin(), m_settings.scenes.end(),
         [&relPath](const SceneEntry& e) { return e.path == relPath; });
-    if (exists) return false;
+    if (exists) {
+        return false;
+    }
 
     m_settings.scenes.push_back({ relPath, true });
     return true;
@@ -353,9 +387,11 @@ void BuildSettingsPanel::DrawOutputSettings(EditorContext& ctx)
 
     ImGui::SetNextItemWidth(ImGui::GetContentRegionAvail().x - 90.0f);
     widgets::InputString("Output Directory", m_settings.outputDirectory);
-    /// @note 出力先のチェックはディスクを読むため確定時だけ取り直す。1 文字打つたびに走らせる理由はないが、
-    /// @note 入れ替えたまま気付かずビルドを押せてもいけない。
-    if (ImGui::IsItemDeactivatedAfterEdit()) m_checksValid = false;
+    // 出力先のチェックはディスクを読むため確定時だけ取り直す。1 文字打つたびに走らせる理由はないが、
+    // 入れ替えたまま気付かずビルドを押せてもいけない。
+    if (ImGui::IsItemDeactivatedAfterEdit()) {
+        m_checksValid = false;
+    }
     ImGui::SameLine();
     if (ImGui::Button("Browse...")) {
         std::string chosen;
@@ -365,8 +401,8 @@ void BuildSettingsPanel::DrawOutputSettings(EditorContext& ctx)
         }
     }
 
-    /// @note 解決後のパスを出す: 出力先は相対でも絶対でも書けるため、「Builds/MyGame」が実際どこへ
-    /// @note 出るのかを押す前に確定させる。
+    // 解決後のパスを出す: 出力先は相対でも絶対でも書けるため、「Builds/MyGame」が実際どこへ
+    // 出るのかを押す前に確定させる。
     const std::string resolved =
         util::FileSystem::PathToUtf8(m_settings.ResolveOutputPath(ctx.projectRoot));
     ImGui::TextDisabled("→ %s", resolved.c_str());
@@ -405,8 +441,9 @@ void BuildSettingsPanel::DrawIconSetting(EditorContext& ctx)
     ImGui::Spacing();
 
     if (widgets::AssetPathField("Icon", m_settings.iconPath,
-                                ".png,.jpg,.jpeg,.tga,.bmp,.ico", ctx.projectRoot))
+                                ".png,.jpg,.jpeg,.tga,.bmp,.ico", ctx.projectRoot)) {
         m_checksValid = false;
+    }
     if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayShort))
         ImGui::SetTooltip("Burned into %s.exe as its Windows icon (Explorer, taskbar, "
                           "title bar and Alt+Tab).\n"
@@ -418,25 +455,26 @@ void BuildSettingsPanel::DrawIconSetting(EditorContext& ctx)
     const bool isIco =
         util::StringUtils::ToLower(util::FileSystem::GetExtension(m_settings.iconPath)) == ".ico";
 
-    /// @note パス文字列だけでは «どの絵が exe に付くのか» を確かめられないため、プレビューを出す。
+    // パス文字列だけでは «どの絵が exe に付くのか» を確かめられないため、プレビューを出す。
     const std::string previewPath = m_settings.iconPath.empty()
         ? std::string{}
         : util::FileSystem::PathToUtf8(m_settings.ResolveIconPath(ctx.projectRoot));
     const std::uint64_t resetVersion = ctx.resources ? ctx.resources->GetResetVersion() : 0;
 
-    /// @note 読み込みはパスが変わったときだけ。デバイスを作り直した後は取り直す。
+    // 読み込みはパスが変わったときだけ。デバイスを作り直した後は取り直す。
     if (previewPath != m_iconPreviewPath || resetVersion != m_iconPreviewResetVersion) {
-        /// @note .ico の実体はここが自前で作るので、捨てる前に解放する。
-        if (m_iconPreviewOwnsTexture && m_iconPreviewTexture.IsValid() && ctx.resources)
+        // .ico の実体はここが自前で作るので、捨てる前に解放する。
+        if (m_iconPreviewOwnsTexture && m_iconPreviewTexture.IsValid() && ctx.resources) {
             ctx.resources->Release(m_iconPreviewTexture);
+        }
         m_iconPreviewPath         = previewPath;
         m_iconPreviewResetVersion = resetVersion;
         m_iconPreviewTexture      = renderer::ResourceHandle<renderer::TextureTag>::Null();
         m_iconPreviewOwnsTexture  = false;
         if (!previewPath.empty() && ctx.resources) {
             if (isIco) {
-                /// @note LoadTexture を通さない: 下地の WIC は `.ico` の先頭フレームしか返さない。
-                /// @note exe に焼かれるのは «中の全サイズ» なので、代表として面積最大のフレームを自前で展開する。
+                // LoadTexture を通さない: 下地の WIC は `.ico` の先頭フレームしか返さない。
+                // exe に焼かれるのは «中の全サイズ» なので、代表として面積最大のフレームを自前で展開する。
                 IcoImage image;
                 std::string error;
                 if (DecodeIcoFile(util::FileSystem::PathFromUtf8(previewPath), image, error) &&
@@ -452,24 +490,27 @@ void BuildSettingsPanel::DrawIconSetting(EditorContext& ctx)
         }
     }
 
-    /// @note ImTextureID はフレームごとに引き直す。ホットリロードで実体が入れ替わっても
-    /// @note 古いディスクリプタを掴んだままにしない。
+    // ImTextureID はフレームごとに引き直す。ホットリロードで実体が入れ替わっても
+    // 古いディスクリプタを掴んだままにしない。
     void* texId = (m_iconPreviewTexture.IsValid() && ctx.resources && ctx.imguiRenderer)
         ? ctx.imguiRenderer->GetImTextureID(m_iconPreviewTexture, *ctx.resources)
         : nullptr;
 
     const char* emptyLabel = m_settings.iconPath.empty() ? "No icon" : "Cannot read";
     IconPreviewBox(texId, 96.0f, emptyLabel);
-    if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayShort) && !m_settings.iconPath.empty())
+    if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayShort) && !m_settings.iconPath.empty()) {
         ImGui::SetTooltip("%s", m_settings.iconPath.c_str());
+    }
 
-    /// @note 小さい方も並べる: アイコンが潰れるのは 16px のときで、大きいプレビューだけでは気付けない。
-    /// @note 実際に出る大きさで隣に並べる。
+    // 小さい方も並べる: アイコンが潰れるのは 16px のときで、大きいプレビューだけでは気付けない。
+    // 実際に出る大きさで隣に並べる。
     ImGui::SameLine();
     ImGui::BeginGroup();
     constexpr std::array kPreviewSizes{ 48, 32, 16 };
     for (std::size_t i = 0; i < kPreviewSizes.size(); ++i) {
-        if (i > 0) ImGui::SameLine();
+        if (i > 0) {
+            ImGui::SameLine();
+        }
         ImGui::PushID(kPreviewSizes[i]);
         ImGui::BeginGroup();
         IconPreviewBox(texId, static_cast<float>(kPreviewSizes[i]), nullptr);
@@ -495,9 +536,9 @@ void BuildSettingsPanel::RefreshChecks(EditorContext& ctx)
 
 std::string BuildSettingsPanel::ResolveStartScene(const EditorContext& ctx) const
 {
-    /// @note リスト先頭を開始シーンとしない: ランタイムは Build Settings の並びを見ず、
-    /// @note runtime.start_scene (空なら project.default_scene) で決まる。Unity の「index 0」表示を
-    /// @note 真似ると、並べ替えても起動シーンが変わらない理由が UI から読めなくなる。
+    // リスト先頭を開始シーンとしない: ランタイムは Build Settings の並びを見ず、
+    // runtime.start_scene (空なら project.default_scene) で決まる。Unity の「index 0」表示を
+    // 真似ると、並べ替えても起動シーンが変わらない理由が UI から読めなくなる。
     const GameProjectConfig& game = ctx.projectSettings.game;
     return !game.runtime.startScene.empty() ? game.runtime.startScene
                                             : game.project.defaultScene;
@@ -507,7 +548,9 @@ void BuildSettingsPanel::DrawPackageChecks(EditorContext& ctx)
 {
     widgets::SectionHeader("Package");
 
-    if (ImGui::SmallButton("Refresh")) RefreshChecks(ctx);
+    if (ImGui::SmallButton("Refresh")) {
+        RefreshChecks(ctx);
+    }
     ImGui::SameLine();
     ImGui::TextDisabled("Assets / Library/Baked / EngineAssets / runtime DLLs");
 
@@ -519,7 +562,9 @@ void BuildSettingsPanel::DrawPackageChecks(EditorContext& ctx)
                           : check.level == Check::Level::WARNING  ? "!"
                                                                : "o";
         ImGui::TextColored(color, "[%s] %s", glyph, check.label.c_str());
-        if (check.detail.empty()) continue;
+        if (check.detail.empty()) {
+            continue;
+        }
         ImGui::SameLine();
         ImGui::PushTextWrapPos(0.0f);
         ImGui::TextDisabled("%s", check.detail.c_str());
@@ -546,22 +591,25 @@ void BuildSettingsPanel::DrawProgressAndActions(EditorContext& ctx)
     const bool hasError   = std::any_of(m_checks.begin(), m_checks.end(),
         [](const Check& c) { return c.level == Check::Level::FAILED; });
 
-    if (isPlaying)
+    if (isPlaying) {
         ImGui::TextColored(kWarnColor, "Cannot build while playing");
+    }
 
 #ifndef NDEBUG
-    /// @note Debug / Development エディターでは配布向けでないランタイムが混ざる可能性があるため、
-    /// @note 公開用パッケージは Release プリセットで作る。
+    // Debug / Development エディターでは配布向けでないランタイムが混ざる可能性があるため、
+    // 公開用パッケージは Release プリセットで作る。
     ImGui::TextColored(kWarnColor,
         "[DEV/DEBUG EDITOR] For distribution, switch to the Release preset.");
 #endif
 
     ImGui::BeginDisabled(isPlaying || isBuilding || hasError || !CanInvokeOperator(ctx, "build.package"));
-    if (ImGui::Button("Build", { 120.0f, 0.0f }))
+    if (ImGui::Button("Build", { 120.0f, 0.0f })) {
         StartBuild(ctx, false);
+    }
     ImGui::SameLine();
-    if (ImGui::Button("Build and Run", { 140.0f, 0.0f }))
+    if (ImGui::Button("Build and Run", { 140.0f, 0.0f })) {
         StartBuild(ctx, true);
+    }
     ImGui::EndDisabled();
 
     if (hasError && !isBuilding) {
@@ -572,8 +620,9 @@ void BuildSettingsPanel::DrawProgressAndActions(EditorContext& ctx)
     if (!m_lastOutputDir.empty()) {
         ImGui::SameLine();
         ImGui::BeginDisabled(!util::FileSystem::Exists(m_lastOutputDir));
-        if (ImGui::Button("Open Output Folder"))
+        if (ImGui::Button("Open Output Folder")) {
             RevealInExplorer(m_lastOutputDir);
+        }
         ImGui::EndDisabled();
     }
 
@@ -582,8 +631,9 @@ void BuildSettingsPanel::DrawProgressAndActions(EditorContext& ctx)
 
     if (isStillBuilding) {
         ImGui::ProgressBar(m_pipeline.GetProgress(), { -1.0f, 0.0f }, m_pipeline.GetStatus());
-        if (ImGui::Button("Cancel"))
+        if (ImGui::Button("Cancel")) {
             static_cast<void>(InvokeOperator(ctx, "build.package_cancel"));
+        }
     }
 
     if (m_buildLogRequestId != m_build.RequestId()) {
@@ -595,7 +645,7 @@ void BuildSettingsPanel::DrawProgressAndActions(EditorContext& ctx)
     const std::string& buildLog = m_pipeline.GetBuildLog();
     if (!buildLog.empty() &&
         (isStillBuilding || m_pipeline.GetState() == BuildPipeline::State::Failed)) {
-        /// @note CMake / MSBuild の失敗理由は標準出力に出るため、失敗後もログを残して原因を読めるようにする。
+        // CMake / MSBuild の失敗理由は標準出力に出るため、失敗後もログを残して原因を読めるようにする。
         m_buildLogFeed.Sync(buildLog, m_buildLogGeneration, 0, m_buildLogView);
         m_buildLogView.DrawToolbar();
         m_buildLogView.DrawList({ 0.0f, ImGui::GetTextLineHeightWithSpacing() * 14.0f });
@@ -615,8 +665,9 @@ void BuildSettingsPanel::DrawProgressAndActions(EditorContext& ctx)
         ImGui::TextColored(kOkColor, "Build complete (%s)",
                            m_pipeline.GetRuntimeConfiguration().c_str());
         ImGui::SameLine();
-        if (ImGui::Button("Run"))
+        if (ImGui::Button("Run")) {
             StandaloneLauncher::LaunchExe(m_pipeline.GetOutputExePath(), "");
+        }
         ImGui::SameLine();
         if (ImGui::Button("Reset##done")) {
             m_build.Reset();
@@ -625,4 +676,4 @@ void BuildSettingsPanel::DrawProgressAndActions(EditorContext& ctx)
     }
 }
 
-} /// @note namespace fbzz::editor
+} // namespace fbzz::editor

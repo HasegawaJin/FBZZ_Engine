@@ -40,9 +40,12 @@ inline void DrawSelectionBackground(ImDrawList* dl,
                                     bool primary,
                                     float rounding = 4.0f)
 {
-    if (!dl) return;
-    if (hovered)
+    if (!dl) {
+        return;
+    }
+    if (hovered) {
         dl->AddRectFilled(min, max, HoverFillColor(), rounding);
+    }
     if (selected) {
         dl->AddRectFilled(min, max, SelectionFillColor(primary), rounding);
         dl->AddRect(min, max, SelectionBorderColor(primary), rounding, 0, primary ? 2.0f : 1.35f);
@@ -56,7 +59,9 @@ inline void DrawSelectionAccent(ImDrawList* dl,
                                 bool primary,
                                 float rounding = 3.0f)
 {
-    if (!dl || !selected) return;
+    if (!dl || !selected) {
+        return;
+    }
     const ImU32 color = SelectionBorderColor(primary);
     dl->AddRectFilled(min, { min.x + 3.0f, max.y }, color, rounding);
 }
@@ -67,15 +72,17 @@ inline void DrawSelectionAccent(ImDrawList* dl,
 
 inline ImU32 TileSelectionFill(bool primary, bool focused)
 {
-    if (!focused)
+    if (!focused) {
         return EditorTheme::ColorU32(ThemeColor::Secondary, primary ? 0.30f : 0.18f);
+    }
     return EditorTheme::ColorU32(ThemeColor::Accent, primary ? 0.42f : 0.24f);
 }
 
 inline ImU32 TileSelectionBorder(bool primary, bool focused)
 {
-    if (!focused)
+    if (!focused) {
         return EditorTheme::ColorU32(ThemeColor::Secondary, primary ? 0.70f : 0.45f);
+    }
     return EditorTheme::ColorU32(ThemeColor::Accent, primary ? 1.00f : 0.72f);
 }
 
@@ -88,15 +95,21 @@ inline void DrawTileSelection(ImDrawList* dl,
                               bool focused,
                               float rounding = 5.0f)
 {
-    if (!dl) return;
-    if (hovered && !selected)
+    if (!dl) {
+        return;
+    }
+    if (hovered && !selected) {
         dl->AddRectFilled(min, max, HoverFillColor(), rounding);
-    if (!selected) return;
+    }
+    if (!selected) {
+        return;
+    }
 
     dl->AddRectFilled(min, max, TileSelectionFill(primary, focused), rounding);
-    /// @note ホバー中の選択タイルはさらに一段明るくして、ドロップ先候補として反応させる。
-    if (hovered)
+    // ホバー中の選択タイルはさらに一段明るくして、ドロップ先候補として反応させる。
+    if (hovered) {
         dl->AddRectFilled(min, max, HoverFillColor(), rounding);
+    }
     dl->AddRect(min, max, TileSelectionBorder(primary, focused), rounding, 0,
                 primary ? 2.0f : 1.2f);
 }
@@ -124,9 +137,11 @@ inline void DrawAssetTileCard(ImDrawList* dl,
                               float hover,
                               float rounding = 5.0f)
 {
-    if (!dl) return;
+    if (!dl) {
+        return;
+    }
     dl->AddRectFilled(min, max, TileCardFill(hover), rounding);
-    /// @note 縁もホバーで少し起こす。面だけだと «選べるもの» の輪郭が出ない。
+    // 縁もホバーで少し起こす。面だけだと «選べるもの» の輪郭が出ない。
     const float borderAlpha = 0.45f + 0.35f * ClampUnit(hover);
     dl->AddRect(min, max, EditorTheme::ColorU32(ThemeColor::Border, borderAlpha), rounding, 0, 1.0f);
 }
@@ -142,7 +157,9 @@ inline void DrawAssetTileTypeWash(ImDrawList* dl,
                                   const ImVec4& typeColor,
                                   float rounding = 5.0f)
 {
-    if (!dl) return;
+    if (!dl) {
+        return;
+    }
     const ImU32 wash = ImGui::ColorConvertFloat4ToU32(
         { typeColor.x, typeColor.y, typeColor.z, 0.18f });
     dl->AddRectFilled({ cardMin.x, footerY }, { cardMax.x, cardMax.y }, wash,
@@ -160,7 +177,9 @@ inline void DrawAssetTileTypeStrip(ImDrawList* dl,
                                    const ImVec4& typeColor,
                                    float height = 4.0f)
 {
-    if (!dl) return;
+    if (!dl) {
+        return;
+    }
     dl->AddRectFilled({ cardMin.x, stripY }, { cardMax.x, stripY + height },
                       ImGui::ColorConvertFloat4ToU32(typeColor), 0.0f);
 }
@@ -174,7 +193,9 @@ inline void DrawTileLabelPlate(ImDrawList* dl,
                                bool focused,
                                float rounding = 4.0f)
 {
-    if (!dl) return;
+    if (!dl) {
+        return;
+    }
     const ImU32 color = focused
         ? EditorTheme::ColorU32(ThemeColor::Accent, primary ? 0.95f : 0.68f)
         : EditorTheme::ColorU32(ThemeColor::Secondary, primary ? 0.75f : 0.50f);
@@ -201,23 +222,29 @@ inline void DrawSubAssetBand(ImDrawList* dl,
                              bool openRight,
                              float rounding = 5.0f)
 {
-    if (!dl) return;
+    if (!dl) {
+        return;
+    }
 
     ImDrawFlags corners = ImDrawFlags_RoundCornersNone;
-    if (!openLeft)  corners |= ImDrawFlags_RoundCornersLeft;
-    if (!openRight) corners |= ImDrawFlags_RoundCornersRight;
+    if (!openLeft) {
+        corners |= ImDrawFlags_RoundCornersLeft;
+    }
+    if (!openRight) {
+        corners |= ImDrawFlags_RoundCornersRight;
+    }
 
-    /// @note 帯そのものは親も子も同じ面色。色を変えると 1 本に見えなくなる。
+    // 帯そのものは親も子も同じ面色。色を変えると 1 本に見えなくなる。
     dl->AddRectFilled(min, max, EditorTheme::ColorU32(ThemeColor::Canvas, 0.55f), rounding, corners);
 
-    /// @note 帯の始端 (= 展開した親タイル) にだけ縦のキャップを立て、どこから始まった
-    ///       まとまりなのかを示す。接合側・折り返しの継ぎ目には何も描かない。
+    // 帯の始端 (= 展開した親タイル) にだけ縦のキャップを立て、どこから始まった
+    // まとまりなのかを示す。接合側・折り返しの継ぎ目には何も描かない。
     if (!openLeft) {
         dl->AddRectFilled(min, { min.x + 3.0f, max.y },
                           EditorTheme::ColorU32(ThemeColor::Secondary, isParent ? 0.85f : 0.45f),
                           rounding, ImDrawFlags_RoundCornersLeft);
     }
-    /// @note 帯の上下に細い罫線を通し、背景との境界を 1 本の線として連続させる。
+    // 帯の上下に細い罫線を通し、背景との境界を 1 本の線として連続させる。
     const ImU32 edge = EditorTheme::ColorU32(ThemeColor::Border, 0.55f);
     dl->AddLine({ min.x, min.y + 0.5f }, { max.x, min.y + 0.5f }, edge, 1.0f);
     dl->AddLine({ min.x, max.y - 0.5f }, { max.x, max.y - 0.5f }, edge, 1.0f);

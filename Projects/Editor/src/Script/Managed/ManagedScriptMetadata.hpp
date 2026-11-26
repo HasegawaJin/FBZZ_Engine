@@ -16,4 +16,4 @@ namespace fbzz::editor {
 [[nodiscard]] bool PrepareManagedScriptManifest(const std::filesystem::path& projectRoot,
     const std::filesystem::path& assembly, const std::string& discoveredSources, std::string& diagnostic);
 
-} /// @note namespace fbzz::editor
+} // namespace fbzz::editor

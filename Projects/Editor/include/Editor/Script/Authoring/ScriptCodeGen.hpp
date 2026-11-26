@@ -30,8 +30,8 @@ public:
     };
 
     /// @brief C# 型を Assets/Scripts へ生成する。
-    /// @param name ASCII 識別子。Script は `Component` が無い場合だけ末尾へ付ける。
-    /// @param scriptsDir プロジェクトの Assets/Scripts ディレクトリ。
+    /// @param[in] name ASCII 識別子。Script は `Component` が無い場合だけ末尾へ付ける。
+    /// @param[in] scriptsDir プロジェクトの Assets/Scripts ディレクトリ。
     /// @return 生成した .cs のパス。不正名・重複・書込失敗時は空。
     static std::string CreateCSharpClass(const std::string& name,
                                          const std::string& scriptsDir,
@@ -42,9 +42,9 @@ public:
     [[nodiscard]] static bool IsValidCSharpName(const std::string& name);
 
     /// @brief HLSL シェーダーファイルを生成する。
-    /// @param name     シェーダー名 ("MyEffect" など)
-    /// @param hlslDir  Assets/shaders/ のルートパス
-    /// @param kind     生成するシェーダーの種類
+    /// @param[in] name シェーダー名 ("MyEffect" など)
+    /// @param[in] hlslDir Assets/shaders/ のルートパス
+    /// @param[in] kind 生成するシェーダーの種類
     /// @return 生成した .hlsl ファイルのフルパス (失敗時は空)
     static std::string CreateHlsl(const std::string& name,
                                   const std::string& hlslDir,
@@ -52,4 +52,4 @@ public:
 
 };
 
-} /// @note namespace fbzz::editor
+} // namespace fbzz::editor

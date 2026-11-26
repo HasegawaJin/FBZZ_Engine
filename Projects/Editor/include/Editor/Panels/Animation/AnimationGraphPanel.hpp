@@ -15,7 +15,7 @@
 namespace fbzz::scene {
 class GameObject;
 struct AnimatorComponent;
-} /// @note namespace fbzz::scene
+} // namespace fbzz::scene
 
 namespace fbzz::editor {
 
@@ -48,7 +48,7 @@ private:
 
     struct LinkRef {
         int fromStateIndex = -1;   ///< -2 = Any State 由来 (ResolveSelectionIndices が設定する)
-        int transitionIndex = -1;
+        int transitionIndex = -1; ///< 遷移の始点が所有する遷移配列の添字。選択がなければ -1。
     };
 
     /// @name 選択の同一性
@@ -57,14 +57,14 @@ private:
     ///       UI 側が states[] の添字を保持すると削除で添字がずれ、別ステートを指したまま残る。
     ///       名前を権威にし、添字は毎フレーム名前から解決する派生値として扱う。
     std::vector<std::string> m_selectedStateNames;   ///< 複数選択 (先頭がプライマリ)
-    NodeKind                 m_selectedKind = NodeKind::None;
+    NodeKind                 m_selectedKind = NodeKind::None; ///< Graph Canvas で選択したノードの種別。
     /// 選択中の遷移の起点。kind=AnyState なら Any State 由来、State なら fromName のステート。
-    NodeKind                 m_selectedLinkKind = NodeKind::None;
-    std::string              m_selectedLinkFromName;
-    std::string              m_openBlendTreeStateName;
+    NodeKind                 m_selectedLinkKind = NodeKind::None; ///< 選択した遷移の始点ノードの種別。
+    std::string              m_selectedLinkFromName; ///< 遷移の始点を配列の再構築後も解決するためのステート名。
+    std::string              m_openBlendTreeStateName; ///< 表示中の BlendTree を所有するステートの名前。
     /// 遷移作成モードの起点 (Unity の "Make Transition")。
-    NodeKind                 m_pendingTransitionKind = NodeKind::None;
-    std::string              m_pendingTransitionFromName;
+    NodeKind                 m_pendingTransitionKind = NodeKind::None; ///< 作成途中の遷移の始点の種別。
+    std::string              m_pendingTransitionFromName; ///< 遷移を作成中に控えた始点ステートの名前。
 
     /// 名前 → 現在の添字。states[] が変わるたびに解決し直す。
     [[nodiscard]] static int IndexOfState(const scene::AnimatorComponent& animator,
@@ -161,63 +161,63 @@ private:
 
     /// VFX と Animation のパン・ズーム・選択・リンク操作を同じ実装へ集約する。
     /// 旧コンテキストは移行中の比較用フォールバックとして残し、通常経路では使わない。
-    GraphCanvas           m_graphCanvas;
+    GraphCanvas           m_graphCanvas; ///< ノード配置と描画時の入力を扱うパネル所有のキャンバス。
     /// @}
     /// @name 以下は ResolveSelectionIndices() が毎フレーム作り直す派生値
     /// @{
     /// 直接代入しないこと。選択を変えるときは名前側 (m_selectedStateNames 等) を更新する。
-    LinkRef               m_selectedLink;
-    int                   m_selectedNode = -1;
-    int                   m_openBlendTreeState = -1;
+    LinkRef               m_selectedLink; ///< 現在選択している遷移の位置。
+    int                   m_selectedNode = -1; ///< 編集中のレイヤーで選択しているステートの添字。なければ -1。
+    int                   m_openBlendTreeState = -1; ///< 現在開いている BlendTree の親ステート添字。なければ -1。
     /// 編集中のレイヤー名。空 = Base Layer。
     /// @note 上半身レイヤーは独自の遷移グラフを持つため、どのグラフを見ているかをここで保持し、
     ///       描画時に LayerGraphScope で差し替える。
-    std::string           m_editingLayer;
-    int                   m_selectedMotion = -1;
-    bool                  m_selectedAnyState = false;
-    float                 m_canvasZoom = 1.0f;
-    std::string           m_selectionOwnerInstanceId;
-    int                   m_renamingNode = -1;
-    char                  m_renameBuffer[128] = {};
+    std::string           m_editingLayer; ///< 現在グラフを表示するレイヤー名。空なら Base Layer。
+    int                   m_selectedMotion = -1; ///< 開いている BlendTree の選択 Motion の添字。なければ -1。
+    bool                  m_selectedAnyState = false; ///< ステートではなく Any State を選択しているか。
+    float                 m_canvasZoom = 1.0f; ///< Graph Canvas の表示倍率。
+    std::string           m_selectionOwnerInstanceId; ///< 選択情報を流用できるか照合する、編集中の Animator 所有者の instanceId。
+    int                   m_renamingNode = -1; ///< インラインで改名中のステート添字。改名していなければ -1。
+    char                  m_renameBuffer[128] = {}; ///< ステートのインライン改名で編集中の文字列。
     /// リネーム対象のステート名 (権威)。m_renamingNode はここから解決する派生値。
-    std::string           m_renamingStateName;
+    std::string           m_renamingStateName; ///< 入力確定時に対象と照合する改名前のステート名。
     /// 次フレームの描画先頭で ImGui::OpenPopup を呼ぶための 1 ショット。
     /// @note MenuItem ハンドラから直接 OpenPopup すると、ImGui は開いているポップアップの子として扱い、
     ///       親メニューが閉じると一緒に閉じてしまう。フラグを立てて外側のフレーム先頭で開く。
-    bool                  m_renameRequested = false;
+    bool                  m_renameRequested = false; ///< グラフ上の選択位置でインライン改名を始める要求。
     /// 入力欄へフォーカスを移すのは開いた最初のフレームだけ。
-    bool                  m_renameFocusPending = false;
+    bool                  m_renameFocusPending = false; ///< 開いた改名入力欄へ次の描画でフォーカスする要求。
     /// 重複名・空名で弾いた理由。無言で失敗しないための表示用。
-    std::string           m_renameError;
+    std::string           m_renameError; ///< ステート改名時の検証に失敗した理由。
     /// Layer の名前変更は入力中に states[] を差し替えないよう、確定時だけ反映する。
-    char                  m_layerRenameBuffer[128] = {};
-    bool                  m_layerRenameActive = false;
-    bool                  m_layerRenameFocusPending = false;
-    std::string           m_layerRenameError;
+    char                  m_layerRenameBuffer[128] = {}; ///< アニメーションレイヤーの新しい名前を編集する入力欄。
+    bool                  m_layerRenameActive = false; ///< レイヤーの名前をインラインで編集しているか。
+    bool                  m_layerRenameFocusPending = false; ///< 開いたレイヤー改名入力欄にフォーカスする要求。
+    std::string           m_layerRenameError; ///< レイヤーの改名時の検証に失敗した理由。
     /// Unity の "Make Transition" モード。起点は m_pendingTransitionKind /
     /// m_pendingTransitionFromName が権威で、これはその派生値
     /// (-1: 非アクティブ / -2: Any State / -3: Entry / 0以上: ステート index)。
-    int                   m_pendingTransitionFrom = -1;
+    int                   m_pendingTransitionFrom = -1; ///< 作成途中の遷移の始点ステート添字。使わない場合は -1。
     /// 右クリックメニューを開いた瞬間の論理グリッド座標。"New State" をカーソル位置に生成するために保持する。
-    float                 m_contextSpawnX = 80.0f;
-    float                 m_contextSpawnY = 80.0f;
+    float                 m_contextSpawnX = 80.0f; ///< コンテキストメニューから追加するノードのキャンバス X 座標。
+    float                 m_contextSpawnY = 80.0f; ///< コンテキストメニューから追加するノードのキャンバス Y 座標。
     /// レイヤー合成ビューの表示状態と絞り込み。
-    bool                  m_showComposition = false;
-    bool                  m_compositionIssuesOnly = false;
-    char                  m_compositionFilter[64] = {};
+    bool                  m_showComposition = false; ///< アニメーション構成のサマリーを表示するか。
+    bool                  m_compositionIssuesOnly = false; ///< アニメーション構成の表示を問題のある項目に絞るか。
+    char                  m_compositionFilter[64] = {}; ///< アニメーション構成の絞り込み入力欄。
     /// ステート検索 (Ctrl+F)。空なら検索していない。
-    char                  m_searchBuffer[64] = {};
-    bool                  m_searchFocusPending = false;
+    char                  m_searchBuffer[64] = {}; ///< グラフのノード検索欄で使う入力バッファ。
+    bool                  m_searchFocusPending = false; ///< グラフ検索欄へフォーカスを移す要求。
     /// 検索にヒットしたステート名。ノードのタイトル帯を染めるために毎フレーム作り直す。
-    std::vector<std::string> m_searchHits;
+    std::vector<std::string> m_searchHits; ///< 現在のグラフ検索に一致したノードを識別する文字列。
     /// Issues ビューの開閉。
-    bool                  m_showIssues = false;
+    bool                  m_showIssues = false; ///< グラフの問題表示を開くか。
     /// 削除しようとしているパラメーターと、それを参照している条件の本数。
-    std::string           m_paramPendingDelete;
-    int                   m_paramPendingDeleteRefs = 0;
+    std::string           m_paramPendingDelete; ///< 削除確認中の Animator パラメーター名。
+    int                   m_paramPendingDeleteRefs = 0; ///< 削除確認中のパラメーターを参照する箇所の件数。
     /// RequestOpen() で積まれた「次に開くパス」。描画の先頭で 1 回だけ消費する。
-    std::string           m_requestedPath;
+    std::string           m_requestedPath; ///< パネルの更新時に開く Controller アセットのパス。空なら保留なし。
     /// @}
 };
 
-} /// @note namespace fbzz::editor
+} // namespace fbzz::editor

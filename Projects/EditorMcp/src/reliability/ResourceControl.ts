@@ -432,22 +432,52 @@ function View(lease: StoredLease, now: number): ResourceClaim {
 
 /// @note Corrupt persisted state fails closed instead of silently clearing another process's claims.
 function ValidState(value: unknown, namespaceHash: string, revision: string): value is RegistryState {
-    if (typeof value !== 'object' || value === null) return false;
+    if (typeof value !== 'object' || value === null) {
+        return false;
+    }
+
+    // 現在の名前空間と世代のレジストリだけを受け付ける。
     const state = value as Partial<RegistryState>;
-    if (state.format !== 1 || state.namespaceHash !== namespaceHash || state.revision !== revision || !Array.isArray(state.leases)) return false;
+    const matchesRevision = state.format === 1 && state.namespaceHash === namespaceHash && state.revision === revision;
+    if (!matchesRevision || !Array.isArray(state.leases)) {
+        return false;
+    }
+
     const ids = new Set<string>();
     try {
         for (const lease of state.leases) {
-            if (typeof lease !== 'object' || lease === null || !/^[0-9a-f-]{36}$/.test(lease.leaseId)
-                || typeof lease.capabilityHash !== 'string' || !/^[0-9a-f]{64}$/.test(lease.capabilityHash)
-                || !Number.isSafeInteger(lease.expiresAt) || lease.expiresAt < 0 || !Array.isArray(lease.pins) || ids.has(lease.leaseId)) return false;
+            // リースの識別子、認証情報、有効期限を検査してから、所有者と対象を確認する。
+            if (typeof lease !== 'object' || lease === null) {
+                return false;
+            }
+            const hasValidIdentity = /^[0-9a-f-]{36}$/.test(lease.leaseId)
+                && typeof lease.capabilityHash === 'string'
+                && /^[0-9a-f]{64}$/.test(lease.capabilityHash);
+            if (!hasValidIdentity) {
+                return false;
+            }
+            const hasValidExpiry = Number.isSafeInteger(lease.expiresAt) && lease.expiresAt >= 0;
+            if (!hasValidExpiry || !Array.isArray(lease.pins) || ids.has(lease.leaseId)) {
+                return false;
+            }
             ValidateOwner(lease.owner);
             NormalizeTargets(lease.targets);
             ids.add(lease.leaseId);
+
+            // 実行中の処理が、親リースで取得した対象の範囲に収まることを確認する。
             for (const pin of lease.pins) {
-                if (typeof pin !== 'object' || pin === null || typeof pin.jobId !== 'string' || !/^[0-9a-f-]{36}$/.test(pin.jobId)
-                    || typeof pin.processInstance !== 'string' || !/^[0-9a-f-]{36}$/.test(pin.processInstance)
-                    || !Number.isSafeInteger(pin.pid) || pin.pid < 1 || !Number.isSafeInteger(pin.startedAt) || pin.startedAt < 0) return false;
+                if (typeof pin !== 'object' || pin === null) {
+                    return false;
+                }
+                const hasValidIdentifiers = typeof pin.jobId === 'string' && /^[0-9a-f-]{36}$/.test(pin.jobId)
+                    && typeof pin.processInstance === 'string' && /^[0-9a-f-]{36}$/.test(pin.processInstance);
+                if (!hasValidIdentifiers) {
+                    return false;
+                }
+                const hasValidProcess = Number.isSafeInteger(pin.pid) && pin.pid >= 1;
+                if (!hasValidProcess || !Number.isSafeInteger(pin.startedAt) || pin.startedAt < 0) {
+                    return false;
+                }
                 ValidateJobName(pin.jobName);
                 AssertCovered(lease, NormalizeTargets(pin.targets));
             }

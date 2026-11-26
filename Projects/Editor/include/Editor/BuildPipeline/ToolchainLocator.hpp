@@ -14,13 +14,13 @@ namespace fbzz::editor {
 class ToolchainLocator {
 public:
     struct Result {
-        std::filesystem::path cmakeExe;
-        std::filesystem::path buildDir;
-        std::filesystem::path exeDebug;
-        std::filesystem::path exeRelease;
-        std::filesystem::path exeDevelopment;
-        bool                  found = false;
-        std::string           error;
+        std::filesystem::path cmakeExe; ///< 配布ビルドを実行する cmake.exe の解決済みパス。
+        std::filesystem::path buildDir; ///< CMake のキャッシュと構成済みビルドツリーの場所。
+        std::filesystem::path exeDebug; ///< Debug 構成が出力する Standalone の実行ファイルパス。
+        std::filesystem::path exeRelease; ///< Release 構成が出力する Standalone の実行ファイルパス。
+        std::filesystem::path exeDevelopment; ///< Development 構成が出力する Standalone の実行ファイルパス。
+        bool                  found = false; ///< CMake とビルドツリーの両方を解決できたか。
+        std::string           error; ///< ビルド環境を解決できなかった理由。
     };
 
     /// buildRoot/build.config を優先し、空ならエディタ exe から親方向に build.config を探索する。

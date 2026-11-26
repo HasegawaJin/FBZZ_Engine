@@ -108,7 +108,9 @@ Outcome SearchEditorCatalog(const JsonValue& payload)
     const std::string category = LowerAscii(StringField(payload, "category"));
     const JsonValue* limitValue = payload.Find("limit");
     const int limit = std::clamp(limitValue != nullptr && limitValue->IsNumber() ? limitValue->AsInt() : 25, 1, 100);
-    if (query.empty() && category.empty()) return Outcome::Err("BAD_ARG", "query / category のいずれかが必要です");
+    if (query.empty() && category.empty()) {
+        return Outcome::Err("BAD_ARG", "query / category のいずれかが必要です");
+    }
 
     JsonValue catalog = BuildEditorCatalog();
     const JsonValue* source = catalog.Find("components");
@@ -120,9 +122,13 @@ Outcome SearchEditorCatalog(const JsonValue& payload)
             const bool categoryMatches = category.empty() || entryCategory == category;
             const bool queryMatches = query.empty()
                 || LowerAscii(SerializeJson(entry)).find(query) != std::string::npos;
-            if (!categoryMatches || !queryMatches) continue;
+            if (!categoryMatches || !queryMatches) {
+                continue;
+            }
             ++total;
-            if (static_cast<int>(matches.AsArray().size()) < limit) matches.Push(entry);
+            if (static_cast<int>(matches.AsArray().size()) < limit) {
+                matches.Push(entry);
+            }
         }
     }
     JsonValue result = JsonValue::MakeObject();
@@ -149,7 +155,7 @@ JsonValue ShaderVarsToJson(const renderer::ShaderDescriptor& descriptor)
     for (const auto& var : descriptor.vars) {
         JsonValue item = JsonValue::MakeObject();
         item.Set("name", JsonValue(var.name));
-        /// @note components はパディングを除いた値数。行列も配列も全要素を要求する。
+        // components はパディングを除いた値数。行列も配列も全要素を要求する。
         item.Set("components", JsonValue(static_cast<int>(var.ValueCount())));
         item.Set("class", JsonValue(std::string(var.varClass == renderer::ShaderVarClass::Scalar ? "scalar"
             : var.varClass == renderer::ShaderVarClass::Vector ? "vector"
@@ -172,16 +178,21 @@ JsonValue ShaderVarsToJson(const renderer::ShaderDescriptor& descriptor)
 /// @note 効くのはコンパイル済みバイトコードのリフレクション結果でありソース宣言ではない (未使用変数は最適化で消える)。存在しない名前は保存は通り実行時に無視される。
 Outcome DoShaderInspect(editor::EditorContext& ctx, const JsonValue& payload)
 {
-    if (ctx.resources == nullptr) return Outcome::Err("NO_RENDERER", "ResourceManager がありません");
+    if (ctx.resources == nullptr) {
+        return Outcome::Err("NO_RENDERER", "ResourceManager がありません");
+    }
     const std::string path = StringField(payload, "path");
-    if (path.empty()) return Outcome::Err("BAD_ARG", "path が必要です");
+    if (path.empty()) {
+        return Outcome::Err("BAD_ARG", "path が必要です");
+    }
 
-    /// @note `guid:` 参照も含めて AssetManager に解決させる (.mat の shader フィールドは guid 形式)。
+    // `guid:` 参照も含めて AssetManager に解決させる (.mat の shader フィールドは guid 形式)。
     const std::string resolved = asset::AssetManager::ResolveAssetPath(path);
     const auto handle = ctx.resources->LoadShader(resolved.empty() ? path : resolved);
     const renderer::IShader* shader = handle.IsValid() ? ctx.resources->Get(handle) : nullptr;
-    if (shader == nullptr)
+    if (shader == nullptr) {
         return Outcome::Err("SHADER_NOT_FOUND", "シェーダーを読み込めません: " + path);
+    }
 
     const renderer::ShaderDescriptor& descriptor = shader->GetDescriptor();
     JsonValue result = JsonValue::MakeObject();
@@ -227,8 +238,11 @@ Outcome DoShaderCompileDiagnostics()
         item.Set("target", JsonValue(diagnostic.target));
         item.Set("message", JsonValue(diagnostic.message));
         items.Push(std::move(item));
-        if (diagnostic.isError) ++errorCount;
-        else ++warningCount;
+        if (diagnostic.isError) {
+            ++errorCount;
+        } else {
+            ++warningCount;
+        }
     }
     result.Set("errorCount", JsonValue(errorCount));
     result.Set("warningCount", JsonValue(warningCount));
@@ -238,7 +252,9 @@ Outcome DoShaderCompileDiagnostics()
 
 Outcome DoEditorState(const editor::EditorContext& ctx)
 {
-    if (ctx.playMode == nullptr) return Outcome::Err("NO_PLAY_MODE", "PlayModeController が未設定です");
+    if (ctx.playMode == nullptr) {
+        return Outcome::Err("NO_PLAY_MODE", "PlayModeController が未設定です");
+    }
     JsonValue result = JsonValue::MakeObject();
     result.Set("playState", JsonValue(PlayStateName(*ctx.playMode)));
     result.Set("executionMode", JsonValue(ctx.playExecutionMode == PlayExecutionMode::STANDALONE ? "standalone" : "inEditor"));
@@ -255,7 +271,9 @@ Outcome DoEditorState(const editor::EditorContext& ctx)
     result.Set("sceneDirty", JsonValue(ctx.sceneDirty));
     result.Set("managedBuildBusy", JsonValue(ctx.managedBuildBusy));
     result.Set("frameIndex", JsonValue(static_cast<std::int64_t>(Time::frameCount)));
-    if (ctx.activeScene) result.Set("sceneGeneration", JsonValue(static_cast<std::int64_t>(ctx.activeScene->GetRenderSceneGeneration())));
+    if (ctx.activeScene) {
+        result.Set("sceneGeneration", JsonValue(static_cast<std::int64_t>(ctx.activeScene->GetRenderSceneGeneration())));
+    }
     return Outcome::Ok(std::move(result));
 }
 
@@ -263,14 +281,16 @@ Outcome DoEditorState(const editor::EditorContext& ctx)
 /// @note 自律ループが自分の編集を期待どおりのラベル付きエントリとして検証し、何回 undo すれば戻れるかを判断できるようにする。
 Outcome DoUndoHistory(const editor::EditorContext& ctx, const JsonValue& payload)
 {
-    if (ctx.undoStack == nullptr) return Outcome::Err("NO_UNDOSTACK", "UndoStack が未設定です");
+    if (ctx.undoStack == nullptr) {
+        return Outcome::Err("NO_UNDOSTACK", "UndoStack が未設定です");
+    }
     const JsonValue* limitValue = payload.Find("limit");
     const int limit = std::clamp(
         limitValue != nullptr && limitValue->IsNumber() ? limitValue->AsInt() : 50, 1, 128);
 
     const auto history = ctx.undoStack->GetHistory();
     const int total = static_cast<int>(history.size());
-    /// @note 新しい順 (末尾から) に最大 limit 件返す。index は履歴内の実位置を保つ。
+    // 新しい順 (末尾から) に最大 limit 件返す。index は履歴内の実位置を保つ。
     JsonValue entries = JsonValue::MakeArray();
     for (int i = total - 1; i >= 0 && static_cast<int>(entries.AsArray().size()) < limit; --i) {
         JsonValue entry = JsonValue::MakeObject();
@@ -285,8 +305,12 @@ Outcome DoUndoHistory(const editor::EditorContext& ctx, const JsonValue& payload
     result.Set("canRedo", JsonValue(ctx.undoStack->CanRedo()));
     result.Set("cursor", JsonValue(static_cast<int>(ctx.undoStack->GetCursor())));
     result.Set("count", JsonValue(total));
-    if (ctx.undoStack->CanUndo()) result.Set("undoDescription", JsonValue(ctx.undoStack->GetUndoDescription()));
-    if (ctx.undoStack->CanRedo()) result.Set("redoDescription", JsonValue(ctx.undoStack->GetRedoDescription()));
+    if (ctx.undoStack->CanUndo()) {
+        result.Set("undoDescription", JsonValue(ctx.undoStack->GetUndoDescription()));
+    }
+    if (ctx.undoStack->CanRedo()) {
+        result.Set("redoDescription", JsonValue(ctx.undoStack->GetRedoDescription()));
+    }
     result.Set("entries", std::move(entries));
     return Outcome::Ok(std::move(result));
 }
@@ -309,12 +333,18 @@ const char* LogLevelName(core::LogLevel level)
 
 Outcome DoConsoleLogs(const editor::EditorContext& ctx, const JsonValue& payload)
 {
-    if (ctx.consoleSink == nullptr) return Outcome::Err("NO_CONSOLE", "ConsoleSink が未設定です");
+    if (ctx.consoleSink == nullptr) {
+        return Outcome::Err("NO_CONSOLE", "ConsoleSink が未設定です");
+    }
     const std::string requestedLevel = StringField(payload, "minLevel");
     int minimumRank = 0;
-    if (requestedLevel == "info") minimumRank = 1;
-    else if (requestedLevel == "warning") minimumRank = 2;
-    else if (requestedLevel == "error") minimumRank = 3;
+    if (requestedLevel == "info") {
+        minimumRank = 1;
+    } else if (requestedLevel == "warning") {
+        minimumRank = 2;
+    } else if (requestedLevel == "error") {
+        minimumRank = 3;
+    }
     const std::string contains = LowerAscii(StringField(payload, "contains"));
     const JsonValue* limitValue = payload.Find("limit");
     const int limit = std::clamp(limitValue != nullptr && limitValue->IsNumber() ? limitValue->AsInt() : 100, 1, 512);
@@ -331,11 +361,19 @@ Outcome DoConsoleLogs(const editor::EditorContext& ctx, const JsonValue& payload
     std::uint64_t sequence = ctx.consoleSink->GetLatestSequence();
     for (auto iterator = source.rbegin(); iterator != source.rend(); ++iterator) {
         const std::uint64_t entrySequence = sequence--;
-        if (entrySequence <= afterSequence) continue;
-        if (LogLevelRank(iterator->level) < minimumRank) continue;
-        if (!contains.empty() && LowerAscii(iterator->message).find(contains) == std::string::npos) continue;
+        if (entrySequence <= afterSequence) {
+            continue;
+        }
+        if (LogLevelRank(iterator->level) < minimumRank) {
+            continue;
+        }
+        if (!contains.empty() && LowerAscii(iterator->message).find(contains) == std::string::npos) {
+            continue;
+        }
         ++matched;
-        if (static_cast<int>(entries.AsArray().size()) >= limit) continue;
+        if (static_cast<int>(entries.AsArray().size()) >= limit) {
+            continue;
+        }
         JsonValue entry = JsonValue::MakeObject();
         entry.Set("sequence", JsonValue(static_cast<std::int64_t>(entrySequence)));
         entry.Set("level", JsonValue(LogLevelName(iterator->level)));
@@ -364,7 +402,9 @@ Outcome DoProfilerSnapshot(editor::EditorContext& ctx, const JsonValue& payload)
     double frameMs = 0.0;
     for (const auto& record : records) {
         sorted.push_back(&record);
-        if (record.depth == 0) frameMs += record.elapsedMs;
+        if (record.depth == 0) {
+            frameMs += record.elapsedMs;
+        }
     }
     std::sort(sorted.begin(), sorted.end(), [](const auto* left, const auto* right) {
         return left->elapsedMs > right->elapsedMs;
@@ -415,7 +455,7 @@ Outcome DoProfilerSnapshot(editor::EditorContext& ctx, const JsonValue& payload)
     result.Set("vertices", JsonValue(rendering.renderStats.vertexCount));
     result.Set("skinningVertices", JsonValue(
         static_cast<std::int64_t>(rendering.renderStats.skinningVertexCount)));
-    /// @note uint32_t は JsonValue の int/int64_t/double と暗黙変換が競合するため、JSON の整数表現へ明示的に昇格させる。
+    // uint32_t は JsonValue の int/int64_t/double と暗黙変換が競合するため、JSON の整数表現へ明示的に昇格させる。
     result.Set("skinningDispatches", JsonValue(
         static_cast<std::int64_t>(rendering.renderStats.skinningDispatchCount)));
     result.Set("skinningPaletteUploadBytes", JsonValue(
@@ -434,13 +474,13 @@ Outcome DoProfilerSnapshot(editor::EditorContext& ctx, const JsonValue& payload)
     result.Set("distanceCulled", JsonValue(rendering.renderStats.distanceCulled));
     result.Set("smallObjectCulled", JsonValue(rendering.renderStats.smallObjectCulled));
     result.Set("gpuVisibilityUnknownObjects", JsonValue(rendering.renderStats.gpuVisibilityUnknownObjects));
-    /// @note シャドウマップ描画はカメラ視点の統計と別枠。合計だけで「描画が軽い」と誤判断しないよう分けて返す。
+    // シャドウマップ描画はカメラ視点の統計と別枠。合計だけで「描画が軽い」と誤判断しないよう分けて返す。
     result.Set("shadowDrawCalls", JsonValue(rendering.renderStats.shadowDrawCalls));
     result.Set("shadowTriangles", JsonValue(rendering.renderStats.shadowTriangleCount));
     result.Set("staticShadowUpdateMask", JsonValue(static_cast<int>(rendering.renderStats.staticShadowUpdateMask)));
     result.Set("staticShadowReadyMask", JsonValue(static_cast<int>(rendering.renderStats.staticShadowReadyMask)));
-    /// @note drawCalls / shadowDrawCalls は束ねた後の数。何回束ねて何回ぶん減ったかを併記しないと、
-    /// @note «描画が減った» のが束ねによるものかカリングによるものか読み分けられない。
+    // drawCalls / shadowDrawCalls は束ねた後の数。何回束ねて何回ぶん減ったかを併記しないと、
+    // «描画が減った» のが束ねによるものかカリングによるものか読み分けられない。
     result.Set("instancedBatches", JsonValue(rendering.renderStats.instancedBatches));
     result.Set("instancedDrawsSaved", JsonValue(rendering.renderStats.instancedDrawsSaved));
     const bool visibilityComplete=rendering.renderStats.gpuVisibilityUnknownObjects==0;
@@ -492,7 +532,7 @@ Outcome DoProfilerSnapshot(editor::EditorContext& ctx, const JsonValue& payload)
     gpuStatus.Set("droppedPassCount", JsonValue(static_cast<std::int64_t>(gpu.droppedPassCount)));
     gpuStatus.Set("viewSampleCount", JsonValue(static_cast<std::int64_t>(gpu.passes.size())));
     gpuStatus.Set("currentView", metadataJson(rendering.gpuCurrentView));
-    /// @note 合計・準備・別 queue はまだ未計測。0 ms を返すと高速だと誤認するため unavailable を明示する。
+    // 合計・準備・別 queue はまだ未計測。0 ms を返すと高速だと誤認するため unavailable を明示する。
     gpuStatus.Set("totalGpuTimeAvailable", JsonValue(gpu.totalGpuTimeAvailable));
     gpuStatus.Set("totalGpuMs", gpu.totalGpuTimeAvailable ? JsonValue(gpu.totalGpuMs) : JsonValue());
     gpuStatus.Set("preparationGpuTimeAvailable", JsonValue(gpu.preparationGpuTimeAvailable));
@@ -547,7 +587,9 @@ JsonValue ManagedRequestJson(const editor::ManagedBuildRequest& request, bool in
     result.Set("applyMilliseconds", JsonValue(timed.applyMilliseconds));
     result.Set("sourceMilliseconds", JsonValue(timed.sourceMilliseconds));
     result.Set("validationMilliseconds", JsonValue(timed.validationMilliseconds));
-    if (includeDetails) result.Set("log", JsonValue(request.log));
+    if (includeDetails) {
+        result.Set("log", JsonValue(request.log));
+    }
     JsonValue diagnostics = JsonValue::MakeArray();
     if (includeDetails) for (const editor::ManagedBuildDiagnostic& diagnostic : request.diagnostics) {
         JsonValue item = JsonValue::MakeObject();
@@ -559,7 +601,9 @@ JsonValue ManagedRequestJson(const editor::ManagedBuildRequest& request, bool in
         item.Set("message", JsonValue(diagnostic.message));
         diagnostics.Push(std::move(item));
     }
-    if (includeDetails) result.Set("diagnostics", std::move(diagnostics));
+    if (includeDetails) {
+        result.Set("diagnostics", std::move(diagnostics));
+    }
     return result;
 }
 
@@ -567,12 +611,15 @@ JsonValue ManagedRequestJson(const editor::ManagedBuildRequest& request, bool in
 /// @note コンパイルが通っていないと Play も component_add も無意味な結果になるが、console_get_logs の断片からは何行目で落ちたか組み立て直す必要がある。
 Outcome DoBuildStatus(editor::EditorContext& ctx, const JsonValue& payload)
 {
-    if (ctx.buildConsole == nullptr) return Outcome::Err("NO_BUILD_CONSOLE", "BuildConsole が未設定です");
+    if (ctx.buildConsole == nullptr) {
+        return Outcome::Err("NO_BUILD_CONSOLE", "BuildConsole が未設定です");
+    }
     const editor::BuildConsole& console = *ctx.buildConsole;
 
     int limit = 5;
-    if (const JsonValue* v = payload.Find("limit"); v != nullptr && v->IsNumber())
+    if (const JsonValue* v = payload.Find("limit"); v != nullptr && v->IsNumber()) {
         limit = std::clamp(v->AsInt(), 1, 20);
+    }
 
     auto recordJson = [](const editor::BuildRecord& record) {
         JsonValue entry = JsonValue::MakeObject();
@@ -610,14 +657,16 @@ Outcome DoBuildStatus(editor::EditorContext& ctx, const JsonValue& payload)
     result.Set("building", JsonValue(console.IsBuilding()));
     result.Set("currentFile", JsonValue(console.CurrentFile()));
     result.Set("hasActiveFailure", JsonValue(console.HasActiveFailure()));
-    /// @note Play 開始が弾かれる理由そのもの。build_run の直後に見るのはここ。
+    // Play 開始が弾かれる理由そのもの。build_run の直後に見るのはここ。
     result.Set("managedBuildBusy", JsonValue(ctx.managedBuildBusy));
-    if (const editor::BuildRecord* latest = console.Latest())
+    if (const editor::BuildRecord* latest = console.Latest()) {
         result.Set("latest", recordJson(*latest));
+    }
     JsonValue history = JsonValue::MakeArray();
     const auto& records = console.History();
-    for (auto it = records.rbegin(); it != records.rend() && static_cast<int>(history.AsArray().size()) < limit; ++it)
+    for (auto it = records.rbegin(); it != records.rend() && static_cast<int>(history.AsArray().size()) < limit; ++it) {
         history.Push(recordJson(*it));
+    }
     result.Set("history", std::move(history));
     JsonValue managed = JsonValue::MakeObject();
     managed.Set("available", JsonValue(ctx.managedScripts && ctx.managedScripts->IsAvailable()));
@@ -629,19 +678,24 @@ Outcome DoBuildStatus(editor::EditorContext& ctx, const JsonValue& payload)
     JsonValue managedHistory = JsonValue::MakeArray();
     if (ctx.managedScripts) {
         const editor::ManagedBuildHistory& builds = ctx.managedScripts->Builds();
-        if (const editor::ManagedBuildRequest* latest = builds.Latest())
+        if (const editor::ManagedBuildRequest* latest = builds.Latest()) {
             managed.Set("latest", ManagedRequestJson(*latest));
+        }
         for (auto iterator = builds.History().rbegin(); iterator != builds.History().rend() &&
-            static_cast<int>(managedHistory.AsArray().size()) < limit; ++iterator)
+            static_cast<int>(managedHistory.AsArray().size()) < limit; ++iterator) {
             managedHistory.Push(ManagedRequestJson(*iterator, false));
+        }
     }
     const JsonValue* requested = payload.Find("managedRequestId");
     if (requested) {
-        if (!requested->IsString() || requested->AsString().empty())
+        if (!requested->IsString() || requested->AsString().empty()) {
             return Outcome::Err("BAD_ARG", "managedRequestId は空でない要求 ID を指定してください");
+        }
         const editor::ManagedBuildRequest* request = ctx.managedScripts ?
             ctx.managedScripts->Builds().Find(requested->AsString()) : nullptr;
-        if (!request) return Outcome::Err("MANAGED_REQUEST_NOT_FOUND", "要求 ID は現在のプロジェクトの履歴にありません");
+        if (!request) {
+            return Outcome::Err("MANAGED_REQUEST_NOT_FOUND", "要求 ID は現在のプロジェクトの履歴にありません");
+        }
         managed.Set("request", ManagedRequestJson(*request));
     }
     managed.Set("history", std::move(managedHistory));
@@ -650,15 +704,20 @@ Outcome DoBuildStatus(editor::EditorContext& ctx, const JsonValue& payload)
         JsonValue query = JsonValue::MakeObject();
         query.Set("id", JsonValue("build.package_status"));
         if (const JsonValue* requestedPackage = payload.Find("packageRequestId")) {
-            if (!requestedPackage->IsString() || requestedPackage->AsString().empty())
+            if (!requestedPackage->IsString() || requestedPackage->AsString().empty()) {
                 return Outcome::Err("BAD_ARG", "packageRequestId must be a nonempty request ID.");
+            }
             JsonValue args = JsonValue::MakeObject();
             args.Set("packageRequestId", *requestedPackage);
             query.Set("args", std::move(args));
         }
         const auto package = editor::ai::QueryOperator(ctx, query);
-        if (!package.ok) return Outcome::Err(package.code, package.message);
-        if (const JsonValue* data = package.result.Find("data")) result.Set("package", *data);
+        if (!package.ok) {
+            return Outcome::Err(package.code, package.message);
+        }
+        if (const JsonValue* data = package.result.Find("data")) {
+            result.Set("package", *data);
+        }
     } else if (payload.Find("packageRequestId")) {
         return Outcome::Err("NO_PACKAGE_SERVICE", "Package build service is unavailable.");
     }
@@ -670,32 +729,48 @@ Outcome DoBuildStatus(editor::EditorContext& ctx, const JsonValue& payload)
 Outcome DoBuildRun(editor::EditorContext& ctx, const JsonValue& payload, bool dryRun)
 {
     std::string target = LowerAscii(StringField(payload, "target"));
-    if (target.empty()) target = "managed";
-    if (target != "package" && payload.Find("package"))
+    if (target.empty()) {
+        target = "managed";
+    }
+    if (target != "package" && payload.Find("package")) {
         return Outcome::Err("BAD_ARG", "package settings require target=package.");
-    if (target != "managed" && target != "package")
+    }
+    if (target != "managed" && target != "package") {
         return Outcome::Err("BAD_ARG", "target must be managed or package.");
+    }
     if (target == "package") {
         JsonValue invoke = JsonValue::MakeObject();
         invoke.Set("id", JsonValue("build.package"));
         if (const JsonValue* settings = payload.Find("package")) {
-            if (!settings->IsObject()) return Outcome::Err("BAD_ARG", "package must be an object of build settings.");
+            if (!settings->IsObject()) {
+                return Outcome::Err("BAD_ARG", "package must be an object of build settings.");
+            }
             invoke.Set("args", *settings);
         }
         const auto invoked = editor::ai::InvokeOperator(ctx, invoke, dryRun);
-        if (!invoked.ok) return Outcome::Err(invoked.code, invoked.message);
-        if (const JsonValue* data = invoked.result.Find("data")) return Outcome::Ok(*data);
+        if (!invoked.ok) {
+            return Outcome::Err(invoked.code, invoked.message);
+        }
+        if (const JsonValue* data = invoked.result.Find("data")) {
+            return Outcome::Ok(*data);
+        }
         return Outcome::Ok(invoked.result);
     }
     if (target == "managed") {
         if (!ctx.managedScripts || !ctx.managedScripts->IsAvailable())
             return Outcome::Err("MANAGED_BUILD_UNAVAILABLE", ctx.managedScripts ?
                 ctx.managedScripts->AvailabilityDiagnostic() : "C# build service is unavailable");
-        if (dryRun) return DryRunPreview("build.run");
+        if (dryRun) {
+            return DryRunPreview("build.run");
+        }
         const editor::OpResult invoked = editor::InvokeOperator(ctx, "script.managed_build");
-        if (!invoked.ok) return Outcome::Err(invoked.errorCode.empty() ? "MANAGED_BUILD_UNAVAILABLE" : invoked.errorCode, invoked.message);
+        if (!invoked.ok) {
+            return Outcome::Err(invoked.errorCode.empty() ? "MANAGED_BUILD_UNAVAILABLE" : invoked.errorCode, invoked.message);
+        }
         const editor::ManagedBuildRequest* request = ctx.managedScripts->Builds().Latest();
-        if (!request) return Outcome::Err("MANAGED_BUILD_UNAVAILABLE", "C# build request was not recorded");
+        if (!request) {
+            return Outcome::Err("MANAGED_BUILD_UNAVAILABLE", "C# build request was not recorded");
+        }
         JsonValue result = JsonValue::MakeObject();
         result.Set("requested", JsonValue("managed"));
         result.Set("async", JsonValue(true));
@@ -710,14 +785,18 @@ Outcome DoBuildRun(editor::EditorContext& ctx, const JsonValue& payload, bool dr
 
 Outcome DoUndoRedo(editor::EditorContext& ctx, const std::string& type, bool dryRun)
 {
-    /// @note Operator へ移送済み。2 つ目の実装を残すと「実行できるか」の判定が AI 側だけ別式になるため、応答の形 (applied/description) は互換のまま維持する。
+    // Operator へ移送済み。2 つ目の実装を残すと「実行できるか」の判定が AI 側だけ別式になるため、応答の形 (applied/description) は互換のまま維持する。
     /// @see Docs/design/editor-operator-model.md
-    if (ctx.undoStack == nullptr) return Outcome::Err("NO_UNDOSTACK", "UndoStack が未設定です");
-    if (ctx.operators == nullptr) return Outcome::Err("NO_REGISTRY", "Operator レジストリが未初期化です");
+    if (ctx.undoStack == nullptr) {
+        return Outcome::Err("NO_UNDOSTACK", "UndoStack が未設定です");
+    }
+    if (ctx.operators == nullptr) {
+        return Outcome::Err("NO_REGISTRY", "Operator レジストリが未初期化です");
+    }
 
     const bool isUndo = (type == "editor.undo");
     const char* operatorId = isUndo ? "edit.undo" : "edit.redo";
-    /// @note 説明は実行前に読む (実行するとカーソルが動いて別のエントリを指す)。
+    // 説明は実行前に読む (実行するとカーソルが動いて別のエントリを指す)。
     const std::string desc = isUndo ? ctx.undoStack->GetUndoDescription()
                                     : ctx.undoStack->GetRedoDescription();
 
@@ -749,15 +828,24 @@ Outcome DoUndoRedo(editor::EditorContext& ctx, const std::string& type, bool dry
 Outcome DoSelectionSet(editor::EditorContext& ctx, const JsonValue& payload, bool dryRun)
 {
     scene::Scene* activeScene = ctx.activeScene;
-    if (activeScene == nullptr) return Outcome::Err("NO_SCENE", "アクティブシーンがありません");
+    if (activeScene == nullptr) {
+        return Outcome::Err("NO_SCENE", "アクティブシーンがありません");
+    }
     const JsonValue* ids = payload.Find("ids");
-    if (ids == nullptr || !ids->IsArray()) return Outcome::Err("BAD_ARG", "ids 配列が必要です");
+    if (ids == nullptr || !ids->IsArray()) {
+        return Outcome::Err("BAD_ARG", "ids 配列が必要です");
+    }
     std::vector<EntityID> resolved;
     int missing = 0;
     for (const JsonValue& idValue : ids->AsArray()) {
-        if (!idValue.IsString()) continue;
-        if (GameObject* go = activeScene->FindByGuid(idValue.AsString())) resolved.push_back(go->GetID());
-        else ++missing;
+        if (!idValue.IsString()) {
+            continue;
+        }
+        if (GameObject* go = activeScene->FindByGuid(idValue.AsString())) {
+            resolved.push_back(go->GetID());
+        } else {
+            ++missing;
+        }
     }
     if (dryRun) {
         JsonValue result = JsonValue::MakeObject();
@@ -766,7 +854,7 @@ Outcome DoSelectionSet(editor::EditorContext& ctx, const JsonValue& payload, boo
         result.Set("missing", JsonValue(missing));
         return Outcome::Ok(std::move(result));
     }
-    /// @note AI が選んだものは人が確かめる対象なので、畳まれた親を開いてでも Hierarchy に出す。
+    // AI が選んだものは人が確かめる対象なので、畳まれた親を開いてでも Hierarchy に出す。
     editor::SelectEntities(ctx, std::move(resolved));
     JsonValue result = JsonValue::MakeObject();
     result.Set("selected", JsonValue(static_cast<int>(ctx.selectedEntities.size())));
@@ -780,14 +868,16 @@ Outcome DoSceneSelectionQuery(editor::EditorContext& ctx)
     JsonValue ids = JsonValue::MakeArray();
     if (activeScene != nullptr) {
         for (EntityID id : ctx.selectedEntities) {
-            if (GameObject* go = activeScene->GetGameObject(id)) ids.Push(JsonValue(go->instanceId));
+            if (GameObject* go = activeScene->GetGameObject(id)) {
+                ids.Push(JsonValue(go->instanceId));
+            }
         }
     }
     JsonValue result = JsonValue::MakeObject();
     result.Set("ids", std::move(ids));
     return Outcome::Ok(std::move(result));
 }
-} /// @note namespace
+} // namespace
 
 void RegisterEditorHandlers(BusHandlerTable& table)
 {
@@ -801,17 +891,17 @@ void RegisterEditorHandlers(BusHandlerTable& table)
     table.AddQuery("shader.diagnostics", [](BusCall&) { return DoShaderCompileDiagnostics(); });
     table.AddQuery("profiler.snapshot", [](BusCall& call) { return DoProfilerSnapshot(call.ctx, call.payload); });
     table.AddQuery("build.status", [](BusCall& call) { return DoBuildStatus(call.ctx, call.payload); });
-    /// @note Operator 登録簿はメニュー・ホットキー・パレットと同じもの。AI だけに見える操作を作れない (Docs/design/editor-operator-model.md)。
+    // Operator 登録簿はメニュー・ホットキー・パレットと同じもの。AI だけに見える操作を作れない (Docs/design/editor-operator-model.md)。
     table.AddQuery("editor.op.list", [](BusCall& call) { return FromBridge(ListOperators(call.ctx, call.payload)); });
-    /// @note kind=query の Operator は read 権限で呼べるよう Query 側に置く。
+    // kind=query の Operator は read 権限で呼べるよう Query 側に置く。
     table.AddQuery("editor.op.query", [](BusCall& call) { return FromBridge(QueryOperator(call.ctx, call.payload)); });
 
     table.AddCommand("editor.op.invoke", [](BusCall& call) { return FromBridge(InvokeOperator(call.ctx, call.payload, call.dryRun)); });
     table.AddCommand("editor.undo", [](BusCall& call) { return DoUndoRedo(call.ctx, call.type, call.dryRun); });
     table.AddCommand("editor.redo", [](BusCall& call) { return DoUndoRedo(call.ctx, call.type, call.dryRun); });
     table.AddCommand("selection.set", [](BusCall& call) { return DoSelectionSet(call.ctx, call.payload, call.dryRun); });
-    /// @note シーンの中身の変更ではないため UndoStack へ載せない。
+    // シーンの中身の変更ではないため UndoStack へ載せない。
     table.AddCommand("build.run", [](BusCall& call) { return DoBuildRun(call.ctx, call.payload, call.dryRun); });
 }
 
-} /// @note namespace fbzz::editor::ai::bus
+} // namespace fbzz::editor::ai::bus

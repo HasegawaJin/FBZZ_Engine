@@ -65,18 +65,18 @@ LogListLine MakeDiagnosticLine(const BuildDiagnostic& d, std::uint64_t id)
     }
     line.tag      = d.code;
     line.text     = d.message;
-    /// @note コピーは元の 1 行 (フルパス込み) にする。貼った先でそのまま場所が分かるように。
+    // コピーは元の 1 行 (フルパス込み) にする。貼った先でそのまま場所が分かるように。
     line.copyText = d.raw;
     line.file     = d.file;
     line.line     = d.line;
     return line;
 }
 
-} /// @note namespace
+} // namespace
 
 void BuildOutputPanel::SyncDiagnostics(const BuildRecord* rec)
 {
-    /// @note 別レコードへ切り替えたら選択は持ち越さない (id は診断の添字なので別物を指してしまう)。
+    // 別レコードへ切り替えたら選択は持ち越さない (id は診断の添字なので別物を指してしまう)。
     const std::uint64_t id = rec ? rec->id : 0;
     if (id != m_diagRecord) {
         m_diagRecord = id;
@@ -86,7 +86,9 @@ void BuildOutputPanel::SyncDiagnostics(const BuildRecord* rec)
 
     if (rec == nullptr) {
         m_diagView.SetEmptyText("No builds yet.");
-        if (!m_diagView.Lines().empty()) m_diagView.SetLines({});
+        if (!m_diagView.Lines().empty()) {
+            m_diagView.SetLines({});
+        }
         m_diagCount = 0;
         return;
     }
@@ -97,12 +99,15 @@ void BuildOutputPanel::SyncDiagnostics(const BuildRecord* rec)
         default:                            m_diagView.SetEmptyText("No diagnostics."); break;
     }
 
-    if (rec->diagnostics.size() == m_diagCount) return;
+    if (rec->diagnostics.size() == m_diagCount) {
+        return;
+    }
 
     std::vector<LogListLine> lines;
     lines.reserve(rec->diagnostics.size());
-    for (std::size_t i = 0; i < rec->diagnostics.size(); ++i)
+    for (std::size_t i = 0; i < rec->diagnostics.size(); ++i) {
         lines.push_back(MakeDiagnosticLine(rec->diagnostics[i], i));
+    }
     m_diagView.SetLines(std::move(lines));
     m_diagCount = rec->diagnostics.size();
 }
@@ -133,14 +138,17 @@ void BuildOutputPanel::DrawHeader(EditorContext& ctx, BuildConsole& console, con
         ImGui::TextDisabled("No builds yet.");
     }
 
-    /// @note 右側: 履歴 / Rebuild / Clear。幅が足りなければ次の行へ回す。
+    // 右側: 履歴 / Rebuild / Clear。幅が足りなければ次の行へ回す。
     const auto& history = console.History();
     const float comboW  = (std::min)(320.0f, (std::max)(160.0f, ImGui::GetContentRegionAvail().x * 0.4f));
     const float rightW  = (history.empty() ? 0.0f : comboW + sp) + btnW("Clear");
     ImGui::SameLine();
     const float avail = ImGui::GetContentRegionAvail().x;
-    if (avail > rightW) ImGui::SetCursorPosX(ImGui::GetCursorPosX() + avail - rightW);
-    else                ImGui::NewLine();
+    if (avail > rightW) {
+        ImGui::SetCursorPosX(ImGui::GetCursorPosX() + avail - rightW);
+    } else {
+        ImGui::NewLine();
+    }
 
     if (!history.empty()) {
         ImGui::SetNextItemWidth(comboW);
@@ -149,13 +157,15 @@ void BuildOutputPanel::DrawHeader(EditorContext& ctx, BuildConsole& console, con
             ? std::string("Latest: ") + RecordLabel(history.back())
             : RecordLabel(*rec);
         if (ImGui::BeginCombo("##BuildHistory", current.c_str())) {
-            if (ImGui::Selectable("Latest (follow new builds)", viewingLatest))
+            if (ImGui::Selectable("Latest (follow new builds)", viewingLatest)) {
                 m_selectedBuild = 0;
+            }
             ImGui::Separator();
             for (auto entry = history.rbegin(); entry != history.rend(); ++entry) {
                 ImGui::PushID(static_cast<int>(entry->id));
-                if (ImGui::Selectable(RecordLabel(*entry).c_str(), m_selectedBuild == entry->id))
+                if (ImGui::Selectable(RecordLabel(*entry).c_str(), m_selectedBuild == entry->id)) {
                     m_selectedBuild = entry->id;
+                }
                 ImGui::PopID();
             }
             ImGui::EndCombo();
@@ -166,16 +176,18 @@ void BuildOutputPanel::DrawHeader(EditorContext& ctx, BuildConsole& console, con
     if (ImGui::Button("Clear")) {
         ClearHistory(console);
     }
-    if (ImGui::IsItemHovered())
+    if (ImGui::IsItemHovered()) {
         ImGui::SetTooltip("Clear the build history (a running build is kept)");
+    }
 }
 
 void BuildOutputPanel::DrawSplitter()
 {
     constexpr float kThickness = 4.0f;
     ImGui::InvisibleButton("##build_splitter", ImVec2(ImGui::GetContentRegionAvail().x, kThickness));
-    if (ImGui::IsItemHovered() || ImGui::IsItemActive())
+    if (ImGui::IsItemHovered() || ImGui::IsItemActive()) {
         ImGui::SetMouseCursor(ImGuiMouseCursor_ResizeNS);
+    }
     if (ImGui::IsItemActive()) {
         const float panelH = (std::max)(ImGui::GetWindowHeight(), 1.0f);
         m_splitRatio = std::clamp(m_splitRatio + ImGui::GetIO().MouseDelta.y / panelH, 0.10f, 0.85f);
@@ -190,9 +202,13 @@ void BuildOutputPanel::DrawSplitter()
 
 void BuildOutputPanel::DrawManagedBuildStatus(EditorContext& ctx)
 {
-    if (!ctx.managedScripts) return;
+    if (!ctx.managedScripts) {
+        return;
+    }
     const ManagedBuildRequest* latest = ctx.managedScripts->Builds().Latest();
-    if (!latest) return;
+    if (!latest) {
+        return;
+    }
     const ManagedBuildRequest& request = *latest;
     double elapsedMilliseconds = request.elapsedMilliseconds;
     double queueMilliseconds = request.queueMilliseconds;
@@ -204,14 +220,26 @@ void BuildOutputPanel::DrawManagedBuildStatus(EditorContext& ctx)
         const auto now = std::chrono::steady_clock::now();
         const double stage = std::chrono::duration<double, std::milli>(now - request.stageStartedAt).count();
         elapsedMilliseconds = std::chrono::duration<double, std::milli>(now - request.queuedAt).count();
-        if (request.state == ManagedBuildState::QUEUED) queueMilliseconds += stage;
-        if (request.state == ManagedBuildState::COMPILING) compileMilliseconds += stage;
-        if (request.state == ManagedBuildState::APPLYING) applyMilliseconds += stage;
-        if (request.state == ManagedBuildState::SCANNING) sourceMilliseconds += stage;
-        if (request.state == ManagedBuildState::VALIDATING) validationMilliseconds += stage;
+        if (request.state == ManagedBuildState::QUEUED) {
+            queueMilliseconds += stage;
+        }
+        if (request.state == ManagedBuildState::COMPILING) {
+            compileMilliseconds += stage;
+        }
+        if (request.state == ManagedBuildState::APPLYING) {
+            applyMilliseconds += stage;
+        }
+        if (request.state == ManagedBuildState::SCANNING) {
+            sourceMilliseconds += stage;
+        }
+        if (request.state == ManagedBuildState::VALIDATING) {
+            validationMilliseconds += stage;
+        }
     }
     ImGuiTreeNodeFlags flags = ImGuiTreeNodeFlags_SpanAvailWidth;
-    if (request.state == ManagedBuildState::FAILED) flags |= ImGuiTreeNodeFlags_DefaultOpen;
+    if (request.state == ManagedBuildState::FAILED) {
+        flags |= ImGuiTreeNodeFlags_DefaultOpen;
+    }
     const bool open = ImGui::TreeNodeEx("C# ビルド", flags);
     ImGui::SameLine();
     const ImVec4 color = request.state == ManagedBuildState::FAILED
@@ -219,13 +247,17 @@ void BuildOutputPanel::DrawManagedBuildStatus(EditorContext& ctx)
                        : EditorTheme::Color(ThemeColor::TextMuted);
     ImGui::TextColored(color, "%s  %.0f ms", ManagedBuildStateLabel(request.state),
                        elapsedMilliseconds);
-    if (!open) return;
+    if (!open) {
+        return;
+    }
 
     ImGui::TextDisabled("待機 %.0f ms  ソース %.0f ms  コンパイル %.0f ms  検証 %.0f ms  適用 %.0f ms",
                         queueMilliseconds, sourceMilliseconds,
                         compileMilliseconds, validationMilliseconds,
                         applyMilliseconds);
-    if (!request.message.empty()) ImGui::TextWrapped("%s", request.message.c_str());
+    if (!request.message.empty()) {
+        ImGui::TextWrapped("%s", request.message.c_str());
+    }
     if (m_managedDiagnosticRequestId != request.managedRequestId) {
         m_managedDiagnosticRequestId = request.managedRequestId;
         m_managedDiagnosticPage = 0;
@@ -237,21 +269,29 @@ void BuildOutputPanel::DrawManagedBuildStatus(EditorContext& ctx)
         request.diagnostics.size(), static_cast<unsigned long long>(request.logRetainedBytes),
         static_cast<unsigned long long>(request.logOriginalBytes),
         request.logRetainedBytes < request.logOriginalBytes ? " (末尾を保持)" : "");
-    if (ImGui::SmallButton("保持したEditor出力をコピー")) ImGui::SetClipboardText(request.log.c_str());
+    if (ImGui::SmallButton("保持したEditor出力をコピー")) {
+        ImGui::SetClipboardText(request.log.c_str());
+    }
     if (!request.logFilePath.empty()) {
         ImGui::TextWrapped("完全な AgentBuild ログ: %s", request.logFilePath.c_str());
         ImGui::SameLine();
-        if (ImGui::SmallButton("ログパスをコピー")) ImGui::SetClipboardText(request.logFilePath.c_str());
+        if (ImGui::SmallButton("ログパスをコピー")) {
+            ImGui::SetClipboardText(request.logFilePath.c_str());
+        }
     }
     constexpr std::size_t diagnosticPageSize = 128;
     const std::size_t pageCount = std::max<std::size_t>(1,
         (request.diagnostics.size() + diagnosticPageSize - 1) / diagnosticPageSize);
     m_managedDiagnosticPage = std::min(m_managedDiagnosticPage, pageCount - 1);
     ImGui::BeginDisabled(m_managedDiagnosticPage == 0);
-    if (ImGui::SmallButton("前の診断")) --m_managedDiagnosticPage;
+    if (ImGui::SmallButton("前の診断")) {
+        --m_managedDiagnosticPage;
+    }
     ImGui::EndDisabled(); ImGui::SameLine();
     ImGui::BeginDisabled(m_managedDiagnosticPage + 1 >= pageCount);
-    if (ImGui::SmallButton("次の診断")) ++m_managedDiagnosticPage;
+    if (ImGui::SmallButton("次の診断")) {
+        ++m_managedDiagnosticPage;
+    }
     ImGui::EndDisabled(); ImGui::SameLine();
     const std::size_t firstDiagnostic = m_managedDiagnosticPage * diagnosticPageSize;
     const std::size_t lastDiagnostic = std::min(request.diagnostics.size(), firstDiagnostic + diagnosticPageSize);
@@ -268,7 +308,9 @@ void BuildOutputPanel::DrawManagedBuildStatus(EditorContext& ctx)
         const std::size_t i = firstDiagnostic + static_cast<std::size_t>(local);
         const ManagedBuildDiagnostic& diagnostic = request.diagnostics[i];
         std::string resolved = ResolveSourceFilePath(diagnostic.file, roots);
-        if (resolved.empty()) resolved = ResolveSourceFileByName(diagnostic.file, roots);
+        if (resolved.empty()) {
+            resolved = ResolveSourceFileByName(diagnostic.file, roots);
+        }
         const std::size_t separator = diagnostic.file.find_last_of("/\\");
         const std::string fileLabel = diagnostic.file.empty()
                                     ? "(source unavailable)"
@@ -277,23 +319,28 @@ void BuildOutputPanel::DrawManagedBuildStatus(EditorContext& ctx)
         if (diagnostic.line > 0 && diagnostic.column > 0)
             std::snprintf(location, sizeof(location), "%s:%d:%d", fileLabel.c_str(),
                           diagnostic.line, diagnostic.column);
-        else if (diagnostic.line > 0)
+        else if (diagnostic.line > 0) {
             std::snprintf(location, sizeof(location), "%s:%d", fileLabel.c_str(), diagnostic.line);
-        else
+        } else {
             std::snprintf(location, sizeof(location), "%s", fileLabel.c_str());
+        }
         ImGui::PushID(&diagnostic);
         char rowLabel[640];
         std::snprintf(rowLabel, sizeof(rowLabel), "%zu  %s  %s: %s", i + 1,
             diagnostic.warning ? "WARN" : "ERROR", diagnostic.code.c_str(), diagnostic.message.c_str());
         if (ImGui::Selectable(rowLabel, m_managedDiagnosticSelection == i,
-                0, ImVec2(0.0f, ImGui::GetTextLineHeightWithSpacing())))
+                0, ImVec2(0.0f, ImGui::GetTextLineHeightWithSpacing()))) {
             m_managedDiagnosticSelection = i;
+        }
         ImGui::SameLine();
         ImGui::BeginDisabled(resolved.empty() || diagnostic.line <= 0);
-        if (ImGui::SmallButton(location)) OpenSourceInExternalEditor(resolved, diagnostic.line);
+        if (ImGui::SmallButton(location)) {
+            OpenSourceInExternalEditor(resolved, diagnostic.line);
+        }
         ImGui::EndDisabled();
-        if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled))
+        if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled)) {
             ImGui::SetTooltip("%s\n%s", diagnostic.file.c_str(), diagnostic.message.c_str());
+        }
         ImGui::PopID();
     }
     clipper.End();
@@ -319,7 +366,9 @@ void BuildOutputPanel::OnRenderContent(EditorContext& ctx)
     DrawManagedBuildStatus(ctx);
     BuildConsole* console = ctx.buildConsole;
     if (!console) {
-        if (!ctx.managedScripts) ImGui::TextDisabled("Build console is not available.");
+        if (!ctx.managedScripts) {
+            ImGui::TextDisabled("Build console is not available.");
+        }
         return;
     }
 
@@ -330,12 +379,13 @@ void BuildOutputPanel::OnRenderContent(EditorContext& ctx)
     SyncDiagnostics(rec);
     m_diagView.SetInfoToggleVisible(false);
     m_rawView.SetEmptyText("No output yet.");
-    if (rec && rec->result == BuildRecord::Result::Building)
+    if (rec && rec->result == BuildRecord::Result::Building) {
         m_rawFeed.Sync(console->LiveLog(), rec->id, console->LiveLogFirstLine(), m_rawView);
-    else if (rec)
+    } else if (rec) {
         m_rawFeed.Sync(rec->rawLog, rec->id, rec->firstRawLine, m_rawView);
-    else
+    } else {
         m_rawFeed.Sync({}, 0, 0, m_rawView);
+    }
 
     if (m_focusFirstError && rec) {
         for (std::size_t i = 0; i < rec->diagnostics.size(); ++i) {
@@ -347,8 +397,8 @@ void BuildOutputPanel::OnRenderContent(EditorContext& ctx)
         m_focusFirstError = false;
     }
 
-    /// @note 高さは先にツールバー 2 つとスプリッタの分を引き、残りを比率で分ける。
-    /// @note 診断を固定 55% で確保すると、パネルを縮めたとき生ログのツールバーごと隠れていた。
+    // 高さは先にツールバー 2 つとスプリッタの分を引き、残りを比率で分ける。
+    // 診断を固定 55% で確保すると、パネルを縮めたとき生ログのツールバーごと隠れていた。
     const ImGuiStyle& st        = ImGui::GetStyle();
     const float       toolbarH  = ImGui::GetFrameHeightWithSpacing();
     const float       splitterH = 4.0f + st.ItemSpacing.y * 2.0f;
@@ -370,4 +420,4 @@ void BuildOutputPanel::OnRenderContent(EditorContext& ctx)
     m_rawView.DrawList({ 0.0f, 0.0f });
 }
 
-} /// @note namespace fbzz::editor
+} // namespace fbzz::editor

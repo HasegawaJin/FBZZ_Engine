@@ -25,13 +25,20 @@ inline bool ExtendMeshLocalBounds(const renderer::Mesh& mesh,
 {
     bool any = false;
     auto extend = [&](const math::Vector3& p) {
-        outMin.x = std::min(outMin.x, p.x); outMax.x = std::max(outMax.x, p.x);
-        outMin.y = std::min(outMin.y, p.y); outMax.y = std::max(outMax.y, p.y);
-        outMin.z = std::min(outMin.z, p.z); outMax.z = std::max(outMax.z, p.z);
+        outMin.x = std::min(outMin.x, p.x);
+        outMax.x = std::max(outMax.x, p.x);
+        outMin.y = std::min(outMin.y, p.y);
+        outMax.y = std::max(outMax.y, p.y);
+        outMin.z = std::min(outMin.z, p.z);
+        outMax.z = std::max(outMax.z, p.z);
         any = true;
     };
-    for (const auto& v : mesh.cpuVertices)        extend(v.position);
-    for (const auto& v : mesh.cpuSkinnedVertices) extend(v.position);
+    for (const auto& v : mesh.cpuVertices) {
+        extend(v.position);
+    }
+    for (const auto& v : mesh.cpuSkinnedVertices) {
+        extend(v.position);
+    }
     return any;
 }
 
@@ -53,16 +60,22 @@ inline bool LocalBoundsFromGameObject(scene::GameObject& go,
     outMin = {  1e30f,  1e30f,  1e30f };
     outMax = { -1e30f, -1e30f, -1e30f };
 
-    if (auto* mr = go.GetComponent<scene::MeshRenderer>(); mr && mr->mesh)
+    if (auto* mr = go.GetComponent<scene::MeshRenderer>(); mr && mr->mesh) {
         return ExtendMeshLocalBounds(*mr->mesh, outMin, outMax);
+    }
 
     if (auto* smr = go.GetComponent<scene::SkinnedMeshRenderer>()) {
-        if (!smr->model && !smr->modelPath.empty())
+        if (!smr->model && !smr->modelPath.empty()) {
             smr->model = asset::AssetManager::LoadAndGet<asset::Model>(smr->modelPath);
-        if (!smr->model) return false;
+        }
+        if (!smr->model) {
+            return false;
+        }
         bool any = false;
         for (const auto& mesh : smr->model->meshes)
-            if (mesh) any |= ExtendMeshLocalBounds(*mesh, outMin, outMax);
+            if (mesh) {
+                any |= ExtendMeshLocalBounds(*mesh, outMin, outMax);
+            }
         return any;
     }
     return false;
@@ -75,8 +88,10 @@ inline bool LocalBoundsFromGameObject(scene::GameObject& go,
 inline bool FitFromGameObject(scene::GameObject& go, math::Vector3& outHalf, math::Vector3& outCenter)
 {
     math::Vector3 mn, mx;
-    if (!LocalBoundsFromGameObject(go, mn, mx)) return false;
-    /// @note 平面等の薄いメッシュでも物理が安定するよう最小厚みを保証する
+    if (!LocalBoundsFromGameObject(go, mn, mx)) {
+        return false;
+    }
+    // 平面等の薄いメッシュでも物理が安定するよう最小厚みを保証する
     constexpr float kMinHalf = 0.01f;
     outHalf = { std::max((mx.x - mn.x) * 0.5f, kMinHalf),
                 std::max((mx.y - mn.y) * 0.5f, kMinHalf),
@@ -99,7 +114,7 @@ inline scene::BoxColliderComponent MakeFittedBoxCollider(scene::GameObject& go)
         col.SetSize(half * 2.0f);
         col.SetCenter(center);
     }
-    /// @note メッシュ無しは既定 1m³
+    // メッシュ無しは既定 1m³
     return col;
 }
 
@@ -119,11 +134,11 @@ inline scene::SphereColliderComponent MakeFittedSphereCollider(scene::GameObject
     scene::SphereColliderComponent col;
     math::Vector3 half, center;
     if (FitFromGameObject(go, half, center)) {
-        /// @note bounds 外接 (Unity と同じ規則)
+        // bounds 外接 (Unity と同じ規則)
         col.SetRadius(std::max({ half.x, half.y, half.z }));
         col.SetCenter(center);
     }
-    /// @note 既定 r=0.5
+    // 既定 r=0.5
     return col;
 }
 
@@ -132,13 +147,13 @@ inline scene::CapsuleColliderComponent MakeFittedCapsuleCollider(scene::GameObje
     scene::CapsuleColliderComponent col;
     math::Vector3 half, center;
     if (FitFromGameObject(go, half, center)) {
-        /// @note Y 軸カプセル: 半径は水平 extents、円柱半長は全高から両端の半球を引いた残り
+        // Y 軸カプセル: 半径は水平 extents、円柱半長は全高から両端の半球を引いた残り
         const float radius = std::max(half.x, half.z);
         const float halfHeight = std::max(half.y - radius, 0.01f);
         col.SetCapsule(radius, halfHeight);
         col.SetCenter(center);
     } else {
-        /// @note 人間大 (全高 2m, Unity と同じ)
+        // 人間大 (全高 2m, Unity と同じ)
         col.SetCapsule(0.5f, 0.5f);
     }
     return col;
@@ -149,11 +164,11 @@ inline scene::CylinderColliderComponent MakeFittedCylinderCollider(scene::GameOb
     scene::CylinderColliderComponent col;
     math::Vector3 half, center;
     if (FitFromGameObject(go, half, center)) {
-        /// @note Y 軸円柱: カプセルと違い端が平らなので、半長は bounds の Y extents そのもの
+        // Y 軸円柱: カプセルと違い端が平らなので、半長は bounds の Y extents そのもの
         col.SetCylinder(std::max(half.x, half.z), half.y);
         col.SetCenter(center);
     }
-    /// @note 既定 r=0.5 / 全高 2m
+    // 既定 r=0.5 / 全高 2m
     return col;
 }
 

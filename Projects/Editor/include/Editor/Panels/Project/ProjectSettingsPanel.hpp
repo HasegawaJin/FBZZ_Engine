@@ -57,11 +57,11 @@ private:
     /// @brief 検索語に当たるか。当たったら保留中の見出しを描いて true。検索中でなければ常に true。
     [[nodiscard]] bool Matches(const char* label, const char* keywords = nullptr);
     /// @brief 折りたたみ見出し。検索中は見出しを保留し、中の行が当たったときだけ描く。
-    /// @param keywords 見出しに当たったとき中身を全部出すための語 (軸名・タグ名など)。
+    /// @param[in] keywords 見出しに当たったとき中身を全部出すための語 (軸名・タグ名など)。
     [[nodiscard]] bool BeginGroup(const char* label, bool defaultOpen = true, const char* keywords = nullptr);
     void EndGroup();
     /// @brief 1 行の設定。draw は値ウィジェットを "##v" で 1 つ描き、変更したら true を返す。
-    /// @param def 既定値。nullptr なら差分印と «既定値に戻す» を出さない (保存されない値など)。
+    /// @param[in] def 既定値。nullptr なら差分印と «既定値に戻す» を出さない (保存されない値など)。
     /// @return 編集または既定値へ戻したら true。
     template <class T, class Draw>
     bool Field(const char* label, T& value, const T* def, const char* tooltip, Draw&& draw);
@@ -107,53 +107,51 @@ private:
     void FlushEditorPreferences(EditorContext& ctx);
 
     struct UndoTracker {
-        ImGuiID         activeId = 0;
-        ProjectSettings before;
-        bool            active  = false;
-        bool            changed = false;
+        ImGuiID         activeId = 0; ///< 編集前の値を取り始めた ImGui 入力項目の ID。
+        ProjectSettings before; ///< 現在の入力操作を Undo で戻すために控えた設定全体。
+        bool            active  = false; ///< 入力操作の開始から終了まで設定変更を追跡しているか。
+        bool            changed = false; ///< 現在追跡中の入力操作が設定値を変更したか。
     };
 
-    Section       m_currentSection = Section::Application;
-    char          m_search[64] = {};
-    char          m_newTag[64] = {};
-    std::string   m_pipelineAssetError;
-    std::uint64_t m_editGeneration = 0;
-    UndoTracker   m_undo;
-    input::InputBindingsDocument m_inputUndoBefore;
-    ImGuiID m_inputUndoActiveId = 0;
-    bool m_inputUndoActive = false;
+    Section       m_currentSection = Section::Application; ///< 設定パネルで現在表示しているカテゴリ。
+    char          m_search[64] = {}; ///< プロジェクト設定をカテゴリ横断で絞る入力文字列。
+    char          m_newTag[64] = {}; ///< タグ一覧に追加する名前を編集中のバッファ。
+    std::string   m_pipelineAssetError; ///< レンダーパイプラインアセットの読み込みや作成に失敗した理由。
+    std::uint64_t m_editGeneration = 0; ///< 設定の構造を変更したときに進めるリビジョン。構造変更を通常の入力操作と区別する。
+    UndoTracker   m_undo; ///< 設定ウィジェットの連続編集を一回の Undo にまとめるための状態。
+    input::InputBindingsDocument m_inputUndoBefore; ///< キー割り当てを変更する操作の Undo に保存する編集前の入力定義。
+    ImGuiID m_inputUndoActiveId = 0; ///< キー割り当ての編集前状態を取得した ImGui 項目 ID。
+    bool m_inputUndoActive = false; ///< 入力定義への変更を一回の操作として記録中か。
 
-    /// @brief 描いている最中のセクションが ProjectSettings の値か (false なら EditorSettings)。
-    bool          m_editingProjectSettings = true;
-    bool          m_editorPrefsDirty = false;
+    bool          m_editingProjectSettings = true; ///< 描いている最中のセクションが ProjectSettings の値か (false なら EditorSettings)。
+    bool          m_editorPrefsDirty = false; ///< Editor の永続設定に保存が必要な変更があるか。
 
     /// @name 検索中の保留見出しと当たり数
     ///@{
-    Section       m_drawingSection = Section::Application;
-    bool          m_pendingPage    = false;
-    const char*   m_pendingGroup   = nullptr;
-    bool          m_pageMatched    = false;
-    bool          m_groupMatched   = false;
-    int           m_matchCount     = 0;
-    std::array<int, static_cast<std::size_t>(Section::Count)> m_sectionMatches{};
-    std::array<int, static_cast<std::size_t>(Section::Count)> m_lastSectionMatches{};
+    Section       m_drawingSection = Section::Application; ///< 検索に一致した項目を集計する、現在描画中のカテゴリ。
+    bool          m_pendingPage    = false; ///< 検索に一致した項目が見つかり次第、カテゴリ見出しを描くか。
+    const char*   m_pendingGroup   = nullptr; ///< 最初の一致項目を描くまで遅延している借用のグループ見出し。
+    bool          m_pageMatched    = false; ///< カテゴリ名自体が検索語に一致し、中の項目をすべて表示するか。
+    bool          m_groupMatched   = false; ///< グループ見出しやキーワードが検索に一致し、配下を表示するか。
+    int           m_matchCount     = 0; ///< 現在の検索で表示対象になった設定項目の総数。
+    std::array<int, static_cast<std::size_t>(Section::Count)> m_sectionMatches{}; ///< 今フレームのカテゴリごとの一致件数。添字は Section。
+    std::array<int, static_cast<std::size_t>(Section::Count)> m_lastSectionMatches{}; ///< 前フレームのカテゴリ別集計。サイドバーの描画時点で表示する。
     ///@}
 
     /// @name Input.inputactions の自動保存
     ///@{
     enum class InputSaveState { Saved, Pending, Failed };
-    InputSaveState m_inputSaveState = InputSaveState::Saved;
-    bool           m_inputDirty     = false;
-    bool           m_wasRebinding   = false;
-    float          m_inputIdle      = 0.0f;
-    std::string    m_inputSavedClock;
-    std::string    m_inputPath;
+    InputSaveState m_inputSaveState = InputSaveState::Saved; ///< 入力バインディング自動保存の待機、成功、失敗の状態。
+    bool           m_inputDirty     = false; ///< 入力バインディングに未保存の変更があるか。
+    bool           m_wasRebinding   = false; ///< 前フレームで入力待ちのキー割り当て操作を実行中だったか。
+    float          m_inputIdle      = 0.0f; ///< 入力バインディングの変更操作が止まってからの経過時間 [s]。
+    std::string    m_inputSavedClock; ///< 最後に入力バインディングを保存したローカル時刻の表示文字列。
+    std::string    m_inputPath; ///< 現在編集中の入力バインディング設定の保存先。
     ///@}
 
-    /// @note 描画スケールはドラッグ中に反映すると中間 RT の再確保が走り続けるため、手を離すまで draft に溜める。
-    float m_renderScaleDraft = 1.0f;
-    bool  m_renderScaleDragging = false;
+    float m_renderScaleDraft = 1.0f; ///< 描画スケールはドラッグ中に反映すると中間 RT の再確保が走り続けるため、手を離すまで draft に溜める。
+    bool  m_renderScaleDragging = false; ///< 描画解像度の倍率を調整する入力をドラッグ中か。
     /// @}
 };
 
-} /// @note namespace fbzz::editor
+} // namespace fbzz::editor

@@ -25,7 +25,9 @@ using reflection::PropertyType;
 template<typename T>
 T ReadValue(const PropertyDesc& property, const void* owner, const T& fallback)
 {
-    if (property.get == nullptr) return fallback;
+    if (property.get == nullptr) {
+        return fallback;
+    }
     const std::any value = property.get(owner);
     const T* typed = std::any_cast<T>(&value);
     return typed != nullptr ? *typed : fallback;
@@ -39,7 +41,9 @@ bool WriteValue(const PropertyDesc& property, void* owner, const T& value)
 
 std::string JoinPath(std::string_view prefix, std::string_view key)
 {
-    if (prefix.empty()) return std::string(key);
+    if (prefix.empty()) {
+        return std::string(key);
+    }
     std::string joined(prefix);
     joined += '.';
     joined += key;
@@ -51,10 +55,15 @@ std::string JoinPath(std::string_view prefix, std::string_view key)
 bool IsSkipped(const std::vector<std::string>& skipPaths, const std::string& path)
 {
     for (const std::string& skip : skipPaths) {
-        if (path.size() < skip.size()) continue;
-        if (path.compare(0, skip.size(), skip) != 0) continue;
-        if (path.size() == skip.size() || path[skip.size()] == '.' || path[skip.size()] == '[')
+        if (path.size() < skip.size()) {
+            continue;
+        }
+        if (path.compare(0, skip.size(), skip) != 0) {
+            continue;
+        }
+        if (path.size() == skip.size() || path[skip.size()] == '.' || path[skip.size()] == '[') {
             return true;
+        }
     }
     return false;
 }
@@ -74,8 +83,8 @@ bool DrawInt(const PropertyDesc& property, void* owner, const char* label)
     int value = ReadValue<int>(property, owner, 0);
     bool changed = false;
     if (property.range.enabled) {
-        /// @note レンジ宣言があるなら float 版と同じゲージ付きフィールドで描く
-        ///       (同じスキーマ Inspector の中で範囲付き数値の見た目を 1 つに保つ)。
+        // レンジ宣言があるなら float 版と同じゲージ付きフィールドで描く
+        // (同じスキーマ Inspector の中で範囲付き数値の見た目を 1 つに保つ)。
         const int minimum = static_cast<int>(property.range.minimum);
         const int maximum = static_cast<int>(property.range.maximum);
         changed = RangeField(label, value, minimum, maximum);
@@ -90,12 +99,15 @@ bool DrawEnum(const PropertyDesc& property, void* owner, const char* label)
 {
     int value = ReadValue<int>(property, owner, 0);
     const int maximum = static_cast<int>(property.range.maximum);
-    if (property.enumNames.empty()) return DrawInt(property, owner, label);
+    if (property.enumNames.empty()) {
+        return DrawInt(property, owner, label);
+    }
 
     const auto nameAt = [&property](int index) -> const char* {
-        if (index < 0 || static_cast<std::size_t>(index) >= property.enumNames.size())
+        if (index < 0 || static_cast<std::size_t>(index) >= property.enumNames.size()) {
             return "<invalid>";
-        /// @note string_view は非終端の可能性があるが、ここは静的な文字列リテラル由来なので安全。
+        }
+        // string_view は非終端の可能性があるが、ここは静的な文字列リテラル由来なので安全。
         return property.enumNames[static_cast<std::size_t>(index)].data();
     };
 
@@ -104,8 +116,13 @@ bool DrawEnum(const PropertyDesc& property, void* owner, const char* label)
         const int count = (std::min)(maximum + 1, static_cast<int>(property.enumNames.size()));
         for (int index = 0; index < count; ++index) {
             const bool selected = index == value;
-            if (ImGui::Selectable(nameAt(index), selected)) { value = index; changed = true; }
-            if (selected) ImGui::SetItemDefaultFocus();
+            if (ImGui::Selectable(nameAt(index), selected)) {
+                value = index;
+                changed = true;
+            }
+            if (selected) {
+                ImGui::SetItemDefaultFocus();
+            }
         }
         ImGui::EndCombo();
     }
@@ -114,7 +131,7 @@ bool DrawEnum(const PropertyDesc& property, void* owner, const char* label)
 
 bool DrawLeaf(const PropertyDesc& property, void* owner, const std::string& projectRoot)
 {
-    /// @note 表示名は string_view だが、由来は静的文字列リテラルなので data() をそのまま使える。
+    // 表示名は string_view だが、由来は静的文字列リテラルなので data() をそのまま使える。
     const char* label = property.display.empty() ? property.key.data() : property.display.data();
 
     switch (property.type) {
@@ -140,30 +157,38 @@ bool DrawLeaf(const PropertyDesc& property, void* owner, const std::string& proj
         std::string value = ReadValue<std::string>(property, owner, {});
         char buffer[256] = {};
         std::snprintf(buffer, sizeof(buffer), "%s", value.c_str());
-        if (!property::InputText(label, buffer, sizeof(buffer))) return false;
+        if (!property::InputText(label, buffer, sizeof(buffer))) {
+            return false;
+        }
         return WriteValue(property, owner, std::string(buffer));
     }
     case PropertyType::AssetRef: {
         std::string value = ReadValue<std::string>(property, owner, {});
-        if (!AssetPathField(label, value, "", projectRoot)) return false;
+        if (!AssetPathField(label, value, "", projectRoot)) {
+            return false;
+        }
         return WriteValue(property, owner, value);
     }
     case PropertyType::Curve: {
         scene::ParticleCurve value = ReadValue<scene::ParticleCurve>(property, owner, {});
-        /// @note 縦軸の上限はレンジ宣言があればそれに合わせる (Size は 1.0、Velocity は 10.0 等)。
+        // 縦軸の上限はレンジ宣言があればそれに合わせる (Size は 1.0、Velocity は 10.0 等)。
         const float maximum = property.range.enabled && property.range.maximum > 0.0f
             ? property.range.maximum : 1.0f;
-        if (!CurveEditor(label, value, maximum)) return false;
+        if (!CurveEditor(label, value, maximum)) {
+            return false;
+        }
         return WriteValue(property, owner, value);
     }
     case PropertyType::Gradient: {
         scene::ParticleGradient value = ReadValue<scene::ParticleGradient>(property, owner, {});
-        if (!GradientEditor(label, value)) return false;
+        if (!GradientEditor(label, value)) {
+            return false;
+        }
         return WriteValue(property, owner, value);
     }
     default:
-        /// @note Vector2 / Quaternion は VFX authoring に登場しないため未対応。
-        ///       追加する場合はここへウィジェットを足すだけでよい。
+        // Vector2 / Quaternion は VFX authoring に登場しないため未対応。
+        // 追加する場合はここへウィジェットを足すだけでよい。
         ImGui::TextDisabled("%s (unsupported type)", label);
         return false;
     }
@@ -184,25 +209,32 @@ bool DrawArray(const PropertyDesc& property, void* owner, const std::string& pro
     char header[160] = {};
     std::snprintf(header, sizeof(header), "%s (%zu)",
                   property.display.empty() ? property.key.data() : property.display.data(), count);
-    if (!ImGui::TreeNode(header)) return false;
+    if (!ImGui::TreeNode(header)) {
+        return false;
+    }
 
     if (ImGui::SmallButton("+")) {
         changed = property.resizeArray(owner, count + 1);
     }
     ImGui::SameLine();
-    /// @note 空配列で "-" を押しても resize(-1) にならないよう、要素があるときだけ有効にする。
+    // 空配列で "-" を押しても resize(-1) にならないよう、要素があるときだけ有効にする。
     ImGui::BeginDisabled(count == 0);
     if (ImGui::SmallButton("-")) {
         changed = property.resizeArray(owner, count - 1);
     }
     ImGui::EndDisabled();
 
-    /// @note resize でポインタが無効化されうるため、増減があったフレームは要素描画を行わない。
-    if (changed) { ImGui::TreePop(); return true; }
+    // resize でポインタが無効化されうるため、増減があったフレームは要素描画を行わない。
+    if (changed) {
+        ImGui::TreePop();
+        return true;
+    }
 
     for (std::size_t index = 0; index < count; ++index) {
         void* element = property.getElement(owner, index);
-        if (element == nullptr) continue;
+        if (element == nullptr) {
+            continue;
+        }
         ImGui::PushID(static_cast<int>(index));
         char elementLabel[64] = {};
         std::snprintf(elementLabel, sizeof(elementLabel), "[%zu]", index);
@@ -217,19 +249,23 @@ bool DrawArray(const PropertyDesc& property, void* owner, const std::string& pro
     return changed;
 }
 
-} /// @note namespace
+} // namespace
 
 bool DrawSchemaProperties(const reflection::ITypeSchema& schema, void* owner,
                           const std::string& projectRoot,
                           const std::vector<std::string>& skipPaths,
                           std::string_view pathPrefix)
 {
-    if (owner == nullptr) return false;
+    if (owner == nullptr) {
+        return false;
+    }
     bool changed = false;
 
     for (const PropertyDesc& property : schema.Properties()) {
         const std::string path = JoinPath(pathPrefix, property.key);
-        if (IsSkipped(skipPaths, path)) continue;
+        if (IsSkipped(skipPaths, path)) {
+            continue;
+        }
         ImGui::PushID(static_cast<int>(std::hash<std::string>{}(path) & 0x7fffffff));
 
         if (property.type == PropertyType::Struct) {
@@ -251,4 +287,4 @@ bool DrawSchemaProperties(const reflection::ITypeSchema& schema, void* owner,
     return changed;
 }
 
-} /// @note namespace fbzz::editor::widgets
+} // namespace fbzz::editor::widgets

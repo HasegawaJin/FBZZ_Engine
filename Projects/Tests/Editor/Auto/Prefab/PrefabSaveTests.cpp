@@ -62,9 +62,13 @@ std::vector<std::string> ObjectNames(const std::string& text)
 {
     std::vector<std::string> names;
     const auto parsed = toml::parse(text);
-    if (!parsed) return names;
+    if (!parsed) {
+        return names;
+    }
     const toml::array* objects = parsed.table()["gameobjects"].as_array();
-    if (!objects) return names;
+    if (!objects) {
+        return names;
+    }
     for (const auto& item : *objects) {
         if (const toml::table* object = item.as_table())
             names.push_back((*object)["name"].value_or(std::string{}));
@@ -75,7 +79,9 @@ std::vector<std::string> ObjectNames(const std::string& text)
 bool ContainsName(const std::vector<std::string>& names, const std::string& name)
 {
     for (const std::string& candidate : names)
-        if (candidate == name) return true;
+        if (candidate == name) {
+            return true;
+        }
     return false;
 }
 
@@ -265,14 +271,20 @@ TEST_F(PrefabSaveTest, WaterInteractionSettingsSurvivePrefabInstantiationWithout
     ASSERT_EQ(roots.size(), 2u);
     const auto findRoot = [&destination, &source](scene::EntityID sourceId) -> scene::GameObject* {
         const scene::GameObject* sourceObject = source.GetGameObject(sourceId);
-        if (!sourceObject) return nullptr;
+        if (!sourceObject) {
+            return nullptr;
+        }
         for (scene::EntityID id : destination.GetEntities<scene::WaterComponent>()) {
             auto* object = destination.GetGameObject(id);
-            if (object && object->prefabSourceId == sourceObject->instanceId) return object;
+            if (object && object->prefabSourceId == sourceObject->instanceId) {
+                return object;
+            }
         }
         for (scene::EntityID id : destination.GetEntities<scene::WaterExclusionComponent>()) {
             auto* object = destination.GetGameObject(id);
-            if (object && object->prefabSourceId == sourceObject->instanceId) return object;
+            if (object && object->prefabSourceId == sourceObject->instanceId) {
+                return object;
+            }
         }
         return nullptr;
     };
@@ -325,7 +337,9 @@ TEST_F(PrefabSaveTest, SavesLineAndPatrolPointReferencesInEachPrefabInstance)
                                            const std::string& sourceGuid) -> scene::GameObject* {
         for (const scene::EntityID id : roots) {
             scene::GameObject* object = destination.GetGameObject(id);
-            if (object && object->prefabSourceId == sourceGuid) return object;
+            if (object && object->prefabSourceId == sourceGuid) {
+                return object;
+            }
         }
         return nullptr;
     };
@@ -516,7 +530,7 @@ TEST_F(PrefabSaveTest, RecordsThePrefabFormatHeader)
 /// @brief Includes descendants of the selected root.
 TEST_F(PrefabSaveTest, IncludesDescendantsOfTheSelectedRoot)
 {
-    /// @note 親だけ選んでも、子はプレハブの一部として付いてこなければならない。
+    // 親だけ選んでも、子はプレハブの一部として付いてこなければならない。
     scene::Scene scene;
     scene::GameObject& parent = scene.CreateGameObject("Parent");
     scene::GameObject& child  = scene.CreateGameObject("Child");
@@ -544,8 +558,8 @@ TEST_F(PrefabSaveTest, ExcludesObjectsOutsideTheSelection)
 /// @brief Counts only top level roots when a whole branch is selected.
 TEST_F(PrefabSaveTest, CountsOnlyTopLevelRootsWhenAWholeBranchIsSelected)
 {
-    /// @note 親と子を «両方» 選んでも、プレハブの根は親 1 つ。
-    /// @note 子まで根に数えると、開いたときに同じ枝が二重に生える。
+    // 親と子を «両方» 選んでも、プレハブの根は親 1 つ。
+    // 子まで根に数えると、開いたときに同じ枝が二重に生える。
     scene::Scene scene;
     scene::GameObject& parent = scene.CreateGameObject("Parent");
     scene::GameObject& child  = scene.CreateGameObject("Child");
@@ -577,7 +591,7 @@ TEST_F(PrefabSaveTest, CountsSeveralIndependentRoots)
 /// @brief Saving only a child makes that child the root.
 TEST_F(PrefabSaveTest, SavingOnlyAChildMakesThatChildTheRoot)
 {
-    /// @note 子だけを選んだら、その子が根のプレハブになる (親は含まれない)。
+    // 子だけを選んだら、その子が根のプレハブになる (親は含まれない)。
     scene::Scene scene;
     scene::GameObject& parent = scene.CreateGameObject("Parent");
     scene::GameObject& child  = scene.CreateGameObject("Child");
@@ -593,8 +607,8 @@ TEST_F(PrefabSaveTest, SavingOnlyAChildMakesThatChildTheRoot)
 /// @brief Keeps the asset ID of an already connected object.
 TEST_F(PrefabSaveTest, KeepsTheAssetIdOfAnAlreadyConnectedObject)
 {
-    /// @note Apply を繰り返してもアセット側の id が入れ替わらないこと。ここが動くと、
-    /// @note 他インスタンスの prefabSourceId が行き先を失い override の対応が切れる。
+    // Apply を繰り返してもアセット側の id が入れ替わらないこと。ここが動くと、
+    // 他インスタンスの prefabSourceId が行き先を失い override の対応が切れる。
     scene::Scene scene;
     scene::GameObject& player = scene.CreateGameObject("Player");
     player.prefabSourceId = "stable-asset-id";
@@ -614,8 +628,8 @@ TEST_F(PrefabSaveTest, KeepsTheAssetIdOfAnAlreadyConnectedObject)
 /// @brief Does not reuse the same asset ID twice.
 TEST_F(PrefabSaveTest, DoesNotReuseTheSameAssetIdTwice)
 {
-    /// @note インスタンス内で子を複製すると prefabSourceId が重複する。
-    /// @note 両方に同じ id を振ると、アセット側で 1 つに潰れて片方が消える。
+    // インスタンス内で子を複製すると prefabSourceId が重複する。
+    // 両方に同じ id を振ると、アセット側で 1 つに潰れて片方が消える。
     scene::Scene scene;
     scene::GameObject& first  = scene.CreateGameObject("First");
     scene::GameObject& second = scene.CreateGameObject("Second");
@@ -641,7 +655,7 @@ TEST_F(PrefabSaveTest, DoesNotReuseTheSameAssetIdTwice)
 /// @brief Produces the same file for the same scene.
 TEST_F(PrefabSaveTest, ProducesTheSameFileForTheSameScene)
 {
-    /// @note 保存し直すたびに中身が揺れると、触っていないプレハブが git の差分に出る。
+    // 保存し直すたびに中身が揺れると、触っていないプレハブが git の差分に出る。
     scene::Scene scene;
     scene::GameObject& parent = scene.CreateGameObject("Parent");
     scene::GameObject& child  = scene.CreateGameObject("Child");
@@ -664,7 +678,7 @@ TEST_F(PrefabSaveTest, KeepsTheTransformOfTheSavedObject)
 
     ASSERT_TRUE(PrefabSerializer::SaveSelection(scene, { player.GetID() }, PrefabPathUtf8()));
 
-    /// @note 値そのものはシーンの直列化と同じ経路なので、ここでは «落ちていない» ことだけ見る。
+    // 値そのものはシーンの直列化と同じ経路なので、ここでは «落ちていない» ことだけ見る。
     const std::string text = SavedText();
     EXPECT_NE(text.find("1.5"), std::string::npos) << text;
 }

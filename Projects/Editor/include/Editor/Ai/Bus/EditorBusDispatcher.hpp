@@ -31,9 +31,9 @@ public:
     std::string Handle(const std::string& requestLine);
 
 private:
-    editor::EditorContext& m_context;
-    std::unique_ptr<bus::BusHandlerTable> m_table;
-    std::unique_ptr<bus::BusState> m_state;
+    editor::EditorContext& m_context; ///< EditorApp が所有する、コマンドとクエリが参照する現在の編集状態。
+    std::unique_ptr<bus::BusHandlerTable> m_table; ///< 要求の種別名から呼び出すハンドラーを引くための登録表。
+    std::unique_ptr<bus::BusState> m_state; ///< 要求をまたいで保持する、バスのトランザクションと診断の状態。
 };
 
-} /// @note namespace fbzz::editor::ai
+} // namespace fbzz::editor::ai

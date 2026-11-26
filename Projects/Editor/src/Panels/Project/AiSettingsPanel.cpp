@@ -49,8 +49,9 @@ void AiSettingsPanel::SetMessage(std::string message, bool error)
 
 void AiSettingsPanel::OnRenderContent(EditorContext& ctx)
 {
-    if (!m_hasDiagnostics || m_inspectedEngineRoot != ctx.engineRoot)
+    if (!m_hasDiagnostics || m_inspectedEngineRoot != ctx.engineRoot) {
         RefreshDiagnostics(ctx);
+    }
 
     ImGui::TextUnformatted("Connection Status");
     ImGui::Separator();
@@ -77,13 +78,16 @@ void AiSettingsPanel::OnRenderContent(EditorContext& ctx)
                 ? "Editor Command Bus を開始しました。"
                 : "Editor Command Bus を開始できませんでした。Console を確認してください。", !started);
         } else {
-            if (ctx.stopAiCommandBus) ctx.stopAiCommandBus();
+            if (ctx.stopAiCommandBus) {
+                ctx.stopAiCommandBus();
+            }
             ctx.aiCommandBusEnabled = false;
             SetMessage("Editor Command Bus を停止しました。", false);
         }
     }
-    if (ImGui::IsItemHovered())
+    if (ImGui::IsItemHovered()) {
         ImGui::SetTooltip("現在の待受状態と、次回起動時の自動開始設定を同時に変更します。");
+    }
 
     ImGui::Spacing();
     ImGui::TextUnformatted("Client Setup");
@@ -91,11 +95,14 @@ void AiSettingsPanel::OnRenderContent(EditorContext& ctx)
     ImGui::SetNextItemWidth(160.0f);
     ImGui::Combo("Permission", &m_permissionIndex, PERMISSIONS.data(),
                  static_cast<int>(PERMISSIONS.size()));
-    if (ImGui::IsItemHovered())
+    if (ImGui::IsItemHovered()) {
         ImGui::SetTooltip("read: 読み取りのみ / dry-run: 変更の試算まで / write: 編集を許可");
+    }
 
     const bool canRegister = m_status.nodeFound && m_status.mcpDistFound && !m_status.desktopConfigBroken;
-    if (!canRegister) ImGui::BeginDisabled();
+    if (!canRegister) {
+        ImGui::BeginDisabled();
+    }
     if (ImGui::Button(m_status.desktopRegistered ? "Update Claude Desktop" : "Register Claude Desktop")) {
         std::string error;
         const bool registered = ai::AiSetupService::RegisterClaudeDesktop(
@@ -103,19 +110,27 @@ void AiSettingsPanel::OnRenderContent(EditorContext& ctx)
         SetMessage(registered
             ? "Claude Desktop の設定を更新しました。再起動後に反映されます。"
             : error, !registered);
-        if (registered) RefreshDiagnostics(ctx);
+        if (registered) {
+            RefreshDiagnostics(ctx);
+        }
     }
-    if (!canRegister) ImGui::EndDisabled();
+    if (!canRegister) {
+        ImGui::EndDisabled();
+    }
 
     ImGui::SameLine();
-    if (!m_status.mcpDistFound) ImGui::BeginDisabled();
+    if (!m_status.mcpDistFound) {
+        ImGui::BeginDisabled();
+    }
     if (ImGui::Button("Copy Claude Code Command")) {
         const std::string command = ai::AiSetupService::BuildClaudeCodeCommand(
             m_status.mcpStdioPath, PERMISSIONS[static_cast<std::size_t>(m_permissionIndex)]);
         ImGui::SetClipboardText(command.c_str());
         SetMessage("Claude Code 用の登録コマンドをコピーしました。", false);
     }
-    if (!m_status.mcpDistFound) ImGui::EndDisabled();
+    if (!m_status.mcpDistFound) {
+        ImGui::EndDisabled();
+    }
 
     if (ImGui::Button("Launch Claude Desktop")) {
         std::string error;

@@ -27,7 +27,7 @@ AssetFileMoveResult MoveFilesWithRollback(std::span<const AssetFileMove> files, 
 {
     AssetFileMoveResult result;
     result.unrestored.reserve(files.size());
-    /// @note 移動と復元の両方で、後から出現したファイルを上書きしない。
+    // 移動と復元の両方で、後から出現したファイルを上書きしない。
     /// @see https://learn.microsoft.com/windows/win32/api/winbase/nf-winbase-movefileexw dwFlags
     for (const auto& file : files) {
         if (!::MoveFileExW(file.source.c_str(), file.destination.c_str(), flags)) {
@@ -36,16 +36,19 @@ AssetFileMoveResult MoveFilesWithRollback(std::span<const AssetFileMove> files, 
         }
         ++result.movedCount;
     }
-    if (result.systemError == 0) return result;
+    if (result.systemError == 0) {
+        return result;
+    }
 
     for (std::size_t remaining = result.movedCount; remaining > 0; --remaining) {
         const auto& file = files[remaining - 1];
-        if (!::MoveFileExW(file.destination.c_str(), file.source.c_str(), flags))
+        if (!::MoveFileExW(file.destination.c_str(), file.source.c_str(), flags)) {
             result.unrestored.push_back(remaining - 1);
+        }
     }
     return result;
 }
-} /// @note namespace
+} // namespace
 
 AssetFileMoveResult MoveAssetFilesWithRollback(std::span<const AssetFileMove> files)
 {
@@ -59,20 +62,25 @@ bool MoveAssetWithSidecar(const std::string& fromAbs, const std::string& toAbs, 
 {
     if (fromAbs.empty() || toAbs.empty() ||
         util::FileSystem::SamePathText(fromAbs, toAbs) ||
-        !util::FileSystem::Exists(fromAbs) || util::FileSystem::Exists(toAbs))
+        !util::FileSystem::Exists(fromAbs) || util::FileSystem::Exists(toAbs)) {
         return false;
+    }
 
     const std::string fromMeta = fromAbs + ".meta";
     const std::string toMeta = toAbs + ".meta";
     const bool hasMeta = util::FileSystem::Exists(fromMeta);
-    /// @note 本体だけ移動して既存の .meta と結び付くと GUID の所有者が変わるため、先に拒否する。
-    if (util::FileSystem::Exists(toMeta)) return false;
+    // 本体だけ移動して既存の .meta と結び付くと GUID の所有者が変わるため、先に拒否する。
+    if (util::FileSystem::Exists(toMeta)) {
+        return false;
+    }
 
     const std::array<AssetFileMove, 2> files{{
         {util::FileSystem::PathFromUtf8(fromAbs), util::FileSystem::PathFromUtf8(toAbs)},
         {util::FileSystem::PathFromUtf8(fromMeta), util::FileSystem::PathFromUtf8(toMeta)},
     }};
-    if (!util::FileSystem::EnsureParentDirectory(files.front().destination)) return false;
+    if (!util::FileSystem::EnsureParentDirectory(files.front().destination)) {
+        return false;
+    }
     const auto moved = MoveFilesWithRollback(std::span(files).first(hasMeta ? 2 : 1), MOVEFILE_COPY_ALLOWED);
     if (moved.systemError != 0) {
         for (const std::size_t index : moved.unrestored) {
@@ -84,7 +92,9 @@ bool MoveAssetWithSidecar(const std::string& fromAbs, const std::string& toAbs, 
         return false;
     }
 
-    if (updateIndex) asset::AssetDatabase::OnAssetMoved(fromAbs, toAbs);
+    if (updateIndex) {
+        asset::AssetDatabase::OnAssetMoved(fromAbs, toAbs);
+    }
     return true;
 }
 
@@ -94,20 +104,24 @@ bool MoveAssetWithSidecar(const std::string& fromAbs, const std::string& toAbs, 
 /// @note フォルダを渡された場合も配下ごと外れる (どちらの経路も前方一致で処理する)。
 void ForgetDeletedAsset(const std::string& absPath, EditorContext& ctx)
 {
-    /// @note GUID 索引から外す。以後この参照は「解決できない guid」になり、
-    /// @note 読み込み側が壊れた参照として扱えるようになる。
+    // GUID 索引から外す。以後この参照は「解決できない guid」になり、
+    // 読み込み側が壊れた参照として扱えるようになる。
     asset::AssetDatabase::OnAssetRemoved(absPath);
 
-    /// @note キャッシュのキーは Assets/ 起点の相対パス。projectRoot 分を落として合わせる。
+    // キャッシュのキーは Assets/ 起点の相対パス。projectRoot 分を落として合わせる。
     std::string relative = util::FileSystem::PathToUtf8(util::FileSystem::PathFromUtf8(absPath));
     std::replace(relative.begin(), relative.end(), '\\', '/');
     std::string root = ctx.projectRoot;
     std::replace(root.begin(), root.end(), '\\', '/');
     if (!root.empty() && relative.rfind(root, 0) == 0) {
         relative.erase(0, root.size());
-        while (!relative.empty() && relative.front() == '/') relative.erase(0, 1);
+        while (!relative.empty() && relative.front() == '/') {
+            relative.erase(0, 1);
+        }
     }
-    if (relative.empty()) return;
+    if (relative.empty()) {
+        return;
+    }
 
     if (auto* resources = ctx.resources) {
         if (const std::size_t evicted = resources->EvictTexture(relative); evicted > 0) {
@@ -116,9 +130,11 @@ void ForgetDeletedAsset(const std::string& absPath, EditorContext& ctx)
         }
     }
 
-    /// @note .mat はテクスチャ参照を抱えたまま別ストアに載っている。パス一致で外す。
+    // .mat はテクスチャ参照を抱えたまま別ストアに載っている。パス一致で外す。
     const std::string lowerExt = util::StringUtils::ToLower(util::FileSystem::GetExtension(relative));
-    if (lowerExt == ".mat") asset::AssetManager::Unload<asset::MaterialAsset>(relative);
+    if (lowerExt == ".mat") {
+        asset::AssetManager::Unload<asset::MaterialAsset>(relative);
+    }
 }
 
 /// @brief 削除は Undo 履歴へ載せず、プロジェクト内のごみ箱 (.fbzz/Trash/<日時>/) へ退避する。
@@ -128,9 +144,11 @@ void ForgetDeletedAsset(const std::string& absPath, EditorContext& ctx)
 /// @return ごみ箱へ移せた項目数
 std::size_t TrashAssets(const std::vector<std::string>& paths, EditorContext& ctx, std::string* outTrashRoot)
 {
-    if (paths.empty()) return 0;
+    if (paths.empty()) {
+        return 0;
+    }
 
-    /// @note 退避先は 1 回の削除操作につき 1 フォルダ。複数選択の削除をまとめて戻せるようにする。
+    // 退避先は 1 回の削除操作につき 1 フォルダ。複数選択の削除をまとめて戻せるようにする。
     const std::time_t now = std::time(nullptr);
     std::tm           local{};
     localtime_s(&local, &now);
@@ -139,10 +157,14 @@ std::size_t TrashAssets(const std::vector<std::string>& paths, EditorContext& ct
     const std::string trashRoot =
         ctx.projectRoot + "/.fbzz/Trash/" + stamp + "-" + util::GenerateUUID().substr(0, 8) + "/";
 
-    if (outTrashRoot) *outTrashRoot = trashRoot;
+    if (outTrashRoot) {
+        *outTrashRoot = trashRoot;
+    }
     std::size_t moved = 0;
     for (std::size_t i = 0; i < paths.size(); ++i) {
-        if (!util::FileSystem::Exists(paths[i])) continue;
+        if (!util::FileSystem::Exists(paths[i])) {
+            continue;
+        }
 
         const std::string dest =
             trashRoot + std::to_string(i) + "_" + util::FileSystem::GetFilename(paths[i]);
@@ -176,8 +198,9 @@ std::string UniqueDuplicatePath(const std::string& srcPath, bool isDir)
     for (int n = 2; n <= 999; ++n) {
         const std::string dstPath = util::FileSystem::NormalizePathSeparators(
             dir + name + "(" + std::to_string(n) + ")" + ext);
-        if (!util::FileSystem::Exists(dstPath))
+        if (!util::FileSystem::Exists(dstPath)) {
             return dstPath;
+        }
     }
     return {};
 }
@@ -193,18 +216,22 @@ std::string UniqueDestPath(const std::string& srcPath, const std::string& destDi
     const std::string ext = isDir ? std::string{} : util::StringUtils::ToLower(
         util::FileSystem::GetExtension(srcPath));
     std::string dir = util::FileSystem::NormalizePathSeparators(destDir);
-    if (!dir.empty() && dir.back() != '/') dir += "/";
+    if (!dir.empty() && dir.back() != '/') {
+        dir += "/";
+    }
 
     const std::string plain = util::FileSystem::NormalizePathSeparators(dir + name + ext);
     if (util::FileSystem::NormalizePathSeparators(srcPath) != plain &&
-        !util::FileSystem::Exists(plain))
+        !util::FileSystem::Exists(plain)) {
         return plain;
+    }
 
     for (int n = 2; n <= 999; ++n) {
         const std::string candidate = util::FileSystem::NormalizePathSeparators(
             dir + name + "(" + std::to_string(n) + ")" + ext);
-        if (!util::FileSystem::Exists(candidate))
+        if (!util::FileSystem::Exists(candidate)) {
             return candidate;
+        }
     }
     return {};
 }
@@ -215,7 +242,9 @@ std::string UniqueDestPath(const std::string& srcPath, const std::string& destDi
 /// @note guid が原本と衝突して «複製への参照が原本へ吸われる»。設定は残し guid だけ新しくする。
 void ReassignCopiedGuid(const std::string& assetAbsPath)
 {
-    if (!util::FileSystem::Exists(assetAbsPath + ".meta")) return;
+    if (!util::FileSystem::Exists(assetAbsPath + ".meta")) {
+        return;
+    }
     std::string newGuid;
     if (!asset::AssetDatabase::ReassignGuid(assetAbsPath, newGuid))
         FBZZ_LOG_WARN("AssetBrowser: cannot reassign guid for copy [%s]", assetAbsPath.c_str());
@@ -233,8 +262,9 @@ void ReassignCopiedGuidsRecursive(const std::string& dirAbsPath)
     while (!ec && it != last) {
         const std::string p = util::FileSystem::NormalizePathSeparators(
             util::FileSystem::PathToUtf8(it->path()));
-        if (p.size() > 5 && util::StringUtils::ToLower(p.substr(p.size() - 5)) == ".meta")
+        if (p.size() > 5 && util::StringUtils::ToLower(p.substr(p.size() - 5)) == ".meta") {
             ReassignCopiedGuid(p.substr(0, p.size() - 5));
+        }
         it.increment(ec);
     }
     if (ec)
@@ -243,23 +273,27 @@ void ReassignCopiedGuidsRecursive(const std::string& dirAbsPath)
 
 bool CopyAssetPath(const std::string& srcPath, const std::string& dstPath, bool isDir)
 {
-    if (srcPath.empty() || dstPath.empty()) return false;
+    if (srcPath.empty() || dstPath.empty()) {
+        return false;
+    }
 
     if (isDir) {
         if (!util::FileSystem::CopyDirectoryRecursive(
                 util::FileSystem::PathFromUtf8(srcPath),
-                util::FileSystem::PathFromUtf8(dstPath)))
+                util::FileSystem::PathFromUtf8(dstPath))) {
             return false;
+        }
         ReassignCopiedGuidsRecursive(dstPath);
         return true;
     }
 
     if (!util::FileSystem::CopyFile(util::FileSystem::PathFromUtf8(srcPath),
-                                    util::FileSystem::PathFromUtf8(dstPath)))
+                                    util::FileSystem::PathFromUtf8(dstPath))) {
         return false;
+    }
 
-    /// @note モデル原本のサイドカーは持ち込まない。原本の隣の .meta は «Import 済み» の印で、
-    /// @note 複製に付けて回ると Baked 生成物を持たないまま Import 済みに見える (AssetDatabase.hpp)。
+    // モデル原本のサイドカーは持ち込まない。原本の隣の .meta は «Import 済み» の印で、
+    // 複製に付けて回ると Baked 生成物を持たないまま Import 済みに見える (AssetDatabase.hpp)。
     if (!asset::IsModelSourcePath(srcPath)
         && util::FileSystem::Exists(srcPath + ".meta")) {
         util::FileSystem::CopyFile(util::FileSystem::PathFromUtf8(srcPath + ".meta"),
@@ -270,4 +304,4 @@ bool CopyAssetPath(const std::string& srcPath, const std::string& dstPath, bool 
 }
 
 
-} /// @note namespace fbzz::editor
+} // namespace fbzz::editor

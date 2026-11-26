@@ -21,11 +21,13 @@ namespace fbzz::editor {
 std::string ScriptObjectName(const std::string& scriptTypeName)
 {
     std::string displayName = scene::ScriptFactory::DisplayName(scriptTypeName);
-    if (const std::size_t separator = displayName.find_last_of('.'); separator != std::string::npos)
+    if (const std::size_t separator = displayName.find_last_of('.'); separator != std::string::npos) {
         displayName.erase(0, separator + 1);
+    }
     constexpr std::string_view kSuffix = "Component";
-    if (displayName.size() > kSuffix.size() && displayName.ends_with(kSuffix))
+    if (displayName.size() > kSuffix.size() && displayName.ends_with(kSuffix)) {
         return displayName.substr(0, displayName.size() - kSuffix.size());
+    }
     return displayName;
 }
 
@@ -42,27 +44,38 @@ std::vector<std::string> ScriptObjectTypeNames()
 
 scene::GameObject* CreateScriptObject(EditorContext& ctx, const std::string& scriptTypeName)
 {
-    if (!ctx.activeScene || scriptTypeName.empty()) return nullptr;
+    if (!ctx.activeScene || scriptTypeName.empty()) {
+        return nullptr;
+    }
 
     std::string typeKey;
     const std::vector<std::string> registered = scene::ScriptFactory::RegisteredTypeNames();
-    if (std::find(registered.begin(), registered.end(), scriptTypeName) != registered.end())
+    if (std::find(registered.begin(), registered.end(), scriptTypeName) != registered.end()) {
         typeKey = scriptTypeName;
-    else if (!scene::ScriptFactory::ResolveTypeName(scriptTypeName, typeKey)) return nullptr;
+    } else if (!scene::ScriptFactory::ResolveTypeName(scriptTypeName, typeKey)) {
+        return nullptr;
+    }
     scene::ScriptEntry entry;
     auto script = scene::ScriptFactory::Create(typeKey, entry.savedScriptId);
-    if (!script) return nullptr;
+    if (!script) {
+        return nullptr;
+    }
 
     auto* created = ctx.activeScene->TryCreateGameObject(ScriptObjectName(typeKey));
-    if (!created) return nullptr;
+    if (!created) {
+        return nullptr;
+    }
     scene::GameObject& go = *created;
 
-    /// @note OnValidate は全部揃った後に回したいので、コンポーネント → スクリプトの順に固定する。
-    for (const std::string& typeName : script->RequiredComponents())
+    // OnValidate は全部揃った後に回したいので、コンポーネント → スクリプトの順に固定する。
+    for (const std::string& typeName : script->RequiredComponents()) {
         AddRegisteredComponentByName(go, typeName);
+    }
 
     auto* sc = go.GetComponent<scene::ScriptComponent>();
-    if (!sc) sc = &go.AddComponent<scene::ScriptComponent>();
+    if (!sc) {
+        sc = &go.AddComponent<scene::ScriptComponent>();
+    }
 
     script->SetContext(ctx.activeScene, &go);
     script->Reset();
@@ -72,4 +85,4 @@ scene::GameObject* CreateScriptObject(EditorContext& ctx, const std::string& scr
     return &go;
 }
 
-} /// @note namespace fbzz::editor
+} // namespace fbzz::editor

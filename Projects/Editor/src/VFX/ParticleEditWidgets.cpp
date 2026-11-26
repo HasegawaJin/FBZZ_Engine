@@ -34,8 +34,9 @@ std::string CurveAssetFileName(const char* label)
     std::string name = label ? label : "Curve";
     for (char& c : name) {
         if (c == ' ' || c == '/' || c == '\\' || c == ':' || c == '*' || c == '?'
-            || c == '"' || c == '<' || c == '>' || c == '|')
+            || c == '"' || c == '<' || c == '>' || c == '|') {
             c = '_';
+        }
     }
     return name.empty() ? std::string("Curve") : name;
 }
@@ -55,21 +56,27 @@ bool CurveAssetMenuItems(const char* label, scene::ParticleCurve* curve,
 
     if (ImGui::MenuItem(isGradient ? "Save As .gradient" : "Save As .curve")) {
         asset::ParticleCurveAsset out;
-        if (isGradient) { out.gradient = *gradient; out.hasGradient = true; }
-        else            { out.curve    = *curve;    out.hasCurve    = true; }
+        if (isGradient) {
+            out.gradient = *gradient;
+            out.hasGradient = true;
+        } else {
+            out.curve    = *curve;
+            out.hasCurve    = true;
+        }
 
         util::FileSystem::EnsureDirectory(dir);
         const std::string base = dir + "/" + CurveAssetFileName(label);
         std::string path = base + extension;
-        for (int suffix = 1; util::FileSystem::Exists(path) && suffix < 1000; ++suffix)
+        for (int suffix = 1; util::FileSystem::Exists(path) && suffix < 1000; ++suffix) {
             path = base + " " + std::to_string(suffix) + extension;
+        }
 
         if (asset::SaveParticleCurveAsset(path, out))
             FBZZ_LOG_INFO("Curve: 保存しました %s", path.c_str());
     }
 
     if (ImGui::BeginMenu("Load")) {
-        /// @note 走査は «メニューを開いている間だけ»。数十ファイルの列挙なので毎フレームでも軽い。
+        // 走査は «メニューを開いている間だけ»。数十ファイルの列挙なので毎フレームでも軽い。
         const std::vector<std::string> files = util::FileSystem::ListFiles(dir, extension);
         if (files.empty()) {
             ImGui::TextDisabled("Assets/Curves に %s がありません", extension);
@@ -77,13 +84,22 @@ bool CurveAssetMenuItems(const char* label, scene::ParticleCurve* curve,
         for (const std::string& file : files) {
             const size_t slash = file.find_last_of("/\\");
             const std::string name = slash == std::string::npos ? file : file.substr(slash + 1);
-            if (!ImGui::MenuItem(name.c_str())) continue;
+            if (!ImGui::MenuItem(name.c_str())) {
+                continue;
+            }
             asset::ParticleCurveAsset loaded;
-            if (!asset::LoadParticleCurveAssetFile(file, loaded)) continue;
-            /// @note 参照は残さず中身だけを写す。参照を持つと «アセットとインラインの
-            ///       どちらが正か» が生まれ、Inspector で触った値が次に開くと戻る。
-            if (isGradient && loaded.hasGradient) { *gradient = loaded.gradient; replaced = true; }
-            else if (!isGradient && loaded.hasCurve) { *curve = loaded.curve; replaced = true; }
+            if (!asset::LoadParticleCurveAssetFile(file, loaded)) {
+                continue;
+            }
+            // 参照は残さず中身だけを写す。参照を持つと «アセットとインラインの
+            // どちらが正か» が生まれ、Inspector で触った値が次に開くと戻る。
+            if (isGradient && loaded.hasGradient) {
+                *gradient = loaded.gradient;
+                replaced = true;
+            } else if (!isGradient && loaded.hasCurve) {
+                *curve = loaded.curve;
+                replaced = true;
+            }
         }
         ImGui::EndMenu();
     }
@@ -126,7 +142,7 @@ bool CurveEditor(const char* label, scene::ParticleCurve& curve, float maxValue,
     ImGui::PushID(label);
     ImGui::TextUnformatted(label);
 
-    /// @note 補間モード。キー単位ではなくカーブ単位 (GPU パッキングの都合、詳細は ParticleEmitter.hpp)。
+    // 補間モード。キー単位ではなくカーブ単位 (GPU パッキングの都合、詳細は ParticleEmitter.hpp)。
     {
         static const char* kModes[] = { "Linear", "Step", "Smooth" };
         int mode = static_cast<int>(curve.interpolation);
@@ -142,19 +158,25 @@ bool CurveEditor(const char* label, scene::ParticleCurve& curve, float maxValue,
         ImGui::TextDisabled("%u/%u keys", curve.keyCount,
                             static_cast<unsigned>(curve.keys.size()));
         ImGui::SameLine();
-        if (ImGui::SmallButton("...")) ImGui::OpenPopup("##curve_menu");
-        if (ImGui::IsItemHovered())
+        if (ImGui::SmallButton("...")) {
+            ImGui::OpenPopup("##curve_menu");
+        }
+        if (ImGui::IsItemHovered()) {
             ImGui::SetTooltip("プリセット / コピー & ペースト / 数値でのキー入力");
+        }
 
         if (ImGui::BeginPopup("##curve_menu")) {
             if (ImGui::BeginMenu("Preset")) {
                 for (const asset::ParticleCurvePreset& preset : asset::ParticleCurvePresets()) {
-                    /// @note string_view は null 終端を保証しないが、この表はリテラル由来なので安全。
-                    if (!ImGui::MenuItem(preset.name.data())) continue;
+                    // string_view は null 終端を保証しないが、この表はリテラル由来なので安全。
+                    if (!ImGui::MenuItem(preset.name.data())) {
+                        continue;
+                    }
                     asset::ApplyParticleCurvePreset(curve, preset, maxValue);
                     changed = true;
-                    if (ImGui::IsItemHovered())
+                    if (ImGui::IsItemHovered()) {
                         ImGui::SetTooltip("%s", preset.description.data());
+                    }
                 }
                 ImGui::EndMenu();
             }
@@ -167,16 +189,19 @@ bool CurveEditor(const char* label, scene::ParticleCurve& curve, float maxValue,
                 curve = s_curveClipboard;
                 changed = true;
             }
-            if (ImGui::IsItemHovered())
+            if (ImGui::IsItemHovered()) {
                 ImGui::SetTooltip("同じ減衰を size / velocity / drag へ揃えるときに使います");
-            /// @note クリップボードはセッション内、アセットは演出をまたいで «形» を残す。
+            }
+            // クリップボードはセッション内、アセットは演出をまたいで «形» を残す。
             if (projectRoot != nullptr) {
                 ImGui::Separator();
-                if (CurveAssetMenuItems(label, &curve, nullptr, *projectRoot)) changed = true;
+                if (CurveAssetMenuItems(label, &curve, nullptr, *projectRoot)) {
+                    changed = true;
+                }
             }
             ImGui::Separator();
-            /// @note 数値入力。ドラッグでは 0.5 や 1.0 をちょうど掴めないため、
-            ///       「ここは厳密に 0 にしたい」類の指定はこちらで行う。
+            // 数値入力。ドラッグでは 0.5 や 1.0 をちょうど掴めないため、
+            // 「ここは厳密に 0 にしたい」類の指定はこちらで行う。
             ImGui::TextDisabled("Keys");
             for (uint32_t i = 0; i < curve.keyCount; ++i) {
                 ImGui::PushID(static_cast<int>(i));
@@ -188,12 +213,15 @@ bool CurveEditor(const char* label, scene::ParticleCurve& curve, float maxValue,
                 ImGui::SameLine();
                 ImGui::SetNextItemWidth(80.0f);
                 if (ImGui::DragFloat("##v", &curve.keys[i].value, maxValue * 0.005f,
-                                     0.0f, maxValue, "v %.3f"))
+                                     0.0f, maxValue, "v %.3f")) {
                     changed = true;
+                }
                 ImGui::SameLine();
-                /// @note 最小 2 キーは Evaluate の前提なので割り込ませない。
+                // 最小 2 キーは Evaluate の前提なので割り込ませない。
                 if (curve.keyCount > 2 && ImGui::SmallButton("-")) {
-                    for (uint32_t j = i; j + 1 < curve.keyCount; ++j) curve.keys[j] = curve.keys[j + 1];
+                    for (uint32_t j = i; j + 1 < curve.keyCount; ++j) {
+                        curve.keys[j] = curve.keys[j + 1];
+                    }
                     --curve.keyCount;
                     changed = true;
                     ImGui::PopID();
@@ -202,7 +230,7 @@ bool CurveEditor(const char* label, scene::ParticleCurve& curve, float maxValue,
                 ImGui::PopID();
             }
             if (curve.keyCount < curve.keys.size() && ImGui::SmallButton("+ Add Key")) {
-                /// @note 末尾の 1 つ手前へ、時間・値とも中点を挿す (末尾を動かさないので形が壊れない)。
+                // 末尾の 1 つ手前へ、時間・値とも中点を挿す (末尾を動かさないので形が壊れない)。
                 const auto& last = curve.keys[curve.keyCount - 1];
                 const auto& previous = curve.keys[curve.keyCount - 2];
                 curve.keys[curve.keyCount] = last;
@@ -212,7 +240,9 @@ bool CurveEditor(const char* label, scene::ParticleCurve& curve, float maxValue,
                 ++curve.keyCount;
                 changed = true;
             }
-            if (changed) SortKeysByTime(curve.keys, curve.keyCount);
+            if (changed) {
+                SortKeysByTime(curve.keys, curve.keyCount);
+            }
             ImGui::EndPopup();
         }
     }
@@ -225,7 +255,7 @@ bool CurveEditor(const char* label, scene::ParticleCurve& curve, float maxValue,
     const bool   hovered = ImGui::IsItemHovered();
     ImDrawList*  draw    = ImGui::GetWindowDrawList();
 
-    /// @note 正規化 (time, value) ⇔ スクリーン座標の相互変換
+    // 正規化 (time, value) ⇔ スクリーン座標の相互変換
     auto toScreen = [&](float time, float value) {
         return ImVec2(rectMin.x + Clamp01(time) * size.x,
                       rectMax.y - Clamp01(value / maxValue) * size.y);
@@ -235,7 +265,7 @@ bool CurveEditor(const char* label, scene::ParticleCurve& curve, float maxValue,
         outValue = Clamp01((rectMax.y - p.y) / size.y) * maxValue;
     };
 
-    /// @note 背景 + 1/4 グリッド
+    // 背景 + 1/4 グリッド
     draw->AddRectFilled(rectMin, rectMax, IM_COL32(22, 25, 32, 255), 3.0f);
     for (int i = 1; i < 4; ++i) {
         const float x = rectMin.x + size.x * (static_cast<float>(i) / 4.0f);
@@ -245,7 +275,7 @@ bool CurveEditor(const char* label, scene::ParticleCurve& curve, float maxValue,
     }
     draw->AddRect(rectMin, rectMax, IM_COL32(70, 76, 90, 255), 3.0f);
 
-    /// @note カーブ本体は Evaluate() を等間隔サンプルして描く: キー間を直線で結ぶと Step / Smooth では「表示は直線、実際は階段」という嘘になる。評価関数そのものを描けば補間モードを増やしても表示は自動で追従する。
+    // カーブ本体は Evaluate() を等間隔サンプルして描く: キー間を直線で結ぶと Step / Smooth では「表示は直線、実際は階段」という嘘になる。評価関数そのものを描けば補間モードを増やしても表示は自動で追従する。
     {
         constexpr int kSamples = 96;
         ImVec2 previous = toScreen(0.0f, curve.Evaluate(0.0f));
@@ -256,7 +286,7 @@ bool CurveEditor(const char* label, scene::ParticleCurve& curve, float maxValue,
             previous = current;
         }
     }
-    /// @note 端の外側は端値でクランプされることを点線ふうの薄い線で示す
+    // 端の外側は端値でクランプされることを点線ふうの薄い線で示す
     {
         const ImVec2 first = toScreen(curve.keys[0].time, curve.keys[0].value);
         const ImVec2 last  = toScreen(curve.keys[curve.keyCount - 1].time,
@@ -265,29 +295,31 @@ bool CurveEditor(const char* label, scene::ParticleCurve& curve, float maxValue,
         draw->AddLine(last, { rectMax.x, last.y }, IM_COL32(120, 200, 255, 90), 1.0f);
     }
 
-    /// @note ドラッグ中のキー index を ImGui StateStorage に保持する (ウィジェット多重配置対応)
+    // ドラッグ中のキー index を ImGui StateStorage に保持する (ウィジェット多重配置対応)
     ImGuiStorage* storage    = ImGui::GetStateStorage();
     const ImGuiID dragKeyId  = ImGui::GetID("##curve_drag_key");
     int           dragIndex  = storage->GetInt(dragKeyId, -1);
     const ImVec2  mouse      = ImGui::GetMousePos();
 
-    /// @note キーの描画 + ドラッグ / 削除
+    // キーの描画 + ドラッグ / 削除
     int hoveredKey = -1;
     for (uint32_t i = 0; i < curve.keyCount; ++i) {
         const ImVec2 p  = toScreen(curve.keys[i].time, curve.keys[i].value);
         const float  dx = mouse.x - p.x;
         const float  dy = mouse.y - p.y;
-        if (hovered && dx * dx + dy * dy <= kKeyHitRadius * kKeyHitRadius)
+        if (hovered && dx * dx + dy * dy <= kKeyHitRadius * kKeyHitRadius) {
             hoveredKey = static_cast<int>(i);
+        }
         const bool isHot = hoveredKey == static_cast<int>(i) || dragIndex == static_cast<int>(i);
         draw->AddCircleFilled(p, kKeyRadius, isHot ? IM_COL32(255, 220, 120, 255)
                                                    : IM_COL32(235, 240, 255, 255));
         draw->AddCircle(p, kKeyRadius, IM_COL32(30, 34, 44, 255), 0, 1.5f);
     }
 
-    /// @note ドラッグ開始 / 継続 / 終了
-    if (hovered && hoveredKey >= 0 && ImGui::IsMouseClicked(ImGuiMouseButton_Left))
+    // ドラッグ開始 / 継続 / 終了
+    if (hovered && hoveredKey >= 0 && ImGui::IsMouseClicked(ImGuiMouseButton_Left)) {
         storage->SetInt(dragKeyId, hoveredKey);
+    }
     dragIndex = storage->GetInt(dragKeyId, -1);
     if (dragIndex >= 0 && dragIndex < static_cast<int>(curve.keyCount)
         && ImGui::IsMouseDown(ImGuiMouseButton_Left)) {
@@ -296,17 +328,17 @@ bool CurveEditor(const char* label, scene::ParticleCurve& curve, float maxValue,
         curve.keys[static_cast<uint32_t>(dragIndex)].time  = t;
         curve.keys[static_cast<uint32_t>(dragIndex)].value = v;
         changed = true;
-        /// @note ドラッグ中はツールチップで正確な値を出す (数値入力の代替)
+        // ドラッグ中はツールチップで正確な値を出す (数値入力の代替)
         ImGui::SetTooltip("t=%.2f  v=%.2f", t, v);
     }
     if (!ImGui::IsMouseDown(ImGuiMouseButton_Left) && dragIndex >= 0) {
-        /// @note 離した時点でソートして評価順を保証する
+        // 離した時点でソートして評価順を保証する
         SortKeysByTime(curve.keys, curve.keyCount);
         storage->SetInt(dragKeyId, -1);
         changed = true;
     }
 
-    /// @note ダブルクリックでキー追加 (最大数まで)
+    // ダブルクリックでキー追加 (最大数まで)
     if (hovered && hoveredKey < 0 && ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left)
         && curve.keyCount < curve.keys.size()) {
         float t = 0.0f, v = 0.0f;
@@ -317,17 +349,19 @@ bool CurveEditor(const char* label, scene::ParticleCurve& curve, float maxValue,
         changed = true;
     }
 
-    /// @note 右クリックでキー削除 (最小2キーは維持)
+    // 右クリックでキー削除 (最小2キーは維持)
     if (hovered && hoveredKey >= 0 && ImGui::IsMouseClicked(ImGuiMouseButton_Right)
         && curve.keyCount > 2) {
-        for (uint32_t i = static_cast<uint32_t>(hoveredKey); i + 1 < curve.keyCount; ++i)
+        for (uint32_t i = static_cast<uint32_t>(hoveredKey); i + 1 < curve.keyCount; ++i) {
             curve.keys[i] = curve.keys[i + 1];
+        }
         --curve.keyCount;
         changed = true;
     }
 
-    if (hovered && hoveredKey < 0 && dragIndex < 0)
+    if (hovered && hoveredKey < 0 && dragIndex < 0) {
         ImGui::SetTooltip("Drag key: move / Double-click: add / Right-click key: remove");
+    }
 
     ImGui::PopID();
     return changed;
@@ -351,8 +385,9 @@ bool GradientEditor(const char* label, scene::ParticleGradient& gradient,
             gradient.interpolation = static_cast<scene::ParticleCurveInterpolation>(mode);
             changed = true;
         }
-        if (ImGui::IsItemHovered())
+        if (ImGui::IsItemHovered()) {
             ImGui::SetTooltip("Step は「炎から煙へ切り替わる瞬間」のような硬い変化に使う");
+        }
         ImGui::SameLine();
         {
             static const char* kSpaces[] = { "Gamma", "Linear", "OkLab" };
@@ -374,7 +409,9 @@ bool GradientEditor(const char* label, scene::ParticleGradient& gradient,
         ImGui::TextDisabled("%u/%u keys", gradient.keyCount,
                             static_cast<unsigned>(gradient.keys.size()));
         ImGui::SameLine();
-        if (ImGui::SmallButton("...")) ImGui::OpenPopup("##gradient_menu");
+        if (ImGui::SmallButton("...")) {
+            ImGui::OpenPopup("##gradient_menu");
+        }
         if (ImGui::BeginPopup("##gradient_menu")) {
             if (ImGui::MenuItem("Copy Gradient")) {
                 s_gradientClipboard = gradient;
@@ -384,15 +421,18 @@ bool GradientEditor(const char* label, scene::ParticleGradient& gradient,
                 gradient = s_gradientClipboard;
                 changed = true;
             }
-            if (ImGui::IsItemHovered())
+            if (ImGui::IsItemHovered()) {
                 ImGui::SetTooltip("芯炎と外炎で色温度を揃えるときに使います");
+            }
             if (projectRoot != nullptr) {
                 ImGui::Separator();
-                if (CurveAssetMenuItems(label, nullptr, &gradient, *projectRoot)) changed = true;
+                if (CurveAssetMenuItems(label, nullptr, &gradient, *projectRoot)) {
+                    changed = true;
+                }
             }
             ImGui::Separator();
-            /// @note 「終端のアルファを厳密に 0 にする」はグラデーション調整で最頻出の要求で、
-            ///       マーカーのドラッグでは正確に 0 を掴めない。数値で入れられるようにする。
+            // 「終端のアルファを厳密に 0 にする」はグラデーション調整で最頻出の要求で、
+            // マーカーのドラッグでは正確に 0 を掴めない。数値で入れられるようにする。
             ImGui::TextDisabled("Keys");
             for (uint32_t i = 0; i < gradient.keyCount; ++i) {
                 ImGui::PushID(static_cast<int>(i));
@@ -407,12 +447,14 @@ bool GradientEditor(const char* label, scene::ParticleGradient& gradient,
                                       ImGuiColorEditFlags_AlphaBar
                                           | ImGuiColorEditFlags_AlphaPreviewHalf
                                           | ImGuiColorEditFlags_Float
-                                          | ImGuiColorEditFlags_HDR))
+                                          | ImGuiColorEditFlags_HDR)) {
                     changed = true;
+                }
                 ImGui::SameLine();
                 if (gradient.keyCount > 2 && ImGui::SmallButton("-")) {
-                    for (uint32_t j = i; j + 1 < gradient.keyCount; ++j)
+                    for (uint32_t j = i; j + 1 < gradient.keyCount; ++j) {
                         gradient.keys[j] = gradient.keys[j + 1];
+                    }
                     --gradient.keyCount;
                     changed = true;
                     ImGui::PopID();
@@ -432,7 +474,9 @@ bool GradientEditor(const char* label, scene::ParticleGradient& gradient,
                 ++gradient.keyCount;
                 changed = true;
             }
-            if (changed) SortKeysByTime(gradient.keys, gradient.keyCount);
+            if (changed) {
+                SortKeysByTime(gradient.keys, gradient.keyCount);
+            }
             ImGui::EndPopup();
         }
     }
@@ -447,7 +491,7 @@ bool GradientEditor(const char* label, scene::ParticleGradient& gradient,
     ImDrawList*  draw = ImGui::GetWindowDrawList();
     const ImVec2 mouse = ImGui::GetMousePos();
 
-    /// @note 透明を可視化する市松背景
+    // 透明を可視化する市松背景
     constexpr float kChecker = 8.0f;
     for (float x = 0.0f; x < width; x += kChecker) {
         for (float y = 0.0f; y < barHeight; y += kChecker) {
@@ -459,7 +503,7 @@ bool GradientEditor(const char* label, scene::ParticleGradient& gradient,
         }
     }
 
-    /// @note グラデーションバー本体は Evaluate() の等間隔サンプルを細い短冊で並べて描く: カーブ側と同じ理由で、キー間を水平グラデで結ぶ描き方は線形補間専用のため Step / Smooth では表示と実際の色が食い違う。
+    // グラデーションバー本体は Evaluate() の等間隔サンプルを細い短冊で並べて描く: カーブ側と同じ理由で、キー間を水平グラデで結ぶ描き方は線形補間専用のため Step / Smooth では表示と実際の色が食い違う。
     auto timeToX = [&](float time) { return rectMin.x + Clamp01(time) * width; };
     {
         constexpr int kSamples = 128;
@@ -477,14 +521,14 @@ bool GradientEditor(const char* label, scene::ParticleGradient& gradient,
     }
     draw->AddRect({ rectMin.x, rectMin.y }, barMax, IM_COL32(70, 76, 90, 255));
 
-    /// @note 選択中キーとドラッグ中キーを StateStorage に保持
+    // 選択中キーとドラッグ中キーを StateStorage に保持
     ImGuiStorage* storage      = ImGui::GetStateStorage();
     const ImGuiID selectedId   = ImGui::GetID("##gradient_selected");
     const ImGuiID dragId       = ImGui::GetID("##gradient_drag");
     int           selectedKey  = storage->GetInt(selectedId, 0);
     int           dragKey      = storage->GetInt(dragId, -1);
 
-    /// @note キーマーカー (バー下の三角形 + 塗り) の描画とヒット判定
+    // キーマーカー (バー下の三角形 + 塗り) の描画とヒット判定
     int hoveredMarker = -1;
     for (uint32_t i = 0; i < gradient.keyCount; ++i) {
         const float x = timeToX(gradient.keys[i].time);
@@ -493,8 +537,9 @@ bool GradientEditor(const char* label, scene::ParticleGradient& gradient,
         const ImVec2 right(x + kMarkerWidth * 0.5f, barMax.y + markerH);
         const bool inX = mouse.x >= left.x && mouse.x <= right.x;
         const bool inY = mouse.y >= barMax.y && mouse.y <= barMax.y + markerH;
-        if (hovered && inX && inY)
+        if (hovered && inX && inY) {
             hoveredMarker = static_cast<int>(i);
+        }
         const bool isSelected = selectedKey == static_cast<int>(i);
         draw->AddTriangleFilled(top, left, right, ToImColor(gradient.keys[i].color, 1.0f));
         draw->AddTriangle(top, left, right,
@@ -502,7 +547,7 @@ bool GradientEditor(const char* label, scene::ParticleGradient& gradient,
                           isSelected ? 2.0f : 1.0f);
     }
 
-    /// @note マーカー操作: クリックで選択 + ドラッグ開始、ドラッグで time 変更、右クリックで削除
+    // マーカー操作: クリックで選択 + ドラッグ開始、ドラッグで time 変更、右クリックで削除
     if (hovered && hoveredMarker >= 0 && ImGui::IsMouseClicked(ImGuiMouseButton_Left)) {
         storage->SetInt(selectedId, hoveredMarker);
         storage->SetInt(dragId, hoveredMarker);
@@ -517,7 +562,7 @@ bool GradientEditor(const char* label, scene::ParticleGradient& gradient,
         ImGui::SetTooltip("t=%.2f", t);
     }
     if (!ImGui::IsMouseDown(ImGuiMouseButton_Left) && dragKey >= 0) {
-        /// @note ソートすると index が変わるため、ドラッグしていたキーを追跡して選択を維持する
+        // ソートすると index が変わるため、ドラッグしていたキーを追跡して選択を維持する
         const scene::ParticleGradientKey dragged = gradient.keys[static_cast<uint32_t>(dragKey)];
         SortKeysByTime(gradient.keys, gradient.keyCount);
         for (uint32_t i = 0; i < gradient.keyCount; ++i) {
@@ -532,7 +577,7 @@ bool GradientEditor(const char* label, scene::ParticleGradient& gradient,
         changed = true;
     }
 
-    /// @note バーをダブルクリック → その時刻の補間色でキー追加
+    // バーをダブルクリック → その時刻の補間色でキー追加
     const bool barHovered = hovered && mouse.y >= rectMin.y && mouse.y <= barMax.y;
     if (barHovered && ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left)
         && gradient.keyCount < gradient.keys.size()) {
@@ -543,18 +588,19 @@ bool GradientEditor(const char* label, scene::ParticleGradient& gradient,
         changed = true;
     }
 
-    /// @note マーカー右クリックで削除 (最小2キーは維持)
+    // マーカー右クリックで削除 (最小2キーは維持)
     if (hovered && hoveredMarker >= 0 && ImGui::IsMouseClicked(ImGuiMouseButton_Right)
         && gradient.keyCount > 2) {
-        for (uint32_t i = static_cast<uint32_t>(hoveredMarker); i + 1 < gradient.keyCount; ++i)
+        for (uint32_t i = static_cast<uint32_t>(hoveredMarker); i + 1 < gradient.keyCount; ++i) {
             gradient.keys[i] = gradient.keys[i + 1];
+        }
         --gradient.keyCount;
         storage->SetInt(selectedId, 0);
         selectedKey = 0;
         changed = true;
     }
 
-    /// @note 選択中キーの色編集
+    // 選択中キーの色編集
     selectedKey = std::clamp(selectedKey, 0, static_cast<int>(gradient.keyCount) - 1);
     {
         auto& key = gradient.keys[static_cast<uint32_t>(selectedKey)];
@@ -567,8 +613,9 @@ bool GradientEditor(const char* label, scene::ParticleGradient& gradient,
         }
     }
 
-    if (hovered && hoveredMarker < 0 && dragKey < 0)
+    if (hovered && hoveredMarker < 0 && dragKey < 0) {
         ImGui::SetTooltip("Drag marker: move / Click: select / Double-click bar: add / Right-click marker: remove");
+    }
 
     ImGui::PopID();
     return changed;

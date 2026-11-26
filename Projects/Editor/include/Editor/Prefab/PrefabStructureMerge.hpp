@@ -75,4 +75,4 @@ bool DrawPrefabStructureMergeReview(EditorContext& context, scene::EntityID root
 
 /// @brief Register query preview and explicit receipt-bound Apply through the existing operator registry.
 void RegisterPrefabStructureMergeOperators(OperatorRegistry& registry);
-} /// @note namespace fbzz::editor
+} // namespace fbzz::editor

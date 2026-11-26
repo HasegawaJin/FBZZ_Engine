@@ -28,13 +28,13 @@ private:
     /// @note 先頭が «残す側»。
     struct ConflictGroup {
         struct Entry {
-            std::string path;       ///< @note アセット絶対パス
-            std::string relative;   ///< @note 表示用のプロジェクト相対パス
-            std::string metaTime;   ///< @note .meta の更新時刻 (表示用)
-            bool        exists = true;
+            std::string path;       ///< アセット絶対パス
+            std::string relative;   ///< 表示用のプロジェクト相対パス
+            std::string metaTime;   ///< .meta の更新時刻 (表示用)
+            bool        exists = true; ///< 索引に記録されたアセット本体が現在もディスクに存在するか。
         };
-        std::string        guid;
-        std::vector<Entry> entries;
+        std::string        guid; ///< 複数のアセットパスで重複していた GUID。
+        std::vector<Entry> entries; ///< 同じ GUID を宣言しているアセットの一覧。
     };
 
     /// @note AssetDatabase の記録から表示用のグループを作り直す。
@@ -42,9 +42,9 @@ private:
     /// @note group の先頭以外に新しい guid を振る。戻り値は振り直した件数。
     int  FixGroup(const ConflictGroup& group);
 
-    std::vector<ConflictGroup> m_groups;
-    bool        m_scanned = false;   ///< @note 一度も Rescan していない間は空表示と区別する
-    std::string m_lastResult;        ///< @note 直近の修復結果 (件数と内訳)
+    std::vector<ConflictGroup> m_groups; ///< 最新の検査で見つかった GUID 重複を GUID ごとに分けた結果。
+    bool        m_scanned = false;   ///< 一度も Rescan していない間は空表示と区別する
+    std::string m_lastResult;        ///< 直近の修復結果 (件数と内訳)
 };
 
-} /// @note namespace fbzz::editor
+} // namespace fbzz::editor

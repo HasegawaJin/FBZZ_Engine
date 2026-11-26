@@ -21,7 +21,7 @@ namespace fbzz::editor {
 struct BuildDiagnostic {
     enum class Severity { Error, Warning };
 
-    Severity    severity = Severity::Error;
+    Severity    severity = Severity::Error; ///< 診断行が示すエラーまたは警告の種別。
     std::string file;             ///< 例: "C:/proj/Assets/Scripts/Foo.hpp" (空の場合はリンカ以外の全体エラー)
     int         line   = 0;       ///< 1 始まり。0 は行番号なし (リンカエラー等)
     int         column = 0;       ///< 0 は列番号なし
@@ -35,17 +35,17 @@ struct BuildRecord {
     enum class Kind   { Hlsl };
     enum class Result { Building, Success, Failed, Cancelled };
 
-    Kind        kind     = Kind::Hlsl;
-    Result      result   = Result::Building;
-    int         exitCode = 0;
+    Kind        kind     = Kind::Hlsl; ///< この履歴項目が記録するビルドの種別。
+    Result      result   = Result::Building; ///< ビルドが進行中か、成功・失敗・取り消しで終了したか。
+    int         exitCode = 0; ///< 確定時にビルドを実行した子プロセスが返した終了コード。
     std::string startClock;               ///< "14:32:05" (ローカル時刻)
     float       durationSec = 0.0f;       ///< 開始〜確定までの経過秒
-    int         errorCount  = 0;
-    int         warnCount   = 0;
-    std::vector<BuildDiagnostic> diagnostics;
-    std::uint64_t id = 0;
-    std::uint64_t firstRawLine = 0;
-    std::string rawLog;
+    int         errorCount  = 0; ///< このビルドの解析済みエラー件数。
+    int         warnCount   = 0; ///< このビルドの解析済み警告件数。
+    std::vector<BuildDiagnostic> diagnostics; ///< コンパイラー出力から抽出した診断の一覧。
+    std::uint64_t id = 0; ///< このビルド記録をログ UI で識別する番号。
+    std::uint64_t firstRawLine = 0; ///< rawLog 先頭の通し行番号。前方に何行切り捨てたかを含む。
+    std::string rawLog; ///< ビルド完了時に控えたログ本文。サイズ上限を超えた古い行は含まない。
 };
 
 class BuildConsole {
@@ -102,13 +102,13 @@ private:
     /// 現在ビルド中レコードへの参照 (末尾)。Building 中のみ有効。
     BuildRecord* CurrentRecord();
 
-    std::deque<BuildRecord> m_history;
-    bool        m_building     = false;
+    std::deque<BuildRecord> m_history; ///< 記録したビルドを開始順に保持する履歴。
+    bool        m_building     = false; ///< 現在のビルド記録を追記中であるか。
     size_t      m_consumedLen  = 0;    ///< IngestFullLog が消費済みの fullLog バイト数
     std::string m_lineBuffer;          ///< 改行未満の端数を次回まで保持
     std::string m_liveLog;             ///< 現在ビルドの全表示ログ (MAX_LOG_BYTES 上限)
-    uint64_t    m_liveLogFirstLine  = 0;
-    uint64_t    m_liveLogGeneration = 0;
+    uint64_t    m_liveLogFirstLine  = 0; ///< 現在取得中の m_liveLog の先頭行に対応する通し番号。
+    uint64_t    m_liveLogGeneration = 0; ///< ライブログを取り直すべきときに進むビルドの世代番号。
     std::string m_currentFile;         ///< cl.exe がエコーした現在コンパイル中ファイル名
 
     /// HLSL 通知の状態。
@@ -118,8 +118,8 @@ private:
         uint64_t sequence  = 0;      ///< 新しさの比較用
     };
     static constexpr size_t kKindCount = 1;
-    std::array<FailureState, kKindCount> m_failures{};
-    uint64_t m_failureSequence = 0;
+    std::array<FailureState, kKindCount> m_failures{}; ///< ビルド種別ごとに、失敗通知を出すかの状態を保持する。
+    uint64_t m_failureSequence = 0; ///< 失敗通知の新旧を区別する通し番号。
 
     unsigned long long m_startTickMs = 0;  ///< duration 計測用 (GetTickCount64)
 };
@@ -133,21 +133,21 @@ private:
 /// @note 1 行ごとに正規表現を当てるため、Tick ごとに全文を割り直すと数千行のビルドで重くなる。
 class BuildLogFeed {
 public:
-    /// @param text       ログ全文
-    /// @param generation ビルドごとに変わる値。変わったら一覧を作り直す
-    /// @param firstLine  text 先頭行の通し番号 (前方を捨てたぶんだけ進む)
+    /// @param[in] text ログ全文
+    /// @param[in] generation ビルドごとに変わる値。変わったら一覧を作り直す
+    /// @param[in] firstLine text 先頭行の通し番号 (前方を捨てたぶんだけ進む)
     void Sync(const std::string& text, std::uint64_t generation, std::uint64_t firstLine,
               LogListView& view);
 
 private:
     void Reset(LogListView& view, std::uint64_t generation, std::uint64_t firstLine);
 
-    std::uint64_t           m_generation  = ~0ull;
-    std::uint64_t           m_firstLine   = 0;
+    std::uint64_t           m_generation  = ~0ull; ///< 直近の Sync で取り込んだログの世代。最初の取り込み前は無効値。
+    std::uint64_t           m_firstLine   = 0; ///< 最後に取り込んだログの先頭行の通し番号。
     std::size_t             m_parsedBytes = 0;   ///< 改行まで確定して取り込んだバイト数
     std::size_t             m_seenBytes   = 0;   ///< 前回見た全文の長さ (変化の検出用)
     std::deque<std::size_t> m_lineBytes;         ///< 確定行ごとのバイト数 (前方切り捨ての追従用)
     bool                    m_hasPartial  = false; ///< 一覧末尾が改行待ちの書きかけ行か
 };
 
-} /// @note namespace fbzz::editor
+} // namespace fbzz::editor

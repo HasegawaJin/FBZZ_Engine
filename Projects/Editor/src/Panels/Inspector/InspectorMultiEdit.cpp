@@ -33,29 +33,45 @@ namespace fbzz::editor {
 namespace {
 void DrawManagedSelectionSettings(EditorContext& ctx, const std::vector<scene::GameObject*>& owners)
 {
-    if (owners.empty() || !ctx.activeScene) return;
+    if (owners.empty() || !ctx.activeScene) {
+        return;
+    }
     static uint64_t selectionScene = 0;
     static std::unordered_map<std::string, std::string> selectedScripts;
     if (selectionScene != ctx.activeScene->GetRenderSceneGeneration()) {
-        selectedScripts.clear(); selectionScene = ctx.activeScene->GetRenderSceneGeneration();
+        selectedScripts.clear();
+        selectionScene = ctx.activeScene->GetRenderSceneGeneration();
     }
     auto& runtime = scene::ManagedScriptRuntime::Instance();
     const auto* first = owners.front()->GetComponent<scene::ScriptComponent>();
-    if (!first) return;
+    if (!first) {
+        return;
+    }
     std::unordered_set<std::string> displayed;
     for (const auto& primary : first->scripts) {
-        if (!primary.script || !runtime.FindAdapter(primary.script.get())) continue;
-        const std::string type = primary.script->GetTypeName(); if (!displayed.insert(type).second) continue;
+        if (!primary.script || !runtime.FindAdapter(primary.script.get())) {
+            continue;
+        }
+        const std::string type = primary.script->GetTypeName();
+        if (!displayed.insert(type).second) {
+            continue;
+        }
         std::vector<std::vector<const scene::ScriptEntry*>> matches;
         for (auto* owner : owners) {
             std::vector<const scene::ScriptEntry*> scripts;
             if (const auto* component = owner->GetComponent<scene::ScriptComponent>())
                 for (const auto& entry : component->scripts)
-                    if (entry.script && entry.script->GetTypeName() == type && runtime.FindAdapter(entry.script.get())) scripts.push_back(&entry);
-            if (scripts.empty()) break;
+                    if (entry.script && entry.script->GetTypeName() == type && runtime.FindAdapter(entry.script.get())) {
+                        scripts.push_back(&entry);
+                    }
+            if (scripts.empty()) {
+                break;
+            }
             matches.push_back(std::move(scripts));
         }
-        if (matches.size() != owners.size()) continue;
+        if (matches.size() != owners.size()) {
+            continue;
+        }
         ImGui::PushID(type.c_str());
         std::vector<std::pair<scene::GameObject*, const scene::ScriptEntry*>> selected;
         std::vector<ManagedSettingsTarget> targets;
@@ -65,18 +81,26 @@ void DrawManagedSelectionSettings(EditorContext& ctx, const std::vector<scene::G
                 const std::string key = owners[index]->instanceId + '/' + type;
                 for (const auto* candidate : matches[index]) if (candidate->savedScriptId == selectedScripts[key]) entry = candidate;
             }
-            if (entry) { selected.emplace_back(owners[index], entry); targets.push_back(CaptureManagedSettingsTarget(ctx, *owners[index], *entry)); }
+            if (entry) {
+                selected.emplace_back(owners[index], entry);
+                targets.push_back(CaptureManagedSettingsTarget(ctx, *owners[index], *entry));
+            }
         }
         ManagedScriptEnabledState enabledState;
-        if (selected.size() == owners.size()) enabledState = ReadManagedInspectorEnabled(ctx, targets);
-        else enabledState.diagnostic = "同じ型の Script が複数あります。本文で操作する個体を選択してください。";
+        if (selected.size() == owners.size()) {
+            enabledState = ReadManagedInspectorEnabled(ctx, targets);
+        } else {
+            enabledState.diagnostic = "同じ型の Script が複数あります。本文で操作する個体を選択してください。";
+        }
         bool enabled = enabledState.enabled;
         const widgets::ComponentToggleOptions toggle{enabledState.editable, enabledState.mixed, enabledState.diagnostic.c_str()};
         constexpr ImU32 SCRIPT_ACCENT = IM_COL32(120, 190, 255, 255);
         const auto header = widgets::ComponentHeader(scene::ScriptFactory::DisplayName(type).c_str(), SCRIPT_ACCENT, &enabled, true, {}, toggle);
         if (header.enabledChanged) {
             const auto result = ApplyManagedInspectorEnabled(ctx, targets, enabled);
-            if (!result.ok) DrawManagedDiagnostic("切り替えできません", result.message);
+            if (!result.ok) {
+                DrawManagedDiagnostic("切り替えできません", result.message);
+            }
         }
         if (header.open) {
             const auto body = widgets::BeginComponentBody(header, SCRIPT_ACCENT);
@@ -91,22 +115,33 @@ void DrawManagedSelectionSettings(EditorContext& ctx, const std::vector<scene::G
                     const std::string label = owners[index]->name + " のスクリプト";
                     std::string preview = "選択してください";
                     for (size_t candidateIndex = 0; candidateIndex < matches[index].size(); ++candidateIndex)
-                        if (matches[index][candidateIndex] == entry) preview = "スクリプト " + std::to_string(candidateIndex + 1);
+                        if (matches[index][candidateIndex] == entry) {
+                            preview = "スクリプト " + std::to_string(candidateIndex + 1);
+                        }
                     if (ImGui::BeginCombo(label.c_str(), preview.c_str())) {
                         for (size_t candidateIndex = 0; candidateIndex < matches[index].size(); ++candidateIndex) {
                             const auto* candidate = matches[index][candidateIndex];
                             const std::string option = "スクリプト " + std::to_string(candidateIndex + 1) + "##" + candidate->savedScriptId;
-                            if (ImGui::Selectable(option.c_str(), candidate == entry)) { choice = candidate->savedScriptId; entry = candidate; }
+                            if (ImGui::Selectable(option.c_str(), candidate == entry)) {
+                                choice = candidate->savedScriptId;
+                                entry = candidate;
+                            }
                         }
                         ImGui::EndCombo();
                     }
                     ImGui::PopID();
                 }
-                if (entry) selected.emplace_back(owners[index], entry);
+                if (entry) {
+                    selected.emplace_back(owners[index], entry);
+                }
             }
             if (selected.size() == owners.size()) {
-                ManagedSettingsReflector reflector(ctx, selected); reflector.Draw(); reflector.Finish();
-            } else ImGui::TextWrapped("操作するスクリプトを選択してください。");
+                ManagedSettingsReflector reflector(ctx, selected);
+                reflector.Draw();
+                reflector.Finish();
+            } else {
+                ImGui::TextWrapped("操作するスクリプトを選択してください。");
+            }
             widgets::EndComponentBody(body);
         }
         ImGui::PopID();
@@ -138,53 +173,65 @@ struct MultiEditReflector final : ImGuiReflector {
     {
         const float before = v;
         ImGuiReflector::Field(name, v);
-        if (v != before) Record(name, Change::Kind::Float, [&](Change& c) { c.f = v; });
+        if (v != before) {
+            Record(name, Change::Kind::Float, [&](Change& c) { c.f = v; });
+        }
     }
     void Field(const char* name, int& v) override
     {
         const int before = v;
         ImGuiReflector::Field(name, v);
-        if (v != before) Record(name, Change::Kind::Int, [&](Change& c) { c.i = v; });
+        if (v != before) {
+            Record(name, Change::Kind::Int, [&](Change& c) { c.i = v; });
+        }
     }
     void Field(const char* name, bool& v) override
     {
         const bool before = v;
         ImGuiReflector::Field(name, v);
-        if (v != before) Record(name, Change::Kind::Bool, [&](Change& c) { c.b = v; });
+        if (v != before) {
+            Record(name, Change::Kind::Bool, [&](Change& c) { c.b = v; });
+        }
     }
     void Field(const char* name, math::Vector2& v) override
     {
         const math::Vector2 before = v;
         ImGuiReflector::Field(name, v);
-        if (v.x != before.x || v.y != before.y)
+        if (v.x != before.x || v.y != before.y) {
             Record(name, Change::Kind::Vec2, [&](Change& c) { c.v2 = v; });
+        }
     }
     void Field(const char* name, math::Vector3& v) override
     {
         const math::Vector3 before = v;
         ImGuiReflector::Field(name, v);
-        if (v.x != before.x || v.y != before.y || v.z != before.z)
+        if (v.x != before.x || v.y != before.y || v.z != before.z) {
             Record(name, Change::Kind::Vec3, [&](Change& c) { c.v3 = v; });
+        }
     }
     void Field(const char* name, math::Vector4& v) override
     {
         const math::Vector4 before = v;
         ImGuiReflector::Field(name, v);
-        if (v.x != before.x || v.y != before.y || v.z != before.z || v.w != before.w)
+        if (v.x != before.x || v.y != before.y || v.z != before.z || v.w != before.w) {
             Record(name, Change::Kind::Vec4, [&](Change& c) { c.v4 = v; });
+        }
     }
     void Field(const char* name, math::Quaternion& v) override
     {
         const math::Quaternion before = v;
         ImGuiReflector::Field(name, v);
-        if (v.x != before.x || v.y != before.y || v.z != before.z || v.w != before.w)
+        if (v.x != before.x || v.y != before.y || v.z != before.z || v.w != before.w) {
             Record(name, Change::Kind::Quat, [&](Change& c) { c.q = v; });
+        }
     }
     void Field(const char* name, std::string& v) override
     {
         const std::string before = v;
         ImGuiReflector::Field(name, v);
-        if (v != before) Record(name, Change::Kind::String, [&](Change& c) { c.s = v; });
+        if (v != before) {
+            Record(name, Change::Kind::String, [&](Change& c) { c.s = v; });
+        }
     }
     void AssetField(const char* name,
                     scene::ScriptAssetReference& value,
@@ -193,32 +240,41 @@ struct MultiEditReflector final : ImGuiReflector {
         const std::string before = value.ResolvePath();
         ImGuiReflector::AssetField(name, value, type);
         const std::string after = value.ResolvePath();
-        if (after != before)
+        if (after != before) {
             Record(name, Change::Kind::String, [&](Change& c) { c.s = after; });
+        }
     }
     void FloatRange(const char* name, float& v, float min, float max) override
     {
         const float before = v;
         ImGuiReflector::FloatRange(name, v, min, max);
-        if (v != before) Record(name, Change::Kind::Float, [&](Change& c) { c.f = v; });
+        if (v != before) {
+            Record(name, Change::Kind::Float, [&](Change& c) { c.f = v; });
+        }
     }
     void IntRange(const char* name, int& v, int min, int max) override
     {
         const int before = v;
         ImGuiReflector::IntRange(name, v, min, max);
-        if (v != before) Record(name, Change::Kind::Int, [&](Change& c) { c.i = v; });
+        if (v != before) {
+            Record(name, Change::Kind::Int, [&](Change& c) { c.i = v; });
+        }
     }
     void Enum(const char* name, int& v, std::span<const char* const> labels) override
     {
         const int before = v;
         ImGuiReflector::Enum(name, v, labels);
-        if (v != before) Record(name, Change::Kind::Int, [&](Change& c) { c.i = v; });
+        if (v != before) {
+            Record(name, Change::Kind::Int, [&](Change& c) { c.i = v; });
+        }
     }
     void Flags(const char* name, int& v, std::span<const char* const> labels) override
     {
         const int before = v;
         ImGuiReflector::Flags(name, v, labels);
-        if (v != before) Record(name, Change::Kind::Int, [&](Change& c) { c.i = v; });
+        if (v != before) {
+            Record(name, Change::Kind::Int, [&](Change& c) { c.i = v; });
+        }
     }
 
 private:
@@ -246,42 +302,59 @@ struct ApplyFieldReflector final : scene::IReflector {
 
     void Field(const char* name, float& v) override
     {
-        if (Matches(name, MultiEditReflector::Change::Kind::Float)) v = change->f;
+        if (Matches(name, MultiEditReflector::Change::Kind::Float)) {
+            v = change->f;
+        }
     }
     void Field(const char* name, int& v) override
     {
-        if (Matches(name, MultiEditReflector::Change::Kind::Int)) v = change->i;
+        if (Matches(name, MultiEditReflector::Change::Kind::Int)) {
+            v = change->i;
+        }
     }
     void Field(const char* name, bool& v) override
     {
-        if (Matches(name, MultiEditReflector::Change::Kind::Bool)) v = change->b;
+        if (Matches(name, MultiEditReflector::Change::Kind::Bool)) {
+            v = change->b;
+        }
     }
     void Field(const char* name, math::Vector2& v) override
     {
-        if (Matches(name, MultiEditReflector::Change::Kind::Vec2)) v = change->v2;
+        if (Matches(name, MultiEditReflector::Change::Kind::Vec2)) {
+            v = change->v2;
+        }
     }
     void Field(const char* name, math::Vector3& v) override
     {
-        if (Matches(name, MultiEditReflector::Change::Kind::Vec3)) v = change->v3;
+        if (Matches(name, MultiEditReflector::Change::Kind::Vec3)) {
+            v = change->v3;
+        }
     }
     void Field(const char* name, math::Vector4& v) override
     {
-        if (Matches(name, MultiEditReflector::Change::Kind::Vec4)) v = change->v4;
+        if (Matches(name, MultiEditReflector::Change::Kind::Vec4)) {
+            v = change->v4;
+        }
     }
     void Field(const char* name, math::Quaternion& v) override
     {
-        if (Matches(name, MultiEditReflector::Change::Kind::Quat)) v = change->q;
+        if (Matches(name, MultiEditReflector::Change::Kind::Quat)) {
+            v = change->q;
+        }
     }
     void Field(const char* name, std::string& v) override
     {
-        if (Matches(name, MultiEditReflector::Change::Kind::String)) v = change->s;
+        if (Matches(name, MultiEditReflector::Change::Kind::String)) {
+            v = change->s;
+        }
     }
     void AssetField(const char* name,
                     scene::ScriptAssetReference& value,
                     scene::ScriptAssetType) override
     {
-        if (Matches(name, MultiEditReflector::Change::Kind::String))
+        if (Matches(name, MultiEditReflector::Change::Kind::String)) {
             value.SetPath(change->s);
+        }
     }
 };
 
@@ -296,16 +369,23 @@ void PushBulkTransformUndo(EditorContext& ctx,
                            const std::vector<scene::Transform>& after,
                            const char* description)
 {
-    if (!ctx.undoStack || !ctx.undoStack->IsRecordingEnabled() || !ctx.activeScene) return;
-    if (guids.empty()) return;
+    if (!ctx.undoStack || !ctx.undoStack->IsRecordingEnabled() || !ctx.activeScene) {
+        return;
+    }
+    if (guids.empty()) {
+        return;
+    }
 
     scene::Scene* scene = ctx.activeScene;
     const auto markDirty = ctx.markSceneDirty;
     auto applyAll = [scene, guids, markDirty](const std::vector<scene::Transform>& values) {
         for (std::size_t i = 0; i < guids.size() && i < values.size(); ++i)
-            if (auto* target = scene->FindByGuid(guids[i]))
+            if (auto* target = scene->FindByGuid(guids[i])) {
                 target->transform = values[i];
-        if (markDirty) markDirty();
+            }
+        if (markDirty) {
+            markDirty();
+        }
     };
     ctx.undoStack->Push(std::make_unique<LambdaCommand>(
         description,
@@ -317,7 +397,9 @@ std::vector<std::string> GuidsOf(const std::vector<scene::GameObject*>& gos)
 {
     std::vector<std::string> guids;
     guids.reserve(gos.size());
-    for (auto* g : gos) guids.push_back(g->instanceId);
+    for (auto* g : gos) {
+        guids.push_back(g->instanceId);
+    }
     return guids;
 }
 
@@ -325,7 +407,9 @@ std::vector<scene::Transform> TransformsOf(const std::vector<scene::GameObject*>
 {
     std::vector<scene::Transform> values;
     values.reserve(gos.size());
-    for (auto* g : gos) values.push_back(g->transform);
+    for (auto* g : gos) {
+        values.push_back(g->transform);
+    }
     return values;
 }
 
@@ -344,20 +428,32 @@ void DrawTransformSetMode(EditorContext& ctx, const std::vector<scene::GameObjec
     const auto draw = [&](int index, const char* label, const char* undo,
                           auto get, auto set, float speed, float min, float max, const char* format) {
         auto& edit = edits[static_cast<std::size_t>(index)];
-        if (edit.scene != ctx.activeScene) edit = {};
+        if (edit.scene != ctx.activeScene) {
+            edit = {};
+        }
         const auto finish = [&] {
-            if (!edit.after.empty()) PushBulkTransformUndo(ctx, edit.guids, edit.before, edit.after, undo);
+            if (!edit.after.empty()) {
+                PushBulkTransformUndo(ctx, edit.guids, edit.before, edit.after, undo);
+            }
             edit = {};
         };
-        if (edit.guids != guids) finish();
+        if (edit.guids != guids) {
+            finish();
+        }
 
         const math::Vector3 first = get(gos.front()->transform);
         unsigned mixed = 0;
         for (const auto* go : gos) {
             const math::Vector3 current = get(go->transform);
-            if (current.x != first.x) mixed |= 1u;
-            if (current.y != first.y) mixed |= 2u;
-            if (current.z != first.z) mixed |= 4u;
+            if (current.x != first.x) {
+                mixed |= 1u;
+            }
+            if (current.y != first.y) {
+                mixed |= 2u;
+            }
+            if (current.z != first.z) {
+                mixed |= 4u;
+            }
         }
 
         float values[] = { first.x, first.y, first.z };
@@ -373,15 +469,25 @@ void DrawTransformSetMode(EditorContext& ctx, const std::vector<scene::GameObjec
         if (changed) {
             for (auto* go : gos) {
                 auto value = get(go->transform);
-                if ((changedAxes & 1u) != 0) value.x = values[0];
-                if ((changedAxes & 2u) != 0) value.y = values[1];
-                if ((changedAxes & 4u) != 0) value.z = values[2];
+                if ((changedAxes & 1u) != 0) {
+                    value.x = values[0];
+                }
+                if ((changedAxes & 2u) != 0) {
+                    value.y = values[1];
+                }
+                if ((changedAxes & 4u) != 0) {
+                    value.z = values[2];
+                }
                 set(go->transform, value);
             }
             edit.after = TransformsOf(gos);
-            if (ctx.markSceneDirty) ctx.markSceneDirty();
+            if (ctx.markSceneDirty) {
+                ctx.markSceneDirty();
+            }
         }
-        if (!ImGui::IsItemActive()) finish();
+        if (!ImGui::IsItemActive()) {
+            finish();
+        }
         widgets::EndPropertyField(row);
     };
 
@@ -415,9 +521,13 @@ void DrawTransformOffsetMode(EditorContext& ctx, const std::vector<scene::GameOb
     auto applyBulk = [&](const char* description, auto mutate) {
         const std::vector<std::string>      guids  = GuidsOf(gos);
         const std::vector<scene::Transform> before = TransformsOf(gos);
-        for (auto* g : gos) mutate(g->transform);
+        for (auto* g : gos) {
+            mutate(g->transform);
+        }
         PushBulkTransformUndo(ctx, guids, before, TransformsOf(gos), description);
-        if (ctx.markSceneDirty) ctx.markSceneDirty();
+        if (ctx.markSceneDirty) {
+            ctx.markSceneDirty();
+        }
     };
 
     const auto drawOffset = [](const char* label, float* values, float speed,
@@ -427,9 +537,13 @@ void DrawTransformOffsetMode(EditorContext& ctx, const std::vector<scene::GameOb
         const float buttonWidth = ImGui::CalcTextSize(LOCT("Apply")).x + ImGui::GetStyle().FramePadding.x * 2.0f;
         const float available = ImGui::GetContentRegionAvail().x;
         const bool inlineApply = available - buttonWidth - gap >= ImGui::GetFontSize() * 13.0f;
-        if (inlineApply) ImGui::SetNextItemWidth(available - buttonWidth - gap);
+        if (inlineApply) {
+            ImGui::SetNextItemWidth(available - buttonWidth - gap);
+        }
         widgets::DragAxes("##axes", values, 3, speed, min, max, format, 0, nullptr, 0, ImGuiSliderFlags_AlignValueRight);
-        if (inlineApply) ImGui::SameLine();
+        if (inlineApply) {
+            ImGui::SameLine();
+        }
         const bool apply = ImGui::Button(LOCT("Apply"));
         widgets::EndPropertyField(row);
         return apply;
@@ -442,8 +556,8 @@ void DrawTransformOffsetMode(EditorContext& ctx, const std::vector<scene::GameOb
     }
 
     if (drawOffset("Rotate by", rotDelta, 0.5f, 0.0f, 0.0f, "%.1f")) {
-        /// @note ワールド軸まわりの回転を左から掛けることで、各オブジェクトの現在の向きに
-        /// @note 関係なく「同じ方向へ同じ角度だけ回す」になる。
+        // ワールド軸まわりの回転を左から掛けることで、各オブジェクトの現在の向きに
+        // 関係なく「同じ方向へ同じ角度だけ回す」になる。
         const math::Quaternion delta =
             widgets::EulerDegToQuat({ rotDelta[0], rotDelta[1], rotDelta[2] });
         applyBulk("Rotate by Offset (Multi)", [delta](scene::Transform& t) {
@@ -468,7 +582,9 @@ template<typename T>
 bool AllHaveComponent(const std::vector<scene::GameObject*>& gos)
 {
     for (auto* g : gos)
-        if (!g->GetComponent<T>()) return false;
+        if (!g->GetComponent<T>()) {
+            return false;
+        }
     return true;
 }
 
@@ -519,17 +635,25 @@ void DrawRemoveFromAllSelectedButton(EditorContext& ctx,
     } else {
         std::string blocker;
         for (auto* g : gos) {
-            if (!g->GetComponent<T>()) continue;
+            if (!g->GetComponent<T>()) {
+                continue;
+            }
             blocker = FindComponentRemovalBlocker(*g, typeid(T));
-            if (!blocker.empty()) { blocker += " on " + g->name; break; }
+            if (!blocker.empty()) {
+                blocker += " on " + g->name;
+                break;
+            }
         }
 
         ImGui::BeginDisabled(!blocker.empty());
         const bool clicked = ImGui::SmallButton("Remove from all selected");
         ImGui::EndDisabled();
-        if (!blocker.empty() && ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled))
+        if (!blocker.empty() && ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled)) {
             ImGui::SetTooltip("Required by %s", blocker.c_str());
-        if (!clicked) return;
+        }
+        if (!clicked) {
+            return;
+        }
 
         const bool canUndo = CanRecordEditorUndo(ctx) && ctx.activeScene;
         scene::Scene* scene = ctx.activeScene;
@@ -538,9 +662,12 @@ void DrawRemoveFromAllSelectedButton(EditorContext& ctx,
         const auto removeAll = [scene, markDirty](const std::vector<std::string>& ids) {
             for (const std::string& guid : ids)
                 if (auto* target = scene->FindByGuid(guid))
-                    if (target->GetComponent<T>())
+                    if (target->GetComponent<T>()) {
                         target->RemoveComponent<T>();
-            if (markDirty) markDirty();
+                    }
+            if (markDirty) {
+                markDirty();
+            }
         };
 
         if constexpr (copyable) {
@@ -548,7 +675,7 @@ void DrawRemoveFromAllSelectedButton(EditorContext& ctx,
             for (auto* g : gos) {
                 if (auto* c = g->GetComponent<T>()) {
                     guids.push_back(g->instanceId);
-                    /// @note やり直し用のコピーからは GPU ハンドルを消す (実体は RemoveComponent が返す)。
+                    // やり直し用のコピーからは GPU ハンドルを消す (実体は RemoveComponent が返す)。
                     removed.push_back(*c);
                     g->RemoveComponent<T>();
                 }
@@ -560,9 +687,12 @@ void DrawRemoveFromAllSelectedButton(EditorContext& ctx,
                     [scene, guids, removed, markDirty]() {
                         for (std::size_t i = 0; i < guids.size(); ++i)
                             if (auto* target = scene->FindByGuid(guids[i]))
-                                if (!target->GetComponent<T>())
+                                if (!target->GetComponent<T>()) {
                                     target->AddComponent<T>(removed[i]);
-                        if (markDirty) markDirty();
+                                }
+                        if (markDirty) {
+                            markDirty();
+                        }
                     }));
             }
         } else {
@@ -583,21 +713,28 @@ void DrawRemoveFromAllSelectedButton(EditorContext& ctx,
                     [scene, guids, removed, markDirty]() {
                         for (std::size_t i = 0; i < guids.size(); ++i) {
                             auto* target = scene->FindByGuid(guids[i]);
-                            if (!target || target->GetComponent<T>()) continue;
+                            if (!target || target->GetComponent<T>()) {
+                                continue;
+                            }
                             T& restored = target->AddComponent<T>();
                             ApplyFieldReflector applier;
                             for (const auto& change : removed[i]) {
                                 applier.change = &change;
                                 restored.Reflect(applier);
                             }
-                            if constexpr (requires(T& value) { value.collider.reset(); })
+                            if constexpr (requires(T& value) { value.collider.reset(); }) {
                                 restored.collider.reset();
+                            }
                         }
-                        if (markDirty) markDirty();
+                        if (markDirty) {
+                            markDirty();
+                        }
                     }));
             }
         }
-        if (ctx.markSceneDirty) ctx.markSceneDirty();
+        if (ctx.markSceneDirty) {
+            ctx.markSceneDirty();
+        }
     }
 }
 
@@ -614,7 +751,7 @@ void DrawSharedComponentSection(EditorContext& ctx,
     ImGui::PushID(label);
 
     if constexpr (!hasReflect || !copyable) {
-        /// @note Reflect() が無い型は辿れず、コピーできない型は編集の Undo を取れない。黙って隠さず理由を出す。
+        // Reflect() が無い型は辿れず、コピーできない型は編集の Undo を取れない。黙って隠さず理由を出す。
         ImGui::BulletText("%s", label);
         ImGui::SameLine();
         ImGui::TextDisabled("(select a single object to edit)");
@@ -623,7 +760,7 @@ void DrawSharedComponentSection(EditorContext& ctx,
         ImGui::PopID();
         return;
     } else {
-        /// @note 単体と同じカード表現にして、複数選択でも系統を帯の色で拾えるようにする。
+        // 単体と同じカード表現にして、複数選択でも系統を帯の色で拾えるようにする。
         const ImU32 accent = ComponentAccent<T>();
         const widgets::ComponentHeaderResult header =
             widgets::ComponentHeader(label, accent, nullptr, false);
@@ -643,7 +780,7 @@ void DrawSharedComponentSection(EditorContext& ctx,
         const widgets::ComponentBodyScope body = widgets::BeginComponentBody(header, accent);
         ImGui::Spacing();
 
-        /// @note ドラッグ 1 回を 1 コマンドにまとめる編集状態 (型ごとに別インスタンス)。
+        // ドラッグ 1 回を 1 コマンドにまとめる編集状態 (型ごとに別インスタンス)。
         struct BulkEdit {
             std::vector<std::string> guids;
             std::vector<T>           before;
@@ -679,13 +816,16 @@ void DrawSharedComponentSection(EditorContext& ctx,
             for (const auto& change : reflector.changes) {
                 applier.change = &change;
                 for (std::size_t i = 1; i < gos.size(); ++i)
-                    if (auto* c = gos[i]->GetComponent<T>())
+                    if (auto* c = gos[i]->GetComponent<T>()) {
                         c->Reflect(applier);
+                    }
             }
-            if (ctx.markSceneDirty) ctx.markSceneDirty();
+            if (ctx.markSceneDirty) {
+                ctx.markSceneDirty();
+            }
         }
 
-        /// @note 編集途中に Play へ入ると記録が止まるので、積む直前にも記録可否を見る。
+        // 編集途中に Play へ入ると記録が止まるので、積む直前にも記録可否を見る。
         const bool committed =
             edit.active && ctx.undoStack && ctx.undoStack->IsRecordingEnabled() &&
             (activeAfter == 0 || activeAfter != edit.activeId);
@@ -705,9 +845,12 @@ void DrawSharedComponentSection(EditorContext& ctx,
             auto applyAll = [scene, guids, markDirty](const std::vector<T>& values) {
                 for (std::size_t i = 0; i < guids.size() && i < values.size(); ++i)
                     if (auto* target = scene->FindByGuid(guids[i]))
-                        if (auto* c = target->GetComponent<T>())
+                        if (auto* c = target->GetComponent<T>()) {
                             *c = values[i];
-                if (markDirty) markDirty();
+                        }
+                if (markDirty) {
+                    markDirty();
+                }
             };
             ctx.undoStack->Push(std::make_unique<LambdaCommand>(
                 std::string("Edit ") + label + " (Multi)",
@@ -716,7 +859,7 @@ void DrawSharedComponentSection(EditorContext& ctx,
 
             edit.active = false;
         } else if (edit.active && (activeAfter == 0 || activeAfter != edit.activeId)) {
-            /// @note Undo を積めない状況 (Play 中など) でも編集状態は必ず閉じる。
+            // Undo を積めない状況 (Play 中など) でも編集状態は必ず閉じる。
             edit.active = false;
         }
 
@@ -730,24 +873,29 @@ void DrawSharedComponentSection(EditorContext& ctx,
     ImGui::PopID();
 }
 
-} /// @note namespace
+} // namespace
 
 void DrawMultiSelectInspector(EditorContext& ctx, const std::vector<scene::EntityID>& ids)
 {
-    if (!ctx.activeScene) return;
+    if (!ctx.activeScene) {
+        return;
+    }
 
     std::vector<scene::GameObject*> gos;
     gos.reserve(ids.size());
     for (auto id : ids)
-        if (auto* g = ctx.activeScene->GetGameObject(id))
+        if (auto* g = ctx.activeScene->GetGameObject(id)) {
             gos.push_back(g);
-    if (gos.empty()) return;
+        }
+    if (gos.empty()) {
+        return;
+    }
 
     ImGui::TextColored({ 0.7f, 0.85f, 1.0f, 1.0f }, "%zu objects selected", gos.size());
     ImGui::Separator();
     ImGui::Spacing();
 
-    /// @name Transform
+    // Transform
     if (ctx.playMode && !ctx.playMode->IsInEditor()) {
         ImGui::TextWrapped("Play の C# 設定は一時編集です。Edit の設定と履歴には影響しません。");
         DrawManagedSelectionSettings(ctx, gos);
@@ -766,9 +914,15 @@ void DrawMultiSelectInspector(EditorContext& ctx, const std::vector<scene::Entit
             if (active)
                 ImGui::PushStyleColor(ImGuiCol_Button,
                                       ImGui::GetStyleColorVec4(ImGuiCol_ButtonActive));
-            if (ImGui::SmallButton(label)) mode = value;
-            if (active) ImGui::PopStyleColor();
-            if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", tip);
+            if (ImGui::SmallButton(label)) {
+                mode = value;
+            }
+            if (active) {
+                ImGui::PopStyleColor();
+            }
+            if (ImGui::IsItemHovered()) {
+                ImGui::SetTooltip("%s", tip);
+            }
         };
         modeButton("Set", TransformEditMode::Set,
                    "Assign the same value to every selected object");
@@ -777,40 +931,46 @@ void DrawMultiSelectInspector(EditorContext& ctx, const std::vector<scene::Entit
                    "Apply a relative change, keeping each object's own value");
         ImGui::Spacing();
 
-        if (mode == TransformEditMode::Set) DrawTransformSetMode(ctx, gos);
-        else                                DrawTransformOffsetMode(ctx, gos);
+        if (mode == TransformEditMode::Set) {
+            DrawTransformSetMode(ctx, gos);
+        } else {
+            DrawTransformOffsetMode(ctx, gos);
+        }
 
         ImGui::Spacing();
         widgets::EndComponentBody(transformBody);
     }
     ImGui::Spacing();
 
-    /// @name 共通コンポーネント
-    /// @note 決め打ちの 8 種類 BulletText は列挙漏れの実害があったため、レジストリ由来の列挙で
-    /// @note 自動追従させる。
+    // 共通コンポーネント
+    // 決め打ちの 8 種類 BulletText は列挙漏れの実害があったため、レジストリ由来の列挙で
+    // 自動追従させる。
     ImGui::Spacing();
     ImGui::TextDisabled("Shared Components");
     ImGui::Separator();
 
     bool anyShared = false;
     scene::ForEachRegisteredComponent([&]<typename T, typename Registration>() {
-        /// @note Hidden (Internal) は単体 Inspector にも出ないので、こちらでも出さない。
-        if constexpr (Registration::inspectorMode == scene::ComponentInspectorMode::Hidden)
+        // Hidden (Internal) は単体 Inspector にも出ないので、こちらでも出さない。
+        if constexpr (Registration::inspectorMode == scene::ComponentInspectorMode::Hidden) {
             return;
-        else {
-            if (!AllHaveComponent<T>(gos)) return;
+        } else {
+            if (!AllHaveComponent<T>(gos)) {
+                return;
+            }
             anyShared = true;
             DrawSharedComponentSection<T, Registration>(ctx, gos, Registration::displayName);
         }
     });
 
-    if (!anyShared)
+    if (!anyShared) {
         ImGui::TextDisabled("The selected objects have no component in common.");
+    }
     DrawManagedSelectionSettings(ctx, gos);
 
-    /// @name 選択全体へコンポーネントを追加
-    /// @note 既に持っている対象は飛ばし、追加ぶんは 1 回の Undo でまとめて戻る
-    /// @note (「選んだ 20 個全部に AudioSource」のようなレベル調整操作に対応)。
+    // 選択全体へコンポーネントを追加
+    // 既に持っている対象は飛ばし、追加ぶんは 1 回の Undo でまとめて戻る
+    // (「選んだ 20 個全部に AudioSource」のようなレベル調整操作に対応)。
     ImGui::Spacing();
     ImGui::Separator();
     ImGui::Spacing();
@@ -822,4 +982,4 @@ void DrawMultiSelectInspector(EditorContext& ctx, const std::vector<scene::Entit
     }
 }
 
-} /// @note namespace fbzz::editor
+} // namespace fbzz::editor

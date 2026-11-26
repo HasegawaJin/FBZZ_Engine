@@ -16,20 +16,20 @@ public:
     enum class State { Idle, Building, Done, Failed, Cancelled };
 
     struct Config {
-        std::filesystem::path cmakeExe;
-        std::filesystem::path buildDir;
-        std::filesystem::path exePath;
-        std::string           target;
-        std::string           configuration;
+        std::filesystem::path cmakeExe; ///< 通常ビルドで起動する cmake.exe のパス。
+        std::filesystem::path buildDir; ///< cmake --build に渡すビルドツリーのパス。
+        std::filesystem::path exePath; ///< 呼び出し元が期待する実行ファイルの出力先。
+        std::string           target; ///< cmake --build に指定するターゲット名。
+        std::string           configuration; ///< マルチ構成ビルドで選ぶ構成名。
         /// @note CMake 自動再生成時にも FBZZ_SDK_ROOT を継承する。
-        std::string           sdkRoot;
+        std::string           sdkRoot; ///< 子プロセスの FBZZ_SDK_ROOT として渡す SDK のルート。
         /// @note 空でなければ cmake --build の代わりに完全なコマンドラインを実行する。
         /// @note HLSL ホットリロードは CMake 生成状態に依存せず、統合 bat を直接起動する必要がある。
-        std::wstring          commandLine;
-        std::filesystem::path workingDirectory;
+        std::wstring          commandLine; ///< 直接起動するコマンドライン。空なら CMake のビルドコマンドを組み立てる。
+        std::filesystem::path workingDirectory; ///< 子プロセスの作業ディレクトリ。未指定なら既定値を使う。
         /// @note ホットリロード時はエディタプロセスがエンジン DLL をロック中のため、依存ターゲットの再ビルドをスキップしないとリンカが失敗する。
-        bool                  skipDeps = false;
-        bool                  rebuild = false;
+        bool                  skipDeps = false; ///< 稼働中の Editor が参照している依存先を作り直さない設定。
+        bool                  rebuild = false; ///< 既存成果物を使わず対象を再ビルドするか。
     };
 
     Compiler() = default;
@@ -50,7 +50,11 @@ public:
     void Cancel();
 
     /// @note 実行中は状態を変えない。
-    void Reset() { if (m_state != State::Building) m_state = State::Idle; }
+    void Reset() {
+        if (m_state != State::Building) {
+            m_state = State::Idle;
+        }
+    }
 
     State              GetState()    const { return m_state; }
     const std::string& GetLog()      const { return m_log; }
@@ -64,17 +68,16 @@ private:
     bool WaitForJobExit();
     void CloseHandles();
 
-    Config      m_config;
-    State       m_state    = State::Idle;
-    std::string m_log;
-    int         m_exitCode = 0;
-    bool        m_cleanupRequested = false;
+    Config      m_config; ///< 現在または直近に起動した子プロセスの実行設定。
+    State       m_state    = State::Idle; ///< 子プロセス群の実行と終了回収の状態。
+    std::string m_log; ///< 子プロセスから読み取った標準出力と標準エラーのログ。
+    int         m_exitCode = 0; ///< 親ビルドプロセスの終了コード。
+    bool        m_cleanupRequested = false; ///< 子孫終了まで待ってからハンドルを閉じるための要求状態。
 
-    /// @note 所有する Windows handle。Win32 の宣言は実装だけへ閉じる。
-    void* m_hProcess    = nullptr;
-    void* m_hStdoutRead = nullptr;
-    void* m_hJob        = nullptr;
-    void* m_hJobEvents  = nullptr;
+    void* m_hProcess    = nullptr; ///< 所有する Windows handle。Win32 の宣言は実装だけへ閉じる。
+    void* m_hStdoutRead = nullptr; ///< 子プロセス群の標準出力とエラーを読む所有パイプハンドル。
+    void* m_hJob        = nullptr; ///< 子プロセス群をまとめて終了・回収するための所有 Job ハンドル。
+    void* m_hJobEvents  = nullptr; ///< 子プロセス群の終了通知を受け取る所有完了ポートハンドル。
 };
 
 }

@@ -21,4 +21,4 @@ enum class ModelSettingsWriteResult { DONE, BUSY, FAILED };
 /// @note 同時のUI/MCP変換を直列化し、変換成功後だけ設定とfingerprintを確定する。
 [[nodiscard]] ModelImportResult ImportModelSource(const std::string& path, const FbxImportOptions& options);
 
-} /// @note namespace fbzz::editor
+} // namespace fbzz::editor

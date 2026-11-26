@@ -30,4 +30,4 @@ private:
 
 void DrawTerrainPaintAssetInspector(EditorContext& context, const std::string& path);
 void DrawMeshInstancesAssetInspector(EditorContext& context, const std::string& path);
-} /// @note namespace fbzz::editor
+} // namespace fbzz::editor

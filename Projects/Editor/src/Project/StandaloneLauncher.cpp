@@ -28,7 +28,7 @@ bool SpawnProcess(std::wstring cmdLine, const std::wstring& workingDir)
 
     const BOOL ok = CreateProcessW(
         nullptr,
-        /// @note コピーを渡す (書き込み可能バッファ)
+        // コピーを渡す (書き込み可能バッファ)
         cmdLine.data(),
         nullptr, nullptr,
         FALSE, 0,
@@ -49,7 +49,7 @@ bool SpawnProcess(std::wstring cmdLine, const std::wstring& workingDir)
 
 bool StandaloneLauncher::LaunchExe(const std::string& exePath, const std::string& workingDir)
 {
-    /// @note ビルド済み配布版は引数なしで起動すると .fbzz_proj を自動検出して Standalone モードになる。
+    // ビルド済み配布版は引数なしで起動すると .fbzz_proj を自動検出して Standalone モードになる。
     std::wstring cmd = L"\"" + StringUtils::ToWide(exePath) + L"\"";
     return SpawnProcess(std::move(cmd), StringUtils::ToWide(workingDir));
 }

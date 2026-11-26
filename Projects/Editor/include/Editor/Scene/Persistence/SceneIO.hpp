@@ -17,10 +17,10 @@ namespace fbzz::editor {
 struct EditorSceneState;
 
 struct SceneSaveResult {
-    bool succeeded = false;
-    bool diskChanged = false;
-    std::size_t contentHash = 0;
-    std::filesystem::file_time_type writeTime{};
+    bool succeeded = false; ///< シーン本体と必要な Editor メタデータの保存が完了したか。
+    bool diskChanged = false; ///< 確定前に保存先の更新を検知したため、上書きを中止したか。
+    std::size_t contentHash = 0; ///< バックアップを除く保存成功時に、ディスクの内容との比較に使う TOML のハッシュ。
+    std::filesystem::file_time_type writeTime{}; ///< シーン本体を書き出した直後のファイル更新時刻。
 };
 
 class SceneIO {
@@ -49,4 +49,4 @@ public:
     static void SetEditorSceneState(EditorSceneState* state);
 };
 
-} /// @note namespace fbzz::editor
+} // namespace fbzz::editor

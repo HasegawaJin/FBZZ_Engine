@@ -71,22 +71,35 @@ inline bool FlowFieldChannelMask(const char* label, std::uint32_t& mask)
 {
     bool changed = false;
     char preview[16];
-    if (mask == 0xFFFFFFFFu)    std::snprintf(preview, sizeof(preview), "All");
-    else if (mask == 0u)        std::snprintf(preview, sizeof(preview), "None");
-    else                        std::snprintf(preview, sizeof(preview), "0x%08X", mask);
+    if (mask == 0xFFFFFFFFu) {
+        std::snprintf(preview, sizeof(preview), "All");
+    } else if (mask == 0u) {
+        std::snprintf(preview, sizeof(preview), "None");
+    } else {
+        std::snprintf(preview, sizeof(preview), "0x%08X", mask);
+    }
 
     ImGui::PushID(label);
-    if (ImGui::Button(preview, ImVec2(ImGui::CalcItemWidth(), 0.0f)))
+    if (ImGui::Button(preview, ImVec2(ImGui::CalcItemWidth(), 0.0f))) {
         ImGui::OpenPopup("##channels");
+    }
     ImGui::SameLine(0.0f, ImGui::GetStyle().ItemInnerSpacing.x);
     ImGui::TextUnformatted(label);
     if (ImGui::BeginPopup("##channels")) {
-        if (ImGui::SmallButton("All"))  { mask = 0xFFFFFFFFu; changed = true; }
+        if (ImGui::SmallButton("All")) {
+            mask = 0xFFFFFFFFu;
+            changed = true;
+        }
         ImGui::SameLine();
-        if (ImGui::SmallButton("None")) { mask = 0u; changed = true; }
+        if (ImGui::SmallButton("None")) {
+            mask = 0u;
+            changed = true;
+        }
         ImGui::Separator();
         for (int bit = 0; bit < 32; ++bit) {
-            if (bit % 8 != 0) ImGui::SameLine();
+            if (bit % 8 != 0) {
+                ImGui::SameLine();
+            }
             ImGui::PushID(bit);
             bool on = (mask & (1u << bit)) != 0u;
             char name[4];
@@ -107,7 +120,7 @@ inline bool FlowFieldChannelMask(const char* label, std::uint32_t& mask)
 /// @note 解決できない (画像でない / 見つからない) 場合は nullptr。
 /// @note パス解決と .mat の albedo 探索は毎フレームやるには重いので結果を覚える。
 /// @note resetVersion が変わったらキャッシュ全体を捨てる (古いテクスチャ ID が無効になるため)。
-/// @param relativePath projectRoot 相対のアセットパス
+/// @param[in] relativePath projectRoot 相対のアセットパス
 [[nodiscard]] void* ResolveAssetThumbnail(const std::string& relativePath,
                                           renderer::ResourceManager* resources,
                                           renderer::IImGuiRenderer* imguiRenderer);
@@ -131,10 +144,10 @@ void EndHeadingFont();
 /// @note 何も無いパネルの中身。アイコン・見出し・一言・(あれば) 次の一手のボタンを中央へ置く。
 /// @note 「何も無い」は全パネルに必ず現れる状態。灰色の 1 行だけでは次に何をすればよいか分からず
 /// @note 初めて開いた人がそこで止まるため、形を 1 つにして言葉だけ各パネルが決める。
-/// @param icon        EditorIcons の字 (icons::Or 済み)。nullptr なら絵を出さない
-/// @param title       状態の名前 (「まだ何も無い」)。必須
-/// @param hint        次に何をすればよいか。nullptr なら出さない
-/// @param actionLabel 押せる次の一手。nullptr ならボタンを出さない
+/// @param[in] icon EditorIcons の字 (icons::Or 済み)。nullptr なら絵を出さない
+/// @param[in] title 状態の名前 (「まだ何も無い」)。必須
+/// @param[in] hint 次に何をすればよいか。nullptr なら出さない
+/// @param[in] actionLabel 押せる次の一手。nullptr ならボタンを出さない
 /// @return actionLabel のボタンが押された
 bool EmptyState(const char* icon, const char* title,
                 const char* hint = nullptr, const char* actionLabel = nullptr);
@@ -142,9 +155,9 @@ bool EmptyState(const char* icon, const char* title,
 /// @note id ごとに保持した値を target へ寄せて返す (0〜1 の進捗に使う)。
 /// @note ImGui の ImGuiStorage に id をキーとして float を置くことで前回値を持つ。ウィジェットと
 /// @note 同じ寿命なので、パネル側にアニメーション用のメンバーを生やさずに済む。
-/// @param id     ImGui::GetID() などで作った一意な ID
-/// @param target 目標値
-/// @param speed  1 秒あたりに詰める割合 (既定はおよそ 100ms で到達する速さ)
+/// @param[in] id ImGui::GetID() などで作った一意な ID
+/// @param[in] target 目標値
+/// @param[in] speed 1 秒あたりに詰める割合 (既定はおよそ 100ms で到達する速さ)
 [[nodiscard]] float Animate(ImGuiID id, float target, float speed = 12.0f);
 
 /// @note 色付きテキスト
@@ -156,7 +169,7 @@ void ReadOnlyText(const char* label, const char* text);
 /// @note レンジ付き数値フィールド: スライダー (ゲージ) + 編集可能な数値入力ボックスを 1 行に並べる。
 /// @note ゲージで量感とドラッグを、右の入力ボックスで正確なタイプ入力を同時に満たす。
 /// @note ImGui::SliderFloat の差し替え先として使えるよう、ラベルは右側に描く ("##" 始まりで非表示)。
-/// @param tooltip 非 nullptr なら、ゲージ / 入力ボックス / ラベルのどこをホバーしても表示する
+/// @param[in] tooltip 非 nullptr なら、ゲージ / 入力ボックス / ラベルのどこをホバーしても表示する
 /// @note (呼び出し側の IsItemHovered() では最後のアイテムしか拾えないため)。
 /// @return true if value changed
 /// @note 整数版のレンジ入力。float 版と同じ「ゲージ + 数値ボックス」の見た目で描く。
@@ -197,10 +210,10 @@ bool DragIntExpr(const char* id, int& value, float speed,
 /// @note 軸ごとに色分けした多成分ドラッグ入力 (X [1.234] Y [0.000] Z [-2.500])。
 /// @note 成分ごとに独立した DragFloat のため Ctrl+Click/Alt/Shift はそのまま使える。BeginGroup で
 /// @note 囲んであるので IsItemActivated()/IsItemDeactivatedAfterEdit() は全成分まとめて機能する。
-/// @param id  "##" 始まりならラベル非表示。それ以外は共通のプロパティ行に置く。
-/// @param count 成分数 (1..4 / それぞれ X Y Z W として描く)
-/// @param speed <= 0 を渡すと成分ごとに AdaptiveDragSpeed() を使う
-/// @param flags 各成分のドラッグと数値の揃え方に適用するフラグ。
+/// @param[in] id "##" 始まりならラベル非表示。それ以外は共通のプロパティ行に置く。
+/// @param[in] count 成分数 (1..4 / それぞれ X Y Z W として描く)
+/// @param[in] speed <= 0 を渡すと成分ごとに AdaptiveDragSpeed() を使う
+/// @param[in] flags 各成分のドラッグと数値の揃え方に適用するフラグ。
 /// @return true if any component changed
 bool DragAxes(const char* id, float* values, int count,
               float speed = 0.1f, float min = 0.0f, float max = 0.0f,
@@ -212,14 +225,16 @@ inline bool DragAxes(const char* id, math::Vector3& v, float speed = 0.1f,
                      ImGuiSliderFlags flags = 0)
 {
     float arr[3] = { v.x, v.y, v.z };
-    if (!DragAxes(id, arr, 3, speed, min, max, fmt, 0, nullptr, 0, flags)) return false;
+    if (!DragAxes(id, arr, 3, speed, min, max, fmt, 0, nullptr, 0, flags)) {
+        return false;
+    }
     v = { arr[0], arr[1], arr[2] };
     return true;
 }
 
 /// @note 等比リンク付きのスケール入力。[▌X] [▌Y] [▌Z] [鍵]
 /// @note 鍵を閉じている間は、掴んだ成分の変化率を他成分へそのまま掛けて比率を保つ。
-/// @param uniform リンク状態 (呼び出し側が保持する。ボタン押下でトグルされる)
+/// @param[in,out] uniform リンク状態 (呼び出し側が保持する。ボタン押下でトグルされる)
 /// @return true if the vector changed
 bool DragScaleAxes(const char* id, math::Vector3& scale, bool& uniform,
                    float speed = 0.01f);
@@ -235,8 +250,8 @@ void LabelEllipsis(const char* text, float maxWidth);
 /// @note ImGui は「これから描く行の高さ」を事前に知らないので、前フレームの実測高さを
 /// @note ImGuiStorage に覚えて背景を先に描く (初回だけ既定高さで代用する)。
 struct PropertyRowScope {
-    ImGuiID key = 0;      ///< @note 行高を覚える ImGuiStorage のキー
-    float   top = 0.0f;   ///< @note 行の開始 Y (スクリーン座標)
+    ImGuiID key = 0;      ///< 行高を覚える ImGuiStorage のキー
+    float   top = 0.0f;   ///< 行の開始 Y (スクリーン座標)
 };
 [[nodiscard]] PropertyRowScope BeginPropertyRow();
 void EndPropertyRow(const PropertyRowScope& row);
@@ -269,16 +284,16 @@ void EndPropertyField(const PropertyRowScope& row);
 /// @note 10 枚以上積まれる画面で、スクロール中でも色と塊で目的地を拾えるようにする。
 
 struct ComponentHeaderResult {
-    bool   open           = false;  ///< @note 本文を描くか (折り畳み状態)
-    bool   enabledChanged = false;  ///< @note 有効チェックが操作された
-    bool   menuClicked    = false;  ///< @note ⋯ を押した / ヘッダーを右クリックした
-    ImVec2 rectMin{};               ///< @note ヘッダー矩形 (呼び出し側の追加描画用)
+    bool   open           = false;  ///< 本文を描くか (折り畳み状態)
+    bool   enabledChanged = false;  ///< 有効チェックが操作された
+    bool   menuClicked    = false;  ///< ⋯ を押した / ヘッダーを右クリックした
+    ImVec2 rectMin{};               ///< ヘッダー矩形 (呼び出し側の追加描画用)
     ImVec2 rectMax{};
 };
 
 /// @note ドロップを受けたときの通知。
-/// @param draggedKey  掴まれた側の識別子 (ComponentReorderTarget::dragKey、既定は label)
-/// @param insertAfter true = このカードの直後へ、false = 直前へ挿入する
+/// @param[in] draggedKey 掴まれた側の識別子 (ComponentReorderTarget::dragKey、既定は label)
+/// @param[in] insertAfter true = このカードの直後へ、false = 直前へ挿入する
 using ComponentReorderCallback =
     std::function<void(std::string_view draggedKey, bool insertAfter)>;
 
@@ -287,8 +302,8 @@ using ComponentReorderCallback =
 /// @note (Inspector には Component の表示順・Script の実行順・PostProcess の適用順が同時に並ぶ)。
 /// @note dragKey は、同じ表示名が複数並びうるリストで要素を一意に指すための任意キー。
 struct ComponentReorderTarget {
-    const char*              scope   = nullptr; ///< @note 並び替えグループ ID (英数字・18 文字以内)
-    const char*              dragKey = nullptr; ///< @note ペイロードに載せる識別子。null なら label
+    const char*              scope   = nullptr; ///< 並び替えグループ ID (英数字・18 文字以内)
+    const char*              dragKey = nullptr; ///< ペイロードに載せる識別子。null なら label
     ComponentReorderCallback onDrop{};
 
     /// @note scope と onDrop の両方が揃って初めて並び替え可能とみなす。
@@ -304,11 +319,11 @@ struct ComponentToggleOptions {
 
 /// @brief コンポーネントカードのヘッダー。
 /// @note [帯] [▼] [✓] Name ................................... [⋯]
-/// @param label   表示名 (ImGui ID もこの文字列から作るので、同じ親の中で一意にすること)
-/// @param accent  左帯の色 (カテゴリ色)
-/// @param enabled 有効チェックを出す場合の参照先。nullptr ならチェックを描かない
+/// @param[in] label 表示名 (ImGui ID もこの文字列から作るので、同じ親の中で一意にすること)
+/// @param[in] accent 左帯の色 (カテゴリ色)
+/// @param[in,out] enabled 有効チェックを出す場合の参照先。nullptr ならチェックを描かない
 /// @note (BoneComponent のように常に有効な補助コンポーネント用)
-/// @param reorder マウスでの並び替え指定。既定 (空) ならドラッグ元にもドロップ先にもならない
+/// @param[in] reorder マウスでの並び替え指定。既定 (空) ならドラッグ元にもドロップ先にもならない
 ComponentHeaderResult ComponentHeader(const char* label, ImU32 accent,
                                       bool* enabled, bool defaultOpen = true,
                                       const ComponentReorderTarget& reorder = {},
@@ -341,22 +356,22 @@ void EndCard(const ComponentBodyScope& card);
 /// @note 「今なにが入っているか」「ここへ落とせるか」「型が合っているか」を枠と色で同時に見せる。
 
 enum class ReferenceSlotState {
-    Empty,     ///< @note 未割り当て
-    Assigned,  ///< @note 割り当て済み
-    Invalid,   ///< @note 割り当て済みだが型が合わない / 参照先が見つからない
+    Empty,     ///< 未割り当て
+    Assigned,  ///< 割り当て済み
+    Invalid,   ///< 割り当て済みだが型が合わない / 参照先が見つからない
 };
 
 /// @note スロット本体を描く。呼び出し後は「直前のアイテム」が本体なので、
 /// @note 続けて BeginDragDropTarget() / SetTooltip() をそのまま付けられる。
-/// @param dropActive 受理できるペイロードをドラッグ中なら true (枠をアクセント色で光らせる)
-/// @param trailing   本体の右に並べるボタン数 (幅の予約に使う)
+/// @param[in] dropActive 受理できるペイロードをドラッグ中なら true (枠をアクセント色で光らせる)
+/// @param[in] trailing 本体の右に並べるボタン数 (幅の予約に使う)
 /// @return 本体がクリックされたか
 bool BeginReferenceSlot(const char* id, const char* text, ReferenceSlotState state,
                         bool dropActive, int trailing);
 
 struct ReferenceSlotButtons {
-    bool pick  = false;  ///< @note ◎ 一覧から選ぶ
-    bool clear = false;  ///< @note × 参照を外す
+    bool pick  = false;  ///< ◎ 一覧から選ぶ
+    bool clear = false;  ///< × 参照を外す
 };
 /// @note 本体の右へ ◎ と × を並べる。グリフはフォントに依存しないよう自前描画。
 ReferenceSlotButtons EndReferenceSlot(bool showPick = true, bool showClear = true);
@@ -372,8 +387,8 @@ struct ListRowButtons {
 
 /// @note リスト要素 1 行の右端に並べる操作ボタン (▲ ▼ ✕)。直前のアイテムへ SameLine で続ける。
 /// @note 端の要素では対応するボタンを無効表示にする (押せるのに動かないボタンを作らない)。
-/// @param removable false なら ✕ を出さない (FBZZ_FIXED_LIST)
-/// @param sameLine  false なら先頭の SameLine を省き、呼び出し側が置いたカーソル位置から描く。
+/// @param[in] removable false なら ✕ を出さない (FBZZ_FIXED_LIST)
+/// @param[in] sameLine false なら先頭の SameLine を省き、呼び出し側が置いたカーソル位置から描く。
 /// @note 構造体配列の見出し行の右端へ寄せたいとき、SameLine だと打ち消されるため。
 ListRowButtons ListRowToolbar(int index, int count, bool removable, bool sameLine = true);
 
@@ -387,9 +402,9 @@ ListRowButtons ListRowToolbar(int index, int count, bool removable, bool sameLin
 /// @note 行頭のドラッグつまみ。ここを掴んで行を並び替える。
 /// @note 行の本体は値ウィジェットで、そこを掴むのは「値を動かす」操作。掴みどころを分けないと
 /// @note 2 つの操作が同じドラッグに重なる。
-/// @param listId       ListScopeId() の値
-/// @param index        この行の index
-/// @param outInsertAfter ドロップ位置がこの行の前か後ろか
+/// @param[in] listId ListScopeId() の値
+/// @param[in] index この行の index
+/// @param[out] outInsertAfter ドロップ位置がこの行の前か後ろか
 /// @return ドロップされた要素の元 index。ドロップが無ければ -1
 int ListRowDragHandle(ImGuiID listId, int index, bool& outInsertAfter);
 
@@ -414,8 +429,8 @@ void EndRightReserve(const RightReserveScope& scope);
 /// @note widgets 層は EditorContext を知らないので one-shot の静的チャネルに積み、
 /// @note EditorApp が毎フレーム 1 回だけ取り出してパネル間リクエストへ移す。
 struct AssetRevealRequest {
-    std::string path;                      ///< @note 欄に入っている値 (Assets 起点の相対パス)
-    bool        selectInInspector = false; ///< @note true = Inspector の表示対象もこのアセットへ移す
+    std::string path;                      ///< 欄に入っている値 (Assets 起点の相対パス)
+    bool        selectInInspector = false; ///< true = Inspector の表示対象もこのアセットへ移す
 };
 void RequestAssetReveal(std::string assetPath, bool selectInInspector);
 /// @note 保留中の要求を取り出して消す。要求が無ければ false (out は変更しない)。
@@ -454,8 +469,8 @@ inline bool AssetPathFieldWithLoad(const char* label, std::string& path,
 [[nodiscard]] float TextureThumbnailSize();
 
 /// @brief 割り当て済みテクスチャの正方形サムネイルを 1 枚描く。D&D の受け皿も兼ねる。
-/// @param size  一辺 [px]。0 以下なら TextureThumbnailSize()。
-/// @param filterExts nullptr ならドロップを受けない (AssetPathField と同じ書式)。
+/// @param[in] size 一辺 [px]。0 以下なら TextureThumbnailSize()。
+/// @param[in] filterExts nullptr ならドロップを受けない (AssetPathField と同じ書式)。
 /// @return ドロップで path が変わったら true。
 /// @pre  サムネイルの解決には DrawAssetPickerModal() へ渡した ResourceManager /
 /// @note IImGuiRenderer を使う。渡していない場合は枠だけを描く。
@@ -500,8 +515,8 @@ bool AcceptAssetPathDrop(std::string& outPath, const char* filterExts = nullptr)
 /// @note 各パネルが個別に実装すると端からの距離・速度・DeltaTime の扱いがばらつき、
 /// @note ドラッグ操作の感触が揃わないため 1 つに集約する。
 struct DragAutoScrollOptions {
-    float edgeSize = 48.0f;  ///< @note 上下端からこの距離以内をスクロール帯にする (px)
-    float maxSpeed = 720.0f; ///< @note スクロール帯の最端での最大速度 (px / 秒)
+    float edgeSize = 48.0f;  ///< 上下端からこの距離以内をスクロール帯にする (px)
+    float maxSpeed = 720.0f; ///< スクロール帯の最端での最大速度 (px / 秒)
 };
 
 /// @note 現在の ImGui ウィンドウを、ドラッグ中の自動スクロール対象にする。
@@ -521,18 +536,18 @@ inline math::Vector3 QuatToEulerDeg(const math::Quaternion& q)
     constexpr float DEG = 180.0f / 3.14159265f;
     const math::Matrix4 m = math::Matrix4::Rotate(q);
 
-    /// @note R = Ry * Rx * Rz: R[1][2] = -sin(X)
+    // R = Ry * Rx * Rz: R[1][2] = -sin(X)
     float x = std::asin((std::max)(-1.0f, (std::min)(1.0f, -m.m[1][2])));
     float y = 0.0f;
     float z = 0.0f;
 
     if (std::abs(std::cos(x)) > 1e-6f) {
-        /// @note R[0][2] = sin(Y)*cos(X), R[2][2] = cos(Y)*cos(X)
+        // R[0][2] = sin(Y)*cos(X), R[2][2] = cos(Y)*cos(X)
         y = std::atan2(m.m[0][2], m.m[2][2]);
-        /// @note R[1][0] = cos(X)*sin(Z), R[1][1] = cos(X)*cos(Z)
+        // R[1][0] = cos(X)*sin(Z), R[1][1] = cos(X)*cos(Z)
         z = std::atan2(m.m[1][0], m.m[1][1]);
     } else {
-        /// @note ジンバルロック (X ≈ ±90°): Z=0 とし Y を復元
+        // ジンバルロック (X ≈ ±90°): Z=0 とし Y を復元
         y = std::atan2(-m.m[2][0], m.m[0][0]);
     }
 
@@ -548,7 +563,9 @@ inline math::Quaternion EulerDegToQuat(const math::Vector3& deg)
 
 inline float SanitizeEulerDeg(float value)
 {
-    if (std::abs(value) < 0.0001f) return 0.0f;
+    if (std::abs(value) < 0.0001f) {
+        return 0.0f;
+    }
     return value;
 }
 
@@ -596,9 +613,11 @@ inline bool DragQuatEuler3(const char* label, math::Quaternion& q, float speed =
         storage->GetFloat(eulerZKey, 0.0f)
     };
 
-    /// @note 軸色付きの成分入力を使う。回転はどの軸を触っているかの誤認が最も痛い値なので、
-    /// @note Pitch(X) / Yaw(Y) / Roll(Z) を色で区別できるようにしておく。
-    if (!DragAxes(label, values, 3, speed, 0.0f, 0.0f, "%.1f", 0, nullptr, 0, flags)) return false;
+    // 軸色付きの成分入力を使う。回転はどの軸を触っているかの誤認が最も痛い値なので、
+    // Pitch(X) / Yaw(Y) / Roll(Z) を色で区別できるようにしておく。
+    if (!DragAxes(label, values, 3, speed, 0.0f, 0.0f, "%.1f", 0, nullptr, 0, flags)) {
+        return false;
+    }
 
     values[0] = SanitizeEulerDeg(values[0]);
     values[1] = SanitizeEulerDeg(values[1]);

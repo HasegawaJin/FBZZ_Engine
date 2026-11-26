@@ -30,8 +30,12 @@ namespace {
 
 scene::GameObject* ResolveNode(const OpContext& c, const std::string& nodeId)
 {
-    if (c.ctx.activeScene == nullptr) return nullptr;
-    if (nodeId.empty()) return c.ctx.GetSelectedGO();
+    if (c.ctx.activeScene == nullptr) {
+        return nullptr;
+    }
+    if (nodeId.empty()) {
+        return c.ctx.GetSelectedGO();
+    }
     return c.ctx.activeScene->FindByGuid(nodeId);
 }
 
@@ -58,17 +62,21 @@ void RegisterRenameOperator(OperatorRegistry& registry)
     nameParam.desc = "新しい名前 (空は不可)";
     op.params = { nodeParam, nameParam };
 
-    /// @note 名前が同じかは exec で見る。引数なしのメニュー問い合わせで常に無効化されないため。
+    // 名前が同じかは exec で見る。引数なしのメニュー問い合わせで常に無効化されないため。
     op.poll = [](const OpContext& c, const OpArgs& args) {
         return ResolveNode(c, args.GetString("node")) != nullptr;
     };
 
     op.exec = [](OpContext& c, const OpArgs& args) -> OpResult {
         scene::GameObject* go = ResolveNode(c, args.GetString("node"));
-        if (go == nullptr) return OpResult::Err("NO_NODE", "対象の GameObject が見つかりません");
+        if (go == nullptr) {
+            return OpResult::Err("NO_NODE", "対象の GameObject が見つかりません");
+        }
 
         const std::string newName = args.GetString("name");
-        if (newName.empty()) return OpResult::Err("BAD_ARG", "name が空です");
+        if (newName.empty()) {
+            return OpResult::Err("BAD_ARG", "name が空です");
+        }
 
         OpResult result;
         result.command = MakeRenameNodeCommand(c.ctx, go->GetID(), newName,
@@ -93,14 +101,24 @@ int ReorderDestination(const scene::Scene& scene, const scene::GameObject& node,
     } else {
         const auto roots = scene.GetRootGameObjects();
         const auto found = std::find(roots.begin(), roots.end(), &node);
-        if (found == roots.end()) return -1;
+        if (found == roots.end()) {
+            return -1;
+        }
         index = static_cast<int>(found - roots.begin());
         count = static_cast<int>(roots.size());
     }
-    if (direction == "up" && index > 0) return index - 1;
-    if (direction == "down" && index + 1 < count) return index + 1;
-    if (direction == "first" && index > 0) return 0;
-    if (direction == "last" && index + 1 < count) return count - 1;
+    if (direction == "up" && index > 0) {
+        return index - 1;
+    }
+    if (direction == "down" && index + 1 < count) {
+        return index + 1;
+    }
+    if (direction == "first" && index > 0) {
+        return 0;
+    }
+    if (direction == "last" && index + 1 < count) {
+        return count - 1;
+    }
     return -1;
 }
 
@@ -146,11 +164,14 @@ void RegisterHierarchyNodeOperators(OperatorRegistry& registry)
     group.exec = [](OpContext& context, const OpArgs&) {
         auto& world = *context.ctx.activeScene;
         const auto roots = CollectHierarchyRoots(world, context.ctx.selectedEntities);
-        if (roots.empty() || !world.CanCreateGameObjects(1))
+        if (roots.empty() || !world.CanCreateGameObjects(1)) {
             return OpResult::Err("GROUP_UNAVAILABLE", "選択したオブジェクトのグループを作成できません。");
+        }
         const auto* commonParent = world.GetGameObject(roots.front())->GetParent();
         for (const auto root : roots) {
-            if (world.GetGameObject(root)->GetParent() == commonParent) continue;
+            if (world.GetGameObject(root)->GetParent() == commonParent) {
+                continue;
+            }
             commonParent = nullptr;
             break;
         }
@@ -158,10 +179,16 @@ void RegisterHierarchyNodeOperators(OperatorRegistry& registry)
         OpResult result;
         result.command = MakeSceneEditCommand(context.ctx, "Group Selection", [&] {
             auto* created = world.TryCreateGameObject("Group");
-            if (!created) return;
-            if (auto* parent = world.GetGameObject(parentId)) created->SetParent(parent);
+            if (!created) {
+                return;
+            }
+            if (auto* parent = world.GetGameObject(parentId)) {
+                created->SetParent(parent);
+            }
             for (const auto root : roots)
-                if (auto* child = world.GetGameObject(root)) child->SetParent(created);
+                if (auto* child = world.GetGameObject(root)) {
+                    child->SetParent(created);
+                }
             SelectEntity(context.ctx, created->GetID(), SelectionReveal::Skip);
         });
         return result;
@@ -216,7 +243,9 @@ CreateObjectRequest ReadCreateRequest(const OpArgs& args, CreateObjectSource sou
 /// @note 生成物の種類の誤りは exec で診断し、poll の NOT_AVAILABLE による原因の隠蔽を避ける。
 bool PollCreate(const OpContext& c, const OpArgs& args)
 {
-    if (c.ctx.activeScene == nullptr) return false;
+    if (c.ctx.activeScene == nullptr) {
+        return false;
+    }
     const std::string parent = args.GetString("parent");
     return parent.empty() || c.ctx.activeScene->FindByGuid(parent) != nullptr;
 }
@@ -225,25 +254,33 @@ OpResult ExecCreate(OpContext& c, const CreateObjectRequest& request)
 {
     std::string code;
     std::string message;
-    if (!ValidateCreateObjectRequest(c.ctx, request, code, message))
+    if (!ValidateCreateObjectRequest(c.ctx, request, code, message)) {
         return OpResult::Err(std::move(code), std::move(message));
+    }
 
     auto createdIds = std::make_shared<std::vector<std::string>>();
     OpResult result;
     result.command = MakeCreateObjectCommand(
         c.ctx, request, CreateObjectLabel(request), true,
         [createdIds](const std::vector<std::string>& ids) { *createdIds = ids; });
-    if (!result.command)
+    if (!result.command) {
         return OpResult::Err("CREATE_FAILED", "生成に失敗しました: " + request.key);
+    }
 
     OpData ids = OpData::MakeArray();
-    for (const std::string& id : *createdIds) ids.Push(id);
-    if (!createdIds->empty()) result.data.Set("id", createdIds->front());
+    for (const std::string& id : *createdIds) {
+        ids.Push(id);
+    }
+    if (!createdIds->empty()) {
+        result.data.Set("id", createdIds->front());
+    }
     result.data.Set("ids", std::move(ids));
 
     const scene::GameObject* parent = request.parentGuid.empty()
         ? nullptr : c.ctx.activeScene->FindByGuid(request.parentGuid);
-    if (IsInsidePrefabInstance(parent)) result.message = PrefabInstanceChildWarning();
+    if (IsInsidePrefabInstance(parent)) {
+        result.message = PrefabInstanceChildWarning();
+    }
     return result;
 }
 
@@ -282,9 +319,13 @@ void RegisterCreateOperators(OperatorRegistry& registry)
         preset.name = "preset";
         preset.type = OpParamType::String;
         preset.desc = "プリセット id (\"3d.cube\" 等)";
-        for (const ObjectPreset& entry : ObjectPresetCatalog()) preset.enumValues.emplace_back(entry.id);
+        for (const ObjectPreset& entry : ObjectPresetCatalog()) {
+            preset.enumValues.emplace_back(entry.id);
+        }
         op.params = { preset };
-        for (OpParam& common : CreateCommonParams()) op.params.push_back(std::move(common));
+        for (OpParam& common : CreateCommonParams()) {
+            op.params.push_back(std::move(common));
+        }
         op.exec = [](OpContext& c, const OpArgs& args) {
             return ExecCreate(c, ReadCreateRequest(args, CreateObjectSource::Preset, args.GetString("preset")));
         };
@@ -299,7 +340,9 @@ void RegisterCreateOperators(OperatorRegistry& registry)
         path.type = OpParamType::String;
         path.desc = ".prefab / .vfx のパス (projectRoot 相対か絶対)";
         op.params = { path };
-        for (OpParam& common : CreateCommonParams()) op.params.push_back(std::move(common));
+        for (OpParam& common : CreateCommonParams()) {
+            op.params.push_back(std::move(common));
+        }
         op.exec = [](OpContext& c, const OpArgs& args) {
             return ExecCreate(c, ReadCreateRequest(args, CreateObjectSource::Prefab, args.GetString("path")));
         };
@@ -314,19 +357,22 @@ void RegisterCreateOperators(OperatorRegistry& registry)
         script.type = OpParamType::String;
         script.desc = "完全クラス名または一意な短いクラス名 (\"EnemyComponent\" 等)";
         op.params = { script };
-        for (OpParam& common : CreateCommonParams()) op.params.push_back(std::move(common));
+        for (OpParam& common : CreateCommonParams()) {
+            op.params.push_back(std::move(common));
+        }
         op.exec = [](OpContext& c, const OpArgs& args) {
             const std::string requestedType = args.GetString("script");
             std::string typeKey;
-            if (!scene::ScriptFactory::ResolveTypeName(requestedType, typeKey))
+            if (!scene::ScriptFactory::ResolveTypeName(requestedType, typeKey)) {
                 return OpResult::Err("TYPE_NOT_FOUND_OR_AMBIGUOUS", "スクリプト型が未登録または曖昧です。完全クラス名を指定してください: " + requestedType);
+            }
             return ExecCreate(c, ReadCreateRequest(args, CreateObjectSource::Script, typeKey));
         };
         registry.Register(std::move(op));
     }
 }
 
-} /// @note namespace
+} // namespace
 
 void RegisterNodeOperators(OperatorRegistry& registry)
 {
@@ -336,4 +382,4 @@ void RegisterNodeOperators(OperatorRegistry& registry)
     RegisterHierarchyNodeOperators(registry);
 }
 
-} /// @note namespace fbzz::editor
+} // namespace fbzz::editor

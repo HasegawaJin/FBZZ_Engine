@@ -22,14 +22,14 @@ public:
     void Draw(EditorContext& ctx, std::string_view sourcePath, float previewHeight);
 
 private:
-    std::string m_sourcePath;
-    renderer::ResourceManager* m_resourceOwner = nullptr;
-    renderer::ResourceHandle<renderer::TextureTag> m_texture;
-    std::int64_t m_writeTime = 0;
-    std::uint64_t m_resetVersion = 0;
-    double m_nextFileCheck = 0.0;
-    bool m_fileExists = false;
-    bool m_checkedFile = false;
+    std::string m_sourcePath; ///< 現在プレビューしているテクスチャ原本のパス。
+    renderer::ResourceManager* m_resourceOwner = nullptr; ///< 表示するテクスチャを解決した借用 ResourceManager。
+    renderer::ResourceHandle<renderer::TextureTag> m_texture; ///< 現在の原本に対応する描画用テクスチャハンドル。
+    std::int64_t m_writeTime = 0; ///< 前回確認したテクスチャ原本の更新時刻。
+    std::uint64_t m_resetVersion = 0; ///< テクスチャ取得時の ResourceManager のリセット世代。
+    double m_nextFileCheck = 0.0; ///< 原本ファイルを次に確認できる ImGui の時刻 [s]。
+    bool m_fileExists = false; ///< 前回のファイル確認で原本が存在したか。
+    bool m_checkedFile = false; ///< 選択中の原本パスについてファイル状態を確認済みか。
 };
 
-} /// @note namespace fbzz::editor
+} // namespace fbzz::editor

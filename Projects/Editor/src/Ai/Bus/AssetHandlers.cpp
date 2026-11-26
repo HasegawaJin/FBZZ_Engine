@@ -41,22 +41,32 @@ namespace {
 Outcome DoAssetList(editor::EditorContext& ctx, const JsonValue& payload)
 {
     namespace fs = std::filesystem;
-    if (ctx.projectRoot.empty()) return Outcome::Err("NO_PROJECT", "projectRoot が未設定です");
+    if (ctx.projectRoot.empty()) {
+        return Outcome::Err("NO_PROJECT", "projectRoot が未設定です");
+    }
 
     std::error_code ec;
     fs::path base = fs::path(ctx.projectRoot);
     const std::string dir = StringField(payload, "dir");
-    if (!dir.empty()) base /= fs::path(dir);
+    if (!dir.empty()) {
+        base /= fs::path(dir);
+    }
 
     const fs::path canonicalBase = fs::weakly_canonical(base, ec);
     const fs::path canonicalRoot = fs::weakly_canonical(fs::path(ctx.projectRoot), ec);
-    if (ec) return Outcome::Err("BAD_PATH", "パス解決に失敗しました");
+    if (ec) {
+        return Outcome::Err("BAD_PATH", "パス解決に失敗しました");
+    }
 
-    /// @note projectRoot の外 (`..` を含む) は列挙させない。
+    // projectRoot の外 (`..` を含む) は列挙させない。
     const std::string baseStr = canonicalBase.generic_string();
     const std::string rootStr = canonicalRoot.generic_string();
-    if (baseStr.rfind(rootStr, 0) != 0) return Outcome::Err("BAD_PATH", "projectRoot の外は列挙できません");
-    if (!fs::is_directory(canonicalBase, ec)) return Outcome::Err("NOT_A_DIR", "ディレクトリではありません: " + dir);
+    if (baseStr.rfind(rootStr, 0) != 0) {
+        return Outcome::Err("BAD_PATH", "projectRoot の外は列挙できません");
+    }
+    if (!fs::is_directory(canonicalBase, ec)) {
+        return Outcome::Err("NOT_A_DIR", "ディレクトリではありません: " + dir);
+    }
 
     JsonValue entries = JsonValue::MakeArray();
     for (const auto& item : fs::directory_iterator(canonicalBase, fs::directory_options::skip_permission_denied, ec)) {
@@ -85,9 +95,13 @@ bool ReadSmallTextFile(const std::filesystem::path& path, std::string& outText)
     namespace fs = std::filesystem;
     std::error_code ec;
     const auto size = fs::file_size(path, ec);
-    if (ec || size > 2u * 1024u * 1024u || !IsTextAssetExtension(path.extension().string())) return false;
+    if (ec || size > 2u * 1024u * 1024u || !IsTextAssetExtension(path.extension().string())) {
+        return false;
+    }
     std::ifstream stream(path, std::ios::binary);
-    if (!stream) return false;
+    if (!stream) {
+        return false;
+    }
     outText.assign(std::istreambuf_iterator<char>(stream), std::istreambuf_iterator<char>());
     return true;
 }
@@ -102,12 +116,16 @@ std::vector<std::string> ExtractAssetReferences(const std::string& text)
         while (end < text.size()) {
             const char character = text[end];
             if (character == '"' || character == '\'' || character == '\r' || character == '\n'
-                || character == ']' || character == '}' || character == ',') break;
+                || character == ']' || character == '}' || character == ',') {
+                break;
+            }
             ++end;
         }
         std::string reference = text.substr(position, end - position);
         std::replace(reference.begin(), reference.end(), '\\', '/');
-        while (!reference.empty() && std::isspace(static_cast<unsigned char>(reference.back()))) reference.pop_back();
+        while (!reference.empty() && std::isspace(static_cast<unsigned char>(reference.back()))) {
+            reference.pop_back();
+        }
         if (!reference.empty()
             && std::find(references.begin(), references.end(), reference) == references.end()) {
             references.push_back(std::move(reference));
@@ -126,7 +144,9 @@ Outcome DoAssetInspect(editor::EditorContext& ctx, const JsonValue& payload)
         return Outcome::Err("BAD_PATH", "projectRoot 配下のアセットを指定してください");
     }
     std::error_code ec;
-    if (!fs::is_regular_file(path, ec)) return Outcome::Err("ASSET_NOT_FOUND", "アセットが見つかりません: " + relative);
+    if (!fs::is_regular_file(path, ec)) {
+        return Outcome::Err("ASSET_NOT_FOUND", "アセットが見つかりません: " + relative);
+    }
 
     JsonValue result = JsonValue::MakeObject();
     result.Set("path", JsonValue(relative));
@@ -139,7 +159,9 @@ Outcome DoAssetInspect(editor::EditorContext& ctx, const JsonValue& payload)
     std::string text;
     JsonValue references = JsonValue::MakeArray();
     if (ReadSmallTextFile(path, text)) {
-        for (const std::string& reference : ExtractAssetReferences(text)) references.Push(JsonValue(reference));
+        for (const std::string& reference : ExtractAssetReferences(text)) {
+            references.Push(JsonValue(reference));
+        }
     }
     result.Set("references", std::move(references));
 
@@ -149,11 +171,18 @@ Outcome DoAssetInspect(editor::EditorContext& ctx, const JsonValue& payload)
     const fs::path assetsRoot = fs::path(ctx.projectRoot) / "Assets";
     for (fs::recursive_directory_iterator iterator(assetsRoot, fs::directory_options::skip_permission_denied, ec), end;
          iterator != end; iterator.increment(ec)) {
-        if (ec) { ec.clear(); continue; }
-        if (!iterator->is_regular_file(ec) || iterator->path() == path) continue;
+        if (ec) {
+            ec.clear();
+            continue;
+        }
+        if (!iterator->is_regular_file(ec) || iterator->path() == path) {
+            continue;
+        }
         std::string candidateText;
         if (!ReadSmallTextFile(iterator->path(), candidateText)
-            || LowerAscii(candidateText).find(needle) == std::string::npos) continue;
+            || LowerAscii(candidateText).find(needle) == std::string::npos) {
+            continue;
+        }
         ++totalReferrers;
         if (referencedBy.AsArray().size() < 100) {
             referencedBy.Push(JsonValue(fs::relative(iterator->path(), fs::path(ctx.projectRoot), ec).generic_string()));
@@ -167,7 +196,9 @@ Outcome DoAssetInspect(editor::EditorContext& ctx, const JsonValue& payload)
 Outcome DoAssetFindUnused(editor::EditorContext& ctx, const JsonValue& payload)
 {
     namespace fs = std::filesystem;
-    if (ctx.projectRoot.empty()) return Outcome::Err("NO_PROJECT", "projectRoot が未設定です");
+    if (ctx.projectRoot.empty()) {
+        return Outcome::Err("NO_PROJECT", "projectRoot が未設定です");
+    }
     const JsonValue* limitValue = payload.Find("limit");
     const int limit = std::clamp(limitValue != nullptr && limitValue->IsNumber() ? limitValue->AsInt() : 100, 1, 500);
     const fs::path projectRoot(ctx.projectRoot);
@@ -180,22 +211,37 @@ Outcome DoAssetFindUnused(editor::EditorContext& ctx, const JsonValue& payload)
     };
     for (fs::recursive_directory_iterator iterator(assetsRoot, fs::directory_options::skip_permission_denied, ec), end;
          iterator != end; iterator.increment(ec)) {
-        if (ec) { ec.clear(); continue; }
-        if (!iterator->is_regular_file(ec)) continue;
+        if (ec) {
+            ec.clear();
+            continue;
+        }
+        if (!iterator->is_regular_file(ec)) {
+            continue;
+        }
         const std::string extension = LowerAscii(iterator->path().extension().string());
-        if (candidateExtensions.contains(extension)) candidates.push_back(iterator->path());
+        if (candidateExtensions.contains(extension)) {
+            candidates.push_back(iterator->path());
+        }
         std::string text;
-        if (!ReadSmallTextFile(iterator->path(), text)) continue;
-        for (const std::string& reference : ExtractAssetReferences(text)) referenced.insert(LowerAscii(reference));
+        if (!ReadSmallTextFile(iterator->path(), text)) {
+            continue;
+        }
+        for (const std::string& reference : ExtractAssetReferences(text)) {
+            referenced.insert(LowerAscii(reference));
+        }
     }
 
     JsonValue unused = JsonValue::MakeArray();
     int total = 0;
     for (const fs::path& candidate : candidates) {
         const std::string relative = fs::relative(candidate, projectRoot, ec).generic_string();
-        if (referenced.contains(LowerAscii(relative))) continue;
+        if (referenced.contains(LowerAscii(relative))) {
+            continue;
+        }
         ++total;
-        if (static_cast<int>(unused.AsArray().size()) < limit) unused.Push(JsonValue(relative));
+        if (static_cast<int>(unused.AsArray().size()) < limit) {
+            unused.Push(JsonValue(relative));
+        }
     }
     JsonValue result = JsonValue::MakeObject();
     result.Set("assets", std::move(unused));
@@ -222,7 +268,9 @@ Outcome DoAssetThumbnail(editor::EditorContext& ctx, const JsonValue& payload)
         return Outcome::Err("NO_DIRECT_THUMBNAIL", "PNG/JPEG の直接サムネイルだけを取得できます");
     }
     std::ifstream stream(path, std::ios::binary);
-    if (!stream) return Outcome::Err("ASSET_READ_FAILED", "画像を読み取れません: " + relative);
+    if (!stream) {
+        return Outcome::Err("ASSET_READ_FAILED", "画像を読み取れません: " + relative);
+    }
     std::vector<uint8_t> bytes(
         (std::istreambuf_iterator<char>(stream)),
         std::istreambuf_iterator<char>{});
@@ -244,10 +292,14 @@ Outcome DoAssetThumbnail(editor::EditorContext& ctx, const JsonValue& payload)
 bool IsImplicitSingleSprite(const std::string& texturePath, const std::string& token)
 {
     asset::TextureImportSettings settings;
-    if (!asset::GetCachedTextureImportSettings(texturePath, settings)) return false;
+    if (!asset::GetCachedTextureImportSettings(texturePath, settings)) {
+        return false;
+    }
     if (settings.type != asset::TextureType::Sprite
         || settings.spriteMode != asset::SpriteMode::Single
-        || !settings.sprites.empty()) return false;
+        || !settings.sprites.empty()) {
+        return false;
+    }
     return token == util::FileSystem::PathToUtf8(
         util::FileSystem::PathFromUtf8(texturePath).stem());
 }
@@ -293,7 +345,9 @@ std::unordered_map<std::string, int> CountSpriteNames(
     const asset::TextureImportSettings& settings)
 {
     std::unordered_map<std::string, int> counts;
-    for (const asset::SpriteRect& sprite : settings.sprites) ++counts[sprite.name];
+    for (const asset::SpriteRect& sprite : settings.sprites) {
+        ++counts[sprite.name];
+    }
     return counts;
 }
 
@@ -303,7 +357,9 @@ Outcome DoSpriteList(editor::EditorContext& ctx, const JsonValue& payload)
     std::string relative;
     asset::TextureImportSettings settings;
     Outcome err = Outcome::Ok(JsonValue::MakeObject());
-    if (!LoadSpriteSettings(ctx, payload, file, relative, settings, err)) return err;
+    if (!LoadSpriteSettings(ctx, payload, file, relative, settings, err)) {
+        return err;
+    }
 
     const auto nameCounts = CountSpriteNames(settings);
     JsonValue sprites = JsonValue::MakeArray();
@@ -320,7 +376,9 @@ Outcome DoSpriteList(editor::EditorContext& ctx, const JsonValue& payload)
         item.Set("pivotX", JsonValue(static_cast<double>(sprite.pivotX)));
         item.Set("pivotY", JsonValue(static_cast<double>(sprite.pivotY)));
         item.Set("reference", JsonValue(MakeSpriteReferenceFor(relative, sprite, unique)));
-        if (!unique) item.Set("nameIsAmbiguous", JsonValue(true));
+        if (!unique) {
+            item.Set("nameIsAmbiguous", JsonValue(true));
+        }
         sprites.Push(std::move(item));
     }
     JsonValue result = JsonValue::MakeObject();
@@ -347,10 +405,14 @@ Outcome DoSpriteThumbnail(editor::EditorContext& ctx, const JsonValue& payload)
     std::string relative;
     asset::TextureImportSettings settings;
     Outcome err = Outcome::Ok(JsonValue::MakeObject());
-    if (!LoadSpriteSettings(ctx, payload, file, relative, settings, err)) return err;
+    if (!LoadSpriteSettings(ctx, payload, file, relative, settings, err)) {
+        return err;
+    }
 
     const std::string token = StringField(payload, "sprite");
-    if (token.empty()) return Outcome::Err("BAD_ARG", "sprite (ID または名前) が必要です");
+    if (token.empty()) {
+        return Outcome::Err("BAD_ARG", "sprite (ID または名前) が必要です");
+    }
     const asset::SpriteRect* sprite = asset::FindSprite(settings, token);
     if (sprite == nullptr)
         return Outcome::Err("SPRITE_NOT_FOUND",
@@ -362,11 +424,13 @@ Outcome DoSpriteThumbnail(editor::EditorContext& ctx, const JsonValue& payload)
     stbi_uc* pixels = stbi_load(util::FileSystem::PathToUtf8(file).c_str(),
                                 &sourceWidth, &sourceHeight, &channels, 4);
     if (pixels == nullptr || sourceWidth <= 0 || sourceHeight <= 0) {
-        if (pixels) stbi_image_free(pixels);
+        if (pixels) {
+            stbi_image_free(pixels);
+        }
         return Outcome::Err("DECODE_FAILED", "画像をデコードできません: " + relative);
     }
 
-    /// @note 幅 / 高さ 0 は「画像全体」を意味する (Single Sprite の表現)。
+    // 幅 / 高さ 0 は「画像全体」を意味する (Single Sprite の表現)。
     const int rectX = std::clamp(static_cast<int>(sprite->x), 0, sourceWidth - 1);
     const int rectY = std::clamp(static_cast<int>(sprite->y), 0, sourceHeight - 1);
     const int rectW = sprite->width > 0
@@ -378,7 +442,7 @@ Outcome DoSpriteThumbnail(editor::EditorContext& ctx, const JsonValue& payload)
         return Outcome::Err("EMPTY_RECT", "Sprite の矩形が空です");
     }
 
-    /// @note 転送量を抑えるため長辺 256 までへ間引く。コマの識別に等倍は要らない。
+    // 転送量を抑えるため長辺 256 までへ間引く。コマの識別に等倍は要らない。
     constexpr int kMaxSide = 256;
     const int step = std::max(1, (std::max(rectW, rectH) + kMaxSide - 1) / kMaxSide);
     const int outWidth = std::max(1, rectW / step);
@@ -398,7 +462,9 @@ Outcome DoSpriteThumbnail(editor::EditorContext& ctx, const JsonValue& payload)
     void* png = tdefl_write_image_to_png_file_in_memory_ex(
         cropped.data(), outWidth, outHeight, 4, &pngSize, 6, MZ_FALSE);
     if (png == nullptr || pngSize == 0) {
-        if (png) mz_free(png);
+        if (png) {
+            mz_free(png);
+        }
         return Outcome::Err("ENCODE_FAILED", "PNG へ変換できません");
     }
     const std::vector<uint8_t> bytes(static_cast<uint8_t*>(png),
@@ -433,7 +499,9 @@ std::unique_ptr<ICommand> BuildSpriteCommand(editor::EditorContext& ctx,
     fs::path absolute;
     std::string relative;
     asset::TextureImportSettings settings;
-    if (!LoadSpriteSettings(ctx, payload, absolute, relative, settings, err)) return nullptr;
+    if (!LoadSpriteSettings(ctx, payload, absolute, relative, settings, err)) {
+        return nullptr;
+    }
 
     const std::string metaPath = absolute.generic_string() + ".meta";
     const asset::TextureImportSettings before = settings;
@@ -450,7 +518,7 @@ std::unique_ptr<ICommand> BuildSpriteCommand(editor::EditorContext& ctx,
             err = Outcome::Err("SPRITE_NOT_FOUND", "この ID / 名前の Sprite がありません: " + token);
             return nullptr;
         }
-        /// @note 添字で指す。ID が空の (移行前の) `.meta` でも 1 件だけ確実に書き換えるため。
+        // 添字で指す。ID が空の (移行前の) `.meta` でも 1 件だけ確実に書き換えるため。
         const std::size_t targetIndex =
             static_cast<std::size_t>(target - settings.sprites.data());
         const std::string targetId = target->id;
@@ -472,7 +540,7 @@ std::unique_ptr<ICommand> BuildSpriteCommand(editor::EditorContext& ctx,
                 JsonValue(asset::MakeSpriteReference(relative, newName)));
         }
     } else if (type == "sprite.slice") {
-        /// @note 生成も畳み込みも Sprite Editor と同じ実装を通す (`Editor/Asset/Authoring/SpriteSlicer.hpp`)。
+        // 生成も畳み込みも Sprite Editor と同じ実装を通す (`Editor/Asset/Authoring/SpriteSlicer.hpp`)。
         const std::string imagePath = util::FileSystem::PathToUtf8(absolute);
         const auto intField = [&payload](const char* key, int fallback) {
             const JsonValue* value = payload.Find(key);
@@ -551,7 +619,7 @@ std::unique_ptr<ICommand> BuildSpriteCommand(editor::EditorContext& ctx,
             detailSink->Set("path", JsonValue(relative));
             detailSink->Set("count", JsonValue(static_cast<int>(settings.sprites.size())));
             detailSink->Set("reusedIds", JsonValue(reused));
-            /// @note replace 以外は既存の矩形を消さないため、参照が切れるのは replace のときだけ。
+            // replace 以外は既存の矩形を消さないため、参照が切れるのは replace のときだけ。
             detailSink->Set("brokenReferences",
                 JsonValue(mode == spriteslice::ExistingMode::DeleteExisting
                           ? static_cast<int>(before.sprites.size()) : 0));
@@ -585,8 +653,8 @@ std::unique_ptr<ICommand> BuildGenerateMotionVectorsCommand([[maybe_unused]] edi
     [[maybe_unused]] const JsonValue& payload, [[maybe_unused]] Outcome& err,
     [[maybe_unused]] std::shared_ptr<std::string> createdSink, [[maybe_unused]] JsonValue* detailSink)
 {
-    /// @note モーションベクター生成はテクスチャファイルだけを扱い Scene を必要としない。
-    ///       Scene 必須チェックより前に置くこと (独立 VFX Editor にはゲーム Scene が無い)。
+    // モーションベクター生成はテクスチャファイルだけを扱い Scene を必要としない。
+    // Scene 必須チェックより前に置くこと (独立 VFX Editor にはゲーム Scene が無い)。
     if (type == "vfx.generateMotionVectors") {
         namespace fs = std::filesystem;
         fs::path textureFile;
@@ -599,15 +667,18 @@ std::unique_ptr<ICommand> BuildGenerateMotionVectorsCommand([[maybe_unused]] edi
         asset::FlipbookMotionVectorSettings settings;
         settings.columns = payload.Find("columns") != nullptr ? payload.Find("columns")->AsInt() : 1;
         settings.rows = payload.Find("rows") != nullptr ? payload.Find("rows")->AsInt() : 1;
-        if (const JsonValue* radius = payload.Find("searchRadius"); radius != nullptr)
+        if (const JsonValue* radius = payload.Find("searchRadius"); radius != nullptr) {
             settings.searchRadius = radius->AsInt();
-        if (const JsonValue* loopValue = payload.Find("loop"); loopValue != nullptr)
+        }
+        if (const JsonValue* loopValue = payload.Find("loop"); loopValue != nullptr) {
             settings.loop = loopValue->AsBool();
-        if (const JsonValue* rowValue = payload.Find("rowSequences"); rowValue != nullptr)
+        }
+        if (const JsonValue* rowValue = payload.Find("rowSequences"); rowValue != nullptr) {
             settings.rowSequences = rowValue->AsBool();
+        }
 
-        /// @note 任意で生成した MV と推奨 strength を `.mat` へ書き込む。strength は生成結果 (最大移動量) でしか決まらないため。
-        /// @note 生成は dryRun でもファイルを書かないよう Lambda 内で行うため、適用も同じ場所で行う。
+        // 任意で生成した MV と推奨 strength を `.mat` へ書き込む。strength は生成結果 (最大移動量) でしか決まらないため。
+        // 生成は dryRun でもファイルを書かないよう Lambda 内で行うため、適用も同じ場所で行う。
         fs::path materialFile;
         std::string materialPath;
         asset::MaterialAssetAuthoring oldMaterial;
@@ -628,30 +699,38 @@ std::unique_ptr<ICommand> BuildGenerateMotionVectorsCommand([[maybe_unused]] edi
         motionRelative.replace_extension();
         motionRelative += "_mv.png";
 
-        /// @note MV の生成は新規ファイルを足すだけなので Undo で消さない。同名の MV が既にあった場合、
-        ///       ユーザーが手で用意したアトラスを破壊しうるため、生成物の削除は AssetBrowser から明示的に行わせる。
-        /// @note `.mat` を書き換えた場合だけ、その書き換えを Undo で元に戻す。
+        // MV の生成は新規ファイルを足すだけなので Undo で消さない。同名の MV が既にあった場合、
+        // ユーザーが手で用意したアトラスを破壊しうるため、生成物の削除は AssetBrowser から明示的に行わせる。
+        // `.mat` を書き換えた場合だけ、その書き換えを Undo で元に戻す。
         editor::EditorContext* context = &ctx;
         const std::string resolved = textureFile.generic_string();
         const std::string motionPath = motionRelative.generic_string();
         return std::make_unique<LambdaCommand>("AI: Generate Motion Vectors",
             [context, resolved, settings, applyToMaterial, materialFile, oldMaterial, motionPath]() {
                 const auto result = asset::GenerateFlipbookMotionVectors(resolved, settings);
-                if (!result.success) return;
+                if (!result.success) {
+                    return;
+                }
                 context->requestAssetBrowserRefresh = true;
-                if (!applyToMaterial) return;
+                if (!applyToMaterial) {
+                    return;
+                }
                 asset::MaterialAssetAuthoring updated = oldMaterial;
                 updated.textures["tex5"] = motionPath;
                 updated.particle.flipbook.motionVectorFlipbook = true;
                 updated.particle.flipbook.motionVectorStrength = result.recommendedStrength;
                 updated.particle.flipbook.flipbookFrameBlending = true;
-                if (asset::SaveMaterialAssetToFile(materialFile.generic_string(), updated))
+                if (asset::SaveMaterialAssetToFile(materialFile.generic_string(), updated)) {
                     asset::AssetManager::ReloadPath(materialFile.generic_string());
+                }
             },
             [context, applyToMaterial, materialFile, oldMaterial]() {
-                if (!applyToMaterial) return;
-                if (asset::SaveMaterialAssetToFile(materialFile.generic_string(), oldMaterial))
+                if (!applyToMaterial) {
+                    return;
+                }
+                if (asset::SaveMaterialAssetToFile(materialFile.generic_string(), oldMaterial)) {
                     asset::AssetManager::ReloadPath(materialFile.generic_string());
+                }
                 context->requestAssetBrowserRefresh = true;
             });
     }
@@ -663,16 +742,22 @@ std::unique_ptr<ICommand> BuildGenerateMotionVectorsCommand([[maybe_unused]] edi
 Outcome DoAssetImport(editor::EditorContext& ctx, const JsonValue& payload, bool dryRun)
 {
     namespace fs = std::filesystem;
-    if (ctx.projectRoot.empty()) return Outcome::Err("NO_PROJECT", "projectRoot が未設定です");
+    if (ctx.projectRoot.empty()) {
+        return Outcome::Err("NO_PROJECT", "projectRoot が未設定です");
+    }
     const std::string src = StringField(payload, "src");
     const std::string dst = StringField(payload, "dst");
-    if (src.empty() || dst.empty()) return Outcome::Err("BAD_ARG", "src / dst が必要です");
+    if (src.empty() || dst.empty()) {
+        return Outcome::Err("BAD_ARG", "src / dst が必要です");
+    }
     std::error_code ec;
     const fs::path srcPath = fs::weakly_canonical(fs::path(src), ec);
     const fs::path dstPath = fs::weakly_canonical(fs::path(ctx.projectRoot) / fs::path(dst), ec);
     const fs::path rootPath = fs::weakly_canonical(fs::path(ctx.projectRoot), ec);
-    if (ec) return Outcome::Err("BAD_PATH", "パス解決に失敗しました");
-    /// @note 取り込み先は projectRoot 配下限定 (取り込み元は任意許可)。
+    if (ec) {
+        return Outcome::Err("BAD_PATH", "パス解決に失敗しました");
+    }
+    // 取り込み先は projectRoot 配下限定 (取り込み元は任意許可)。
     if (dstPath.generic_string().rfind(rootPath.generic_string(), 0) != 0) {
         return Outcome::Err("BAD_PATH", "dst は projectRoot の外です");
     }
@@ -688,8 +773,10 @@ Outcome DoAssetImport(editor::EditorContext& ctx, const JsonValue& payload, bool
     }
     fs::create_directories(dstPath.parent_path(), ec);
     fs::copy_file(srcPath, dstPath, fs::copy_options::overwrite_existing, ec);
-    if (ec) return Outcome::Err("IMPORT_FAILED", "コピーに失敗しました: " + ec.message());
-    /// @note 取り込み後に AssetBrowser を更新させる。
+    if (ec) {
+        return Outcome::Err("IMPORT_FAILED", "コピーに失敗しました: " + ec.message());
+    }
+    // 取り込み後に AssetBrowser を更新させる。
     ctx.requestAssetBrowserRefresh = true;
     JsonValue result = JsonValue::MakeObject();
     result.Set("imported", JsonValue(dst));
@@ -708,7 +795,7 @@ void RegisterAssetHandlers(BusHandlerTable& table)
 
     table.AddCommand("asset.import", [](BusCall& call) { return DoAssetImport(call.ctx, call.payload, call.dryRun); });
 
-    /// @note Sprite の編集は .meta の中で完結し Scene を要らない (Sprite Editor と同じ)。
+    // Sprite の編集は .meta の中で完結し Scene を要らない (Sprite Editor と同じ)。
     const BuilderFn sprite = [](editor::EditorContext& ctx, const std::string& type, const JsonValue& payload,
                                 Outcome& err, std::shared_ptr<std::string>, JsonValue* detailSink) {
         return BuildSpriteCommand(ctx, type, payload, err, detailSink);

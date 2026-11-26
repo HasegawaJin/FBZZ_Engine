@@ -30,7 +30,9 @@ constexpr WaterMaterialPreset kWaterMaterialPresets[] = {
 
 const char* DefaultTerrainLayerMaterialPath(int layerIndex)
 {
-    if (layerIndex < 0 || layerIndex >= 4) return "";
+    if (layerIndex < 0 || layerIndex >= 4) {
+        return "";
+    }
     return kDefaultTerrainLayerMaterialPaths[layerIndex];
 }
 

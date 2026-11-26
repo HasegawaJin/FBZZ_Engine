@@ -73,7 +73,7 @@ struct FluidMaterialSource {
                                             std::string& outError, bool registerGuid = true);
 
 /// @brief materialPath の .mat を読み (無ければ NewFluidParticleMaterial から作り)、焼いた結果を写して保存する。
-/// @param outCreated 新しく作ったなら true
+/// @param[out] outCreated 新しく作ったなら true
 /// @return 読めない既存ファイルや書き込み失敗は false (outError に理由)
 [[nodiscard]] bool WriteFluidParticleMaterial(const std::string& materialPath, const FluidMaterialSource& source,
                                                bool& outCreated, std::string& outError,
@@ -83,7 +83,7 @@ struct FluidMaterialSource {
 /// @note 1 粒が寿命いっぱいでアトラスを最後まで再生する (Lifetime モードの .mat を想定)。
 /// @note PrefabSerializer は実在の Scene から保存するため、使うと編集中のシーンへ一時的な
 /// @note GameObject を足して消すことになる (Undo 履歴と «変更あり» 表示を汚すため手で書く)。
-/// @param materialAssetPath ParticleEmitter の materialPath にそのまま書く値 (Assets 相対)
+/// @param[in] materialAssetPath ParticleEmitter の materialPath にそのまま書く値 (Assets 相対)
 [[nodiscard]] bool WriteSingleEmitterVfx(const std::filesystem::path& file, const std::string& rootName,
                                          const std::string& materialAssetPath, float lifetime);
 

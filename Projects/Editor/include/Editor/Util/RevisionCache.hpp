@@ -19,4 +19,4 @@ private:
     std::optional<Key> m_key;
 };
 
-} /// @note namespace fbzz::editor
+} // namespace fbzz::editor

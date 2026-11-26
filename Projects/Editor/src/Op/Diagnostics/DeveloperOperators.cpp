@@ -66,10 +66,12 @@ void RegisterDeveloperOperators(OperatorRegistry& registry)
         };
         op.exec = [](OpContext&, const OpArgs& args) -> OpResult {
             core::CrashTrigger trigger = core::CrashTrigger::Report;
-            if (!core::CrashHandler::ParseTrigger(args.GetString("kind"), trigger))
+            if (!core::CrashHandler::ParseTrigger(args.GetString("kind"), trigger)) {
                 return OpResult::Err("BAD_ARG", "kind が不正です。");
-            if (!core::CrashHandler::Trigger(trigger))
+            }
+            if (!core::CrashHandler::Trigger(trigger)) {
                 return OpResult::Err("NOT_WRITTEN", "レポートを書けませんでした。ログを確認してください。");
+            }
             OpResult result;
             result.message = "Saved/Crashes にレポートを書きました";
             return result;

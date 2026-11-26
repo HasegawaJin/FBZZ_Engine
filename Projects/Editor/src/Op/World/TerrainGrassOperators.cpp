@@ -37,19 +37,40 @@ bool TerrainGrassCandidateBudget(const scene::TerrainComponent& terrain, const s
     candidates = 0.0;
     windowPatches = 0;
     patchBudget = true;
-    if (terrain.columns < 2 || terrain.rows < 2 || terrain.columns > 4097 || terrain.rows > 4097
-        || terrain.heightData.size() != terrain.VertexCount() || !std::isfinite(terrain.cellSize)
-        || terrain.cellSize <= 0.0f || !std::isfinite(terrain.maxHeight) || terrain.maxHeight <= 0.0f)
+    // パッチ数を求める前に、地形の格子と座標に変換できる高さを検査する。
+    const bool validDimensions = terrain.columns >= 2 && terrain.rows >= 2
+        && terrain.columns <= 4097 && terrain.rows <= 4097;
+    if (!validDimensions || terrain.heightData.size() != terrain.VertexCount()) {
         return false;
-    for (float height : terrain.heightData) if (!std::isfinite(height)) return false;
+    }
+    const bool validGridScale = std::isfinite(terrain.cellSize) && terrain.cellSize > 0.0f
+        && std::isfinite(terrain.maxHeight) && terrain.maxHeight > 0.0f;
+    if (!validGridScale) {
+        return false;
+    }
+    for (float height : terrain.heightData) {
+        if (!std::isfinite(height)) {
+            return false;
+        }
+    }
+
     const auto finite = [](const math::Vector3& value) {
         return std::isfinite(value.x) && std::isfinite(value.y) && std::isfinite(value.z);
     };
     const float rotationLength = transform.worldRotation.Length();
-    if (!finite(transform.worldPosition) || !finite(transform.worldScale)
-        || transform.worldScale.x == 0.0f || transform.worldScale.y == 0.0f || transform.worldScale.z == 0.0f
-        || !std::isfinite(rotationLength) || std::abs(rotationLength - 1.0f) > 0.001f)
+    if (!finite(transform.worldPosition)) {
         return false;
+    }
+    const auto& worldScale = transform.worldScale;
+    const bool invertibleScale = finite(worldScale) && worldScale.x != 0.0f
+        && worldScale.y != 0.0f && worldScale.z != 0.0f;
+    if (!invertibleScale) {
+        return false;
+    }
+    if (!std::isfinite(rotationLength) || std::abs(rotationLength - 1.0f) > 0.001f) {
+        return false;
+    }
+
     const double scaleX = std::abs(static_cast<double>(transform.worldScale.x));
     const double scaleZ = std::abs(static_cast<double>(transform.worldScale.z));
     const int patchColumns = (terrain.columns - 1 + TERRAIN_GRASS_PATCH_CELLS - 1) / TERRAIN_GRASS_PATCH_CELLS;
@@ -82,7 +103,9 @@ bool TerrainGrassCandidateBudget(const scene::TerrainComponent& terrain, const s
                     area += math::Vector3::Cross(b - c, d - c).Length() * 0.5f;
                 }
             }
-            if (!std::isfinite(area)) return false;
+            if (!std::isfinite(area)) {
+                return false;
+            }
             const double count = std::ceil(static_cast<double>(area) * density * 1.001);
             patchBudget &= count <= renderer::FIBER_MAX_BLADES;
             const auto index = (static_cast<size_t>(z / TERRAIN_GRASS_PATCH_CELLS) + 1) * prefixStride
@@ -129,7 +152,9 @@ scene::FiberComponent TerrainGrassSnapshot(const scene::FiberComponent& source)
 
 scene::GameObject* TerrainGrassTarget(const EditorContext& context, const OpArgs& args)
 {
-    if (!context.activeScene) return nullptr;
+    if (!context.activeScene) {
+        return nullptr;
+    }
     const std::string node = args.GetString("node");
     return node.empty() ? context.GetSelectedGO() : context.activeScene->FindByGuid(node);
 }
@@ -173,16 +198,25 @@ public:
 private:
     bool Apply(bool after, std::string& reason)
     {
-        if (after == m_applied || !ValidateHistory(reason)) return false;
+        if (after == m_applied || !ValidateHistory(reason)) {
+            return false;
+        }
         auto* object = m_scene->FindByGuid(m_node);
         const auto* value = after ? &m_after : m_before ? &*m_before : nullptr;
         if (value) {
-            if (auto* fiber = object->GetComponent<scene::FiberComponent>()) *fiber = *value;
-            else object->AddComponent<scene::FiberComponent>(*value);
+            if (auto* fiber = object->GetComponent<scene::FiberComponent>()) {
+                *fiber = *value;
+            } else {
+                object->AddComponent<scene::FiberComponent>(*value);
+            }
             m_fiberLifetime = m_scene->GetComponentLifetime<scene::FiberComponent>(object->GetID());
-        } else object->RemoveComponent<scene::FiberComponent>();
+        } else {
+            object->RemoveComponent<scene::FiberComponent>();
+        }
         m_applied = after;
-        if (m_context.markSceneDirty) m_context.markSceneDirty();
+        if (m_context.markSceneDirty) {
+            m_context.markSceneDirty();
+        }
         return true;
     }
     EditorContext& m_context;
@@ -207,7 +241,7 @@ OpParam TerrainGrassParameter(const char* name, OpParamType type, OpValue value,
     return param;
 }
 
-} /// @note namespace
+} // namespace
 
 void RegisterTerrainGrassOperators(OperatorRegistry& registry)
 {
@@ -235,37 +269,60 @@ void RegisterTerrainGrassOperators(OperatorRegistry& registry)
     op.exec = [](OpContext& context, const OpArgs& args) -> OpResult {
         auto* object = TerrainGrassTarget(context.ctx, args);
         const auto* terrain = object ? object->GetComponent<scene::TerrainComponent>() : nullptr;
-        if (!terrain) return OpResult::Err("NOT_TERRAIN", "対象の地形が見つかりません。");
+        if (!terrain) {
+            return OpResult::Err("NOT_TERRAIN", "対象の地形が見つかりません。");
+        }
         const int layer = args.GetInt("terrainLayer", 0);
         const float density = args.GetFloat("density", 4.0f);
         const float width = args.GetFloat("bladeWidth", 0.5f);
         const float farDistance = args.GetFloat("lodFar", 80.0f);
         const int seed = args.GetInt("seed", 1);
-        if (layer < 0 || layer >= terrain->LayerCount() || !std::isfinite(density) || density < 0.001f || density > 8.0f
-            || !std::isfinite(width) || width < 0.001f || width > 0.5f
-            || !std::isfinite(farDistance) || farDistance < 1.0f || farDistance > 2000.0f || seed < 0 || seed > 65535)
-            return OpResult::Err("BAD_ARG", "レイヤー・密度・幅・表示距離・種の範囲を確認してください。");
+        // 配置元の地形レイヤー、草の寸法と密度、表示窓の順に確認する。
+        constexpr char INVALID_SETTINGS[] = "レイヤー・密度・幅・表示距離・種の範囲を確認してください。";
+        if (layer < 0 || layer >= terrain->LayerCount()) {
+            return OpResult::Err("BAD_ARG", INVALID_SETTINGS);
+        }
+        const auto validRange = [](float value, float minimum, float maximum) {
+            return std::isfinite(value) && value >= minimum && value <= maximum;
+        };
+        if (!validRange(density, 0.001f, 8.0f) || !validRange(width, 0.001f, 0.5f)) {
+            return OpResult::Err("BAD_ARG", INVALID_SETTINGS);
+        }
+        if (!validRange(farDistance, 1.0f, 2000.0f) || seed < 0 || seed > 65535) {
+            return OpResult::Err("BAD_ARG", INVALID_SETTINGS);
+        }
+
+        // 実際にウィンドウ内で候補となる本数を、地形の格子間隔も含めて見積もる。
         double candidates = 0.0;
         int windowPatches = 0;
         bool patchBudget = false;
-        if (!TerrainGrassCandidateBudget(*terrain, object->transform, density, farDistance, candidates, windowPatches, patchBudget))
+        if (!TerrainGrassCandidateBudget(*terrain, object->transform, density, farDistance, candidates, windowPatches, patchBudget)) {
             return OpResult::Err("BAD_TERRAIN", "地形の高さ配列・寸法・姿勢が不正です。");
-        if (!patchBudget)
+        }
+        if (!patchBudget) {
             return OpResult::Err("BUDGET_EXCEEDED", "一パッチの草の候補本数が32768を超えます。格子間隔または密度を下げてください。");
-        if (candidates > TERRAIN_GRASS_MAX_WINDOW_CANDIDATES)
+        }
+        if (candidates > TERRAIN_GRASS_MAX_WINDOW_CANDIDATES) {
             return OpResult::Err("BUDGET_EXCEEDED", "一ビューの距離窓で草の候補本数が50万を超えます。表示距離または密度を下げてください。候補上限見積もり: " + std::to_string(candidates));
+        }
         const auto material = args.GetString("material", "Assets/Terrain/Alpine/GrassCards.mat");
         auto disk = ToProjectAssetDiskPath(context.ctx.projectRoot, material);
         std::error_code pathError;
-        if (disk.empty() || !std::filesystem::is_regular_file(std::filesystem::u8path(disk), pathError))
+        if (disk.empty() || !std::filesystem::is_regular_file(std::filesystem::u8path(disk), pathError)) {
             disk = asset::AssetManager::ResolveAssetPath(material);
+        }
         asset::MaterialAssetAuthoring materialValues;
-        if (disk.empty() || !asset::LoadMaterialAssetFromFile(disk, materialValues))
+        if (disk.empty() || !asset::LoadMaterialAssetFromFile(disk, materialValues)) {
             return OpResult::Err("NO_MATERIAL", "草の材質を読み込めません: " + material);
+        }
         const auto guid = asset::AssetDatabase::GuidFromPath(disk);
-        if (guid.empty()) return OpResult::Err("NO_GUID", "草の材質の GUID を取得できません。");
+        if (guid.empty()) {
+            return OpResult::Err("NO_GUID", "草の材質の GUID を取得できません。");
+        }
         std::optional<scene::FiberComponent> before;
-        if (const auto* fiber = object->GetComponent<scene::FiberComponent>()) before = TerrainGrassSnapshot(*fiber);
+        if (const auto* fiber = object->GetComponent<scene::FiberComponent>()) {
+            before = TerrainGrassSnapshot(*fiber);
+        }
         scene::FiberComponent after = before ? *before : scene::FiberComponent{};
         after.m_enabled = true;
         after.m_mode = scene::FiberRenderMode::BLADE;
@@ -282,7 +339,7 @@ void RegisterTerrainGrassOperators(OperatorRegistry& registry)
         after.m_distanceLod = true;
         after.m_lodNear = farDistance * 0.25f;
         after.m_lodFar = farDistance;
-        /// @note 地形の草は既存の層重みを根元密度に使う。Mesh 用ペイントや個体マスクを重ねて消さない。
+        // 地形の草は既存の層重みを根元密度に使う。Mesh 用ペイントや個体マスクを重ねて消さない。
         /// @see Docs/design/terrain-layers.md §5 Fiber を層で制御する
         after.m_paintPath.clear();
         after.m_maskPath.clear();
@@ -297,18 +354,23 @@ void RegisterTerrainGrassOperators(OperatorRegistry& registry)
             result.message = "草の設定は変わりませんでした。";
             return result;
         }
-        if (auto* fiber = object->GetComponent<scene::FiberComponent>()) *fiber = after;
-        else object->AddComponent<scene::FiberComponent>(after);
+        if (auto* fiber = object->GetComponent<scene::FiberComponent>()) {
+            *fiber = after;
+        } else {
+            object->AddComponent<scene::FiberComponent>(after);
+        }
         OpResult result;
         result.data = OpData::MakeObject();
         result.data.Set("candidateWindowUpperBound", static_cast<int>(candidates));
         result.data.Set("windowPatchUpperBound", windowPatches);
         result.command = std::make_unique<TerrainGrassCommand>(context.ctx, *object, std::move(before), std::move(after));
         result.message = "指定レイヤーに草を設定しました。地形のペイントで生える範囲を編集できます。";
-        if (context.ctx.markSceneDirty) context.ctx.markSceneDirty();
+        if (context.ctx.markSceneDirty) {
+            context.ctx.markSceneDirty();
+        }
         return result;
     };
     registry.Register(std::move(op));
 }
 
-} /// @note namespace fbzz::editor
+} // namespace fbzz::editor

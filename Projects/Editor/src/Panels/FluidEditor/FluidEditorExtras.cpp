@@ -87,7 +87,9 @@ public:
     FluidExtrasComScope() : m_result(CoInitializeEx(nullptr, COINIT_MULTITHREADED)) {}
     ~FluidExtrasComScope()
     {
-        if (SUCCEEDED(m_result)) CoUninitialize();
+        if (SUCCEEDED(m_result)) {
+            CoUninitialize();
+        }
     }
     FluidExtrasComScope(const FluidExtrasComScope&) = delete;
     FluidExtrasComScope& operator=(const FluidExtrasComScope&) = delete;
@@ -99,16 +101,22 @@ private:
 std::string FluidExtrasLowerAscii(std::string text)
 {
     for (char& c : text)
-        if (c >= 'A' && c <= 'Z') c = static_cast<char>(c - 'A' + 'a');
+        if (c >= 'A' && c <= 'Z') {
+            c = static_cast<char>(c - 'A' + 'a');
+        }
     return text;
 }
 
 std::string FluidExtrasTrim(const std::string& text)
 {
     std::size_t first = 0;
-    while (first < text.size() && (text[first] == ' ' || text[first] == '\t')) ++first;
+    while (first < text.size() && (text[first] == ' ' || text[first] == '\t')) {
+        ++first;
+    }
     std::size_t last = text.size();
-    while (last > first && (text[last - 1] == ' ' || text[last - 1] == '\t')) --last;
+    while (last > first && (text[last - 1] == ' ' || text[last - 1] == '\t')) {
+        --last;
+    }
     return text.substr(first, last - first);
 }
 
@@ -125,7 +133,9 @@ struct FluidExtrasImage {
 /// @note PNG / DDS を RGBA8 で読む。DDS は BC を展開する。読めなければ false。
 bool FluidExtrasLoadRgba8(const std::filesystem::path& file, FluidExtrasImage& out)
 {
-    if (!util::FileSystem::Exists(util::FileSystem::PathToUtf8(file))) return false;
+    if (!util::FileSystem::Exists(util::FileSystem::PathToUtf8(file))) {
+        return false;
+    }
 
     const FluidExtrasComScope com;
     const std::wstring native = file.wstring();
@@ -135,27 +145,36 @@ bool FluidExtrasLoadRgba8(const std::filesystem::path& file, FluidExtrasImage& o
     const HRESULT hr = extension == ".dds"
         ? DirectX::LoadFromDDSFile(native.c_str(), DirectX::DDS_FLAGS_NONE, &metadata, loaded)
         : DirectX::LoadFromWICFile(native.c_str(), DirectX::WIC_FLAGS_NONE, &metadata, loaded);
-    if (FAILED(hr)) return false;
+    if (FAILED(hr)) {
+        return false;
+    }
 
     const DirectX::Image* image = loaded.GetImage(0, 0, 0);
-    if (image == nullptr) return false;
+    if (image == nullptr) {
+        return false;
+    }
     DirectX::ScratchImage converted;
     if (DirectX::IsCompressed(image->format)) {
-        if (FAILED(DirectX::Decompress(*image, DXGI_FORMAT_R8G8B8A8_UNORM, converted))) return false;
+        if (FAILED(DirectX::Decompress(*image, DXGI_FORMAT_R8G8B8A8_UNORM, converted))) {
+            return false;
+        }
         image = converted.GetImage(0, 0, 0);
     } else if (image->format != DXGI_FORMAT_R8G8B8A8_UNORM) {
         if (FAILED(DirectX::Convert(*image, DXGI_FORMAT_R8G8B8A8_UNORM, DirectX::TEX_FILTER_DEFAULT,
-                                    DirectX::TEX_THRESHOLD_DEFAULT, converted)))
+                                    DirectX::TEX_THRESHOLD_DEFAULT, converted))) {
             return false;
+        }
         image = converted.GetImage(0, 0, 0);
     }
-    if (image == nullptr || image->pixels == nullptr) return false;
+    if (image == nullptr || image->pixels == nullptr) {
+        return false;
+    }
 
     out.width = static_cast<std::uint32_t>(image->width);
     out.height = static_cast<std::uint32_t>(image->height);
     const std::size_t rowBytes = static_cast<std::size_t>(out.width) * 4;
     out.rgba.resize(rowBytes * out.height);
-    /// @note 行の間隔は 4·幅 とは限らない (DirectXTex はアライメントを取る)。
+    // 行の間隔は 4·幅 とは限らない (DirectXTex はアライメントを取る)。
     for (std::uint32_t y = 0; y < out.height; ++y)
         std::memcpy(out.rgba.data() + static_cast<std::size_t>(y) * rowBytes,
                     image->pixels + static_cast<std::size_t>(y) * image->rowPitch, rowBytes);
@@ -167,7 +186,9 @@ bool FluidExtrasLoadFirst(const std::vector<std::filesystem::path>& candidates, 
                           std::string& outPath)
 {
     for (const std::filesystem::path& file : candidates) {
-        if (!FluidExtrasLoadRgba8(file, out)) continue;
+        if (!FluidExtrasLoadRgba8(file, out)) {
+            continue;
+        }
         outPath = util::FileSystem::PathToUtf8(file);
         return true;
     }
@@ -213,7 +234,9 @@ struct FluidThumbRequest {
 /// @note 液体は Liquid でしか描けず、気体に Liquid を指定しても描けない (FluidPreviewCache と同じ丸め)。
 fluid::FluidShading FluidExtrasEffectiveShading(const fluid::FluidRecipe& recipe)
 {
-    if (recipe.kind == fluid::FluidKind::Liquid) return fluid::FluidShading::Liquid;
+    if (recipe.kind == fluid::FluidKind::Liquid) {
+        return fluid::FluidShading::Liquid;
+    }
     return recipe.render.shading == fluid::FluidShading::Liquid ? fluid::FluidShading::Smoke
                                                                 : recipe.render.shading;
 }
@@ -229,7 +252,7 @@ fluid::FluidRecipe FluidExtrasThumbnailRecipe(const fluid::FluidRecipe& source)
 
 void FluidExtrasSolveThumbnail(const fluid::FluidRecipe& recipe, asset::FluidFrameImage& out)
 {
-    /// @note 山場が来るあたり (尺の半ば) の 1 コマを出す。頭のコマはどのプリセットもほぼ空。
+    // 山場が来るあたり (尺の半ば) の 1 コマを出す。頭のコマはどのプリセットもほぼ空。
     const float dt = recipe.output.duration / static_cast<float>(kFluidThumbSteps * 2);
     float warmup = std::clamp(recipe.output.warmup, 0.0f, kFluidThumbWarmupCap);
     if (recipe.kind == fluid::FluidKind::Gas) {
@@ -240,7 +263,9 @@ void FluidExtrasSolveThumbnail(const fluid::FluidRecipe& recipe, asset::FluidFra
             solver.Advance(step);
             warmup -= step;
         }
-        for (int i = 0; i < kFluidThumbSteps; ++i) solver.Advance(dt);
+        for (int i = 0; i < kFluidThumbSteps; ++i) {
+            solver.Advance(dt);
+        }
         asset::RenderFluidGasFrame(solver, recipe, kFluidThumbImage, dt, out);
         return;
     }
@@ -251,18 +276,22 @@ void FluidExtrasSolveThumbnail(const fluid::FluidRecipe& recipe, asset::FluidFra
         solver.Advance(step);
         warmup -= step;
     }
-    for (int i = 0; i < kFluidThumbSteps; ++i) solver.Advance(dt);
+    for (int i = 0; i < kFluidThumbSteps; ++i) {
+        solver.Advance(dt);
+    }
     asset::RenderFluidLiquidFrame(solver, recipe, kFluidThumbImage, dt, out);
 }
 
 void FluidExtrasThumbnailWorker(std::vector<FluidThumbRequest> requests,
                                 std::shared_ptr<FluidThumbChannel> channel)
 {
-    /// @note Texture 形状の発生源は画像を WIC で読む。COM を初期化していないスレッドでは読めず、
-    /// @note «板の形に湧く» 別の絵になってしまう。
+    // Texture 形状の発生源は画像を WIC で読む。COM を初期化していないスレッドでは読めず、
+    // «板の形に湧く» 別の絵になってしまう。
     const FluidExtrasComScope com;
     for (const FluidThumbRequest& request : requests) {
-        if (channel->Cancelled()) break;
+        if (channel->Cancelled()) {
+            break;
+        }
         FluidThumbResult result;
         result.index = request.index;
         result.shading = request.recipe.render.shading;
@@ -280,9 +309,13 @@ void FluidExtrasComposite(const float* rgba, int x, int y, fluid::FluidShading s
     const bool additive = shading == fluid::FluidShading::Glow;
     for (int c = 0; c < 3; ++c) {
         float value = 0.0f;
-        if (premultiplied)   value = rgba[c] + background * (1.0f - rgba[3]);
-        else if (additive)   value = background + rgba[c] * rgba[3];
-        else                 value = rgba[c] * rgba[3] + background * (1.0f - rgba[3]);
+        if (premultiplied) {
+            value = rgba[c] + background * (1.0f - rgba[3]);
+        } else if (additive) {
+            value = background + rgba[c] * rgba[3];
+        } else {
+            value = rgba[c] * rgba[3] + background * (1.0f - rgba[3]);
+        }
         out[c] = (std::min)(value, 1.0f);
     }
 }
@@ -326,8 +359,12 @@ struct FluidGalleryState {
     /// @note GPU 資源には触らない (Shutdown を呼ばずに壊されても、裏のスレッドを畳むだけで済むように)。
     ~FluidGalleryState()
     {
-        if (channel != nullptr) channel->cancel.store(true, std::memory_order_relaxed);
-        if (worker.joinable()) worker.join();
+        if (channel != nullptr) {
+            channel->cancel.store(true, std::memory_order_relaxed);
+        }
+        if (worker.joinable()) {
+            worker.join();
+        }
     }
 };
 
@@ -366,7 +403,9 @@ const char* FluidExtrasPresetDescription(asset::FluidPreset preset)
 
 ImU32 FluidExtrasFallbackColor(const FluidGalleryEntry& entry)
 {
-    if (!entry.valid) return IM_COL32(120, 56, 48, 255);
+    if (!entry.valid) {
+        return IM_COL32(120, 56, 48, 255);
+    }
     switch (entry.shading) {
     case fluid::FluidShading::Fire:       return IM_COL32(152, 82, 36, 255);
     case fluid::FluidShading::Glow:       return IM_COL32(92, 74, 150, 255);
@@ -379,18 +418,23 @@ ImU32 FluidExtrasFallbackColor(const FluidGalleryEntry& entry)
 
 void FluidExtrasStopThumbnailWorker(FluidGalleryState& gallery)
 {
-    if (gallery.channel != nullptr) gallery.channel->cancel.store(true, std::memory_order_relaxed);
-    if (gallery.worker.joinable()) gallery.worker.join();
+    if (gallery.channel != nullptr) {
+        gallery.channel->cancel.store(true, std::memory_order_relaxed);
+    }
+    if (gallery.worker.joinable()) {
+        gallery.worker.join();
+    }
     gallery.channel.reset();
 }
 
 void FluidExtrasReleaseThumbnails(EditorContext& ctx, FluidGalleryState& gallery)
 {
     for (FluidGalleryEntry& entry : gallery.entries) {
-        /// @note デバイスリセット後の古いハンドルは既に無効。返すと別の資源を消しかねない。
+        // デバイスリセット後の古いハンドルは既に無効。返すと別の資源を消しかねない。
         if (entry.texture.IsValid() && ctx.resources != nullptr
-            && entry.resetVersion == ctx.resources->GetResetVersion())
+            && entry.resetVersion == ctx.resources->GetResetVersion()) {
             ctx.resources->Release(entry.texture);
+        }
         entry.texture = {};
         entry.textureId = nullptr;
         entry.uploaded = false;
@@ -426,8 +470,9 @@ void FluidExtrasBuildEntries(EditorContext& ctx, FluidGalleryState& gallery)
             util::FileSystem::PathFromUtf8(ctx.projectRoot) / kFluidTemplateFolder;
         if (util::FileSystem::IsDirectory(util::FileSystem::PathToUtf8(folder))) {
             for (const std::filesystem::path& file : util::FileSystem::ListFilesRecursive(folder)) {
-                if (FluidExtrasLowerAscii(util::FileSystem::PathToUtf8(file.extension())) != kFluidExtension)
+                if (FluidExtrasLowerAscii(util::FileSystem::PathToUtf8(file.extension())) != kFluidExtension) {
                     continue;
+                }
                 FluidGalleryEntry entry;
                 entry.section = FluidGallerySection::User;
                 entry.label = util::FileSystem::PathToUtf8(file.stem());
@@ -444,15 +489,21 @@ void FluidExtrasBuildEntries(EditorContext& ctx, FluidGalleryState& gallery)
 
     std::vector<FluidThumbRequest> requests;
     for (int i = 0; i < static_cast<int>(gallery.entries.size()); ++i) {
-        if (static_cast<int>(requests.size()) >= kFluidGalleryMaxThumbs) break;
+        if (static_cast<int>(requests.size()) >= kFluidGalleryMaxThumbs) {
+            break;
+        }
         const FluidGalleryEntry& entry = gallery.entries[static_cast<std::size_t>(i)];
-        if (!entry.valid) continue;
+        if (!entry.valid) {
+            continue;
+        }
         FluidThumbRequest request;
         request.index = i;
         request.recipe = FluidExtrasThumbnailRecipe(entry.recipe);
         requests.push_back(std::move(request));
     }
-    if (requests.empty()) return;
+    if (requests.empty()) {
+        return;
+    }
     gallery.channel = std::make_shared<FluidThumbChannel>();
     gallery.worker = std::thread([requests = std::move(requests), shared = gallery.channel]() mutable {
         FluidExtrasThumbnailWorker(std::move(requests), shared);
@@ -464,7 +515,9 @@ void FluidExtrasTickThumbnails(EditorContext& ctx, FluidGalleryState& gallery)
 {
     if (gallery.channel != nullptr) {
         for (FluidThumbResult& item : gallery.channel->Take()) {
-            if (item.index < 0 || item.index >= static_cast<int>(gallery.entries.size())) continue;
+            if (item.index < 0 || item.index >= static_cast<int>(gallery.entries.size())) {
+                continue;
+            }
             FluidGalleryEntry& entry = gallery.entries[static_cast<std::size_t>(item.index)];
             entry.image = std::move(item.image);
             entry.shading = item.shading;
@@ -472,39 +525,49 @@ void FluidExtrasTickThumbnails(EditorContext& ctx, FluidGalleryState& gallery)
             entry.uploaded = false;
         }
         if (gallery.channel->done.load(std::memory_order_acquire)) {
-            if (gallery.worker.joinable()) gallery.worker.join();
+            if (gallery.worker.joinable()) {
+                gallery.worker.join();
+            }
             gallery.channel.reset();
         }
     }
-    if (ctx.resources == nullptr || ctx.imguiRenderer == nullptr) return;
+    if (ctx.resources == nullptr || ctx.imguiRenderer == nullptr) {
+        return;
+    }
 
     const std::uint64_t resetVersion = ctx.resources->GetResetVersion();
     std::vector<std::uint8_t> pixels;
     for (FluidGalleryEntry& entry : gallery.entries) {
         if (entry.resetVersion != resetVersion) {
-            /// @note デバイスリセットで古いハンドルは無効。載せ直せないなら色の四角へ戻す。
+            // デバイスリセットで古いハンドルは無効。載せ直せないなら色の四角へ戻す。
             entry.texture = {};
             entry.textureId = nullptr;
             entry.uploaded = false;
         }
-        if (!entry.hasImage || entry.uploaded) continue;
+        if (!entry.hasImage || entry.uploaded) {
+            continue;
+        }
         const int size = entry.image.size;
         const std::size_t pixelCount = static_cast<std::size_t>(size) * static_cast<std::size_t>(size);
-        if (size <= 0 || entry.image.rgba.size() < pixelCount * 4) continue;
+        if (size <= 0 || entry.image.rgba.size() < pixelCount * 4) {
+            continue;
+        }
         if (!entry.texture.IsValid() || entry.resetVersion != resetVersion) {
             const auto side = static_cast<std::uint32_t>(size);
             entry.texture = ctx.resources->CreateDynamicTexture(side, side,
                                                                 renderer::DynamicTextureFormat::RGBA8);
             entry.resetVersion = resetVersion;
             if (!entry.texture.IsValid()) {
-                /// @note 未対応バックエンド。以降は作り直さず、呼び手が色の四角を描く。
+                // 未対応バックエンド。以降は作り直さず、呼び手が色の四角を描く。
                 entry.hasImage = false;
                 continue;
             }
             entry.textureId = ctx.imguiRenderer->GetImTextureID(entry.texture, *ctx.resources);
         }
         renderer::ITexture* gpu = ctx.resources->Get(entry.texture);
-        if (gpu == nullptr || entry.textureId == nullptr) continue;
+        if (gpu == nullptr || entry.textureId == nullptr) {
+            continue;
+        }
         pixels.resize(pixelCount * 4);
         for (int y = 0; y < size; ++y) {
             for (int x = 0; x < size; ++x) {
@@ -519,9 +582,11 @@ void FluidExtrasTickThumbnails(EditorContext& ctx, FluidGalleryState& gallery)
             }
         }
         const auto side = static_cast<std::uint32_t>(size);
-        if (!gpu->UpdateRegion(0, 0, side, side, pixels.data(), side * 4)) continue;
+        if (!gpu->UpdateRegion(0, 0, side, side, pixels.data(), side * 4)) {
+            continue;
+        }
         entry.uploaded = true;
-        /// @note 絵はもう GPU にある。float のコピーを抱え続けない。
+        // 絵はもう GPU にある。float のコピーを抱え続けない。
         std::vector<float>().swap(entry.image.rgba);
         std::vector<float>().swap(entry.image.motion);
     }
@@ -560,7 +625,9 @@ std::string FluidExtrasWriteNewRecipe(EditorContext& ctx, const fluid::FluidReci
                                       std::string& outError)
 {
     std::string file;
-    if (!FluidExtrasValidateName(rawName, file, outError)) return {};
+    if (!FluidExtrasValidateName(rawName, file, outError)) {
+        return {};
+    }
 
     const std::string directoryText = FluidExtrasTrim(rawDirectory);
     if (directoryText.empty()) {
@@ -577,7 +644,7 @@ std::string FluidExtrasWriteNewRecipe(EditorContext& ctx, const fluid::FluidReci
     const std::filesystem::path target = directory / util::FileSystem::PathFromUtf8(file);
     const std::string absPath = util::FileSystem::PathToUtf8(target);
     if (util::FileSystem::Exists(absPath)) {
-        /// @note 上書きは «作る» 操作の顔をして人の作業を消す。名前を変えてもらう。
+        // 上書きは «作る» 操作の顔をして人の作業を消す。名前を変えてもらう。
         outError = "A file with that name already exists.";
         return {};
     }
@@ -599,7 +666,9 @@ std::string FluidExtrasUniqueName(const std::string& stem, const std::string& di
     for (int suffix = 1; suffix < 1000; ++suffix) {
         const std::filesystem::path target =
             folder / util::FileSystem::PathFromUtf8(candidate + kFluidExtension);
-        if (!util::FileSystem::Exists(util::FileSystem::PathToUtf8(target))) break;
+        if (!util::FileSystem::Exists(util::FileSystem::PathToUtf8(target))) {
+            break;
+        }
         candidate = base + " " + std::to_string(suffix);
     }
     return candidate;
@@ -645,13 +714,17 @@ void FluidExtrasDrawEntries(FluidGalleryState& gallery, bool& outCreateNow)
         int column = 0;
         for (int i = 0; i < static_cast<int>(gallery.entries.size()); ++i) {
             FluidGalleryEntry& entry = gallery.entries[static_cast<std::size_t>(i)];
-            if (static_cast<int>(entry.section) != section) continue;
+            if (static_cast<int>(entry.section) != section) {
+                continue;
+            }
             if (!header) {
                 ImGui::SeparatorText(FluidExtrasSectionTitle(entry.section));
                 header = true;
                 column = 0;
             }
-            if (column > 0) ImGui::SameLine();
+            if (column > 0) {
+                ImGui::SameLine();
+            }
 
             ImGui::PushID(i);
             const ImVec2 origin = ImGui::GetCursorScreenPos();
@@ -659,18 +732,22 @@ void FluidExtrasDrawEntries(FluidGalleryState& gallery, bool& outCreateNow)
             if (ImGui::Selectable("##cell", selected, ImGuiSelectableFlags_AllowDoubleClick,
                                   { cellWidth, cellHeight })) {
                 gallery.selected = i;
-                if (ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left)) outCreateNow = true;
+                if (ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left)) {
+                    outCreateNow = true;
+                }
             }
-            if (ImGui::IsItemHovered() && !entry.description.empty())
+            if (ImGui::IsItemHovered() && !entry.description.empty()) {
                 ImGui::SetTooltip("%s", entry.description.c_str());
+            }
 
             ImDrawList* drawList = ImGui::GetWindowDrawList();
             const ImVec2 thumbMin{ origin.x + pad, origin.y + pad };
             const ImVec2 thumbMax{ thumbMin.x + thumb, thumbMin.y + thumb };
-            if (entry.uploaded && entry.textureId != nullptr)
+            if (entry.uploaded && entry.textureId != nullptr) {
                 drawList->AddImage(widgets::ToImTextureID(entry.textureId), thumbMin, thumbMax);
-            else
+            } else {
                 drawList->AddRectFilled(thumbMin, thumbMax, FluidExtrasFallbackColor(entry));
+            }
             drawList->AddRect(thumbMin, thumbMax,
                               selected ? IM_COL32(236, 180, 90, 255) : IM_COL32(0, 0, 0, 160));
             const std::string label = widgets::ElideToWidth(entry.label.c_str(), cellWidth - pad * 2.0f);
@@ -679,10 +756,14 @@ void FluidExtrasDrawEntries(FluidGalleryState& gallery, bool& outCreateNow)
             ImGui::PopID();
 
             ++column;
-            if (column >= columns) column = 0;
+            if (column >= columns) {
+                column = 0;
+            }
         }
     }
-    if (gallery.entries.empty()) ImGui::TextDisabled("No templates.");
+    if (gallery.entries.empty()) {
+        ImGui::TextDisabled("No templates.");
+    }
 }
 
 /// @name Baked タブ
@@ -768,11 +849,15 @@ std::filesystem::file_time_type FluidExtrasCaptureStamp(const std::string& path)
 /// @brief Baked タブの GPU 転送量を抑える。診断は縮小前の画像で行う。
 void FluidExtrasShrinkPreview(FluidExtrasImage& image, const asset::FlipbookGrid& grid)
 {
-    if (!image.Valid() || grid.columns < 1 || grid.rows < 1) return;
+    if (!image.Valid() || grid.columns < 1 || grid.rows < 1) {
+        return;
+    }
     const std::uint32_t tileWidth = image.width / static_cast<std::uint32_t>(grid.columns);
     const std::uint32_t tileHeight = image.height / static_cast<std::uint32_t>(grid.rows);
     const std::uint32_t factor = (std::max)(1u, (std::max)(tileWidth, tileHeight) / 128u);
-    if (factor <= 1) return;
+    if (factor <= 1) {
+        return;
+    }
     const std::uint32_t smallWidth = tileWidth / factor;
     const std::uint32_t smallHeight = tileHeight / factor;
     const std::uint32_t width = smallWidth * static_cast<std::uint32_t>(grid.columns);
@@ -831,10 +916,14 @@ void FluidExtrasAnalyzeLoop(const FluidExtrasImage& image, const asset::Flipbook
     baked.steadyStartFrame = -1;
     baked.frameCoverage.clear();
     const int frames = (std::min)(grid.frameCount, grid.columns * grid.rows);
-    if (frames < 2 || grid.columns < 1 || grid.rows < 1) return;
+    if (frames < 2 || grid.columns < 1 || grid.rows < 1) {
+        return;
+    }
     const int tileWidth = static_cast<int>(image.width) / grid.columns;
     const int tileHeight = static_cast<int>(image.height) / grid.rows;
-    if (tileWidth < 1 || tileHeight < 1) return;
+    if (tileWidth < 1 || tileHeight < 1) {
+        return;
+    }
     const int stride = (std::max)(1, (std::max)(tileWidth, tileHeight) / 64);
     std::vector<float> areas(static_cast<std::size_t>(frames), 0.0f);
     std::vector<float> brightness(static_cast<std::size_t>(frames), 0.0f);
@@ -845,7 +934,9 @@ void FluidExtrasAnalyzeLoop(const FluidExtrasImage& image, const asset::Flipbook
     };
     const auto visible = [shading](const std::uint8_t* pixel) {
         const float alpha = static_cast<float>(pixel[3]) / 255.0f;
-        if (shading != fluid::FluidShading::Fire) return alpha;
+        if (shading != fluid::FluidShading::Fire) {
+            return alpha;
+        }
         return (std::max)(alpha, static_cast<float>((std::max)({ pixel[0], pixel[1], pixel[2] })) / 255.0f);
     };
     float adjacentDifference = 0.0f;
@@ -870,8 +961,11 @@ void FluidExtrasAnalyzeLoop(const FluidExtrasImage& image, const asset::Flipbook
         areas[static_cast<std::size_t>(frame)] /= (std::max)(samples, 1.0f);
         brightness[static_cast<std::size_t>(frame)] /= (std::max)(samples, 1.0f);
         pixelDifference /= (std::max)(samples, 1.0f);
-        if (frame + 1 == frames) baked.seamPixelDifference = pixelDifference;
-        else adjacentDifference += pixelDifference;
+        if (frame + 1 == frames) {
+            baked.seamPixelDifference = pixelDifference;
+        } else {
+            adjacentDifference += pixelDifference;
+        }
     }
     baked.typicalPixelDifference = adjacentDifference / static_cast<float>(frames - 1);
     baked.frameCoverage = areas;
@@ -892,11 +986,15 @@ void FluidExtrasAnalyzeLoop(const FluidExtrasImage& image, const asset::Flipbook
     }
     targetArea /= static_cast<float>(frames - tailStart);
     targetBrightness /= static_cast<float>(frames - tailStart);
-    if (frames < 3 || (targetArea < 0.01f && targetBrightness < 0.01f)) return;
+    if (frames < 3 || (targetArea < 0.01f && targetBrightness < 0.01f)) {
+        return;
+    }
     const int window = std::clamp(frames / 8, 3, 8);
     const int blendedHead = (std::min)(fluid::MakeFluidStepPlan(baked.recipe).loopOverlap, frames);
     const auto stableWindow = [&](int start) {
-        if (start + window > frames) return false;
+        if (start + window > frames) {
+            return false;
+        }
         float meanArea = 0.0f;
         float meanBrightness = 0.0f;
         for (int frame = start; frame < start + window; ++frame) {
@@ -909,11 +1007,18 @@ void FluidExtrasAnalyzeLoop(const FluidExtrasImage& image, const asset::Flipbook
             && relativeJump(meanBrightness, targetBrightness) <= 0.20f;
     };
     bool headStable = true;
-    for (int start = 0; start <= blendedHead && start + window <= frames; ++start)
+    for (int start = 0; start <= blendedHead && start + window <= frames; ++start) {
         headStable &= stableWindow(start);
-    if (headStable) { baked.steadyStartFrame = 0; return; }
+    }
+    if (headStable) {
+        baked.steadyStartFrame = 0;
+        return;
+    }
     for (int start = blendedHead; start + window <= frames; ++start)
-        if (stableWindow(start)) { baked.steadyStartFrame = start; break; }
+        if (stableWindow(start)) {
+            baked.steadyStartFrame = start;
+            break;
+        }
 }
 
 /// @brief 隣の .vfx を一時シーンで30/60 FPS再生し、実際の粒子更新で空白になるフレームを数える。
@@ -1008,7 +1113,9 @@ void FluidExtrasResolvePlayback(const FluidBakedState& baked, asset::FlipbookGri
     outStrength = 0.0f;
 
     asset::MaterialAssetAuthoring material;
-    if (baked.materialPath.empty() || !asset::LoadMaterialAssetFromFile(baked.materialPath, material)) return;
+    if (baked.materialPath.empty() || !asset::LoadMaterialAssetFromFile(baked.materialPath, material)) {
+        return;
+    }
     const asset::ParticleFlipbookSettings& flipbook = material.particle.flipbook;
     if (flipbook.FrameCount() > 1) {
         outGrid = { (std::max)(flipbook.spriteColumns, 1), (std::max)(flipbook.spriteRows, 1),
@@ -1020,7 +1127,9 @@ void FluidExtrasResolvePlayback(const FluidBakedState& baked, asset::FlipbookGri
         outFps = (std::max)(flipbook.flipbookFramesPerSecond, 0.1f);
         outLoop = true;
     }
-    if (flipbook.motionVectorFlipbook) outStrength = flipbook.motionVectorStrength;
+    if (flipbook.motionVectorFlipbook) {
+        outStrength = flipbook.motionVectorStrength;
+    }
 }
 
 /// @note 2D の Smoke / Liquid はストレートアルファで焼いてある。比較プレビューは事前乗算で合成するので、
@@ -1030,8 +1139,9 @@ void FluidExtrasPremultiply(std::vector<std::uint8_t>& rgba)
     for (std::size_t i = 0; i + 3 < rgba.size(); i += 4) {
         const float alpha = static_cast<float>(rgba[i + 3]) / 255.0f;
         const float scale = std::pow(alpha, 1.0f / 2.2f);
-        for (std::size_t c = 0; c < 3; ++c)
+        for (std::size_t c = 0; c < 3; ++c) {
             rgba[i + c] = static_cast<std::uint8_t>(static_cast<float>(rgba[i + c]) * scale + 0.5f);
+        }
     }
 }
 
@@ -1096,16 +1206,21 @@ void FluidExtrasLoadBaked(EditorContext& ctx, FluidBakedState& baked)
                             channel->appearanceTypicalDifference * 2.5f);
                 }
                 FluidExtrasShrinkPreview(channel->color, grid);
-                if (channel->hasMotion) FluidExtrasShrinkPreview(channel->motion, grid);
-                if (!volume && !asset::FluidShadingIsPremultiplied(shading))
+                if (channel->hasMotion) {
+                    FluidExtrasShrinkPreview(channel->motion, grid);
+                }
+                if (!volume && !asset::FluidShadingIsPremultiplied(shading)) {
                     FluidExtrasPremultiply(channel->color.rgba);
+                }
             }
             channel->done.store(true, std::memory_order_release);
         }).detach();
         baked.loading = std::move(channel);
         return;
     }
-    if (!baked.loading->done.load(std::memory_order_acquire)) return;
+    if (!baked.loading->done.load(std::memory_order_acquire)) {
+        return;
+    }
     auto channel = std::move(baked.loading);
     baked.pendingLoad = false;
     if (!channel->error.empty()) {
@@ -1144,13 +1259,13 @@ void FluidExtrasLoadBaked(EditorContext& ctx, FluidBakedState& baked)
     flipbook.frameDt = 1.0f / (std::max)(fps, 0.1f);
     flipbook.loop = loop;
     flipbook.motionStrength = baked.hasMotion ? strength : 0.0f;
-    /// @note 2D は shading で事前乗算かどうかが決まる。3D は必ず事前乗算で焼いてある。
+    // 2D は shading で事前乗算かどうかが決まる。3D は必ず事前乗算で焼いてある。
     flipbook.colorRgba8 = std::move(color.rgba);
     if (baked.hasMotion) {
         flipbook.motionRgba8 = std::move(motion.rgba);
     } else {
-        /// @note MV を焼いていないレシピでも «焼いた結果» は見せたい。強さ 0 なら warp は効かないので、
-        /// @note 動かない MV (0.5 中心) を渡して左右を同じ絵にする。
+        // MV を焼いていないレシピでも «焼いた結果» は見せたい。強さ 0 なら warp は効かないので、
+        // 動かない MV (0.5 中心) を渡して左右を同じ絵にする。
         flipbook.motionRgba8.assign(static_cast<std::size_t>(color.width) * color.height * 4, 0);
         for (std::size_t i = 0; i + 3 < flipbook.motionRgba8.size(); i += 4) {
             flipbook.motionRgba8[i] = 128;
@@ -1183,24 +1298,33 @@ bool FluidExtrasAnalyzeAppearance(const std::filesystem::path& base, const std::
 {
     asset::MaterialAssetAuthoring material;
     if (materialPath.empty() || !asset::LoadMaterialAssetFromFile(materialPath, material)
-        || !material.particle.sixWayMaps) return false;
+        || !material.particle.sixWayMaps) {
+        return false;
+    }
     const std::string stem = util::FileSystem::PathToUtf8(base);
     const auto loadMap = [&](const char* suffix, FluidExtrasImage& image) {
         std::string found;
         if (!FluidExtrasLoadFirst({ util::FileSystem::PathFromUtf8(stem + suffix + ".png"),
-                                    util::FileSystem::PathFromUtf8(stem + suffix + ".dds") }, image, found))
+                                    util::FileSystem::PathFromUtf8(stem + suffix + ".dds") }, image, found)) {
             return false;
+        }
         FluidExtrasShrinkPreview(image, grid);
         return image.Valid();
     };
     FluidExtrasImage positive, negative, albedo, emission;
     if (!loadMap("_6wayP", positive) || !loadMap("_6wayN", negative)
-        || !loadMap("_6wayC", albedo) || !loadMap("_6wayE", emission)) return false;
+        || !loadMap("_6wayC", albedo) || !loadMap("_6wayE", emission)) {
+        return false;
+    }
     for (const FluidExtrasImage* map : { &positive, &negative, &albedo, &emission })
         if (map->width < static_cast<std::uint32_t>(grid.columns)
-            || map->height < static_cast<std::uint32_t>(grid.rows)) return false;
+            || map->height < static_cast<std::uint32_t>(grid.rows)) {
+            return false;
+        }
     const int frames = (std::min)(grid.frameCount, grid.columns * grid.rows);
-    if (frames < 2) return false;
+    if (frames < 2) {
+        return false;
+    }
     const auto sample = [&](const FluidExtrasImage& image, int frame, float u, float v) {
         const int width = static_cast<int>(image.width) / grid.columns;
         const int height = static_cast<int>(image.height) / grid.rows;
@@ -1244,10 +1368,14 @@ bool FluidExtrasAnalyzeAppearance(const std::filesystem::path& base, const std::
                 const auto mixed = [&](const FluidExtrasImage& map, bool srgb) {
                     auto a = sample(map, frame, currentU, currentV);
                     if (srgb) for (int c = 0; c < 3; ++c) a[c] = std::pow(a[c], 2.2f);
-                    if (blend <= 0.0f) return a;
+                    if (blend <= 0.0f) {
+                        return a;
+                    }
                     auto b = sample(map, next, nextU, nextV);
                     for (int c = 0; c < 4; ++c) {
-                        if (srgb && c < 3) b[c] = std::pow(b[c], 2.2f);
+                        if (srgb && c < 3) {
+                            b[c] = std::pow(b[c], 2.2f);
+                        }
                         a[c] = a[c] * (1.0f - blend) + b[c] * blend;
                     }
                     return a;
@@ -1291,10 +1419,14 @@ bool FluidExtrasAnalyzeAppearance(const std::filesystem::path& base, const std::
 
 void FluidExtrasDrawOutputRow(const char* label, const std::string& absPath)
 {
-    if (absPath.empty()) return;
+    if (absPath.empty()) {
+        return;
+    }
     const std::string shown = NormalizeAssetPath(absPath);
     ImGui::PushID(label);
-    if (ImGui::SmallButton("Reveal")) widgets::RequestAssetReveal(shown, false);
+    if (ImGui::SmallButton("Reveal")) {
+        widgets::RequestAssetReveal(shown, false);
+    }
     ImGui::SameLine();
     ImGui::TextDisabled("%s: %s", label, shown.c_str());
     ImGui::PopID();
@@ -1367,21 +1499,29 @@ bool FluidExtrasVisitPartVector(const fluid::FluidRecipe& recipe, FluidSelection
 /// @note "Vortex (2)" → "Vortex"。連番を足すたびに "(1) (1)" と伸びるのを防ぐ。
 std::string FluidExtrasStripNameCounter(const std::string& name)
 {
-    if (name.size() < 4 || name.back() != ')') return name;
+    if (name.size() < 4 || name.back() != ')') {
+        return name;
+    }
     const std::size_t open = name.rfind(" (");
-    if (open == std::string::npos || open + 2 >= name.size() - 1) return name;
+    if (open == std::string::npos || open + 2 >= name.size() - 1) {
+        return name;
+    }
     for (std::size_t i = open + 2; i + 1 < name.size(); ++i)
-        if (name[i] < '0' || name[i] > '9') return name;
+        if (name[i] < '0' || name[i] > '9') {
+            return name;
+        }
     return name.substr(0, open);
 }
 
-} /// @note namespace
+} // namespace
 
 /// @name テンプレートの置き場
 
 bool IsFluidTemplatePath(const EditorContext& ctx, const std::string& absPath)
 {
-    if (absPath.empty() || ctx.projectRoot.empty()) return false;
+    if (absPath.empty() || ctx.projectRoot.empty()) {
+        return false;
+    }
     const std::string root =
         util::FileSystem::NormalizePathSeparators(ctx.projectRoot) + "/" + kFluidTemplateRoot;
     return util::FileSystem::IsChildPathText(absPath, root);
@@ -1397,8 +1537,8 @@ void OpenFluidSaveAsModal(const std::string& sourcePath, const std::string& defa
         util::FileSystem::PathToUtf8(util::FileSystem::PathFromUtf8(sourcePath).stem()), saveAs.directory);
     saveAs.sourceLabel = NormalizeAssetPath(sourcePath);
     saveAs.error.clear();
-    /// @note 開くのは次に描くとき。呼び手は ImGui の ID スタックがどこにあるか分からない所 (ModalDialog の
-    /// @note コールバックや終了時の一括保存) からも来る。
+    // 開くのは次に描くとき。呼び手は ImGui の ID スタックがどこにあるか分からない所 (ModalDialog の
+    // コールバックや終了時の一括保存) からも来る。
     saveAs.openRequest = true;
 }
 
@@ -1410,7 +1550,9 @@ FluidSaveAsResult DrawFluidSaveAsModal(EditorContext& ctx, FluidDocument& docume
         saveAs.active = true;
         ImGui::OpenPopup(kFluidSaveAsPopupId);
     }
-    if (!saveAs.active) return {};
+    if (!saveAs.active) {
+        return {};
+    }
     if (!document.IsOpen()) {
         saveAs.active = false;
         return {};
@@ -1430,8 +1572,9 @@ FluidSaveAsResult DrawFluidSaveAsModal(EditorContext& ctx, FluidDocument& docume
     widgets::InputString("Name##fe_saveas_name", saveAs.name, 128);
     ImGui::SetNextItemWidth(-120.0f);
     widgets::InputString("Folder##fe_saveas_folder", saveAs.directory, 512);
-    if (!saveAs.error.empty())
+    if (!saveAs.error.empty()) {
         ImGui::TextColored({ 1.0f, 0.45f, 0.3f, 1.0f }, "%s", saveAs.error.c_str());
+    }
 
     FluidSaveAsResult result;
     if (ImGui::Button("Save As##fe_saveas_save", { 140.0f, 0.0f })) {
@@ -1484,20 +1627,23 @@ std::string DrawFluidTemplateGallery(EditorContext& ctx, const std::string& defa
         gallery.error.clear();
         ImGui::OpenPopup(kFluidGalleryPopupId);
     }
-    if (gallery.entries.empty()) return {};
+    if (gallery.entries.empty()) {
+        return {};
+    }
     FluidExtrasTickThumbnails(ctx, gallery);
 
     ImGui::SetNextWindowSize({ 700.0f, 560.0f }, ImGuiCond_Appearing);
     if (!ImGui::BeginPopupModal(kFluidGalleryPopupId, nullptr, ImGuiWindowFlags_NoSavedSettings)) {
-        /// @note 閉じている間は裏の解きもサムネイルも抱えない (次に開いたときに作り直す)。
+        // 閉じている間は裏の解きもサムネイルも抱えない (次に開いたときに作り直す)。
         FluidExtrasCloseGallery(ctx, gallery);
         return {};
     }
 
     bool create = false;
     const float footer = ImGui::GetFrameHeightWithSpacing() * 4.0f + ImGui::GetTextLineHeightWithSpacing();
-    if (ImGui::BeginChild("##fluid_template_entries", { 0.0f, -footer }, ImGuiChildFlags_Borders))
+    if (ImGui::BeginChild("##fluid_template_entries", { 0.0f, -footer }, ImGuiChildFlags_Borders)) {
         FluidExtrasDrawEntries(gallery, create);
+    }
     ImGui::EndChild();
 
     if (gallery.selected >= 0 && gallery.selected < static_cast<int>(gallery.entries.size())) {
@@ -1508,16 +1654,24 @@ std::string DrawFluidTemplateGallery(EditorContext& ctx, const std::string& defa
     }
     widgets::InputString("Name", gallery.name, 128);
     widgets::InputString("Folder", gallery.directory, 512);
-    if (!gallery.error.empty()) ImGui::TextColored({ 1.0f, 0.45f, 0.3f, 1.0f }, "%s", gallery.error.c_str());
+    if (!gallery.error.empty()) {
+        ImGui::TextColored({ 1.0f, 0.45f, 0.3f, 1.0f }, "%s", gallery.error.c_str());
+    }
 
-    if (ImGui::Button("Create", { 120.0f, 0.0f })) create = true;
+    if (ImGui::Button("Create", { 120.0f, 0.0f })) {
+        create = true;
+    }
     ImGui::SameLine();
-    if (ImGui::Button("Cancel", { 120.0f, 0.0f })) ImGui::CloseCurrentPopup();
+    if (ImGui::Button("Cancel", { 120.0f, 0.0f })) {
+        ImGui::CloseCurrentPopup();
+    }
 
     std::string created;
     if (create) {
         created = FluidExtrasCreateFromEntry(ctx, gallery);
-        if (!created.empty()) ImGui::CloseCurrentPopup();
+        if (!created.empty()) {
+            ImGui::CloseCurrentPopup();
+        }
     }
     ImGui::EndPopup();
     return created;
@@ -1529,7 +1683,9 @@ void SetFluidBakedResult(EditorContext& ctx, const std::string& fluidPath,
                          const std::string& sourceFluidPath)
 {
     FluidBakedState& baked = FluidExtrasBaked();
-    if (ctx.resources != nullptr) baked.compare.Release(*ctx.resources);
+    if (ctx.resources != nullptr) {
+        baked.compare.Release(*ctx.resources);
+    }
     baked.loaded = false;
     baked.loading.reset();
     baked.hasMotion = false;
@@ -1540,7 +1696,9 @@ void SetFluidBakedResult(EditorContext& ctx, const std::string& fluidPath,
     baked.fluidPath = fluidPath;
     baked.sourceFluidPath = sourceFluidPath.empty() ? fluidPath : sourceFluidPath;
     baked.has = !fluidPath.empty();
-    if (!baked.has) return;
+    if (!baked.has) {
+        return;
+    }
 
     baked.recipe = {};
     if (!asset::LoadFluidRecipe(fluidPath, baked.recipe)) {
@@ -1551,8 +1709,10 @@ void SetFluidBakedResult(EditorContext& ctx, const std::string& fluidPath,
     baked.volume = baked.recipe.bake.mode == fluid::FluidBakeMode::Volume3D;
     baked.shading = FluidExtrasEffectiveShading(baked.recipe);
     baked.materialPath = SiblingMaterialPath(fluidPath);
-    if (!util::FileSystem::Exists(baked.materialPath)) baked.materialPath.clear();
-    /// @note タブを開いてから裏で読み、完了したフレームで表示する。
+    if (!util::FileSystem::Exists(baked.materialPath)) {
+        baked.materialPath.clear();
+    }
+    // タブを開いてから裏で読み、完了したフレームで表示する。
     baked.pendingLoad = true;
 }
 
@@ -1571,7 +1731,9 @@ void DrawFluidBakedTab(EditorContext& ctx, State& state)
     }
     if (baked.pendingLoad) {
         FluidExtrasLoadBaked(ctx, baked);
-        if (baked.messageIsError && !baked.message.empty()) SetStatus(state, baked.message, true);
+        if (baked.messageIsError && !baked.message.empty()) {
+            SetStatus(state, baked.message, true);
+        }
     }
 
     ImGui::TextDisabled("%s", NormalizeAssetPath(baked.fluidPath).c_str());
@@ -1581,23 +1743,34 @@ void DrawFluidBakedTab(EditorContext& ctx, State& state)
 
     if (!baked.loaded) {
         if (!baked.message.empty()) {
-            if (baked.messageIsError) ImGui::TextColored({ 1.0f, 0.45f, 0.3f, 1.0f }, "%s", baked.message.c_str());
-            else                      ImGui::TextWrapped("%s", baked.message.c_str());
+            if (baked.messageIsError) {
+                ImGui::TextColored({ 1.0f, 0.45f, 0.3f, 1.0f }, "%s", baked.message.c_str());
+            } else {
+                ImGui::TextWrapped("%s", baked.message.c_str());
+            }
         }
-        if (ImGui::Button("Reload", { 120.0f, 0.0f })) baked.pendingLoad = true;
+        if (ImGui::Button("Reload", { 120.0f, 0.0f })) {
+            baked.pendingLoad = true;
+        }
         return;
     }
 
-    if (ImGui::Button(baked.playing ? "Pause" : "Play", { 64.0f, 0.0f })) baked.playing = !baked.playing;
+    if (ImGui::Button(baked.playing ? "Pause" : "Play", { 64.0f, 0.0f })) {
+        baked.playing = !baked.playing;
+    }
     ImGui::SameLine();
     ImGui::SetNextItemWidth(110.0f);
     ImGui::DragFloat("Playback FPS", &baked.fps, 0.1f, 1.0f, 60.0f, "%.1f");
     ImGui::SameLine();
-    if (ImGui::SmallButton("Baked FPS")) baked.fps = 1.0f / (std::max)(baked.compare.FrameDt(), 1.0e-4f);
+    if (ImGui::SmallButton("Baked FPS")) {
+        baked.fps = 1.0f / (std::max)(baked.compare.FrameDt(), 1.0e-4f);
+    }
 
     const int frames = (std::max)(baked.compare.FrameCount(), 1);
     const int seamFrames = (std::min)(4, (std::max)(frames / 4, 1));
-    if (ImGui::Checkbox("Repeat seam", &baked.seamPlayback)) baked.time = 0.0f;
+    if (ImGui::Checkbox("Repeat seam", &baked.seamPlayback)) {
+        baked.time = 0.0f;
+    }
     ImGui::SetItemTooltip("末尾の数コマから先頭の数コマへ繰り返し、継ぎ目を確認します");
     float framePosition = baked.time * baked.fps;
     const int playbackFrames = baked.seamPlayback ? seamFrames * 2 : frames;
@@ -1626,13 +1799,16 @@ void DrawFluidBakedTab(EditorContext& ctx, State& state)
             baked.appearanceSeamDifference * 100.0f, baked.appearanceTypicalDifference * 100.0f);
         ImGui::SetItemTooltip("6-way P/N/C/E、MV、コマ補間を適用し、3 方向の照明で継ぎ目を比較します。");
     }
-    if (ImGui::Button("Inspect VFX loop (30/60 FPS)")) FluidExtrasInspectVfxLoop(baked);
+    if (ImGui::Button("Inspect VFX loop (30/60 FPS)")) {
+        FluidExtrasInspectVfxLoop(baked);
+    }
     ImGui::SetItemTooltip("隣の .vfx を一時シーンで3周再生し、実際の粒子設定と Atlas で空白フレームを数えます");
     if (!baked.vfxLoopReport.empty()) {
-        if (baked.vfxLoopWarning)
+        if (baked.vfxLoopWarning) {
             ImGui::TextColored({ 1.0f, 0.55f, 0.28f, 1.0f }, "%s", baked.vfxLoopReport.c_str());
-        else
+        } else {
             ImGui::TextWrapped("%s", baked.vfxLoopReport.c_str());
+        }
     }
     if (baked.steadyStartFrame >= 0) {
         const float candidate = baked.recipe.output.warmup
@@ -1659,16 +1835,20 @@ void DrawFluidBakedTab(EditorContext& ctx, State& state)
     }
     ImGui::SetNextItemWidth(160.0f);
     ImGui::SliderFloat("MV Strength", &baked.strengthScale, 0.0f, 2.0f, "x%.2f");
-    if (ImGui::IsItemHovered())
+    if (ImGui::IsItemHovered()) {
         ImGui::SetTooltip("Scales the baked S. 1 is the value the atlas was made for.");
+    }
     ImGui::SameLine();
     static constexpr const char* kFluidBakedBackgrounds[] = { "Dark", "Light", "Checker" };
     int background = static_cast<int>(baked.background);
     ImGui::SetNextItemWidth(110.0f);
-    if (ImGui::Combo("Background", &background, kFluidBakedBackgrounds, IM_ARRAYSIZE(kFluidBakedBackgrounds)))
+    if (ImGui::Combo("Background", &background, kFluidBakedBackgrounds, IM_ARRAYSIZE(kFluidBakedBackgrounds))) {
         baked.background = static_cast<asset::VolumePreviewBackground>(background);
+    }
     ImGui::SameLine();
-    if (ImGui::SmallButton("Reload")) baked.pendingLoad = true;
+    if (ImGui::SmallButton("Reload")) {
+        baked.pendingLoad = true;
+    }
 
     if (baked.playing) {
         const float fps = (std::max)(baked.fps, 0.1f);
@@ -1676,8 +1856,10 @@ void DrawFluidBakedTab(EditorContext& ctx, State& state)
             + (!baked.seamPlayback && !baked.compare.Loops() ? 0.5f : 0.0f);
         baked.time = std::fmod(baked.time + ImGui::GetIO().DeltaTime, (std::max)(cycle, 1.0e-3f));
     }
-    if (ctx.renderer == nullptr || ctx.resources == nullptr || ctx.imguiRenderer == nullptr) return;
-    /// @note 比較の絵はこのフレームの中で描く。ImGui が実際に描くのはフレームの終わりなので順序は保たれる。
+    if (ctx.renderer == nullptr || ctx.resources == nullptr || ctx.imguiRenderer == nullptr) {
+        return;
+    }
+    // 比較の絵はこのフレームの中で描く。ImGui が実際に描くのはフレームの終わりなので順序は保たれる。
     const float sampleTime = baked.seamPlayback
         ? std::fmod(static_cast<float>(frames - seamFrames) + baked.time * baked.fps,
                     static_cast<float>(frames)) / (std::max)(baked.fps, 0.1f)
@@ -1685,7 +1867,9 @@ void DrawFluidBakedTab(EditorContext& ctx, State& state)
     baked.compare.Render(*ctx.renderer, *ctx.resources, sampleTime, baked.fps, baked.strengthScale,
                          baked.background);
     void* rawId = ctx.imguiRenderer->GetImTextureID(baked.compare.Target(), *ctx.resources, 0);
-    if (rawId == nullptr) return;
+    if (rawId == nullptr) {
+        return;
+    }
 
     const float width = (std::max)(ImGui::GetContentRegionAvail().x, 128.0f);
     ImGui::Image(widgets::ToImTextureID(rawId), { width, width * 0.5f });
@@ -1701,19 +1885,23 @@ void DrawFluidBakedTab(EditorContext& ctx, State& state)
     ImGui::TextDisabled("Frame %d  blend %.2f   S = %.4f%s", baked.compare.CurrentFrame(),
                         baked.compare.CurrentBlend(), baked.compare.MotionStrength(),
                         baked.compare.Loops() ? "   (Loop)" : "");
-    if (!baked.hasMotion)
+    if (!baked.hasMotion) {
         ImGui::TextDisabled("No motion vectors were baked, so both halves are the same.");
-    if (baked.shading == fluid::FluidShading::Glow)
+    }
+    if (baked.shading == fluid::FluidShading::Glow) {
         ImGui::TextDisabled("Additive shading is composited as alpha here; in game it adds to the scene.");
+    }
 }
 
 void ShutdownFluidBakedTab(EditorContext& ctx)
 {
     FluidBakedState& baked = FluidExtrasBaked();
-    if (ctx.resources != nullptr) baked.compare.Release(*ctx.resources);
+    if (ctx.resources != nullptr) {
+        baked.compare.Release(*ctx.resources);
+    }
     baked.loaded = false;
     baked.pendingLoad = baked.has;
-    /// @note 一覧のサムネイルもここで返す。GPU 資源を持つのはこの 2 つだけで、返す口は他に無い。
+    // 一覧のサムネイルもここで返す。GPU 資源を持つのはこの 2 つだけで、返す口は他に無い。
     FluidExtrasCloseGallery(ctx, FluidExtrasGallery());
 }
 
@@ -1753,16 +1941,20 @@ bool PrepareFluidPlaybackCapture(EditorContext& ctx, const std::string& fluidPat
         return false;
     }
     baked.shading = FluidExtrasEffectiveShading(baked.recipe);
-    /// @note レシピの Bake mode と別の Atlas を撮るとき、隣の材質は別モードの設定を保持している。
+    // レシピの Bake mode と別の Atlas を撮るとき、隣の材質は別モードの設定を保持している。
     if (volume == (baked.recipe.bake.mode == fluid::FluidBakeMode::Volume3D)) {
         baked.materialPath = SiblingMaterialPath(fluidPath);
-        if (!util::FileSystem::Exists(baked.materialPath)) baked.materialPath.clear();
+        if (!util::FileSystem::Exists(baked.materialPath)) {
+            baked.materialPath.clear();
+        }
     }
     asset::FlipbookGrid grid;
     bool loop = false;
     float strength = 0.0f;
     FluidExtrasResolvePlayback(baked, grid, entry->fps, loop, strength);
-    if (motionStrength >= 0.0f) strength = motionStrength;
+    if (motionStrength >= 0.0f) {
+        strength = motionStrength;
+    }
     if (grid.columns < 1 || grid.rows < 1 || grid.frameCount < 1) {
         error = "Fluid 再生画面のコマ割りが不正です";
         return false;
@@ -1794,9 +1986,12 @@ bool PrepareFluidPlaybackCapture(EditorContext& ctx, const std::string& fluidPat
     entry->colorStamp = FluidExtrasCaptureStamp(entry->colorPath);
     entry->motionStamp = FluidExtrasCaptureStamp(entry->motionPath);
     FluidExtrasShrinkPreview(color, grid);
-    if (hasMotion) FluidExtrasShrinkPreview(motion, grid);
-    if (!volume && !asset::FluidShadingIsPremultiplied(baked.shading))
+    if (hasMotion) {
+        FluidExtrasShrinkPreview(motion, grid);
+    }
+    if (!volume && !asset::FluidShadingIsPremultiplied(baked.shading)) {
         FluidExtrasPremultiply(color.rgba);
+    }
 
     asset::BakedVolumeFlipbook flipbook;
     flipbook.atlasWidth = color.width;
@@ -1817,7 +2012,7 @@ bool PrepareFluidPlaybackCapture(EditorContext& ctx, const std::string& fluidPat
             flipbook.motionRgba8[i + 3] = 255;
         }
     }
-    /// @note Playtest は描画フレーム開始前に準備を要求する。GPU 転送は Render へ送る。
+    // Playtest は描画フレーム開始前に準備を要求する。GPU 転送は Render へ送る。
     entry->pendingFlipbook = std::move(flipbook);
     entry->frame = frame;
     entry->uploadPending = true;
@@ -1830,7 +2025,9 @@ void RenderFluidPlaybackCapture(EditorContext& ctx)
 {
     FluidPlaybackCaptureState& capture = FluidExtrasCapture();
     FluidPlaybackCaptureEntry* entry = capture.current;
-    if (entry == nullptr || ctx.renderer == nullptr || ctx.resources == nullptr) return;
+    if (entry == nullptr || ctx.renderer == nullptr || ctx.resources == nullptr) {
+        return;
+    }
     if (entry->uploadPending) {
         std::string error;
         if (!entry->compare.Upload(*ctx.resources, std::move(entry->pendingFlipbook), error)) {
@@ -1847,8 +2044,9 @@ bool CaptureFluidPlayback(EditorContext& ctx, std::vector<std::uint8_t>& png)
 {
     FluidPlaybackCaptureState& capture = FluidExtrasCapture();
     const FluidPlaybackCaptureEntry* entry = capture.current;
-    if (entry == nullptr || entry->uploadPending || ctx.renderer == nullptr || ctx.resources == nullptr)
+    if (entry == nullptr || entry->uploadPending || ctx.renderer == nullptr || ctx.resources == nullptr) {
         return false;
+    }
     std::uint32_t width = 0;
     std::uint32_t height = 0;
     const auto target = entry->compare.Target();
@@ -1860,7 +2058,9 @@ void ShutdownFluidPlaybackCapture(EditorContext& ctx)
     FluidPlaybackCaptureState& capture = FluidExtrasCapture();
     capture.current = nullptr;
     if (ctx.resources != nullptr)
-        for (auto& entry : capture.entries) entry->compare.Release(*ctx.resources);
+        for (auto& entry : capture.entries) {
+            entry->compare.Release(*ctx.resources);
+        }
     capture.entries.clear();
 }
 
@@ -1874,9 +2074,11 @@ bool TickFluidAutoSave(EditorContext& ctx, FluidDocument& document)
         autoSave.idle = 0.0f;
         return false;
     }
-    /// @note テンプレートは «作り始めの原本» で、開いて値を見ただけの人も多い。3 秒の無操作で黙って書くと、
-    /// @note 覗いただけのつもりが原本ごと別物になる (ShockRing.fluid が実際に消えた)。上書きは人が選ぶ。
-    if (IsFluidTemplatePath(ctx, document.Path())) return false;
+    // テンプレートは «作り始めの原本» で、開いて値を見ただけの人も多い。3 秒の無操作で黙って書くと、
+    // 覗いただけのつもりが原本ごと別物になる (ShockRing.fluid が実際に消えた)。上書きは人が選ぶ。
+    if (IsFluidTemplatePath(ctx, document.Path())) {
+        return false;
+    }
     const std::uint64_t revision = document.Revision();
     if (!autoSave.hasRevision || revision != autoSave.revision) {
         autoSave.hasRevision = true;
@@ -1885,16 +2087,24 @@ bool TickFluidAutoSave(EditorContext& ctx, FluidDocument& document)
         return false;
     }
     autoSave.idle += ImGui::GetIO().DeltaTime;
-    if (!autoSave.enabled || !document.IsDirty()) return false;
-    /// @note ドラッグの途中で書くと、手を離すまでの中間の姿が .fluid に残る (Undo も 1 つに畳めていない)。
-    if (document.InInteractiveEdit()) return false;
-    /// @note 外で書き換わったファイルへ黙って上書きすると、相手の変更が消える。解決は人が選ぶ。
-    if (document.HasExternalConflict()) return false;
-    if (autoSave.idle < kFluidAutoSaveDelay) return false;
+    if (!autoSave.enabled || !document.IsDirty()) {
+        return false;
+    }
+    // ドラッグの途中で書くと、手を離すまでの中間の姿が .fluid に残る (Undo も 1 つに畳めていない)。
+    if (document.InInteractiveEdit()) {
+        return false;
+    }
+    // 外で書き換わったファイルへ黙って上書きすると、相手の変更が消える。解決は人が選ぶ。
+    if (document.HasExternalConflict()) {
+        return false;
+    }
+    if (autoSave.idle < kFluidAutoSaveDelay) {
+        return false;
+    }
 
     std::string error;
     const bool saved = document.Save(ctx, error);
-    /// @note 失敗しても毎フレーム書きに行かないよう、成否に関わらず間を置き直す。
+    // 失敗しても毎フレーム書きに行かないよう、成否に関わらず間を置き直す。
     autoSave.idle = 0.0f;
     autoSave.revision = document.Revision();
     return saved;
@@ -1909,11 +2119,13 @@ bool FluidAutoSaveEnabled(const EditorContext& ctx)
 void SetFluidAutoSaveEnabled(EditorContext& ctx, bool enabled)
 {
     FluidAutoSaveState& autoSave = FluidExtrasAutoSave();
-    if (autoSave.enabled == enabled) return;
+    if (autoSave.enabled == enabled) {
+        return;
+    }
     autoSave.enabled = enabled;
     autoSave.idle = 0.0f;
-    /// @note 次の起動へ持ち越す値なので、終了を待たずに editor_settings.toml へ書かせる
-    /// @note (EditorSettings::fluidEditorAutoSave が保存先)。
+    // 次の起動へ持ち越す値なので、終了を待たずに editor_settings.toml へ書かせる
+    // (EditorSettings::fluidEditorAutoSave が保存先)。
     ctx.requestEditorSettingsSave = true;
 }
 
@@ -1921,27 +2133,35 @@ void SetFluidAutoSaveEnabled(EditorContext& ctx, bool enabled)
 
 void SetFluidPartClipboard(const fluid::FluidRecipe& recipe, FluidSelectionKind list, int index)
 {
-    if (index < 0) return;
+    if (index < 0) {
+        return;
+    }
     const auto at = static_cast<std::size_t>(index);
     FluidPartClipboardState next;
     switch (list) {
     case FluidSelectionKind::Source:
-        if (at >= recipe.sources.size()) return;
+        if (at >= recipe.sources.size()) {
+            return;
+        }
         next.holder.sources.push_back(recipe.sources[at]);
         break;
     case FluidSelectionKind::Force:
-        if (at >= recipe.forces.size()) return;
+        if (at >= recipe.forces.size()) {
+            return;
+        }
         next.holder.forces.push_back(recipe.forces[at]);
         break;
     case FluidSelectionKind::Collider:
-        if (at >= recipe.colliders.size()) return;
+        if (at >= recipe.colliders.size()) {
+            return;
+        }
         next.holder.colliders.push_back(recipe.colliders[at]);
         break;
     default:
         return;
     }
     next.kind = list;
-    /// @note 表示名は «控えた時点» のものを持つ。元の .fluid を閉じた後でもメニューに何が入っているか出す。
+    // 表示名は «控えた時点» のものを持つ。元の .fluid を閉じた後でもメニューに何が入っているか出す。
     next.label = fluidui::PartDisplayName(recipe, list, index);
     FluidExtrasPartClipboard() = std::move(next);
 }
@@ -1954,7 +2174,9 @@ bool HasFluidPartClipboard()
 bool FluidPartClipboardMatches(FluidSelectionKind list)
 {
     const FluidPartClipboardState& clipboard = FluidExtrasPartClipboard();
-    if (clipboard.kind == FluidSelectionKind::None || clipboard.kind != list) return false;
+    if (clipboard.kind == FluidSelectionKind::None || clipboard.kind != list) {
+        return false;
+    }
     std::size_t count = 0;
     FluidExtrasVisitPartVector(clipboard.holder, list, [&count](const auto& parts) { count = parts.size(); });
     return count > 0;
@@ -1972,13 +2194,17 @@ std::string FluidPartClipboardLabel()
 
 bool PasteFluidPartClipboard(fluid::FluidRecipe& recipe, FluidSelectionKind list, int at)
 {
-    if (!FluidPartClipboardMatches(list)) return false;
+    if (!FluidPartClipboardMatches(list)) {
+        return false;
+    }
     const FluidPartClipboardState& clipboard = FluidExtrasPartClipboard();
 
     int count = 0;
     FluidExtrasVisitPartVector(recipe, list,
                                [&count](const auto& parts) { count = static_cast<int>(parts.size()); });
-    if (count >= MaxParts(list)) return false;
+    if (count >= MaxParts(list)) {
+        return false;
+    }
 
     const int insertAt = (at < 0 || at > count) ? count : at;
     const auto offset = static_cast<std::ptrdiff_t>(insertAt);
@@ -1999,36 +2225,48 @@ bool PasteFluidPartClipboard(fluid::FluidRecipe& recipe, FluidSelectionKind list
     std::string base;
     VisitPart(recipe, list, insertAt, [&base](const auto& part) { base = part.name; });
     const std::string unique = MakeUniqueFluidPartName(recipe, list, base, insertAt);
-    if (unique != base) VisitPart(recipe, list, insertAt, [&unique](auto& part) { part.name = unique; });
+    if (unique != base) {
+        VisitPart(recipe, list, insertAt, [&unique](auto& part) { part.name = unique; });
+    }
     return true;
 }
 
 std::string MakeUniqueFluidPartName(const fluid::FluidRecipe& recipe, FluidSelectionKind list,
                                     const std::string& base, int ignoreIndex)
 {
-    /// @note 名前が空の部品は Outliner で "Source 2 (Cone)" と添字から呼ばれる。空のまま返せば衝突しない。
-    if (base.empty()) return base;
+    // 名前が空の部品は Outliner で "Source 2 (Cone)" と添字から呼ばれる。空のまま返せば衝突しない。
+    if (base.empty()) {
+        return base;
+    }
 
     std::vector<std::string> used;
     FluidExtrasVisitPartVector(recipe, list, [&used, ignoreIndex](const auto& parts) {
         used.reserve(parts.size());
         for (std::size_t i = 0; i < parts.size(); ++i) {
-            if (static_cast<int>(i) == ignoreIndex) continue;
-            if (!parts[i].name.empty()) used.push_back(parts[i].name);
+            if (static_cast<int>(i) == ignoreIndex) {
+                continue;
+            }
+            if (!parts[i].name.empty()) {
+                used.push_back(parts[i].name);
+            }
         }
     });
     const auto taken = [&used](const std::string& name) {
         return std::find(used.begin(), used.end(), name) != used.end();
     };
-    if (!taken(base)) return base;
+    if (!taken(base)) {
+        return base;
+    }
 
     const std::string stem = FluidExtrasStripNameCounter(base);
-    /// @note 上限は部品の数 (16) で足りるが、名前だけ手で揃えた列に当たっても止まらない程度に取る。
+    // 上限は部品の数 (16) で足りるが、名前だけ手で揃えた列に当たっても止まらない程度に取る。
     for (int serial = 1; serial < 1000; ++serial) {
         const std::string candidate = stem + " (" + std::to_string(serial) + ")";
-        if (!taken(candidate)) return candidate;
+        if (!taken(candidate)) {
+            return candidate;
+        }
     }
     return base;
 }
 
-} /// @note namespace fbzz::editor::fluideditor
+} // namespace fbzz::editor::fluideditor

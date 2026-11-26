@@ -50,29 +50,29 @@ struct TestGroupEntry {
 void WriteTga(const std::filesystem::path& path, int width, int height)
 {
     std::vector<std::uint8_t> bytes(18, 0);
-    /// @note 無圧縮トゥルーカラー
+    // 無圧縮トゥルーカラー
     bytes[2]  = 2;
     bytes[12] = static_cast<std::uint8_t>(width  & 0xFF);
     bytes[13] = static_cast<std::uint8_t>((width  >> 8) & 0xFF);
     bytes[14] = static_cast<std::uint8_t>(height & 0xFF);
     bytes[15] = static_cast<std::uint8_t>((height >> 8) & 0xFF);
-    /// @note bpp
+    // bpp
     bytes[16] = 32;
-    /// @note 左上原点 + アルファ 8bit
+    // 左上原点 + アルファ 8bit
     bytes[17] = 0x28;
 
     for (int y = 0; y < height; ++y) {
         for (int x = 0; x < width; ++x) {
-            /// @note 中央の四角だけ不透明にして、縮小で潰れない絵にする。
+            // 中央の四角だけ不透明にして、縮小で潰れない絵にする。
             const bool inside = x > width / 4 && x < width * 3 / 4
                              && y > height / 4 && y < height * 3 / 4;
-            /// @note B
+            // B
             bytes.push_back(static_cast<std::uint8_t>(inside ? 40 : 0));
-            /// @note G
+            // G
             bytes.push_back(static_cast<std::uint8_t>(inside ? 200 : 0));
-            /// @note R
+            // R
             bytes.push_back(static_cast<std::uint8_t>(inside ? 255 : 0));
-            /// @note A
+            // A
             bytes.push_back(static_cast<std::uint8_t>(inside ? 255 : 0));
         }
     }
@@ -85,7 +85,9 @@ void WriteTga(const std::filesystem::path& path, int width, int height)
 std::filesystem::path CopyTestExe(const std::filesystem::path& dst)
 {
     wchar_t self[MAX_PATH]{};
-    if (GetModuleFileNameW(nullptr, self, MAX_PATH) == 0) return {};
+    if (GetModuleFileNameW(nullptr, self, MAX_PATH) == 0) {
+        return {};
+    }
     std::error_code ec;
     std::filesystem::copy_file(self, dst, std::filesystem::copy_options::overwrite_existing, ec);
     return ec ? std::filesystem::path{} : dst;
@@ -96,11 +98,13 @@ std::vector<std::uint8_t> ReadIconGroup(const std::filesystem::path& exePath)
 {
     std::vector<std::uint8_t> out;
     HMODULE module = LoadLibraryExW(exePath.c_str(), nullptr, LOAD_LIBRARY_AS_DATAFILE);
-    if (!module) return out;
+    if (!module) {
+        return out;
+    }
 
     HRSRC found = FindResourceW(module,
                                 MAKEINTRESOURCEW(AppIconWriter::kIconResourceId),
-                                /// @note RT_GROUP_ICON
+                                // RT_GROUP_ICON
                                 MAKEINTRESOURCEW(14));
     if (found) {
         const DWORD size = SizeofResource(module, found);
@@ -118,9 +122,11 @@ std::vector<std::uint8_t> ReadIconImage(const std::filesystem::path& exePath, in
 {
     std::vector<std::uint8_t> out;
     HMODULE module = LoadLibraryExW(exePath.c_str(), nullptr, LOAD_LIBRARY_AS_DATAFILE);
-    if (!module) return out;
+    if (!module) {
+        return out;
+    }
 
-    /// @note RT_ICON
+    // RT_ICON
     HRSRC found = FindResourceW(module, MAKEINTRESOURCEW(id), MAKEINTRESOURCEW(3));
     if (found) {
         const DWORD size = SizeofResource(module, found);
@@ -197,7 +203,7 @@ TEST_F(AppIconWriterTest, WritesEveryGeneratedSizeIntoTheExe)
     ASSERT_EQ(header.count, 6);
     ASSERT_EQ(group.size(), sizeof(TestGroupHeader) + header.count * sizeof(TestGroupEntry));
 
-    /// @note 1 枚目は 256。1 バイトに収まらないので 0 と書く約束になっている。
+    // 1 枚目は 256。1 バイトに収まらないので 0 と書く約束になっている。
     TestGroupEntry first{};
     std::memcpy(&first, group.data() + sizeof(TestGroupHeader), sizeof(first));
     EXPECT_EQ(first.width, 0);
@@ -205,7 +211,7 @@ TEST_F(AppIconWriterTest, WritesEveryGeneratedSizeIntoTheExe)
     EXPECT_EQ(first.bitCount, 32);
     EXPECT_EQ(first.id, 1);
 
-    /// @note 実体は «XOR + AND» を積んだ DIB。高さが 2 倍でないと Windows は絵を切り出せない。
+    // 実体は «XOR + AND» を積んだ DIB。高さが 2 倍でないと Windows は絵を切り出せない。
     const std::vector<std::uint8_t> image256 = ReadIconImage(exe, first.id);
     ASSERT_GE(image256.size(), sizeof(BITMAPINFOHEADER));
     EXPECT_EQ(image256.size(), first.bytesInRes);
@@ -216,7 +222,7 @@ TEST_F(AppIconWriterTest, WritesEveryGeneratedSizeIntoTheExe)
     EXPECT_EQ(dib.biHeight, 512);
     EXPECT_EQ(dib.biBitCount, 32);
 
-    /// @note 最小サイズまで全部そろっていること (欠けると小さい表示だけ拡大でぼける)。
+    // 最小サイズまで全部そろっていること (欠けると小さい表示だけ拡大でぼける)。
     TestGroupEntry last{};
     std::memcpy(&last, group.data() + sizeof(TestGroupHeader) + 5 * sizeof(TestGroupEntry),
                 sizeof(last));
@@ -229,7 +235,7 @@ TEST_F(AppIconWriterTest, WritesEveryGeneratedSizeIntoTheExe)
 TEST_F(AppIconWriterTest, KeepsTheExeRunnableShapeWhenAppliedTwice)
 {
     const std::filesystem::path image = m_temp.File("icon.tga");
-    /// @note 横長。正方形へ収めて焼けること
+    // 横長。正方形へ収めて焼けること
     WriteTga(image, 300, 120);
 
     const std::filesystem::path exe = CopyTestExe(m_temp.File("Game.exe"));
@@ -239,7 +245,7 @@ TEST_F(AppIconWriterTest, KeepsTheExeRunnableShapeWhenAppliedTwice)
     ASSERT_TRUE(AppIconWriter::Apply(image, exe, error)) << error;
     ASSERT_TRUE(AppIconWriter::Apply(image, exe, error)) << error;
 
-    /// @note 2 回目が 1 回目の置き去りを拾っていないこと。
+    // 2 回目が 1 回目の置き去りを拾っていないこと。
     const std::vector<std::uint8_t> group = ReadIconGroup(exe);
     ASSERT_GE(group.size(), sizeof(TestGroupHeader));
     TestGroupHeader header{};
@@ -255,7 +261,7 @@ TEST_F(AppIconWriterTest, WritesIconsWhenTheExeHasNoExistingResources)
     const std::filesystem::path exe = CopyTestExe(m_temp.File("NoIcons.exe"));
     ASSERT_FALSE(exe.empty());
 
-    /// @note テスト exe のリンク設定に依存せず、初回のアイコン適用を再現する。
+    // テスト exe のリンク設定に依存せず、初回のアイコン適用を再現する。
     HANDLE update = BeginUpdateResourceW(exe.c_str(), TRUE);
     ASSERT_NE(update, nullptr) << GetLastError();
     ASSERT_TRUE(EndUpdateResourceW(update, FALSE)) << GetLastError();

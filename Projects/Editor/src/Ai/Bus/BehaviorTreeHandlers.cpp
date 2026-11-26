@@ -88,7 +88,9 @@ const BTFieldSpec kBTFieldSpecs[] = {
 const BTFieldSpec* FindBTFieldSpec(std::string_view field)
 {
     for (const BTFieldSpec& spec : kBTFieldSpecs)
-        if (field == spec.name) return &spec;
+        if (field == spec.name) {
+            return &spec;
+        }
     return nullptr;
 }
 
@@ -96,26 +98,48 @@ const BTFieldSpec* FindBTFieldSpec(std::string_view field)
 bool BTFieldAppliesTo(std::string_view field, fbzz::ai::BTNodeType type)
 {
     using T = fbzz::ai::BTNodeType;
-    if (field == "name" || field == "editorX" || field == "editorY") return true;
-    if (field == "abortMode")
+    if (field == "name" || field == "editorX" || field == "editorY") {
+        return true;
+    }
+    if (field == "abortMode") {
         return fbzz::ai::BTNodeIsPureCondition(type) || type == T::BlackboardCondition;
-    if (field == "duration" || field == "durationRandom")
+    }
+    if (field == "duration" || field == "durationRandom") {
         return type == T::Wait || type == T::Cooldown || type == T::TimeLimit;
-    if (field == "repeatCount" || field == "repeatUntilFailure") return type == T::Repeat;
-    if (field == "successPolicy") return type == T::Parallel;
+    }
+    if (field == "repeatCount" || field == "repeatUntilFailure") {
+        return type == T::Repeat;
+    }
+    if (field == "successPolicy") {
+        return type == T::Parallel;
+    }
     if (field == "keyName" || field == "compareOp" || field == "withinSeconds"
         || field == "valueBool" || field == "valueInt" || field == "valueFloat"
         || field == "valueString")
         return type == T::BlackboardCondition || type == T::BlackboardCompare
             || type == T::SetBlackboard;
     if (field == "moveTargetKey" || field == "acceptanceRadius" || field == "chaseEntity"
-        || field == "repathInterval") return type == T::MoveTo;
-    if (field == "range") return type == T::IsTargetInRange;
-    if (field == "turnSpeedDeg") return type == T::LookAt;
-    if (field == "animatorTrigger" || field == "waitForAnimation") return type == T::PlayAnimation;
-    if (field == "soundPath" || field == "volume") return type == T::PlayAudio;
-    if (field == "scriptMethod") return type == T::RunScript;
-    if (field == "threshold01") return type == T::IsHealthBelow;
+        || field == "repathInterval") {
+        return type == T::MoveTo;
+    }
+    if (field == "range") {
+        return type == T::IsTargetInRange;
+    }
+    if (field == "turnSpeedDeg") {
+        return type == T::LookAt;
+    }
+    if (field == "animatorTrigger" || field == "waitForAnimation") {
+        return type == T::PlayAnimation;
+    }
+    if (field == "soundPath" || field == "volume") {
+        return type == T::PlayAudio;
+    }
+    if (field == "scriptMethod") {
+        return type == T::RunScript;
+    }
+    if (field == "threshold01") {
+        return type == T::IsHealthBelow;
+    }
     return false;
 }
 
@@ -123,40 +147,91 @@ bool BTFieldAppliesTo(std::string_view field, fbzz::ai::BTNodeType type)
 /// @note bt.node.setField の value と同じ表現で返すので、読んで一部だけ変えて書き戻せる。
 JsonValue BTFieldValueJson(const fbzz::ai::BTNodeDef& node, std::string_view field)
 {
-    if (field == "name") return JsonValue(node.name);
-    if (field == "editorX") return JsonValue(node.editorX);
-    if (field == "editorY") return JsonValue(node.editorY);
+    if (field == "name") {
+        return JsonValue(node.name);
+    }
+    if (field == "editorX") {
+        return JsonValue(node.editorX);
+    }
+    if (field == "editorY") {
+        return JsonValue(node.editorY);
+    }
     if (field == "abortMode") {
         const char* names[] = { "none", "self", "lowerPriority", "both" };
         return JsonValue(std::string(names[static_cast<int>(node.abortMode)]));
     }
-    if (field == "duration") return JsonValue(node.duration);
-    if (field == "durationRandom") return JsonValue(node.durationRandom);
-    if (field == "repeatCount") return JsonValue(node.repeatCount);
-    if (field == "repeatUntilFailure") return JsonValue(node.repeatUntilFailure);
+    if (field == "duration") {
+        return JsonValue(node.duration);
+    }
+    if (field == "durationRandom") {
+        return JsonValue(node.durationRandom);
+    }
+    if (field == "repeatCount") {
+        return JsonValue(node.repeatCount);
+    }
+    if (field == "repeatUntilFailure") {
+        return JsonValue(node.repeatUntilFailure);
+    }
     if (field == "successPolicy")
         return JsonValue(std::string(node.successPolicy == fbzz::ai::BTParallelPolicy::RequireOne
                                      ? "requireOne" : "requireAll"));
-    if (field == "keyName") return JsonValue(node.keyName);
-    if (field == "compareOp")
+    if (field == "keyName") {
+        return JsonValue(node.keyName);
+    }
+    if (field == "compareOp") {
         return JsonValue(std::string(fbzz::ai::BTCompareOpName(node.compareOp)));
-    if (field == "withinSeconds") return JsonValue(node.withinSeconds);
-    if (field == "valueBool") return JsonValue(node.valueBool);
-    if (field == "valueInt") return JsonValue(node.valueInt);
-    if (field == "valueFloat") return JsonValue(node.valueFloat);
-    if (field == "valueString") return JsonValue(node.valueString);
-    if (field == "moveTargetKey") return JsonValue(node.moveTargetKey);
-    if (field == "acceptanceRadius") return JsonValue(node.acceptanceRadius);
-    if (field == "chaseEntity") return JsonValue(node.chaseEntity);
-    if (field == "repathInterval") return JsonValue(node.repathInterval);
-    if (field == "range") return JsonValue(node.range);
-    if (field == "turnSpeedDeg") return JsonValue(node.turnSpeedDeg);
-    if (field == "animatorTrigger") return JsonValue(node.animatorTrigger);
-    if (field == "waitForAnimation") return JsonValue(node.waitForAnimation);
-    if (field == "soundPath") return JsonValue(node.soundPath);
-    if (field == "volume") return JsonValue(node.volume);
-    if (field == "scriptMethod") return JsonValue(node.scriptMethod);
-    if (field == "threshold01") return JsonValue(node.threshold01);
+    }
+    if (field == "withinSeconds") {
+        return JsonValue(node.withinSeconds);
+    }
+    if (field == "valueBool") {
+        return JsonValue(node.valueBool);
+    }
+    if (field == "valueInt") {
+        return JsonValue(node.valueInt);
+    }
+    if (field == "valueFloat") {
+        return JsonValue(node.valueFloat);
+    }
+    if (field == "valueString") {
+        return JsonValue(node.valueString);
+    }
+    if (field == "moveTargetKey") {
+        return JsonValue(node.moveTargetKey);
+    }
+    if (field == "acceptanceRadius") {
+        return JsonValue(node.acceptanceRadius);
+    }
+    if (field == "chaseEntity") {
+        return JsonValue(node.chaseEntity);
+    }
+    if (field == "repathInterval") {
+        return JsonValue(node.repathInterval);
+    }
+    if (field == "range") {
+        return JsonValue(node.range);
+    }
+    if (field == "turnSpeedDeg") {
+        return JsonValue(node.turnSpeedDeg);
+    }
+    if (field == "animatorTrigger") {
+        return JsonValue(node.animatorTrigger);
+    }
+    if (field == "waitForAnimation") {
+        return JsonValue(node.waitForAnimation);
+    }
+    if (field == "soundPath") {
+        return JsonValue(node.soundPath);
+    }
+    if (field == "volume") {
+        return JsonValue(node.volume);
+    }
+    if (field == "scriptMethod") {
+        return JsonValue(node.scriptMethod);
+    }
+    if (field == "threshold01") {
+        return JsonValue(node.threshold01);
+    }
     return JsonValue();
 }
 
@@ -185,8 +260,8 @@ JsonValue BehaviorTreeNodeJson(const fbzz::ai::BTNodeDef& node)
     JsonValue item = JsonValue::MakeObject();
     item.Set("id", JsonValue(node.id));
     item.Set("parentId", JsonValue(node.parentId));
-    /// @note order は優先度そのもの。返さないと AI は木の形だけから優先順位を
-    ///       推測し、必ず取り違える。
+    // order は優先度そのもの。返さないと AI は木の形だけから優先順位を
+    // 推測し、必ず取り違える。
     item.Set("order", JsonValue(node.order));
     item.Set("type", JsonValue(std::string(fbzz::ai::BTNodeTypeName(node.type))));
     item.Set("name", JsonValue(node.name));
@@ -199,11 +274,21 @@ JsonValue BehaviorTreeNodeJson(const fbzz::ai::BTNodeDef& node)
         const char* names[] = { "none", "self", "lowerPriority", "both" };
         item.Set("abortMode", JsonValue(std::string(names[static_cast<int>(node.abortMode)])));
     }
-    if (!node.keyName.empty()) item.Set("keyName", JsonValue(node.keyName));
-    if (!node.moveTargetKey.empty()) item.Set("moveTargetKey", JsonValue(node.moveTargetKey));
-    if (!node.animatorTrigger.empty()) item.Set("animatorTrigger", JsonValue(node.animatorTrigger));
-    if (!node.scriptMethod.empty()) item.Set("scriptMethod", JsonValue(node.scriptMethod));
-    if (!node.soundPath.empty()) item.Set("soundPath", JsonValue(node.soundPath));
+    if (!node.keyName.empty()) {
+        item.Set("keyName", JsonValue(node.keyName));
+    }
+    if (!node.moveTargetKey.empty()) {
+        item.Set("moveTargetKey", JsonValue(node.moveTargetKey));
+    }
+    if (!node.animatorTrigger.empty()) {
+        item.Set("animatorTrigger", JsonValue(node.animatorTrigger));
+    }
+    if (!node.scriptMethod.empty()) {
+        item.Set("scriptMethod", JsonValue(node.scriptMethod));
+    }
+    if (!node.soundPath.empty()) {
+        item.Set("soundPath", JsonValue(node.soundPath));
+    }
     item.Set("duration", JsonValue(node.duration));
     item.Set("editorX", JsonValue(node.editorX));
     item.Set("editorY", JsonValue(node.editorY));
@@ -217,32 +302,42 @@ Outcome DoBehaviorTree(editor::EditorContext& ctx, const JsonValue& payload)
     std::string relative;
     std::filesystem::path absolute;
     Outcome error;
-    if (!LoadBehaviorTreeForAi(ctx, payload, asset, relative, absolute, error)) return error;
+    if (!LoadBehaviorTreeForAi(ctx, payload, asset, relative, absolute, error)) {
+        return error;
+    }
 
     JsonValue nodes = JsonValue::MakeArray();
-    /// @note order 順に並べて返す。配列順序と優先度が一致しないと、
-    ///       AI が「上から順=優先順位」と誤読する。
+    // order 順に並べて返す。配列順序と優先度が一致しないと、
+    // AI が「上から順=優先順位」と誤読する。
     std::vector<const fbzz::ai::BTNodeDef*> sorted;
-    for (const auto& node : asset.nodes) sorted.push_back(&node);
+    for (const auto& node : asset.nodes) {
+        sorted.push_back(&node);
+    }
     std::sort(sorted.begin(), sorted.end(),
         [](const fbzz::ai::BTNodeDef* a, const fbzz::ai::BTNodeDef* b) {
-            if (a->parentId != b->parentId) return a->parentId < b->parentId;
+            if (a->parentId != b->parentId) {
+                return a->parentId < b->parentId;
+            }
             return a->order < b->order;
         });
-    for (const fbzz::ai::BTNodeDef* node : sorted) nodes.Push(BehaviorTreeNodeJson(*node));
+    for (const fbzz::ai::BTNodeDef* node : sorted) {
+        nodes.Push(BehaviorTreeNodeJson(*node));
+    }
 
     JsonValue blackboard = JsonValue::MakeArray();
     for (const auto& def : asset.blackboard) {
         JsonValue item = JsonValue::MakeObject();
         item.Set("name", JsonValue(def.name));
         item.Set("type", JsonValue(std::string(fbzz::ai::BlackboardTypeName(def.type))));
-        /// @note 予約キーは PerceptionSystem 等が固定添字で書く。改名も削除もできない。
+        // 予約キーは PerceptionSystem 等が固定添字で書く。改名も削除もできない。
         item.Set("reserved", JsonValue(def.reserved));
         blackboard.Push(std::move(item));
     }
 
     JsonValue roots = JsonValue::MakeArray();
-    for (const int rootId : asset.FindRootIds()) roots.Push(JsonValue(rootId));
+    for (const int rootId : asset.FindRootIds()) {
+        roots.Push(JsonValue(rootId));
+    }
 
     std::string validateError;
     const bool valid = fbzz::ai::ValidateBehaviorTreeAsset(asset, &validateError);
@@ -255,7 +350,9 @@ Outcome DoBehaviorTree(editor::EditorContext& ctx, const JsonValue& payload)
     result.Set("blackboard", std::move(blackboard));
     result.Set("roots", std::move(roots));
     result.Set("valid", JsonValue(valid));
-    if (!valid) result.Set("error", JsonValue(validateError));
+    if (!valid) {
+        result.Set("error", JsonValue(validateError));
+    }
     result.Set("nextNodeId", JsonValue(asset.nextNodeId));
     result.Set("hint", JsonValue(std::string(
         "order が優先度そのもの。Selector では小さいほど先に試される。"
@@ -318,7 +415,9 @@ const BTFixHint* FindBTFixHint(std::string_view code)
           "実在パスは asset_list で調べる。", "" },
     };
     for (const auto& hint : kHints)
-        if (code == hint.code) return &hint;
+        if (code == hint.code) {
+            return &hint;
+        }
     return nullptr;
 }
 
@@ -329,7 +428,9 @@ Outcome DoBehaviorTreeLint(editor::EditorContext& ctx, const JsonValue& payload)
     std::string relative;
     std::filesystem::path absolute;
     Outcome error;
-    if (!LoadBehaviorTreeForAi(ctx, payload, asset, relative, absolute, error)) return error;
+    if (!LoadBehaviorTreeForAi(ctx, payload, asset, relative, absolute, error)) {
+        return error;
+    }
 
     JsonValue issues = JsonValue::MakeArray();
     int autoFixableCount = 0;
@@ -342,26 +443,31 @@ Outcome DoBehaviorTreeLint(editor::EditorContext& ctx, const JsonValue& payload)
             item.Set("severity", JsonValue(std::string(hint->severity)));
             item.Set("autoFixable", JsonValue(hint->autoFixable));
             item.Set("fix", JsonValue(std::string(hint->action)));
-            if (hint->caution[0] != '\0') item.Set("caution", JsonValue(std::string(hint->caution)));
-            if (hint->autoFixable) ++autoFixableCount;
+            if (hint->caution[0] != '\0') {
+                item.Set("caution", JsonValue(std::string(hint->caution)));
+            }
+            if (hint->autoFixable) {
+                ++autoFixableCount;
+            }
         } else {
-            /// @note 手順を用意していない code は「自動修復できない」と明示する
-            ///       (fix 欠落を「直さなくてよい」と誤読させない)。
+            // 手順を用意していない code は「自動修復できない」と明示する
+            // (fix 欠落を「直さなくてよい」と誤読させない)。
             item.Set("severity", JsonValue(std::string("warning")));
             item.Set("autoFixable", JsonValue(false));
         }
         issues.Push(std::move(item));
     }
 
-    /// @note コンパイル時にしか判らない不整合も併せて返す。Validate は構造しか見ないため、
-    ///       「保存も Validate も通るが実行時に効かない」層はここにしか現れない。
+    // コンパイル時にしか判らない不整合も併せて返す。Validate は構造しか見ないため、
+    // 「保存も Validate も通るが実行時に効かない」層はここにしか現れない。
     JsonValue compileWarnings = JsonValue::MakeArray();
     fbzz::ai::BehaviorTreeRuntime compiled;
     std::string compileError;
     const bool compiles = fbzz::ai::CompileBehaviorTree(asset, compiled, &compileError);
     if (compiles)
-        for (const std::string& warning : compiled.compileWarnings)
+        for (const std::string& warning : compiled.compileWarnings) {
             compileWarnings.Push(JsonValue(warning));
+        }
 
     std::string validateError;
     const bool valid = fbzz::ai::ValidateBehaviorTreeAsset(asset, &validateError);
@@ -372,9 +478,13 @@ Outcome DoBehaviorTreeLint(editor::EditorContext& ctx, const JsonValue& payload)
     result.Set("autoFixableCount", JsonValue(autoFixableCount));
     result.Set("compileWarnings", std::move(compileWarnings));
     result.Set("compiles", JsonValue(compiles));
-    if (!compiles) result.Set("compileError", JsonValue(compileError));
+    if (!compiles) {
+        result.Set("compileError", JsonValue(compileError));
+    }
     result.Set("valid", JsonValue(valid));
-    if (!valid) result.Set("error", JsonValue(validateError));
+    if (!valid) {
+        result.Set("error", JsonValue(validateError));
+    }
     result.Set("note", JsonValue(std::string(
         "valid=false は保存が拒否される致命的な不整合 (ルートが 0/2 個・循環・子数超過)。"
         "issues は保存できるが意図どおり動かない構成で、autoFixable=true のものは "
@@ -386,8 +496,8 @@ Outcome DoBehaviorTreeLint(editor::EditorContext& ctx, const JsonValue& payload)
 /// @brief bt.guide — 木を組む前に読む規約 (VFX の vfx.guide と同じ位置づけ)。
 Outcome DoBehaviorTreeGuide()
 {
-    /// @note lintCode は bt.lint の issue code。空文字は「検査できないが守るべき
-    ///       設計原則」で、AI 側の判断に委ねる部分を明示する。
+    // lintCode は bt.lint の issue code。空文字は「検査できないが守るべき
+    // 設計原則」で、AI 側の判断に委ねる部分を明示する。
     struct Rule { const char* topic; const char* rule; const char* why; const char* lintCode; };
     static constexpr Rule kRules[] = {
         { "structure",
@@ -438,7 +548,7 @@ Outcome DoBehaviorTreeGuide()
           "推測で直すと別の箇所を壊す。", "" },
     };
 
-    /// @note 代表的な骨格。ゼロから積むより、この形に沿わせたほうが確実に動く。
+    // 代表的な骨格。ゼロから積むより、この形に沿わせたほうが確実に動く。
     struct Recipe { const char* name; const char* layers; };
     static constexpr Recipe kRecipes[] = {
         { "Guard",
@@ -457,9 +567,10 @@ Outcome DoBehaviorTreeGuide()
         entry.Set("topic", JsonValue(std::string(item.topic)));
         entry.Set("rule", JsonValue(std::string(item.rule)));
         entry.Set("why", JsonValue(std::string(item.why)));
-        /// @note 検査できる規約は code を添える。bt.lint の同じ code がその規約の実装。
-        if (item.lintCode[0] != '\0')
+        // 検査できる規約は code を添える。bt.lint の同じ code がその規約の実装。
+        if (item.lintCode[0] != '\0') {
             entry.Set("lintCode", JsonValue(std::string(item.lintCode)));
+        }
         rules.Push(std::move(entry));
     }
     JsonValue recipes = JsonValue::MakeArray();
@@ -475,8 +586,8 @@ Outcome DoBehaviorTreeGuide()
         JsonValue entry = JsonValue::MakeObject();
         entry.Set("type", JsonValue(std::string(fbzz::ai::BTNodeTypeName(type))));
         entry.Set("maxChildren", JsonValue(fbzz::ai::BTNodeMaxChildren(type)));
-        /// @note abortMode を付けられるかを型ごとに返す。付けられない型へ付けると
-        ///       Validate が保存を拒否するため、試行錯誤ではなく参照で決められるようにする。
+        // abortMode を付けられるかを型ごとに返す。付けられない型へ付けると
+        // Validate が保存を拒否するため、試行錯誤ではなく参照で決められるようにする。
         entry.Set("canAbort", JsonValue(fbzz::ai::BTNodeIsPureCondition(type)
                                         || type == fbzz::ai::BTNodeType::BlackboardCondition));
         nodeTypes.Push(std::move(entry));
@@ -486,8 +597,8 @@ Outcome DoBehaviorTreeGuide()
     result.Set("rules", std::move(rules));
     result.Set("recipes", std::move(recipes));
     result.Set("nodeTypes", std::move(nodeTypes));
-    /// @note どの順で呼ぶかを規約と一緒に返す。BT は「木としては正しいが意図どおり
-    ///       動かない」壊れ方をするため、静的検査と実行状態の両方で挟む必要がある。
+    // どの順で呼ぶかを規約と一緒に返す。BT は「木としては正しいが意図どおり
+    // 動かない」壊れ方をするため、静的検査と実行状態の両方で挟む必要がある。
     result.Set("workflow", JsonValue(std::string(
         "1. bt.templateCatalog / bt.template.apply で動く骨格を取り込む "
         "(ゼロから積むより確実で abortMode やキーまで持ち込める)。"
@@ -503,8 +614,8 @@ Outcome DoBehaviorTreeGuide()
 ///       受理集合そのものを公開する。
 Outcome DoBehaviorTreeSchema(const JsonValue& payload)
 {
-    /// @note nodeType 指定があればその種別だけに絞る。全種別ぶんの目録を毎回返すと、
-    ///       応答の大半が読まれないまま context を食う。
+    // nodeType 指定があればその種別だけに絞る。全種別ぶんの目録を毎回返すと、
+    // 応答の大半が読まれないまま context を食う。
     const std::string filter = StringField(payload, "nodeType");
 
     JsonValue fields = JsonValue::MakeArray();
@@ -520,8 +631,12 @@ Outcome DoBehaviorTreeSchema(const JsonValue& payload)
                 if (*cursor == '|' || *cursor == '\0') {
                     values.Push(JsonValue(current));
                     current.clear();
-                    if (*cursor == '\0') break;
-                } else current.push_back(*cursor);
+                    if (*cursor == '\0') {
+                        break;
+                    }
+                } else {
+                    current.push_back(*cursor);
+                }
             }
             entry.Set("enumValues", std::move(values));
         }
@@ -529,12 +644,13 @@ Outcome DoBehaviorTreeSchema(const JsonValue& payload)
             entry.Set("min", JsonValue(spec.minValue));
             entry.Set("max", JsonValue(spec.maxValue));
         }
-        /// @note そのフィールドを読む種別。ここに無い種別へ書くと BT_FIELD_NOT_APPLICABLE。
+        // そのフィールドを読む種別。ここに無い種別へ書くと BT_FIELD_NOT_APPLICABLE。
         JsonValue appliesTo = JsonValue::MakeArray();
         for (int index = 0; index < static_cast<int>(fbzz::ai::BTNodeType::Count); ++index) {
             const auto type = static_cast<fbzz::ai::BTNodeType>(index);
-            if (BTFieldAppliesTo(spec.name, type))
+            if (BTFieldAppliesTo(spec.name, type)) {
                 appliesTo.Push(JsonValue(std::string(fbzz::ai::BTNodeTypeName(type))));
+            }
         }
         entry.Set("appliesTo", std::move(appliesTo));
         fields.Push(std::move(entry));
@@ -544,7 +660,9 @@ Outcome DoBehaviorTreeSchema(const JsonValue& payload)
     for (int index = 0; index < static_cast<int>(fbzz::ai::BTNodeType::Count); ++index) {
         const auto type = static_cast<fbzz::ai::BTNodeType>(index);
         const std::string typeName = fbzz::ai::BTNodeTypeName(type);
-        if (!filter.empty() && filter != typeName) continue;
+        if (!filter.empty() && filter != typeName) {
+            continue;
+        }
         JsonValue entry = JsonValue::MakeObject();
         entry.Set("nodeType", JsonValue(typeName));
         entry.Set("category", JsonValue(std::string(
@@ -556,12 +674,15 @@ Outcome DoBehaviorTreeSchema(const JsonValue& payload)
                                         || type == fbzz::ai::BTNodeType::BlackboardCondition));
         JsonValue own = JsonValue::MakeArray();
         for (const BTFieldSpec& spec : kBTFieldSpecs)
-            if (BTFieldAppliesTo(spec.name, type)) own.Push(JsonValue(std::string(spec.name)));
+            if (BTFieldAppliesTo(spec.name, type)) {
+                own.Push(JsonValue(std::string(spec.name)));
+            }
         entry.Set("fields", std::move(own));
         nodeTypes.Push(std::move(entry));
     }
-    if (!filter.empty() && nodeTypes.AsArray().empty())
+    if (!filter.empty() && nodeTypes.AsArray().empty()) {
         return Outcome::Err("BAD_ARG", "未知の BT nodeType です: " + filter);
+    }
 
     JsonValue result = JsonValue::MakeObject();
     result.Set("fields", std::move(fields));
@@ -582,11 +703,15 @@ Outcome DoBehaviorTreeNodeField(editor::EditorContext& ctx, const JsonValue& pay
     std::string relative;
     std::filesystem::path absolute;
     Outcome error;
-    if (!LoadBehaviorTreeForAi(ctx, payload, asset, relative, absolute, error)) return error;
+    if (!LoadBehaviorTreeForAi(ctx, payload, asset, relative, absolute, error)) {
+        return error;
+    }
 
     const int nodeId = payload.Find("nodeId") != nullptr ? payload.Find("nodeId")->AsInt() : 0;
     const fbzz::ai::BTNodeDef* node = asset.FindNode(nodeId);
-    if (node == nullptr) return Outcome::Err("BT_NODE_NOT_FOUND", "ノードが見つかりません");
+    if (node == nullptr) {
+        return Outcome::Err("BT_NODE_NOT_FOUND", "ノードが見つかりません");
+    }
 
     const std::string field = StringField(payload, "field");
     JsonValue values = JsonValue::MakeArray();
@@ -600,10 +725,12 @@ Outcome DoBehaviorTreeNodeField(editor::EditorContext& ctx, const JsonValue& pay
         entry.Set("appliesToType", JsonValue(BTFieldAppliesTo(field, node->type)));
         values.Push(std::move(entry));
     } else {
-        /// @note field 省略時は「その種別が実際に読むフィールド」だけを返す。
-        ///       全フィールドを返すと、大半が既定値のまま意味を持たない行になる。
+        // field 省略時は「その種別が実際に読むフィールド」だけを返す。
+        // 全フィールドを返すと、大半が既定値のまま意味を持たない行になる。
         for (const BTFieldSpec& spec : kBTFieldSpecs) {
-            if (!BTFieldAppliesTo(spec.name, node->type)) continue;
+            if (!BTFieldAppliesTo(spec.name, node->type)) {
+                continue;
+            }
             JsonValue entry = JsonValue::MakeObject();
             entry.Set("field", JsonValue(std::string(spec.name)));
             entry.Set("value", BTFieldValueJson(*node, spec.name));
@@ -628,11 +755,12 @@ Outcome DoBehaviorTreeNodeField(editor::EditorContext& ctx, const JsonValue& pay
 ///       木や lint だけでは区別できず、実値と最終 status の突き合わせで決まる。
 Outcome DoBehaviorTreeRuntime(editor::EditorContext& ctx, const JsonValue& payload)
 {
-    if (ctx.activeScene == nullptr)
+    if (ctx.activeScene == nullptr) {
         return Outcome::Err("NO_SCENE", "アクティブシーンがありません");
+    }
 
-    /// @note path 省略時は「今走っている BT を 1 体」。指定時はその木を使う
-    ///       エージェントに絞る。
+    // path 省略時は「今走っている BT を 1 体」。指定時はその木を使う
+    // エージェントに絞る。
     const std::string requested = NormalizeAssetPath(StringField(payload, "path"));
     const std::string requestedGuid = StringField(payload, "id");
 
@@ -641,11 +769,15 @@ Outcome DoBehaviorTreeRuntime(editor::EditorContext& ctx, const JsonValue& paylo
     JsonValue agents = JsonValue::MakeArray();
     for (scene::GameObject* gameObject :
          ctx.activeScene->FindObjectsOfType<scene::BehaviorTreeComponent>()) {
-        if (gameObject == nullptr) continue;
+        if (gameObject == nullptr) {
+            continue;
+        }
         const auto* candidate = gameObject->GetComponent<scene::BehaviorTreeComponent>();
-        if (candidate == nullptr) continue;
-        /// @note 候補の一覧は常に返す。1 体しか返さないと「他にも居るのか」が判らず、
-        ///       別のエージェントを見るときに Hierarchy を手で探す羽目になる。
+        if (candidate == nullptr) {
+            continue;
+        }
+        // 候補の一覧は常に返す。1 体しか返さないと「他にも居るのか」が判らず、
+        // 別のエージェントを見るときに Hierarchy を手で探す羽目になる。
         JsonValue item = JsonValue::MakeObject();
         item.Set("id", JsonValue(gameObject->instanceId));
         item.Set("name", JsonValue(gameObject->name));
@@ -653,10 +785,18 @@ Outcome DoBehaviorTreeRuntime(editor::EditorContext& ctx, const JsonValue& paylo
         item.Set("running", JsonValue(candidate->runtime != nullptr));
         agents.Push(std::move(item));
 
-        if (component != nullptr) continue;
-        if (!requestedGuid.empty() && gameObject->instanceId != requestedGuid) continue;
-        if (!requested.empty() && NormalizeAssetPath(candidate->treePath) != requested) continue;
-        if (candidate->runtime == nullptr) continue;
+        if (component != nullptr) {
+            continue;
+        }
+        if (!requestedGuid.empty() && gameObject->instanceId != requestedGuid) {
+            continue;
+        }
+        if (!requested.empty() && NormalizeAssetPath(candidate->treePath) != requested) {
+            continue;
+        }
+        if (candidate->runtime == nullptr) {
+            continue;
+        }
         owner = gameObject;
         component = candidate;
     }
@@ -664,7 +804,7 @@ Outcome DoBehaviorTreeRuntime(editor::EditorContext& ctx, const JsonValue& paylo
     JsonValue result = JsonValue::MakeObject();
     result.Set("agents", std::move(agents));
     if (component == nullptr) {
-        /// @note 「木が悪い」のか「そもそも走っていない」のかを取り違えさせない。
+        // 「木が悪い」のか「そもそも走っていない」のかを取り違えさせない。
         result.Set("active", JsonValue(false));
         result.Set("reason", JsonValue(std::string(
             "条件に一致する、実行中の BehaviorTreeComponent がありません。"
@@ -674,8 +814,8 @@ Outcome DoBehaviorTreeRuntime(editor::EditorContext& ctx, const JsonValue& paylo
 
     const fbzz::ai::BehaviorTreeRuntime& runtime = *component->runtime;
     JsonValue nodes = JsonValue::MakeArray();
-    /// @note runtime は DFS pre-order の配列 (index が小さいほど高優先度)。
-    ///       この順のまま返すと「上から順=優先順位」の読み方がそのまま通る。
+    // runtime は DFS pre-order の配列 (index が小さいほど高優先度)。
+    // この順のまま返すと「上から順=優先順位」の読み方がそのまま通る。
     for (std::size_t index = 0; index < runtime.nodes.size(); ++index) {
         const std::uint8_t status = index < component->lastNodeStatus.size()
             ? component->lastNodeStatus[index] : 0;
@@ -689,7 +829,7 @@ Outcome DoBehaviorTreeRuntime(editor::EditorContext& ctx, const JsonValue& paylo
         nodes.Push(std::move(item));
     }
 
-    /// @note Blackboard の実値。「条件が偽のまま」なのかを判断する唯一の材料。
+    // Blackboard の実値。「条件が偽のまま」なのかを判断する唯一の材料。
     JsonValue blackboard = JsonValue::MakeArray();
     for (std::size_t index = 0; index < runtime.blackboard.size(); ++index) {
         const auto key = static_cast<fbzz::ai::BlackboardKey>(index);
@@ -698,24 +838,30 @@ Outcome DoBehaviorTreeRuntime(editor::EditorContext& ctx, const JsonValue& paylo
         item.Set("name", JsonValue(def.name));
         item.Set("type", JsonValue(std::string(fbzz::ai::BlackboardTypeName(def.type))));
         item.Set("reserved", JsonValue(def.reserved));
-        /// @note 一度も書かれていないキーは既定値のまま。既定値と「書かれた結果
-        ///       たまたま既定値と同じ」を区別しないと、知覚システムの稼働が判らない。
+        // 一度も書かれていないキーは既定値のまま。既定値と「書かれた結果
+        // たまたま既定値と同じ」を区別しないと、知覚システムの稼働が判らない。
         item.Set("written", JsonValue(component->blackboard.IsSet(key)));
         item.Set("lastWriteTime", JsonValue(component->blackboard.GetLastWriteTime(key)));
         switch (def.type) {
         case fbzz::ai::BlackboardType::Bool: {
             bool value = false;
-            if (component->blackboard.GetBool(key, value)) item.Set("value", JsonValue(value));
+            if (component->blackboard.GetBool(key, value)) {
+                item.Set("value", JsonValue(value));
+            }
             break;
         }
         case fbzz::ai::BlackboardType::Int: {
             int value = 0;
-            if (component->blackboard.GetInt(key, value)) item.Set("value", JsonValue(value));
+            if (component->blackboard.GetInt(key, value)) {
+                item.Set("value", JsonValue(value));
+            }
             break;
         }
         case fbzz::ai::BlackboardType::Float: {
             float value = 0.0f;
-            if (component->blackboard.GetFloat(key, value)) item.Set("value", JsonValue(value));
+            if (component->blackboard.GetFloat(key, value)) {
+                item.Set("value", JsonValue(value));
+            }
             break;
         }
         case fbzz::ai::BlackboardType::Vector3: {
@@ -731,13 +877,16 @@ Outcome DoBehaviorTreeRuntime(editor::EditorContext& ctx, const JsonValue& paylo
         }
         case fbzz::ai::BlackboardType::Entity: {
             scene::EntityID value = scene::EntityID::INVALID;
-            if (component->blackboard.GetEntity(key, value))
+            if (component->blackboard.GetEntity(key, value)) {
                 item.Set("value", JsonValue(static_cast<int>(value.index)));
+            }
             break;
         }
         default: {
             std::string value;
-            if (component->blackboard.GetString(key, value)) item.Set("value", JsonValue(value));
+            if (component->blackboard.GetString(key, value)) {
+                item.Set("value", JsonValue(value));
+            }
             break;
         }
         }
@@ -745,8 +894,9 @@ Outcome DoBehaviorTreeRuntime(editor::EditorContext& ctx, const JsonValue& paylo
     }
 
     JsonValue compileWarnings = JsonValue::MakeArray();
-    for (const std::string& warning : runtime.compileWarnings)
+    for (const std::string& warning : runtime.compileWarnings) {
         compileWarnings.Push(JsonValue(warning));
+    }
 
     result.Set("active", JsonValue(true));
     result.Set("id", JsonValue(owner->instanceId));
@@ -783,10 +933,15 @@ Outcome DoBehaviorTreeDiff(editor::EditorContext& ctx, const JsonValue& payload)
     fbzz::ai::BehaviorTreeAsset base;
     fbzz::ai::BehaviorTreeAsset target;
     Outcome error;
-    if (StringField(payload, "base").empty() || StringField(payload, "target").empty())
+    if (StringField(payload, "base").empty() || StringField(payload, "target").empty()) {
         return Outcome::Err("BAD_ARG", "base と target が必要です");
-    if (!load("base", payload, base, error)) return error;
-    if (!load("target", payload, target, error)) return error;
+    }
+    if (!load("base", payload, base, error)) {
+        return error;
+    }
+    if (!load("target", payload, target, error)) {
+        return error;
+    }
 
     JsonValue added = JsonValue::MakeArray();
     JsonValue removed = JsonValue::MakeArray();
@@ -811,29 +966,39 @@ Outcome DoBehaviorTreeDiff(editor::EditorContext& ctx, const JsonValue& payload)
             field.Set("after", std::move(after));
             fields.Push(std::move(field));
         };
-        /// @note 種別変更は「別のノードになった」に等しいので、フィールド差分より先に出す。
+        // 種別変更は「別のノードになった」に等しいので、フィールド差分より先に出す。
         if (previous->type != node.type)
             pushChange("nodeType",
                        JsonValue(std::string(fbzz::ai::BTNodeTypeName(previous->type))),
                        JsonValue(std::string(fbzz::ai::BTNodeTypeName(node.type))));
-        /// @note 木の形 (親・優先度) は BT の挙動そのものなので必ず差分に出す。
-        if (previous->parentId != node.parentId)
+        // 木の形 (親・優先度) は BT の挙動そのものなので必ず差分に出す。
+        if (previous->parentId != node.parentId) {
             pushChange("parentId", JsonValue(previous->parentId), JsonValue(node.parentId));
-        if (previous->order != node.order)
+        }
+        if (previous->order != node.order) {
             pushChange("order", JsonValue(previous->order), JsonValue(node.order));
-        /// @note 値の差分は「変更後の種別が読むフィールド」だけ見る。読まれない
-        ///       フィールドの差分を並べても挙動は変わらず、差分の意味が薄まる。
+        }
+        // 値の差分は「変更後の種別が読むフィールド」だけ見る。読まれない
+        // フィールドの差分を並べても挙動は変わらず、差分の意味が薄まる。
         for (const BTFieldSpec& spec : kBTFieldSpecs) {
-            /// @note 座標 (editorX/editorY) は挙動に無関係。
+            // 座標 (editorX/editorY) は挙動に無関係。
             if (spec.name == std::string_view("editorX")
-                || spec.name == std::string_view("editorY")) continue;
-            if (!BTFieldAppliesTo(spec.name, node.type)) continue;
+                || spec.name == std::string_view("editorY")) {
+                continue;
+            }
+            if (!BTFieldAppliesTo(spec.name, node.type)) {
+                continue;
+            }
             const JsonValue before = BTFieldValueJson(*previous, spec.name);
             const JsonValue after = BTFieldValueJson(node, spec.name);
-            if (SerializeJson(before) == SerializeJson(after)) continue;
+            if (SerializeJson(before) == SerializeJson(after)) {
+                continue;
+            }
             pushChange(spec.name, before, after);
         }
-        if (fields.AsArray().empty()) continue;
+        if (fields.AsArray().empty()) {
+            continue;
+        }
         JsonValue item = JsonValue::MakeObject();
         item.Set("nodeId", JsonValue(node.id));
         item.Set("nodeType", JsonValue(std::string(fbzz::ai::BTNodeTypeName(node.type))));
@@ -842,7 +1007,9 @@ Outcome DoBehaviorTreeDiff(editor::EditorContext& ctx, const JsonValue& payload)
         changed.Push(std::move(item));
     }
     for (const auto& node : base.nodes) {
-        if (target.FindNode(node.id) != nullptr) continue;
+        if (target.FindNode(node.id) != nullptr) {
+            continue;
+        }
         JsonValue item = JsonValue::MakeObject();
         item.Set("nodeId", JsonValue(node.id));
         item.Set("nodeType", JsonValue(std::string(fbzz::ai::BTNodeTypeName(node.type))));
@@ -850,7 +1017,7 @@ Outcome DoBehaviorTreeDiff(editor::EditorContext& ctx, const JsonValue& payload)
         removed.Push(std::move(item));
     }
 
-    /// @note Blackboard の増減も出す。キーが消えると、参照するノードが実行時に無言で死ぬ。
+    // Blackboard の増減も出す。キーが消えると、参照するノードが実行時に無言で死ぬ。
     JsonValue keysAdded = JsonValue::MakeArray();
     JsonValue keysRemoved = JsonValue::MakeArray();
     const auto hasKey = [](const fbzz::ai::BehaviorTreeAsset& asset, const std::string& name) {
@@ -858,9 +1025,13 @@ Outcome DoBehaviorTreeDiff(editor::EditorContext& ctx, const JsonValue& payload)
                            [&name](const fbzz::ai::BlackboardDef& def) { return def.name == name; });
     };
     for (const auto& def : target.blackboard)
-        if (!hasKey(base, def.name)) keysAdded.Push(JsonValue(def.name));
+        if (!hasKey(base, def.name)) {
+            keysAdded.Push(JsonValue(def.name));
+        }
     for (const auto& def : base.blackboard)
-        if (!hasKey(target, def.name)) keysRemoved.Push(JsonValue(def.name));
+        if (!hasKey(target, def.name)) {
+            keysRemoved.Push(JsonValue(def.name));
+        }
 
     JsonValue result = JsonValue::MakeObject();
     result.Set("base", JsonValue(StringField(payload, "base")));
@@ -884,8 +1055,12 @@ std::vector<std::filesystem::path> BehaviorTreeTemplateRoots(const editor::Edito
     namespace fs = std::filesystem;
     constexpr const char* kRelative = "Assets/AI/Templates";
     std::vector<fs::path> roots;
-    if (!ctx.projectRoot.empty()) roots.push_back(fs::path(ctx.projectRoot) / kRelative);
-    if (!ctx.engineRoot.empty()) roots.push_back(fs::path(ctx.engineRoot) / kRelative);
+    if (!ctx.projectRoot.empty()) {
+        roots.push_back(fs::path(ctx.projectRoot) / kRelative);
+    }
+    if (!ctx.engineRoot.empty()) {
+        roots.push_back(fs::path(ctx.engineRoot) / kRelative);
+    }
     const fs::path executableDirectory = util::FileSystem::GetExecutableDirectory();
     roots.push_back(executableDirectory / "assets/AI/Templates");
     roots.push_back(executableDirectory / kRelative);
@@ -897,23 +1072,39 @@ bool ResolveBehaviorTreeTemplate(const editor::EditorContext& ctx, const std::st
                                  std::filesystem::path& outPath)
 {
     namespace fs = std::filesystem;
-    if (requested.empty()) return false;
+    if (requested.empty()) {
+        return false;
+    }
     std::error_code errorCode;
-    /// @note パス指定ならそのまま (projectRoot 配下に限る)。
+    // パス指定ならそのまま (projectRoot 配下に限る)。
     if (requested.find('/') != std::string::npos || requested.find('\\') != std::string::npos) {
         std::string relative;
         if (ResolveProjectFile(ctx, requested, outPath, relative)
-            && fs::is_regular_file(outPath, errorCode)) return true;
+            && fs::is_regular_file(outPath, errorCode)) {
+            return true;
+        }
     }
     for (const fs::path& root : BehaviorTreeTemplateRoots(ctx)) {
-        if (!fs::is_directory(root, errorCode)) { errorCode.clear(); continue; }
+        if (!fs::is_directory(root, errorCode)) {
+            errorCode.clear();
+            continue;
+        }
         for (fs::recursive_directory_iterator iterator(root, errorCode), end;
              iterator != end; iterator.increment(errorCode)) {
-            if (errorCode) { errorCode.clear(); break; }
+            if (errorCode) {
+                errorCode.clear();
+                break;
+            }
             const fs::directory_entry& file = *iterator;
-            if (!file.is_regular_file(errorCode)) continue;
-            if (file.path().extension() != ".behaviortree") continue;
-            if (file.path().stem().generic_string() != requested) continue;
+            if (!file.is_regular_file(errorCode)) {
+                continue;
+            }
+            if (file.path().extension() != ".behaviortree") {
+                continue;
+            }
+            if (file.path().stem().generic_string() != requested) {
+                continue;
+            }
             outPath = file.path();
             return true;
         }
@@ -931,20 +1122,34 @@ Outcome DoBehaviorTreeTemplateCatalog(editor::EditorContext& ctx)
     std::vector<std::string> seen;
     std::error_code errorCode;
     for (const fs::path& root : BehaviorTreeTemplateRoots(ctx)) {
-        if (!fs::is_directory(root, errorCode)) { errorCode.clear(); continue; }
+        if (!fs::is_directory(root, errorCode)) {
+            errorCode.clear();
+            continue;
+        }
         for (fs::recursive_directory_iterator iterator(root, errorCode), end;
              iterator != end; iterator.increment(errorCode)) {
-            if (errorCode) { errorCode.clear(); break; }
+            if (errorCode) {
+                errorCode.clear();
+                break;
+            }
             const fs::directory_entry& file = *iterator;
-            if (!file.is_regular_file(errorCode)) continue;
-            if (file.path().extension() != ".behaviortree") continue;
+            if (!file.is_regular_file(errorCode)) {
+                continue;
+            }
+            if (file.path().extension() != ".behaviortree") {
+                continue;
+            }
             const std::string name = file.path().stem().generic_string();
-            /// @note 先に見つかった root (優先度が高い) の同名を勝たせる。
-            if (std::find(seen.begin(), seen.end(), name) != seen.end()) continue;
+            // 先に見つかった root (優先度が高い) の同名を勝たせる。
+            if (std::find(seen.begin(), seen.end(), name) != seen.end()) {
+                continue;
+            }
             seen.push_back(name);
 
             fbzz::ai::BehaviorTreeAsset asset;
-            if (!fbzz::ai::ParseBehaviorTreeAsset(file.path().generic_string(), asset)) continue;
+            if (!fbzz::ai::ParseBehaviorTreeAsset(file.path().generic_string(), asset)) {
+                continue;
+            }
             JsonValue item = JsonValue::MakeObject();
             item.Set("name", JsonValue(name));
             item.Set("path", JsonValue(file.path().generic_string()));
@@ -979,9 +1184,9 @@ std::unique_ptr<ICommand> BuildBehaviorTreeCommand(editor::EditorContext& ctx,
         return nullptr;
     }
 
-    /// @note Template 取り込みだけは書き出し先が存在しなくてよい。以降の処理は
-    ///       既存の木を読んで書き換える前提だが、取り込みは木そのものを差し替えるため
-    ///       読み込みの成否条件が違う。
+    // Template 取り込みだけは書き出し先が存在しなくてよい。以降の処理は
+    // 既存の木を読んで書き換える前提だが、取り込みは木そのものを差し替えるため
+    // 読み込みの成否条件が違う。
     if (type == "bt.template.apply") {
         fs::path templatePath;
         const std::string requested = StringField(payload, "template");
@@ -999,13 +1204,18 @@ std::unique_ptr<ICommand> BuildBehaviorTreeCommand(editor::EditorContext& ctx,
             return nullptr;
         }
         fbzz::ai::EnsureReservedBlackboardKeys(templateTree);
-        if (const JsonValue* value = payload.Find("name"); value != nullptr && value->IsString())
+        if (const JsonValue* value = payload.Find("name"); value != nullptr && value->IsString()) {
             templateTree.name = value->AsString();
-        else templateTree.name = absolute.stem().generic_string();
-        /// @note 説明はテンプレートのもの。持ち越すと生成した全ての木が同じ説明を持つ。
+        } else {
+            templateTree.name = absolute.stem().generic_string();
+        }
+        // 説明はテンプレートのもの。持ち越すと生成した全ての木が同じ説明を持つ。
         if (const JsonValue* value = payload.Find("description");
-            value != nullptr && value->IsString()) templateTree.description = value->AsString();
-        else templateTree.description.clear();
+            value != nullptr && value->IsString()) {
+            templateTree.description = value->AsString();
+        } else {
+            templateTree.description.clear();
+        }
 
         std::string validateError;
         if (!fbzz::ai::ValidateBehaviorTreeAsset(templateTree, &validateError)) {
@@ -1013,19 +1223,23 @@ std::unique_ptr<ICommand> BuildBehaviorTreeCommand(editor::EditorContext& ctx,
             return nullptr;
         }
 
-        /// @note 上書き先が既にあれば Undo で戻せるよう中身を控える。
+        // 上書き先が既にあれば Undo で戻せるよう中身を控える。
         const bool existed = fs::is_regular_file(absolute);
         fbzz::ai::BehaviorTreeAsset previous;
-        if (existed) (void)fbzz::ai::ParseBehaviorTreeAsset(absolute.generic_string(), previous);
+        if (existed) {
+            (void)fbzz::ai::ParseBehaviorTreeAsset(absolute.generic_string(), previous);
+        }
 
         if (detailSink != nullptr) {
             JsonValue report = JsonValue::MakeObject();
             report.Set("template", JsonValue(templatePath.generic_string()));
             report.Set("overwrote", JsonValue(existed));
             report.Set("nodeCount", JsonValue(static_cast<int>(templateTree.nodes.size())));
-            /// @note 取り込んだ直後に触る id が判らないと、必ず bt.tree を読み直すことになる。
+            // 取り込んだ直後に触る id が判らないと、必ず bt.tree を読み直すことになる。
             JsonValue roots = JsonValue::MakeArray();
-            for (const int rootId : templateTree.FindRootIds()) roots.Push(JsonValue(rootId));
+            for (const int rootId : templateTree.FindRootIds()) {
+                roots.Push(JsonValue(rootId));
+            }
             report.Set("roots", std::move(roots));
             *detailSink = std::move(report);
         }
@@ -1036,13 +1250,17 @@ std::unique_ptr<ICommand> BuildBehaviorTreeCommand(editor::EditorContext& ctx,
             [context, target, templateTree]() {
                 std::error_code createError;
                 fs::create_directories(fs::path(target).parent_path(), createError);
-                if (fbzz::ai::SaveBehaviorTreeAsset(target, templateTree))
+                if (fbzz::ai::SaveBehaviorTreeAsset(target, templateTree)) {
                     context->requestAssetBrowserRefresh = true;
+                }
             },
             [context, target, existed, previous]() {
                 std::error_code removeError;
-                if (existed) (void)fbzz::ai::SaveBehaviorTreeAsset(target, previous);
-                else fs::remove(target, removeError);
+                if (existed) {
+                    (void)fbzz::ai::SaveBehaviorTreeAsset(target, previous);
+                } else {
+                    fs::remove(target, removeError);
+                }
                 context->requestAssetBrowserRefresh = true;
             });
     }
@@ -1060,19 +1278,20 @@ std::unique_ptr<ICommand> BuildBehaviorTreeCommand(editor::EditorContext& ctx,
     fbzz::ai::EnsureReservedBlackboardKeys(oldTree);
     fbzz::ai::BehaviorTreeAsset newTree = oldTree;
 
-    /// @note 子数上限などの検査規則は Editor/GraphEditor/BehaviorTreeOps.hpp が実体。
-    ///       手で写すと Editor 側と黙ってずれる (Docs/design/editor-operator-model.md 参照)。
+    // 子数上限などの検査規則は Editor/GraphEditor/BehaviorTreeOps.hpp が実体。
+    // 手で写すと Editor 側と黙ってずれる (Docs/design/editor-operator-model.md 参照)。
     if (type == "bt.node.add") {
         fbzz::ai::BTNodeType nodeType{};
         const std::string typeName = StringField(payload, "nodeType");
         if (!editor::btops::FindNodeType(typeName, nodeType)) {
-            err = Outcome::Err("BAD_ARG", "未知の BT nodeType です: " + typeName); return nullptr;
+            err = Outcome::Err("BAD_ARG", "未知の BT nodeType です: " + typeName);
+            return nullptr;
         }
         const JsonValue* parentValue = payload.Find("parentId");
         const int requestedParent = parentValue != nullptr ? parentValue->AsInt() : 0;
 
-        /// @note orphanOnReject=false: API 経路なので、繋げないなら追加ごと取り消し、
-        ///       呼び出しを成否で完結させる (孤立ノードが黙って増えない)。
+        // orphanOnReject=false: API 経路なので、繋げないなら追加ごと取り消し、
+        // 呼び出しを成否で完結させる (孤立ノードが黙って増えない)。
         const editor::btops::AddNodeResult added = editor::btops::AddNode(
             newTree, nodeType, StringField(payload, "name"), requestedParent,
             0.0f, 0.0f, false);
@@ -1085,31 +1304,45 @@ std::unique_ptr<ICommand> BuildBehaviorTreeCommand(editor::EditorContext& ctx,
     } else if (type == "bt.node.remove") {
         const int nodeId = payload.Find("nodeId") != nullptr ? payload.Find("nodeId")->AsInt() : 0;
         if (editor::btops::RemoveSubtree(newTree, nodeId) == 0) {
-            err = Outcome::Err("BT_NODE_NOT_FOUND", "ノードが見つかりません"); return nullptr;
+            err = Outcome::Err("BT_NODE_NOT_FOUND", "ノードが見つかりません");
+            return nullptr;
         }
     } else if (type == "bt.node.setParent") {
         const int nodeId = payload.Find("nodeId") != nullptr ? payload.Find("nodeId")->AsInt() : 0;
         const int parentId = payload.Find("parentId") != nullptr ? payload.Find("parentId")->AsInt() : 0;
         const std::string reason = editor::btops::TryReparentNode(newTree, nodeId, parentId);
-        if (!reason.empty()) { err = Outcome::Err("BT_REPARENT_REJECTED", reason); return nullptr; }
+        if (!reason.empty()) {
+            err = Outcome::Err("BT_REPARENT_REJECTED", reason);
+            return nullptr;
+        }
     } else if (type == "bt.node.setOrder") {
         fbzz::ai::BTNodeDef* node = newTree.FindNode(
             payload.Find("nodeId") != nullptr ? payload.Find("nodeId")->AsInt() : 0);
-        if (node == nullptr) { err = Outcome::Err("BT_NODE_NOT_FOUND", "ノードが見つかりません"); return nullptr; }
-        if (payload.Find("order") == nullptr) { err = Outcome::Err("BAD_ARG", "order が必要です"); return nullptr; }
+        if (node == nullptr) {
+            err = Outcome::Err("BT_NODE_NOT_FOUND", "ノードが見つかりません");
+            return nullptr;
+        }
+        if (payload.Find("order") == nullptr) {
+            err = Outcome::Err("BAD_ARG", "order が必要です");
+            return nullptr;
+        }
         node->order = payload.Find("order")->AsInt();
     } else if (type == "bt.node.setField") {
         fbzz::ai::BTNodeDef* node = newTree.FindNode(
             payload.Find("nodeId") != nullptr ? payload.Find("nodeId")->AsInt() : 0);
-        if (node == nullptr) { err = Outcome::Err("BT_NODE_NOT_FOUND", "ノードが見つかりません"); return nullptr; }
+        if (node == nullptr) {
+            err = Outcome::Err("BT_NODE_NOT_FOUND", "ノードが見つかりません");
+            return nullptr;
+        }
         const std::string field = StringField(payload, "field");
         const JsonValue* value = payload.Find("value");
         if (field.empty() || value == nullptr) {
-            err = Outcome::Err("BAD_ARG", "field と value が必要です"); return nullptr;
+            err = Outcome::Err("BAD_ARG", "field と value が必要です");
+            return nullptr;
         }
-        /// @note 目録に無い名前と、実在するが種別が読まないフィールドを分けて弾く。
-        ///       後者を拒否しないと保存も Validate も通り、「設定したのに行動が
-        ///       変わらない」という気づきにくい形でしか壊れが現れない。
+        // 目録に無い名前と、実在するが種別が読まないフィールドを分けて弾く。
+        // 後者を拒否しないと保存も Validate も通り、「設定したのに行動が
+        // 変わらない」という気づきにくい形でしか壊れが現れない。
         if (FindBTFieldSpec(field) == nullptr) {
             err = Outcome::Err("BT_UNKNOWN_FIELD", "未知のフィールドです: " + field
                                + " (bt.schema の fields を参照してください)");
@@ -1124,33 +1357,58 @@ std::unique_ptr<ICommand> BuildBehaviorTreeCommand(editor::EditorContext& ctx,
             return nullptr;
         }
         const auto asFloat = [value]() { return static_cast<float>(value->AsNumber()); };
-        if (field == "name") node->name = value->AsString();
-        else if (field == "duration") node->duration = asFloat();
-        else if (field == "durationRandom") node->durationRandom = asFloat();
-        else if (field == "repeatCount") node->repeatCount = value->AsInt();
-        else if (field == "repeatUntilFailure") node->repeatUntilFailure = value->AsBool();
-        else if (field == "range") node->range = asFloat();
-        else if (field == "threshold01") node->threshold01 = asFloat();
-        else if (field == "acceptanceRadius") node->acceptanceRadius = asFloat();
-        else if (field == "chaseEntity") node->chaseEntity = value->AsBool();
-        else if (field == "repathInterval") node->repathInterval = asFloat();
-        else if (field == "turnSpeedDeg") node->turnSpeedDeg = asFloat();
-        else if (field == "keyName") node->keyName = value->AsString();
-        else if (field == "moveTargetKey") node->moveTargetKey = value->AsString();
-        else if (field == "animatorTrigger") node->animatorTrigger = value->AsString();
-        else if (field == "waitForAnimation") node->waitForAnimation = value->AsBool();
-        else if (field == "scriptMethod") node->scriptMethod = value->AsString();
-        else if (field == "soundPath") node->soundPath = value->AsString();
-        else if (field == "volume") node->volume = asFloat();
-        else if (field == "withinSeconds") node->withinSeconds = asFloat();
-        else if (field == "valueBool") node->valueBool = value->AsBool();
-        else if (field == "valueInt") node->valueInt = value->AsInt();
-        else if (field == "valueFloat") node->valueFloat = asFloat();
-        else if (field == "valueString") node->valueString = value->AsString();
-        else if (field == "editorX") node->editorX = asFloat();
-        else if (field == "editorY") node->editorY = asFloat();
-        else if (field == "abortMode") {
-            /// @note 純粋条件以外へ付けると Validate が保存を拒否する。理由を先に返す。
+        if (field == "name") {
+            node->name = value->AsString();
+        } else if (field == "duration") {
+            node->duration = asFloat();
+        } else if (field == "durationRandom") {
+            node->durationRandom = asFloat();
+        } else if (field == "repeatCount") {
+            node->repeatCount = value->AsInt();
+        } else if (field == "repeatUntilFailure") {
+            node->repeatUntilFailure = value->AsBool();
+        } else if (field == "range") {
+            node->range = asFloat();
+        } else if (field == "threshold01") {
+            node->threshold01 = asFloat();
+        } else if (field == "acceptanceRadius") {
+            node->acceptanceRadius = asFloat();
+        } else if (field == "chaseEntity") {
+            node->chaseEntity = value->AsBool();
+        } else if (field == "repathInterval") {
+            node->repathInterval = asFloat();
+        } else if (field == "turnSpeedDeg") {
+            node->turnSpeedDeg = asFloat();
+        } else if (field == "keyName") {
+            node->keyName = value->AsString();
+        } else if (field == "moveTargetKey") {
+            node->moveTargetKey = value->AsString();
+        } else if (field == "animatorTrigger") {
+            node->animatorTrigger = value->AsString();
+        } else if (field == "waitForAnimation") {
+            node->waitForAnimation = value->AsBool();
+        } else if (field == "scriptMethod") {
+            node->scriptMethod = value->AsString();
+        } else if (field == "soundPath") {
+            node->soundPath = value->AsString();
+        } else if (field == "volume") {
+            node->volume = asFloat();
+        } else if (field == "withinSeconds") {
+            node->withinSeconds = asFloat();
+        } else if (field == "valueBool") {
+            node->valueBool = value->AsBool();
+        } else if (field == "valueInt") {
+            node->valueInt = value->AsInt();
+        } else if (field == "valueFloat") {
+            node->valueFloat = asFloat();
+        } else if (field == "valueString") {
+            node->valueString = value->AsString();
+        } else if (field == "editorX") {
+            node->editorX = asFloat();
+        } else if (field == "editorY") {
+            node->editorY = asFloat();
+        } else if (field == "abortMode") {
+            // 純粋条件以外へ付けると Validate が保存を拒否する。理由を先に返す。
             const std::string mode = LowerAscii(value->AsString());
             const bool canAbort = fbzz::ai::BTNodeIsPureCondition(node->type)
                                || node->type == fbzz::ai::BTNodeType::BlackboardCondition;
@@ -1161,30 +1419,45 @@ std::unique_ptr<ICommand> BuildBehaviorTreeCommand(editor::EditorContext& ctx,
                       "(中断チェックのたびに世界が変わり木が非決定的になります)");
                 return nullptr;
             }
-            if (mode == "none") node->abortMode = fbzz::ai::AbortMode::None;
-            else if (mode == "self") node->abortMode = fbzz::ai::AbortMode::Self;
-            else if (mode == "lowerpriority") node->abortMode = fbzz::ai::AbortMode::LowerPriority;
-            else if (mode == "both") node->abortMode = fbzz::ai::AbortMode::Both;
-            else { err = Outcome::Err("BAD_ARG", "abortMode は none/self/lowerPriority/both"); return nullptr; }
+            if (mode == "none") {
+                node->abortMode = fbzz::ai::AbortMode::None;
+            } else if (mode == "self") {
+                node->abortMode = fbzz::ai::AbortMode::Self;
+            } else if (mode == "lowerpriority") {
+                node->abortMode = fbzz::ai::AbortMode::LowerPriority;
+            } else if (mode == "both") {
+                node->abortMode = fbzz::ai::AbortMode::Both;
+            } else {
+                err = Outcome::Err("BAD_ARG", "abortMode は none/self/lowerPriority/both");
+                return nullptr;
+            }
         } else if (field == "compareOp") {
             const std::string op = value->AsString();
             const char* names[] = { "==", "!=", "<", "<=", ">", ">=" };
             int found = -1;
             for (int index = 0; index < 6; ++index) if (op == names[index]) found = index;
-            if (found < 0) { err = Outcome::Err("BAD_ARG", "compareOp は == != < <= > >="); return nullptr; }
+            if (found < 0) {
+                err = Outcome::Err("BAD_ARG", "compareOp は == != < <= > >=");
+                return nullptr;
+            }
             node->compareOp = static_cast<fbzz::ai::BTCompareOp>(found);
         } else if (field == "successPolicy") {
-            /// @note Parallel の成否。bt.schema が受理値として公開しているので、ここでも受ける。
+            // Parallel の成否。bt.schema が受理値として公開しているので、ここでも受ける。
             const std::string policy = LowerAscii(value->AsString());
-            if (policy == "requireone") node->successPolicy = fbzz::ai::BTParallelPolicy::RequireOne;
-            else if (policy == "requireall") node->successPolicy = fbzz::ai::BTParallelPolicy::RequireAll;
-            else { err = Outcome::Err("BAD_ARG", "successPolicy は requireOne / requireAll"); return nullptr; }
+            if (policy == "requireone") {
+                node->successPolicy = fbzz::ai::BTParallelPolicy::RequireOne;
+            } else if (policy == "requireall") {
+                node->successPolicy = fbzz::ai::BTParallelPolicy::RequireAll;
+            } else {
+                err = Outcome::Err("BAD_ARG", "successPolicy は requireOne / requireAll");
+                return nullptr;
+            }
         } else {
             err = Outcome::Err("BT_UNKNOWN_FIELD", "未知のフィールドです: " + field);
             return nullptr;
         }
-        /// @note Blackboard キーは実在するものだけ。存在しない名前は保存も Compile も通り、
-        ///       実行時に黙って無視される気づきにくい壊れ方をする。
+        // Blackboard キーは実在するものだけ。存在しない名前は保存も Compile も通り、
+        // 実行時に黙って無視される気づきにくい壊れ方をする。
         if ((field == "keyName" || field == "moveTargetKey") && !value->AsString().empty()) {
             const std::string key = value->AsString();
             const bool known = std::any_of(newTree.blackboard.begin(), newTree.blackboard.end(),
@@ -1197,18 +1470,19 @@ std::unique_ptr<ICommand> BuildBehaviorTreeCommand(editor::EditorContext& ctx,
             }
         }
     } else if (type == "bt.node.duplicate") {
-        /// @note 部分木ごと複製する。Editor の Duplicate Subtree と同一実装なので、
-        ///       「AI が作った木を人間が触ると形が変わる」食い違いが起きない。
+        // 部分木ごと複製する。Editor の Duplicate Subtree と同一実装なので、
+        // 「AI が作った木を人間が触ると形が変わる」食い違いが起きない。
         const int nodeId = payload.Find("nodeId") != nullptr ? payload.Find("nodeId")->AsInt() : 0;
         const fbzz::ai::BTNodeDef* source = newTree.FindNode(nodeId);
         if (source == nullptr) {
-            err = Outcome::Err("BT_NODE_NOT_FOUND", "ノードが見つかりません"); return nullptr;
+            err = Outcome::Err("BT_NODE_NOT_FOUND", "ノードが見つかりません");
+            return nullptr;
         }
         if (source->parentId == 0) {
             err = Outcome::Err("BT_ROOT_EXISTS", "ルートは複製できません (木にルートは 1 つだけです)");
             return nullptr;
         }
-        /// @note 複製先の親。省略すると元と同じ親の末尾へ兄弟として並ぶ。
+        // 複製先の親。省略すると元と同じ親の末尾へ兄弟として並ぶ。
         const int requestedParent = payload.Find("parentId") != nullptr
             ? payload.Find("parentId")->AsInt() : 0;
 
@@ -1221,14 +1495,15 @@ std::unique_ptr<ICommand> BuildBehaviorTreeCommand(editor::EditorContext& ctx,
             return nullptr;
         }
         if (!duplicated.rejectReason.empty()) {
-            err = Outcome::Err("BT_REPARENT_REJECTED", duplicated.rejectReason); return nullptr;
+            err = Outcome::Err("BT_REPARENT_REJECTED", duplicated.rejectReason);
+            return nullptr;
         }
         if (detailSink != nullptr) {
             JsonValue report = JsonValue::MakeObject();
             report.Set("rootNodeId", JsonValue(duplicated.newRootId));
             report.Set("copiedNodes", JsonValue(static_cast<int>(duplicated.idMap.size())));
-            /// @note 新しい id を返さないと、複製直後に中身を編集するために
-            ///       もう一度 bt.tree を読み直すことになる。
+            // 新しい id を返さないと、複製直後に中身を編集するために
+            // もう一度 bt.tree を読み直すことになる。
             JsonValue mapping = JsonValue::MakeArray();
             for (const auto& entry : duplicated.idMap) {
                 JsonValue item = JsonValue::MakeObject();
@@ -1240,8 +1515,8 @@ std::unique_ptr<ICommand> BuildBehaviorTreeCommand(editor::EditorContext& ctx,
             *detailSink = std::move(report);
         }
     } else if (type == "bt.repair") {
-        /// @note bt.lint が autoFixable=true と言った code だけを機械的に直す。
-        ///       設計判断 (何をする木か) には触れない。
+        // bt.lint が autoFixable=true と言った code だけを機械的に直す。
+        // 設計判断 (何をする木か) には触れない。
         const auto flag = [&payload](const char* name) {
             const JsonValue* value = payload.Find(name);
             return value == nullptr || value->AsBool();
@@ -1260,13 +1535,15 @@ std::unique_ptr<ICommand> BuildBehaviorTreeCommand(editor::EditorContext& ctx,
             repaired.Push(std::move(item));
         };
 
-        /// @note 修復対象は lint が指した nodeId をそのまま使う。同じ判定を書き直すと、
-        ///       lint が指摘した箇所と repair が直す箇所がずれていく。
+        // 修復対象は lint が指した nodeId をそのまま使う。同じ判定を書き直すと、
+        // lint が指摘した箇所と repair が直す箇所がずれていく。
         const std::vector<fbzz::ai::BTWarning> warnings =
             fbzz::ai::CollectBehaviorTreeWarnings(newTree);
         for (const auto& warning : warnings) {
             fbzz::ai::BTNodeDef* node = newTree.FindNode(warning.nodeId);
-            if (node == nullptr) continue;
+            if (node == nullptr) {
+                continue;
+            }
             if (fixAborts && warning.code == "no-lower-priority-abort") {
                 node->abortMode = fbzz::ai::AbortMode::LowerPriority;
                 record("no-lower-priority-abort", node->id, "abortMode を lowerPriority にしました");
@@ -1277,25 +1554,32 @@ std::unique_ptr<ICommand> BuildBehaviorTreeCommand(editor::EditorContext& ctx,
                 node->duration = 1.0f;
                 record("zero-duration-wait", node->id, "duration を 1.0 秒にしました");
             } else if (fixWeights && warning.code == "zero-weights") {
-                for (float& weight : node->childWeights) weight = 1.0f;
+                for (float& weight : node->childWeights) {
+                    weight = 1.0f;
+                }
                 record("zero-weights", node->id, "全ての重みを 1 (等確率) に戻しました");
             } else if (fixKeys && warning.code == "unresolved-key") {
-                /// @note 綴り違いを既存キーへ寄せる。完全一致が無いので、最も近い名前
-                ///       (大文字小文字を無視した前方一致 → 部分一致) を選ぶ。
+                // 綴り違いを既存キーへ寄せる。完全一致が無いので、最も近い名前
+                // (大文字小文字を無視した前方一致 → 部分一致) を選ぶ。
                 const auto nearest = [&newTree](const std::string& wanted) -> std::string {
-                    if (wanted.empty()) return {};
+                    if (wanted.empty()) {
+                        return {};
+                    }
                     const std::string lowered = LowerAscii(wanted);
                     std::string best;
                     for (const auto& def : newTree.blackboard) {
                         const std::string candidate = LowerAscii(def.name);
-                        if (candidate == lowered) return def.name;
+                        if (candidate == lowered) {
+                            return def.name;
+                        }
                         const bool related = candidate.starts_with(lowered)
                                           || lowered.starts_with(candidate)
                                           || candidate.find(lowered) != std::string::npos
                                           || lowered.find(candidate) != std::string::npos;
-                        /// @note 同じくらい近いなら短い方 (余計な修飾が付いていない方) を採る。
-                        if (related && (best.empty() || def.name.size() < best.size()))
+                        // 同じくらい近いなら短い方 (余計な修飾が付いていない方) を採る。
+                        if (related && (best.empty() || def.name.size() < best.size())) {
                             best = def.name;
+                        }
                     }
                     return best;
                 };
@@ -1317,7 +1601,7 @@ std::unique_ptr<ICommand> BuildBehaviorTreeCommand(editor::EditorContext& ctx,
         if (detailSink != nullptr) {
             JsonValue report = JsonValue::MakeObject();
             report.Set("repaired", std::move(repaired));
-            /// @note 直せなかったものを残す。空配列を返さないと「全部直った」と読まれる。
+            // 直せなかったものを残す。空配列を返さないと「全部直った」と読まれる。
             JsonValue remaining = JsonValue::MakeArray();
             for (const auto& warning : fbzz::ai::CollectBehaviorTreeWarnings(newTree)) {
                 JsonValue item = JsonValue::MakeObject();
@@ -1333,7 +1617,10 @@ std::unique_ptr<ICommand> BuildBehaviorTreeCommand(editor::EditorContext& ctx,
         }
     } else if (type == "bt.blackboard.add") {
         const std::string name = StringField(payload, "name");
-        if (name.empty()) { err = Outcome::Err("BAD_ARG", "name が必要です"); return nullptr; }
+        if (name.empty()) {
+            err = Outcome::Err("BAD_ARG", "name が必要です");
+            return nullptr;
+        }
         if (std::any_of(newTree.blackboard.begin(), newTree.blackboard.end(),
                 [&name](const fbzz::ai::BlackboardDef& def) { return def.name == name; })) {
             err = Outcome::Err("BT_KEY_EXISTS", "同名のキーが既にあります: " + name);
@@ -1342,19 +1629,27 @@ std::unique_ptr<ICommand> BuildBehaviorTreeCommand(editor::EditorContext& ctx,
         fbzz::ai::BlackboardDef def;
         def.name = name;
         const std::string typeName = LowerAscii(StringField(payload, "type"));
-        if (typeName == "int") def.type = fbzz::ai::BlackboardType::Int;
-        else if (typeName == "float") def.type = fbzz::ai::BlackboardType::Float;
-        else if (typeName == "vector3") def.type = fbzz::ai::BlackboardType::Vector3;
-        else if (typeName == "entity") def.type = fbzz::ai::BlackboardType::Entity;
-        else if (typeName == "string") def.type = fbzz::ai::BlackboardType::String;
-        else def.type = fbzz::ai::BlackboardType::Bool;
+        if (typeName == "int") {
+            def.type = fbzz::ai::BlackboardType::Int;
+        } else if (typeName == "float") {
+            def.type = fbzz::ai::BlackboardType::Float;
+        } else if (typeName == "vector3") {
+            def.type = fbzz::ai::BlackboardType::Vector3;
+        } else if (typeName == "entity") {
+            def.type = fbzz::ai::BlackboardType::Entity;
+        } else if (typeName == "string") {
+            def.type = fbzz::ai::BlackboardType::String;
+        } else {
+            def.type = fbzz::ai::BlackboardType::Bool;
+        }
         newTree.blackboard.push_back(std::move(def));
     } else if (type == "bt.blackboard.remove") {
         const std::string name = StringField(payload, "name");
         const auto found = std::find_if(newTree.blackboard.begin(), newTree.blackboard.end(),
             [&name](const fbzz::ai::BlackboardDef& def) { return def.name == name; });
         if (found == newTree.blackboard.end()) {
-            err = Outcome::Err("BT_KEY_NOT_FOUND", "キーが見つかりません: " + name); return nullptr;
+            err = Outcome::Err("BT_KEY_NOT_FOUND", "キーが見つかりません: " + name);
+            return nullptr;
         }
         if (found->reserved) {
             err = Outcome::Err("BT_KEY_RESERVED",
@@ -1363,15 +1658,15 @@ std::unique_ptr<ICommand> BuildBehaviorTreeCommand(editor::EditorContext& ctx,
         }
         newTree.blackboard.erase(found);
     } else if (type == "bt.autoLayout") {
-        /// @note 間隔の定数ごと共有実装が持つ。数値を写すとノード幅を変えた瞬間に黙ってずれる。
+        // 間隔の定数ごと共有実装が持つ。数値を写すとノード幅を変えた瞬間に黙ってずれる。
         editor::btops::AutoLayout(newTree);
     } else {
         err = Outcome::Err("UNKNOWN_COMMAND", "未対応の BT コマンドです: " + type);
         return nullptr;
     }
 
-    /// @note 保存前に検証する。壊れた木を書き出すと、次に開いたときに
-    ///       「AI が壊した」のか「元から壊れていた」のか区別できなくなる。
+    // 保存前に検証する。壊れた木を書き出すと、次に開いたときに
+    // 「AI が壊した」のか「元から壊れていた」のか区別できなくなる。
     std::string validateError;
     if (!fbzz::ai::ValidateBehaviorTreeAsset(newTree, &validateError)) {
         err = Outcome::Err("BT_INVALID", validateError);
@@ -1380,25 +1675,40 @@ std::unique_ptr<ICommand> BuildBehaviorTreeCommand(editor::EditorContext& ctx,
 
     editor::EditorContext* context = &ctx;
     const std::string target = absolute.generic_string();
-    /// @note Undo 履歴に何をした操作か残す。全部が "Edit Behavior Tree" だと、
-    ///       editor_get_undo_history で自分の編集を識別できない。
+    // Undo 履歴に何をした操作か残す。全部が "Edit Behavior Tree" だと、
+    // editor_get_undo_history で自分の編集を識別できない。
     std::string commandLabel = "AI: Edit Behavior Tree";
-    if (type == "bt.node.add") commandLabel = "AI: Add Behavior Tree Node";
-    else if (type == "bt.node.remove") commandLabel = "AI: Remove Behavior Tree Node";
-    else if (type == "bt.node.duplicate") commandLabel = "AI: Duplicate Behavior Tree Subtree";
-    else if (type == "bt.node.setParent") commandLabel = "AI: Reparent Behavior Tree Node";
-    else if (type == "bt.node.setOrder") commandLabel = "AI: Set Behavior Tree Priority";
-    else if (type == "bt.node.setField") commandLabel = "AI: Set Behavior Tree Field";
-    else if (type == "bt.blackboard.add") commandLabel = "AI: Add Blackboard Key";
-    else if (type == "bt.blackboard.remove") commandLabel = "AI: Remove Blackboard Key";
-    else if (type == "bt.autoLayout") commandLabel = "AI: Auto Layout Behavior Tree";
-    else if (type == "bt.repair") commandLabel = "AI: Repair Behavior Tree";
+    if (type == "bt.node.add") {
+        commandLabel = "AI: Add Behavior Tree Node";
+    } else if (type == "bt.node.remove") {
+        commandLabel = "AI: Remove Behavior Tree Node";
+    } else if (type == "bt.node.duplicate") {
+        commandLabel = "AI: Duplicate Behavior Tree Subtree";
+    } else if (type == "bt.node.setParent") {
+        commandLabel = "AI: Reparent Behavior Tree Node";
+    } else if (type == "bt.node.setOrder") {
+        commandLabel = "AI: Set Behavior Tree Priority";
+    } else if (type == "bt.node.setField") {
+        commandLabel = "AI: Set Behavior Tree Field";
+    } else if (type == "bt.blackboard.add") {
+        commandLabel = "AI: Add Blackboard Key";
+    } else if (type == "bt.blackboard.remove") {
+        commandLabel = "AI: Remove Blackboard Key";
+    } else if (type == "bt.autoLayout") {
+        commandLabel = "AI: Auto Layout Behavior Tree";
+    } else if (type == "bt.repair") {
+        commandLabel = "AI: Repair Behavior Tree";
+    }
     return std::make_unique<LambdaCommand>(std::move(commandLabel),
         [context, target, newTree]() {
-            if (fbzz::ai::SaveBehaviorTreeAsset(target, newTree)) context->requestAssetBrowserRefresh = true;
+            if (fbzz::ai::SaveBehaviorTreeAsset(target, newTree)) {
+                context->requestAssetBrowserRefresh = true;
+            }
         },
         [context, target, oldTree]() {
-            if (fbzz::ai::SaveBehaviorTreeAsset(target, oldTree)) context->requestAssetBrowserRefresh = true;
+            if (fbzz::ai::SaveBehaviorTreeAsset(target, oldTree)) {
+                context->requestAssetBrowserRefresh = true;
+            }
         });
 }
 } // namespace
@@ -1414,7 +1724,7 @@ void RegisterBehaviorTreeHandlers(BusHandlerTable& table)
     table.AddQuery("bt.diff", [](BusCall& call) { return DoBehaviorTreeDiff(call.ctx, call.payload); });
     table.AddQuery("bt.templateCatalog", [](BusCall& call) { return DoBehaviorTreeTemplateCatalog(call.ctx); });
 
-    /// @note .behaviortree の編集はアセット単体で完結し Scene を要らない。
+    // .behaviortree の編集はアセット単体で完結し Scene を要らない。
     const BuilderFn edit = [](editor::EditorContext& ctx, const std::string& type, const JsonValue& payload,
                               Outcome& err, std::shared_ptr<std::string>, JsonValue* detailSink) {
         return BuildBehaviorTreeCommand(ctx, type, payload, err, detailSink);

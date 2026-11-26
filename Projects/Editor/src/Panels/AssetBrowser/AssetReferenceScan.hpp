@@ -164,4 +164,4 @@ private:
     std::string m_bakedDirectory;
 };
 
-} /// @note namespace fbzz::editor::assetrefs
+} // namespace fbzz::editor::assetrefs

@@ -14,14 +14,14 @@ public:
 protected:
     void OnRenderContent(EditorContext& ctx) override;
 private:
-    int m_group = 0;
-    int m_mode = 0;
-    int m_range = 1;
-    bool m_callTree = false;
-    char m_name[128] = {};
-    char m_type[128] = {};
-    char m_instance[128] = {};
-    char m_callback[128] = {};
-    char m_scene[32] = {};
+    int m_group = 0; ///< C# の計測結果の行をまとめる分類。
+    int m_mode = 0; ///< Script Profiler の現在の表示モード。
+    int m_range = 1; ///< Script Profiler が集計する範囲の選択値。
+    bool m_callTree = false; ///< Script Profiler の呼び出しツリー表示を使うか。
+    char m_name[128] = {}; ///< 計測結果を名前で絞る検索入力バッファ。
+    char m_type[128] = {}; ///< 計測結果をスクリプト型名で絞る検索入力バッファ。
+    char m_instance[128] = {}; ///< 計測結果をスクリプト個体で絞る検索入力バッファ。
+    char m_callback[128] = {}; ///< 計測結果をコールバックで絞る検索入力バッファ。
+    char m_scene[32] = {}; ///< 計測結果を対象シーンで絞る検索入力バッファ。
 };
 }

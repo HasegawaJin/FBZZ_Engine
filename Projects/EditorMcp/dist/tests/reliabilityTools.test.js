@@ -710,7 +710,7 @@ test('save and reload require explicit flags; verified persistence consumes rece
 });
 /// @brief Reload without save fails explicitly and persisted verification failure never undoes saved disk.
 test('reload without save fails explicitly and persisted verification failure never undoes saved disk', async (t) => {
-    /// @brief Reload requires save.
+    // 保存せずに再読込を求めた場合は拒否する。
     await t.test('reload requires save', async (child) => {
         const { bus, session, control, lease, receipt } = await Applied(child);
         const result = await session.Verify(receipt, lease, { save: false, reload: true, render: false, rollbackOnFailure: true });
@@ -720,7 +720,7 @@ test('reload without save fails explicitly and persisted verification failure ne
         assert.equal(bus.commands.some(call => call.command.t === 'editor.rollback'), false);
         assert.deepEqual(await control.Inspect(), []);
     });
-    /// @brief Verification leaves the saved snapshot available after a later check fails, while explicit rollback restores live state.
+    // 保存後の検証が失敗しても保存済みのスナップショットを保ち、明示的なロールバックで Editor の状態を戻す。
     await t.test('saved failure', async (child) => {
         const { bus, session, control, lease, receipt } = await Applied(child);
         bus.validation.errors = 1;
@@ -830,7 +830,7 @@ test('managed build startup timeout never resends and remains unverified until b
 });
 /// @brief Managed terminal failure and busy admission release execution and do not claim success.
 test('managed terminal failure and busy admission release execution and do not claim success', async (t) => {
-    /// @brief Terminal verification failure releases the held resources.
+    // 検証が失敗で確定したら、確保していたリソースを解放する。
     await t.test('terminal failure', async (child) => {
         const { bus, session, control } = SessionFixture(child);
         bus.queryHook = async (query) => query.t === 'editor.state' ? { playState: 'editor' } : {
@@ -841,7 +841,7 @@ test('managed terminal failure and busy admission release execution and do not c
         await Eventually(async () => session.Job(String(job.jobId)).state === 'complete' && (await control.Inspect()).length === 0, 'Failed build did not release execution');
         assert.equal(session.Job(String(job.jobId)).status, 'failure');
     });
-    /// @brief Busy Editor admission.
+    // Editor が実行中ならバックエンドへビルド要求を送らない。
     await t.test('busy Editor admission', async (child) => {
         const { bus, session, control } = SessionFixture(child);
         bus.queryHook = async (query) => query.t === 'editor.state' ? { playState: 'playing' } : { building: false, managed: { busy: false } };

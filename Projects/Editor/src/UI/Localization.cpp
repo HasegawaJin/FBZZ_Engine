@@ -46,14 +46,16 @@ void BuildTable(Language language)
     s_table.clear();
     s_missing.clear();
     s_built = true;
-    if (language == Language::English) return;
+    if (language == Language::English) {
+        return;
+    }
 
     s_table.reserve(std::size(kJapanese));
     for (const Pair& pair : kJapanese) {
         Entry entry;
 
-        /// @note 訳が空文字は «英語のままにすると決めた» 印。原文をそのまま返し未訳リストにも出さない。
-        /// @note 辞書に載せる: 載せないと «まだ訳していない» と区別が付かず、未訳リストがコンポーネント名で埋まって作業リストとして使えなくなる。
+        // 訳が空文字は «英語のままにすると決めた» 印。原文をそのまま返し未訳リストにも出さない。
+        // 辞書に載せる: 載せないと «まだ訳していない» と区別が付かず、未訳リストがコンポーネント名で埋まって作業リストとして使えなくなる。
         if (pair.translated == nullptr || pair.translated[0] == '\0') {
             entry.text  = pair.english;
             entry.label = pair.english;
@@ -62,8 +64,8 @@ void BuildTable(Language language)
         }
 
         entry.text  = pair.translated;
-        /// @name 原文 を足すと ImGui の ID は原文のときと同じになる (1.92.6 以降)。
-        /// @note 訳を当てても保存済みのドッキング配置や開閉状態が失われない。
+        // 原文 を足すと ImGui の ID は原文のときと同じになる (1.92.6 以降)。
+        // 訳を当てても保存済みのドッキング配置や開閉状態が失われない。
         entry.label = entry.text + "###" + pair.english;
         s_table.emplace(std::string_view(pair.english), std::move(entry));
     }
@@ -74,17 +76,23 @@ void BuildTable(Language language)
 bool AlreadyLocalized(const char* text)
 {
     for (const char* p = text; *p != '\0'; ++p)
-        if (static_cast<unsigned char>(*p) >= 0x80) return true;
+        if (static_cast<unsigned char>(*p) >= 0x80) {
+            return true;
+        }
     return false;
 }
 
 /// 訳が無かった原文を控える。1 パネルずつ訳を足していくための作業リスト。
 void RecordMissing(const char* english)
 {
-    if (AlreadyLocalized(english)) return;
-    /// @note 毎フレーム引かれるので、既に控えたものは足さない。件数は «残り作業» の
-    ///       目安であって網羅リストではないので、線形探索で足りる。
-    if (std::find(s_missing.begin(), s_missing.end(), english) != s_missing.end()) return;
+    if (AlreadyLocalized(english)) {
+        return;
+    }
+    // 毎フレーム引かれるので、既に控えたものは足さない。件数は «残り作業» の
+    // 目安であって網羅リストではないので、線形探索で足りる。
+    if (std::find(s_missing.begin(), s_missing.end(), english) != s_missing.end()) {
+        return;
+    }
     s_missing.emplace_back(english);
 }
 
@@ -115,9 +123,15 @@ Language GetLanguage() { return s_language; }
 
 const char* Text(const char* english)
 {
-    if (english == nullptr) return "";
-    if (!s_built) BuildTable(s_language);
-    if (s_language == Language::English) return english;
+    if (english == nullptr) {
+        return "";
+    }
+    if (!s_built) {
+        BuildTable(s_language);
+    }
+    if (s_language == Language::English) {
+        return english;
+    }
 
     const auto it = s_table.find(std::string_view(english));
     if (it == s_table.end()) {
@@ -129,15 +143,21 @@ const char* Text(const char* english)
 
 const char* Label(const char* english)
 {
-    if (english == nullptr) return "";
-    if (!s_built) BuildTable(s_language);
-    if (s_language == Language::English) return english;
+    if (english == nullptr) {
+        return "";
+    }
+    if (!s_built) {
+        BuildTable(s_language);
+    }
+    if (s_language == Language::English) {
+        return english;
+    }
 
     const auto it = s_table.find(std::string_view(english));
     if (it == s_table.end()) {
         RecordMissing(english);
-        /// @note 訳が無いときは原文をそのまま返す。ID は原文から作られるので、
-        ///       ここで ### を足しても足さなくても同じ ID になる。
+        // 訳が無いときは原文をそのまま返す。ID は原文から作られるので、
+        // ここで ### を足しても足さなくても同じ ID になる。
         return english;
     }
     return it->second.label.c_str();

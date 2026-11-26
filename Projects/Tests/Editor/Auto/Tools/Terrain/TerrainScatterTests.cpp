@@ -72,7 +72,9 @@ TEST_F(TerrainScatterTest, WaterClearanceDistanceMatchesExistingThresholdSearch)
     const auto clearance = editor::BuildTerrainPaintClearance(m_terrain, m_terrainTransform, brush, {}, surfaces, RADIUS, 0.0f);
     ASSERT_EQ(clearance.water.size(), 4u);
     const auto originalDistance = [&](const math::Vector3& point, float radius) {
-        if (!clearance.NearWater(point, radius)) return 1000000.0f;
+        if (!clearance.NearWater(point, radius)) {
+            return 1000000.0f;
+        }
         float low = 0.0f, high = radius;
         for (int step = 0; step < 16; ++step) {
             const float middle = (low + high) * 0.5f;

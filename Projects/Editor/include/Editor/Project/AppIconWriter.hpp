@@ -31,9 +31,9 @@ public:
                         std::string& outError);
 
     /// exe のアイコンを差し替える。対象の exe が実行中でないこと。
-    /// @param imagePath PNG / JPEG / TGA / BMP / ICO
-    /// @param exePath   書き換える exe
-    /// @param outError  失敗理由 (ビルドログへそのまま出す)
+    /// @param[in] imagePath PNG / JPEG / TGA / BMP / ICO
+    /// @param[in] exePath 書き換える exe
+    /// @param[out] outError 失敗理由 (ビルドログへそのまま出す)
     static bool Apply(const std::filesystem::path& imagePath,
                       const std::filesystem::path& exePath,
                       std::string& outError);

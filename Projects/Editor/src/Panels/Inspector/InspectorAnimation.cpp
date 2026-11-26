@@ -45,19 +45,24 @@ void QueueLayerRename(EditorContext& ctx,
                       const std::string& oldName,
                       const std::string& newName)
 {
-    if (oldName.empty() || newName.empty() || oldName == newName) return;
+    if (oldName.empty() || newName.empty() || oldName == newName) {
+        return;
+    }
     ctx.animationGraphLayerRenamedFrom = oldName;
     ctx.animationGraphLayerRenamedTo = newName;
     ctx.animationGraphLayerFocus = newName;
-    if (ctx.animationGraphSelection.layerName == oldName)
+    if (ctx.animationGraphSelection.layerName == oldName) {
         ctx.animationGraphSelection.layerName = newName;
+    }
 }
 
 template<typename Enum, size_t N>
 void DrawRootMotionEnum(const char* label, Enum& value, const char* const (&labels)[N])
 {
     int selected = static_cast<int>(value);
-    if (ImGui::Combo(label, &selected, labels, static_cast<int>(N))) value = static_cast<Enum>(selected);
+    if (ImGui::Combo(label, &selected, labels, static_cast<int>(N))) {
+        value = static_cast<Enum>(selected);
+    }
 }
 
 /// @name Root Motion
@@ -69,7 +74,9 @@ void DrawRootMotionSettings(scene::AnimatorComponent& anim)
     using scene::RootMotionMode;
     using scene::RootMotionSource;
 
-    if (!ImGui::CollapsingHeader("Root Motion")) return;
+    if (!ImGui::CollapsingHeader("Root Motion")) {
+        return;
+    }
     ImGui::PushID("RootMotion");
 
     static const char* kModeNames[] = {
@@ -123,8 +130,9 @@ void DrawRootMotionSettings(scene::AnimatorComponent& anim)
     char targetPath[128] = {};
     std::snprintf(targetPath, sizeof(targetPath), "%s",
                   anim.rootMotion.targetPath.c_str());
-    if (property::InputText("Target", targetPath, sizeof(targetPath)))
+    if (property::InputText("Target", targetPath, sizeof(targetPath))) {
         anim.rootMotion.targetPath = targetPath;
+    }
     ImGui::TextDisabled("空 = この GameObject。\"..\" で親 (RigidBody が親にある構成)。");
 
     static const char* kAxisNames[] = { "Use Clip", "Disabled", "Enabled" };
@@ -137,7 +145,7 @@ void DrawRootMotionSettings(scene::AnimatorComponent& anim)
     property::DragFloat("Rotation Scale", &anim.rootMotion.rotationScale,
                      0.01f, 0.0f, 1.0f);
 
-    /// @note 実行中の値。歩幅とゲーム速度が合っているかはここを見ながら詰める。
+    // 実行中の値。歩幅とゲーム速度が合っているかはここを見ながら詰める。
     if (anim.rootMotion.mode != RootMotionMode::None) {
         ImGui::SeparatorText("Runtime");
         const auto& delta = anim.rootMotionDeltaPosition;
@@ -169,7 +177,7 @@ void DrawAnimatorLayers(scene::AnimatorComponent& anim, EditorContext& ctx)
         markDirty();
     };
 
-    /// @note Base Layer 自身のマスク。外したボーンはバインドポーズのまま残り、上のレイヤーだけが動かす。
+    // Base Layer 自身のマスク。外したボーンはバインドポーズのまま残り、上のレイヤーだけが動かす。
     if (property::AssetPathField("Base Layer Mask", anim.baseLayerMask.path,
                                 ".mask", ctx.projectRoot)) {
         anim.baseLayerMask.Invalidate();
@@ -186,8 +194,8 @@ void DrawAnimatorLayers(scene::AnimatorComponent& anim, EditorContext& ctx)
         auto& layer = anim.layers[static_cast<size_t>(i)];
         ImGui::PushID(i);
 
-        /// @note ヘッダーには実行中の状態 (weight / Slot) を出す。上半身レイヤーが効いていない原因は
-        /// @note 大抵 weight か mask なので、折りたたんだままでも一目で分かるようにする。
+        // ヘッダーには実行中の状態 (weight / Slot) を出す。上半身レイヤーが効いていない原因は
+        // 大抵 weight か mask なので、折りたたんだままでも一目で分かるようにする。
         char header[192];
         std::snprintf(header, sizeof(header), "%s  [%s %.0f%%]%s",
                       layer.name.empty() ? "(unnamed)" : layer.name.c_str(),
@@ -195,13 +203,19 @@ void DrawAnimatorLayers(scene::AnimatorComponent& anim, EditorContext& ctx)
                       layer.weight * 100.0f,
                       layer.slot.active ? "  (slot)" : "");
 
-        if (ImGui::Checkbox("##layer_enabled", &layer.enabled)) markLayerDirty();
-        if (ImGui::IsItemHovered()) ImGui::SetTooltip("このレイヤーを評価するか");
+        if (ImGui::Checkbox("##layer_enabled", &layer.enabled)) {
+            markLayerDirty();
+        }
+        if (ImGui::IsItemHovered()) {
+            ImGui::SetTooltip("このレイヤーを評価するか");
+        }
         ImGui::SameLine();
 
         const bool open = ImGui::TreeNodeEx(header, ImGuiTreeNodeFlags_DefaultOpen);
         ImGui::SameLine(ImGui::GetContentRegionAvail().x - 60.0f);
-        if (ImGui::SmallButton("Remove")) removeIndex = i;
+        if (ImGui::SmallButton("Remove")) {
+            removeIndex = i;
+        }
 
         if (open) {
             char nameBuffer[128];
@@ -221,18 +235,21 @@ void DrawAnimatorLayers(scene::AnimatorComponent& anim, EditorContext& ctx)
                 }
             }
 
-            /// @note Additive だけ 1.0 より上を許す。差分の倍率なので、クリップの振れ幅が
-            /// @note 足りないときの誇張がここで完結する。
+            // Additive だけ 1.0 より上を許す。差分の倍率なので、クリップの振れ幅が
+            // 足りないときの誇張がここで完結する。
             const float weightMax = layer.mode == scene::AnimationLayerMode::Additive
                 ? scene::MAX_LAYER_WEIGHT : 1.0f;
-            if (widgets::RangeField("Weight", layer.weight, 0.0f, weightMax)) markLayerDirty();
+            if (widgets::RangeField("Weight", layer.weight, 0.0f, weightMax)) {
+                markLayerDirty();
+            }
 
             static constexpr const char* kModeNames[] = { "Override", "Additive" };
             int modeIndex = static_cast<int>(layer.mode);
             if (property::Combo("Blending", &modeIndex, kModeNames, 2)) {
                 layer.mode = static_cast<scene::AnimationLayerMode>(modeIndex);
-                if (layer.mode == scene::AnimationLayerMode::Override)
+                if (layer.mode == scene::AnimationLayerMode::Override) {
                     layer.weight = std::min(layer.weight, 1.0f);
+                }
                 markLayerDirty();
             }
             if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayShort)) {
@@ -241,9 +258,9 @@ void DrawAnimatorLayers(scene::AnimatorComponent& anim, EditorContext& ctx)
                     "Additive: Base のポーズに差分を足す (呼吸・反動など)");
             }
 
-            /// @name Mask
+            // Mask
             if (property::AssetPathField("Mask", layer.mask.path, ".mask", ctx.projectRoot)) {
-                /// @note 次フレームの AnimatorSystem に読み直させる。
+                // 次フレームの AnimatorSystem に読み直させる。
                 layer.mask.Invalidate();
                 markLayerDirty();
             }
@@ -251,16 +268,17 @@ void DrawAnimatorLayers(scene::AnimatorComponent& anim, EditorContext& ctx)
                 ImGui::TextDisabled("  Mask 未設定 = 全身に効きます");
             }
 
-            /// @name Additive Reference
+            // Additive Reference
             if (layer.mode == scene::AnimationLayerMode::Additive) {
                 ImGui::SeparatorText("Additive Reference Pose");
                 ImGui::TextDisabled("空なら加算クリップ自身の先頭フレームを基準にします。");
-                /// @note 基準ポーズも通常の Source と同じ種類のアセットを受ける。
-                /// @note .anim だけ弾いていると、クリップ単体で持っている基準ポーズ
-                /// @note (Pose_XXX.anim 等) をドロップで割り当てられない。
+                // 基準ポーズも通常の Source と同じ種類のアセットを受ける。
+                // .anim だけ弾いていると、クリップ単体で持っている基準ポーズ
+                // (Pose_XXX.anim 等) をドロップで割り当てられない。
                 if (property::AssetPathField("Ref Source", layer.additiveReference.sourcePath,
-                                            ".anim,.asset,.fzasset,.fbx,.obj,.gltf,.glb", ctx.projectRoot))
+                                            ".anim,.asset,.fzasset,.fbx,.obj,.gltf,.glb", ctx.projectRoot)) {
                     markLayerDirty();
+                }
                 char clipBuffer[128];
                 std::snprintf(clipBuffer, sizeof(clipBuffer), "%s",
                               layer.additiveReference.clipName.c_str());
@@ -269,11 +287,12 @@ void DrawAnimatorLayers(scene::AnimatorComponent& anim, EditorContext& ctx)
                     markLayerDirty();
                 }
                 if (property::DragFloat("Ref Time", &layer.additiveReference.time,
-                                     0.01f, 0.0f, 600.0f, "%.2f s"))
+                                     0.01f, 0.0f, 600.0f, "%.2f s")) {
                     markLayerDirty();
+                }
             }
 
-            /// @name State Machine
+            // State Machine
             ImGui::SeparatorText("State Machine");
             if (layer.states.empty()) {
                 ImGui::TextDisabled("  ステート未設定");
@@ -288,14 +307,16 @@ void DrawAnimatorLayers(scene::AnimatorComponent& anim, EditorContext& ctx)
                 }
             }
 
-            /// @name Slot (ランタイム表示のみ)
+            // Slot (ランタイム表示のみ)
             if (layer.slot.active) {
                 ImGui::SeparatorText("Slot");
                 ImGui::Text("%s", layer.slot.clipName.empty()
                             ? layer.slot.sourcePath.c_str() : layer.slot.clipName.c_str());
                 ImGui::ProgressBar(layer.slot.weight, { -1.0f, 0.0f },
                                    layer.slot.stopping ? "fading out" : "blending in");
-                if (ImGui::SmallButton("Stop Slot")) anim.StopSlot(layer.name);
+                if (ImGui::SmallButton("Stop Slot")) {
+                    anim.StopSlot(layer.name);
+                }
             }
 
             ImGui::TreePop();
@@ -306,18 +327,20 @@ void DrawAnimatorLayers(scene::AnimatorComponent& anim, EditorContext& ctx)
     if (removeIndex >= 0) {
         const std::string removedName = anim.layers[static_cast<size_t>(removeIndex)].name;
         anim.layers.erase(anim.layers.begin() + removeIndex);
-        if (ctx.animationGraphSelection.layerName == removedName)
+        if (ctx.animationGraphSelection.layerName == removedName) {
             ctx.animationGraphSelection.Clear();
+        }
         ctx.animationGraphLayerRemoved = removedName;
         markLayerDirty();
     }
 
     if (ImGui::Button("Add Layer", ImVec2(-1.0f, 0.0f))) {
         scene::AnimationLayer layer;
-        /// @note 同名レイヤーは名前引き API (SetLayerWeight / PlaySlot) が壊れるため採番する。
+        // 同名レイヤーは名前引き API (SetLayerWeight / PlaySlot) が壊れるため採番する。
         layer.name = "Layer " + std::to_string(anim.layers.size() + 1);
-        for (int suffix = 1; anim.FindLayer(layer.name) != nullptr && suffix < 1000; ++suffix)
+        for (int suffix = 1; anim.FindLayer(layer.name) != nullptr && suffix < 1000; ++suffix) {
             layer.name = "Layer " + std::to_string(anim.layers.size() + 1 + suffix);
+        }
         const std::string createdName = layer.name;
         anim.layers.push_back(std::move(layer));
         ctx.animationGraphLayerFocus = createdName;
@@ -338,8 +361,9 @@ void DrawSpringBoneInspector(scene::GameObject* go,
             property::Checkbox("Simulate In Editor", &spring.simulateInEditor);
             property::DragFloat("Teleport Reset", &spring.teleportResetDistance,
                              0.05f, 0.0f, 100.0f, "%.2f m");
-            if (ImGui::IsItemHovered())
+            if (ImGui::IsItemHovered()) {
                 ImGui::SetTooltip("この距離を超えて 1 フレームで移動したら慣性を捨てる");
+            }
 
             ImGui::SeparatorText("Chains");
             int removeChain = -1;
@@ -365,12 +389,15 @@ void DrawSpringBoneInspector(scene::GameObject* go,
                 ImGui::PushStyleColor(ImGuiCol_Button,        EditorTheme::Color(ThemeColor::Danger));
                 ImGui::PushStyleColor(ImGuiCol_ButtonHovered, EditorTheme::Color(ThemeColor::Danger));
                 ImGui::PushStyleColor(ImGuiCol_ButtonActive,  EditorTheme::Color(ThemeColor::AccentActive));
-                if (ImGui::SmallButton("Remove")) removeChain = ci;
+                if (ImGui::SmallButton("Remove")) {
+                    removeChain = ci;
+                }
                 ImGui::PopStyleColor(3);
 
                 if (open) {
-                    if (!chain.enabled)
+                    if (!chain.enabled) {
                         ImGui::PushStyleVar(ImGuiStyleVar_Alpha, ImGui::GetStyle().Alpha * 0.5f);
+                    }
 
                     char rootName[128];
                     std::snprintf(rootName, sizeof(rootName), "%s", chain.rootBoneName.c_str());
@@ -379,10 +406,12 @@ void DrawSpringBoneInspector(scene::GameObject* go,
                         chain.nodes.clear();
                         chain.builtSkeleton = nullptr;
                     }
-                    if (property::DragInt("Max Depth", &chain.maxDepth, 1.0f, 0, 32))
+                    if (property::DragInt("Max Depth", &chain.maxDepth, 1.0f, 0, 32)) {
                         chain.nodes.clear();
-                    if (ImGui::IsItemHovered())
+                    }
+                    if (ImGui::IsItemHovered()) {
                         ImGui::SetTooltip("0 = 葉まで揺らす");
+                    }
 
                     property::DragFloat("Stiffness", &chain.stiffness, 0.01f, 0.0f, 1.0f, "%.2f");
                     property::DragFloat("Damping",   &chain.damping,   0.01f, 0.0f, 1.0f, "%.2f");
@@ -395,22 +424,27 @@ void DrawSpringBoneInspector(scene::GameObject* go,
                     property::DragFloat("Limit Angle", &chain.limitAngle,
                                      1.0f, 0.0f, 180.0f, "%.1f deg");
                     if (property::DragFloat("Leaf Tail Length", &chain.leafTailLength,
-                                         0.001f, 0.001f, 1.0f, "%.3f m"))
+                                         0.001f, 0.001f, 1.0f, "%.3f m")) {
                         chain.nodes.clear();
+                    }
 
                     ImGui::TextDisabled("Simulated Bones: %d",
                                         static_cast<int>(chain.nodes.size()));
 
-                    if (!chain.enabled) ImGui::PopStyleVar();
+                    if (!chain.enabled) {
+                        ImGui::PopStyleVar();
+                    }
                     ImGui::TreePop();
                 }
                 ImGui::PopID();
                 ImGui::Spacing();
             }
-            if (removeChain >= 0)
+            if (removeChain >= 0) {
                 spring.chains.erase(spring.chains.begin() + removeChain);
-            if (ImGui::Button("+ Add Chain", { -1.0f, 0.0f }))
+            }
+            if (ImGui::Button("+ Add Chain", { -1.0f, 0.0f })) {
                 spring.chains.push_back(scene::SpringBoneChain{});
+            }
 
             ImGui::SeparatorText("Colliders");
             int removeCollider = -1;
@@ -435,21 +469,26 @@ void DrawSpringBoneInspector(scene::GameObject* go,
                 ImGui::PushStyleColor(ImGuiCol_Button,        EditorTheme::Color(ThemeColor::Danger));
                 ImGui::PushStyleColor(ImGuiCol_ButtonHovered, EditorTheme::Color(ThemeColor::Danger));
                 ImGui::PushStyleColor(ImGuiCol_ButtonActive,  EditorTheme::Color(ThemeColor::AccentActive));
-                if (ImGui::SmallButton("Remove")) removeCollider = di;
+                if (ImGui::SmallButton("Remove")) {
+                    removeCollider = di;
+                }
                 ImGui::PopStyleColor(3);
 
                 if (open) {
                     char boneName[128];
                     std::snprintf(boneName, sizeof(boneName), "%s", collider.boneName.c_str());
-                    if (property::InputText("Bone", boneName, sizeof(boneName)))
+                    if (property::InputText("Bone", boneName, sizeof(boneName))) {
                         collider.boneName = boneName;
-                    if (ImGui::IsItemHovered())
+                    }
+                    if (ImGui::IsItemHovered()) {
                         ImGui::SetTooltip("空欄でオーナー Transform 基準");
+                    }
 
                     const char* shapeNames[] = { "Sphere", "Capsule" };
                     int shape = static_cast<int>(collider.shape);
-                    if (property::Combo("Shape", &shape, shapeNames, 2))
+                    if (property::Combo("Shape", &shape, shapeNames, 2)) {
                         collider.shape = static_cast<scene::SpringBoneColliderShape>(shape);
+                    }
 
                     widgets::DragVec3("Offset", collider.offset, 0.005f, -10.0f, 10.0f);
                     if (collider.shape == scene::SpringBoneColliderShape::Capsule)
@@ -460,10 +499,12 @@ void DrawSpringBoneInspector(scene::GameObject* go,
                 }
                 ImGui::PopID();
             }
-            if (removeCollider >= 0)
+            if (removeCollider >= 0) {
                 spring.colliders.erase(spring.colliders.begin() + removeCollider);
-            if (ImGui::Button("+ Add Collider", { -1.0f, 0.0f }))
+            }
+            if (ImGui::Button("+ Add Collider", { -1.0f, 0.0f })) {
                 spring.colliders.push_back(scene::SpringBoneCollider{});
+            }
 
             ImGui::SeparatorText("Runtime Diagnostics");
             ImGui::Text("Updates: %llu",
@@ -473,19 +514,21 @@ void DrawSpringBoneInspector(scene::GameObject* go,
         });
 }
 
-} /// @note namespace
+} // namespace
 
 void DrawAnimationInspectors(scene::GameObject* go, EditorContext& ctx, std::any& m_componentClipboard, const std::type_info*& m_componentClipboardType)
 {
-    /// @note Unity の Animator コンポーネントと同じ密度に揃える。ステート/遷移/パラメーターの編集は
-    /// @note Animation Graph に一本化し、Inspector には Controller 参照と再生設定だけを置く。
-    /// @note Controller 未設定はサポート対象外の過渡状態として扱い、割り当てを促す。
+    // Unity の Animator コンポーネントと同じ密度に揃える。ステート/遷移/パラメーターの編集は
+    // Animation Graph に一本化し、Inspector には Controller 参照と再生設定だけを置く。
+    // Controller 未設定はサポート対象外の過渡状態として扱い、割り当てを促す。
     DrawComponentSection<scene::AnimatorComponent>(go, ctx, m_componentClipboard, m_componentClipboardType, "Animator",
         [go](scene::AnimatorComponent& anim, EditorContext& ctx) {
             if (property::AssetPathField("Controller", anim.controllerPath,
                                         ".animcontroller", ctx.projectRoot)) {
                 anim.loadedControllerPath.clear();
-                if (ctx.markSceneDirty) ctx.markSceneDirty();
+                if (ctx.markSceneDirty) {
+                    ctx.markSceneDirty();
+                }
             }
 
             const bool hasController = !anim.controllerPath.empty();
@@ -500,7 +543,9 @@ void DrawAnimationInspectors(scene::GameObject* go, EditorContext& ctx, std::any
                         const bool valid =
                             std::isalnum(static_cast<unsigned char>(character)) ||
                             character == '_' || character == '-';
-                        if (!valid) character = '_';
+                        if (!valid) {
+                            character = '_';
+                        }
                     }
                     std::string path = directory + "/" + safeName + ".animcontroller";
                     for (int suffix = 1;
@@ -515,17 +560,21 @@ void DrawAnimationInspectors(scene::GameObject* go, EditorContext& ctx, std::any
                         anim.loadedControllerPath = anim.controllerPath;
                         SelectAsset(ctx, path);
                         ctx.requestAssetBrowserRefresh = true;
-                        if (ctx.markSceneDirty) ctx.markSceneDirty();
+                        if (ctx.markSceneDirty) {
+                            ctx.markSceneDirty();
+                        }
                     }
                 }
                 return;
             }
 
             if (ImGui::Button("Open Animation Graph", ImVec2(-1.0f, 0.0f))) {
-                /// @note selectedAssetPath 任せにしないのは、ここでの選択は GameObject であって
-                /// @note .animcontroller ではないため。開くべき Controller はこの Animator が指す
-                /// @note ものなので、パスを明示して渡す。
-                if (ctx.openAnimationGraph) ctx.openAnimationGraph(anim.controllerPath);
+                // selectedAssetPath 任せにしないのは、ここでの選択は GameObject であって
+                // .animcontroller ではないため。開くべき Controller はこの Animator が指す
+                // ものなので、パスを明示して渡す。
+                if (ctx.openAnimationGraph) {
+                    ctx.openAnimationGraph(anim.controllerPath);
+                }
                 ctx.requestOpenAnimationGraph = true;
             }
 
@@ -556,9 +605,9 @@ void DrawAnimationInspectors(scene::GameObject* go, EditorContext& ctx, std::any
             DrawAnimatorLayers(anim, ctx);
         });
 
-    /// @note Bone は FBX インポートで自動付与される内部コンポーネント。編集は想定しないが、
-    /// @note ボーン名とインデックスの対応をシーン上で確認できないとリターゲットや
-    /// @note IK 設定のデバッグが Hierarchy 頼みになるため、read-only で表示する。
+    // Bone は FBX インポートで自動付与される内部コンポーネント。編集は想定しないが、
+    // ボーン名とインデックスの対応をシーン上で確認できないとリターゲットや
+    // IK 設定のデバッグが Hierarchy 頼みになるため、read-only で表示する。
     DrawComponentSection<scene::BoneComponent>(go, ctx, m_componentClipboard, m_componentClipboardType, "Bone",
         [](scene::BoneComponent& bone, EditorContext&) {
             ImGui::BeginDisabled();
@@ -571,16 +620,16 @@ void DrawAnimationInspectors(scene::GameObject* go, EditorContext& ctx, std::any
     DrawComponentSection<scene::IKSolverComponent>(go, ctx, m_componentClipboard, m_componentClipboardType, "IK Solver",
         [go](scene::IKSolverComponent& ik, EditorContext& ctx) {
 
-            /// @name Hip Height Correction
-            /// @name IK Chains
+            // Hip Height Correction
+            // IK Chains
             int removeIdx = -1;
 
             for (int ci = 0; ci < static_cast<int>(ik.chains.size()); ++ci) {
                 auto& chain = ik.chains[static_cast<size_t>(ci)];
                 ImGui::PushID(ci);
 
-                /// @note ヘッダー行: [▶] [✓] Chain 0  (TipBone)           [Remove]。Unity の Constraint
-                /// @note コンポーネントと同様に enabled を折りたたみ矢印の横に置き、開かずに ON/OFF できる。
+                // ヘッダー行: [▶] [✓] Chain 0  (TipBone)           [Remove]。Unity の Constraint
+                // コンポーネントと同様に enabled を折りたたみ矢印の横に置き、開かずに ON/OFF できる。
                 const char* solverNames[] = {
                     "Two Bone", "Foot Place", "Aim At", "FABRIK", "Hand Place",
                     "Full Body Biped"
@@ -601,35 +650,54 @@ void DrawAnimationInspectors(scene::GameObject* go, EditorContext& ctx, std::any
                 ImGui::SameLine(ImGui::GetContentRegionMax().x - removeW - checkboxW
                                 - ImGui::GetStyle().ItemSpacing.x);
                 ImGui::Checkbox("##en", &chain.enabled);
-                if (ImGui::IsItemHovered()) ImGui::SetTooltip("Enable / Disable this chain");
+                if (ImGui::IsItemHovered()) {
+                    ImGui::SetTooltip("Enable / Disable this chain");
+                }
                 ImGui::SameLine();
         ImGui::PushStyleColor(ImGuiCol_Button,        EditorTheme::Color(ThemeColor::Danger));
         ImGui::PushStyleColor(ImGuiCol_ButtonHovered, EditorTheme::Color(ThemeColor::Danger));
         ImGui::PushStyleColor(ImGuiCol_ButtonActive,  EditorTheme::Color(ThemeColor::AccentActive));
-                if (ImGui::SmallButton("Remove")) removeIdx = ci;
+                if (ImGui::SmallButton("Remove")) {
+                    removeIdx = ci;
+                }
                 ImGui::PopStyleColor(3);
 
                 if (open) {
-                    /// @note 無効チェーンは薄く表示
-                    if (!chain.enabled)
+                    // 無効チェーンは薄く表示
+                    if (!chain.enabled) {
                         ImGui::PushStyleVar(ImGuiStyleVar_Alpha, ImGui::GetStyle().Alpha * 0.5f);
+                    }
 
                     int type = static_cast<int>(chain.type);
                     if (property::Combo("Solver Type", &type, solverNames, 6)) {
                         chain.type = static_cast<scene::IKSolverType>(type);
                         chain.lookAtHasState = false;
-                        if (chain.type == scene::IKSolverType::FootPlace) chain.order = 0;
-                        if (chain.type == scene::IKSolverType::TwoBone) chain.order = 10;
-                        if (chain.type == scene::IKSolverType::FABRIK) chain.order = 10;
-                        if (chain.type == scene::IKSolverType::AimAt) chain.order = 20;
-                        if (chain.type == scene::IKSolverType::HandPlace) chain.order = 30;
-                        if (chain.type == scene::IKSolverType::FullBodyBiped) chain.order = -100;
+                        if (chain.type == scene::IKSolverType::FootPlace) {
+                            chain.order = 0;
+                        }
+                        if (chain.type == scene::IKSolverType::TwoBone) {
+                            chain.order = 10;
+                        }
+                        if (chain.type == scene::IKSolverType::FABRIK) {
+                            chain.order = 10;
+                        }
+                        if (chain.type == scene::IKSolverType::AimAt) {
+                            chain.order = 20;
+                        }
+                        if (chain.type == scene::IKSolverType::HandPlace) {
+                            chain.order = 30;
+                        }
+                        if (chain.type == scene::IKSolverType::FullBodyBiped) {
+                            chain.order = -100;
+                        }
                         if ((chain.type == scene::IKSolverType::TwoBone ||
                              chain.type == scene::IKSolverType::HandPlace) &&
-                            chain.boneNames.size() != 3)
+                            chain.boneNames.size() != 3) {
                             chain.boneNames.resize(3);
-                        if (chain.type == scene::IKSolverType::AimAt && chain.boneNames.size() != 1)
+                        }
+                        if (chain.type == scene::IKSolverType::AimAt && chain.boneNames.size() != 1) {
                             chain.boneNames.resize(1);
+                        }
                     }
                     property::DragInt("Order", &chain.order, 1.0f);
                     property::DragFloat("Weight", &chain.weight, 0.01f, 0.0f, 1.0f, "%.2f");
@@ -667,36 +735,44 @@ void DrawAnimationInspectors(scene::GameObject* go, EditorContext& ctx, std::any
                                     ik.runtimeSkinningUploaded ? "yes" : "no");
                     }
 
-                    /// @name Bones
+                    // Bones
                     if (chain.type == scene::IKSolverType::TwoBone ||
                         chain.type == scene::IKSolverType::HandPlace) {
-                        if (chain.boneNames.size() != 3) chain.boneNames.resize(3);
+                        if (chain.boneNames.size() != 3) {
+                            chain.boneNames.resize(3);
+                        }
                         ImGui::SeparatorText("Bones");
                         ImGui::TextDisabled("Drag from Hierarchy or type name");
                         {
                         char buf[256];
                         std::snprintf(buf, sizeof(buf), "%s", chain.boneNames[0].c_str());
-                        if (property::InputText("Root", buf, sizeof(buf)))
+                        if (property::InputText("Root", buf, sizeof(buf))) {
                             chain.boneNames[0] = buf;
-                        if (auto* dropped = AcceptHierarchyDrop(ctx.activeScene))
+                        }
+                        if (auto* dropped = AcceptHierarchyDrop(ctx.activeScene)) {
                             chain.boneNames[0] = dropped->name;
+                        }
 
                         std::snprintf(buf, sizeof(buf), "%s", chain.boneNames[1].c_str());
-                        if (property::InputText("Mid",  buf, sizeof(buf)))
+                        if (property::InputText("Mid",  buf, sizeof(buf))) {
                             chain.boneNames[1] = buf;
-                        if (auto* dropped = AcceptHierarchyDrop(ctx.activeScene))
+                        }
+                        if (auto* dropped = AcceptHierarchyDrop(ctx.activeScene)) {
                             chain.boneNames[1] = dropped->name;
+                        }
 
                         std::snprintf(buf, sizeof(buf), "%s", chain.boneNames[2].c_str());
-                        if (property::InputText("Tip",  buf, sizeof(buf)))
+                        if (property::InputText("Tip",  buf, sizeof(buf))) {
                             chain.boneNames[2] = buf;
-                        if (auto* dropped = AcceptHierarchyDrop(ctx.activeScene))
+                        }
+                        if (auto* dropped = AcceptHierarchyDrop(ctx.activeScene)) {
                             chain.boneNames[2] = dropped->name;
+                        }
                     }
 
-                    /// @name Targets
-                    /// @note Target/Pole は名前文字列で保持し、Resolve ボタンで EntityID を解決する。
-                    /// @note 解決状態は色付きドットで即座に確認できる。
+                    // Targets
+                    // Target/Pole は名前文字列で保持し、Resolve ボタンで EntityID を解決する。
+                    // 解決状態は色付きドットで即座に確認できる。
                     ImGui::SeparatorText("Targets");
                     {
                         char buf[256];
@@ -704,9 +780,9 @@ void DrawAnimationInspectors(scene::GameObject* go, EditorContext& ctx, std::any
                                              + ImGui::GetStyle().FramePadding.x * 2.0f;
                         const float dotW     = ImGui::GetFrameHeight();
 
-                        /// @note guid を追加することでリネーム後も参照が壊れなくなる。手入力時は guid を
-                        /// @note クリアして名前フォールバックで解決させ、ドロップ・Resolve 時は
-                        /// @note dropped/found の instanceId を記録する。
+                        // guid を追加することでリネーム後も参照が壊れなくなる。手入力時は guid を
+                        // クリアして名前フォールバックで解決させ、ドロップ・Resolve 時は
+                        // dropped/found の instanceId を記録する。
                         auto DrawObjectField = [&](const char* label,
                                                    const char* idStr,
                                                    std::string& name,
@@ -714,13 +790,14 @@ void DrawAnimationInspectors(scene::GameObject* go, EditorContext& ctx, std::any
                                                    scene::EntityID& eid)
                         {
                             const bool resolved = eid.IsValid();
-                            /// @note 解決状態ドット (緑=OK / 赤=未解決)
+                            // 解決状態ドット (緑=OK / 赤=未解決)
                             const ImVec4 dotColor = resolved
                                 ? ImVec4(0.2f, 0.8f, 0.2f, 1.0f)
                                 : ImVec4(0.8f, 0.2f, 0.2f, 1.0f);
                             ImGui::TextColored(dotColor, resolved ? "●" : "○");
-                            if (ImGui::IsItemHovered())
+                            if (ImGui::IsItemHovered()) {
                                 ImGui::SetTooltip(resolved ? "Resolved" : "Not resolved — click Resolve");
+                            }
                             ImGui::SameLine();
                             ImGui::SetNextItemWidth(
                                 ImGui::GetContentRegionAvail().x - resolveW
@@ -728,7 +805,7 @@ void DrawAnimationInspectors(scene::GameObject* go, EditorContext& ctx, std::any
                             std::snprintf(buf, sizeof(buf), "%s", name.c_str());
                             if (ImGui::InputText(idStr, buf, sizeof(buf))) {
                                 name = buf;
-                                /// @note 手入力時は GUID をクリアして名前で再解決させる
+                                // 手入力時は GUID をクリアして名前で再解決させる
                                 guid.clear();
                             }
                             if (auto* dropped = AcceptHierarchyDrop(ctx.activeScene)) {
@@ -750,7 +827,7 @@ void DrawAnimationInspectors(scene::GameObject* go, EditorContext& ctx, std::any
                         ImGui::SameLine();
                         ImGui::TextUnformatted("Target");
 
-                        /// @note Auto Pole: ON のとき Pole フィールドを非活性化し、IKSystem が自動計算する。
+                        // Auto Pole: ON のとき Pole フィールドを非活性化し、IKSystem が自動計算する。
                         property::Checkbox("Auto Pole##ap", &chain.autoPole);
                         if (ImGui::IsItemHovered())
                             ImGui::SetTooltip(
@@ -767,32 +844,37 @@ void DrawAnimationInspectors(scene::GameObject* go, EditorContext& ctx, std::any
                                     "Owner-local knee direction. Zero uses FK bend direction.\n"
                                     "Example: Player with 180 yaw offset can use +Z or -Z depending on rig forward.");
                         }
-                        if (chain.autoPole)
+                        if (chain.autoPole) {
                             ImGui::BeginDisabled();
+                        }
                         DrawObjectField("Resolve##p", "##pole", chain.poleName,   chain.poleGuid,   chain.poleEntity);
                         ImGui::SameLine();
                         ImGui::TextUnformatted("Pole");
-                        if (chain.autoPole)
+                        if (chain.autoPole) {
                             ImGui::EndDisabled();
+                        }
                     }
 
-                    /// @name Settings
+                    // Settings
                         ImGui::SeparatorText("Settings");
                         property::DragFloat("Max Extension", &chain.maxExtension,
                                          0.005f, 0.5f, 1.0f, "%.3f");
-                        if (ImGui::IsItemHovered())
+                        if (ImGui::IsItemHovered()) {
                             ImGui::SetTooltip("Limits how far the chain can stretch (ratio of total bone length)");
+                        }
                         property::DragFloat("Softness", &chain.softness,
                                          0.005f, 0.0f, 0.5f, "%.3f");
-                        if (ImGui::IsItemHovered())
+                        if (ImGui::IsItemHovered()) {
                             ImGui::SetTooltip("Exponential ease-out before max extension (0 = off)");
+                        }
                         ImGui::DragFloatRange2("Bend Angle", &chain.minBendAngleDegrees,
                                                &chain.maxBendAngleDegrees,
                                                1.0f, 0.0f, 179.0f,
                                                "Min %.1f deg", "Max %.1f deg");
                         widgets::DragVec3("Target Offset", chain.targetOffset, 0.001f, 0.0f, 0.0f);
-                        if (ImGui::IsItemHovered())
+                        if (ImGui::IsItemHovered()) {
                             ImGui::SetTooltip("World-space offset added to the target position");
+                        }
                         if (chain.type == scene::IKSolverType::HandPlace) {
                             ImGui::SeparatorText("Hand Placement");
                             widgets::DragQuatEuler3(
@@ -820,10 +902,12 @@ void DrawAnimationInspectors(scene::GameObject* go, EditorContext& ctx, std::any
                             ImGui::SameLine();
                             if (ImGui::SmallButton("Resolve##solverTarget") && ctx.activeScene) {
                                 scene::GameObject* found = nullptr;
-                                if (!chain.targetGuid.empty())
+                                if (!chain.targetGuid.empty()) {
                                     found = ctx.activeScene->FindByGuid(chain.targetGuid);
-                                if (!found && !chain.targetName.empty())
+                                }
+                                if (!found && !chain.targetName.empty()) {
                                     found = ctx.activeScene->Find(chain.targetName);
+                                }
                                 chain.targetEntity = found ? found->GetID() : scene::EntityID::INVALID;
                                 if (found) {
                                     chain.targetName = found->name;
@@ -835,13 +919,17 @@ void DrawAnimationInspectors(scene::GameObject* go, EditorContext& ctx, std::any
                         ImGui::SeparatorText(
                             chain.type == scene::IKSolverType::AimAt ? "Aim At" : "FABRIK");
                         if (chain.type == scene::IKSolverType::AimAt) {
-                            if (chain.boneNames.size() != 1) chain.boneNames.resize(1);
+                            if (chain.boneNames.size() != 1) {
+                                chain.boneNames.resize(1);
+                            }
                             char boneName[256];
                             std::snprintf(boneName, sizeof(boneName), "%s", chain.boneNames[0].c_str());
-                            if (property::InputText("Bone", boneName, sizeof(boneName)))
+                            if (property::InputText("Bone", boneName, sizeof(boneName))) {
                                 chain.boneNames[0] = boneName;
-                            if (auto* dropped = AcceptHierarchyDrop(ctx.activeScene))
+                            }
+                            if (auto* dropped = AcceptHierarchyDrop(ctx.activeScene)) {
                                 chain.boneNames[0] = dropped->name;
+                            }
                         } else {
                             int removeBone = -1;
                             for (int boneIndex = 0;
@@ -852,18 +940,24 @@ void DrawAnimationInspectors(scene::GameObject* go, EditorContext& ctx, std::any
                                 std::snprintf(boneName, sizeof(boneName), "%s",
                                               chain.boneNames[static_cast<size_t>(boneIndex)].c_str());
                                 ImGui::SetNextItemWidth(ImGui::GetContentRegionAvail().x - 28.0f);
-                                if (ImGui::InputText("##spineBone", boneName, sizeof(boneName)))
+                                if (ImGui::InputText("##spineBone", boneName, sizeof(boneName))) {
                                     chain.boneNames[static_cast<size_t>(boneIndex)] = boneName;
-                                if (auto* dropped = AcceptHierarchyDrop(ctx.activeScene))
+                                }
+                                if (auto* dropped = AcceptHierarchyDrop(ctx.activeScene)) {
                                     chain.boneNames[static_cast<size_t>(boneIndex)] = dropped->name;
+                                }
                                 ImGui::SameLine();
-                                if (ImGui::SmallButton("x")) removeBone = boneIndex;
+                                if (ImGui::SmallButton("x")) {
+                                    removeBone = boneIndex;
+                                }
                                 ImGui::PopID();
                             }
-                            if (removeBone >= 0)
+                            if (removeBone >= 0) {
                                 chain.boneNames.erase(chain.boneNames.begin() + removeBone);
-                            if (ImGui::Button("+ Spine Bone", { -1.0f, 0.0f }))
+                            }
+                            if (ImGui::Button("+ Spine Bone", { -1.0f, 0.0f })) {
                                 chain.boneNames.emplace_back();
+                            }
                         }
 
                         DrawTargetField();
@@ -920,8 +1014,9 @@ void DrawAnimationInspectors(scene::GameObject* go, EditorContext& ctx, std::any
                             property::DragFloat("Bend Reserve", &chain.hipBendReserve, 0.001f, 0.0f, 0.25f, "%.3f m", ImGuiSliderFlags_AlwaysClamp);
                             char hipName[128];
                             std::snprintf(hipName, sizeof(hipName), "%s", chain.hipBoneName.c_str());
-                            if (property::InputText("Hip Bone", hipName, sizeof(hipName)))
+                            if (property::InputText("Hip Bone", hipName, sizeof(hipName))) {
                                 chain.hipBoneName = hipName;
+                            }
                         }
                         widgets::DragVec3("Foot Normal Axis", chain.footNormalAxis, 0.01f, -1.0f, 1.0f);
                         ImGui::Text("Foot correction L/R: %.3f / %.3f m", chain.smoothedLeft, chain.smoothedRight);
@@ -931,9 +1026,10 @@ void DrawAnimationInspectors(scene::GameObject* go, EditorContext& ctx, std::any
                             chain.runtimeLeftGrounded ? "yes" : "no", chain.runtimeRightGrounded ? "yes" : "no");
                     }
 
-                    /// @name Ground Snap
-                    if (!chain.enabled)
+                    // Ground Snap
+                    if (!chain.enabled) {
                         ImGui::PopStyleVar();
+                    }
 
                     ImGui::TreePop();
                 }
@@ -942,11 +1038,12 @@ void DrawAnimationInspectors(scene::GameObject* go, EditorContext& ctx, std::any
                 ImGui::Spacing();
             }
 
-            /// @note チェーン削除
-            if (removeIdx >= 0)
+            // チェーン削除
+            if (removeIdx >= 0) {
                 ik.chains.erase(ik.chains.begin() + removeIdx);
+            }
 
-            /// @note チェーン追加
+            // チェーン追加
             if (ImGui::Button("+ Add Chain", { -1.0f, 0.0f })) {
                 scene::IKChain chain;
                 chain.enabled = true;
@@ -958,4 +1055,4 @@ void DrawAnimationInspectors(scene::GameObject* go, EditorContext& ctx, std::any
 }
 
 
-} /// @note namespace fbzz::editor
+} // namespace fbzz::editor

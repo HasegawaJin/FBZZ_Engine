@@ -24,13 +24,16 @@ void ClaimEntityChannel(EditorContext& ctx)
 /// (そちらはパネルを閉じるまで生きている編集対象そのもの)。
 void DropEntityBoundGraphSelection(EditorContext& ctx)
 {
-    if (ctx.animationGraphSelection.entityId.IsValid())
+    if (ctx.animationGraphSelection.entityId.IsValid()) {
         ctx.animationGraphSelection.Clear();
+    }
 }
 
 void RequestReveal(EditorContext& ctx, scene::EntityID id, SelectionReveal reveal)
 {
-    if (reveal != SelectionReveal::Show || !id.IsValid()) return;
+    if (reveal != SelectionReveal::Show || !id.IsValid()) {
+        return;
+    }
     ctx.hierarchyRevealTarget = id;
 }
 
@@ -38,8 +41,8 @@ void RequestReveal(EditorContext& ctx, scene::EntityID id, SelectionReveal revea
 
 void SelectEntity(EditorContext& ctx, scene::EntityID id, SelectionReveal reveal)
 {
-    /// @note 空の選択は「解除」であって、他チャンネルを奪う操作ではない。シーン再構築後の選択復元は
-    ///       ここを空で通るため、アセット選択まで落とすとホットリロードのたびに Inspector が沈黙する。
+    // 空の選択は「解除」であって、他チャンネルを奪う操作ではない。シーン再構築後の選択復元は
+    // ここを空で通るため、アセット選択まで落とすとホットリロードのたびに Inspector が沈黙する。
     if (!id.IsValid()) {
         ClearEntitySelection(ctx);
         return;
@@ -62,17 +65,22 @@ void SelectEntities(EditorContext& ctx, std::vector<scene::EntityID> ids, Select
 
 void AddToSelection(EditorContext& ctx, scene::EntityID id, SelectionReveal reveal)
 {
-    if (!id.IsValid()) return;
+    if (!id.IsValid()) {
+        return;
+    }
     ClaimEntityChannel(ctx);
     auto& selected = ctx.selectedEntities;
-    if (std::find(selected.begin(), selected.end(), id) == selected.end())
+    if (std::find(selected.begin(), selected.end(), id) == selected.end()) {
         selected.push_back(id);
+    }
     RequestReveal(ctx, id, reveal);
 }
 
 void ToggleSelection(EditorContext& ctx, scene::EntityID id, SelectionReveal reveal)
 {
-    if (!id.IsValid()) return;
+    if (!id.IsValid()) {
+        return;
+    }
     ClaimEntityChannel(ctx);
     auto& selected = ctx.selectedEntities;
     const auto it = std::find(selected.begin(), selected.end(), id);
@@ -88,7 +96,9 @@ void RemoveSelection(EditorContext& ctx, scene::EntityID id)
 {
     auto& selected = ctx.selectedEntities;
     selected.erase(std::remove(selected.begin(), selected.end(), id), selected.end());
-    if (selected.empty()) DropEntityBoundGraphSelection(ctx);
+    if (selected.empty()) {
+        DropEntityBoundGraphSelection(ctx);
+    }
 }
 
 void ClearEntitySelection(EditorContext& ctx)
@@ -99,21 +109,27 @@ void ClearEntitySelection(EditorContext& ctx)
 
 void PruneSelection(EditorContext& ctx)
 {
-    if (!ctx.activeScene) return;
+    if (!ctx.activeScene) {
+        return;
+    }
     auto& selected = ctx.selectedEntities;
     selected.erase(std::remove_if(selected.begin(), selected.end(),
         [&ctx](scene::EntityID id) { return !ctx.activeScene->IsValid(id); }),
         selected.end());
-    if (selected.empty()) DropEntityBoundGraphSelection(ctx);
+    if (selected.empty()) {
+        DropEntityBoundGraphSelection(ctx);
+    }
 }
 
 void SelectAsset(EditorContext& ctx, std::string absolutePath)
 {
     ctx.selectedAssetPath = std::move(absolutePath);
-    if (ctx.selectedAssetPath.empty()) return;
+    if (ctx.selectedAssetPath.empty()) {
+        return;
+    }
 
-    /// @note GameObject の選択も落とす。Inspector はアセットを映しているのに Delete / Ctrl+D が
-    ///       選択中の GameObject に効く、という食い違いを避けるため。
+    // GameObject の選択も落とす。Inspector はアセットを映しているのに Delete / Ctrl+D が
+    // 選択中の GameObject に効く、という食い違いを避けるため。
     ctx.selectedEntities.clear();
     DropEntityBoundGraphSelection(ctx);
 }
@@ -125,7 +141,9 @@ void ClearAssetSelection(EditorContext& ctx)
 
 void RevealInHierarchy(EditorContext& ctx, scene::EntityID id)
 {
-    if (id.IsValid()) ctx.hierarchyRevealTarget = id;
+    if (id.IsValid()) {
+        ctx.hierarchyRevealTarget = id;
+    }
 }
 
 } // namespace fbzz::editor

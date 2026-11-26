@@ -47,4 +47,4 @@ void BuildSpatialDebugOverlay(EditorContext& ctx, const scene::Scene& scene,
 /// @brief Immediately retire both publications on Stop and Shutdown.
 void ResetSpatialDebugCapture();
 
-} /// @note namespace fbzz::editor
+} // namespace fbzz::editor

@@ -46,7 +46,9 @@ constexpr ImU32 kGhostFuture   = IM_COL32(255, 168,  92, 110);
 /// @note 現在プレビューしているクリップ。オーバーレイ・タイムライン・情報表示が共通で使う。
 const asset::AnimationClip* CurrentClip(const asset::Model* model)
 {
-    if (!model) return nullptr;
+    if (!model) {
+        return nullptr;
+    }
     return ResolveClip(model, g_state.target.clipName, g_state.target.animAssetPath);
 }
 
@@ -68,8 +70,12 @@ bool ToolbarToggle(const char* label, bool& value, const char* tooltip, float wi
     const bool clicked = ImGui::Button(label, ImVec2(width, 0.0f));
     ImGui::PopStyleVar();
     ImGui::PopStyleColor(4);
-    if (clicked) value = !value;
-    if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", tooltip);
+    if (clicked) {
+        value = !value;
+    }
+    if (ImGui::IsItemHovered()) {
+        ImGui::SetTooltip("%s", tooltip);
+    }
     return clicked;
 }
 
@@ -89,7 +95,9 @@ bool TransportButton(const char* id, const char* glyph, const char* tooltip,
     ImGui::PopStyleVar();
     ImGui::PopStyleColor(3);
     ImGui::PopID();
-    if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", tooltip);
+    if (ImGui::IsItemHovered()) {
+        ImGui::SetTooltip("%s", tooltip);
+    }
     return clicked;
 }
 
@@ -134,21 +142,37 @@ void StepPreviewFrames(int frames, const asset::AnimationClip* clip)
 /// @note Space / Home / End / L と «修飾なしの矢印» は EditorApp_MenuBar のどのホットキーにも割り当てが無い (矢印は Alt 付きだけが Selection History に取られている)。F は Scene Viewport スコープなので、ここで拾ってもシーンのフレーミングとは衝突しない。
 void HandlePreviewHotkeys(bool interactive, const asset::AnimationClip* clip)
 {
-    if (!interactive) return;
+    if (!interactive) {
+        return;
+    }
     const ImGuiIO& io = ImGui::GetIO();
-    if (io.WantTextInput || io.KeyCtrl || io.KeyAlt) return;
+    if (io.WantTextInput || io.KeyCtrl || io.KeyAlt) {
+        return;
+    }
 
-    if (ImGui::IsKeyPressed(ImGuiKey_Space, false)) g_state.playing = !g_state.playing;
-    if (ImGui::IsKeyPressed(ImGuiKey_L, false))     g_state.loop = !g_state.loop;
-    if (ImGui::IsKeyPressed(ImGuiKey_Home, false))  SeekPreview(0.0f);
-    if (ImGui::IsKeyPressed(ImGuiKey_End, false))   SeekPreview(g_state.timelineLength);
+    if (ImGui::IsKeyPressed(ImGuiKey_Space, false)) {
+        g_state.playing = !g_state.playing;
+    }
+    if (ImGui::IsKeyPressed(ImGuiKey_L, false)) {
+        g_state.loop = !g_state.loop;
+    }
+    if (ImGui::IsKeyPressed(ImGuiKey_Home, false)) {
+        SeekPreview(0.0f);
+    }
+    if (ImGui::IsKeyPressed(ImGuiKey_End, false)) {
+        SeekPreview(g_state.timelineLength);
+    }
 
     const int stride = io.KeyShift ? 10 : 1;
-    if (ImGui::IsKeyPressed(ImGuiKey_LeftArrow, true))  StepPreviewFrames(-stride, clip);
-    if (ImGui::IsKeyPressed(ImGuiKey_RightArrow, true)) StepPreviewFrames(stride, clip);
+    if (ImGui::IsKeyPressed(ImGuiKey_LeftArrow, true)) {
+        StepPreviewFrames(-stride, clip);
+    }
+    if (ImGui::IsKeyPressed(ImGuiKey_RightArrow, true)) {
+        StepPreviewFrames(stride, clip);
+    }
 
     if (ImGui::IsKeyPressed(ImGuiKey_F, false)) {
-        /// @note 選択ボーンがあればそこへ寄る。無ければモデル全体を framing し直す。
+        // 選択ボーンがあればそこへ寄る。無ければモデル全体を framing し直す。
         if (g_state.selectedBoneNode >= 0 &&
             g_state.selectedBoneNode < static_cast<int>(g_state.jointPositions.size())) {
             g_state.pendingFocus =
@@ -183,8 +207,8 @@ void DrawPreviewTimeline(const asset::AnimationClip* clip, float width)
     const float playhead = WrapTime(g_state.time, length);
 
     if (g_state.target.mode == PreviewTarget::Mode::Transition) {
-        /// @note 遷移元 / ブレンド / 遷移先 を帯で描き分ける。ブレンド区間だけ
-        ///       左から右へ色を渡して、どちら向きに重みが移るかを線で読ませる。
+        // 遷移元 / ブレンド / 遷移先 を帯で描き分ける。ブレンド区間だけ
+        // 左から右へ色を渡して、どちら向きに重みが移るかを線で読ませる。
         const float blendStart = g_state.target.transitionStartSeconds;
         const float blendEnd = blendStart + g_state.target.blendSeconds;
         const float x0 = timeToX(blendStart);
@@ -205,7 +229,7 @@ void DrawPreviewTimeline(const asset::AnimationClip* clip, float width)
                           kAccentDim, rounding, ImDrawFlags_RoundCornersLeft);
     }
 
-    /// @note フレーム目盛り。潰れて «ただの帯» に見える密度になったら描かない。
+    // フレーム目盛り。潰れて «ただの帯» に見える密度になったら描かない。
     const float fps = ClipFrameRate(clip);
     const int frameCount = (std::max)(static_cast<int>(std::lround(length * fps)), 1);
     if (width / static_cast<float>(frameCount) >= 6.0f) {
@@ -218,7 +242,7 @@ void DrawPreviewTimeline(const asset::AnimationClip* clip, float width)
         }
     }
 
-    /// @note イベントマーカー。押せば «その瞬間» へ跳べるようにする。
+    // イベントマーカー。押せば «その瞬間» へ跳べるようにする。
     int hoveredEvent = -1;
     if (clip) {
         const ImVec2 mouse = ImGui::GetIO().MousePos;
@@ -233,11 +257,13 @@ void DrawPreviewTimeline(const asset::AnimationClip* clip, float width)
             dl->AddConvexPolyFilled(diamond, 4, kEventColor);
             dl->AddLine(ImVec2(x, origin.y), ImVec2(x, maxCorner.y),
                         IM_COL32(255, 200, 88, underCursor ? 160 : 70));
-            if (underCursor) hoveredEvent = static_cast<int>(i);
+            if (underCursor) {
+                hoveredEvent = static_cast<int>(i);
+            }
         }
     }
 
-    /// @note 再生ヘッド
+    // 再生ヘッド
     const float headX = timeToX(playhead);
     dl->AddLine(ImVec2(headX, origin.y + 1.0f), ImVec2(headX, maxCorner.y - 1.0f),
                 IM_COL32(245, 248, 252, 230), 1.6f);
@@ -250,8 +276,9 @@ void DrawPreviewTimeline(const asset::AnimationClip* clip, float width)
         ImGui::SetTooltip("%s\n%.3f s (frame %d)\nClick to jump",
                           event.name.c_str(), static_cast<float>(event.time),
                           static_cast<int>(std::lround(event.time * fps)));
-        if (ImGui::IsMouseClicked(ImGuiMouseButton_Left))
+        if (ImGui::IsMouseClicked(ImGuiMouseButton_Left)) {
             SeekPreview(static_cast<float>(event.time));
+        }
     } else if (active) {
         SeekPreview((ImGui::GetIO().MousePos.x - origin.x) / width * length);
     } else if (hovered) {
@@ -311,8 +338,9 @@ void DrawViewPopup()
     ImGui::SliderFloat("##Fov", &view.fovY, 12.0f, 90.0f, "FOV %.0f deg");
     ImGui::SetNextItemWidth(190.0f);
     ImGui::SliderAngle("##LightYaw", &view.lightYaw, -180.0f, 180.0f, "Light %.0f deg");
-    if (ImGui::IsItemHovered())
+    if (ImGui::IsItemHovered()) {
         ImGui::SetTooltip("Rotate the key light around the model to read the silhouette.");
+    }
 
     ImGui::Spacing();
     constexpr float HALF_PI = 1.57079632679f;
@@ -327,7 +355,9 @@ void DrawViewPopup()
     };
     const float presetWidth = (190.0f - ImGui::GetStyle().ItemSpacing.x * 2.0f) / 3.0f;
     for (int i = 0; i < static_cast<int>(sizeof(kPresets) / sizeof(kPresets[0])); ++i) {
-        if (i % 3 != 0) ImGui::SameLine();
+        if (i % 3 != 0) {
+            ImGui::SameLine();
+        }
         if (ImGui::Button(kPresets[i].label, ImVec2(presetWidth, 0.0f))) {
             g_state.yaw = kPresets[i].yaw;
             g_state.pitch = kPresets[i].pitch;
@@ -368,7 +398,7 @@ void DrawAxisGizmo(const OverlayContext& ctx)
         const float sx = axis.dir.x * right.x + axis.dir.y * right.y + axis.dir.z * right.z;
         const float sy = -(axis.dir.x * up.x + axis.dir.y * up.y + axis.dir.z * up.z);
         const ImVec2 tip(center.x + sx * radius, center.y + sy * radius);
-        /// @note 奥へ向く軸は薄くする。手前・奥が区別できないと «鏡像» に見える。
+        // 奥へ向く軸は薄くする。手前・奥が区別できないと «鏡像» に見える。
         const float depth = axis.dir.x * forward.x + axis.dir.y * forward.y +
                             axis.dir.z * forward.z;
         const int alpha = depth > 0.0f ? 110 : 255;
@@ -411,8 +441,12 @@ void DrawInfoOverlay(const OverlayContext& ctx, const asset::AnimationClip* clip
     }
     if (clip) {
         for (const auto& event : clip->events) {
-            if (count >= 6) break;
-            if (std::abs(static_cast<float>(event.time) - wrapped) >= 0.08f) continue;
+            if (count >= 6) {
+                break;
+            }
+            if (std::abs(static_cast<float>(event.time) - wrapped) >= 0.08f) {
+                continue;
+            }
             std::snprintf(lines[count], sizeof(lines[0]), "Event  %s", event.name.c_str());
             colors[count++] = kEventColor;
         }
@@ -420,8 +454,9 @@ void DrawInfoOverlay(const OverlayContext& ctx, const asset::AnimationClip* clip
 
     const float lineHeight = ImGui::GetTextLineHeight();
     float boxWidth = 0.0f;
-    for (int i = 0; i < count; ++i)
+    for (int i = 0; i < count; ++i) {
         boxWidth = (std::max)(boxWidth, ImGui::CalcTextSize(lines[i]).x);
+    }
     const ImVec2 boxMin(ctx.origin.x + 8.0f, ctx.origin.y + 8.0f);
     const ImVec2 boxMax(boxMin.x + boxWidth + 16.0f,
                         boxMin.y + lineHeight * static_cast<float>(count) + 12.0f);
@@ -444,7 +479,9 @@ bool DrawSkeletonOverlay(const OverlayContext& ctx,
                          const asset::Model& model,
                          const asset::AnimationClip* clip)
 {
-    if (!g_state.debugPoseValid || !model.skeleton) return false;
+    if (!g_state.debugPoseValid || !model.skeleton) {
+        return false;
+    }
     const asset::Skeleton& skeleton = *model.skeleton;
     ImDrawList* dl = ctx.drawList;
     dl->PushClipRect(ctx.origin, ctx.maxCorner, true);
@@ -452,13 +489,15 @@ bool DrawSkeletonOverlay(const OverlayContext& ctx,
     const auto project = [&](const math::Vector3& world, ImVec2& out) -> bool {
         const math::Vector4 clipPos = g_state.debugViewProjection *
             math::Vector4{ world.x, world.y, world.z, 1.0f };
-        if (clipPos.w <= 0.0001f) return false;
+        if (clipPos.w <= 0.0001f) {
+            return false;
+        }
         out.x = ctx.origin.x + (clipPos.x / clipPos.w * 0.5f + 0.5f) * ctx.width;
         out.y = ctx.origin.y + (0.5f - clipPos.y / clipPos.w * 0.5f) * ctx.height;
         return true;
     };
 
-    /// @note 軌跡: クリップ全長の代表ボーン移動をグラデーション付きポリラインで描く。
+    // 軌跡: クリップ全長の代表ボーン移動をグラデーション付きポリラインで描く。
     if (g_state.showTrail && g_state.trailPoints.size() >= 2) {
         ImVec2 previousPoint{};
         bool previousValid = project(g_state.trailPoints[0], previousPoint);
@@ -481,21 +520,27 @@ bool DrawSkeletonOverlay(const OverlayContext& ctx,
         const size_t markerIndex = static_cast<size_t>(std::lround(
             normalized * static_cast<float>(g_state.trailPoints.size() - 1)));
         ImVec2 marker;
-        if (project(g_state.trailPoints[markerIndex], marker))
+        if (project(g_state.trailPoints[markerIndex], marker)) {
             dl->AddCircleFilled(marker, 4.0f, IM_COL32(255, 200, 110, 255));
+        }
     }
 
-    /// @note オニオンスキン: 過去 = 青、未来 = 橙。動きの速いボーンほど残像が離れて見える。
+    // オニオンスキン: 過去 = 青、未来 = 橙。動きの速いボーンほど残像が離れて見える。
     const auto drawSkeletonPose = [&](const std::vector<math::Vector3>& positions,
                                       ImU32 color, float thickness) {
         for (size_t i = 0; i < skeleton.nodes.size() && i < positions.size(); ++i) {
             const auto& node = skeleton.nodes[i];
-            if (node.boneIndex < 0 || node.parentIndex < 0) continue;
-            if (node.parentIndex >= static_cast<int>(positions.size())) continue;
+            if (node.boneIndex < 0 || node.parentIndex < 0) {
+                continue;
+            }
+            if (node.parentIndex >= static_cast<int>(positions.size())) {
+                continue;
+            }
             ImVec2 point, parentPoint;
             if (project(positions[i], point) &&
-                project(positions[static_cast<size_t>(node.parentIndex)], parentPoint))
+                project(positions[static_cast<size_t>(node.parentIndex)], parentPoint)) {
                 dl->AddLine(parentPoint, point, color, thickness);
+            }
         }
     };
     if (g_state.showGhost) {
@@ -504,8 +549,8 @@ bool DrawSkeletonOverlay(const OverlayContext& ctx,
     }
 
     bool boneClicked = false;
-    /// @note ボーン本体: トラック有無で色分けし、ホバーで名前、クリックで詳細を選択する。
-    ///       Curves モードもボーンクリックが必要なので、当たり判定・選択を有効化する。
+    // ボーン本体: トラック有無で色分けし、ホバーで名前、クリックで詳細を選択する。
+    // Curves モードもボーンクリックが必要なので、当たり判定・選択を有効化する。
     if (g_state.showBones || g_state.showBoneNames || g_state.showCurves ||
         g_state.selectedBoneNode >= 0) {
         std::vector<JointScreen> joints;
@@ -515,9 +560,13 @@ bool DrawSkeletonOverlay(const OverlayContext& ctx,
         float hoveredDistanceSq = 12.0f * 12.0f;
         for (size_t i = 0;
              i < skeleton.nodes.size() && i < g_state.jointPositions.size(); ++i) {
-            if (skeleton.nodes[i].boneIndex < 0) continue;
+            if (skeleton.nodes[i].boneIndex < 0) {
+                continue;
+            }
             ImVec2 point;
-            if (!project(g_state.jointPositions[i], point)) continue;
+            if (!project(g_state.jointPositions[i], point)) {
+                continue;
+            }
             joints.push_back({ static_cast<int>(i), point });
             const float dx = mousePos.x - point.x;
             const float dy = mousePos.y - point.y;
@@ -547,12 +596,14 @@ bool DrawSkeletonOverlay(const OverlayContext& ctx,
             for (const auto& joint : joints) {
                 const auto& node = skeleton.nodes[static_cast<size_t>(joint.nodeIndex)];
                 if (node.parentIndex < 0 ||
-                    node.parentIndex >= static_cast<int>(g_state.jointPositions.size()))
+                    node.parentIndex >= static_cast<int>(g_state.jointPositions.size())) {
                     continue;
+                }
                 ImVec2 parentPoint;
                 if (!project(g_state.jointPositions[static_cast<size_t>(node.parentIndex)],
-                             parentPoint))
+                             parentPoint)) {
                     continue;
+                }
                 const ImU32 boneColor = maskMode
                     ? maskColorFor(joint.nodeIndex, 235)
                     : (isAnimated(joint.nodeIndex) ? kAnimatedBone : kStaticBone);
@@ -560,7 +611,7 @@ bool DrawSkeletonOverlay(const OverlayContext& ctx,
             }
         }
         if (g_state.showBones || g_state.showCurves) {
-            /// @note Curves のみのときは線が無いので、ドットを少し控えめにして雑然さを抑える。
+            // Curves のみのときは線が無いので、ドットを少し控えめにして雑然さを抑える。
             const bool bonesShown = g_state.showBones;
             for (const auto& joint : joints) {
                 const bool selected = joint.nodeIndex == g_state.selectedBoneNode;
@@ -574,14 +625,15 @@ bool DrawSkeletonOverlay(const OverlayContext& ctx,
                                        : hovered  ? IM_COL32(255, 255, 255, 255)
                                                   : restColor;
                 dl->AddCircleFilled(joint.pos, (selected || hovered) ? 4.0f : 2.6f, jointColor);
-                if (selected)
+                if (selected) {
                     dl->AddCircle(joint.pos, 7.0f, IM_COL32(255, 216, 96, 200), 0, 1.5f);
+                }
             }
         }
         if (g_state.showBoneNames) {
-            /// @note 密なスケルトンでラベルが潰れないよう、モードで表示対象を絞る。
-            ///       0: 選択 + ホバーのみ / 1: アニメ有ボーン / 2: 全部
-            ///       さらに 2 (All) では、直前に置いたラベルと近すぎる位置はスキップして重なりを防ぐ。
+            // 密なスケルトンでラベルが潰れないよう、モードで表示対象を絞る。
+            // 0: 選択 + ホバーのみ / 1: アニメ有ボーン / 2: 全部
+            // さらに 2 (All) では、直前に置いたラベルと近すぎる位置はスキップして重なりを防ぐ。
             std::vector<ImVec2> placedLabels;
             placedLabels.reserve(joints.size());
             const float minLabelGapSq = 18.0f * 18.0f;
@@ -589,19 +641,29 @@ bool DrawSkeletonOverlay(const OverlayContext& ctx,
                 const bool selected = joint.nodeIndex == g_state.selectedBoneNode;
                 const bool hovered = joint.nodeIndex == hoveredJoint;
                 bool show = selected || hovered;
-                if (!show && g_state.labelMode == 1) show = isAnimated(joint.nodeIndex);
-                else if (!show && g_state.labelMode == 2) show = true;
-                if (!show) continue;
+                if (!show && g_state.labelMode == 1) {
+                    show = isAnimated(joint.nodeIndex);
+                } else if (!show && g_state.labelMode == 2) {
+                    show = true;
+                }
+                if (!show) {
+                    continue;
+                }
 
-                /// @note 選択・ホバーは最優先で必ず出す。それ以外は近接ラベルを間引く。
+                // 選択・ホバーは最優先で必ず出す。それ以外は近接ラベルを間引く。
                 if (!selected && !hovered) {
                     bool tooClose = false;
                     for (const ImVec2& placed : placedLabels) {
                         const float dx = placed.x - joint.pos.x;
                         const float dy = placed.y - joint.pos.y;
-                        if (dx * dx + dy * dy < minLabelGapSq) { tooClose = true; break; }
+                        if (dx * dx + dy * dy < minLabelGapSq) {
+                            tooClose = true;
+                            break;
+                        }
                     }
-                    if (tooClose) continue;
+                    if (tooClose) {
+                        continue;
+                    }
                 }
                 placedLabels.push_back(joint.pos);
 
@@ -611,7 +673,7 @@ bool DrawSkeletonOverlay(const OverlayContext& ctx,
                     ? IM_COL32(255, 236, 170, 255)
                     : IM_COL32(210, 218, 228, 200);
                 const ImVec2 textPos(joint.pos.x + 5.0f, joint.pos.y - 5.0f);
-                /// @note 選択・ホバー名は背景を敷いて読みやすくする。
+                // 選択・ホバー名は背景を敷いて読みやすくする。
                 if (selected || hovered) {
                     const ImVec2 textSize = ImGui::CalcTextSize(shortName.c_str());
                     dl->AddRectFilled(
@@ -628,16 +690,18 @@ bool DrawSkeletonOverlay(const OverlayContext& ctx,
                               isAnimated(hoveredJoint) ? "Animated by this clip"
                                                        : "Bind pose only (no track)");
         }
-        /// @note ドラッグ (オービット) と区別するため、移動量の小さいリリースだけを選択操作にする。
+        // ドラッグ (オービット) と区別するため、移動量の小さいリリースだけを選択操作にする。
         if (ctx.hovered && ImGui::IsMouseReleased(ImGuiMouseButton_Left) &&
             ImGui::GetIO().MouseDragMaxDistanceSqr[ImGuiMouseButton_Left] < 16.0f) {
             boneClicked = hoveredJoint >= 0;
-            /// @note 空クリックで選択解除 (-1)
+            // 空クリックで選択解除 (-1)
             g_state.selectedBoneNode = hoveredJoint;
         }
     }
 
-    if (g_state.showInfo) DrawInfoOverlay(ctx, clip);
+    if (g_state.showInfo) {
+        DrawInfoOverlay(ctx, clip);
+    }
     dl->PopClipRect();
     return boneClicked;
 }
@@ -645,11 +709,13 @@ bool DrawSkeletonOverlay(const OverlayContext& ctx,
 /// @note Mask Preview のメッシュ部位ヒットテスト。@return ホバー中のモデルノード index
 int HitTestMaskMeshNode(const OverlayContext& ctx, const asset::Model& model)
 {
-    /// @note Mesh の CPU バウンドを画面へ投影し、クリック対象を軽量に求める。Preview は RenderTarget の画像なので GPU の深度を直接読めない。部位ノード単位のスクリーン領域で十分な操作感を保ち、GPU readback は避ける。
+    // Mesh の CPU バウンドを画面へ投影し、クリック対象を軽量に求める。Preview は RenderTarget の画像なので GPU の深度を直接読めない。部位ノード単位のスクリーン領域で十分な操作感を保ち、GPU readback は避ける。
     const auto projectPoint = [&](const math::Vector3& world, ImVec2& out) {
         const math::Vector4 clipPos = g_state.debugViewProjection *
             math::Vector4{ world.x, world.y, world.z, 1.0f };
-        if (clipPos.w <= 0.0001f) return false;
+        if (clipPos.w <= 0.0001f) {
+            return false;
+        }
         out.x = ctx.origin.x + (clipPos.x / clipPos.w * 0.5f + 0.5f) * ctx.width;
         out.y = ctx.origin.y + (0.5f - clipPos.y / clipPos.w * 0.5f) * ctx.height;
         return true;
@@ -659,24 +725,34 @@ int HitTestMaskMeshNode(const OverlayContext& ctx, const asset::Model& model)
     int hovered = -1;
     for (size_t meshIndex = 0; meshIndex < model.meshes.size(); ++meshIndex) {
         const auto& mesh = model.meshes[meshIndex];
-        if (!mesh) continue;
+        if (!mesh) {
+            continue;
+        }
         const int nodeIndex = model.FindNodeForMesh(static_cast<uint32_t>(meshIndex));
-        if (nodeIndex < 0) continue;
+        if (nodeIndex < 0) {
+            continue;
+        }
         const math::Matrix4 meshWorld = meshIndex < g_state.meshPreviewWorlds.size()
             ? g_state.meshPreviewWorlds[meshIndex]
             : math::Matrix4::Identity();
         const auto transformMeshPoint = [&](const math::Vector3& point, math::Vector3& out) {
             const math::Vector4 transformed =
                 meshWorld * math::Vector4{ point.x, point.y, point.z, 1.0f };
-            if (std::abs(transformed.w) <= 0.0001f) return false;
+            if (std::abs(transformed.w) <= 0.0001f) {
+                return false;
+            }
             const float invW = 1.0f / transformed.w;
             out = { transformed.x * invW, transformed.y * invW, transformed.z * invW };
             return true;
         };
         math::Vector3 centerWorld;
-        if (!transformMeshPoint(mesh->boundsCenter, centerWorld)) continue;
+        if (!transformMeshPoint(mesh->boundsCenter, centerWorld)) {
+            continue;
+        }
         ImVec2 center;
-        if (!projectPoint(centerWorld, center)) continue;
+        if (!projectPoint(centerWorld, center)) {
+            continue;
+        }
         const float radius = (std::max)(mesh->boundsRadius, 0.05f);
         math::Vector3 radiusWorld;
         ImVec2 radiusPoint;
@@ -710,7 +786,7 @@ void DrawCurveGraph(const char* title,
                     float playhead, float clipLength)
 {
     ImGui::TextDisabled("%s", title);
-    /// @note 系列の凡例。色だけだと «どれが X か» を毎回思い出す必要がある。
+    // 系列の凡例。色だけだと «どれが X か» を毎回思い出す必要がある。
     const struct { const char* label; ImU32 color; } legend[3] = {
         { "X", IM_COL32(235,  96,  96, 255) },
         { "Y", IM_COL32(120, 224, 120, 255) },
@@ -731,20 +807,22 @@ void DrawCurveGraph(const char* title,
     dl->AddRectFilled(origin, maxCorner, kPanelBg, 4.0f);
 
     float range = vMax - vMin;
-    /// @note 定数カーブは中央に平坦線として描く
-    if (range < 0.0001f) range = 1.0f;
+    // 定数カーブは中央に平坦線として描く
+    if (range < 0.0001f) {
+        range = 1.0f;
+    }
     const float pad = GRAPH_HEIGHT * 0.12f;
     const auto valueToY = [&](float v) {
         const float t = (v - vMin) / range;
         return maxCorner.y - pad - t * (GRAPH_HEIGHT - 2.0f * pad);
     };
-    /// @note 縦の時間目盛り。4 等分で «どのあたりか» が読めれば十分。
+    // 縦の時間目盛り。4 等分で «どのあたりか» が読めれば十分。
     for (int i = 1; i < 4; ++i) {
         const float x = origin.x + graphWidth * static_cast<float>(i) / 4.0f;
         dl->AddLine(ImVec2(x, origin.y + 2.0f), ImVec2(x, maxCorner.y - 2.0f),
                     IM_COL32(52, 58, 70, 160));
     }
-    /// @note 0 ライン (値域に 0 が含まれるときだけ) を薄く引いて符号を読めるようにする。
+    // 0 ライン (値域に 0 が含まれるときだけ) を薄く引いて符号を読めるようにする。
     if (vMin < 0.0f && vMax > 0.0f) {
         const float zeroY = valueToY(0.0f);
         dl->AddLine(ImVec2(origin.x, zeroY), ImVec2(maxCorner.x, zeroY),
@@ -753,7 +831,9 @@ void DrawCurveGraph(const char* title,
 
     const size_t sampleCount = cx.size();
     const auto plotSeries = [&](const std::vector<float>& series, ImU32 color) {
-        if (series.size() < 2) return;
+        if (series.size() < 2) {
+            return;
+        }
         for (size_t i = 1; i < series.size(); ++i) {
             const float x0 = origin.x +
                 static_cast<float>(i - 1) / (sampleCount - 1) * graphWidth;
@@ -767,12 +847,12 @@ void DrawCurveGraph(const char* title,
     plotSeries(cy, legend[1].color);
     plotSeries(cz, legend[2].color);
 
-    /// @note 再生ヘッド (白い縦線)。スクラブ可能にして、グラフから直接時刻を掴める。
+    // 再生ヘッド (白い縦線)。スクラブ可能にして、グラフから直接時刻を掴める。
     const float headX = origin.x + playhead * graphWidth;
     dl->AddLine(ImVec2(headX, origin.y), ImVec2(headX, maxCorner.y),
                 IM_COL32(245, 245, 245, 220), 1.0f);
     if (sampleCount >= 2) {
-        /// @note 再生ヘッド上の実測値に点を打ち、数値行と «同じ瞬間» を見ていることを示す。
+        // 再生ヘッド上の実測値に点を打ち、数値行と «同じ瞬間» を見ていることを示す。
         const size_t index = static_cast<size_t>(std::lround(
             playhead * static_cast<float>(sampleCount - 1)));
         const std::vector<float>* series[3] = { &cx, &cy, &cz };
@@ -787,7 +867,7 @@ void DrawCurveGraph(const char* title,
         SeekPreview(t * clipLength);
     }
 
-    /// @note 右上に値域を表示 (単位付き)。
+    // 右上に値域を表示 (単位付き)。
     char rangeText[64]{};
     std::snprintf(rangeText, sizeof(rangeText), "[%.2f, %.2f]%s", vMin, vMax, unit);
     const ImVec2 rangeSize = ImGui::CalcTextSize(rangeText);
@@ -803,8 +883,9 @@ void DrawSelectedBoneCard(const asset::Model* model, const asset::AnimationClip*
         g_state.selectedBoneNode >= 0 &&
         g_state.selectedBoneNode < static_cast<int>(model->skeleton->nodes.size());
     if (!hasSelection) {
-        if (g_state.showCurves)
+        if (g_state.showCurves) {
             ImGui::TextDisabled("Curves: click a bone in the preview to inspect its channels.");
+        }
         return;
     }
 
@@ -813,8 +894,12 @@ void DrawSelectedBoneCard(const asset::Model* model, const asset::AnimationClip*
     ImGui::TextColored(ImVec4(1.0f, 0.85f, 0.38f, 1.0f), "%s",
                        ShortBoneName(node.name).c_str());
     ImGui::SameLine();
-    if (ImGui::SmallButton("x##DeselectBone")) g_state.selectedBoneNode = -1;
-    if (ImGui::IsItemHovered()) ImGui::SetTooltip("Deselect this bone");
+    if (ImGui::SmallButton("x##DeselectBone")) {
+        g_state.selectedBoneNode = -1;
+    }
+    if (ImGui::IsItemHovered()) {
+        ImGui::SetTooltip("Deselect this bone");
+    }
     ImGui::SameLine();
     if (ImGui::SmallButton("Focus##FocusBone") &&
         g_state.selectedBoneNode < static_cast<int>(g_state.jointPositions.size())) {
@@ -823,7 +908,9 @@ void DrawSelectedBoneCard(const asset::Model* model, const asset::AnimationClip*
         g_state.pendingDistance = (std::max)(g_state.boundsRadius * 0.8f, 0.05f);
         g_state.hasPendingFocus = true;
     }
-    if (ImGui::IsItemHovered()) ImGui::SetTooltip("Move the camera to this bone (F)");
+    if (ImGui::IsItemHovered()) {
+        ImGui::SetTooltip("Move the camera to this bone (F)");
+    }
 
     const math::Vector3 euler = QuaternionToEulerDegrees(g_state.selectedBonePose.rotation);
     ImGui::TextDisabled(
@@ -844,9 +931,11 @@ void DrawSelectedBoneCard(const asset::Model* model, const asset::AnimationClip*
                         g_state.selectedBoneKeyCounts[2],
                         hasAnyKeys ? "" : "  (bind pose only)");
 
-    /// @name 選択ボーンの位置 / 回転カーブミニグラフ
-    /// @note 数値の一瞬値だけでは補間の質 (急な段差・平坦な区間・往復) が読めないため、クリップ全長の XYZ カーブを重ねて再生ヘッド位置と合わせて確認できるようにする。
-    if (!g_state.showCurves) return;
+    // 選択ボーンの位置 / 回転カーブミニグラフ
+    // 数値の一瞬値だけでは補間の質 (急な段差・平坦な区間・往復) が読めないため、クリップ全長の XYZ カーブを重ねて再生ヘッド位置と合わせて確認できるようにする。
+    if (!g_state.showCurves) {
+        return;
+    }
     if (g_state.curvePosX.empty()) {
         ImGui::TextDisabled("(no animated track for this bone)");
         return;
@@ -867,10 +956,11 @@ void DrawSelectedBoneCard(const asset::Model* model, const asset::AnimationClip*
 /// @note 数値を «読める単位» で出す。1m 未満は cm へ落とさないと 0.01 ばかりが並ぶ。
 void FormatDistance(char* buffer, size_t capacity, float meters)
 {
-    if (std::abs(meters) < 1.0f)
+    if (std::abs(meters) < 1.0f) {
         std::snprintf(buffer, capacity, "%.1f cm", meters * 100.0f);
-    else
+    } else {
         std::snprintf(buffer, capacity, "%.2f m", meters);
+    }
 }
 
 /// @note 「良い / 要確認 / まずい」を色で言い切る。数値だけだと «この 0.8 は大きいのか» が判らない。
@@ -903,10 +993,14 @@ void DrawSpeedGraph(const RootMotionAnalysis& motion, float playhead, float clip
         dl->AddRect(origin, maxCorner, kPanelBorder, 4.0f);
         return;
     }
-    /// @note 上下動の速度も同じ縦軸に載せたいので、両方の絶対値から目盛りを取る。
+    // 上下動の速度も同じ縦軸に載せたいので、両方の絶対値から目盛りを取る。
     float scale = motion.maxSpeed;
-    for (const float v : motion.verticalSamples) scale = (std::max)(scale, std::abs(v));
-    if (scale < 0.0001f) scale = 1.0f;
+    for (const float v : motion.verticalSamples) {
+        scale = (std::max)(scale, std::abs(v));
+    }
+    if (scale < 0.0001f) {
+        scale = 1.0f;
+    }
 
     const float pad = 5.0f;
     const float baseY = maxCorner.y - pad;
@@ -917,7 +1011,7 @@ void DrawSpeedGraph(const RootMotionAnalysis& motion, float playhead, float clip
         return origin.x + static_cast<float>(i) / static_cast<float>(count - 1) * graphWidth;
     };
 
-    /// @note 面: ベースラインまで塗って «速度が乗っている時間» の面積を見せる。
+    // 面: ベースラインまで塗って «速度が乗っている時間» の面積を見せる。
     for (size_t i = 1; i < count; ++i) {
         const ImVec2 p0(sampleX(i - 1), valueToY(motion.speedSamples[i - 1]));
         const ImVec2 p1(sampleX(i), valueToY(motion.speedSamples[i]));
@@ -927,13 +1021,13 @@ void DrawSpeedGraph(const RootMotionAnalysis& motion, float playhead, float clip
         dl->AddConvexPolyFilled(quad, 4, IM_COL32(64, 132, 200, 80));
         dl->AddLine(p0, p1, kAccentHover, 1.6f);
     }
-    /// @note 上下動 (bob) は絶対値で細く重ねる。歩幅ごとの «沈み込み» の周期が読める。
+    // 上下動 (bob) は絶対値で細く重ねる。歩幅ごとの «沈み込み» の周期が読める。
     for (size_t i = 1; i < count; ++i)
         dl->AddLine(ImVec2(sampleX(i - 1), valueToY(std::abs(motion.verticalSamples[i - 1]))),
                     ImVec2(sampleX(i), valueToY(std::abs(motion.verticalSamples[i]))),
                     IM_COL32(255, 186, 110, 170), 1.0f);
 
-    /// @note 平均速度の水平線。Blend Tree の閾値に入れる値そのものなので目立たせる。
+    // 平均速度の水平線。Blend Tree の閾値に入れる値そのものなので目立たせる。
     const float avgY = valueToY(motion.averageSpeed);
     dl->AddLine(ImVec2(origin.x, avgY), ImVec2(maxCorner.x, avgY),
                 IM_COL32(180, 226, 255, 150));
@@ -988,9 +1082,9 @@ void DrawRootMotionCard(const asset::AnimationClip* clip)
         : 0.0f;
     DrawSpeedGraph(motion, playhead, clipLength);
 
-    /// @name ループ整合
-    /// @note 判定は «最大回転差» を主に見る。位置差は多くのリグでほぼ 0 (回転のみのトラック) で、
-    ///       跳ねの原因になるのは決まって «末尾でまだ振り切っている» 関節の角度だから。
+    // ループ整合
+    // 判定は «最大回転差» を主に見る。位置差は多くのリグでほぼ 0 (回転のみのトラック) で、
+    // 跳ねの原因になるのは決まって «末尾でまだ振り切っている» 関節の角度だから。
     const int loopLevel = motion.loopRotationGap < 1.0f ? 0
                         : motion.loopRotationGap < 5.0f ? 1
                                                         : 2;
@@ -1008,7 +1102,7 @@ void DrawRootMotionCard(const asset::AnimationClip* clip)
                             loopPos, motion.loopSpeedGap);
     }
 
-    /// @name 接地と足滑り
+    // 接地と足滑り
     if (motion.footNodes[0] < 0) {
         ImGui::TextDisabled("Feet: no foot bone found (no 'foot' / 'toe' / 'ankle' in the rig).");
         return;
@@ -1017,11 +1111,12 @@ void DrawRootMotionCard(const asset::AnimationClip* clip)
     if (motion.footNodes[1] >= 0)
         std::snprintf(feet, sizeof(feet), "%s / %s",
                       motion.footNames[0].c_str(), motion.footNames[1].c_str());
-    else
+    else {
         std::snprintf(feet, sizeof(feet), "%s", motion.footNames[0].c_str());
+    }
 
     if (motion.inPlace) {
-        /// @note その場クリップでは足が滑るのが «正しい»。答えるべきは «何 m/s で走らせるか»。
+        // その場クリップでは足が滑るのが «正しい»。答えるべきは «何 m/s で走らせるか»。
         VerdictChip("In-place", 1);
         ImGui::SameLine(0.0f, 8.0f);
         ImGui::TextDisabled(
@@ -1056,7 +1151,7 @@ void DrawHeaderRow()
         InfoChip(blendText, IM_COL32(180, 255, 214, 255), IM_COL32(36, 68, 54, 255));
     }
 
-    /// @note 右端へ寄せる。2 つの SmallButton ぶんの幅は固定なので実測せず定数でよい。
+    // 右端へ寄せる。2 つの SmallButton ぶんの幅は固定なので実測せず定数でよい。
     constexpr float BUTTONS_WIDTH = 116.0f;
     ImGui::SameLine();
     const ImVec2 cursor = ImGui::GetCursorScreenPos();
@@ -1065,14 +1160,27 @@ void DrawHeaderRow()
         ImGui::SetCursorScreenPos(
             ImVec2(cursor.x + remaining - BUTTONS_WIDTH, cursor.y));
 
-    if (ImGui::SmallButton("Display")) ImGui::OpenPopup("##DisplayPopup");
-    if (ImGui::IsItemHovered()) ImGui::SetTooltip("Bone label density and onion skin spacing");
-    if (ImGui::BeginPopup("##DisplayPopup")) { DrawDisplayPopup(); ImGui::EndPopup(); }
+    if (ImGui::SmallButton("Display")) {
+        ImGui::OpenPopup("##DisplayPopup");
+    }
+    if (ImGui::IsItemHovered()) {
+        ImGui::SetTooltip("Bone label density and onion skin spacing");
+    }
+    if (ImGui::BeginPopup("##DisplayPopup")) {
+        DrawDisplayPopup();
+        ImGui::EndPopup();
+    }
     ImGui::SameLine(0.0f, 6.0f);
-    if (ImGui::SmallButton("View")) ImGui::OpenPopup("##ViewPopup");
-    if (ImGui::IsItemHovered())
+    if (ImGui::SmallButton("View")) {
+        ImGui::OpenPopup("##ViewPopup");
+    }
+    if (ImGui::IsItemHovered()) {
         ImGui::SetTooltip("Grid, background, wireframe, FOV and camera presets");
-    if (ImGui::BeginPopup("##ViewPopup")) { DrawViewPopup(); ImGui::EndPopup(); }
+    }
+    if (ImGui::BeginPopup("##ViewPopup")) {
+        DrawViewPopup();
+        ImGui::EndPopup();
+    }
 }
 
 /// @note Model (ドロップ差し替え) と Clip (パッケージ内 .anim) を横並びで置く。
@@ -1086,33 +1194,42 @@ void DrawSourceRow(bool hasGeometry)
     const std::string geoName = hasGeometry
         ? util::FileSystem::GetFilename(g_state.target.modelPath)
         : std::string("Drop a skinned model here");
-    if (!hasGeometry) ImGui::PushStyleColor(ImGuiCol_Button, IM_COL32(120, 64, 48, 255));
+    if (!hasGeometry) {
+        ImGui::PushStyleColor(ImGuiCol_Button, IM_COL32(120, 64, 48, 255));
+    }
     ImGui::Button(geoName.c_str(), ImVec2(modelWidth, 0.0f));
-    if (!hasGeometry) ImGui::PopStyleColor();
+    if (!hasGeometry) {
+        ImGui::PopStyleColor();
+    }
     AcceptPreviewAssetDrop();
     if (ImGui::IsItemHovered())
         ImGui::SetTooltip(
             "Skinned model used as the preview body.\n"
             "Drag a .fbx / .gltf / .glb / .obj / .fzasset here to swap it (the clip is kept).");
 
-    if (!showClip) return;
+    if (!showClip) {
+        return;
+    }
 
-    /// @note モデル内蔵クリップに加え、パッケージ配下の .anim も列挙する。FBZZ は 1 クリップ = 1 FBX なのでモデル内蔵クリップは常に空で、これが無いと MiniBot.fbx を選んでも Idle / Walk / Run … を切り替えられない。
+    // モデル内蔵クリップに加え、パッケージ配下の .anim も列挙する。FBZZ は 1 クリップ = 1 FBX なのでモデル内蔵クリップは常に空で、これが無いと MiniBot.fbx を選んでも Idle / Walk / Run … を切り替えられない。
     const auto& anims = CollectPackageAnims(g_state.target.modelPath);
     const asset::Model* model = asset::AssetManager::LoadAndGet<asset::Model>(g_state.target.modelPath);
     const bool hasEmbedded = model && model->clips.size() > 1;
-    if (!hasEmbedded && anims.empty()) return;
+    if (!hasEmbedded && anims.empty()) {
+        return;
+    }
 
     std::string currentLabel = "<bind pose>";
-    if (!g_state.target.animAssetPath.empty())
+    if (!g_state.target.animAssetPath.empty()) {
         currentLabel = util::FileSystem::GetFilename(g_state.target.animAssetPath);
-    else if (const asset::AnimationClip* c = FindModelClip(model, g_state.target.clipName))
+    } else if (const asset::AnimationClip* c = FindModelClip(model, g_state.target.clipName)) {
         currentLabel = c->name;
+    }
 
     ImGui::SameLine();
     ImGui::SetNextItemWidth(-1.0f);
     if (ImGui::BeginCombo("##PreviewClip", currentLabel.c_str())) {
-        /// @note バインドポーズ (クリップ無し) へ戻す選択肢
+        // バインドポーズ (クリップ無し) へ戻す選択肢
         if (ImGui::Selectable("<bind pose>", g_state.target.animAssetPath.empty() &&
                                              g_state.target.clipName.empty())) {
             g_state.target.animAssetPath.clear();
@@ -1130,13 +1247,15 @@ void DrawSourceRow(bool hasGeometry)
                     g_state.time = 0.0f;
                 }
                 ImGui::PopID();
-                if (selected) ImGui::SetItemDefaultFocus();
+                if (selected) {
+                    ImGui::SetItemDefaultFocus();
+                }
             }
         }
         for (const auto& animPath : anims) {
             const std::string name = util::FileSystem::GetFilename(animPath);
             const bool selected = animPath == g_state.target.animAssetPath;
-            /// @note 埋め込みクリップと同名の .anim や、別フォルダの同名ファイルがありうる。
+            // 埋め込みクリップと同名の .anim や、別フォルダの同名ファイルがありうる。
             ImGui::PushID(animPath.c_str());
             if (ImGui::Selectable(name.c_str(), selected)) {
                 g_state.target.animAssetPath = animPath;
@@ -1145,7 +1264,9 @@ void DrawSourceRow(bool hasGeometry)
                 g_state.playing = true;
             }
             ImGui::PopID();
-            if (selected) ImGui::SetItemDefaultFocus();
+            if (selected) {
+                ImGui::SetItemDefaultFocus();
+            }
         }
         ImGui::EndCombo();
     }
@@ -1175,7 +1296,9 @@ void DrawOverlayToggleRow()
     const float width = (std::max)(
         (ImGui::GetContentRegionAvail().x - spacing * (COUNT - 1)) / COUNT, 44.0f);
     for (int i = 0; i < COUNT; ++i) {
-        if (i > 0) ImGui::SameLine();
+        if (i > 0) {
+            ImGui::SameLine();
+        }
         ToolbarToggle(toggles[i].label, *toggles[i].value, toggles[i].tooltip, width);
     }
 }
@@ -1185,24 +1308,30 @@ void DrawTransportRow(const asset::AnimationClip* clip)
 {
     const float spacing = ImGui::GetStyle().ItemSpacing.x;
 
-    if (TransportButton("ToStart", "|<", "Jump to start (Home)")) SeekPreview(0.0f);
+    if (TransportButton("ToStart", "|<", "Jump to start (Home)")) {
+        SeekPreview(0.0f);
+    }
     ImGui::SameLine(0.0f, 2.0f);
-    if (TransportButton("StepBack", "<", "Previous frame (Left / Shift+Left = 10)"))
+    if (TransportButton("StepBack", "<", "Previous frame (Left / Shift+Left = 10)")) {
         StepPreviewFrames(-1, clip);
+    }
     ImGui::SameLine(0.0f, 2.0f);
     if (TransportButton("PlayPause",
                         g_state.playing ? icons::Or(icons::kPause, "||")
                                         : icons::Or(icons::kPlay, ">"),
-                        g_state.playing ? "Pause (Space)" : "Play (Space)", true))
+                        g_state.playing ? "Pause (Space)" : "Play (Space)", true)) {
         g_state.playing = !g_state.playing;
+    }
     ImGui::SameLine(0.0f, 2.0f);
-    if (TransportButton("StepFwd", ">", "Next frame (Right / Shift+Right = 10)"))
+    if (TransportButton("StepFwd", ">", "Next frame (Right / Shift+Right = 10)")) {
         StepPreviewFrames(1, clip);
+    }
     ImGui::SameLine(0.0f, 2.0f);
-    if (TransportButton("ToEnd", ">|", "Jump to end (End)"))
+    if (TransportButton("ToEnd", ">|", "Jump to end (End)")) {
         SeekPreview(g_state.timelineLength);
+    }
 
-    /// @note 速度とループを右端へ固定し、残りをタイムラインへ渡す。
+    // 速度とループを右端へ固定し、残りをタイムラインへ渡す。
     constexpr float SPEED_WIDTH = 62.0f;
     const float loopWidth = ImGui::CalcTextSize("Loop").x + ImGui::GetFrameHeight() +
                             ImGui::GetStyle().ItemInnerSpacing.x + 4.0f;
@@ -1216,24 +1345,30 @@ void DrawTransportRow(const asset::AnimationClip* clip)
     ImGui::SameLine();
     ImGui::SetNextItemWidth(SPEED_WIDTH);
     ImGui::DragFloat("##PreviewSpeed", &g_state.speed, 0.05f, 0.1f, 4.0f, "x%.2f");
-    if (ImGui::IsItemHovered())
+    if (ImGui::IsItemHovered()) {
         ImGui::SetTooltip("Playback speed\nRight-click for presets");
-    if (ImGui::IsItemClicked(ImGuiMouseButton_Right)) ImGui::OpenPopup("##SpeedPresets");
+    }
+    if (ImGui::IsItemClicked(ImGuiMouseButton_Right)) {
+        ImGui::OpenPopup("##SpeedPresets");
+    }
     if (ImGui::BeginPopup("##SpeedPresets")) {
         for (const float preset : { 0.1f, 0.25f, 0.5f, 1.0f, 2.0f }) {
             char label[16]{};
             std::snprintf(label, sizeof(label), "x%.2f", preset);
-            if (ImGui::Selectable(label, std::abs(g_state.speed - preset) < 0.001f))
+            if (ImGui::Selectable(label, std::abs(g_state.speed - preset) < 0.001f)) {
                 g_state.speed = preset;
+            }
         }
         ImGui::EndPopup();
     }
 
     ImGui::SameLine();
     ImGui::Checkbox("Loop", &g_state.loop);
-    if (ImGui::IsItemHovered()) ImGui::SetTooltip("Loop playback (L)");
+    if (ImGui::IsItemHovered()) {
+        ImGui::SetTooltip("Loop playback (L)");
+    }
 
-    /// @note フレーム位置の数値。タイムラインの «だいたい» を確定値で裏付ける。
+    // フレーム位置の数値。タイムラインの «だいたい» を確定値で裏付ける。
     const float fps = ClipFrameRate(clip);
     const float wrapped = WrapTime(g_state.time, g_state.timelineLength);
     ImGui::TextDisabled("Frame %d / %d     %.3f / %.3f s  @ %.0f fps",
@@ -1269,13 +1404,15 @@ void DrawDropZone(const char* line1, const char* line2, float width, float heigh
 /// @note ホバー中だけ出す操作ヒント。角丸の帯に載せて背景の明暗から独立させる。
 void DrawViewportHint(const OverlayContext& ctx)
 {
-    /// @note 幅が足りないときは短い方へ落とす。はみ出したヒントは «ノイズ» にしかならない。
+    // 幅が足りないときは短い方へ落とす。はみ出したヒントは «ノイズ» にしかならない。
     const char* full = "Drag: Orbit   Alt/Middle: Pan   Wheel: Zoom   "
                        "DblClick: Frame   Space: Play   F: Focus";
     const char* shortForm = "Drag: Orbit   Wheel: Zoom   Space: Play";
     const char* hint = ImGui::CalcTextSize(full).x + 22.0f <= ctx.width ? full : shortForm;
     const ImVec2 size = ImGui::CalcTextSize(hint);
-    if (size.x + 22.0f > ctx.width) return;
+    if (size.x + 22.0f > ctx.width) {
+        return;
+    }
     const ImVec2 boxMin(ctx.origin.x + 8.0f, ctx.maxCorner.y - size.y - 12.0f);
     const ImVec2 boxMax(boxMin.x + size.x + 14.0f, boxMin.y + size.y + 6.0f);
     ctx.drawList->AddRectFilled(boxMin, boxMax, IM_COL32(14, 16, 20, 170),
@@ -1288,7 +1425,7 @@ void DrawViewportHint(const OverlayContext& ctx)
 void HandleViewportCamera(bool hovered, bool active)
 {
     const ImGuiIO& io = ImGui::GetIO();
-    /// @note 中ボタンか Alt+左。どちらも «このビューポートで» 押し始めた場合だけ効かせる。
+    // 中ボタンか Alt+左。どちらも «このビューポートで» 押し始めた場合だけ効かせる。
     const bool panDrag = active &&
         (ImGui::IsMouseDragging(ImGuiMouseButton_Middle) ||
          (io.KeyAlt && ImGui::IsMouseDragging(ImGuiMouseButton_Left)));
@@ -1296,8 +1433,8 @@ void HandleViewportCamera(bool hovered, bool active)
     if (panDrag) {
         math::Vector3 right, up, forward;
         PreviewCameraBasis(right, up, forward);
-        /// @note 画面 1px あたりの移動量を距離に比例させ、寄っても引いても «掴んだ点が
-        ///       指に付いてくる» 感触を保つ。
+        // 画面 1px あたりの移動量を距離に比例させ、寄っても引いても «掴んだ点が
+        // 指に付いてくる» 感触を保つ。
         const float scale = g_state.distance * 0.0016f;
         g_state.focus = {
             g_state.focus.x - right.x * io.MouseDelta.x * scale + up.x * io.MouseDelta.y * scale,
@@ -1314,13 +1451,13 @@ void HandleViewportCamera(bool hovered, bool active)
         g_state.distance = std::clamp(g_state.distance, 0.05f, 5000.0f);
     }
     if (hovered && ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left))
-        /// @note ダブルクリックで再フレーミング (Unity の F 相当)
+        // ダブルクリックで再フレーミング (Unity の F 相当)
         g_state.needsFraming = true;
 }
 
-} /// @note namespace
+} // namespace
 
-} /// @note namespace fbzz::editor::animpreview
+} // namespace fbzz::editor::animpreview
 
 namespace fbzz::editor {
 
@@ -1328,23 +1465,26 @@ using namespace fbzz::editor::animpreview;
 
 bool DrawAnimationPreviewWidget(EditorContext& ctx, float previewHeight)
 {
-    if (!g_maskPreview.active)
+    if (!g_maskPreview.active) {
         UpdatePreviewTarget(ctx);
-    if (g_state.target.mode == PreviewTarget::Mode::None) return false;
+    }
+    if (g_state.target.mode == PreviewTarget::Mode::None) {
+        return false;
+    }
 
     ImGui::PushID("##AnimationPreviewWidget");
 
-    /// @name ヘッダー: 対象名 + Display / View
+    // ヘッダー: 対象名 + Display / View
     DrawHeaderRow();
 
-    /// @name ジオメトリ枠 + クリップ選択
-    /// @note FBZZ は 1 クリップ = 1 FBX なので、.anim の隣にスキンメッシュが無い。どのモデルで再生しているかを常に見せ、D&D で差し替えられるようにする。
+    // ジオメトリ枠 + クリップ選択
+    // FBZZ は 1 クリップ = 1 FBX なので、.anim の隣にスキンメッシュが無い。どのモデルで再生しているかを常に見せ、D&D で差し替えられるようにする。
     const bool hasGeometry =
         !g_state.target.modelPath.empty() &&
         LoadsAsPreviewableGeometry(g_state.target.modelPath);
     DrawSourceRow(hasGeometry);
 
-    /// @note ジオメトリが無い間は黒画面を出さず、何をすればよいか明示する。
+    // ジオメトリが無い間は黒画面を出さず、何をすればよいか明示する。
     if (!hasGeometry) {
         DrawDropZone("No skinned model for this clip",
                      "Drag a model (.fbx / .gltf / .glb / .obj / .fzasset) here to preview it",
@@ -1354,11 +1494,11 @@ bool DrawAnimationPreviewWidget(EditorContext& ctx, float previewHeight)
         return true;
     }
 
-    /// @name デバッグ表示トグルバー
-    /// @note Unity の Preview は絵を見るだけだが、ここではボーン・軌跡・残像・トラック情報を重ねてアニメーションデータそのものをデバッグできるようにする (本エンジンの差別化)。
+    // デバッグ表示トグルバー
+    // Unity の Preview は絵を見るだけだが、ここではボーン・軌跡・残像・トラック情報を重ねてアニメーションデータそのものをデバッグできるようにする (本エンジンの差別化)。
     DrawOverlayToggleRow();
 
-    /// @name プレビュー画像 (オービット操作付き)
+    // プレビュー画像 (オービット操作付き)
     const float width = (std::max)(ImGui::GetContentRegionAvail().x, 64.0f);
     const float height = (std::max)(previewHeight, 96.0f);
     const ImVec2 imageOrigin = ImGui::GetCursorScreenPos();
@@ -1367,9 +1507,11 @@ bool DrawAnimationPreviewWidget(EditorContext& ctx, float previewHeight)
                            ImGuiButtonFlags_MouseButtonMiddle);
     const bool imageHovered = ImGui::IsItemHovered();
     const bool imageActive = ImGui::IsItemActive();
-    /// @note Inspector 埋め込み時、ホイールズームが親ウィンドウのスクロールに化けないようホバー中はホイール入力の所有権をこのアイテムに移す。
-    if (imageHovered) ImGui::SetItemKeyOwner(ImGuiKey_MouseWheelY);
-    /// @note FBX / .anim をプレビュー画面へ直接ドロップして対象を差し替えられるようにする。
+    // Inspector 埋め込み時、ホイールズームが親ウィンドウのスクロールに化けないようホバー中はホイール入力の所有権をこのアイテムに移す。
+    if (imageHovered) {
+        ImGui::SetItemKeyOwner(ImGuiKey_MouseWheelY);
+    }
+    // FBX / .anim をプレビュー画面へ直接ドロップして対象を差し替えられるようにする。
     AcceptPreviewAssetDrop();
 
     HandleViewportCamera(imageHovered, imageActive);
@@ -1377,8 +1519,8 @@ bool DrawAnimationPreviewWidget(EditorContext& ctx, float previewHeight)
     const asset::Model* overlayModel =
         asset::AssetManager::LoadAndGet<asset::Model>(g_state.target.modelPath);
     const asset::AnimationClip* overlayClip = CurrentClip(overlayModel);
-    /// @note キー操作はビューポートに触れているときだけ。パネル全体に広げると、
-    ///       クリップコンボを開いたまま矢印キーを押した場合に両方が動く。
+    // キー操作はビューポートに触れているときだけ。パネル全体に広げると、
+    // クリップコンボを開いたまま矢印キーを押した場合に両方が動く。
     HandlePreviewHotkeys(imageHovered, overlayClip);
 
     AdvancePlayback();
@@ -1397,7 +1539,7 @@ bool DrawAnimationPreviewWidget(EditorContext& ctx, float previewHeight)
     if (rendered && ctx.imguiRenderer && ctx.resources) {
         if (void* rawID =
                 ctx.imguiRenderer->GetImTextureID(g_gpu.renderTarget, *ctx.resources, 0)) {
-            /// @note 角丸で切り抜いて «板» ではなくビューとして見せる。
+            // 角丸で切り抜いて «板» ではなくビューとして見せる。
             overlay.drawList->AddImageRounded(widgets::ToImTextureID(rawID), overlay.origin,
                                               overlay.maxCorner, ImVec2(0.0f, 0.0f),
                                               ImVec2(1.0f, 1.0f),
@@ -1415,8 +1557,8 @@ bool DrawAnimationPreviewWidget(EditorContext& ctx, float previewHeight)
                               imageHovered ? IM_COL32(120, 132, 152, 255) : kPanelBorder,
                               6.0f);
 
-    /// @name デバッグオーバーレイ (ボーン / 軌跡 / ゴースト / 情報)
-    /// @note メッシュ描画と同じ ViewProjection で CPU 側から投影し、RT の上に 2D で重ねる。
+    // デバッグオーバーレイ (ボーン / 軌跡 / ゴースト / 情報)
+    // メッシュ描画と同じ ViewProjection で CPU 側から投影し、RT の上に 2D で重ねる。
     int hoveredMaskMeshNode = -1;
     if (g_maskPreview.active && g_maskPreview.loaded && overlayModel && imageHovered) {
         hoveredMaskMeshNode = HitTestMaskMeshNode(overlay, *overlayModel);
@@ -1428,28 +1570,33 @@ bool DrawAnimationPreviewWidget(EditorContext& ctx, float previewHeight)
     const bool previewBoneClicked = rendered && overlayModel
         ? DrawSkeletonOverlay(overlay, *overlayModel, overlayClip)
         : false;
-    if (g_state.view.showAxisGizmo && rendered) DrawAxisGizmo(overlay);
-    if (imageHovered) DrawViewportHint(overlay);
+    if (g_state.view.showAxisGizmo && rendered) {
+        DrawAxisGizmo(overlay);
+    }
+    if (imageHovered) {
+        DrawViewportHint(overlay);
+    }
 
-    if (g_maskPreview.active && g_maskPreview.loaded && !previewBoneClicked &&
-        hoveredMaskMeshNode >= 0 && imageHovered &&
-        ImGui::IsMouseReleased(ImGuiMouseButton_Left) &&
-        ImGui::GetIO().MouseDragMaxDistanceSqr[ImGuiMouseButton_Left] < 16.0f &&
-        overlayModel) {
+    // 骨の選択を優先し、ドラッグでないクリックのときだけメッシュのマスクを選ぶ。
+    const bool canPickMaskMesh = g_maskPreview.active && g_maskPreview.loaded && !previewBoneClicked
+        && hoveredMaskMeshNode >= 0 && imageHovered;
+    const bool maskMeshClicked = canPickMaskMesh && ImGui::IsMouseReleased(ImGuiMouseButton_Left)
+        && ImGui::GetIO().MouseDragMaxDistanceSqr[ImGuiMouseButton_Left] < 16.0f;
+    if (maskMeshClicked && overlayModel) {
         SetAnimationMaskPreviewSelection(
             MaskPathForModelNode(*overlayModel, hoveredMaskMeshNode));
     }
 
-    /// @name 再生コントロール
+    // 再生コントロール
     DrawTransportRow(overlayClip);
 
-    /// @name ルートモーション解析
+    // ルートモーション解析
     if (g_state.showRootMotion) {
         ImGui::Separator();
         DrawRootMotionCard(overlayClip);
     }
 
-    /// @name 選択中ボーンのライブ詳細 + カーブ
+    // 選択中ボーンのライブ詳細 + カーブ
     DrawSelectedBoneCard(overlayModel, overlayClip);
 
     ImGui::PopID();
@@ -1458,24 +1605,24 @@ bool DrawAnimationPreviewWidget(EditorContext& ctx, float previewHeight)
 
 void DrawAnimationPreviewPanelContent(EditorContext& ctx)
 {
-    /// @note ビューポート以外が使う高さを «実測» する。マジック数値の見積もりは UI スケールやフォント、Curves 表示の有無で外れ、ビューポートが下の行を押し出すか縮みすぎるかしていた。
+    // ビューポート以外が使う高さを «実測» する。マジック数値の見積もりは UI スケールやフォント、Curves 表示の有無で外れ、ビューポートが下の行を押し出すか縮みすぎるかしていた。
     const ImGuiStyle& style = ImGui::GetStyle();
     const float row = ImGui::GetFrameHeight() + style.ItemSpacing.y;
-    /// @note ヘッダー / ソース / トグル / トランスポート
+    // ヘッダー / ソース / トグル / トランスポート
     float controlsHeight = row * 4.0f
-                         /// @note フレーム数値行
+                         // フレーム数値行
                          + ImGui::GetTextLineHeightWithSpacing();
     if (g_state.showRootMotion) {
-        /// @note 区切り + 概要行 + 速度グラフ 56px + ループ行 + 足行 (チップは 1 行ぶん)
+        // 区切り + 概要行 + 速度グラフ 56px + ループ行 + 足行 (チップは 1 行ぶん)
         controlsHeight += ImGui::GetTextLineHeightWithSpacing() * 3.0f + 56.0f
                         + style.ItemSpacing.y * 3.0f;
     }
     if (g_state.selectedBoneNode >= 0) {
-        /// @note 名前 + 小ボタン行
+        // 名前 + 小ボタン行
         controlsHeight += ImGui::GetFrameHeightWithSpacing()
-                        /// @note TRS + Keys
+                        // TRS + Keys
                         + ImGui::GetTextLineHeightWithSpacing() * 2.0f;
-        /// @note カーブは 2 枚。見出し行 + グラフ 62px を 2 組。
+        // カーブは 2 枚。見出し行 + グラフ 62px を 2 組。
         if (g_state.showCurves)
             controlsHeight += (ImGui::GetTextLineHeightWithSpacing() + 62.0f +
                                style.ItemSpacing.y) * 2.0f;
@@ -1485,13 +1632,15 @@ void DrawAnimationPreviewPanelContent(EditorContext& ctx)
 
     const float previewHeight =
         (std::max)(ImGui::GetContentRegionAvail().y - controlsHeight, 120.0f);
-    if (DrawAnimationPreviewWidget(ctx, previewHeight)) return;
+    if (DrawAnimationPreviewWidget(ctx, previewHeight)) {
+        return;
+    }
 
-    /// @note 対象が無い間もドロップ領域として機能させ、FBX を落とすだけでプレビューを始められる。
+    // 対象が無い間もドロップ領域として機能させ、FBX を落とすだけでプレビューを始められる。
     DrawDropZone("Select an Animation State, Transition, or an .anim asset",
                  "or drop an FBX / .anim here to preview",
                  (std::max)(ImGui::GetContentRegionAvail().x, 64.0f),
                  (std::max)(ImGui::GetContentRegionAvail().y, 96.0f));
 }
 
-} /// @note namespace fbzz::editor
+} // namespace fbzz::editor

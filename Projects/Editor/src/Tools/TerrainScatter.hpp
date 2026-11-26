@@ -100,4 +100,4 @@ struct TerrainPaintPreviewPoint {
     const std::function<TerrainPaintReason(const math::Vector3&)>& classify = {}, const TerrainMapRaster* densityMap = nullptr);
 
 void RegisterTerrainScatterOperators(OperatorRegistry& registry);
-} /// @note namespace fbzz::editor
+} // namespace fbzz::editor

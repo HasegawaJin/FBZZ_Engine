@@ -7,9 +7,9 @@
 #include <string>
 namespace fbzz::editor {
 struct ManagedSdkBinding {
-    std::filesystem::path root, agentBuild, hostDirectory, apiPath;
-    std::string configuration;
-    bool published = false;
+    std::filesystem::path root, agentBuild, hostDirectory, apiPath; ///< root は実行中の Editor に対応する SDK またはリポジトリ、agentBuild はビルド入口、hostDirectory は ManagedHost の配置先、apiPath は ScriptApi DLL のパス。
+    std::string configuration; ///< 実行中の Editor と C# ホストを揃えるために選んだビルド構成名。
+    bool published = false; ///< 実行中の Editor が検証済みの公開 SDK 配置に属するか。
 };
 /// @return 現在processの実行file。取得失敗は空。
 std::filesystem::path ManagedEditorExecutable();
@@ -22,4 +22,4 @@ bool ResolveManagedSdkBinding(const std::filesystem::path& executable, const std
 bool ResolveProjectManagedSdkBinding(const std::filesystem::path& executable, const std::filesystem::path& project,
     const std::filesystem::path& environmentRoot, const std::string& sourceConfiguration,
     ManagedSdkBinding& out, std::string& diagnostic);
-} /// @note namespace fbzz::editor
+} // namespace fbzz::editor

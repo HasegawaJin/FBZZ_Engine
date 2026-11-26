@@ -50,9 +50,13 @@ ImU32 Or(ImU32 color, ImU32 fallback) { return color != 0 ? color : fallback; }
 ///       Dummy を同じ行に置くのは、改行すると ItemSpacing.y の分だけタイトル帯が厚くなるため。
 void PadLastItemToWidth(float scaledMinWidth)
 {
-    if (!(scaledMinWidth > 0.0f)) return;
+    if (!(scaledMinWidth > 0.0f)) {
+        return;
+    }
     const float remaining = scaledMinWidth - ImGui::GetItemRectSize().x;
-    if (remaining <= 0.0f) return;
+    if (remaining <= 0.0f) {
+        return;
+    }
     ImGui::SameLine(0.0f, 0.0f);
     ImGui::Dummy({ remaining, 0.0f });
 }
@@ -67,7 +71,9 @@ ImU32 WithAlphaScale(ImU32 color, float scale)
 
 float SafeTextScale(float scale)
 {
-    if (!std::isfinite(scale) || scale <= 0.0f) return 1.0f;
+    if (!std::isfinite(scale) || scale <= 0.0f) {
+        return 1.0f;
+    }
     return std::clamp(scale, MIN_TEXT_SCALE, MAX_TEXT_SCALE);
 }
 
@@ -100,7 +106,9 @@ float ToImNodesLinkPattern(GraphLinkPattern pattern)
 void DrawGroups(const GraphView& view, ImVec2 canvasOrigin, ImVec2 canvasSize,
                 ImVec2 panning, float zoom)
 {
-    if (view.groups.empty()) return;
+    if (view.groups.empty()) {
+        return;
+    }
 
     ImDrawList* drawList = ImGui::GetWindowDrawList();
     const ImVec2 canvasEnd{ canvasOrigin.x + canvasSize.x, canvasOrigin.y + canvasSize.y };
@@ -147,10 +155,12 @@ GraphCanvas::~GraphCanvas()
 
 void GraphCanvas::CreateContexts()
 {
-    if (m_nodesContext) return;
+    if (m_nodesContext) {
+        return;
+    }
 
-    /// @note ImNodes は内部で ImGui のコンテキストを参照する。マルチコンテキスト環境でも
-    ///       正しい ImGui を掴ませるため、生成前に明示的に渡す。
+    // ImNodes は内部で ImGui のコンテキストを参照する。マルチコンテキスト環境でも
+    // 正しい ImGui を掴ませるため、生成前に明示的に渡す。
     ImNodes::SetImGuiContext(ImGui::GetCurrentContext());
     m_nodesContext = ImNodes::CreateContext();
     ImNodes::SetCurrentContext(m_nodesContext);
@@ -160,7 +170,9 @@ void GraphCanvas::CreateContexts()
 
 void GraphCanvas::DestroyContexts()
 {
-    if (m_nodesContext) ImNodes::SetCurrentContext(m_nodesContext);
+    if (m_nodesContext) {
+        ImNodes::SetCurrentContext(m_nodesContext);
+    }
     if (m_editorContext) {
         ImNodes::EditorContextFree(m_editorContext);
         m_editorContext = nullptr;
@@ -185,7 +197,9 @@ void GraphCanvas::RequestSelection(std::vector<int> nodeIds)
 
 void GraphCanvas::ClearSelection()
 {
-    if (!m_nodesContext) return;
+    if (!m_nodesContext) {
+        return;
+    }
     ImNodes::SetCurrentContext(m_nodesContext);
     ImNodes::ClearNodeSelection();
     ImNodes::ClearLinkSelection();
@@ -209,7 +223,7 @@ void GraphCanvas::ResetView()
 
 void GraphCanvas::SetZoom(float zoom)
 {
-    /// @note 外部設定や復元データが壊れていても、座標変換の 0 除算と巨大なフォント倍率を防ぐ。
+    // 外部設定や復元データが壊れていても、座標変換の 0 除算と巨大なフォント倍率を防ぐ。
     m_zoom = std::isfinite(zoom)
         ? std::clamp(zoom, MIN_SUPPORTED_ZOOM, MAX_SUPPORTED_ZOOM)
         : 1.0f;
@@ -217,14 +231,18 @@ void GraphCanvas::SetZoom(float zoom)
 
 ImVec2 GraphCanvas::Panning() const
 {
-    if (!m_editorContext) return {};
+    if (!m_editorContext) {
+        return {};
+    }
     ImNodes::EditorContextSet(m_editorContext);
     return ImNodes::EditorContextGetPanning();
 }
 
 void GraphCanvas::SetPanning(ImVec2 panning)
 {
-    if (!m_editorContext) return;
+    if (!m_editorContext) {
+        return;
+    }
     ImNodes::EditorContextSet(m_editorContext);
     ImNodes::EditorContextResetPanning(panning);
 }
@@ -273,8 +291,9 @@ void GraphCanvas::RegisterViewOperators(OperatorRegistry& registry, std::string_
             const float y = args.GetFloat("panY", pan.y);
             const float zoom = args.GetFloat("zoom", panelZoom ? *panelZoom : Zoom());
             if (!std::isfinite(x) || !std::isfinite(y) || !std::isfinite(zoom)
-                || zoom < MIN_SUPPORTED_ZOOM || zoom > MAX_SUPPORTED_ZOOM)
+                || zoom < MIN_SUPPORTED_ZOOM || zoom > MAX_SUPPORTED_ZOOM) {
                 return OpResult::Err("BAD_ARG", "zoom/panX/panY");
+            }
             SetPanning({x, y});
             SetZoom(zoom);
         } else if (action == "reset") {
@@ -286,7 +305,9 @@ void GraphCanvas::RegisterViewOperators(OperatorRegistry& registry, std::string_
         } else {
             return OpResult::Err("BAD_ARG", "action");
         }
-        if (panelZoom) *panelZoom = Zoom();
+        if (panelZoom) {
+            *panelZoom = Zoom();
+        }
         return OpResult::Ok();
     };
     registry.Register(std::move(control));
@@ -311,24 +332,32 @@ ImVec2 GraphCanvas::LogicalToScreen(ImVec2 logicalPos) const
 void GraphCanvas::DrawProgressOverlay(const GraphView& view)
 {
     ImDrawList* drawList = ImGui::GetWindowDrawList();
-    if (drawList == nullptr) return;
+    if (drawList == nullptr) {
+        return;
+    }
 
-    /// @note ノードの画面矩形。リンクの近似にも使うので 1 度だけ集める。
+    // ノードの画面矩形。リンクの近似にも使うので 1 度だけ集める。
     std::unordered_map<int, ImRect> nodeRects;
     for (const GraphNodeView& node : view.nodes) {
         const ImVec2 position = ImNodes::GetNodeScreenSpacePos(node.id);
         const ImVec2 dimension = ImNodes::GetNodeDimensions(node.id);
-        if (dimension.x <= 0.0f || dimension.y <= 0.0f) continue;
+        if (dimension.x <= 0.0f || dimension.y <= 0.0f) {
+            continue;
+        }
         nodeRects[node.id] = ImRect(position,
                                     ImVec2{ position.x + dimension.x, position.y + dimension.y });
     }
 
     const float barHeight = (std::max)(PROGRESS_BAR_HEIGHT * m_zoom, 1.0f);
     for (const GraphNodeView& node : view.nodes) {
-        /// @note 負・NaN は「描かない」
-        if (!(node.progress >= 0.0f)) continue;
+        // 負・NaN は「描かない」
+        if (!(node.progress >= 0.0f)) {
+            continue;
+        }
         const auto rect = nodeRects.find(node.id);
-        if (rect == nodeRects.end()) continue;
+        if (rect == nodeRects.end()) {
+            continue;
+        }
         const float ratio = std::clamp(node.progress, 0.0f, 1.0f);
         const ImVec2 trackMin{ rect->second.Min.x, rect->second.Max.y - barHeight };
         drawList->AddRectFilled(trackMin, rect->second.Max, PROGRESS_TRACK_COLOR);
@@ -339,18 +368,24 @@ void GraphCanvas::DrawProgressOverlay(const GraphView& view)
                 Or(node.progressColor, PROGRESS_DEFAULT_COLOR));
     }
 
-    /// @note リンクは始点ノードの右端中央 → 終点ノードの左端中央の直線で近似する
-    ///       (ImNodes はベジェ制御点を公開しない)。どの遷移がどこまで進んだかは読める。
+    // リンクは始点ノードの右端中央 → 終点ノードの左端中央の直線で近似する
+    // (ImNodes はベジェ制御点を公開しない)。どの遷移がどこまで進んだかは読める。
     const std::unordered_map<int, int> owners = BuildPinOwnerMap(view);
     const float dotRadius = (std::max)(4.0f * m_zoom, 2.0f);
     for (const GraphLinkView& link : view.links) {
-        if (!(link.progress >= 0.0f)) continue;
+        if (!(link.progress >= 0.0f)) {
+            continue;
+        }
         const auto fromOwner = owners.find(link.fromPin);
         const auto toOwner = owners.find(link.toPin);
-        if (fromOwner == owners.end() || toOwner == owners.end()) continue;
+        if (fromOwner == owners.end() || toOwner == owners.end()) {
+            continue;
+        }
         const auto fromRect = nodeRects.find(fromOwner->second);
         const auto toRect = nodeRects.find(toOwner->second);
-        if (fromRect == nodeRects.end() || toRect == nodeRects.end()) continue;
+        if (fromRect == nodeRects.end() || toRect == nodeRects.end()) {
+            continue;
+        }
         const ImVec2 start{ fromRect->second.Max.x,
                             (fromRect->second.Min.y + fromRect->second.Max.y) * 0.5f };
         const ImVec2 end{ toRect->second.Min.x,
@@ -367,8 +402,12 @@ std::unordered_map<int, int> BuildPinOwnerMap(const GraphView& view)
 {
     std::unordered_map<int, int> owners;
     for (const GraphNodeView& node : view.nodes) {
-        for (const GraphPinView& pin : node.inputs) owners[pin.id] = node.id;
-        for (const GraphPinView& pin : node.outputs) owners[pin.id] = node.id;
+        for (const GraphPinView& pin : node.inputs) {
+            owners[pin.id] = node.id;
+        }
+        for (const GraphPinView& pin : node.outputs) {
+            owners[pin.id] = node.id;
+        }
     }
     return owners;
 }
@@ -377,15 +416,17 @@ std::unordered_map<int, int> BuildPinOwnerMap(const GraphView& view)
 GraphInteraction GraphCanvas::Draw(const GraphView& view, const Config& config)
 {
     GraphInteraction result;
-    if (!m_nodesContext || !m_editorContext) return result;
+    if (!m_nodesContext || !m_editorContext) {
+        return result;
+    }
 
     ImNodes::SetCurrentContext(m_nodesContext);
     ImNodes::EditorContextSet(m_editorContext);
 
     const ImGuiIO& io = ImGui::GetIO();
-    /// @note Config は各ツールが毎フレーム渡せるため、範囲の不整合をここで正規化する。上限も制限
-    ///       するのは、ImGui のフォント倍率と ImNodes の寸法を同時に拡大するため、異常値を許すと
-    ///       キャンバス全体が操作不能になるため。
+    // Config は各ツールが毎フレーム渡せるため、範囲の不整合をここで正規化する。上限も制限
+    // するのは、ImGui のフォント倍率と ImNodes の寸法を同時に拡大するため、異常値を許すと
+    // キャンバス全体が操作不能になるため。
     const float requestedMinZoom = std::isfinite(config.minZoom) ? config.minZoom : 0.45f;
     const float requestedMaxZoom = std::isfinite(config.maxZoom) ? config.maxZoom : 1.80f;
     const float minZoom = std::clamp(requestedMinZoom, MIN_SUPPORTED_ZOOM, MAX_SUPPORTED_ZOOM);
@@ -394,38 +435,46 @@ GraphInteraction GraphCanvas::Draw(const GraphView& view, const Config& config)
                                               MAX_SUPPORTED_ZOOM));
     m_zoom = std::clamp(std::isfinite(m_zoom) ? m_zoom : 1.0f, minZoom, maxZoom);
 
-    /// @note このフレームで ImNodes へ submit した数を覚えておく。ツールが Draw() の後にノードを
-    ///       追加した場合、その ID は次フレームまで ImNodes のプールに存在せず、選択の問い合わせが
-    ///       未知 ID を返してしまうため。
+    // このフレームで ImNodes へ submit した数を覚えておく。ツールが Draw() の後にノードを
+    // 追加した場合、その ID は次フレームまで ImNodes のプールに存在せず、選択の問い合わせが
+    // 未知 ID を返してしまうため。
     const std::size_t submittedNodeCount = view.nodes.size();
 
-    /// @note ピン → ノードの逆引き。入力の解釈でノード ID を返すために使う。
+    // ピン → ノードの逆引き。入力の解釈でノード ID を返すために使う。
     const std::unordered_map<int, int> pinOwners = BuildPinOwnerMap(view);
     const auto ownerOfPin = [&pinOwners](int pinId) {
         const auto found = pinOwners.find(pinId);
         return found == pinOwners.end() ? 0 : found->second;
     };
 
-    /// @note 接続ドラッグ中の減光。掴んでいるピンが view から消えたら追跡をやめる
-    ///       (ツールがノードを削除した場合に、存在しないピンを起点に減光し続けないため)。
-    if (m_draggingFromPin != 0 && ownerOfPin(m_draggingFromPin) == 0) m_draggingFromPin = 0;
+    // 接続ドラッグ中の減光。掴んでいるピンが view から消えたら追跡をやめる
+    // (ツールがノードを削除した場合に、存在しないピンを起点に減光し続けないため)。
+    if (m_draggingFromPin != 0 && ownerOfPin(m_draggingFromPin) == 0) {
+        m_draggingFromPin = 0;
+    }
     const bool dimmingActive = m_draggingFromPin != 0 && view.linkDragFilter != nullptr;
     const auto pinAccepts = [&](int pinId) {
-        if (!dimmingActive) return true;
-        /// @note 掴んでいる本人は常に明るい
-        if (pinId == m_draggingFromPin) return true;
+        if (!dimmingActive) {
+            return true;
+        }
+        // 掴んでいる本人は常に明るい
+        if (pinId == m_draggingFromPin) {
+            return true;
+        }
         return view.linkDragFilter(m_draggingFromPin, pinId);
     };
-    /// @note ノードは「繋げるピンを 1 つでも持つか」で判定する。遠くのノードはピンより先に本体が
-    ///       目に入るため、本体が明るいまま近づいてピンだけ暗いのでは探索の役に立たない。
+    // ノードは「繋げるピンを 1 つでも持つか」で判定する。遠くのノードはピンより先に本体が
+    // 目に入るため、本体が明るいまま近づいてピンだけ暗いのでは探索の役に立たない。
     const auto nodeAccepts = [&](const GraphNodeView& node) {
-        if (!dimmingActive) return true;
+        if (!dimmingActive) {
+            return true;
+        }
         for (const GraphPinView& pin : node.inputs) if (pinAccepts(pin.id)) return true;
         for (const GraphPinView& pin : node.outputs) if (pinAccepts(pin.id)) return true;
         return false;
     };
 
-    /// @note エラー表示の減衰
+    // エラー表示の減衰
     if (m_errorRemaining > 0.0f) {
         m_errorRemaining -= io.DeltaTime;
         if (m_errorRemaining <= 0.0f) {
@@ -435,23 +484,26 @@ GraphInteraction GraphCanvas::Draw(const GraphView& view, const Config& config)
         }
     }
 
-    /// @name キャンバス原点
-    /// @note BeginNodeEditor の「前」に取る。ImNodes は BeginNodeEditor 直後のカーソル位置を
-    ///       キャンバス原点にするため、スポーン座標の変換 (画面 → グリッド) はこの値が基準になる。
+    // キャンバス原点
+    // BeginNodeEditor の「前」に取る。ImNodes は BeginNodeEditor 直後のカーソル位置を
+    // キャンバス原点にするため、スポーン座標の変換 (画面 → グリッド) はこの値が基準になる。
     m_canvasOrigin = ImGui::GetCursorScreenPos();
     m_canvasSize   = ImGui::GetContentRegionAvail();
     const ImVec2 canvasEnd{ m_canvasOrigin.x + m_canvasSize.x,
                             m_canvasOrigin.y + m_canvasSize.y };
 
     ImNodesStyle& style = ImNodes::GetStyle();
-    if (config.showGrid) style.Flags |= ImNodesStyleFlags_GridLines;
-    else                 style.Flags &= ~ImNodesStyleFlags_GridLines;
+    if (config.showGrid) {
+        style.Flags |= ImNodesStyleFlags_GridLines;
+    } else {
+        style.Flags &= ~ImNodesStyleFlags_GridLines;
+    }
 
-    /// @name カーソル基準ズーム
-    /// @note 左上固定で倍率だけ変えると、見ていたノードが画面外へ飛び毎回探し直すことになるため、
-    ///       カーソル基準にする。
-    /// @note VFXGraphCanvas と AnimationGraphPanel が別々の数式・ズーム範囲・修飾キーで実装しており
-    ///       挙動が違っていたため、全ツールでこの 1 実装に統一する。
+    // カーソル基準ズーム
+    // 左上固定で倍率だけ変えると、見ていたノードが画面外へ飛び毎回探し直すことになるため、
+    // カーソル基準にする。
+    // VFXGraphCanvas と AnimationGraphPanel が別々の数式・ズーム範囲・修飾キーで実装しており
+    // 挙動が違っていたため、全ツールでこの 1 実装に統一する。
     const bool mouseOnCanvas = ImGui::IsWindowHovered(ImGuiHoveredFlags_ChildWindows)
         && ImGui::IsMouseHoveringRect(m_canvasOrigin, canvasEnd, false);
 
@@ -465,7 +517,7 @@ GraphInteraction GraphCanvas::Draw(const GraphView& view, const Config& config)
             const ImVec2 mouseInCanvas{ mouse.x - m_canvasOrigin.x,
                                         mouse.y - m_canvasOrigin.y };
             const ImVec2 oldPanning = ImNodes::EditorContextGetPanning();
-            /// @note カーソル直下の論理座標を固定したまま倍率を変える。
+            // カーソル直下の論理座標を固定したまま倍率を変える。
             const ImVec2 logicalAtMouse{ (mouseInCanvas.x - oldPanning.x) / oldZoom,
                                          (mouseInCanvas.y - oldPanning.y) / oldZoom };
             m_zoom = newZoom;
@@ -475,7 +527,7 @@ GraphInteraction GraphCanvas::Draw(const GraphView& view, const Config& config)
         }
     }
 
-    /// @note Shift + 縦ホイール / 横ホイールを横パンに割り当てる。
+    // Shift + 縦ホイール / 横ホイールを横パンに割り当てる。
     if (mouseOnCanvas && (io.KeyShift || std::fabs(io.MouseWheelH) > 0.001f)) {
         const float horizontal = std::fabs(io.MouseWheelH) > 0.001f ? io.MouseWheelH
                                                                     : io.MouseWheel;
@@ -486,9 +538,9 @@ GraphInteraction GraphCanvas::Draw(const GraphView& view, const Config& config)
         }
     }
 
-    /// @name スタイルをズーム倍率で拡縮
-    /// @note ImNodes 本体はズームを持たないため、寸法系を全て手で掛ける。
-    ///       アセット内の座標には掛けないので、表示倍率を変えても保存データは変質しない。
+    // スタイルをズーム倍率で拡縮
+    // ImNodes 本体はズームを持たないため、寸法系を全て手で掛ける。
+    // アセット内の座標には掛けないので、表示倍率を変えても保存データは変質しない。
     const ImNodesStyle unscaledStyle = style;
     style.GridSpacing            *= m_zoom;
     style.NodeCornerRounding     *= m_zoom;
@@ -510,7 +562,7 @@ GraphInteraction GraphCanvas::Draw(const GraphView& view, const Config& config)
     ImGui::PushStyleVar(ImGuiStyleVar_FramePadding,
                         { imguiStyle.FramePadding.x * m_zoom, imguiStyle.FramePadding.y * m_zoom });
 
-    /// @name 描画
+    // 描画
     ImNodes::BeginNodeEditor();
     const float previousFontScale = ImGui::GetCurrentWindow()->FontWindowScale;
     const float canvasFontScale = m_zoom * SafeTextScale(config.fontScale);
@@ -518,8 +570,8 @@ GraphInteraction GraphCanvas::Draw(const GraphView& view, const Config& config)
     DrawGroups(view, m_canvasOrigin, m_canvasSize,
                ImNodes::EditorContextGetPanning(), m_zoom);
 
-    /// @note SetNodeGridSpacePos は BeginNodeEditor の「後」に呼ぶ。前に呼ぶと ImNodes の内部状態が
-    ///       リセットされ、ノードのドラッグが効かなくなる。
+    // SetNodeGridSpacePos は BeginNodeEditor の「後」に呼ぶ。前に呼ぶと ImNodes の内部状態が
+    // リセットされ、ノードのドラッグが効かなくなる。
     if (config.applyNodePositions) {
         for (const GraphNodeView& node : view.nodes) {
             ImNodes::SetNodeGridSpacePos(node.id,
@@ -527,9 +579,9 @@ GraphInteraction GraphCanvas::Draw(const GraphView& view, const Config& config)
         }
     }
 
-    /// @note グループのタイトル帯とリサイズハンドルは ImNodes の機能ではないため、共通キャンバスが
-    ///       InvisibleButton で入力を拾い、移動量だけをツールへ返す。VFX は内包ノードも動かし、
-    ///       別グラフではグループを純粋な注釈として扱う可能性があるため、適用と Undo はツールへ残す。
+    // グループのタイトル帯とリサイズハンドルは ImNodes の機能ではないため、共通キャンバスが
+    // InvisibleButton で入力を拾い、移動量だけをツールへ返す。VFX は内包ノードも動かし、
+    // 別グラフではグループを純粋な注釈として扱う可能性があるため、適用と Undo はツールへ残す。
     const ImVec2 groupPanning = ImNodes::EditorContextGetPanning();
     for (auto groupIt = view.groups.rbegin(); groupIt != view.groups.rend(); ++groupIt) {
         const GraphGroupView& group = *groupIt;
@@ -564,8 +616,9 @@ GraphInteraction GraphCanvas::Draw(const GraphView& view, const Config& config)
             }
             const ImVec2 delta{ ImGui::GetIO().MouseDelta.x / m_zoom,
                                 ImGui::GetIO().MouseDelta.y / m_zoom };
-            if (std::fabs(delta.x) > 0.0f || std::fabs(delta.y) > 0.0f)
+            if (std::fabs(delta.x) > 0.0f || std::fabs(delta.y) > 0.0f) {
                 result.movedGroups.push_back({ group.id, delta });
+            }
         }
 
         ImGui::SetCursorScreenPos({ bottomRight.x - 14.0f * m_zoom,
@@ -592,7 +645,9 @@ GraphInteraction GraphCanvas::Draw(const GraphView& view, const Config& config)
         ImGui::PopID();
     }
     if (!config.editable || !ImGui::IsMouseDown(ImGuiMouseButton_Left)) {
-        if (m_groupDragging || m_groupResizing) result.dragEnded = true;
+        if (m_groupDragging || m_groupResizing) {
+            result.dragEnded = true;
+        }
         m_groupDragging = false;
         m_groupResizing = false;
     }
@@ -601,11 +656,13 @@ GraphInteraction GraphCanvas::Draw(const GraphView& view, const Config& config)
     for (const GraphNodeView& node : view.nodes) {
         const bool isErrorNode = std::find(m_errorNodes.begin(), m_errorNodes.end(), node.id)
                                  != m_errorNodes.end();
-        /// @note 接続ドラッグ中に繋げないノードは、消さずに薄くする。
+        // 接続ドラッグ中に繋げないノードは、消さずに薄くする。
         const bool dimmed = !nodeAccepts(node);
         const float nodeAlpha = dimmed ? DIMMED_ALPHA : 1.0f;
-        /// @note 文字にも同じ倍率を掛ける。枠と背景だけ薄くすると文字が浮いて逆に目立つ。
-        if (dimmed) ImGui::PushStyleVar(ImGuiStyleVar_Alpha, ImGui::GetStyle().Alpha * DIMMED_ALPHA);
+        // 文字にも同じ倍率を掛ける。枠と背景だけ薄くすると文字が浮いて逆に目立つ。
+        if (dimmed) {
+            ImGui::PushStyleVar(ImGuiStyleVar_Alpha, ImGui::GetStyle().Alpha * DIMMED_ALPHA);
+        }
 
         int pushedColors = 0;
         if (node.titleColor != 0) {
@@ -623,7 +680,7 @@ GraphInteraction GraphCanvas::Draw(const GraphView& view, const Config& config)
             pushedColors += 3;
         }
 
-        /// @note エラー中のノードは枠線を最優先で赤くする (ツール指定の枠線色より強い)。
+        // エラー中のノードは枠線を最優先で赤くする (ツール指定の枠線色より強い)。
         const ImU32 outline = isErrorNode ? ERROR_OUTLINE_COLOR : node.outlineColor;
         if (outline != 0) {
             ImNodes::PushColorStyle(ImNodesCol_NodeOutline, outline);
@@ -632,39 +689,43 @@ GraphInteraction GraphCanvas::Draw(const GraphView& view, const Config& config)
 
         const float thickness = isErrorNode ? 3.0f : node.outlineThickness;
         const bool pushedThickness = thickness > 0.0f;
-        if (pushedThickness)
+        if (pushedThickness) {
             ImNodes::PushStyleVar(ImNodesStyleVar_NodeBorderThickness, thickness * m_zoom);
+        }
 
         ImNodes::BeginNode(node.id);
 
-        /// @note 最小幅はズームと一緒に伸縮させる。論理座標で指定させておかないと、
-        ///       拡大したときだけノードが相対的に細くなり、位置関係の見え方が変わる。
+        // 最小幅はズームと一緒に伸縮させる。論理座標で指定させておかないと、
+        // 拡大したときだけノードが相対的に細くなり、位置関係の見え方が変わる。
         const float scaledMinWidth = (std::max)(node.minWidth, 0.0f) * m_zoom;
         const bool hasTitleBar = !node.title.empty() || node.drawTitle;
 
         if (hasTitleBar) {
             ImNodes::BeginNodeTitleBar();
             ImGui::SetWindowFontScale(canvasFontScale * SafeTextScale(node.titleFontScale));
-            /// @note 帯の中身を 1 アイテムとして測れるようにまとめる (drawTitle は複数出す)。
+            // 帯の中身を 1 アイテムとして測れるようにまとめる (drawTitle は複数出す)。
             ImGui::BeginGroup();
-            if (node.drawTitle) node.drawTitle();
-            else if (node.titleTextColor != 0)
+            if (node.drawTitle) {
+                node.drawTitle();
+            } else if (node.titleTextColor != 0)
                 ImGui::TextColored(ImGui::ColorConvertU32ToFloat4(node.titleTextColor),
                                    "%s", node.title.c_str());
-            else ImGui::TextUnformatted(node.title.c_str());
+            else {
+                ImGui::TextUnformatted(node.title.c_str());
+            }
             ImGui::EndGroup();
             PadLastItemToWidth(scaledMinWidth);
             ImGui::SetWindowFontScale(canvasFontScale);
             ImNodes::EndNodeTitleBar();
         } else if (scaledMinWidth > 0.0f) {
-            /// @note タイトル帯を持たないノードは本体側で下限を張る。
+            // タイトル帯を持たないノードは本体側で下限を張る。
             ImGui::Dummy({ scaledMinWidth, 0.0f });
         }
 
         if (node.drawDefaultInputs) {
             for (const GraphPinView& pin : node.inputs) {
                 ImGui::SetWindowFontScale(canvasFontScale * SafeTextScale(node.pinFontScale));
-                /// @note ピン単位の減光。ノード全体が明るくても、繋げないピンだけは沈める。
+                // ピン単位の減光。ノード全体が明るくても、繋げないピンだけは沈める。
                 const float pinAlpha = pinAccepts(pin.id) ? nodeAlpha : DIMMED_ALPHA;
                 const bool hasPinColor = pin.color != 0 || pin.hoveredColor != 0
                                       || pinAlpha < 1.0f;
@@ -678,7 +739,9 @@ GraphInteraction GraphCanvas::Draw(const GraphView& view, const Config& config)
                     ImNodes::PushColorStyle(ImNodesCol_PinHovered, hoveredColor);
                 }
                 ImNodes::BeginInputAttribute(pin.id, ToImNodesPinShape(pin.shape));
-                if (!pin.label.empty()) ImGui::TextUnformatted(pin.label.c_str());
+                if (!pin.label.empty()) {
+                    ImGui::TextUnformatted(pin.label.c_str());
+                }
                 ImNodes::EndInputAttribute();
                 if (hasPinColor) {
                     ImNodes::PopColorStyle();
@@ -691,8 +754,8 @@ GraphInteraction GraphCanvas::Draw(const GraphView& view, const Config& config)
         if (node.drawBody) {
             ImGui::SetWindowFontScale(canvasFontScale * SafeTextScale(node.bodyFontScale));
             if (node.drawBodyInStaticAttribute) {
-                /// @note 属性の外で ImGui ウィジェットを出すと ImNodes がノードの大きさを正しく
-                ///       測れずレイアウトが崩れるため、静的属性で包む。
+                // 属性の外で ImGui ウィジェットを出すと ImNodes がノードの大きさを正しく
+                // 測れずレイアウトが崩れるため、静的属性で包む。
                 ImNodes::BeginStaticAttribute(node.id * 1000 + 1);
                 node.drawBody();
                 ImNodes::EndStaticAttribute();
@@ -705,7 +768,7 @@ GraphInteraction GraphCanvas::Draw(const GraphView& view, const Config& config)
         if (node.drawDefaultOutputs) {
             for (const GraphPinView& pin : node.outputs) {
                 ImGui::SetWindowFontScale(canvasFontScale * SafeTextScale(node.pinFontScale));
-                /// @note ピン単位の減光。ノード全体が明るくても、繋げないピンだけは沈める。
+                // ピン単位の減光。ノード全体が明るくても、繋げないピンだけは沈める。
                 const float pinAlpha = pinAccepts(pin.id) ? nodeAlpha : DIMMED_ALPHA;
                 const bool hasPinColor = pin.color != 0 || pin.hoveredColor != 0
                                       || pinAlpha < 1.0f;
@@ -719,7 +782,9 @@ GraphInteraction GraphCanvas::Draw(const GraphView& view, const Config& config)
                     ImNodes::PushColorStyle(ImNodesCol_PinHovered, hoveredColor);
                 }
                 ImNodes::BeginOutputAttribute(pin.id, ToImNodesPinShape(pin.shape));
-                if (!pin.label.empty()) ImGui::TextUnformatted(pin.label.c_str());
+                if (!pin.label.empty()) {
+                    ImGui::TextUnformatted(pin.label.c_str());
+                }
                 ImNodes::EndOutputAttribute();
                 if (hasPinColor) {
                     ImNodes::PopColorStyle();
@@ -731,9 +796,15 @@ GraphInteraction GraphCanvas::Draw(const GraphView& view, const Config& config)
 
         ImNodes::EndNode();
 
-        if (pushedThickness) ImNodes::PopStyleVar();
-        for (int i = 0; i < pushedColors; ++i) ImNodes::PopColorStyle();
-        if (dimmed) ImGui::PopStyleVar();
+        if (pushedThickness) {
+            ImNodes::PopStyleVar();
+        }
+        for (int i = 0; i < pushedColors; ++i) {
+            ImNodes::PopColorStyle();
+        }
+        if (dimmed) {
+            ImGui::PopStyleVar();
+        }
     }
 
     for (const GraphLinkView& link : view.links) {
@@ -756,30 +827,43 @@ GraphInteraction GraphCanvas::Draw(const GraphView& view, const Config& config)
             ImNodes::PushStyleVar(styleVar, value);
             ++pushedStyleVars;
         };
-        if (link.thickness >= 0.0f)
+        if (link.thickness >= 0.0f) {
             pushLinkStyle(ImNodesStyleVar_LinkThickness, link.thickness * m_zoom);
-        if (link.curveStrength >= 0.0f)
+        }
+        if (link.curveStrength >= 0.0f) {
             pushLinkStyle(ImNodesStyleVar_LinkCurveStrength, link.curveStrength);
-        if (link.curveMaxTangent >= 0.0f)
+        }
+        if (link.curveMaxTangent >= 0.0f) {
             pushLinkStyle(ImNodesStyleVar_LinkCurveMaxTangent, link.curveMaxTangent * m_zoom);
-        if (link.lineSegmentsPerLength >= 0.0f)
+        }
+        if (link.lineSegmentsPerLength >= 0.0f) {
             pushLinkStyle(ImNodesStyleVar_LinkLineSegmentsPerLength, link.lineSegmentsPerLength);
-        if (link.arrowSize >= 0.0f)
+        }
+        if (link.arrowSize >= 0.0f) {
             pushLinkStyle(ImNodesStyleVar_LinkArrowSize, link.arrowSize * m_zoom);
-        if (link.arrowPosition >= 0.0f)
+        }
+        if (link.arrowPosition >= 0.0f) {
             pushLinkStyle(ImNodesStyleVar_LinkArrowPosition, link.arrowPosition);
-        if (link.hoverDistance >= 0.0f)
+        }
+        if (link.hoverDistance >= 0.0f) {
             pushLinkStyle(ImNodesStyleVar_LinkHoverDistance, link.hoverDistance * m_zoom);
-        if (link.pattern != GraphLinkPattern::Solid)
+        }
+        if (link.pattern != GraphLinkPattern::Solid) {
             pushLinkStyle(ImNodesStyleVar_LinkPattern, ToImNodesLinkPattern(link.pattern));
+        }
 
         ImNodes::Link(link.id, link.fromPin, link.toPin);
-        if (pushedStyleVars > 0) ImNodes::PopStyleVar(pushedStyleVars);
-        for (int index = 0; index < pushedColors; ++index) ImNodes::PopColorStyle();
+        if (pushedStyleVars > 0) {
+            ImNodes::PopStyleVar(pushedStyleVars);
+        }
+        for (int index = 0; index < pushedColors; ++index) {
+            ImNodes::PopColorStyle();
+        }
     }
 
-    if (config.showMiniMap)
+    if (config.showMiniMap) {
         ImNodes::MiniMap(MINIMAP_SCALE, ImNodesMiniMapLocation_BottomRight);
+    }
 
     ImGui::SetWindowFontScale(previousFontScale);
     ImNodes::EndNodeEditor();
@@ -787,60 +871,75 @@ GraphInteraction GraphCanvas::Draw(const GraphView& view, const Config& config)
     ImGui::PopStyleVar(2);
     style = unscaledStyle;
 
-    /// @name 実行進捗の重ね描き (ノード寸法は EndNodeEditor の後でしか取れない)
-    /// @note ImNodes のノード内へ描くと本体の高さが変わり再生中だけレイアウトが動くため、
-    ///       上から重ねるオーバーレイにする。
+    // 実行進捗の重ね描き (ノード寸法は EndNodeEditor の後でしか取れない)
+    // ImNodes のノード内へ描くと本体の高さが変わり再生中だけレイアウトが動くため、
+    // 上から重ねるオーバーレイにする。
     DrawProgressOverlay(view);
 
-    /// @name 入力の解釈 (EndNodeEditor の後でなければ取れない)
-    if (view.drawOverlay) view.drawOverlay();
+    // 入力の解釈 (EndNodeEditor の後でなければ取れない)
+    if (view.drawOverlay) {
+        view.drawOverlay();
+    }
 
     int hoveredNode = -1;
-    if (ImNodes::IsNodeHovered(&hoveredNode)) result.hoveredNode = hoveredNode;
+    if (ImNodes::IsNodeHovered(&hoveredNode)) {
+        result.hoveredNode = hoveredNode;
+    }
     int hoveredLink = -1;
-    if (ImNodes::IsLinkHovered(&hoveredLink)) result.hoveredLink = hoveredLink;
+    if (ImNodes::IsLinkHovered(&hoveredLink)) {
+        result.hoveredLink = hoveredLink;
+    }
     int hoveredPin = -1;
-    if (ImNodes::IsPinHovered(&hoveredPin)) result.hoveredPin = hoveredPin;
+    if (ImNodes::IsPinHovered(&hoveredPin)) {
+        result.hoveredPin = hoveredPin;
+    }
     if (result.hoveredNode >= 0) {
         const auto node = std::find_if(view.nodes.begin(), view.nodes.end(),
                                        [hoveredNode](const GraphNodeView& item) {
                                            return item.id == hoveredNode;
                                        });
-        if (node != view.nodes.end() && !node->tooltip.empty())
+        if (node != view.nodes.end() && !node->tooltip.empty()) {
             ImGui::SetTooltip("%s", node->tooltip.c_str());
+        }
     }
     if (result.hoveredNode >= 0 && ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left)) {
         result.nodeDoubleClicked = true;
         result.doubleClickedNode = result.hoveredNode;
     }
 
-    /// @note ImNodes::IsEditorHovered() は使わない。EndNodeEditor() の後に呼ぶと常に false を返す
-    ///       (実装が ImGui::IsWindowHovered() をフラグ無しで見ており、この時点でホバー対象は
-    ///       ImNodes が内部生成した子ウィンドウ側になり、外側のこのウィンドウは判定から漏れるため)。
-    ///       子ウィンドウを含めたホバー判定とキャンバス矩形のヒットテストを自前で行う。
+    // ImNodes::IsEditorHovered() は使わない。EndNodeEditor() の後に呼ぶと常に false を返す
+    // (実装が ImGui::IsWindowHovered() をフラグ無しで見ており、この時点でホバー対象は
+    // ImNodes が内部生成した子ウィンドウ側になり、外側のこのウィンドウは判定から漏れるため)。
+    // 子ウィンドウを含めたホバー判定とキャンバス矩形のヒットテストを自前で行う。
     bool canvasHovered = ImGui::IsWindowHovered(ImGuiHoveredFlags_ChildWindows)
         && ImGui::IsMouseHoveringRect(m_canvasOrigin, canvasEnd, false);
 
-    /// @note ミニマップ上の操作をキャンバスの空白扱いにしない。
-    ///       ImNodes はミニマップの矩形を公開していないため、同じ式で再現して除外する。
+    // ミニマップ上の操作をキャンバスの空白扱いにしない。
+    // ImNodes はミニマップの矩形を公開していないため、同じ式で再現して除外する。
     if (canvasHovered && config.showMiniMap) {
         const ImVec2 miniMapSize{ m_canvasSize.x * MINIMAP_SCALE,
                                   m_canvasSize.y * MINIMAP_SCALE };
         const ImVec2 miniMapMin{ canvasEnd.x - miniMapSize.x - 4.0f,
                                  canvasEnd.y - miniMapSize.y - 4.0f };
-        if (ImGui::IsMouseHoveringRect(miniMapMin, canvasEnd, false)) canvasHovered = false;
+        if (ImGui::IsMouseHoveringRect(miniMapMin, canvasEnd, false)) {
+            canvasHovered = false;
+        }
     }
     result.canvasHovered = canvasHovered && result.hoveredNode < 0
         && result.hoveredLink < 0 && result.hoveredPin < 0 && result.hoveredGroup < 0;
 
-    if (result.hoveredPin >= 0) result.hoveredPinNode = ownerOfPin(result.hoveredPin);
+    if (result.hoveredPin >= 0) {
+        result.hoveredPinNode = ownerOfPin(result.hoveredPin);
+    }
 
-    /// @name 接続
+    // 接続
     if (config.editable) {
-        /// @note 接続ドラッグの開始/終了の追跡。IsLinkStarted は掴んだ瞬間の 1 フレーム
-        ///       しか true にならないので、ここで覚えて次フレームの減光に使う。
+        // 接続ドラッグの開始/終了の追跡。IsLinkStarted は掴んだ瞬間の 1 フレーム
+        // しか true にならないので、ここで覚えて次フレームの減光に使う。
         int startedPin = 0;
-        if (ImNodes::IsLinkStarted(&startedPin)) m_draggingFromPin = startedPin;
+        if (ImNodes::IsLinkStarted(&startedPin)) {
+            m_draggingFromPin = startedPin;
+        }
 
         int startPin = 0;
         int endPin   = 0;
@@ -863,22 +962,24 @@ GraphInteraction GraphCanvas::Draw(const GraphView& view, const Config& config)
             }
             m_draggingFromPin = 0;
         }
-        /// @note 上のどれでもない形でボタンを離した場合の保険。掴んだままの状態が
-        ///       残ると、以降ずっと減光されたキャンバスになってしまう。
-        if (m_draggingFromPin != 0 && !ImGui::IsMouseDown(ImGuiMouseButton_Left))
+        // 上のどれでもない形でボタンを離した場合の保険。掴んだままの状態が
+        // 残ると、以降ずっと減光されたキャンバスになってしまう。
+        if (m_draggingFromPin != 0 && !ImGui::IsMouseDown(ImGuiMouseButton_Left)) {
             m_draggingFromPin = 0;
+        }
 
         int destroyedLink = 0;
-        if (ImNodes::IsLinkDestroyed(&destroyedLink))
+        if (ImNodes::IsLinkDestroyed(&destroyedLink)) {
             result.destroyedLinks.push_back(destroyedLink);
+        }
     } else {
-        /// @note 閲覧専用へ切り替わったら追跡も止める
+        // 閲覧専用へ切り替わったら追跡も止める
         m_draggingFromPin = 0;
     }
     result.draggingFromPin  = m_draggingFromPin;
     result.draggingFromNode = m_draggingFromPin != 0 ? ownerOfPin(m_draggingFromPin) : 0;
 
-    /// @name 選択
+    // 選択
     {
         const int nodeCount = ImNodes::NumSelectedNodes();
         if (nodeCount > 0) {
@@ -897,22 +998,22 @@ GraphInteraction GraphCanvas::Draw(const GraphView& view, const Config& config)
         m_lastSelectedLinks = result.selectedLinks;
     }
 
-    /// @name 移動
+    // 移動
     if (config.editable) {
         for (std::size_t i = 0; i < submittedNodeCount; ++i) {
             const GraphNodeView& node = view.nodes[i];
             const ImVec2 gridPos = ImNodes::GetNodeGridSpacePos(node.id);
             const ImVec2 logical{ gridPos.x / m_zoom, gridPos.y / m_zoom };
 
-            /// @note 1px 未満の差は浮動小数の往復誤差なので無視する。毎フレーム微小変化を報告すると
-            ///       ツール側が「編集された」と誤認し、触っていないのにアセットが dirty になり続ける。
+            // 1px 未満の差は浮動小数の往復誤差なので無視する。毎フレーム微小変化を報告すると
+            // ツール側が「編集された」と誤認し、触っていないのにアセットが dirty になり続ける。
             if (std::fabs(logical.x - node.position.x) > 0.01f
                 || std::fabs(logical.y - node.position.y) > 0.01f) {
                 result.movedNodes.push_back({ node.id, logical });
             }
         }
 
-        /// @note ドラッグの境界。1 操作 = 1 Undo にまとめるためツールへ通知する。
+        // ドラッグの境界。1 操作 = 1 Undo にまとめるためツールへ通知する。
         const bool draggingNow = !result.movedNodes.empty()
             && ImGui::IsMouseDown(ImGuiMouseButton_Left);
         if (draggingNow && !m_dragging) {
@@ -924,20 +1025,30 @@ GraphInteraction GraphCanvas::Draw(const GraphView& view, const Config& config)
         }
     }
 
-    /// @name ショートカット
-    /// @note Delete や Ctrl+V は他のパネル (Hierarchy / Asset Browser) も使うため、ウィンドウが
-    ///       フォーカスされている時だけ拾う。フォーカスを見ないと別のパネルで押した Delete が
-    ///       グラフのノードまで消す。
+    // ショートカット
+    // Delete や Ctrl+V は他のパネル (Hierarchy / Asset Browser) も使うため、ウィンドウが
+    // フォーカスされている時だけ拾う。フォーカスを見ないと別のパネルで押した Delete が
+    // グラフのノードまで消す。
     if (config.editable && ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows)
         && !io.WantTextInput) {
-        if (ImGui::IsKeyPressed(ImGuiKey_Delete))                       result.deleteRequested    = true;
-        if (ImGui::Shortcut(ImGuiMod_Ctrl | ImGuiKey_D))                result.duplicateRequested = true;
-        if (ImGui::Shortcut(ImGuiMod_Ctrl | ImGuiKey_C))                result.copyRequested      = true;
-        if (ImGui::Shortcut(ImGuiMod_Ctrl | ImGuiKey_X))                result.cutRequested       = true;
-        if (ImGui::Shortcut(ImGuiMod_Ctrl | ImGuiKey_V))                result.pasteRequested     = true;
+        if (ImGui::IsKeyPressed(ImGuiKey_Delete)) {
+            result.deleteRequested    = true;
+        }
+        if (ImGui::Shortcut(ImGuiMod_Ctrl | ImGuiKey_D)) {
+            result.duplicateRequested = true;
+        }
+        if (ImGui::Shortcut(ImGuiMod_Ctrl | ImGuiKey_C)) {
+            result.copyRequested      = true;
+        }
+        if (ImGui::Shortcut(ImGuiMod_Ctrl | ImGuiKey_X)) {
+            result.cutRequested       = true;
+        }
+        if (ImGui::Shortcut(ImGuiMod_Ctrl | ImGuiKey_V)) {
+            result.pasteRequested     = true;
+        }
     }
 
-    /// @note ナビゲーションと選択操作は読み取り専用の実行監視でも使えるため、editable と分離する。
+    // ナビゲーションと選択操作は読み取り専用の実行監視でも使えるため、editable と分離する。
     if (ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows) && !io.WantTextInput) {
         if (ImGui::Shortcut(ImGuiMod_Ctrl | ImGuiKey_A)) {
             result.selectAllRequested = true;
@@ -959,7 +1070,7 @@ GraphInteraction GraphCanvas::Draw(const GraphView& view, const Config& config)
         }
     }
 
-    /// @name 右クリック
+    // 右クリック
     if (ImGui::IsMouseClicked(ImGuiMouseButton_Right)) {
         if (result.hoveredPin >= 0) {
             result.pinContextMenuRequested = true;
@@ -979,8 +1090,8 @@ GraphInteraction GraphCanvas::Draw(const GraphView& view, const Config& config)
         }
     }
 
-    /// @name Asset Browser からの D&D
-    /// @note ペイロード名 "ASSET_PATH" は全エディタ共通。
+    // Asset Browser からの D&D
+    // ペイロード名 "ASSET_PATH" は全エディタ共通。
     if (config.editable) {
         const ImRect canvasRect(m_canvasOrigin, canvasEnd);
         if (ImGui::BeginDragDropTargetCustom(canvasRect, ImGui::GetID(config.id))) {
@@ -989,7 +1100,7 @@ GraphInteraction GraphCanvas::Draw(const GraphView& view, const Config& config)
                     result.assetDropped     = true;
                     result.droppedAssetPath.assign(static_cast<const char*>(payload->Data),
                                                    static_cast<std::size_t>(payload->DataSize));
-                    /// @note 末尾の NUL を落とす (ペイロードは C 文字列として積まれる)
+                    // 末尾の NUL を落とす (ペイロードは C 文字列として積まれる)
                     while (!result.droppedAssetPath.empty()
                            && result.droppedAssetPath.back() == '\0') {
                         result.droppedAssetPath.pop_back();
@@ -1001,10 +1112,12 @@ GraphInteraction GraphCanvas::Draw(const GraphView& view, const Config& config)
         }
     }
 
-    /// @name 次フレームへ持ち越していた要求を適用
+    // 次フレームへ持ち越していた要求を適用
     if (!m_pendingSelection.empty()) {
         ImNodes::ClearNodeSelection();
-        for (const int nodeId : m_pendingSelection) ImNodes::SelectNode(nodeId);
+        for (const int nodeId : m_pendingSelection) {
+            ImNodes::SelectNode(nodeId);
+        }
         m_pendingSelection.clear();
     }
 
@@ -1016,8 +1129,12 @@ GraphInteraction GraphCanvas::Draw(const GraphView& view, const Config& config)
     if (m_selectAllRequested) {
         ImNodes::ClearNodeSelection();
         ImNodes::ClearLinkSelection();
-        for (const GraphNodeView& node : view.nodes) ImNodes::SelectNode(node.id);
-        for (const GraphLinkView& link : view.links) ImNodes::SelectLink(link.id);
+        for (const GraphNodeView& node : view.nodes) {
+            ImNodes::SelectNode(node.id);
+        }
+        for (const GraphLinkView& link : view.links) {
+            ImNodes::SelectLink(link.id);
+        }
         m_selectAllRequested = false;
     }
 
@@ -1026,7 +1143,7 @@ GraphInteraction GraphCanvas::Draw(const GraphView& view, const Config& config)
         m_frameAllRequested = false;
         m_frameSelectionRequested = false;
 
-        /// @note 全ノードの論理バウンディングボックスを求め、キャンバスに収まる倍率へ合わせる。
+        // 全ノードの論理バウンディングボックスを求め、キャンバスに収まる倍率へ合わせる。
         ImVec2 boundsMin{ FLT_MAX, FLT_MAX };
         ImVec2 boundsMax{ -FLT_MAX, -FLT_MAX };
         for (const GraphNodeView& node : view.nodes) {
@@ -1042,7 +1159,7 @@ GraphInteraction GraphCanvas::Draw(const GraphView& view, const Config& config)
             boundsMax.y = std::max(boundsMax.y, node.position.y + dimensions.y / m_zoom);
         }
 
-        /// @note F を押した時点で選択が無い場合は、要求を消費して no-op にする。
+        // F を押した時点で選択が無い場合は、要求を消費して no-op にする。
         if (boundsMin.x != FLT_MAX) {
             const float width  = std::max(boundsMax.x - boundsMin.x, 1.0f);
             const float height = std::max(boundsMax.y - boundsMin.y, 1.0f);
@@ -1051,7 +1168,7 @@ GraphInteraction GraphCanvas::Draw(const GraphView& view, const Config& config)
                                            (m_canvasSize.y - MARGIN) / height);
             m_zoom = std::clamp(fitZoom, minZoom, maxZoom);
 
-            /// @note バウンディングボックスの中心をキャンバス中心へ持ってくる。
+            // バウンディングボックスの中心をキャンバス中心へ持ってくる。
             const ImVec2 center{ (boundsMin.x + boundsMax.x) * 0.5f,
                                  (boundsMin.y + boundsMax.y) * 0.5f };
             ImNodes::EditorContextResetPanning(
@@ -1060,9 +1177,9 @@ GraphInteraction GraphCanvas::Draw(const GraphView& view, const Config& config)
         }
     }
 
-    /// @name エラーメッセージのオーバーレイ
+    // エラーメッセージのオーバーレイ
     if (m_errorRemaining > 0.0f && !m_errorMessage.empty()) {
-        /// @note 消える直前にフェード
+        // 消える直前にフェード
         const float alpha = std::min(m_errorRemaining / 0.5f, 1.0f);
         ImDrawList* drawList = ImGui::GetWindowDrawList();
         const ImVec2 textSize = ImGui::CalcTextSize(m_errorMessage.c_str());

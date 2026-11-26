@@ -9,11 +9,15 @@ namespace fbzz::editor::ai {
 std::optional<BusRequest> ParseBusRequest(const JsonValue& root, std::string* error)
 {
     const auto fail = [&](const char* message) -> std::optional<BusRequest> {
-        if (error != nullptr) *error = message;
+        if (error != nullptr) {
+            *error = message;
+        }
         return std::nullopt;
     };
 
-    if (!root.IsObject()) return fail("要求がオブジェクトではありません");
+    if (!root.IsObject()) {
+        return fail("要求がオブジェクトではありません");
+    }
 
     const JsonValue* protocol = root.Find("protocol");
     if (protocol == nullptr || !protocol->IsString() || protocol->AsString() != kEditorProtocol) {
@@ -26,20 +30,28 @@ std::optional<BusRequest> ParseBusRequest(const JsonValue& root, std::string* er
     }
 
     const JsonValue* kind = root.Find("kind");
-    if (kind == nullptr || !kind->IsString()) return fail("kind が必要です");
+    if (kind == nullptr || !kind->IsString()) {
+        return fail("kind が必要です");
+    }
     const std::string kindValue = kind->AsString();
-    if (kindValue != "query" && kindValue != "command") return fail("kind は query か command です");
+    if (kindValue != "query" && kindValue != "command") {
+        return fail("kind は query か command です");
+    }
 
     const JsonValue* payload = root.Find("payload");
-    if (payload == nullptr || !payload->IsObject()) return fail("payload が必要です");
+    if (payload == nullptr || !payload->IsObject()) {
+        return fail("payload が必要です");
+    }
     const JsonValue* payloadType = payload->Find("t");
-    if (payloadType == nullptr || !payloadType->IsString()) return fail("payload.t が必要です");
+    if (payloadType == nullptr || !payloadType->IsString()) {
+        return fail("payload.t が必要です");
+    }
 
     BusRequest request;
     request.id      = id->AsString();
     request.kind    = kindValue;
     request.payload = *payload;
-    /// @note dryRun は Command のみ意味を持つ。欠落や非 bool は安全側 (試算) の true にする。
+    // dryRun は Command のみ意味を持つ。欠落や非 bool は安全側 (試算) の true にする。
     const JsonValue* dryRun = root.Find("dryRun");
     request.dryRun = (dryRun != nullptr && dryRun->IsBool()) ? dryRun->AsBool() : true;
     return request;

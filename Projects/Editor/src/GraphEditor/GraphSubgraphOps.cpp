@@ -19,10 +19,12 @@ GraphExtractResult ExtractSubgraph(std::span<const int> selected,
 {
     GraphExtractResult result;
     std::unordered_set<int> inside;
-    /// @note 重複した選択と 0 以下の id を落としてから採番する。重複をそのまま採番すると
-    ///       同じ元ノードに 2 つの新 id が付き、リンクの写しがどちらへ繋ぐか決まらなくなる。
+    // 重複した選択と 0 以下の id を落としてから採番する。重複をそのまま採番すると
+    // 同じ元ノードに 2 つの新 id が付き、リンクの写しがどちらへ繋ぐか決まらなくなる。
     for (const int nodeId : selected) {
-        if (nodeId <= 0 || !inside.insert(nodeId).second) continue;
+        if (nodeId <= 0 || !inside.insert(nodeId).second) {
+            continue;
+        }
         result.idMap[nodeId] = ++nextId;
     }
 
@@ -37,11 +39,13 @@ GraphExtractResult ExtractSubgraph(std::span<const int> selected,
             result.edgeSourceIndices.push_back(index);
             continue;
         }
-        /// @note 片側だけが選択に含まれる = 境界。
-        /// @note どちらも外側。そもそも無関係
-        if (!fromInside && !toInside) continue;
+        // 片側だけが選択に含まれる = 境界。
+        // どちらも外側。そもそも無関係
+        if (!fromInside && !toInside) {
+            continue;
+        }
         if (boundaryPolicy == GraphBoundaryPolicy::KeepSource && !fromInside && toInside) {
-            /// @note from は元のノードのまま、to だけ新しい id へ繋ぎ替える。
+            // from は元のノードのまま、to だけ新しい id へ繋ぎ替える。
             result.edges.push_back({ edge.from, to->second });
             result.edgeSourceIndices.push_back(index);
             continue;
@@ -55,12 +59,16 @@ GraphExtractResult ExtractSubgraph(std::span<const int> selected,
 std::vector<int> CollectReachable(std::span<const int> roots, std::span<const GraphEdge> edges)
 {
     std::unordered_map<int, std::vector<int>> adjacency;
-    for (const GraphEdge& edge : edges) adjacency[edge.from].push_back(edge.to);
+    for (const GraphEdge& edge : edges) {
+        adjacency[edge.from].push_back(edge.to);
+    }
 
     std::unordered_set<int> visited;
     std::deque<int> queue;
     for (const int root : roots)
-        if (root > 0 && visited.insert(root).second) queue.push_back(root);
+        if (root > 0 && visited.insert(root).second) {
+            queue.push_back(root);
+        }
 
     std::vector<int> result;
     while (!queue.empty()) {
@@ -68,10 +76,14 @@ std::vector<int> CollectReachable(std::span<const int> roots, std::span<const Gr
         queue.pop_front();
         result.push_back(current);
         const auto next = adjacency.find(current);
-        if (next == adjacency.end()) continue;
-        /// @note visited へ入れてから積むので、循環していても停止する。
+        if (next == adjacency.end()) {
+            continue;
+        }
+        // visited へ入れてから積むので、循環していても停止する。
         for (const int child : next->second)
-            if (visited.insert(child).second) queue.push_back(child);
+            if (visited.insert(child).second) {
+                queue.push_back(child);
+            }
     }
     return result;
 }
@@ -86,9 +98,13 @@ std::vector<std::pair<int, ImVec2>> CollectKnown(
     std::vector<std::pair<int, ImVec2>> known;
     std::unordered_set<int> seen;
     for (const int nodeId : selected) {
-        if (!seen.insert(nodeId).second) continue;
+        if (!seen.insert(nodeId).second) {
+            continue;
+        }
         const auto found = positions.find(nodeId);
-        if (found != positions.end()) known.emplace_back(nodeId, found->second);
+        if (found != positions.end()) {
+            known.emplace_back(nodeId, found->second);
+        }
     }
     return known;
 }
@@ -101,8 +117,10 @@ std::unordered_map<int, ImVec2> AlignNodes(const std::unordered_map<int, ImVec2>
 {
     std::unordered_map<int, ImVec2> changed;
     const std::vector<std::pair<int, ImVec2>> known = CollectKnown(positions, selected);
-    /// @note 1 個では揃える相手がいない
-    if (known.size() < 2) return changed;
+    // 1 個では揃える相手がいない
+    if (known.size() < 2) {
+        return changed;
+    }
 
     float minX = known.front().second.x, maxX = minX;
     float minY = known.front().second.y, maxY = minY;
@@ -112,8 +130,8 @@ std::unordered_map<int, ImVec2> AlignNodes(const std::unordered_map<int, ImVec2>
         minY = (std::min)(minY, position.y);
         maxY = (std::max)(maxY, position.y);
     }
-    /// @note 中央は「重心」ではなく「外接矩形の中心」。重心だと 1 個だけ離れたノードに
-    ///       引っ張られて、揃えたつもりの列が斜めのまま残る。
+    // 中央は「重心」ではなく「外接矩形の中心」。重心だと 1 個だけ離れたノードに
+    // 引っ張られて、揃えたつもりの列が斜めのまま残る。
     const float centerX = (minX + maxX) * 0.5f;
     const float centerY = (minY + maxY) * 0.5f;
 
@@ -127,7 +145,9 @@ std::unordered_map<int, ImVec2> AlignNodes(const std::unordered_map<int, ImVec2>
         case GraphAlignMode::VerticalCenter:   target.y = centerY; break;
         case GraphAlignMode::Bottom:           target.y = maxY;    break;
         }
-        if (target.x != position.x || target.y != position.y) changed[nodeId] = target;
+        if (target.x != position.x || target.y != position.y) {
+            changed[nodeId] = target;
+        }
     }
     return changed;
 }
@@ -138,8 +158,10 @@ std::unordered_map<int, ImVec2> DistributeNodes(const std::unordered_map<int, Im
 {
     std::unordered_map<int, ImVec2> changed;
     std::vector<std::pair<int, ImVec2>> known = CollectKnown(positions, selected);
-    /// @note 両端しか無ければ等間隔にする余地が無い
-    if (known.size() < 3) return changed;
+    // 両端しか無ければ等間隔にする余地が無い
+    if (known.size() < 3) {
+        return changed;
+    }
 
     std::sort(known.begin(), known.end(), [horizontal](const auto& a, const auto& b) {
         return horizontal ? a.second.x < b.second.x : a.second.y < b.second.y;
@@ -151,9 +173,14 @@ std::unordered_map<int, ImVec2> DistributeNodes(const std::unordered_map<int, Im
     for (std::size_t index = 1; index + 1 < known.size(); ++index) {
         ImVec2 target = known[index].second;
         const float value = first + step * static_cast<float>(index);
-        if (horizontal) target.x = value; else target.y = value;
-        if (target.x != known[index].second.x || target.y != known[index].second.y)
+        if (horizontal) {
+            target.x = value;
+        } else {
+            target.y = value;
+        }
+        if (target.x != known[index].second.x || target.y != known[index].second.y) {
             changed[known[index].first] = target;
+        }
     }
     return changed;
 }

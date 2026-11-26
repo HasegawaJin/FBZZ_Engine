@@ -21,4 +21,4 @@ bool TransformAuthoringValuesEqual(const scene::Transform& lhs, const scene::Tra
            lhs.scale.z == rhs.scale.z;
 }
 
-} /// @note namespace fbzz::editor
+} // namespace fbzz::editor

@@ -20,12 +20,15 @@ namespace {
 std::string CanonicalNodeName(std::string name)
 {
     std::replace(name.begin(), name.end(), '\\', '/');
-    if (const std::size_t helper = name.find("_$AssimpFbx$_"); helper != std::string::npos)
+    if (const std::size_t helper = name.find("_$AssimpFbx$_"); helper != std::string::npos) {
         name.resize(helper);
-    if (const std::size_t path = name.find_last_of("/|"); path != std::string::npos)
+    }
+    if (const std::size_t path = name.find_last_of("/|"); path != std::string::npos) {
         name.erase(0, path + 1);
-    if (const std::size_t nameSpace = name.find_last_of(':'); nameSpace != std::string::npos)
+    }
+    if (const std::size_t nameSpace = name.find_last_of(':'); nameSpace != std::string::npos) {
         name.erase(0, nameSpace + 1);
+    }
     return name;
 }
 
@@ -40,8 +43,9 @@ bool AnimationTrackTable::Update(const asset::Skeleton& skeleton,
     if (m_skeleton == &skeleton && m_nodeData == skeleton.nodes.data()
         && m_tracks.size() == skeleton.nodes.size() && m_clip == clip
         && m_trackData == trackData && m_trackCount == trackCount
-        && m_assetGeneration == assetGeneration)
+        && m_assetGeneration == assetGeneration) {
         return false;
+    }
 
     m_skeleton = &skeleton;
     m_nodeData = skeleton.nodes.data();
@@ -50,13 +54,15 @@ bool AnimationTrackTable::Update(const asset::Skeleton& skeleton,
     m_trackCount = trackCount;
     m_assetGeneration = assetGeneration;
     m_tracks.assign(skeleton.nodes.size(), nullptr);
-    if (!clip) return true;
+    if (!clip) {
+        return true;
+    }
 
     std::unordered_map<std::string_view, const asset::NodeAnimationTrack*> exactTracks;
     std::unordered_map<std::string, const asset::NodeAnimationTrack*> canonicalTracks;
     exactTracks.reserve(trackCount);
     canonicalTracks.reserve(trackCount);
-    /// @note 完全一致が正規化一致より優先。同名トラックが複数ある場合は元の配列の先頭を使う。
+    // 完全一致が正規化一致より優先。同名トラックが複数ある場合は元の配列の先頭を使う。
     for (const auto& track : clip->tracks) {
         exactTracks.try_emplace(track.nodeName, &track);
         canonicalTracks.try_emplace(CanonicalNodeName(track.nodeName), &track);

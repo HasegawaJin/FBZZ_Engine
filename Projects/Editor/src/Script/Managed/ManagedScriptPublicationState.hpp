@@ -18,7 +18,9 @@ class ManagedScriptPublicationState final {
 public:
     void BeginPlay(const ManagedSourceSnapshot& source)
     {
-        if (m_stopVerificationRevision != 0) m_explicitEditApplyRequired = true;
+        if (m_stopVerificationRevision != 0) {
+            m_explicitEditApplyRequired = true;
+        }
         m_parkedSourceFingerprint = source.fingerprint;
         m_parkedSourceVerified = source.valid;
     }
@@ -34,8 +36,9 @@ public:
     /// @return 古い・無効な snapshot は WAITING。新しい snapshot だけ Stop ticket を消費する。
     [[nodiscard]] ManagedStopVerification VerifyStoppedSource(const ManagedSourceSnapshot& source)
     {
-        if (m_stopVerificationRevision == 0 || !source.valid || source.revision < m_stopVerificationRevision)
+        if (m_stopVerificationRevision == 0 || !source.valid || source.revision < m_stopVerificationRevision) {
             return ManagedStopVerification::WAITING;
+        }
         m_stopVerificationRevision = 0;
         if (!m_parkedSourceVerified || source.fingerprint != m_parkedSourceFingerprint) {
             m_explicitEditApplyRequired = true;
@@ -63,7 +66,9 @@ public:
     /// @note 内容の valid 判定は消費後にサービスが行い、無効な入力は通常の再試行へ渡す。
     [[nodiscard]] bool TryCompleteCompileVerification(std::uint64_t revision)
     {
-        if (m_completionVerificationRevision == 0 || revision < m_completionVerificationRevision) return false;
+        if (m_completionVerificationRevision == 0 || revision < m_completionVerificationRevision) {
+            return false;
+        }
         m_completionVerificationRevision = 0;
         return true;
     }
@@ -94,4 +99,4 @@ private:
     bool m_explicitEditApplyRequired = false;
 };
 
-} /// @note namespace fbzz::editor
+} // namespace fbzz::editor

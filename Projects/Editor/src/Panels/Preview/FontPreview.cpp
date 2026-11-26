@@ -40,7 +40,9 @@ bool DrawLine(const stbtt_fontinfo& font, std::u32string_view sample,
     float lineWidth = 0.0f;
     char32_t previous = 0;
     for (const char32_t codepoint : sample) {
-        if (codepoint != U' ' && !HasGlyph(font, codepoint)) continue;
+        if (codepoint != U' ' && !HasGlyph(font, codepoint)) {
+            continue;
+        }
         if (previous != 0)
             lineWidth += static_cast<float>(stbtt_GetCodepointKernAdvance(
                 &font, static_cast<int>(previous), static_cast<int>(codepoint))) * scale;
@@ -55,7 +57,9 @@ bool DrawLine(const stbtt_fontinfo& font, std::u32string_view sample,
     previous = 0;
     bool painted = false;
     for (const char32_t codepoint : sample) {
-        if (codepoint != U' ' && !HasGlyph(font, codepoint)) continue;
+        if (codepoint != U' ' && !HasGlyph(font, codepoint)) {
+            continue;
+        }
         if (previous != 0)
             penX += static_cast<float>(stbtt_GetCodepointKernAdvance(
                 &font, static_cast<int>(previous), static_cast<int>(codepoint))) * scale;
@@ -74,12 +78,18 @@ bool DrawLine(const stbtt_fontinfo& font, std::u32string_view sample,
             const int glyphY = baseline + y0;
             for (int y = 0; y < glyphHeight; ++y) {
                 const int targetY = glyphY + y;
-                if (targetY < 0 || targetY >= static_cast<int>(image.height)) continue;
+                if (targetY < 0 || targetY >= static_cast<int>(image.height)) {
+                    continue;
+                }
                 for (int x = 0; x < glyphWidth; ++x) {
                     const int targetX = glyphX + x;
-                    if (targetX < 0 || targetX >= static_cast<int>(image.width)) continue;
+                    if (targetX < 0 || targetX >= static_cast<int>(image.width)) {
+                        continue;
+                    }
                     const unsigned int coverage = bitmap[static_cast<std::size_t>(y) * glyphWidth + x];
-                    if (coverage == 0) continue;
+                    if (coverage == 0) {
+                        continue;
+                    }
                     std::uint8_t* pixel = image.rgba.data() +
                         (static_cast<std::size_t>(targetY) * image.width + targetX) * 4u;
                     constexpr unsigned int foreground[] = { 235u, 240u, 248u };
@@ -100,19 +110,23 @@ bool DrawLine(const stbtt_fontinfo& font, std::u32string_view sample,
     return painted;
 }
 
-} /// @note namespace
+} // namespace
 
 bool RasterizeFontPreview(std::string_view path, bool large, FontPreviewImage& out)
 {
     out = {};
     std::vector<std::uint8_t> fontBytes;
     if (!util::FileSystem::ReadBinary(util::FileSystem::PathFromUtf8(std::string(path)), fontBytes)
-        || fontBytes.empty()) return false;
+        || fontBytes.empty()) {
+        return false;
+    }
 
     stbtt_fontinfo font{};
-    /// @note TTC は複数書体を含むため、実行時の DynamicFontSource と同じく先頭を見本にする。
+    // TTC は複数書体を含むため、実行時の DynamicFontSource と同じく先頭を見本にする。
     const int offset = stbtt_GetFontOffsetForIndex(fontBytes.data(), 0);
-    if (offset < 0 || !stbtt_InitFont(&font, fontBytes.data(), offset)) return false;
+    if (offset < 0 || !stbtt_InitFont(&font, fontBytes.data(), offset)) {
+        return false;
+    }
 
     out.width = large ? 512u : 128u;
     out.height = large ? 192u : 128u;
@@ -128,29 +142,35 @@ bool RasterizeFontPreview(std::string_view path, bool large, FontPreviewImage& o
     const bool japanese = HasGlyph(font, U'あ');
     bool painted = false;
     if (!large) {
-        if (latin && japanese)
+        if (latin && japanese) {
             painted = DrawLine(font, U"Aあ", 62.0f, 89, out);
-        else if (latin)
+        } else if (latin) {
             painted = DrawLine(font, U"Aa", 76.0f, 91, out);
-        else if (japanese)
+        } else if (japanese) {
             painted = DrawLine(font, U"あ", 78.0f, 92, out);
+        }
     } else {
         if (latin) {
             painted = DrawLine(font, U"Aa Bb Cc 0123456789", 50.0f, 79, out);
-            if (!japanese)
+            if (!japanese) {
                 painted |= DrawLine(font, U"The quick brown fox", 37.0f, 153, out);
+            }
         }
-        if (japanese)
+        if (japanese) {
             painted |= DrawLine(font, U"あいうえお 漢字", 49.0f, 155, out);
+        }
     }
-    if (!painted) out = {};
+    if (!painted) {
+        out = {};
+    }
     return painted;
 }
 
 void FontPreviewView::ReleaseTexture()
 {
-    if (auto* resources = renderer::ResourceManager::FindOwner(m_texture.owner))
+    if (auto* resources = renderer::ResourceManager::FindOwner(m_texture.owner)) {
         resources->Release(m_texture);
+    }
     m_texture = {};
 }
 
@@ -207,8 +227,9 @@ void FontPreviewView::Draw(EditorContext& ctx, std::string_view path, float prev
     if (!m_attempted) {
         m_attempted = true;
         FontPreviewImage image;
-        if (RasterizeFontPreview(m_path, true, image))
+        if (RasterizeFontPreview(m_path, true, image)) {
             m_texture = ctx.resources->CreateTexture(image.rgba.data(), image.width, image.height);
+        }
     }
     if (!m_texture.IsValid() || !ctx.resources->Get(m_texture)) {
         ImGui::TextDisabled("Could not render this font.");
@@ -226,4 +247,4 @@ void FontPreviewView::Draw(EditorContext& ctx, std::string_view path, float prev
     ImGui::TextDisabled("Glyphs absent from this font are omitted.");
 }
 
-} /// @note namespace fbzz::editor
+} // namespace fbzz::editor

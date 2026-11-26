@@ -24,14 +24,18 @@ bool IsImageExtension(const std::string& ext)
         ".png", ".jpg", ".jpeg", ".tga", ".dds", ".bmp", ".hdr", ".exr"
     };
     for (const auto* e : kExts)
-        if (ext == e) return true;
+        if (ext == e) {
+            return true;
+        }
     return false;
 }
 
 std::string LowerExt(const std::string& path)
 {
     std::string ext = util::FileSystem::GetExtension(path);
-    for (char& c : ext) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+    for (char& c : ext) {
+        c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+    }
     return ext;
 }
 
@@ -42,47 +46,61 @@ bool TexSubExporter::Export(FbxImportContext& ctx)
     using namespace asset;
     namespace fs = std::filesystem;
 
-    /// @note .meta 自動生成無効
-    if (!ctx.generateTexDescriptors) return true;
+    // .meta 自動生成無効
+    if (!ctx.generateTexDescriptors) {
+        return true;
+    }
 
     const fs::path texDir = util::FileSystem::PathFromUtf8(ctx.manifestDir) / "textures";
-    /// @note テクスチャなし
-    if (!util::FileSystem::Exists(texDir)) return true;
+    // テクスチャなし
+    if (!util::FileSystem::Exists(texDir)) {
+        return true;
+    }
 
-    /// @note OpenGL 法線マップ → G を反転する
+    // OpenGL 法線マップ → G を反転する
     const bool flipGreenForNormal =
         (ctx.normalMapConvention == NormalMapConvention::OpenGL);
 
     for (const auto& entry : fs::directory_iterator(texDir)) {
-        if (!entry.is_regular_file()) continue;
+        if (!entry.is_regular_file()) {
+            continue;
+        }
         const std::string absPath = util::FileSystem::PathToUtf8(entry.path());
         const std::string ext = LowerExt(absPath);
-        if (!IsImageExtension(ext)) continue;
+        if (!IsImageExtension(ext)) {
+            continue;
+        }
 
-        /// @note "Foo.png" -> "Foo.png.meta" のように末尾へ付加する
-        ///       (replace_extension は末尾拡張子を置換してしまうため)。
+        // "Foo.png" -> "Foo.png.meta" のように末尾へ付加する
+        // (replace_extension は末尾拡張子を置換してしまうため)。
         const std::string metaPath = absPath + ".meta";
-        /// @note 既存はスキップ
-        if (util::FileSystem::Exists(metaPath)) continue;
+        // 既存はスキップ
+        if (util::FileSystem::Exists(metaPath)) {
+            continue;
+        }
 
         const std::string filename = util::FileSystem::GetFilename(absPath);
         const TextureType type = GuessTextureType(filename);
         TextureImportSettings settings = DefaultSettingsForType(type);
 
-        /// @note 法線マップのみ flipGreen を適用
-        if (flipGreenForNormal && type == TextureType::Normal)
+        // 法線マップのみ flipGreen を適用
+        if (flipGreenForNormal && type == TextureType::Normal) {
             settings.flipGreen = true;
+        }
 
-        /// @note defaultCompression が Auto でなければ全テクスチャに一括適用
-        if (ctx.defaultCompression != TextureCompression::Auto)
+        // defaultCompression が Auto でなければ全テクスチャに一括適用
+        if (ctx.defaultCompression != TextureCompression::Auto) {
             settings.compression = ctx.defaultCompression;
+        }
 
-        /// @note サイドカーは元画像から一意に導出できるため source パスは保持しない。
+        // サイドカーは元画像から一意に導出できるため source パスは保持しない。
         TextureAsset asset;
         asset.settings = settings;
 
         TexDescSerializer ser;
-        if (!ser.Save(asset, metaPath)) return false;
+        if (!ser.Save(asset, metaPath)) {
+            return false;
+        }
     }
 
     return true;

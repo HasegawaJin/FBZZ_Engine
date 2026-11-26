@@ -24,15 +24,21 @@ int   s_lastSampledFrame  = -1;
 
 ImVec4 FrameBudgetColor(float ms, float targetMs)
 {
-    if (ms <= targetMs * 1.05f) return EditorTheme::Color(ThemeColor::Success);
-    if (ms <= targetMs * 1.50f) return EditorTheme::Color(ThemeColor::Warning);
+    if (ms <= targetMs * 1.05f) {
+        return EditorTheme::Color(ThemeColor::Success);
+    }
+    if (ms <= targetMs * 1.50f) {
+        return EditorTheme::Color(ThemeColor::Warning);
+    }
     return EditorTheme::Color(ThemeColor::Danger);
 }
 
 void SampleFrameTime()
 {
     const int frame = ImGui::GetFrameCount();
-    if (frame == s_lastSampledFrame) return;
+    if (frame == s_lastSampledFrame) {
+        return;
+    }
     s_lastSampledFrame = frame;
 
     s_history[s_head] = ImGui::GetIO().DeltaTime * 1000.0f;
@@ -43,7 +49,7 @@ ImVec4 FrameTimeHero(float targetMs, float width)
 {
     SampleFrameTime();
 
-    /// @note 表示は ImGui の移動平均を使う。生の DeltaTime は毎フレーム跳ねて数字として読めない。
+    // 表示は ImGui の移動平均を使う。生の DeltaTime は毎フレーム跳ねて数字として読めない。
     const float  fps   = ImGui::GetIO().Framerate;
     const float  ms    = fps > 0.0f ? 1000.0f / fps : 0.0f;
     const ImVec4 color = FrameBudgetColor(ms, targetMs);
@@ -63,7 +69,7 @@ ImVec4 FrameTimeHero(float targetMs, float width)
 
     ImDrawList* dl = ImGui::GetWindowDrawList();
     dl->AddText(font, heroSize, origin, ImGui::GetColorU32(color), msText);
-    /// @note 単位と fps は大きい数字の下端へ揃える (ベースラインを合わせると小さい方が浮く)。
+    // 単位と fps は大きい数字の下端へ揃える (ベースラインを合わせると小さい方が浮く)。
     const float subY = origin.y + heroSize - fontH;
     dl->AddText(font, fontH, { origin.x + heroDim.x + fontH * 0.2f, subY },
                 EditorTheme::ColorU32(ThemeColor::TextMuted), "ms");
@@ -84,20 +90,23 @@ void FrameTimeGraph(float targetMs, float height)
     dl->AddRectFilled(origin, { origin.x + width, origin.y + height },
                       EditorTheme::ColorU32(ThemeColor::Field, 0.55f), 3.0f);
 
-    /// @note 予算の 1.5 倍を最低スケールにして、軽いときに予算線が潰れないようにする。
+    // 予算の 1.5 倍を最低スケールにして、軽いときに予算線が潰れないようにする。
     float scaleMs = targetMs * 1.5f;
-    for (int i = 0; i < kHistory; ++i)
+    for (int i = 0; i < kHistory; ++i) {
         scaleMs = std::max(scaleMs, s_history[i]);
+    }
 
     const float plotH = height - 2.0f;
     const float barW  = width / static_cast<float>(kHistory);
     for (int i = 0; i < kHistory; ++i) {
         const float ms = s_history[(s_head + i) % kHistory];
-        if (ms <= 0.0f) continue;
+        if (ms <= 0.0f) {
+            continue;
+        }
         const float h = std::min(ms / scaleMs, 1.0f) * plotH;
         const float x = origin.x + barW * static_cast<float>(i);
-        /// @note 隙間を空けず面グラフとして描く。HUD 側は 1 サンプル 2px 前後しかなく、
-        ///       棒に割ると 1px を切って形が読めなくなる。
+        // 隙間を空けず面グラフとして描く。HUD 側は 1 サンプル 2px 前後しかなく、
+        // 棒に割ると 1px を切って形が読めなくなる。
         dl->AddRectFilled({ x, origin.y + height - h }, { x + barW + 0.5f, origin.y + height },
                           ms > targetMs ? EditorTheme::ColorU32(ThemeColor::Danger, 0.85f)
                                         : EditorTheme::ColorU32(ThemeColor::Accent, 0.70f));

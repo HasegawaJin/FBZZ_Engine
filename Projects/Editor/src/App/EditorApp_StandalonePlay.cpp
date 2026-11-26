@@ -20,8 +20,9 @@ namespace fbzz::editor {
 void EditorApp::StartStandalonePlayMode(bool allowPhysicalInput)
 {
     CheckSceneDirtyForStandalone();
-    if (m_ctx.sceneDirty || m_ctx.currentScenePath.empty() || AssetDirtyRegistry::HasAny()) {
-        /// @note Scene-relative Terrain/sidecar paths prevent reuse of the old shared temporary snapshot file.
+    const bool needsSave = m_ctx.sceneDirty || m_ctx.currentScenePath.empty() || AssetDirtyRegistry::HasAny();
+    if (needsSave) {
+        // 子プロセスはディスクから開くので、シーンと相対パスのサイドカーを使用できる状態にする。
         const std::string expectedProject = m_projectRoot;
         const auto* expectedScene = m_scene.get();
         const uint64_t expectedGeneration = m_scene->GetRenderSceneGeneration();
@@ -31,9 +32,17 @@ void EditorApp::StartStandalonePlayMode(bool allowPhysicalInput)
             "Save unsaved changes and start in a separate process?\n"
             "Cancel keeps all edits and does not start a game.",
             [this, expectedProject, expectedScene, expectedGeneration, expectedPath, allowPhysicalInput] {
-                if (m_projectRoot != expectedProject || m_scene.get() != expectedScene
-                    || m_scene->GetRenderSceneGeneration() != expectedGeneration || m_ctx.currentScenePath != expectedPath
-                    || m_standalonePlay.IsActive() || !m_playMode.IsInEditor()) return;
+                // 確認を待つ間に切り替わったプロジェクトやシーンへ、元の起動要求を適用しない。
+                const bool sameScene = m_projectRoot == expectedProject && m_scene.get() == expectedScene
+                    && m_scene->GetRenderSceneGeneration() == expectedGeneration && m_ctx.currentScenePath == expectedPath;
+                if (!sameScene) {
+                    return;
+                }
+                if (m_standalonePlay.IsActive() || !m_playMode.IsInEditor()) {
+                    return;
+                }
+
+                // シーンの保存に進む前に、シーンから参照するアセットの保存を済ませる。
                 if (AssetDirtyRegistry::SaveAll() != 0 || AssetDirtyRegistry::HasAny()) {
                     Toast::Error("Standalone Play: an asset could not be saved. See Console."); return;
                 }
@@ -50,8 +59,14 @@ void EditorApp::StartStandalonePlayMode(bool allowPhysicalInput)
 
 void EditorApp::LaunchStandalonePlay(bool allowPhysicalInput)
 {
-    if (m_standalonePlay.IsActive() || !m_playMode.IsInEditor() || m_ctx.InPrefabEditMode()
-        || m_ctx.managedBuildBusy || m_packageBuild.IsRunning()) return;
+    // Editor の実行状態と、子プロセスが読むビルド成果物の状態を順に確かめる。
+    const bool editingScene = !m_standalonePlay.IsActive() && m_playMode.IsInEditor() && !m_ctx.InPrefabEditMode();
+    if (!editingScene) {
+        return;
+    }
+    if (m_ctx.managedBuildBusy || m_packageBuild.IsRunning()) {
+        return;
+    }
     if (m_ctx.sceneDirty || m_ctx.currentScenePath.empty() || AssetDirtyRegistry::HasAny()) {
         Toast::Error("Standalone Play was not started: save the current scene and assets first."); return;
     }
@@ -61,6 +76,8 @@ void EditorApp::LaunchStandalonePlay(bool allowPhysicalInput)
     if (!SaveProjectSettingsNow()) {
         Toast::Error("Standalone Play: ProjectSettings could not be saved. See Console."); return;
     }
+
+    // 現在のランチャーの場所を特定する。Sandbox から起動している場合は同じビルドの Editor を使う。
     std::array<wchar_t, 32768> executableBuffer{};
     const DWORD count = GetModuleFileNameW(nullptr, executableBuffer.data(), static_cast<DWORD>(executableBuffer.size()));
     if (!count || count == executableBuffer.size()) {
@@ -68,9 +85,10 @@ void EditorApp::LaunchStandalonePlay(bool allowPhysicalInput)
     }
     std::filesystem::path executable(executableBuffer.data());
     if (executable.filename() != L"FBZZEditor.exe") {
-        /// @note Local Sandbox hosts use the matching Editor launcher built beside the Sandbox directory.
         executable = executable.parent_path().parent_path() / L"Editor" / L"FBZZEditor.exe";
     }
+
+    // セッションごとにログを分け、起動時の診断と実行時の出力を同じファイルで追う。
     static uint64_t nextSession = 0;
     const auto project = util::FileSystem::MakeAbsolute(util::FileSystem::PathFromUtf8(m_projectRoot));
     const auto logName = std::to_wstring(GetCurrentProcessId()) + L"-" + std::to_wstring(GetTickCount64())
@@ -91,7 +109,9 @@ void EditorApp::LaunchStandalonePlay(bool allowPhysicalInput)
 
 void EditorApp::TickStandalonePlay(float dt)
 {
-    if (!m_standalonePlay.Tick(dt)) return;
+    if (!m_standalonePlay.Tick(dt)) {
+        return;
+    }
     if (m_standalonePlay.Failed()) {
         FBZZ_LOG_ERROR("%s", m_standalonePlay.Diagnostic().c_str());
         Toast::Error(m_standalonePlay.Diagnostic());
@@ -103,8 +123,10 @@ void EditorApp::TickStandalonePlay(float dt)
 void EditorApp::OpenStandalonePlayLog()
 {
     const auto& path = m_standalonePlay.LogPath();
-    if (path.empty()) return;
+    if (path.empty()) {
+        return;
+    }
     ShellExecuteW(m_hwnd, L"open", path.c_str(), nullptr, nullptr, SW_SHOWNORMAL);
 }
 
-} /// @note namespace fbzz::editor
+} // namespace fbzz::editor

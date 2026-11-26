@@ -16,4 +16,4 @@ bool CanReadCaptureFrame(const EditorContext& context, const RenderCaptureFrame&
         && capture.resourceOwner == context.resources->GetInstanceId()
         && capture.resourceEpoch == context.resources->GetResetVersion();
 }
-} /// @note namespace fbzz::editor
+} // namespace fbzz::editor

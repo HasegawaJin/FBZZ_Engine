@@ -72,17 +72,20 @@ template<typename T>
 template<typename T>
 void CopyComponentEnabledFlag(const T& from, T& to)
 {
-    if constexpr (requires(T& value) { static_cast<bool&>(value.enabled); })
+    if constexpr (requires(T& value) { static_cast<bool&>(value.enabled); }) {
         to.enabled = from.enabled;
-    else if constexpr (requires(T& value) { static_cast<bool&>(value.settings.enabled); })
+    } else if constexpr (requires(T& value) { static_cast<bool&>(value.settings.enabled); }) {
         to.settings.enabled = from.settings.enabled;
+    }
 }
 
 inline scene::MeshRenderer CreateDefaultMeshRenderer(renderer::ResourceManager* resources)
 {
     scene::MeshRenderer mr;
     mr.meshPath = "primitive:cube";
-    if (resources) mr.mesh = renderer::PrimitiveMesh::Cube(*resources);
+    if (resources) {
+        mr.mesh = renderer::PrimitiveMesh::Cube(*resources);
+    }
     mr.meshPathDirty = mr.mesh == nullptr;
     return mr;
 }
@@ -140,7 +143,9 @@ inline scene::CylinderColliderComponent CreateCylinderCollider(float radius = 0.
 /// @return 読めない / 範囲外なら nullptr。
 inline renderer::Mesh* MeshFromModelPath(const std::string& path, int meshIndex)
 {
-    if (path.empty()) return nullptr;
+    if (path.empty()) {
+        return nullptr;
+    }
     std::string filePath = path;
     int resolvedIndex = meshIndex;
     const size_t slashPos = path.find_last_of('/');
@@ -162,13 +167,14 @@ inline renderer::Mesh* MeshFromModelPath(const std::string& path, int meshIndex)
     }
 
     auto* model = asset::AssetManager::LoadAndGet<asset::Model>(filePath);
-    if (!model || resolvedIndex < 0 || resolvedIndex >= static_cast<int>(model->meshes.size()))
+    if (!model || resolvedIndex < 0 || resolvedIndex >= static_cast<int>(model->meshes.size())) {
         return nullptr;
+    }
     return model->meshes[static_cast<size_t>(resolvedIndex)].get();
 }
 
 /// @brief 同じ GameObject の Renderer からコライダー用のメッシュを引く。
-/// @param outMeshIndex 入力は SkinnedMeshRenderer で使う submesh。出力は採用した submesh。
+/// @param[in,out] outMeshIndex 入力は SkinnedMeshRenderer で使う submesh。出力は採用した submesh。
 /// @return Renderer もメッシュも無ければ nullptr。out は未変更。
 inline renderer::Mesh* SourceMeshFromGameObject(scene::GameObject& go,
                                                 std::string& outPath,
@@ -181,8 +187,9 @@ inline renderer::Mesh* SourceMeshFromGameObject(scene::GameObject& go,
     }
 
     if (auto* smr = go.GetComponent<scene::SkinnedMeshRenderer>()) {
-        if (!smr->model && !smr->modelPath.empty())
+        if (!smr->model && !smr->modelPath.empty()) {
             smr->model = asset::AssetManager::LoadAndGet<asset::Model>(smr->modelPath);
+        }
         if (smr->model) {
             const size_t submesh = outMeshIndex >= 0 ? static_cast<size_t>(outMeshIndex) : 0u;
             if (submesh < smr->model->meshes.size()) {
@@ -200,15 +207,18 @@ inline std::vector<math::Vector3> MeshPositions(const renderer::Mesh& mesh)
 {
     std::vector<math::Vector3> positions;
     positions.reserve(mesh.cpuVertices.size());
-    for (const auto& vertex : mesh.cpuVertices)
+    for (const auto& vertex : mesh.cpuVertices) {
         positions.push_back(vertex.position);
+    }
     return positions;
 }
 
 /// @return CPU 頂点・インデックスが無ければ false。col は未変更。
 inline bool BuildMeshCollider(scene::MeshColliderComponent& col, const renderer::Mesh* mesh)
 {
-    if (!mesh || mesh->cpuVertices.empty() || mesh->cpuIndices.empty()) return false;
+    if (!mesh || mesh->cpuVertices.empty() || mesh->cpuIndices.empty()) {
+        return false;
+    }
     col.collider = std::make_unique<physics::TriangleMeshCollider>(MeshPositions(*mesh), mesh->cpuIndices);
     return true;
 }
@@ -216,7 +226,9 @@ inline bool BuildMeshCollider(scene::MeshColliderComponent& col, const renderer:
 /// @return CPU 頂点が無ければ false。col は未変更。
 inline bool BuildConvexHullCollider(scene::ConvexHullColliderComponent& col, const renderer::Mesh* mesh)
 {
-    if (!mesh || mesh->cpuVertices.empty()) return false;
+    if (!mesh || mesh->cpuVertices.empty()) {
+        return false;
+    }
     col.collider = std::make_unique<physics::ConvexHullCollider>(MeshPositions(*mesh));
     return true;
 }
@@ -247,8 +259,9 @@ template<typename T>
         terrain.cellSize = 2.0f;
         terrain.maxHeight = 20.0f;
         terrain.chunkSize = 32;
-        for (int layer = 0; layer < terrain.LayerCount(); ++layer)
+        for (int layer = 0; layer < terrain.LayerCount(); ++layer) {
             terrain.layerMaterials[static_cast<size_t>(layer)] = DefaultTerrainLayerMaterialPath(layer);
+        }
         terrain.InitFlat(0.0f);
         terrain.heightDirty = true;
         terrain.splatDirty = true;
@@ -297,22 +310,28 @@ template<typename T>
 void AddComponentDependencies(scene::GameObject& go)
 {
     if constexpr (std::is_same_v<T, scene::MeshRenderer>) {
-        if (!go.GetComponent<scene::MaterialComponent>())
+        if (!go.GetComponent<scene::MaterialComponent>()) {
             go.AddComponent<scene::MaterialComponent>(CreateDefaultMaterialComponent());
+        }
     } else if constexpr (std::is_same_v<T, scene::SkinnedMeshRenderer>) {
-        if (!go.GetComponent<scene::MaterialComponent>())
+        if (!go.GetComponent<scene::MaterialComponent>()) {
             go.AddComponent<scene::MaterialComponent>(CreateDefaultMaterialComponent(true));
+        }
     } else if constexpr (std::is_same_v<T, scene::TerrainComponent>) {
-        if (!go.GetComponent<scene::TerrainColliderComponent>())
+        if (!go.GetComponent<scene::TerrainColliderComponent>()) {
             go.AddComponent<scene::TerrainColliderComponent>();
+        }
     } else if constexpr (std::is_same_v<T, scene::AnimatorComponent>) {
-        if (!go.GetComponent<scene::SkinnedMeshRenderer>())
+        if (!go.GetComponent<scene::SkinnedMeshRenderer>()) {
             go.AddComponent<scene::SkinnedMeshRenderer>();
-        if (!go.GetComponent<scene::MaterialComponent>())
+        }
+        if (!go.GetComponent<scene::MaterialComponent>()) {
             go.AddComponent<scene::MaterialComponent>(CreateDefaultMaterialComponent(true));
+        }
     } else if constexpr (std::is_same_v<T, scene::NavMeshPatrolComponent>) {
-        if (!go.GetComponent<scene::NavMeshAgentComponent>())
+        if (!go.GetComponent<scene::NavMeshAgentComponent>()) {
             go.AddComponent<scene::NavMeshAgentComponent>();
+        }
     }
 }
 
@@ -331,10 +350,18 @@ inline bool AddRegisteredComponentByName(scene::GameObject& go, std::string_view
 {
     bool handled = false;
     scene::ForEachRegisteredComponent([&]<typename T, typename Registration>() {
-        if (handled) return;
-        if (!Registration::addable) return;
-        if (typeName != Registration::serializedName) return;
-        if (!go.GetComponent<T>()) AddRegisteredComponent<T>(go);
+        if (handled) {
+            return;
+        }
+        if (!Registration::addable) {
+            return;
+        }
+        if (typeName != Registration::serializedName) {
+            return;
+        }
+        if (!go.GetComponent<T>()) {
+            AddRegisteredComponent<T>(go);
+        }
         handled = true;
     });
     return handled;
@@ -345,7 +372,9 @@ inline std::vector<std::string> PresentRegisteredComponentNames(scene::GameObjec
 {
     std::vector<std::string> names;
     scene::ForEachRegisteredComponent([&]<typename T, typename Registration>() {
-        if (go.GetComponent<T>()) names.emplace_back(Registration::serializedName);
+        if (go.GetComponent<T>()) {
+            names.emplace_back(Registration::serializedName);
+        }
     });
     return names;
 }
@@ -356,7 +385,9 @@ inline std::vector<std::string> AddRegisteredComponentByNameTracked(scene::GameO
                                                                     std::string_view typeName)
 {
     const std::vector<std::string> before = PresentRegisteredComponentNames(go);
-    if (!AddRegisteredComponentByName(go, typeName)) return {};
+    if (!AddRegisteredComponentByName(go, typeName)) {
+        return {};
+    }
     std::vector<std::string> added = PresentRegisteredComponentNames(go);
     std::erase_if(added, [&](const std::string& name) {
         return std::find(before.begin(), before.end(), name) != before.end();
@@ -371,32 +402,51 @@ inline std::vector<std::string> AddRegisteredComponentByNameTracked(scene::GameO
 inline std::string FindComponentRemovalBlocker(scene::GameObject& go, const std::type_info& type)
 {
     if (type == typeid(scene::MaterialComponent)) {
-        if (go.GetComponent<scene::MeshRenderer>()) return "Mesh Renderer";
-        if (go.GetComponent<scene::SkinnedMeshRenderer>()) return "Skinned Mesh Renderer";
+        if (go.GetComponent<scene::MeshRenderer>()) {
+            return "Mesh Renderer";
+        }
+        if (go.GetComponent<scene::SkinnedMeshRenderer>()) {
+            return "Skinned Mesh Renderer";
+        }
     } else if (type == typeid(scene::NavMeshAgentComponent)) {
-        if (go.GetComponent<scene::NavMeshPatrolComponent>()) return "NavMesh Patrol";
+        if (go.GetComponent<scene::NavMeshPatrolComponent>()) {
+            return "NavMesh Patrol";
+        }
     } else if (type == typeid(scene::SkinnedMeshRenderer)) {
-        if (go.GetComponent<scene::AnimatorComponent>()) return "Animator";
+        if (go.GetComponent<scene::AnimatorComponent>()) {
+            return "Animator";
+        }
     } else if (type == typeid(scene::TerrainComponent)) {
-        if (go.GetComponent<scene::TerrainColliderComponent>()) return "Terrain Collider";
+        if (go.GetComponent<scene::TerrainColliderComponent>()) {
+            return "Terrain Collider";
+        }
     }
 
     const auto* scripts = go.GetComponent<scene::ScriptComponent>();
-    if (!scripts) return {};
+    if (!scripts) {
+        return {};
+    }
 
     const char* serializedName = nullptr;
     scene::ForEachRegisteredComponent([&]<typename T, typename Registration>() {
-        if (serializedName == nullptr && type == typeid(T))
+        if (serializedName == nullptr && type == typeid(T)) {
             serializedName = Registration::serializedName;
+        }
     });
-    if (serializedName == nullptr) return {};
+    if (serializedName == nullptr) {
+        return {};
+    }
 
     for (const scene::ScriptEntry& entry : scripts->scripts) {
-        if (!entry.script) continue;
+        if (!entry.script) {
+            continue;
+        }
         for (const std::string& required : entry.script->RequiredComponents())
-            if (required == serializedName) return entry.script->GetTypeName();
+            if (required == serializedName) {
+                return entry.script->GetTypeName();
+            }
     }
     return {};
 }
 
-} /// @note namespace fbzz::editor
+} // namespace fbzz::editor

@@ -51,7 +51,9 @@ constexpr float HOT_RELOAD_TREE_POLL_INTERVAL = 0.5f;
 /// @brief 拡張子がなければ ".scene" を付与する
 std::string WithFbzzExtension(const std::string& path)
 {
-    if (path.empty() || !util::FileSystem::GetExtension(path).empty()) return path;
+    if (path.empty() || !util::FileSystem::GetExtension(path).empty()) {
+        return path;
+    }
     return path + ".scene";
 }
 
@@ -68,8 +70,9 @@ std::uint64_t ToWriteTimestamp(const FILETIME& fileTime)
 bool TryGetWriteTime(const std::filesystem::path& path, std::uint64_t& out)
 {
     WIN32_FILE_ATTRIBUTE_DATA info{};
-    if (!GetFileAttributesExW(path.c_str(), GetFileExInfoStandard, &info))
+    if (!GetFileAttributesExW(path.c_str(), GetFileExInfoStandard, &info)) {
         return false;
+    }
 
     out = ToWriteTimestamp(info.ftLastWriteTime);
     return true;
@@ -104,30 +107,37 @@ std::uint64_t GetShaderSourceFingerprint(const std::filesystem::path& root)
         const std::filesystem::path path = iterator->path();
         if (iterator->is_directory(error)) {
             const std::wstring directoryName = path.filename().wstring();
-            if (directoryName == L"compiled" || directoryName == L"compiled_dx12")
+            if (directoryName == L"compiled" || directoryName == L"compiled_dx12") {
                 iterator.disable_recursion_pending();
+            }
             iterator.increment(error);
             continue;
         }
 
         const std::wstring extension = path.extension().wstring();
         if (extension == L".hlsl" || extension == L".hlsli"
-            || path.filename() == L"compile_shaders.ps1")
+            || path.filename() == L"compile_shaders.ps1") {
             sourcePaths.push_back(path);
+        }
         iterator.increment(error);
     }
-    if (sourcePaths.empty()) return 0;
+    if (sourcePaths.empty()) {
+        return 0;
+    }
 
     std::sort(sourcePaths.begin(), sourcePaths.end());
     std::uint64_t fingerprint = 1469598103934665603ull;
     MixShaderFingerprint(fingerprint, sourcePaths.size());
     for (const std::filesystem::path& path : sourcePaths) {
         const std::wstring relativePath = path.lexically_relative(root).generic_wstring();
-        for (const wchar_t codeUnit : relativePath)
+        for (const wchar_t codeUnit : relativePath) {
             MixShaderFingerprint(fingerprint, static_cast<std::uint16_t>(codeUnit));
+        }
 
         WIN32_FILE_ATTRIBUTE_DATA info{};
-        if (!GetFileAttributesExW(path.c_str(), GetFileExInfoStandard, &info)) continue;
+        if (!GetFileAttributesExW(path.c_str(), GetFileExInfoStandard, &info)) {
+            continue;
+        }
         MixShaderFingerprint(fingerprint, info.ftLastWriteTime.dwHighDateTime);
         MixShaderFingerprint(fingerprint, info.ftLastWriteTime.dwLowDateTime);
         MixShaderFingerprint(fingerprint, info.nFileSizeHigh);
@@ -143,14 +153,19 @@ int ReconcileStalePrefabInstances(scene::Scene& scene,
                                   const std::string& projectRoot)
 {
     std::uint64_t sceneTime = 0;
-    if (!TryGetWriteTime(util::FileSystem::PathFromUtf8(scenePath), sceneTime)) return 0;
+    if (!TryGetWriteTime(util::FileSystem::PathFromUtf8(scenePath), sceneTime)) {
+        return 0;
+    }
 
     std::vector<std::string> assetPaths;
     for (const auto& gameObject : scene.GameObjects()) {
         const std::string& assetPath = gameObject.prefabAssetPath;
-        if (assetPath.empty()) continue;
-        if (std::find(assetPaths.begin(), assetPaths.end(), assetPath) != assetPaths.end())
+        if (assetPath.empty()) {
             continue;
+        }
+        if (std::find(assetPaths.begin(), assetPaths.end(), assetPath) != assetPaths.end()) {
+            continue;
+        }
         assetPaths.push_back(assetPath);
     }
 
@@ -159,8 +174,12 @@ int ReconcileStalePrefabInstances(scene::Scene& scene,
         core::Window::LoadingScope::Pump();
         const std::string diskPath = ToProjectAssetDiskPath(projectRoot, assetPath);
         std::uint64_t assetTime = 0;
-        if (!TryGetWriteTime(util::FileSystem::PathFromUtf8(diskPath), assetTime)) continue;
-        if (assetTime <= sceneTime) continue;
+        if (!TryGetWriteTime(util::FileSystem::PathFromUtf8(diskPath), assetTime)) {
+            continue;
+        }
+        if (assetTime <= sceneTime) {
+            continue;
+        }
 
         updated += PrefabSerializer::PropagateToInstances(
             scene, assetPath, scene::EntityID{}, projectRoot);
@@ -172,18 +191,26 @@ int ReconcileStalePrefabInstances(scene::Scene& scene,
 /// @note EditorLauncher / sandbox は起動時にカレントディレクトリを exe 隣へ変更し、Renderer は バックエンド別 compiled ディレクトリを相対パスで開くため、ここにも同期が要る。
 bool SyncCompiledShadersToRuntimeAssets(const std::filesystem::path& hlslSourceDir)
 {
-    if (hlslSourceDir.empty()) return false;
+    if (hlslSourceDir.empty()) {
+        return false;
+    }
 
     const std::filesystem::path shaderDestination =
         util::FileSystem::GetCurrentDirectory() / L"Assets" / L"shaders";
-    if (shaderDestination.empty()) return false;
+    if (shaderDestination.empty()) {
+        return false;
+    }
     bool copiedAny = false;
     for (const std::filesystem::path directory : {L"compiled", L"compiled_dx12"}) {
         const std::filesystem::path src = hlslSourceDir / directory;
         const std::filesystem::path dst = shaderDestination / directory;
-        if (!util::FileSystem::Exists(src)) continue;
+        if (!util::FileSystem::Exists(src)) {
+            continue;
+        }
         if (!util::FileSystem::SamePath(src, dst)
-            && !util::FileSystem::CopyDirectoryRecursive(src, dst)) return false;
+            && !util::FileSystem::CopyDirectoryRecursive(src, dst)) {
+            return false;
+        }
         copiedAny = true;
     }
     return copiedAny;
@@ -197,11 +224,14 @@ bool SyncCompiledShadersToRuntimeAssets(const std::filesystem::path& hlslSourceD
 /// @note 走っているのはスナップショットを撮った後のシーンで、遷移していれば別のシーンファイルの 中身ですらある。currentScenePath へ書くと、開いていたシーンが丸ごと潰れる。
 bool EditorApp::RejectSceneIOWhilePlaying(const char* action)
 {
-    if (m_playMode.IsInEditor()) return false;
+    if (m_playMode.IsInEditor()) {
+        return false;
+    }
 
     std::string message = std::string(action) + ": stop play mode first";
-    if (!m_ctx.playSceneName.empty())
+    if (!m_ctx.playSceneName.empty()) {
         message += " (running: " + m_ctx.playSceneName + ")";
+    }
     FBZZ_LOG_WARN("%s", message.c_str());
     Toast::Error(message);
     return true;
@@ -225,19 +255,25 @@ void EditorApp::CaptureCleanScene()
 
 void EditorApp::CheckSceneDirtyForStandalone()
 {
-    if (!m_ctx.editScene || m_ctx.sceneDirty || m_ctx.currentScenePath.empty()) return;
+    if (!m_ctx.editScene || m_ctx.sceneDirty || m_ctx.currentScenePath.empty()) {
+        return;
+    }
     RemoveEditorHiding();
     const bool changed = m_dirtyTracker.Evaluate(*m_ctx.editScene, m_ctx.currentScenePath);
     RestoreEditorHiding();
-    if (changed) MarkSceneDirty();
+    if (changed) {
+        MarkSceneDirty();
+    }
 }
 
 void EditorApp::MarkSceneDirty()
 {
     ++m_ctx.captureRevision;
-    /// @note Dirty tracking belongs to the parked Edit document; temporary Play changes never authorize its save state.
-    if (m_ctx.playMode && !m_ctx.playMode->IsInEditor()) return;
-    /// @note Prefab 編集モード中の変更は「シーン」ではなく「プレファブアセット」への変更。 ここで sceneDirty を立てると、編集面を抜けて元シーンへ戻った後も未保存扱いが残る。 退避したシーンの dirty 状態は ExitPrefabEditMode がそのまま復元する。
+    // Dirty tracking belongs to the parked Edit document; temporary Play changes never authorize its save state.
+    if (m_ctx.playMode && !m_ctx.playMode->IsInEditor()) {
+        return;
+    }
+    // Prefab 編集モード中の変更は「シーン」ではなく「プレファブアセット」への変更。 ここで sceneDirty を立てると、編集面を抜けて元シーンへ戻った後も未保存扱いが残る。 退避したシーンの dirty 状態は ExitPrefabEditMode がそのまま復元する。
     if (m_ctx.InPrefabEditMode()) {
         if (!m_ctx.prefabEditDirty) {
             m_ctx.prefabEditDirty = true;
@@ -258,8 +294,10 @@ void EditorApp::MarkSceneDirty()
 
 void EditorApp::ConfirmDiscardUnsaved(const std::string& actionName, std::function<void()> action)
 {
-    if (RejectWhileSceneSaving()) return;
-    /// @note Prefab 編集モード中はシーンの新規作成 / 差し替えを受け付けない。m_scene の中身を 作り替えると、入っているプレファブと退避してあるシーンを取り違えて壊すため。
+    if (RejectWhileSceneSaving()) {
+        return;
+    }
+    // Prefab 編集モード中はシーンの新規作成 / 差し替えを受け付けない。m_scene の中身を 作り替えると、入っているプレファブと退避してあるシーンを取り違えて壊すため。
     if (m_ctx.InPrefabEditMode()) {
         FBZZ_LOG_WARN("%s: close the prefab edit mode first", actionName.c_str());
         return;
@@ -267,18 +305,25 @@ void EditorApp::ConfirmDiscardUnsaved(const std::string& actionName, std::functi
 
     const bool assetsDirty = AssetDirtyRegistry::HasAny();
     if (!m_ctx.sceneDirty && !assetsDirty) {
-        if (action) action();
+        if (action) {
+            action();
+        }
         return;
     }
 
     std::string msg;
-    if (m_ctx.sceneDirty) msg += "The current scene has unsaved changes.";
+    if (m_ctx.sceneDirty) {
+        msg += "The current scene has unsaved changes.";
+    }
     if (assetsDirty) {
-        if (!msg.empty()) msg += "\n\n";
+        if (!msg.empty()) {
+            msg += "\n\n";
+        }
         const auto& dirty = AssetDirtyRegistry::GetAll();
         msg += "Unsaved asset(s): " + std::to_string(static_cast<int>(dirty.size()));
-        for (const auto& a : dirty)
+        for (const auto& a : dirty) {
             msg += "\n  [" + a.typeLabel + "] " + a.displayPath;
+        }
     }
 
     ModalDialog::OpenUnsavedChanges(actionName, msg,
@@ -287,13 +332,19 @@ void EditorApp::ConfirmDiscardUnsaved(const std::string& actionName, std::functi
                 Toast::Error(LOCT("Some assets could not be saved. Retry or cancel to keep editing."));
                 return false;
             }
-            if (m_ctx.sceneDirty) return SaveScene(true, action);
-            if (action) action();
+            if (m_ctx.sceneDirty) {
+                return SaveScene(true, action);
+            }
+            if (action) {
+                action();
+            }
             return true;
         },
         [action]() {
             AssetDirtyRegistry::DiscardAll();
-            if (action) action();
+            if (action) {
+                action();
+            }
         });
 }
 
@@ -301,15 +352,21 @@ void EditorApp::ConfirmDiscardUnsaved(const std::string& actionName, std::functi
 
 void EditorApp::NewScene()
 {
-    if (!m_ctx.editScene) return;
-    if (RejectWhileSceneSaving()) return;
-    if (RejectSceneIOWhilePlaying("New Scene")) return;
+    if (!m_ctx.editScene) {
+        return;
+    }
+    if (RejectWhileSceneSaving()) {
+        return;
+    }
+    if (RejectSceneIOWhilePlaying("New Scene")) {
+        return;
+    }
     m_ctx.editScene->Clear();
     m_undoStack.Clear();
     ClearEntitySelection(m_ctx);
     m_ctx.graphLayouts.clear();
     m_ctx.editorHiddenGuids.clear();
-    /// @note ロックは EntityID で覚えている。新しいシーンは同じ番号を配り直すので、 残したままだと「まだ何も触っていないのに選べないオブジェクト」ができる。
+    // ロックは EntityID で覚えている。新しいシーンは同じ番号を配り直すので、 残したままだと「まだ何も触っていないのに選べないオブジェクト」ができる。
     m_ctx.lockedEntities.clear();
     m_ctx.editorSceneState.Clear();
     RebuildEditorUIFromScene();
@@ -339,18 +396,28 @@ void EditorApp::RequestOpenScenePath(const std::string& path)
 
 bool EditorApp::OpenSceneFromDialog()
 {
-    if (!m_ctx.editScene) return false;
+    if (!m_ctx.editScene) {
+        return false;
+    }
 
     std::string path;
-    if (!FileDialog::OpenFile(m_hwnd, { SCENE_FILTER }, path)) return false;
+    if (!FileDialog::OpenFile(m_hwnd, { SCENE_FILTER }, path)) {
+        return false;
+    }
     return OpenScenePath(path);
 }
 
 bool EditorApp::OpenScenePath(const std::string& path)
 {
-    if (!m_ctx.editScene || path.empty()) return false;
-    if (RejectWhileSceneSaving()) return false;
-    if (RejectSceneIOWhilePlaying("Open Scene")) return false;
+    if (!m_ctx.editScene || path.empty()) {
+        return false;
+    }
+    if (RejectWhileSceneSaving()) {
+        return false;
+    }
+    if (RejectSceneIOWhilePlaying("Open Scene")) {
+        return false;
+    }
 
     const core::Window::LoadingScope loading(*m_window,
         L"Loading " + util::StringUtils::ToWide(util::FileSystem::GetFilename(path)));
@@ -358,10 +425,10 @@ bool EditorApp::OpenScenePath(const std::string& path)
         FBZZ_LOG_ERROR("Open scene failed: %s", path.c_str());
         return false;
     }
-    /// @note SceneSerializer はローカル position のみ復元し worldPosition はゼロのまま。 次フレームの TransformEditorPreview まで待つと 1 フレーム間オブジェクトが 原点に表示されるため、ここで即時フラッシュして最初のフレームも正しくする。
+    // SceneSerializer はローカル position のみ復元し worldPosition はゼロのまま。 次フレームの TransformEditorPreview まで待つと 1 フレーム間オブジェクトが 原点に表示されるため、ここで即時フラッシュして最初のフレームも正しくする。
     scene::FlushWorldTransforms(*m_ctx.editScene);
 
-    /// @note Undo コマンドは読込前シーンの EntityID と状態を保持するため、 別シーンへ持ち越さず読込成功時点で破棄する。
+    // Undo コマンドは読込前シーンの EntityID と状態を保持するため、 別シーンへ持ち越さず読込成功時点で破棄する。
     m_undoStack.Clear();
     m_settings.lastScenePath = path;
     m_ctx.currentScenePath = path;
@@ -372,7 +439,7 @@ bool EditorApp::OpenScenePath(const std::string& path)
     CaptureCleanScene();
     CaptureSceneDiskStamp();
 
-    /// @note 閉じている間に更新された .prefab をここで取り込む。 清書後の状態を基準に採ってから走らせるので、揃え直した結果はそのまま 「ディスクとは違う = 保存が要る」として出る。
+    // 閉じている間に更新された .prefab をここで取り込む。 清書後の状態を基準に採ってから走らせるので、揃え直した結果はそのまま 「ディスクとは違う = 保存が要る」として出る。
     if (const int updated =
             ReconcileStalePrefabInstances(*m_ctx.editScene, path, m_ctx.projectRoot);
         updated > 0) {
@@ -394,14 +461,24 @@ bool EditorApp::OpenScenePath(const std::string& path)
 
 bool EditorApp::SaveScene(bool background, std::function<void()> afterSave)
 {
-    if (!m_ctx.editScene) return false;
-    if (RejectWhileSceneSaving()) return false;
-    if (RejectSceneIOWhilePlaying("Save Scene")) return false;
-    /// @note Prefab 編集モード中は m_scene の中身がプレファブなので、シーンとして保存すると 元のシーンファイルをプレファブの内容で上書きしてしまう。Ctrl+S は反射で押されるため、 ここで止めて「プレファブを保存」へ同じキーのまま読み替える。
-    if (m_ctx.InPrefabEditMode()) return SavePrefabEdit();
-    if (m_settings.lastScenePath.empty()) return SaveSceneAsDialog(background, std::move(afterSave));
+    if (!m_ctx.editScene) {
+        return false;
+    }
+    if (RejectWhileSceneSaving()) {
+        return false;
+    }
+    if (RejectSceneIOWhilePlaying("Save Scene")) {
+        return false;
+    }
+    // Prefab 編集モード中は m_scene の中身がプレファブなので、シーンとして保存すると 元のシーンファイルをプレファブの内容で上書きしてしまう。Ctrl+S は反射で押されるため、 ここで止めて「プレファブを保存」へ同じキーのまま読み替える。
+    if (m_ctx.InPrefabEditMode()) {
+        return SavePrefabEdit();
+    }
+    if (m_settings.lastScenePath.empty()) {
+        return SaveSceneAsDialog(background, std::move(afterSave));
+    }
 
-    /// @note 読み込んだ後に他人 (AI・外部エディタ・git) がファイルを書いていたら、黙って 踏まない。Ctrl+S は反射で押される操作なので、ここで止めないと相手の編集が 一度も画面に出ないまま消える。
+    // 読み込んだ後に他人 (AI・外部エディタ・git) がファイルを書いていたら、黙って 踏まない。Ctrl+S は反射で押される操作なので、ここで止めないと相手の編集が 一度も画面に出ないまま消える。
     if (IsSceneStaleOnDisk()) {
         m_staleSaveConfirmPending = true;
         return false;
@@ -412,10 +489,14 @@ bool EditorApp::SaveScene(bool background, std::function<void()> afterSave)
 
 bool EditorApp::SaveSceneAsDialog(bool background, std::function<void()> afterSave)
 {
-    if (!m_ctx.editScene || RejectWhileSceneSaving()) return false;
+    if (!m_ctx.editScene || RejectWhileSceneSaving()) {
+        return false;
+    }
 
     std::string path;
-    if (!FileDialog::SaveFile(m_hwnd, { SCENE_FILTER }, path)) return false;
+    if (!FileDialog::SaveFile(m_hwnd, { SCENE_FILTER }, path)) {
+        return false;
+    }
     return SaveScenePath(path, background, std::move(afterSave));
 }
 
@@ -423,12 +504,18 @@ bool EditorApp::SaveSceneAsDialog(bool background, std::function<void()> afterSa
 /// @note 保存は「書き出す」だけでは終わらず、lastScenePath / currentScenePath の更新、 クリーン状態の再取得、Recent への追加までが 1 つの操作。書き出しだけ真似ると、 保存したのに dirty のままという食い違いが残る。
 bool EditorApp::SaveScenePath(const std::string& requestedPath, bool background, std::function<void()> afterSave)
 {
-    if (!m_ctx.editScene || requestedPath.empty()) return false;
-    if (RejectWhileSceneSaving()) return false;
-    if (RejectSceneIOWhilePlaying("Save Scene")) return false;
+    if (!m_ctx.editScene || requestedPath.empty()) {
+        return false;
+    }
+    if (RejectWhileSceneSaving()) {
+        return false;
+    }
+    if (RejectSceneIOWhilePlaying("Save Scene")) {
+        return false;
+    }
     const std::string path = WithFbzzExtension(requestedPath);
 
-    /// @note 別名保存は衝突しない。同じファイルを上書きするときだけ、読み込み後に他人が 書いていないかを見る。モーダルは出さない — この関数は AI (scene.save) も通り、 クリック待ちにするとバスの drain が止まるため、黙って踏むより失敗を返す。
+    // 別名保存は衝突しない。同じファイルを上書きするときだけ、読み込み後に他人が 書いていないかを見る。モーダルは出さない — この関数は AI (scene.save) も通り、 クリック待ちにするとバスの drain が止まるため、黙って踏むより失敗を返す。
     if (util::FileSystem::SamePathText(path, m_ctx.currentScenePath) && IsSceneStaleOnDisk()) {
         FBZZ_LOG_ERROR("Save refused: %s changed on disk after it was opened. "
                        "Reload it, or save through Ctrl+S to choose which version wins.",
@@ -443,7 +530,9 @@ bool EditorApp::SaveScenePath(const std::string& requestedPath, bool background,
 
 bool EditorApp::RejectWhileSceneSaving()
 {
-    if (!m_pendingSceneSave.result.valid()) return false;
+    if (!m_pendingSceneSave.result.valid()) {
+        return false;
+    }
     Toast::Info("Scene save is in progress.");
     return true;
 }
@@ -462,24 +551,33 @@ bool EditorApp::StartSceneSave(const std::string& path, bool backup, bool backgr
     if (!save || !background) {
         const auto result = save ? save() : SceneSaveResult{};
         const bool succeeded = FinishSceneSave(path, backup, editRevision, undoRevision, result);
-        if (succeeded && afterSave) afterSave();
+        if (succeeded && afterSave) {
+            afterSave();
+        }
         return succeeded;
     }
     m_pendingSceneSave = {TaskSystem::Submit(std::move(save)), path, std::move(afterSave),
                           editRevision, undoRevision, backup};
-    if (!backup) Toast::Info("Saving: " + util::FileSystem::GetFilename(path));
+    if (!backup) {
+        Toast::Info("Saving: " + util::FileSystem::GetFilename(path));
+    }
     return true;
 }
 
 void EditorApp::PollSceneSave()
 {
     if (!m_pendingSceneSave.result.valid() ||
-        m_pendingSceneSave.result.wait_for(std::chrono::seconds{0}) != std::future_status::ready) return;
+        m_pendingSceneSave.result.wait_for(std::chrono::seconds{0}) != std::future_status::ready) {
+        return;
+    }
     auto pending = std::exchange(m_pendingSceneSave, {});
     if (FinishSceneSave(pending.path, pending.backup, pending.editRevision,
                         pending.undoRevision, pending.result.get()) && pending.afterSave) {
-        if (!m_ctx.sceneDirty && !AssetDirtyRegistry::HasAny()) pending.afterSave();
-        else Toast::Info("New edits arrived during saving. Save them before continuing.");
+        if (!m_ctx.sceneDirty && !AssetDirtyRegistry::HasAny()) {
+            pending.afterSave();
+        } else {
+            Toast::Info("New edits arrived during saving. Save them before continuing.");
+        }
     }
 }
 
@@ -516,7 +614,9 @@ bool EditorApp::FinishSceneSave(const std::string& path, bool backup, uint64_t e
     CacheSceneWriteTime();
     m_dirtyTracker.CaptureCleanHash(result.contentHash);
     m_ctx.sceneDirty = m_sceneEditRevision != editRevision || m_undoStack.GetRevision() != undoRevision;
-    if (m_ctx.sceneDirty) m_dirtyTracker.MarkDirty();
+    if (m_ctx.sceneDirty) {
+        m_dirtyTracker.MarkDirty();
+    }
     UpdateWindowTitle();
     SaveProjectSettingsNow();
     AddRecentScene(path);
@@ -529,30 +629,37 @@ bool EditorApp::FinishSceneSave(const std::string& path, bool backup, uint64_t e
 
 void EditorApp::AddRecentScene(const std::string& path)
 {
-    if (path.empty()) return;
+    if (path.empty()) {
+        return;
+    }
     auto& recent = m_settings.recentScenes;
-    /// @note 同一パス (大小・区切り無視) を除去してから先頭へ差し込む。
+    // 同一パス (大小・区切り無視) を除去してから先頭へ差し込む。
     recent.erase(std::remove_if(recent.begin(), recent.end(),
         [&](const std::string& p) { return util::FileSystem::SamePathText(p, path); }),
         recent.end());
     recent.insert(recent.begin(), path);
-    if (static_cast<int>(recent.size()) > EditorSettings::kMaxRecentScenes)
+    if (static_cast<int>(recent.size()) > EditorSettings::kMaxRecentScenes) {
         recent.resize(EditorSettings::kMaxRecentScenes);
+    }
 }
 
 /// @name オートセーブ / クラッシュ復旧
 
 std::string EditorApp::AutoSaveDir() const
 {
-    if (m_ctx.projectRoot.empty()) return {};
+    if (m_ctx.projectRoot.empty()) {
+        return {};
+    }
     return m_ctx.projectRoot + "/Library/AutoSave";
 }
 
 std::string EditorApp::AutoSavePath() const
 {
     const std::string dir = AutoSaveDir();
-    if (dir.empty()) return {};
-    /// @note 現在シーン名を基にした固定パス。無題シーンは "Untitled" を使う。 path::string() は非 ASCII で例外を投げうるため、UTF-8 変換ユーティリティを使う。
+    if (dir.empty()) {
+        return {};
+    }
+    // 現在シーン名を基にした固定パス。無題シーンは "Untitled" を使う。 path::string() は非 ASCII で例外を投げうるため、UTF-8 変換ユーティリティを使う。
     const std::string base = m_ctx.currentScenePath.empty()
         ? std::string("Untitled")
         : util::FileSystem::PathToUtf8(
@@ -563,32 +670,40 @@ std::string EditorApp::AutoSavePath() const
 std::string EditorApp::SessionLockPath() const
 {
     const std::string dir = AutoSaveDir();
-    if (dir.empty()) return {};
+    if (dir.empty()) {
+        return {};
+    }
     return dir + "/.session_active";
 }
 
 void EditorApp::WriteSessionLock()
 {
     const std::string dir = AutoSaveDir();
-    if (dir.empty()) return;
+    if (dir.empty()) {
+        return;
+    }
     util::FileSystem::EnsureDirectory(dir);
-    /// @note 生存しているセッションの印。クリーンシャットダウンで消す。残っていればクラッシュとみなす。
+    // 生存しているセッションの印。クリーンシャットダウンで消す。残っていればクラッシュとみなす。
     util::FileSystem::WriteText(SessionLockPath(), m_ctx.currentScenePath);
 }
 
 void EditorApp::ClearSessionLock()
 {
     const std::string lock = SessionLockPath();
-    if (!lock.empty() && util::FileSystem::Exists(lock))
+    if (!lock.empty() && util::FileSystem::Exists(lock)) {
         util::FileSystem::RemoveAll(util::FileSystem::PathFromUtf8(lock));
-    /// @note 正常終了時は中間ファイルを全部消す。途中で開き直したシーンの分も残すと次回誤検知する。
+    }
+    // 正常終了時は中間ファイルを全部消す。途中で開き直したシーンの分も残すと次回誤検知する。
     const std::string dir = AutoSaveDir();
-    if (dir.empty() || !util::FileSystem::Exists(dir)) return;
+    if (dir.empty() || !util::FileSystem::Exists(dir)) {
+        return;
+    }
     std::error_code ec;
     for (const auto& entry : std::filesystem::directory_iterator(util::FileSystem::PathFromUtf8(dir), ec)) {
         const std::string name = util::FileSystem::PathToUtf8(entry.path().filename());
-        if (name.ends_with(".autosave.scene"))
+        if (name.ends_with(".autosave.scene")) {
             util::FileSystem::RemoveAll(entry.path());
+        }
     }
 }
 
@@ -599,14 +714,20 @@ void EditorApp::DetectCrashRecovery()
 
     const std::string lock     = SessionLockPath();
     const std::string autosave = AutoSavePath();
-    if (lock.empty() || autosave.empty()) return;
-    if (!util::FileSystem::Exists(lock) || !util::FileSystem::Exists(autosave)) return;
+    if (lock.empty() || autosave.empty()) {
+        return;
+    }
+    if (!util::FileSystem::Exists(lock) || !util::FileSystem::Exists(autosave)) {
+        return;
+    }
 
-    /// @note 本体を後から保存していれば、オートセーブの方が古い。古いものを «復旧» として出さない。
+    // 本体を後から保存していれば、オートセーブの方が古い。古いものを «復旧» として出さない。
     if (!m_ctx.currentScenePath.empty() && util::FileSystem::Exists(m_ctx.currentScenePath)) {
         const auto sceneTime    = util::FileSystem::LastWriteTime(util::FileSystem::PathFromUtf8(m_ctx.currentScenePath));
         const auto autosaveTime = util::FileSystem::LastWriteTime(util::FileSystem::PathFromUtf8(autosave));
-        if (autosaveTime <= sceneTime) return;
+        if (autosaveTime <= sceneTime) {
+            return;
+        }
     }
     m_pendingRecoveryAutoSave = autosave;
     FBZZ_LOG_WARN("CrashRecovery: previous session did not exit cleanly; found %s", autosave.c_str());
@@ -623,7 +744,9 @@ constexpr float kProjectSettingsPollInterval = 0.25f;
 
 bool EditorApp::SaveProjectSettingsNow()
 {
-    if (m_projectSettingsPath.empty()) return false;
+    if (m_projectSettingsPath.empty()) {
+        return false;
+    }
     std::string toml = m_ctx.projectSettings.ToToml();
     if (!util::FileSystem::WriteText(m_projectSettingsPath, toml)) {
         m_ctx.projectSettingsSaveState = EditorContext::SettingsSaveState::Failed;
@@ -642,7 +765,9 @@ bool EditorApp::SaveProjectSettingsNow()
 
 void EditorApp::TickProjectSettingsAutoSave(float dt)
 {
-    if (m_projectSettingsPath.empty()) return;
+    if (m_projectSettingsPath.empty()) {
+        return;
+    }
 
     if (m_ctx.requestProjectSettingsSave) {
         m_ctx.requestProjectSettingsSave = false;
@@ -652,14 +777,17 @@ void EditorApp::TickProjectSettingsAutoSave(float dt)
 
     m_projectSettingsIdleTime  += dt;
     m_projectSettingsPollTimer += dt;
-    if (m_projectSettingsPollTimer < kProjectSettingsPollInterval) return;
+    if (m_projectSettingsPollTimer < kProjectSettingsPollInterval) {
+        return;
+    }
     m_projectSettingsPollTimer = 0.0f;
 
     std::string toml = m_ctx.projectSettings.ToToml();
     if (toml == m_projectSettingsSavedToml) {
-        /// @note Undo で保存済みの内容へ戻った場合もここで «保存済み» に戻す。
-        if (m_ctx.projectSettingsSaveState == EditorContext::SettingsSaveState::Pending)
+        // Undo で保存済みの内容へ戻った場合もここで «保存済み» に戻す。
+        if (m_ctx.projectSettingsSaveState == EditorContext::SettingsSaveState::Pending) {
             m_ctx.projectSettingsSaveState = EditorContext::SettingsSaveState::Saved;
+        }
         m_projectSettingsLastToml = std::move(toml);
         return;
     }
@@ -667,15 +795,21 @@ void EditorApp::TickProjectSettingsAutoSave(float dt)
         m_projectSettingsLastToml = std::move(toml);
         m_projectSettingsIdleTime = 0.0f;
     }
-    /// @note 書けなかった内容のままなら再試行しない (毎ポーリングで Console を埋めない)。次の変更か Retry を待つ。
+    // 書けなかった内容のままなら再試行しない (毎ポーリングで Console を埋めない)。次の変更か Retry を待つ。
     if (m_ctx.projectSettingsSaveState == EditorContext::SettingsSaveState::Failed
-        && m_projectSettingsLastToml == m_projectSettingsFailedToml)
+        && m_projectSettingsLastToml == m_projectSettingsFailedToml) {
         return;
+    }
     m_ctx.projectSettingsSaveState = EditorContext::SettingsSaveState::Pending;
 
-    /// @note 掴んでいる最中 (ドラッグ・文字入力) は書かない。離してから待ちを数える。
-    if (ImGui::IsAnyItemActive()) { m_projectSettingsIdleTime = 0.0f; return; }
-    if (m_projectSettingsIdleTime < kProjectSettingsSaveDelay) return;
+    // 掴んでいる最中 (ドラッグ・文字入力) は書かない。離してから待ちを数える。
+    if (ImGui::IsAnyItemActive()) {
+        m_projectSettingsIdleTime = 0.0f;
+        return;
+    }
+    if (m_projectSettingsIdleTime < kProjectSettingsSaveDelay) {
+        return;
+    }
     SaveProjectSettingsNow();
 }
 
@@ -690,19 +824,23 @@ constexpr int kAutoSaveMinIntervalSec = 60;
 
 void EditorApp::TickAutoSave(float dt)
 {
-    if (m_pendingSceneSave.result.valid()) return;
+    if (m_pendingSceneSave.result.valid()) {
+        return;
+    }
     const auto stopCounting = [this](bool resetTimer) {
-        if (resetTimer) m_autoSaveTimer = 0.0f;
+        if (resetTimer) {
+            m_autoSaveTimer = 0.0f;
+        }
         m_autoSaveWaitingForIdle = false;
         m_ctx.sceneAutoSaveRemainingSec = -1.0f;
     };
 
-    /// @note 変更が無ければ数え直す。Unreal と同じく «前回保存してからの経過» で測る。
+    // 変更が無ければ数え直す。Unreal と同じく «前回保存してからの経過» で測る。
     if (!m_ctx.sceneAutoSaveEnabled || !m_ctx.editScene || m_ctx.InPrefabEditMode() || !m_ctx.sceneDirty) {
         stopCounting(true);
         return;
     }
-    /// @note Play 中は編集シーンを触らない。タイマーは戻さず止めるだけで、Stop 後に続きから数える。
+    // Play 中は編集シーンを触らない。タイマーは戻さず止めるだけで、Stop 後に続きから数える。
     if (m_ctx.playMode && !m_ctx.playMode->IsInEditor()) {
         stopCounting(false);
         return;
@@ -712,38 +850,50 @@ void EditorApp::TickAutoSave(float dt)
     const float interval = static_cast<float>((std::max)(kAutoSaveMinIntervalSec, m_ctx.sceneAutoSaveIntervalSec));
     const float remaining = interval - m_autoSaveTimer;
     m_ctx.sceneAutoSaveRemainingSec = (std::max)(remaining, 0.0f);
-    if (remaining > 0.0f) return;
+    if (remaining > 0.0f) {
+        return;
+    }
 
-    /// @note ドラッグや文字入力の最中に保存で引っかかると操作が飛ぶ。手を離すまで待つ。
+    // ドラッグや文字入力の最中に保存で引っかかると操作が飛ぶ。手を離すまで待つ。
     const ImGuiIO& io = ImGui::GetIO();
     const bool interacting = ImGui::IsAnyItemActive()
         || io.MouseDown[ImGuiMouseButton_Left] || io.MouseDown[ImGuiMouseButton_Right]
         || io.MouseDown[ImGuiMouseButton_Middle] || io.WantTextInput;
     m_autoSaveWaitingForIdle = interacting;
-    if (interacting) return;
+    if (interacting) {
+        return;
+    }
 
     AutoSaveNow();
 }
 
 bool EditorApp::AutoSaveNow()
 {
-    if (m_pendingSceneSave.result.valid()) return false;
+    if (m_pendingSceneSave.result.valid()) {
+        return false;
+    }
     m_autoSaveTimer = 0.0f;
     m_autoSaveWaitingForIdle = false;
-    if (!m_ctx.editScene) return false;
+    if (!m_ctx.editScene) {
+        return false;
+    }
 
     const std::string path = AutoSavePath();
-    if (path.empty()) return false;
+    if (path.empty()) {
+        return false;
+    }
     return StartSceneSave(path, true, true);
 }
 
 void EditorApp::DrawAutoSaveNotice()
 {
     const float remaining = m_ctx.sceneAutoSaveRemainingSec;
-    if (remaining < 0.0f || (remaining > kAutoSaveWarningSec && !m_autoSaveWaitingForIdle)) return;
+    if (remaining < 0.0f || (remaining > kAutoSaveWarningSec && !m_autoSaveWaitingForIdle)) {
+        return;
+    }
 
     const ImGuiViewport* viewport = ImGui::GetMainViewport();
-    /// @note 右下はトーストが積まれるので、重ならない下辺中央に置く。
+    // 右下はトーストが積まれるので、重ならない下辺中央に置く。
     const ImVec2 anchor{ viewport->WorkPos.x + viewport->WorkSize.x * 0.5f,
                          viewport->WorkPos.y + viewport->WorkSize.y - ImGui::GetFrameHeight() * 2.5f };
     ImGui::SetNextWindowPos(anchor, ImGuiCond_Always, { 0.5f, 1.0f });
@@ -754,15 +904,18 @@ void EditorApp::DrawAutoSaveNotice()
     ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, { 12.0f, 8.0f });
     if (ImGui::Begin("##AutoSaveNotice", nullptr, kFlags)) {
         ImGui::AlignTextToFramePadding();
-        if (m_autoSaveWaitingForIdle)
+        if (m_autoSaveWaitingForIdle) {
             ImGui::TextUnformatted(LOCT("Auto-save will run when you finish the current edit..."));
-        else
+        } else {
             ImGui::Text(LOCT("Auto-saving the scene in %d s"), static_cast<int>(std::ceil(remaining)));
+        }
 
         ImGui::SameLine();
-        if (ImGui::SmallButton(LOC("Save Now"))) AutoSaveNow();
+        if (ImGui::SmallButton(LOC("Save Now"))) {
+            AutoSaveNow();
+        }
         ImGui::SameLine();
-        /// @note 延期は間隔をまるごとやり直す (Unreal の Cancel と同じ)。
+        // 延期は間隔をまるごとやり直す (Unreal の Cancel と同じ)。
         if (ImGui::SmallButton(LOC("Postpone"))) {
             m_autoSaveTimer = 0.0f;
             m_autoSaveWaitingForIdle = false;
@@ -777,9 +930,13 @@ void EditorApp::DrawAutoSaveNotice()
 
 void EditorApp::ProcessCrashRecovery()
 {
-    if (m_crashRecoveryChecked) return;
+    if (m_crashRecoveryChecked) {
+        return;
+    }
     m_crashRecoveryChecked = true;
-    if (m_pendingRecoveryAutoSave.empty()) return;
+    if (m_pendingRecoveryAutoSave.empty()) {
+        return;
+    }
 
     const std::string autosavePath = m_pendingRecoveryAutoSave;
     m_pendingRecoveryAutoSave.clear();
@@ -790,7 +947,9 @@ void EditorApp::ProcessCrashRecovery()
         "An auto-saved version of the scene was found.\n\n"
         "Restore it? (Choosing No keeps the last saved scene.)",
         [this, autosavePath]() {
-            if (!m_ctx.editScene) return;
+            if (!m_ctx.editScene) {
+                return;
+            }
             const core::Window::LoadingScope loading(*m_window, L"Recovering scene");
             if (SceneIO::Load(*m_ctx.editScene, autosavePath, &core::Window::LoadingScope::Pump)) {
                 scene::FlushWorldTransforms(*m_ctx.editScene);
@@ -798,7 +957,7 @@ void EditorApp::ProcessCrashRecovery()
                 ClearEntitySelection(m_ctx);
                 ApplyEditorViewStateFromSceneMeta();
                 RebuildEditorUIFromScene();
-                /// @note 復旧直後は未保存状態にして、ユーザーに保存を促す。
+                // 復旧直後は未保存状態にして、ユーザーに保存を促す。
                 MarkSceneDirty();
                 Toast::Success("Recovered auto-saved scene");
                 FBZZ_LOG_INFO("CrashRecovery: restored %s", autosavePath.c_str());
@@ -819,18 +978,21 @@ void EditorApp::RequestExit()
 
 void EditorApp::CacheSceneWriteTime()
 {
-    if (m_settings.lastScenePath.empty()) return;
+    if (m_settings.lastScenePath.empty()) {
+        return;
+    }
     WIN32_FILE_ATTRIBUTE_DATA info{};
-    if (GetFileAttributesExA(m_settings.lastScenePath.c_str(), GetFileExInfoStandard, &info))
+    if (GetFileAttributesExA(m_settings.lastScenePath.c_str(), GetFileExInfoStandard, &info)) {
         m_lastSceneWriteTime = ToWriteTimestamp(info.ftLastWriteTime);
+    }
 }
 
 void EditorApp::CheckHotReload()
 {
-    /// @note シーン監視の早期 return より先に、進行中のシェーダーコンパイルを進める。
+    // シーン監視の早期 return より先に、進行中のシェーダーコンパイルを進める。
     TickHlslCompile();
 
-    /// @note 表示タイマーは下の早期 return より前で進める。後ろに置くとシーン未保存・Play 中に «Reload OK» が消えなくなる。
+    // 表示タイマーは下の早期 return より前で進める。後ろに置くとシーン未保存・Play 中に «Reload OK» が消えなくなる。
     if (m_ctx.hotReloadDoneTimer > 0.0f) {
         m_ctx.hotReloadDoneTimer -= ImGui::GetIO().DeltaTime;
         if (m_ctx.hotReloadDoneTimer <= 0.0f) {
@@ -841,15 +1003,24 @@ void EditorApp::CheckHotReload()
         }
     }
 
-    if (!m_ctx.hotReloadEnabled) return;
-    if (m_pendingSceneSave.result.valid()) return;
-    if (m_settings.lastScenePath.empty() || !m_ctx.editScene) return;
-    if (m_ctx.playMode && !m_ctx.playMode->IsInEditor()) return;
+    if (!m_ctx.hotReloadEnabled) {
+        return;
+    }
+    if (m_pendingSceneSave.result.valid()) {
+        return;
+    }
+    if (m_settings.lastScenePath.empty() || !m_ctx.editScene) {
+        return;
+    }
+    if (m_ctx.playMode && !m_ctx.playMode->IsInEditor()) {
+        return;
+    }
 
     FBZZ_PROFILE_SCOPE("HotReload::Scene");
     WIN32_FILE_ATTRIBUTE_DATA info{};
-    if (!GetFileAttributesExA(m_settings.lastScenePath.c_str(), GetFileExInfoStandard, &info))
+    if (!GetFileAttributesExA(m_settings.lastScenePath.c_str(), GetFileExInfoStandard, &info)) {
         return;
+    }
 
     const std::uint64_t ft = ToWriteTimestamp(info.ftLastWriteTime);
     if (m_lastSceneWriteTime == 0) {
@@ -879,7 +1050,7 @@ void EditorApp::InitHlslHotReload()
         m_buildConsole.EndBuildCancelled();
     }
     m_hlslCompiler.Reset();
-    /// @note 旧プロジェクトの結果を捨てる。TaskSystem のジョブは this を保持せず、破棄時にも待機しない。
+    // 旧プロジェクトの結果を捨てる。TaskSystem のジョブは this を保持せず、破棄時にも待機しない。
     m_hlslSourceScan         = {};
     m_hlslSourceFingerprint  = 0;
     m_hlslCompilePending     = false;
@@ -888,13 +1059,17 @@ void EditorApp::InitHlslHotReload()
     m_hlslSourceDir.clear();
     m_compileShadersScript.clear();
     m_ctx.hlslSourceDir = asset::AssetManager::ResolveAssetPath("Assets/Shaders");
-    if (m_ctx.projectRoot.empty()) return;
+    if (m_ctx.projectRoot.empty()) {
+        return;
+    }
 
-    /// @note 未作成の Shaders も監視する。書き込み先がリンクでプロジェクト外へ転送される場合は受け付けない。
+    // 未作成の Shaders も監視する。書き込み先がリンクでプロジェクト外へ転送される場合は受け付けない。
     std::error_code error;
     const auto projectRoot = std::filesystem::weakly_canonical(
         util::FileSystem::PathFromUtf8(m_ctx.projectRoot), error);
-    if (error) return;
+    if (error) {
+        return;
+    }
     const auto shaderDir = projectRoot / L"Assets" / L"Shaders";
     const auto realShaderDir = std::filesystem::weakly_canonical(shaderDir, error);
     if (error || !util::FileSystem::IsChildPathText(util::FileSystem::PathToUtf8(realShaderDir),
@@ -908,8 +1083,9 @@ void EditorApp::InitHlslHotReload()
     if (!util::FileSystem::Exists(script)) {
         const auto engineRoot = util::FileSystem::PathFromUtf8(m_ctx.engineRoot);
         script = engineRoot / L"share/fbzz/Assets/Shaders/compile_shaders.ps1";
-        if (!util::FileSystem::Exists(script))
+        if (!util::FileSystem::Exists(script)) {
             script = engineRoot / L"Assets/Shaders/compile_shaders.ps1";
+        }
         if (!util::FileSystem::Exists(script)) {
             FBZZ_LOG_WARN("HLSL: compiler script missing in SDK or source tree: %s", m_ctx.engineRoot.c_str());
             return;
@@ -917,9 +1093,11 @@ void EditorApp::InitHlslHotReload()
     }
     m_hlslSourceDir = shaderDir;
     m_compileShadersScript = std::move(script);
-    if (!m_ctx.hotReloadEnabled) return;
+    if (!m_ctx.hotReloadEnabled) {
+        return;
+    }
 
-    /// @note 起動していない間に削除されたソースの CSO も差分スクリプトで掃除する。
+    // 起動していない間に削除されたソースの CSO も差分スクリプトで掃除する。
     m_hlslSourceFingerprint = GetShaderSourceFingerprint(m_hlslSourceDir);
     m_hlslCompilePending = m_hlslSourceFingerprint != 0
         || util::FileSystem::Exists(m_hlslSourceDir / L"compiled_dx12");
@@ -928,29 +1106,47 @@ void EditorApp::InitHlslHotReload()
 
 void EditorApp::CheckHlslDirty()
 {
-    if (m_packageBuild.IsRunning()) return;
-    if (!m_ctx.hotReloadEnabled) return;
-    if (m_hlslSourceDir.empty()) return;
-    if (m_ctx.playMode && !m_ctx.playMode->IsInEditor()) return;
-    if (m_hlslCompiler.GetState() == Compiler::State::Building) return;
-    if (m_hlslCompilePending) return;
+    if (m_packageBuild.IsRunning()) {
+        return;
+    }
+    if (!m_ctx.hotReloadEnabled) {
+        return;
+    }
+    if (m_hlslSourceDir.empty()) {
+        return;
+    }
+    if (m_ctx.playMode && !m_ctx.playMode->IsInEditor()) {
+        return;
+    }
+    if (m_hlslCompiler.GetState() == Compiler::State::Building) {
+        return;
+    }
+    if (m_hlslCompilePending) {
+        return;
+    }
 
     FBZZ_PROFILE_SCOPE("HotReload::PollHlsl");
     if (!m_hlslSourceScan.valid()) {
         m_hlslDirtyPollTimer += ImGui::GetIO().DeltaTime;
-        if (m_hlslDirtyPollTimer < HOT_RELOAD_TREE_POLL_INTERVAL) return;
+        if (m_hlslDirtyPollTimer < HOT_RELOAD_TREE_POLL_INTERVAL) {
+            return;
+        }
         m_hlslDirtyPollTimer = 0.0f;
-        /// @note 間隔を空けても同期 I/O のスパイクは残るため、FBX 走査と同じ共有プールへ送る。
+        // 間隔を空けても同期 I/O のスパイクは残るため、FBX 走査と同じ共有プールへ送る。
         /// @see Docs/design/shader-reload-lifetime.md
         m_hlslSourceScan = TaskSystem::Submit([root = m_hlslSourceDir]() {
             return GetShaderSourceFingerprint(root);
         });
         return;
     }
-    /// @note フレーム内では完了済みの結果だけを受け取り、走査の完了を待たない。
-    if (m_hlslSourceScan.wait_for(std::chrono::seconds(0)) != std::future_status::ready) return;
+    // フレーム内では完了済みの結果だけを受け取り、走査の完了を待たない。
+    if (m_hlslSourceScan.wait_for(std::chrono::seconds(0)) != std::future_status::ready) {
+        return;
+    }
     const std::uint64_t fingerprint = m_hlslSourceScan.get();
-    if (fingerprint == m_hlslSourceFingerprint) return;
+    if (fingerprint == m_hlslSourceFingerprint) {
+        return;
+    }
 
     m_hlslSourceFingerprint = fingerprint;
     m_hlslCompilePending = true;
@@ -961,18 +1157,26 @@ void EditorApp::CheckHlslDirty()
 
 void EditorApp::TickHlslCompile()
 {
-    if (m_hlslSourceDir.empty()) return;
+    if (m_hlslSourceDir.empty()) {
+        return;
+    }
     FBZZ_PROFILE_SCOPE("HotReload::HlslCompile");
 
     if (m_hlslCompilePending) {
-        if (m_packageBuild.IsRunning()) return;
-        if (!m_ctx.hotReloadEnabled || (m_ctx.playMode && !m_ctx.playMode->IsInEditor())) return;
+        if (m_packageBuild.IsRunning()) {
+            return;
+        }
+        if (!m_ctx.hotReloadEnabled || (m_ctx.playMode && !m_ctx.playMode->IsInEditor())) {
+            return;
+        }
         m_hlslDebounceTimer -= ImGui::GetIO().DeltaTime;
-        if (m_hlslDebounceTimer > 0.0f) return;
+        if (m_hlslDebounceTimer > 0.0f) {
+            return;
+        }
 
         m_hlslCompilePending = false;
 
-        /// @note ホットリロードは未 Configure のゲームプロジェクトでも動く必要があるため、 正式ビルド用 CMake ターゲットを経由せず、差分対応 PowerShell を直接非同期実行する。
+        // ホットリロードは未 Configure のゲームプロジェクトでも動く必要があるため、 正式ビルド用 CMake ターゲットを経由せず、差分対応 PowerShell を直接非同期実行する。
         if (!util::FileSystem::Exists(m_compileShadersScript)) {
             SetHotReloadState(EditorContext::HotReloadState::Failed, "HLSL: compile_shaders.ps1 not found");
             return;
@@ -1057,7 +1261,7 @@ void EditorApp::SetHotReloadState(EditorContext::HotReloadState state, const std
 
     m_ctx.hotReloadState   = state;
     m_ctx.hotReloadMessage = msg;
-    /// @note 対象は呼び出し元の文言の接頭辞で決まる (HLSL 側はすべて "HLSL:" で始める)。
+    // 対象は呼び出し元の文言の接頭辞で決まる (HLSL 側はすべて "HLSL:" で始める)。
     if (!msg.empty()) {
         FBZZ_LOG_INFO("[HotReload] %s", msg.c_str());
     }
@@ -1066,12 +1270,15 @@ void EditorApp::SetHotReloadState(EditorContext::HotReloadState state, const std
         m_ctx.hotReloadStartTime  = now;
         m_ctx.hotReloadDoneTimer  = 0.0f;
     }
-    if (state != State::Done && state != State::Failed) return;
+    if (state != State::Done && state != State::Failed) {
+        return;
+    }
 
     m_ctx.hotReloadFinishTime = now;
-    /// @note システムサウンドを使う。非同期で鳴り、エディターが最背面でも届き、音量は OS のミキサーに従う。
-    if (m_ctx.hotReloadSound)
+    // システムサウンドを使う。非同期で鳴り、エディターが最背面でも届き、音量は OS のミキサーに従う。
+    if (m_ctx.hotReloadSound) {
         MessageBeep(state == State::Done ? MB_ICONASTERISK : MB_ICONHAND);
+    }
     char text[256];
     if (state == State::Done) {
         std::snprintf(text, sizeof(text), "%s reloaded (%.1fs)",
@@ -1087,17 +1294,24 @@ void EditorApp::SetHotReloadState(EditorContext::HotReloadState state, const std
 
 void EditorApp::RemoveEditorHiding()
 {
-    if (!m_ctx.activeScene || m_ctx.editorHiddenGuids.empty()) return;
+    if (!m_ctx.activeScene || m_ctx.editorHiddenGuids.empty()) {
+        return;
+    }
     for (auto& go : m_ctx.activeScene->GameObjects())
-        if (const auto found = m_ctx.editorHiddenGuids.find(go.instanceId); found != m_ctx.editorHiddenGuids.end())
+        if (const auto found = m_ctx.editorHiddenGuids.find(go.instanceId); found != m_ctx.editorHiddenGuids.end()) {
             go.SetActive(found->second);
+        }
 }
 
 void EditorApp::RestoreEditorHiding()
 {
-    if (!m_ctx.activeScene || m_ctx.editorHiddenGuids.empty()) return;
+    if (!m_ctx.activeScene || m_ctx.editorHiddenGuids.empty()) {
+        return;
+    }
     for (auto& go : m_ctx.activeScene->GameObjects())
-        if (m_ctx.editorHiddenGuids.contains(go.instanceId)) go.SetActive(false);
+        if (m_ctx.editorHiddenGuids.contains(go.instanceId)) {
+            go.SetActive(false);
+        }
 }
 
 void EditorApp::CaptureEditorViewStateToSceneMeta()
@@ -1108,7 +1322,7 @@ void EditorApp::CaptureEditorViewStateToSceneMeta()
         (void)wasActive;
         hidden.push_back(guid);
     }
-    /// @note 保存順が毎回変わると .meta の差分が無意味に膨らむ (unordered_map の走査順は不定)。
+    // 保存順が毎回変わると .meta の差分が無意味に膨らむ (unordered_map の走査順は不定)。
     std::sort(hidden.begin(), hidden.end());
     m_ctx.editorSceneState.SetHiddenObjects(std::move(hidden));
 
@@ -1116,8 +1330,9 @@ void EditorApp::CaptureEditorViewStateToSceneMeta()
     if (m_ctx.activeScene) {
         locked.reserve(m_ctx.lockedEntities.size());
         for (const scene::EntityID id : m_ctx.lockedEntities)
-            if (const auto* go = m_ctx.activeScene->GetGameObject(id))
+            if (const auto* go = m_ctx.activeScene->GetGameObject(id)) {
                 locked.push_back(go->instanceId);
+            }
         std::sort(locked.begin(), locked.end());
     }
     m_ctx.editorSceneState.SetLockedObjects(std::move(locked));
@@ -1127,33 +1342,47 @@ void EditorApp::ApplyEditorViewStateFromSceneMeta()
 {
     m_ctx.editorHiddenGuids.clear();
     m_ctx.lockedEntities.clear();
-    if (!m_ctx.activeScene) return;
+    if (!m_ctx.activeScene) {
+        return;
+    }
 
     const auto& hidden = m_ctx.editorSceneState.GetHiddenObjects();
     const auto& locked = m_ctx.editorSceneState.GetLockedObjects();
-    if (hidden.empty() && locked.empty()) return;
+    if (hidden.empty() && locked.empty()) {
+        return;
+    }
 
     std::unordered_map<std::string_view, scene::GameObject*> byGuid;
     for (const auto& guid : hidden)
-        if (!guid.empty()) byGuid.try_emplace(guid, nullptr);
+        if (!guid.empty()) {
+            byGuid.try_emplace(guid, nullptr);
+        }
     for (const auto& guid : locked)
-        if (!guid.empty()) byGuid.try_emplace(guid, nullptr);
+        if (!guid.empty()) {
+            byGuid.try_emplace(guid, nullptr);
+        }
     for (auto& object : m_ctx.activeScene->GameObjects()) {
         const auto entry = byGuid.find(object.instanceId);
-        if (entry != byGuid.end() && !entry->second) entry->second = &object;
+        if (entry != byGuid.end() && !entry->second) {
+            entry->second = &object;
+        }
     }
 
-    /// @note .scene には非表示を解除した状態の activeSelf が入っている (Save 前に RemoveEditorHiding が戻す)。つまり「隠す前の値」はいま読んだ値そのもの。
+    // .scene には非表示を解除した状態の activeSelf が入っている (Save 前に RemoveEditorHiding が戻す)。つまり「隠す前の値」はいま読んだ値そのもの。
     for (const auto& guid : hidden) {
         const auto entry = byGuid.find(guid);
-        if (entry == byGuid.end() || !entry->second) continue;
+        if (entry == byGuid.end() || !entry->second) {
+            continue;
+        }
         auto& object = *entry->second;
         m_ctx.editorHiddenGuids.try_emplace(guid, object.activeSelf());
         object.SetActive(false);
     }
     for (const auto& guid : locked) {
         const auto entry = byGuid.find(guid);
-        if (entry != byGuid.end() && entry->second) m_ctx.lockedEntities.push_back(entry->second->GetID());
+        if (entry != byGuid.end() && entry->second) {
+            m_ctx.lockedEntities.push_back(entry->second->GetID());
+        }
     }
 }
 

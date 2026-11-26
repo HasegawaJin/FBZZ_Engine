@@ -55,8 +55,12 @@ const FluidPartHandle* FindHandle(const std::vector<FluidPartHandle>& handles, F
                                   FluidHandleKind kind, int keyIndex = -1)
 {
     for (const FluidPartHandle& handle : handles) {
-        if (handle.list != list || handle.index != index || handle.kind != kind) continue;
-        if (kind == FluidHandleKind::MotionKey && handle.keyIndex != keyIndex) continue;
+        if (handle.list != list || handle.index != index || handle.kind != kind) {
+            continue;
+        }
+        if (kind == FluidHandleKind::MotionKey && handle.keyIndex != keyIndex) {
+            continue;
+        }
         return &handle;
     }
     return nullptr;
@@ -106,7 +110,7 @@ TEST(FluidPartOverlay, SelectedSphereSourceHasCenterAndSizeButNoDirection)
     ExpectScreenNear(size->screen, mapping.ToScreen({ 0.45f, -0.1f, 0.0f }));
     EXPECT_EQ(FindHandle(handles, FluidSelectionKind::Source, 0, FluidHandleKind::Direction), nullptr);
 
-    /// @note 選ばれていない部品は Center だけ (つかむと選択が移る)。
+    // 選ばれていない部品は Center だけ (つかむと選択が移る)。
     EXPECT_NE(FindHandle(handles, FluidSelectionKind::Source, 1, FluidHandleKind::Center), nullptr);
     EXPECT_EQ(FindHandle(handles, FluidSelectionKind::Source, 1, FluidHandleKind::Size), nullptr);
 }
@@ -117,7 +121,7 @@ TEST(FluidPartOverlay, PicksTheNearestHandleAndPrefersTheSelectedPartOnTies)
     const FluidViewMapping mapping = MakeMapping();
     fluid::FluidRecipe recipe;
     recipe.sources.push_back(MakeSource(fluid::FluidSourceShape::Sphere, { 0.0f, 0.0f, 0.0f }, { 0.3f, 0.3f, 0.3f }));
-    /// @note 選んでいない発生源の中心を、選んだ発生源の大きさのハンドルにちょうど重ねる。
+    // 選んでいない発生源の中心を、選んだ発生源の大きさのハンドルにちょうど重ねる。
     recipe.sources.push_back(MakeSource(fluid::FluidSourceShape::Sphere, { 0.3f, 0.0f, 0.0f }, { 0.1f, 0.1f, 0.1f }));
     const std::vector<FluidPartHandle> handles = editor::CollectFluidPartHandles(
         mapping, recipe, 0.0f, Select(FluidSelectionKind::Source, 0), FluidPartVisibility{});
@@ -157,7 +161,7 @@ TEST(FluidPartOverlay, DraggingTheCenterOfAMovingPartLandsItsCurrentPoseOnTheCur
 {
     const FluidViewMapping mapping = MakeMapping();
     fluid::FluidRecipe recipe;
-    /// @note time は warmup の後を 0 とする。動きは warmup + time (= 0.5) で評価する。
+    // time は warmup の後を 0 とする。動きは warmup + time (= 0.5) で評価する。
     recipe.output.warmup = 0.25f;
     fluid::FluidSource source =
         MakeSource(fluid::FluidSourceShape::Sphere, { 0.0f, -0.6f, 0.2f }, { 0.2f, 0.2f, 0.2f });
@@ -177,7 +181,7 @@ TEST(FluidPartOverlay, DraggingTheCenterOfAMovingPartLandsItsCurrentPoseOnTheCur
     EXPECT_NEAR(posed.x, 0.1f, kDomainEps);
     EXPECT_NEAR(posed.y, 0.3f, kDomainEps);
     EXPECT_NEAR(recipe.sources[0].center.z, 0.2f, kDomainEps);
-    /// @note 動きそのもの (キー) は触らない。
+    // 動きそのもの (キー) は触らない。
     EXPECT_NEAR(recipe.sources[0].motion.keys[1].offset.x, 0.4f, kDomainEps);
     EXPECT_NEAR(recipe.sources[0].motion.keys[1].offset.y, 0.2f, kDomainEps);
 }
@@ -237,7 +241,7 @@ TEST(FluidPartOverlay, RotatesAConeFromTheHandleAtItsBase)
     EXPECT_NEAR(d.x, 1.0f, kDomainEps);
     EXPECT_NEAR(d.y, 0.0f, kDomainEps);
     EXPECT_NEAR(d.z, 0.0f, kDomainEps);
-    /// @note 底がカーソルに残るよう、長さもカーソルまでの距離になる。底の半径は変えない。
+    // 底がカーソルに残るよう、長さもカーソルまでの距離になる。底の半径は変えない。
     EXPECT_NEAR(recipe.sources[0].size.y, 0.3f, kDomainEps);
     EXPECT_NEAR(recipe.sources[0].size.x, 0.1f, kDomainEps);
 }
@@ -262,7 +266,7 @@ TEST(FluidPartOverlay, DirectionDragKeepsTheDepthComponentUnlessItFacesTheView)
     EXPECT_NEAR(recipe.sources[0].direction.y, 0.0f, kDomainEps);
     EXPECT_NEAR(recipe.sources[0].direction.z, 0.8f, kDomainEps);
 
-    /// @note 真正面を向いた向きは z を捨てて画面内へ倒す (長さは保つ)。
+    // 真正面を向いた向きは z を捨てて画面内へ倒す (長さは保つ)。
     handle.index = 1;
     editor::ApplyFluidHandleDrag(recipe, handle, { -0.4f, 0.0f, 0.0f }, 0.0f);
     EXPECT_NEAR(recipe.sources[1].direction.x, -2.0f, kDomainEps);

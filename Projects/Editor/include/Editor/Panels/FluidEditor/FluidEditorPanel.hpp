@@ -93,37 +93,30 @@ private:
     void DrawEmptyState(EditorContext& ctx);
     void DrawProperties(EditorContext& ctx);
 
-    std::unique_ptr<fluideditor::State> m_state;
-    renderer::ResourceManager* m_resources = nullptr;
-    /// @note OnShutdown は ctx を受け取らないが、Baked タブの GPU 資源を返すのに要る。毎フレーム覚え直す。
-    EditorContext* m_context = nullptr;
+    std::unique_ptr<fluideditor::State> m_state; ///< このパネルが所有する流体の編集中のドキュメントとプレビュー状態。
+    renderer::ResourceManager* m_resources = nullptr; ///< 流体プレビューの GPU 資源にアクセスするために借りる ResourceManager。
+    EditorContext* m_context = nullptr; ///< OnShutdown は ctx を受け取らないが、Baked タブの GPU 資源を返すのに要る。毎フレーム覚え直す。
 
-    float m_outlinerWidth = 230.0f;
-    float m_propertiesWidth = 340.0f;
-    float m_timelineHeight = 200.0f;
-    int m_newPresetIndex = 0;
-    /// @note 焼き上がったフレームに Baked タブを前へ出す。
-    bool m_selectBakedTab = false;
-    bool m_apiPreview = false;
-    std::string m_apiProject;
-    /// @note 「自動保存しました」を出しておく残り時間 [秒]。
-    float m_autoSaveNotice = 0.0f;
-    /// @note Asset Browser の選択に追従するか (EditorSettings::fluidEditorFollowSelection が保存先)。
-    bool m_followSelection = true;
-    /// @note 追従したかったが未保存の変更で止めた相手。空でなければツールバーに «切り替える» を出す。
-    std::string m_followBlockedPath;
-    /// @note 最近開いた .fluid (新しい順・絶対パス)。保存先は EditorSettings::recentFluids。
-    std::vector<std::string> m_recentFluids;
+    float m_outlinerWidth = 230.0f; ///< パネル内の発生源や境界を並べる Outliner の現在の幅 [px]。
+    float m_propertiesWidth = 340.0f; ///< 選択した流体要素を編集する設定欄の現在の幅 [px]。
+    float m_timelineHeight = 200.0f; ///< 流体プレビューのタイムラインの現在の高さ [px]。
+    int m_newPresetIndex = 0; ///< 新しい流体アセットの作成時に選択したプリセットの添字。
+    bool m_selectBakedTab = false; ///< 焼き上がったフレームに Baked タブを前へ出す。
+    bool m_apiPreview = false; ///< Editor API が非表示の間もプレビューの処理を要求しているか。
+    std::string m_apiProject; ///< Editor API がプレビューを要求したプロジェクトのルート。
+    float m_autoSaveNotice = 0.0f; ///< 「自動保存しました」を出しておく残り時間 [秒]。
+    bool m_followSelection = true; ///< Asset Browser の選択に追従するか (EditorSettings::fluidEditorFollowSelection が保存先)。
+    std::string m_followBlockedPath; ///< 追従したかったが未保存の変更で止めた相手。空でなければツールバーに «切り替える» を出す。
+    std::vector<std::string> m_recentFluids; ///< 最近開いた .fluid (新しい順・絶対パス)。保存先は EditorSettings::recentFluids。
 
-    std::uint32_t m_bakeJob = 0;
-    std::uint32_t m_effectJob = 0;
-    int m_effectPreset = 0;
-    std::string m_effectDirectory;
-    std::string m_effectError;
-    bool m_bakeMakesVfx = false;
-    std::string m_bakeVfxPath;
-    /// @note AssetDirtyRegistry (終了時の一括保存) に載せている .fluid。空なら載せていない。
-    std::string m_registeredDirtyPath;
+    std::uint32_t m_bakeJob = 0; ///< このパネルが結果を追う流体ベイクジョブの番号。保留がなければ 0。
+    std::uint32_t m_effectJob = 0; ///< VFX 生成処理の結果を追うジョブ番号。保留がなければ 0。
+    int m_effectPreset = 0; ///< VFX を生成するときに使うプリセットの添字。
+    std::string m_effectDirectory; ///< 生成したエフェクトを書き込むディレクトリ。
+    std::string m_effectError; ///< エフェクト生成に失敗した理由。
+    bool m_bakeMakesVfx = false; ///< 流体のベイク完了後に VFX を生成するか。
+    std::string m_bakeVfxPath; ///< ベイク完了後に生成または更新する VFX のパス。
+    std::string m_registeredDirtyPath; ///< AssetDirtyRegistry (終了時の一括保存) に載せている .fluid。空なら載せていない。
 };
 
-} /// @note namespace fbzz::editor
+} // namespace fbzz::editor

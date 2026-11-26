@@ -25,4 +25,4 @@ private:
     bool m_active = false;
 };
 
-} /// @note namespace fbzz::editor
+} // namespace fbzz::editor

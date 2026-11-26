@@ -8,8 +8,9 @@ namespace fbzz::editor {
 
 void ConsoleSink::OnLog(const core::LogEntry& entry)
 {
-    if (m_entries.size() >= MAX_ENTRIES)
+    if (m_entries.size() >= MAX_ENTRIES) {
         m_entries.pop_front();
+    }
     m_entries.push_back(entry);
     ++m_nextSequence;
     ++m_revision;

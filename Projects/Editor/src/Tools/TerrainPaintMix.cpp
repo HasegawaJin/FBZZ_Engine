@@ -26,42 +26,73 @@ constexpr FloatField FIELDS[]{
 
 bool Valid(const TerrainPaintMix& mix)
 {
-    if (mix.name.empty() || mix.name.size() > 256 || mix.sources.empty() || mix.sources.size() > TERRAIN_SCATTER_PALETTE_LIMIT
-        || !std::isfinite(mix.radius) || mix.radius < 0.25f || mix.radius > TERRAIN_PAINT_MAX_BRUSH_RADIUS
-        || mix.excludedLayer < -1 || mix.excludedLayer > 255
-        || !std::isfinite(mix.feather) || mix.feather < 0 || mix.feather > 1 || mix.excludedMaterials.size() > 256) return false;
-    for (const auto& ref : mix.excludedMaterials) if(ref.empty() || ref.size()>4096) return false;
+    // パレットの表示名と登録できる配置元の件数を確認する。
+    if (mix.name.empty() || mix.name.size() > 256 || mix.sources.empty() || mix.sources.size() > TERRAIN_SCATTER_PALETTE_LIMIT) {
+        return false;
+    }
+
+    // ブラシの半径、除外レイヤー、端の減衰が使用時の範囲に収まることを確認する。
+    if (!std::isfinite(mix.radius) || mix.radius < 0.25f || mix.radius > TERRAIN_PAINT_MAX_BRUSH_RADIUS) {
+        return false;
+    }
+    if (mix.excludedLayer < -1 || mix.excludedLayer > 255) {
+        return false;
+    }
+    if (!std::isfinite(mix.feather) || mix.feather < 0 || mix.feather > 1) {
+        return false;
+    }
+
+    if (mix.excludedMaterials.size() > 256) {
+        return false;
+    }
+    for (const auto& reference : mix.excludedMaterials) {
+        if (reference.empty() || reference.size() > 4096) {
+            return false;
+        }
+    }
+
     std::unordered_set<std::string> sources;
     for (const auto& source : mix.sources) {
         const auto guid = asset::AssetDatabase::GuidFromRef(source.reference);
         if (guid.empty() || source.reference.size() > 4096 || !sources.insert(guid).second
-            || !std::isfinite(source.weight) || source.weight < 0 || source.weight > 100) return false;
+            || !std::isfinite(source.weight) || source.weight < 0 || source.weight > 100) {
+            return false;
+        }
     }
     const auto& p = mix.settings;
     for (const auto& field : FIELDS) {
         const float value = p.*field.member;
-        if (!std::isfinite(value) || value < field.low || value > field.high) return false;
+        if (!std::isfinite(value) || value < field.low || value > field.high) {
+            return false;
+        }
     }
     return p.minHeight <= p.maxHeight && p.minSlope <= p.maxSlope && p.minScale <= p.maxScale && p.minYaw <= p.maxYaw
         && p.layer >= -1 && p.layer <= 255 && p.maxInstances > 0 && p.maxInstances <= 1000000 && p.seed <= INT32_MAX;
 }
-} /// @note namespace terrain_paint_mix_detail
+} // namespace terrain_paint_mix_detail
 
 bool SaveTerrainPaintMix(const std::string& path, const TerrainPaintMix& mix)
 {
     using namespace terrain_paint_mix_detail;
-    if (!Valid(mix)) return false;
+    if (!Valid(mix)) {
+        return false;
+    }
     toml::table table{{"format", "fbzz.terrainmix"}, {"version", 2}, {"name", mix.name}, {"radius", mix.radius},
         {"avoidWater", mix.avoidWater}, {"avoidPaths", mix.avoidPaths}, {"excludedLayer", mix.excludedLayer}};
     toml::array excluded; for(const auto& ref:mix.excludedMaterials)excluded.push_back(ref);
-    table.insert("excludedMaterials",std::move(excluded)); table.insert("feather",mix.feather);
+    table.insert("excludedMaterials",std::move(excluded));
+    table.insert("feather",mix.feather);
     toml::array sources;
-    for (const auto& source : mix.sources) sources.push_back(toml::table{{"reference", source.reference}, {"weight", source.weight}});
+    for (const auto& source : mix.sources) {
+        sources.push_back(toml::table{{"reference", source.reference}, {"weight", source.weight}});
+    }
     table.insert("sources", std::move(sources));
     const auto& p = mix.settings;
     toml::table settings{{"seed", p.seed}, {"maxInstances", p.maxInstances}, {"layer", p.layer},
         {"alignToNormal", p.alignToNormal}, {"alignDownslope", p.alignDownslope}};
-    for (const auto& field : FIELDS) settings.insert(field.name, p.*field.member);
+    for (const auto& field : FIELDS) {
+        settings.insert(field.name, p.*field.member);
+    }
     table.insert("settings", std::move(settings));
     std::ostringstream text; text << table;
     return util::FileSystem::WriteTextAtomic(path, text.str());
@@ -73,46 +104,91 @@ bool LoadTerrainPaintMix(const std::string& path, TerrainPaintMix& out)
     std::string text;
     std::error_code error;
     const auto size = std::filesystem::file_size(util::FileSystem::PathFromUtf8(path), error);
-    if (error || size > 1024 * 1024 || !util::FileSystem::ReadText(path, text)) return false;
+    if (error || size > 1024 * 1024 || !util::FileSystem::ReadText(path, text)) {
+        return false;
+    }
     const auto parsed = toml::parse(text, path);
-    if (!parsed || parsed["format"].value<std::string>() != "fbzz.terrainmix") return false;
-    const auto version=parsed["version"].value<int>(); if(!version || (*version!=1 && *version!=2))return false;
+    if (!parsed || parsed["format"].value<std::string>() != "fbzz.terrainmix") {
+        return false;
+    }
+    const auto version=parsed["version"].value<int>();
+    if(!version || (*version!=1 && *version!=2)) {
+        return false;
+    }
     TerrainPaintMix candidate;
     const auto name = parsed["name"].value<std::string>();
-    const auto radius = parsed["radius"].value<float>(); const auto water = parsed["avoidWater"].value<bool>();
+    const auto radius = parsed["radius"].value<float>();
+    const auto water = parsed["avoidWater"].value<bool>();
     const auto layer = parsed["excludedLayer"].value<int>();
-    const auto* sources = parsed["sources"].as_array(); const auto* settings = parsed["settings"].as_table();
-    if (!name || !radius || !water || !layer || !sources || !settings || sources->size() > TERRAIN_SCATTER_PALETTE_LIMIT) return false;
-    candidate.name = *name; candidate.radius = *radius; candidate.avoidWater = *water; candidate.excludedLayer = *layer;
+    const auto* sources = parsed["sources"].as_array();
+    const auto* settings = parsed["settings"].as_table();
+    if (!name || !radius || !water || !layer) {
+        return false;
+    }
+    if (!sources || !settings || sources->size() > TERRAIN_SCATTER_PALETTE_LIMIT) {
+        return false;
+    }
+
+    candidate.name = *name;
+    candidate.radius = *radius;
+    candidate.avoidWater = *water;
+    candidate.excludedLayer = *layer;
     const auto paths = parsed["avoidPaths"].value<bool>();
-    if (!paths) return false;
+    if (!paths) {
+        return false;
+    }
     candidate.avoidPaths = *paths;
     if (*version==2) {
-        const auto fade=parsed["feather"].value<float>(); const auto* excluded=parsed["excludedMaterials"].as_array();
-        if(!fade||!excluded||excluded->size()>256)return false; candidate.feather=*fade;
+        const auto fade=parsed["feather"].value<float>();
+        const auto* excluded=parsed["excludedMaterials"].as_array();
+        if(!fade||!excluded||excluded->size()>256) {
+            return false;
+        }
+        candidate.feather=*fade;
         for(const auto& ref:*excluded){const auto text=ref.value<std::string>();if(!text)return false;candidate.excludedMaterials.push_back(*text);}
     }
     for (const auto& item : *sources) {
         const auto* row = item.as_table();
-        if (!row) return false;
-        const auto ref = (*row)["reference"].value<std::string>(); const auto weight = (*row)["weight"].value<float>();
-        if (!ref || !weight) return false;
+        if (!row) {
+            return false;
+        }
+        const auto ref = (*row)["reference"].value<std::string>();
+        const auto weight = (*row)["weight"].value<float>();
+        if (!ref || !weight) {
+            return false;
+        }
         candidate.sources.push_back({*ref, *weight});
     }
     auto& p = candidate.settings;
     for (const auto& field : FIELDS) {
         const auto value = (*settings)[field.name].value<float>();
-        if (!value) return false;
+        if (!value) {
+            return false;
+        }
         p.*field.member = *value;
     }
-    const auto seed = (*settings)["seed"].value<int64_t>(), count = (*settings)["maxInstances"].value<int64_t>();
+    const auto seed = (*settings)["seed"].value<int64_t>();
+    const auto count = (*settings)["maxInstances"].value<int64_t>();
     const auto targetLayer = (*settings)["layer"].value<int>();
-    const auto normal = (*settings)["alignToNormal"].value<bool>(), downslope = (*settings)["alignDownslope"].value<bool>();
-    if (!seed || *seed < 0 || *seed > INT32_MAX || !count || *count < 1 || *count > 1000000 || !targetLayer || !normal || !downslope) return false;
-    p.seed = static_cast<uint32_t>(*seed); p.maxInstances = static_cast<uint32_t>(*count); p.layer = *targetLayer;
-    p.alignToNormal = *normal; p.alignDownslope = *downslope;
-    if (!Valid(candidate)) return false;
+    const auto normal = (*settings)["alignToNormal"].value<bool>();
+    const auto downslope = (*settings)["alignDownslope"].value<bool>();
+
+    // シードと配置件数が範囲内であることを確かめてから、整数型へ格納する。
+    if (!seed || *seed < 0 || *seed > INT32_MAX || !count || *count < 1 || *count > 1000000) {
+        return false;
+    }
+    if (!targetLayer || !normal || !downslope) {
+        return false;
+    }
+    p.seed = static_cast<uint32_t>(*seed);
+    p.maxInstances = static_cast<uint32_t>(*count);
+    p.layer = *targetLayer;
+    p.alignToNormal = *normal;
+    p.alignDownslope = *downslope;
+    if (!Valid(candidate)) {
+        return false;
+    }
     out = std::move(candidate);
     return true;
 }
-} /// @note namespace fbzz::editor
+} // namespace fbzz::editor

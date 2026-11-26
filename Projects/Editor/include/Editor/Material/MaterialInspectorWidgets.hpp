@@ -38,4 +38,4 @@ TerrainLayerDirtyFlags DrawTerrainLayerMaterialInspector(asset::MaterialAssetAut
 /// @note 水面は調整頻度が高く、汎用 float 一覧では «どれが波でどれが色か» を追えない。
 bool DrawWaterMaterialInspector(asset::MaterialAssetAuthoring& mat);
 
-} /// @note namespace fbzz::editor
+} // namespace fbzz::editor

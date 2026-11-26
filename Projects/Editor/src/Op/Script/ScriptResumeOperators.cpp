@@ -16,14 +16,19 @@ namespace fbzz::editor {
 namespace {
 scene::ManagedScriptAdapter* Resolve(const EditorContext& ctx, const OpArgs& args, bool requireIdle = true)
 {
-    if (!ctx.activeScene || (requireIdle && (ctx.managedBuildBusy || !scene::ManagedScriptRuntime::Instance().IsDispatchIdle()))) return nullptr;
+    if (!ctx.activeScene || (requireIdle && (ctx.managedBuildBusy || !scene::ManagedScriptRuntime::Instance().IsDispatchIdle()))) {
+        return nullptr;
+    }
     auto* owner = ctx.activeScene->FindByGuid(args.GetString("node"));
     auto* component = owner ? owner->GetComponent<scene::ScriptComponent>() : nullptr;
-    if (!component) return nullptr;
+    if (!component) {
+        return nullptr;
+    }
     const std::string scriptId = args.GetString("scriptId");
     for (const auto& entry : component->scripts)
-        if (entry.script && !entry.m_pendingRemoval && entry.inspectionId + "/" + entry.script->InspectionId() == scriptId)
+        if (entry.script && !entry.m_pendingRemoval && entry.inspectionId + "/" + entry.script->InspectionId() == scriptId) {
             return scene::ManagedScriptRuntime::Instance().FindAdapter(entry.script.get());
+        }
     return nullptr;
 }
 
@@ -49,15 +54,26 @@ struct EnabledTarget {
 
 std::string EnabledContextReason(const EditorContext& context)
 {
-    if (!context.activeScene) return "Scene が開かれていません。";
-    if (context.managedBuildBusy) return "C# スクリプトをビルド中です。完了後に切り替えられます。";
-    if (!scene::ManagedScriptRuntime::Instance().IsDispatchIdle()) return "C# の処理中です。処理が終わるまでお待ちください。";
-    if (!context.undoStack || !context.undoStack->IsRecordingEnabled()) return "履歴を更新できないため、切り替えできません。";
+    if (!context.activeScene) {
+        return "Scene が開かれていません。";
+    }
+    if (context.managedBuildBusy) {
+        return "C# スクリプトをビルド中です。完了後に切り替えられます。";
+    }
+    if (!scene::ManagedScriptRuntime::Instance().IsDispatchIdle()) {
+        return "C# の処理中です。処理が終わるまでお待ちください。";
+    }
+    if (!context.undoStack || !context.undoStack->IsRecordingEnabled()) {
+        return "履歴を更新できないため、切り替えできません。";
+    }
     if (context.playMode) {
-        if (context.playMode->HasPendingRestore()) return "Play の停止処理中です。";
+        if (context.playMode->HasPendingRestore()) {
+            return "Play の停止処理中です。";
+        }
         if (!context.playMode->IsInEditor() &&
-            (!context.playMode->CanEditTemporaryScene(context.activeScene) || context.undoStack != context.playMode->TemporaryUndo()))
+            (!context.playMode->CanEditTemporaryScene(context.activeScene) || context.undoStack != context.playMode->TemporaryUndo())) {
             return "Play 中の編集先が利用できません。";
+        }
     }
     return {};
 }
@@ -77,16 +93,26 @@ bool ReadEnabledTargets(const EditorContext& context, const OpArgs& args,
                 reason = "対象の所有者と Script 個体を指定してください。";
                 return false;
             }
-            OpArgs address; address.Set("node", node->AsString()); address.Set("scriptId", script->AsString());
+            OpArgs address;
+            address.Set("node", node->AsString());
+            address.Set("scriptId", script->AsString());
             addresses.push_back(std::move(address));
         }
-    } else addresses.push_back(args);
+    } else {
+        addresses.push_back(args);
+    }
     std::unordered_set<std::string> unique;
     for (const auto& address : addresses) {
         auto* adapter = Resolve(context, address, false);
-        if (!adapter) { reason = "対象の C# Script が削除または再生成されました。"; return false; }
+        if (!adapter) {
+            reason = "対象の C# Script が削除または再生成されました。";
+            return false;
+        }
         const std::string identity = address.GetString("node") + '/' + address.GetString("scriptId");
-        if (!unique.insert(identity).second) { reason = "同じ Script 個体が重複しています。"; return false; }
+        if (!unique.insert(identity).second) {
+            reason = "同じ Script 個体が重複しています。";
+            return false;
+        }
         targets.push_back({address, adapter->Generation(), adapter->InstanceId(), adapter->enabled});
     }
     return true;
@@ -94,12 +120,17 @@ bool ReadEnabledTargets(const EditorContext& context, const OpArgs& args,
 
 std::string EnabledTargetReason(const EditorContext& context, const std::vector<EnabledTarget>& targets, bool enabled)
 {
-    if (auto reason = EnabledContextReason(context); !reason.empty()) return reason;
+    if (auto reason = EnabledContextReason(context); !reason.empty()) {
+        return reason;
+    }
     for (const auto& target : targets) {
         auto* adapter = Resolve(context, target.address);
-        if (!adapter) return "対象の C# Script が削除または再生成されました。";
-        if (enabled && (adapter->IsRuntimeFaulted() || adapter->RequirementsBlocked()))
+        if (!adapter) {
+            return "対象の C# Script が削除または再生成されました。";
+        }
+        if (enabled && (adapter->IsRuntimeFaulted() || adapter->RequirementsBlocked())) {
             return "停止原因を修復し、「再検証して再開」から再開してください。";
+        }
     }
     return {};
 }
@@ -115,7 +146,9 @@ bool ApplyEnabled(EditorContext& context, const std::vector<EnabledTarget>& targ
         return false;
     }
     reason = EnabledContextReason(context);
-    if (!reason.empty()) return false;
+    if (!reason.empty()) {
+        return false;
+    }
     std::vector<scene::ManagedScriptAdapter*> adapters;
     for (const auto& target : targets) {
         auto* adapter = Resolve(context, target.address);
@@ -134,18 +167,21 @@ bool ApplyEnabled(EditorContext& context, const std::vector<EnabledTarget>& targ
         }
         adapters.push_back(adapter);
     }
-    /// @note 通知は次 Tick の共通 SynchronizeEnabledState に任せ、設定操作中に user callback を実行しない。
+    // 通知は次 Tick の共通 SynchronizeEnabledState に任せ、設定操作中に user callback を実行しない。
     for (size_t index = 0; index < targets.size(); ++index)
         adapters[index]->enabled = undo ? targets[index].before : enabled;
-    if (temporary) context.playMode->MarkTemporarySettingsChanged();
-    else {
+    if (temporary) {
+        context.playMode->MarkTemporarySettingsChanged();
+    } else {
         context.sceneDirty = true;
-        if (context.markSceneDirty) context.markSceneDirty();
+        if (context.markSceneDirty) {
+            context.markSceneDirty();
+        }
     }
     reason.clear();
     return true;
 }
-} /// @note namespace
+} // namespace
 
 void RegisterScriptResumeOperators(OperatorRegistry& registry)
 {
@@ -166,7 +202,9 @@ void RegisterScriptResumeOperators(OperatorRegistry& registry)
     registry.Register(std::move(status));
 
     std::vector<OpParam> enabledTargets = target;
-    for (auto& parameter : enabledTargets) parameter.required = false;
+    for (auto& parameter : enabledTargets) {
+        parameter.required = false;
+    }
     enabledTargets.push_back({"targets", OpParamType::Data, "所有者と Script 個体の一覧", false});
     EditorOperator enabledStatus;
     enabledStatus.id = "script.enabled_status";
@@ -176,12 +214,17 @@ void RegisterScriptResumeOperators(OperatorRegistry& registry)
     enabledStatus.params = enabledTargets;
     enabledStatus.exec = [](OpContext& context, const OpArgs& args) -> OpResult {
         std::vector<EnabledTarget> targets; std::string reason;
-        if (!ReadEnabledTargets(context.ctx, args, targets, reason)) return OpResult::Err("STALE_TARGET", reason);
+        if (!ReadEnabledTargets(context.ctx, args, targets, reason)) {
+            return OpResult::Err("STALE_TARGET", reason);
+        }
         const bool value = targets.front().before;
         const bool mixed = std::any_of(targets.begin(), targets.end(), [value](const auto& item) { return item.before != value; });
         reason = EnabledTargetReason(context.ctx, targets, mixed || !value);
-        OpData data = OpData::MakeObject(); data.Set("enabled", value); data.Set("mixed", mixed);
-        data.Set("editable", reason.empty()); data.Set("diagnostic", reason);
+        OpData data = OpData::MakeObject();
+        data.Set("enabled", value);
+        data.Set("mixed", mixed);
+        data.Set("editable", reason.empty());
+        data.Set("diagnostic", reason);
         return OpResult::Data(std::move(data));
     };
     registry.Register(std::move(enabledStatus));
@@ -206,18 +249,26 @@ void RegisterScriptResumeOperators(OperatorRegistry& registry)
     };
     enabled.exec = [](OpContext& context, const OpArgs& args) -> OpResult {
         std::vector<EnabledTarget> targets; std::string reason;
-        if (!ReadEnabledTargets(context.ctx, args, targets, reason)) return OpResult::Err("STALE_TARGET", reason);
+        if (!ReadEnabledTargets(context.ctx, args, targets, reason)) {
+            return OpResult::Err("STALE_TARGET", reason);
+        }
         const bool after = args.GetBool("enabled");
         std::erase_if(targets, [after](const auto& item) { return item.before == after; });
-        OpResult result = OpResult::Data(OpData::MakeObject()); result.data.Set("enabled", after);
-        if (targets.empty()) { result.noChange = true; return result; }
+        OpResult result = OpResult::Data(OpData::MakeObject());
+        result.data.Set("enabled", after);
+        if (targets.empty()) {
+            result.noChange = true;
+            return result;
+        }
         const uint64_t lifetime = context.ctx.activeScene->GetRenderSceneGeneration();
         const bool temporary = context.ctx.playMode && !context.ctx.playMode->IsInEditor();
         const auto apply = [&ctx = context.ctx, targets = std::move(targets), lifetime, temporary, after](
             bool undo, std::string& reason) {
             return ApplyEnabled(ctx, targets, lifetime, temporary, after, undo, reason);
         };
-        if (!apply(false, reason)) return OpResult::Err("ENABLED_CONFLICT", reason);
+        if (!apply(false, reason)) {
+            return OpResult::Err("ENABLED_CONFLICT", reason);
+        }
         result.command = std::make_unique<CheckedLambdaCommand>("Change Script Enabled",
             [apply](std::string& reason) { return apply(false, reason); },
             [apply](std::string& reason) { return apply(true, reason); });
@@ -240,12 +291,15 @@ void RegisterScriptResumeOperators(OperatorRegistry& registry)
     };
     resume.exec = [](OpContext& c, const OpArgs& args) -> OpResult {
         auto* adapter = Resolve(c.ctx, args);
-        if (!adapter) return OpResult::Err("STALE_TARGET", "対象の C# Script が見つかりません。");
+        if (!adapter) {
+            return OpResult::Err("STALE_TARGET", "対象の C# Script が見つかりません。");
+        }
         auto& runtime = scene::ManagedScriptRuntime::Instance();
-        if (!runtime.Resume(*adapter, args.GetBool("enabled", true)))
+        if (!runtime.Resume(*adapter, args.GetBool("enabled", true))) {
             return OpResult::Err("RESUME_REJECTED", runtime.LastDiagnostic());
+        }
         return OpResult::Data(Status(*adapter, args.GetString("scriptId")));
     };
     registry.Register(std::move(resume));
 }
-} /// @note namespace fbzz::editor
+} // namespace fbzz::editor

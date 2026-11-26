@@ -25,8 +25,9 @@ namespace {
 std::string LowerExt(const std::string& absPath)
 {
     std::string ext = fbzz::util::FileSystem::GetExtension(absPath);
-    for (char& c : ext)
+    for (char& c : ext) {
         c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+    }
     return ext;
 }
 
@@ -51,11 +52,11 @@ HdriPixels HdriLoader::Load(const std::string& absPath)
 {
     const std::string ext = LowerExt(absPath);
 
-    /// @name .hdr (Radiance RGBE)
+    // .hdr (Radiance RGBE)
     if (ext == ".hdr")
     {
         int w = 0, h = 0, ch = 0;
-        /// @note stbi_loadf は RGBE を float RGBA にデコードする。4ch を要求する。
+        // stbi_loadf は RGBE を float RGBA にデコードする。4ch を要求する。
         float* raw = stbi_loadf(absPath.c_str(), &w, &h, &ch, 4);
         if (!raw) {
             FBZZ_LOG_ERROR("HdriLoader: .hdr 読み込み失敗 [%s] %s",
@@ -70,24 +71,24 @@ HdriPixels HdriLoader::Load(const std::string& absPath)
         return result;
     }
 
-    /// @name .exr (OpenEXR)
+    // .exr (OpenEXR)
     if (ext == ".exr")
     {
         float*      raw  = nullptr;
         int         w    = 0, h = 0;
         const char* err  = nullptr;
 
-        /// @note LoadEXR は RGBA float* を malloc で確保して返す。失敗時は err にメッセージを設定。
+        // LoadEXR は RGBA float* を malloc で確保して返す。失敗時は err にメッセージを設定。
         const int ret = LoadEXR(&raw, &w, &h, absPath.c_str(), &err);
         if (ret != TINYEXR_SUCCESS) {
             FBZZ_LOG_ERROR("HdriLoader: .exr 読み込み失敗 [%s] %s",
                            absPath.c_str(), err ? err : "(不明なエラー)");
-            /// @note TinyEXR のエラーメッセージを解放
+            // TinyEXR のエラーメッセージを解放
             FreeEXRErrorMessage(err);
             return {};
         }
 
-        /// @note TinyEXR v1.x は RGBA float を返す (4ch)
+        // TinyEXR v1.x は RGBA float を返す (4ch)
         HdriPixels result;
         result.data  = { raw, [](void* p){ free(p); } };
         result.width  = static_cast<uint32_t>(w);

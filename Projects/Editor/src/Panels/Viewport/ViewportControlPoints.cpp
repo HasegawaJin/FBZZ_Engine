@@ -42,12 +42,26 @@ bool Inside(const ImVec2& point, const ImVec2& min, const ImVec2& size)
 bool Project(const math::Matrix4& matrix, const ImVec2& min, const ImVec2& size,
              const math::Vector3& base, const math::Vector3& offset, ImVec2& out)
 {
-    if (size.x <= 0.0f || size.y <= 0.0f) return false;
+    if (size.x <= 0.0f || size.y <= 0.0f) {
+        return false;
+    }
     const auto clip = matrix * math::Vector4{base.x, base.y, base.z, 1.0f}
         + matrix * math::Vector4{offset.x, offset.y, offset.z, 0.0f};
-    if (!std::isfinite(clip.x) || !std::isfinite(clip.y) || !std::isfinite(clip.z)
-        || !std::isfinite(clip.w) || clip.w <= 1e-6f || clip.z < 0.0f || clip.z > clip.w
-        || clip.x < -clip.w || clip.x > clip.w || clip.y < -clip.w || clip.y > clip.w) return false;
+    // 透視除算できる有限座標か確認し、クリップ空間の範囲外にある点を除く。
+    const bool finiteClipPosition = std::isfinite(clip.x) && std::isfinite(clip.y)
+        && std::isfinite(clip.z) && std::isfinite(clip.w);
+    if (!finiteClipPosition || clip.w <= 1e-6f) {
+        return false;
+    }
+    if (clip.z < 0.0f || clip.z > clip.w) {
+        return false;
+    }
+    const bool insideClipRectangle = clip.x >= -clip.w && clip.x <= clip.w
+        && clip.y >= -clip.w && clip.y <= clip.w;
+    if (!insideClipRectangle) {
+        return false;
+    }
+
     out = {min.x + (clip.x / clip.w * 0.5f + 0.5f) * size.x,
            min.y + (0.5f - clip.y / clip.w * 0.5f) * size.y};
     return Inside(out, min, size);
@@ -63,18 +77,26 @@ const ControlPointPreview* PreviewFor(const ControlPointMoveSession& session, sc
 
 scene::GameObject* EditOwner(EditorContext& ctx)
 {
-    if (!ctx.activeScene) return nullptr;
+    if (!ctx.activeScene) {
+        return nullptr;
+    }
     const auto hasPoints = [](scene::GameObject& object) {
         return object.GetComponent<scene::WaterComponent>() || object.GetComponent<scene::ClothComponent>()
             || object.GetComponent<scene::SplineComponent>() || object.GetComponent<scene::LineRendererComponent>()
             || object.GetComponent<scene::NavMeshPatrolComponent>() || object.GetComponent<scene::NavMeshOffMeshLinkComponent>();
     };
     auto* selected = ctx.GetSelectedGO();
-    if (selected && hasPoints(*selected)) return selected;
+    if (selected && hasPoints(*selected)) {
+        return selected;
+    }
     if (!ctx.controlPointOwnerGuid.empty())
-        if (auto* owner = ctx.activeScene->FindByGuid(ctx.controlPointOwnerGuid)) return owner;
+        if (auto* owner = ctx.activeScene->FindByGuid(ctx.controlPointOwnerGuid)) {
+            return owner;
+        }
     for (auto* object = selected ? selected->GetParent() : nullptr; object; object = object->GetParent())
-        if (hasPoints(*object)) return object;
+        if (hasPoints(*object)) {
+            return object;
+        }
     return nullptr;
 }
 
@@ -92,16 +114,26 @@ bool OwnerReferencesPoint(scene::GameObject& owner, const std::string& guid)
     };
     if (const auto* water = owner.GetComponent<scene::WaterComponent>(); water
         && water->pointSourceMode == scene::ControlPointSourceMode::POINT_OBJECTS
-        && water->surfaceShape != scene::WaterSurfaceShape::RECTANGLE && contains(water->pointBindings)) return true;
+        && water->surfaceShape != scene::WaterSurfaceShape::RECTANGLE && contains(water->pointBindings)) {
+        return true;
+    }
     if (const auto* spline = owner.GetComponent<scene::SplineComponent>(); spline
-        && spline->pointSourceMode == scene::ControlPointSourceMode::POINT_OBJECTS && contains(spline->pointBindings)) return true;
+        && spline->pointSourceMode == scene::ControlPointSourceMode::POINT_OBJECTS && contains(spline->pointBindings)) {
+        return true;
+    }
     if (const auto* line = owner.GetComponent<scene::LineRendererComponent>(); line
-        && line->pointSourceMode == scene::ControlPointSourceMode::POINT_OBJECTS && contains(line->pointBindings)) return true;
+        && line->pointSourceMode == scene::ControlPointSourceMode::POINT_OBJECTS && contains(line->pointBindings)) {
+        return true;
+    }
     if (const auto* patrol = owner.GetComponent<scene::NavMeshPatrolComponent>(); patrol
-        && patrol->pointSourceMode == scene::ControlPointSourceMode::POINT_OBJECTS && contains(patrol->waypointBindings)) return true;
+        && patrol->pointSourceMode == scene::ControlPointSourceMode::POINT_OBJECTS && contains(patrol->waypointBindings)) {
+        return true;
+    }
     if (const auto* cloth = owner.GetComponent<scene::ClothComponent>())
         for (const auto& attachment : cloth->attachments)
-            if (attachment.targetReference.guid == guid) return true;
+            if (attachment.targetReference.guid == guid) {
+                return true;
+            }
     const auto* link = owner.GetComponent<scene::NavMeshOffMeshLinkComponent>();
     return link && link->pointSourceMode == scene::ControlPointSourceMode::POINT_OBJECTS
         && (link->startTarget.guid == guid || link->endTarget.guid == guid);
@@ -117,7 +149,9 @@ bool SameMatrix(const math::Matrix4& lhs, const math::Matrix4& rhs)
 {
     for (int row = 0; row < 4; ++row)
         for (int column = 0; column < 4; ++column)
-            if (lhs.m[row][column] != rhs.m[row][column]) return false;
+            if (lhs.m[row][column] != rhs.m[row][column]) {
+                return false;
+            }
     return true;
 }
 
@@ -152,7 +186,9 @@ const OwnerMarkerPlacement* PlacementFor(const std::vector<OwnerMarkerPlacement>
 scene::EntityID BindingTarget(scene::Scene& scene, const scene::ObjectReference& reference)
 {
     if (!reference.guid.empty()) {
-        if (auto* object = scene.FindByGuid(reference.guid)) return object->GetID();
+        if (auto* object = scene.FindByGuid(reference.guid)) {
+            return object->GetID();
+        }
         return scene::EntityID::INVALID;
     }
     return scene.GetGameObject(reference.id) ? reference.id : scene::EntityID::INVALID;
@@ -162,7 +198,9 @@ scene::EntityID BindingTarget(scene::Scene& scene, const scene::ObjectReference&
 bool AxisParameter(const EditorContext& ctx, const ImVec2& min, const ImVec2& size,
                    const WaterHandle& handle, float& parameter)
 {
-    if (!ctx.editorCamera || size.x <= 0.0f || size.y <= 0.0f) return false;
+    if (!ctx.editorCamera || size.x <= 0.0f || size.y <= 0.0f) {
+        return false;
+    }
     const auto mouse = ImGui::GetMousePos();
     const float nx = (mouse.x - min.x) / size.x * 2.0f - 1.0f;
     const float ny = 1.0f - (mouse.y - min.y) / size.y * 2.0f;
@@ -170,7 +208,9 @@ bool AxisParameter(const EditorContext& ctx, const ImVec2& min, const ImVec2& si
     const auto inverse = math::Matrix4::Inverse(ctx.editorCamera->GetProjectionMatrix() * relativeView);
     auto nearPoint = inverse * math::Vector4{nx, ny, 0.0f, 1.0f};
     auto farPoint = inverse * math::Vector4{nx, ny, 1.0f, 1.0f};
-    if (!std::isfinite(nearPoint.w) || !std::isfinite(farPoint.w) || std::fabs(nearPoint.w) < 1e-6f || std::fabs(farPoint.w) < 1e-6f) return false;
+    if (!std::isfinite(nearPoint.w) || !std::isfinite(farPoint.w) || std::fabs(nearPoint.w) < 1e-6f || std::fabs(farPoint.w) < 1e-6f) {
+        return false;
+    }
     const math::Vector3 origin{nearPoint.x / nearPoint.w, nearPoint.y / nearPoint.w, nearPoint.z / nearPoint.w};
     const math::Vector3 far{farPoint.x / farPoint.w, farPoint.y / farPoint.w, farPoint.z / farPoint.w};
     const auto direction = far - origin;
@@ -179,11 +219,13 @@ bool AxisParameter(const EditorContext& ctx, const ImVec2& min, const ImVec2& si
     const float rr = math::Vector3::Dot(direction, direction);
     const float ar = math::Vector3::Dot(handle.axis, direction);
     const float determinant = aa * rr - ar * ar;
-    if (!std::isfinite(determinant) || aa < 1e-8f || rr < 1e-8f || determinant < aa * rr * 1e-5f) return false;
+    if (!std::isfinite(determinant) || aa < 1e-8f || rr < 1e-8f || determinant < aa * rr * 1e-5f) {
+        return false;
+    }
     parameter = (rr * math::Vector3::Dot(handle.axis, relative) - ar * math::Vector3::Dot(direction, relative)) / determinant;
     return std::isfinite(parameter);
 }
-} /// @note namespace
+} // namespace
 
 struct ControlPointViewportTool::Impl {
     ControlPointMoveSession move;
@@ -222,8 +264,12 @@ ControlPointViewportTool& ControlPointViewportTool::operator=(ControlPointViewpo
 
 void ControlPointViewportTool::Cancel()
 {
-    if (!m_impl) return;
-    m_impl->move.Cancel(); m_impl->attribute.active = false; m_impl->wasUsing = false;
+    if (!m_impl) {
+        return;
+    }
+    m_impl->move.Cancel();
+    m_impl->attribute.active = false;
+    m_impl->wasUsing = false;
 }
 
 bool ControlPointViewportTool::Update(EditorContext& ctx, const ImVec2& min, const ImVec2& size,
@@ -234,7 +280,9 @@ bool ControlPointViewportTool::Update(EditorContext& ctx, const ImVec2& min, con
     PointGizmoId gizmoId(m_impl.get());
     const bool inside = Inside(ImGui::GetMousePos(), min, size);
     if (state.lastFrame != frame - 1 && state.lastFrame != frame) {
-        if (state.move.Active() || state.attribute.active) state.untilRelease = true;
+        if (state.move.Active() || state.attribute.active) {
+            state.untilRelease = true;
+        }
         Cancel();
     }
     state.lastFrame = frame;
@@ -251,38 +299,53 @@ bool ControlPointViewportTool::Update(EditorContext& ctx, const ImVec2& min, con
         || (state.move.Active() && !state.move.Validate(ctx));
     if (cancelInput) {
         if (state.move.Active() || state.attribute.active || state.wasUsing) {
-            if (ImGuizmo::IsUsing()) { ImGuizmo::Enable(false); ImGuizmo::Enable(true); }
+            if (ImGuizmo::IsUsing()) {
+                ImGuizmo::Enable(false);
+                ImGuizmo::Enable(true);
+            }
             state.untilRelease = true;
         }
         Cancel();
     }
-    if (!editable || !ctx.editorCamera || !ctx.activeScene)
+    if (!editable || !ctx.editorCamera || !ctx.activeScene) {
         return state.untilRelease && ImGui::IsMouseDown(ImGuiMouseButton_Left);
+    }
     bool suppressGesture = false;
     if (state.untilRelease) {
-        if (!ImGui::IsMouseDown(ImGuiMouseButton_Left)) state.untilRelease = false;
-        else suppressGesture = true;
+        if (!ImGui::IsMouseDown(ImGuiMouseButton_Left)) {
+            state.untilRelease = false;
+        } else {
+            suppressGesture = true;
+        }
     }
     const bool otherClaim = ctx.controlPointMouseClaimFrame == frame && !state.move.Active() && !state.attribute.active;
-    /// @note HUDや別ツールのmouse取得時は入力だけ止め、Scene Viewの点表示は維持する。
+    // HUDや別ツールのmouse取得時は入力だけ止め、Scene Viewの点表示は維持する。
     const bool canStart = !cancelInput && !suppressGesture && authoringAllowed && hovered && inside
         && !otherClaim && !ImGui::GetIO().KeyAlt
         && !ImGui::IsMouseDown(ImGuiMouseButton_Right) && !ImGui::IsMouseDown(ImGuiMouseButton_Middle)
         && !ImGui::IsPopupOpen("", ImGuiPopupFlags_AnyPopupId | ImGuiPopupFlags_AnyPopupLevel);
     const auto viewProjection = ctx.editorCamera->GetProjectionMatrix() * ctx.editorCamera->GetViewMatrix();
     if (state.selection != ctx.selectedEntities) {
-        state.selection = ctx.selectedEntities; state.selectedIds.clear();
-        for (const auto entity : state.selection) state.selectedIds.insert(static_cast<uint64_t>(entity.generation) << 32 | entity.index);
+        state.selection = ctx.selectedEntities;
+        state.selectedIds.clear();
+        for (const auto entity : state.selection) {
+            state.selectedIds.insert(static_cast<uint64_t>(entity.generation) << 32 | entity.index);
+        }
     }
     bool claimed = state.move.Active() || state.attribute.active || suppressGesture;
     auto* owner = EditOwner(ctx);
     auto* water = owner ? owner->GetComponent<scene::WaterComponent>() : nullptr;
     auto* spline = owner ? owner->GetComponent<scene::SplineComponent>() : nullptr;
-    state.curve.clear(); state.polylines.clear(); state.handles.clear(); state.ownerMarkers.clear();
+    state.curve.clear();
+    state.polylines.clear();
+    state.handles.clear();
+    state.ownerMarkers.clear();
     const auto addOwnerMarker = [&](const scene::ObjectReference& reference,
         const math::Vector3& base, const math::Vector3& offset) {
         const auto entity = BindingTarget(*ctx.activeScene, reference);
-        if (entity.IsValid()) state.ownerMarkers.push_back({entity, base, offset});
+        if (entity.IsValid()) {
+            state.ownerMarkers.push_back({entity, base, offset});
+        }
     };
     if (water && water->pointSourceMode == scene::ControlPointSourceMode::POINT_OBJECTS) {
         auto points = scene::ResolveWaterControlPointAuthoring(*ctx.activeScene, owner->GetID(), *water, water->pointRuntimeMode);
@@ -297,12 +360,16 @@ bool ControlPointViewportTool::Update(EditorContext& ctx, const ImVec2& min, con
                     point.localPosition += math::Vector3{local.x / owner->transform.worldScale.x, local.y / owner->transform.worldScale.y, local.z / owner->transform.worldScale.z};
                 }
                 state.curve.push_back(point.localPosition);
-                if (state.move.Active()) continue;
+                if (state.move.Active()) {
+                    continue;
+                }
                 const auto base = owner->transform.worldPosition;
                 const auto pointOffset = Offset(owner->transform, point.localPosition);
                 const float depth = state.attribute.active && state.attribute.handle.id == point.id && !state.attribute.handle.width ? state.attribute.candidate : point.depth;
                 WaterHandle handle{point.id, false, depth, base, pointOffset, {0.0f, -1.0f, 0.0f}};
-                if (Project(viewProjection, min, size, owner->transform.worldPosition, Offset(owner->transform, point.localPosition) + handle.axis * depth, handle.screen)) state.handles.push_back(handle);
+                if (Project(viewProjection, min, size, owner->transform.worldPosition, Offset(owner->transform, point.localPosition) + handle.axis * depth, handle.screen)) {
+                    state.handles.push_back(handle);
+                }
                 if (water->surfaceShape == scene::WaterSurfaceShape::SPLINE_RIVER && points.points.size() > 1) {
                     const auto prior = points.points[index > 0 ? index - 1 : index].localPosition;
                     const auto next = points.points[index + 1 < points.points.size() ? index + 1 : index].localPosition;
@@ -312,7 +379,9 @@ bool ControlPointViewportTool::Update(EditorContext& ctx, const ImVec2& min, con
                         const float width = state.attribute.active && state.attribute.handle.id == point.id && state.attribute.handle.width ? state.attribute.candidate : point.width;
                         for (const float sign : {-1.0f, 1.0f}) {
                             WaterHandle widthHandle{point.id, true, width, base, pointOffset, axis * sign};
-                            if (Project(viewProjection, min, size, owner->transform.worldPosition, Offset(owner->transform, point.localPosition) + widthHandle.axis * width, widthHandle.screen)) state.handles.push_back(widthHandle);
+                            if (Project(viewProjection, min, size, owner->transform.worldPosition, Offset(owner->transform, point.localPosition) + widthHandle.axis * width, widthHandle.screen)) {
+                                state.handles.push_back(widthHandle);
+                            }
                         }
                     }
                 }
@@ -320,7 +389,9 @@ bool ControlPointViewportTool::Update(EditorContext& ctx, const ImVec2& min, con
         }
     } else if (water && water->pointSourceMode == scene::ControlPointSourceMode::INLINE
         && water->surfaceShape != scene::WaterSurfaceShape::RECTANGLE) {
-        for (const auto& point : water->splinePoints) state.curve.push_back(point.localPosition);
+        for (const auto& point : water->splinePoints) {
+            state.curve.push_back(point.localPosition);
+        }
     } else if (spline && spline->pointSourceMode == scene::ControlPointSourceMode::POINT_OBJECTS) {
         const auto points = scene::ResolveSplinePointAuthoring(*ctx.activeScene, owner->GetID(), *spline, spline->pointRuntimeMode);
         if (points.valid) for (size_t index = 0; index < points.points.size(); ++index) {
@@ -354,13 +425,17 @@ bool ControlPointViewportTool::Update(EditorContext& ctx, const ImVec2& min, con
                             points.space == scene::LineSpace::Local ? owner->transform.worldPosition : point,
                             points.space == scene::LineSpace::Local ? Offset(owner->transform, point) : math::Vector3::ZERO);
                         const auto target = BindingTarget(*ctx.activeScene, line->pointBindings[index].target);
-                        if (const auto* preview = PreviewFor(state.move, target)) worldPoint += preview->worldDelta;
+                        if (const auto* preview = PreviewFor(state.move, target)) {
+                            worldPoint += preview->worldDelta;
+                        }
                     } else if (points.space == scene::LineSpace::Local && ownerPreview) {
                         worldPoint += ownerPreview->worldDelta;
                     }
                     path.points.push_back(worldPoint);
                 }
-                if (path.points.size() >= 2) state.polylines.push_back(std::move(path));
+                if (path.points.size() >= 2) {
+                    state.polylines.push_back(std::move(path));
+                }
             }
         }
         if (auto* patrol = owner->GetComponent<scene::NavMeshPatrolComponent>()) {
@@ -376,11 +451,15 @@ bool ControlPointViewportTool::Update(EditorContext& ctx, const ImVec2& min, con
                         && index < patrol->waypointBindings.size()) {
                         addOwnerMarker(patrol->waypointBindings[index].target, point, math::Vector3::ZERO);
                         const auto target = BindingTarget(*ctx.activeScene, patrol->waypointBindings[index].target);
-                        if (const auto* preview = PreviewFor(state.move, target)) point += preview->worldDelta;
+                        if (const auto* preview = PreviewFor(state.move, target)) {
+                            point += preview->worldDelta;
+                        }
                     }
                     path.points.push_back(point);
                 }
-                if (path.points.size() >= 2) state.polylines.push_back(std::move(path));
+                if (path.points.size() >= 2) {
+                    state.polylines.push_back(std::move(path));
+                }
             }
         }
         if (const auto* link = owner->GetComponent<scene::NavMeshOffMeshLinkComponent>()) {
@@ -391,10 +470,12 @@ bool ControlPointViewportTool::Update(EditorContext& ctx, const ImVec2& min, con
                 if (link->pointSourceMode == scene::ControlPointSourceMode::POINT_OBJECTS) {
                     addOwnerMarker(link->startTarget, endpoints.startPoint, math::Vector3::ZERO);
                     addOwnerMarker(link->endTarget, endpoints.endPoint, math::Vector3::ZERO);
-                    if (const auto* preview = PreviewFor(state.move, BindingTarget(*ctx.activeScene, link->startTarget)))
+                    if (const auto* preview = PreviewFor(state.move, BindingTarget(*ctx.activeScene, link->startTarget))) {
                         path.points[0] += preview->worldDelta;
-                    if (const auto* preview = PreviewFor(state.move, BindingTarget(*ctx.activeScene, link->endTarget)))
+                    }
+                    if (const auto* preview = PreviewFor(state.move, BindingTarget(*ctx.activeScene, link->endTarget))) {
                         path.points[1] += preview->worldDelta;
+                    }
                 }
                 state.polylines.push_back(std::move(path));
             }
@@ -412,22 +493,25 @@ bool ControlPointViewportTool::Update(EditorContext& ctx, const ImVec2& min, con
             const auto b = scene::EvaluateSplineCurve(state.curve, closed, static_cast<float>(index + 1) / static_cast<float>(segments));
             ImVec2 start, end;
             if (Project(viewProjection, min, size, owner->transform.worldPosition, Offset(owner->transform, a), start)
-                && Project(viewProjection, min, size, owner->transform.worldPosition, Offset(owner->transform, b), end))
+                && Project(viewProjection, min, size, owner->transform.worldPosition, Offset(owner->transform, b), end)) {
                 draw->AddLine(start, end, IM_COL32(90, 210, 255, 220), 2.0f);
+            }
         }
     }
     for (const auto& path : state.polylines) {
         for (size_t index = 1; index < path.points.size(); ++index) {
             ImVec2 start, end;
             if (Project(viewProjection, min, size, path.points[index - 1], math::Vector3::ZERO, start)
-                && Project(viewProjection, min, size, path.points[index], math::Vector3::ZERO, end))
+                && Project(viewProjection, min, size, path.points[index], math::Vector3::ZERO, end)) {
                 draw->AddLine(start, end, IM_COL32(255, 170, 90, 220), 2.0f);
+            }
         }
         if (path.closed && path.points.size() >= 3) {
             ImVec2 start, end;
             if (Project(viewProjection, min, size, path.points.back(), math::Vector3::ZERO, start)
-                && Project(viewProjection, min, size, path.points.front(), math::Vector3::ZERO, end))
+                && Project(viewProjection, min, size, path.points.front(), math::Vector3::ZERO, end)) {
                 draw->AddLine(start, end, IM_COL32(255, 170, 90, 220), 2.0f);
+            }
         }
     }
     scene::EntityID hit{};
@@ -441,12 +525,15 @@ bool ControlPointViewportTool::Update(EditorContext& ctx, const ImVec2& min, con
         for (std::size_t index = 0; index < water->splinePoints.size(); ++index) {
             ImVec2 screen;
             if (!Project(viewProjection, min, size, owner->transform.worldPosition,
-                    Offset(owner->transform, water->splinePoints[index].localPosition), screen)) continue;
+                    Offset(owner->transform, water->splinePoints[index].localPosition), screen)) {
+                continue;
+            }
             const auto mouse = ImGui::GetMousePos();
             const float dx = mouse.x - screen.x, dy = mouse.y - screen.y;
             const float distance = dx * dx + dy * dy;
             if (canStart && !ctx.IsLocked(owner->GetID()) && distance <= 100.0f && distance < best) {
-                best = distance; inlineHit = index;
+                best = distance;
+                inlineHit = index;
             }
             draw->AddCircleFilled(screen, 5.0f, IM_COL32(90, 210, 255, 240));
             draw->AddCircle(screen, 7.0f, IM_COL32(20, 35, 45, 255), 16, 1.5f);
@@ -458,18 +545,24 @@ bool ControlPointViewportTool::Update(EditorContext& ctx, const ImVec2& min, con
     }
     for (const auto id : ctx.activeScene->GetEntities<scene::TargetPointComponent>()) {
         auto* target = ctx.activeScene->GetGameObject(id);
-        if (!target) continue;
+        if (!target) {
+            continue;
+        }
         auto& object = *target;
         const auto* marker = object.GetComponent<scene::TargetPointComponent>();
-        if (!marker || !marker->visible) continue;
+        if (!marker || !marker->visible) {
+            continue;
+        }
         const auto* preview = PreviewFor(state.move, object.GetID());
         const auto* placement = PlacementFor(state.ownerMarkers, object.GetID());
         ImVec2 screen;
-        /// @note 所有者の数値点はbaseと相対offsetを分け、大きなworld座標で丸められたGO位置へ戻さない。
+        // 所有者の数値点はbaseと相対offsetを分け、大きなworld座標で丸められたGO位置へ戻さない。
         const auto base = placement ? placement->base : object.transform.worldPosition;
         const auto offset = (placement ? placement->offset : math::Vector3::ZERO)
             + (preview ? preview->worldDelta : math::Vector3::ZERO);
-        if (!Project(viewProjection, min, size, base, offset, screen)) continue;
+        if (!Project(viewProjection, min, size, base, offset, screen)) {
+            continue;
+        }
         const float radius = std::isfinite(marker->screenSize) ? std::clamp(marker->screenSize, 4.0f, 30.0f) : 9.0f;
         const auto entity = object.GetID();
         const bool selected = state.selectedIds.contains(static_cast<uint64_t>(entity.generation) << 32 | entity.index);
@@ -493,14 +586,19 @@ bool ControlPointViewportTool::Update(EditorContext& ctx, const ImVec2& min, con
                 object.name.c_str());
             ++labels;
         }
-        if (!ctx.IsLocked(object.GetID()) && distance <= (radius + 3.0f) * (radius + 3.0f) && distance < best) { best = distance; hit = object.GetID(); }
+        if (!ctx.IsLocked(object.GetID()) && distance <= (radius + 3.0f) * (radius + 3.0f) && distance < best) {
+            best = distance;
+            hit = object.GetID();
+        }
     }
     draw->PopClipRect();
     for (const auto& handle : state.handles) {
         draw->AddRectFilled({handle.screen.x - 4, handle.screen.y - 4}, {handle.screen.x + 4, handle.screen.y + 4},
             handle.width ? IM_COL32(100, 255, 170, 245) : IM_COL32(120, 165, 255, 245));
         ImVec2 start;
-        if (Project(viewProjection, min, size, handle.base, handle.offset, start)) draw->AddLine(start, handle.screen, IM_COL32(130, 195, 255, 160));
+        if (Project(viewProjection, min, size, handle.base, handle.offset, start)) {
+            draw->AddLine(start, handle.screen, IM_COL32(130, 195, 255, 160));
+        }
     }
     if (state.attribute.active) {
         auto& drag = state.attribute;
@@ -514,14 +612,23 @@ bool ControlPointViewportTool::Update(EditorContext& ctx, const ImVec2& min, con
             && drag.gizmoSpace == static_cast<int>(ctx.gizmoSpace) && drag.gizmoPivot == static_cast<int>(ctx.gizmoPivot)
             && drag.referenceSignature == ControlPointOwnerReferenceSignature(*ctx.activeScene, drag.owner)
             && scene::ResolveWaterControlPoints(*ctx.activeScene, drag.owner, *currentWater).inputSignature == drag.signature;
-        if (!valid || !inside) { drag.active = false; state.untilRelease = true; return true; }
+        if (!valid || !inside) {
+            drag.active = false;
+            state.untilRelease = true;
+            return true;
+        }
         float parameter = 0.0f;
-        if (AxisParameter(ctx, min, size, drag.handle, parameter))
+        if (AxisParameter(ctx, min, size, drag.handle, parameter)) {
             drag.candidate = (std::max)(drag.handle.width ? 0.01f : 0.0f, drag.handle.value + parameter - drag.initialParameter);
+        }
         if (ImGui::IsMouseReleased(ImGuiMouseButton_Left)) {
-            OpArgs args; args.Set("node", drag.ownerGuid); args.Set("kind", std::string("water")); args.Set("id", static_cast<int>(drag.handle.id));
+            OpArgs args;
+            args.Set("node", drag.ownerGuid);
+            args.Set("kind", std::string("water"));
+            args.Set("id", static_cast<int>(drag.handle.id));
             args.Set(drag.handle.width ? "width" : "depth", drag.candidate);
-            static_cast<void>(InvokeOperator(ctx, "control_points.set_water_attributes", args)); drag.active = false;
+            static_cast<void>(InvokeOperator(ctx, "control_points.set_water_attributes", args));
+            drag.active = false;
         }
         ctx.controlPointMouseClaimFrame = frame;
         return true;
@@ -537,7 +644,8 @@ bool ControlPointViewportTool::Update(EditorContext& ctx, const ImVec2& min, con
                 state.origin = primary->transform.worldPosition;
                 state.gizmoStartOffset = {};
                 if (ctx.gizmoPivot == EditorContext::GizmoPivot::Center) {
-                    float radius = 0.0f; static_cast<void>(ComputeSelectionBounds(ctx, state.origin, radius));
+                    float radius = 0.0f;
+                    static_cast<void>(ComputeSelectionBounds(ctx, state.origin, radius));
                 }
                 if (ctx.selectedEntities.size() == 1) {
                     if (const auto* placement = PlacementFor(state.ownerMarkers, primary->GetID())) {
@@ -551,7 +659,7 @@ bool ControlPointViewportTool::Update(EditorContext& ctx, const ImVec2& min, con
                 state.gizmo.m[2][3] = state.gizmoStartOffset.z;
             }
         }
-        /// @note Gizmo原点を引いた座標で操作し、大きなworld位置へ小さなdeltaを加算してから差し引くことを避ける。
+        // Gizmo原点を引いた座標で操作し、大きなworld位置へ小さなdeltaを加算してから差し引くことを避ける。
         /// @see https://github.com/CedricGuillemet/ImGuizmo Manipulate、ID stack。
         auto view = ToColumnMajor(ctx.editorCamera->GetViewMatrix() * math::Matrix4::Translate(state.origin));
         auto projection = ToColumnMajor(ctx.editorCamera->GetProjectionMatrix());
@@ -561,7 +669,9 @@ bool ControlPointViewportTool::Update(EditorContext& ctx, const ImVec2& min, con
         const bool enable = !otherClaim && (!ImGuizmo::IsUsingAny() || ImGuizmo::IsUsing())
             && (state.move.Active() || canStart);
         const bool otherUsing = ImGuizmo::IsUsingAny() && !ImGuizmo::IsUsing();
-        if (!otherUsing) ImGuizmo::Enable(enable);
+        if (!otherUsing) {
+            ImGuizmo::Enable(enable);
+        }
         const float snap[] = {ctx.snapPos, ctx.snapPos, ctx.snapPos};
         if (!otherUsing)
             ImGuizmo::Manipulate(&view.m[0][0], &projection.m[0][0], ImGuizmo::TRANSLATE,
@@ -569,33 +679,50 @@ bool ControlPointViewportTool::Update(EditorContext& ctx, const ImVec2& min, con
                 &gizmo.m[0][0], nullptr, ctx.snapEnabled || ImGui::GetIO().KeyCtrl ? snap : nullptr);
         gizmoOver = enable && ImGuizmo::IsOver();
         const bool usingGizmo = enable && ImGuizmo::IsUsing();
-        if (!otherUsing) ImGuizmo::Enable(true);
+        if (!otherUsing) {
+            ImGuizmo::Enable(true);
+        }
         state.gizmo = math::Matrix4::Transpose(gizmo);
         if (usingGizmo && !state.wasUsing) {
-            if (!state.move.Begin(ctx)) { state.untilRelease = true; return true; }
-            state.startView = ctx.editorCamera->GetViewMatrix(); state.startProjection = ctx.editorCamera->GetProjectionMatrix();
-            state.startMin = min; state.startSize = size;
+            if (!state.move.Begin(ctx)) {
+                state.untilRelease = true;
+                return true;
+            }
+            state.startView = ctx.editorCamera->GetViewMatrix();
+            state.startProjection = ctx.editorCamera->GetProjectionMatrix();
+            state.startMin = min;
+            state.startSize = size;
         }
         if (usingGizmo) {
             const math::Vector3 delta = math::Vector3{state.gizmo.m[0][3], state.gizmo.m[1][3], state.gizmo.m[2][3]}
                 - state.gizmoStartOffset;
-            if (!state.move.SetWorldDelta(ctx, delta)) { state.untilRelease = true; return true; }
-            ctx.controlPointMouseClaimFrame = frame; claimed = true;
+            if (!state.move.SetWorldDelta(ctx, delta)) {
+                state.untilRelease = true;
+                return true;
+            }
+            ctx.controlPointMouseClaimFrame = frame;
+            claimed = true;
         } else if (state.wasUsing && state.move.Active()) {
-            if (inside && ImGui::IsMouseReleased(ImGuiMouseButton_Left)) static_cast<void>(state.move.Commit(ctx));
-            else state.move.Cancel();
+            if (inside && ImGui::IsMouseReleased(ImGuiMouseButton_Left)) {
+                static_cast<void>(state.move.Commit(ctx));
+            } else {
+                state.move.Cancel();
+            }
             claimed = true;
         }
         state.wasUsing = usingGizmo;
-    } else if (state.move.Active()) Cancel();
-    /// @note 移動Gizmoを描かないframeのIsOverは前のhoverを含むため、通常hoverは回転・拡縮の選択点だけに使う。
+    } else if (state.move.Active()) {
+        Cancel();
+    }
+    // 移動Gizmoを描かないframeのIsOverは前のhoverを含むため、通常hoverは回転・拡縮の選択点だけに使う。
     const bool transformGizmoOwnsMouse = ImGuizmo::IsUsingAny()
         || (ctx.gizmoMode != EditorContext::GizmoMode::Translate
             && HasTargetPointSelection(ctx) && ImGuizmo::IsOver());
     if (canStart && hit.IsValid() && !gizmoOver && !transformGizmoOwnsMouse && !claimed) {
         ImGui::SetMouseCursor(ImGuiMouseCursor_Hand);
-        if (auto* point = ctx.activeScene->GetGameObject(hit))
+        if (auto* point = ctx.activeScene->GetGameObject(hit)) {
             ImGui::SetTooltip("%s\nクリック: 選択 / Shift: 追加 / Ctrl: 切替", point->name.c_str());
+        }
     } else if (canStart && inlineHit != std::numeric_limits<std::size_t>::max()
         && !gizmoOver && !transformGizmoOwnsMouse && !claimed) {
         ImGui::SetMouseCursor(ImGuiMouseCursor_Hand);
@@ -604,18 +731,21 @@ bool ControlPointViewportTool::Update(EditorContext& ctx, const ImVec2& min, con
     if (canStart && !gizmoOver && !transformGizmoOwnsMouse && !claimed
         && ImGui::IsMouseClicked(ImGuiMouseButton_Left)) {
         if (!hit.IsValid() && inlineHit != std::numeric_limits<std::size_t>::max()) {
-            /// @note Only an explicit click materializes numeric points; selection itself and Scene loading remain read-only.
+            // Only an explicit click materializes numeric points; selection itself and Scene loading remain read-only.
             const std::string ownerGuid = owner->instanceId;
             OpArgs convert;
-            convert.Set("node", ownerGuid); convert.Set("kind", std::string("water"));
+            convert.Set("node", ownerGuid);
+            convert.Set("kind", std::string("water"));
             convert.Set("source", std::string("POINT_OBJECTS"));
             const auto result = InvokeOperator(ctx, "control_points.convert", convert);
             if (result.ok) {
-                OpArgs edit; edit.Set("owner", ownerGuid);
+                OpArgs edit;
+                edit.Set("owner", ownerGuid);
                 static_cast<void>(InvokeOperator(ctx, "control_points.edit", edit));
                 const auto* targets = result.data.Find("targets");
                 if (targets && targets->IsArray() && inlineHit < targets->AsArray().size()) {
-                    OpArgs select; select.Set("target", targets->AsArray()[inlineHit].AsString());
+                    OpArgs select;
+                    select.Set("target", targets->AsArray()[inlineHit].AsString());
                     static_cast<void>(InvokeOperator(ctx, "control_points.select", select));
                     ctx.gizmoMode = EditorContext::GizmoMode::Translate;
                 }
@@ -626,34 +756,56 @@ bool ControlPointViewportTool::Update(EditorContext& ctx, const ImVec2& min, con
             auto* point = ctx.activeScene->GetGameObject(hit);
             if (owner && point && OwnerReferencesPoint(*owner, point->instanceId)
                 && ctx.controlPointOwnerGuid != owner->instanceId) {
-                OpArgs edit; edit.Set("owner", owner->instanceId);
+                OpArgs edit;
+                edit.Set("owner", owner->instanceId);
                 static_cast<void>(InvokeOperator(ctx, "control_points.edit", edit));
             }
-            if (ImGui::GetIO().KeyCtrl) ToggleSelection(ctx, hit);
-            else if (ImGui::GetIO().KeyShift) AddToSelection(ctx, hit);
-            else SelectEntity(ctx, hit);
+            if (ImGui::GetIO().KeyCtrl) {
+                ToggleSelection(ctx, hit);
+            } else if (ImGui::GetIO().KeyShift) {
+                AddToSelection(ctx, hit);
+            } else {
+                SelectEntity(ctx, hit);
+            }
             claimed = true;
         } else if (water && owner) {
             for (const auto& handle : state.handles) {
                 const auto mouse = ImGui::GetMousePos();
-                if (std::fabs(mouse.x - handle.screen.x) > 7.0f || std::fabs(mouse.y - handle.screen.y) > 7.0f) continue;
+                if (std::fabs(mouse.x - handle.screen.x) > 7.0f || std::fabs(mouse.y - handle.screen.y) > 7.0f) {
+                    continue;
+                }
                 float parameter = 0.0f;
-                if (!AxisParameter(ctx, min, size, handle, parameter)) continue;
+                if (!AxisParameter(ctx, min, size, handle, parameter)) {
+                    continue;
+                }
                 auto& drag = state.attribute;
-                drag.scene = ctx.activeScene->GetRenderSceneGeneration(); drag.owner = owner->GetID(); drag.ownerGuid = owner->instanceId;
+                drag.scene = ctx.activeScene->GetRenderSceneGeneration();
+                drag.owner = owner->GetID();
+                drag.ownerGuid = owner->instanceId;
                 drag.lifetime = ctx.activeScene->GetComponentLifetime<scene::WaterComponent>(drag.owner);
-                drag.revision = ctx.undoStack->GetRevision(); drag.pose = owner->transform; drag.editOwner = ctx.controlPointOwnerGuid;
-                drag.selection = ctx.selectedEntities; drag.gizmoMode = static_cast<int>(ctx.gizmoMode);
-                drag.gizmoSpace = static_cast<int>(ctx.gizmoSpace); drag.gizmoPivot = static_cast<int>(ctx.gizmoPivot);
+                drag.revision = ctx.undoStack->GetRevision();
+                drag.pose = owner->transform;
+                drag.editOwner = ctx.controlPointOwnerGuid;
+                drag.selection = ctx.selectedEntities;
+                drag.gizmoMode = static_cast<int>(ctx.gizmoMode);
+                drag.gizmoSpace = static_cast<int>(ctx.gizmoSpace);
+                drag.gizmoPivot = static_cast<int>(ctx.gizmoPivot);
                 drag.referenceSignature = ControlPointOwnerReferenceSignature(*ctx.activeScene, drag.owner);
                 drag.signature = scene::ResolveWaterControlPoints(*ctx.activeScene, drag.owner, *water).inputSignature;
-                drag.handle = handle; drag.initialParameter = parameter; drag.candidate = handle.value; drag.active = true;
-                state.startView = ctx.editorCamera->GetViewMatrix(); state.startProjection = ctx.editorCamera->GetProjectionMatrix();
-                state.startMin = min; state.startSize = size;
-                ctx.controlPointMouseClaimFrame = frame; claimed = true; break;
+                drag.handle = handle;
+                drag.initialParameter = parameter;
+                drag.candidate = handle.value;
+                drag.active = true;
+                state.startView = ctx.editorCamera->GetViewMatrix();
+                state.startProjection = ctx.editorCamera->GetProjectionMatrix();
+                state.startMin = min;
+                state.startSize = size;
+                ctx.controlPointMouseClaimFrame = frame;
+                claimed = true;
+                break;
             }
         }
     }
     return claimed || gizmoOver;
 }
-} /// @note namespace fbzz::editor
+} // namespace fbzz::editor

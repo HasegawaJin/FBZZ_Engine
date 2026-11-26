@@ -32,14 +32,18 @@ void AddIssue(JsonValue& diagnostics, const std::string& key, const FieldIssue& 
     diagnostic.Set("key", JsonValue(key));
     diagnostic.Set("code", JsonValue(issue.code));
     diagnostic.Set("message", JsonValue(issue.message));
-    if (issue.elementIndex >= 0) diagnostic.Set("elementIndex", JsonValue(issue.elementIndex));
+    if (issue.elementIndex >= 0) {
+        diagnostic.Set("elementIndex", JsonValue(issue.elementIndex));
+    }
     diagnostics.Push(std::move(diagnostic));
 }
 
 template<typename T>
 bool ReadWire(std::string_view bytes, size_t& offset, T& value)
 {
-    if (offset > bytes.size() || sizeof(T) > bytes.size() - offset) return false;
+    if (offset > bytes.size() || sizeof(T) > bytes.size() - offset) {
+        return false;
+    }
     std::memcpy(&value, bytes.data() + offset, sizeof(T));
     offset += sizeof(T);
     return true;
@@ -81,9 +85,15 @@ JsonValue FieldSchema(const scene::ManagedFieldDescriptor& descriptor)
     field.Set("enabled", JsonValue(setting));
     field.Set("readOnly", JsonValue(!setting));
     field.Set("writable", JsonValue(false));
-    if (descriptor.kind == scene::ManagedValueKind::NONE) field.Set("supported", JsonValue(false));
-    if (array) field.Set("elementType", JsonValue(KindName(elementKind)));
-    if (elementKind == scene::ManagedValueKind::GAME_OBJECT) field.Set("targetType", JsonValue("GameObject"));
+    if (descriptor.kind == scene::ManagedValueKind::NONE) {
+        field.Set("supported", JsonValue(false));
+    }
+    if (array) {
+        field.Set("elementType", JsonValue(KindName(elementKind)));
+    }
+    if (elementKind == scene::ManagedValueKind::GAME_OBJECT) {
+        field.Set("targetType", JsonValue("GameObject"));
+    }
     if (descriptor.flags & scene::kManagedFieldRange) {
         JsonValue range = JsonValue::MakeObject();
         range.Set("min", JsonValue(static_cast<double>(descriptor.minimum)));
@@ -94,12 +104,18 @@ JsonValue FieldSchema(const scene::ManagedFieldDescriptor& descriptor)
     if (const auto metadata = ParseJson(descriptor.schemaJson); metadata && metadata->IsObject()) {
         field.Set("managedMetadata", *metadata);
         if (descriptor.kind == scene::ManagedValueKind::STRUCTURED) {
-            if (const JsonValue* version = metadata->Find("codecVersion")) field.Set("codecVersion", *version);
+            if (const JsonValue* version = metadata->Find("codecVersion")) {
+                field.Set("codecVersion", *version);
+            }
             if (const JsonValue* nested = metadata->Find("nested"); nested && nested->IsObject()) {
                 field.Set("nested", *nested);
                 if (const JsonValue* collection = nested->Find("collection"); collection && collection->AsBool()) {
-                    if (setting) field.Set("type", JsonValue("list"));
-                    if (const JsonValue* element = nested->Find("element")) field.Set("elementSchema", *element);
+                    if (setting) {
+                        field.Set("type", JsonValue("list"));
+                    }
+                    if (const JsonValue* element = nested->Find("element")) {
+                        field.Set("elementSchema", *element);
+                    }
                 }
             }
         }
@@ -123,7 +139,9 @@ bool ReadField(scene::ManagedScriptAdapter& adapter, const scene::ManagedFieldDe
         issue.message = runtime.LastDiagnostic();
         return false;
     }
-    if (reply.valueKind != field.kind) return false;
+    if (reply.valueKind != field.kind) {
+        return false;
+    }
     return true;
 }
 
@@ -143,7 +161,9 @@ bool Vector(float x, float y, float z, JsonValue& result, FieldIssue& issue)
     JsonValue value = JsonValue::MakeArray();
     for (const float component : {x, y, z}) {
         JsonValue number;
-        if (!Number(component, number, issue)) return false;
+        if (!Number(component, number, issue)) {
+            return false;
+        }
         value.Push(std::move(number));
     }
     result = std::move(value);
@@ -155,7 +175,9 @@ bool Quaternion(float x, float y, float z, float w, JsonValue& result, FieldIssu
     JsonValue value = JsonValue::MakeArray();
     for (const float component : {x, y, z, w}) {
         JsonValue number;
-        if (!Number(component, number, issue)) return false;
+        if (!Number(component, number, issue)) {
+            return false;
+        }
         value.Push(std::move(number));
     }
     result = std::move(value);
@@ -172,12 +194,16 @@ JsonValue SettingsValue(const OpData& value)
     case OpData::Type::String: return JsonValue(value.AsString());
     case OpData::Type::Array: {
         JsonValue result = JsonValue::MakeArray();
-        for (const OpData& item : value.AsArray()) result.Push(SettingsValue(item));
+        for (const OpData& item : value.AsArray()) {
+            result.Push(SettingsValue(item));
+        }
         return result;
     }
     case OpData::Type::Object: {
         JsonValue result = JsonValue::MakeObject();
-        for (const auto& [key, item] : value.AsObject()) result.Set(key, SettingsValue(item));
+        for (const auto& [key, item] : value.AsObject()) {
+            result.Set(key, SettingsValue(item));
+        }
         return result;
     }
     case OpData::Type::Vec3: break;
@@ -208,19 +234,27 @@ bool Structured(std::string_view bytes, JsonValue& result, FieldIssue& issue)
 JsonValue Reference(scene::ManagedScriptAdapter& adapter, scene::Scene* scene, const std::string& guid,
                     uint64_t objectId, const std::string& key, JsonValue& diagnostics, int64_t elementIndex = -1)
 {
-    if (guid.empty()) return JsonValue{};
+    if (guid.empty()) {
+        return JsonValue{};
+    }
     JsonValue value = JsonValue::MakeObject();
     value.Set("guid", JsonValue(guid));
-    if (!scene) return value;
+    if (!scene) {
+        return value;
+    }
     scene::ScriptObjectReference reference{guid, scene::EntityID::INVALID};
     scene::ManagedScriptRuntime::Instance().ResolveObjectId(adapter, objectId, reference);
     const auto* target = scene->GetGameObject(reference.id);
-    if (target && target->instanceId != guid) target = nullptr;
+    if (target && target->instanceId != guid) {
+        target = nullptr;
+    }
     value.Set("id", target ? JsonValue(target->instanceId) : JsonValue{});
     value.Set("name", target ? JsonValue(target->name) : JsonValue{});
     value.Set("expectedType", JsonValue("GameObject"));
     value.Set("status", JsonValue(target ? "resolved" : "missing"));
-    if (!target) AddIssue(diagnostics, key, {"MISSING_SCRIPT_REFERENCE", "Stored GameObject reference is missing or expired.", elementIndex});
+    if (!target) {
+        AddIssue(diagnostics, key, {"MISSING_SCRIPT_REFERENCE", "Stored GameObject reference is missing or expired.", elementIndex});
+    }
     return value;
 }
 
@@ -229,18 +263,30 @@ bool DecodeSummary(scene::ManagedScriptAdapter& adapter, scene::Scene* scene, co
 {
     auto envelope = ParseJson(bytes);
     const JsonValue* value = envelope ? envelope->Find("value") : nullptr;
-    if (!value) return false;
+    if (!value) {
+        return false;
+    }
     if (const JsonValue* diagnostic = envelope->Find("diagnostic")) {
         if (const JsonValue* code = diagnostic->Find("code"); code && code->IsString()) {
             const std::string& name = code->AsString();
-            if (name == "NON_FINITE_SCRIPT_VALUE") issue.code = "NON_FINITE_SCRIPT_VALUE";
-            else if (name == "NULL_SCRIPT_SETTING") issue.code = "NULL_SCRIPT_SETTING";
-            else if (name == "NULL_SCRIPT_ARRAY") issue.code = "NULL_SCRIPT_ARRAY";
-            else if (name == "NULL_SCRIPT_ARRAY_ELEMENT") issue.code = "NULL_SCRIPT_ARRAY_ELEMENT";
-            else issue.code = "MANAGED_FIELD_READ_FAILED";
+            if (name == "NON_FINITE_SCRIPT_VALUE") {
+                issue.code = "NON_FINITE_SCRIPT_VALUE";
+            } else if (name == "NULL_SCRIPT_SETTING") {
+                issue.code = "NULL_SCRIPT_SETTING";
+            } else if (name == "NULL_SCRIPT_ARRAY") {
+                issue.code = "NULL_SCRIPT_ARRAY";
+            } else if (name == "NULL_SCRIPT_ARRAY_ELEMENT") {
+                issue.code = "NULL_SCRIPT_ARRAY_ELEMENT";
+            } else {
+                issue.code = "MANAGED_FIELD_READ_FAILED";
+            }
         }
-        if (const JsonValue* message = diagnostic->Find("message")) issue.message = message->AsString();
-        if (const JsonValue* index = diagnostic->Find("elementIndex")) issue.elementIndex = index->AsInt64(-1);
+        if (const JsonValue* message = diagnostic->Find("message")) {
+            issue.message = message->AsString();
+        }
+        if (const JsonValue* index = diagnostic->Find("elementIndex")) {
+            issue.elementIndex = index->AsInt64(-1);
+        }
         return false;
     }
     result = *value;
@@ -248,21 +294,30 @@ bool DecodeSummary(scene::ManagedScriptAdapter& adapter, scene::Scene* scene, co
         if (const JsonValue* reference = node.Find("$observationGo"); reference && reference->AsBool()) {
             const JsonValue* guid = node.Find("guid");
             const JsonValue* identity = node.Find("objectId");
-            if (!guid || !guid->IsString() || !identity || !identity->IsString()) return false;
+            if (!guid || !guid->IsString() || !identity || !identity->IsString()) {
+                return false;
+            }
             uint64_t object = 0;
             for (const char digit : identity->AsString()) {
-                if (digit < '0' || digit > '9' || object > (UINT64_MAX - static_cast<unsigned>(digit - '0')) / 10) return false;
+                if (digit < '0' || digit > '9' || object > (UINT64_MAX - static_cast<unsigned>(digit - '0')) / 10) {
+                    return false;
+                }
                 object = object * 10 + static_cast<unsigned>(digit - '0');
             }
             node = Reference(adapter, scene, guid->AsString(), object, key, diagnostics, elementIndex);
             return true;
         }
         for (size_t index = 0; index < node.AsArray().size(); ++index)
-            if (!self(self, node.AsArray()[index], static_cast<int64_t>(index))) return false;
+            if (!self(self, node.AsArray()[index], static_cast<int64_t>(index))) {
+                return false;
+            }
         for (auto& child : node.AsObject()) if (!self(self, child.second, elementIndex)) return false;
         return true;
     };
-    if (!project(project, result, -1)) { issue.message = "Managed summary contains an invalid reference token."; return false; }
+    if (!project(project, result, -1)) {
+        issue.message = "Managed summary contains an invalid reference token.";
+        return false;
+    }
     return true;
 }
 
@@ -271,9 +326,13 @@ bool DecodeScalar(scene::ManagedScriptAdapter& adapter, scene::Scene* scene, con
                   JsonValue& result, JsonValue& diagnostics, FieldIssue& issue)
 {
     if (reply.flags & scene::kManagedNullValue) {
-        if (field.kind == scene::ManagedValueKind::GAME_OBJECT) return bytes.empty() && reply.integer == 0;
+        if (field.kind == scene::ManagedValueKind::GAME_OBJECT) {
+            return bytes.empty() && reply.integer == 0;
+        }
         if (field.kind == scene::ManagedValueKind::STRING) {
-            if (!(field.flags & scene::kManagedFieldSetting)) return true;
+            if (!(field.flags & scene::kManagedFieldSetting)) {
+                return true;
+            }
             issue.code = "NULL_SCRIPT_SETTING";
             issue.message = "Saved string setting is null.";
         }
@@ -282,21 +341,33 @@ bool DecodeScalar(scene::ManagedScriptAdapter& adapter, scene::Scene* scene, con
     switch (field.kind) {
     case scene::ManagedValueKind::FLOAT: return Number(reply.x, result, issue);
     case scene::ManagedValueKind::INT:
-        if (reply.integer < std::numeric_limits<int32_t>::min() || reply.integer > std::numeric_limits<int32_t>::max()) return false;
-        result = JsonValue(reply.integer); return true;
+        if (reply.integer < std::numeric_limits<int32_t>::min() || reply.integer > std::numeric_limits<int32_t>::max()) {
+            return false;
+        }
+        result = JsonValue(reply.integer);
+        return true;
     case scene::ManagedValueKind::BOOL:
-        if (reply.integer != 0 && reply.integer != 1) return false;
-        result = JsonValue(reply.integer != 0); return true;
+        if (reply.integer != 0 && reply.integer != 1) {
+            return false;
+        }
+        result = JsonValue(reply.integer != 0);
+        return true;
     case scene::ManagedValueKind::STRING: result = JsonValue(bytes); return true;
     case scene::ManagedValueKind::VECTOR3: return Vector(reply.x, reply.y, reply.z, result, issue);
     case scene::ManagedValueKind::QUATERNION: return Quaternion(reply.x, reply.y, reply.z, reply.w, result, issue);
     case scene::ManagedValueKind::STRUCTURED: return Structured(bytes, result, issue);
     case scene::ManagedValueKind::ASSET_REFERENCE:
-        if (bytes.find('\0') != std::string::npos) return false;
-        result = JsonValue(bytes); return true;
+        if (bytes.find('\0') != std::string::npos) {
+            return false;
+        }
+        result = JsonValue(bytes);
+        return true;
     case scene::ManagedValueKind::GAME_OBJECT:
-        if (bytes.empty()) return false;
-        result = Reference(adapter, scene, bytes, std::bit_cast<uint64_t>(reply.integer), field.name, diagnostics); return true;
+        if (bytes.empty()) {
+            return false;
+        }
+        result = Reference(adapter, scene, bytes, std::bit_cast<uint64_t>(reply.integer), field.name, diagnostics);
+        return true;
     default: return false;
     }
 }
@@ -314,14 +385,20 @@ bool DecodeArray(scene::ManagedScriptAdapter& adapter, scene::Scene* scene, cons
     }
     size_t offset = 0;
     uint32_t count = 0;
-    if (!ReadWire(bytes, offset, count)) return false;
+    if (!ReadWire(bytes, offset, count)) {
+        return false;
+    }
     std::string identities;
     size_t identityOffset = 0;
     if (field.kind == scene::ManagedValueKind::GAME_OBJECT_ARRAY) {
         scene::ManagedBridgeReply idsReply;
-        if (!ReadField(adapter, field, 1, idsReply, identities, issue)) return false;
+        if (!ReadField(adapter, field, 1, idsReply, identities, issue)) {
+            return false;
+        }
         uint32_t identityCount = 0;
-        if ((idsReply.flags & scene::kManagedNullValue) || !ReadWire(identities, identityOffset, identityCount) || identityCount != count) return false;
+        if ((idsReply.flags & scene::kManagedNullValue) || !ReadWire(identities, identityOffset, identityCount) || identityCount != count) {
+            return false;
+        }
     }
     JsonValue array = JsonValue::MakeArray();
     for (uint32_t index = 0; index < count; ++index) {
@@ -330,39 +407,60 @@ bool DecodeArray(scene::ManagedScriptAdapter& adapter, scene::Scene* scene, cons
         switch (field.kind) {
         case scene::ManagedValueKind::FLOAT_ARRAY: {
             float number = 0;
-            if (!ReadWire(bytes, offset, number) || !Number(number, value, issue)) return false;
+            if (!ReadWire(bytes, offset, number) || !Number(number, value, issue)) {
+                return false;
+            }
             break;
         }
         case scene::ManagedValueKind::INT_ARRAY: {
             int32_t number = 0;
-            if (!ReadWire(bytes, offset, number)) return false;
-            value = JsonValue(number); break;
+            if (!ReadWire(bytes, offset, number)) {
+                return false;
+            }
+            value = JsonValue(number);
+            break;
         }
         case scene::ManagedValueKind::BOOL_ARRAY: {
             uint8_t number = 0;
-            if (!ReadWire(bytes, offset, number) || number > 1) return false;
-            value = JsonValue(number != 0); break;
+            if (!ReadWire(bytes, offset, number) || number > 1) {
+                return false;
+            }
+            value = JsonValue(number != 0);
+            break;
         }
         case scene::ManagedValueKind::VECTOR3_ARRAY: {
             float x = 0, y = 0, z = 0;
-            if (!ReadWire(bytes, offset, x) || !ReadWire(bytes, offset, y) || !ReadWire(bytes, offset, z) || !Vector(x, y, z, value, issue)) return false;
+            if (!ReadWire(bytes, offset, x) || !ReadWire(bytes, offset, y) || !ReadWire(bytes, offset, z) || !Vector(x, y, z, value, issue)) {
+                return false;
+            }
             break;
         }
         case scene::ManagedValueKind::STRING_ARRAY:
         case scene::ManagedValueKind::GAME_OBJECT_ARRAY: {
             uint32_t length = 0;
-            if (!ReadWire(bytes, offset, length)) return false;
+            if (!ReadWire(bytes, offset, length)) {
+                return false;
+            }
             const bool null = length == std::numeric_limits<uint32_t>::max();
             if (null && field.kind == scene::ManagedValueKind::STRING_ARRAY) {
-                issue.code = "NULL_SCRIPT_ARRAY_ELEMENT"; issue.message = "String array element is null."; return false;
+                issue.code = "NULL_SCRIPT_ARRAY_ELEMENT";
+                issue.message = "String array element is null.";
+                return false;
             }
-            if (!null && (offset > bytes.size() || length > bytes.size() - offset)) return false;
+            if (!null && (offset > bytes.size() || length > bytes.size() - offset)) {
+                return false;
+            }
             const std::string text = null ? std::string{} : bytes.substr(offset, length);
-            if (!null) offset += length;
-            if (field.kind == scene::ManagedValueKind::STRING_ARRAY) value = JsonValue(text);
-            else {
+            if (!null) {
+                offset += length;
+            }
+            if (field.kind == scene::ManagedValueKind::STRING_ARRAY) {
+                value = JsonValue(text);
+            } else {
                 uint64_t objectId = 0;
-                if (!ReadWire(identities, identityOffset, objectId) || (null && objectId != 0) || (!null && text.empty())) return false;
+                if (!ReadWire(identities, identityOffset, objectId) || (null && objectId != 0) || (!null && text.empty())) {
+                    return false;
+                }
                 value = Reference(adapter, scene, text, objectId, field.name, diagnostics, index);
             }
             break;
@@ -372,7 +470,9 @@ bool DecodeArray(scene::ManagedScriptAdapter& adapter, scene::Scene* scene, cons
         array.Push(std::move(value));
     }
     issue.elementIndex = -1;
-    if (offset != bytes.size() || (!identities.empty() && identityOffset != identities.size())) return false;
+    if (offset != bytes.size() || (!identities.empty() && identityOffset != identities.size())) {
+        return false;
+    }
     result = std::move(array);
     return true;
 }
@@ -382,7 +482,7 @@ void ProjectFields(scene::ManagedScriptAdapter& adapter, scene::Scene* scene, Js
     JsonValue fields = JsonValue::MakeObject();
     JsonValue schema = JsonValue::MakeArray();
     JsonValue diagnostics = JsonValue::MakeArray();
-    /// @note BIND_OWNER は Host metadata 接続だけを更新し、callback・world 操作を実行しない。
+    // BIND_OWNER は Host metadata 接続だけを更新し、callback・world 操作を実行しない。
     const bool bound = adapter.RefreshOwnerBinding();
     if (adapter.IsRuntimeFaulted()) {
         JsonValue fault = JsonValue::MakeObject();
@@ -390,7 +490,9 @@ void ProjectFields(scene::ManagedScriptAdapter& adapter, scene::Scene* scene, Js
         result.Set("fault", std::move(fault));
     }
     for (const auto& descriptor : adapter.Fields()) {
-        if (defaults && descriptor.kind == scene::ManagedValueKind::NONE) continue;
+        if (defaults && descriptor.kind == scene::ManagedValueKind::NONE) {
+            continue;
+        }
         JsonValue value;
         JsonValue fieldSchema = FieldSchema(descriptor);
         FieldIssue issue;
@@ -405,16 +507,23 @@ void ProjectFields(scene::ManagedScriptAdapter& adapter, scene::Scene* scene, Js
             scene::ManagedBridgeReply reply;
             std::string bytes;
             if (ReadField(adapter, descriptor, defaults ? 0 : 2, reply, bytes, issue)) {
-                if (!defaults) read = DecodeSummary(adapter, scene, descriptor.name, bytes, value, diagnostics, issue);
-                else read = IsArray(descriptor.kind)
+                if (!defaults) {
+                    read = DecodeSummary(adapter, scene, descriptor.name, bytes, value, diagnostics, issue);
+                } else read = IsArray(descriptor.kind)
                     ? DecodeArray(adapter, scene, descriptor, reply, bytes, value, diagnostics, issue)
                     : DecodeScalar(adapter, scene, descriptor, reply, bytes, value, diagnostics, issue);
             }
         }
-        if (!read) { value = JsonValue{}; AddIssue(diagnostics, descriptor.name, issue); }
-        if ((IsArray(descriptor.kind) || descriptor.kind == scene::ManagedValueKind::STRUCTURED) && value.IsArray())
+        if (!read) {
+            value = JsonValue{};
+            AddIssue(diagnostics, descriptor.name, issue);
+        }
+        if ((IsArray(descriptor.kind) || descriptor.kind == scene::ManagedValueKind::STRUCTURED) && value.IsArray()) {
             fieldSchema.Set("count", JsonValue(static_cast<int64_t>(value.AsArray().size())));
-        if (defaults && (descriptor.flags & scene::kManagedFieldSetting)) fieldSchema.Set("default", value);
+        }
+        if (defaults && (descriptor.flags & scene::kManagedFieldSetting)) {
+            fieldSchema.Set("default", value);
+        }
         fields.Set(descriptor.name, std::move(value));
         schema.Push(std::move(fieldSchema));
     }
@@ -426,7 +535,7 @@ void ProjectFields(scene::ManagedScriptAdapter& adapter, scene::Scene* scene, Js
     result.Set("snapshot", JsonValue(false));
 }
 
-} /// @note namespace
+} // namespace
 
 void InspectManagedFields(scene::ManagedScriptAdapter& adapter, scene::Scene& scene, JsonValue& result)
 {
@@ -436,63 +545,116 @@ void InspectManagedFields(scene::ManagedScriptAdapter& adapter, scene::Scene& sc
 bool InspectManagedPage(scene::ManagedScriptAdapter& adapter, const JsonValue& options, JsonValue& result, std::string& diagnostic)
 {
     auto& runtime = scene::ManagedScriptRuntime::Instance();
-    if (!adapter.RefreshOwnerBinding()) { diagnostic = runtime.LastDiagnostic(); return false; }
+    if (!adapter.RefreshOwnerBinding()) {
+        diagnostic = runtime.LastDiagnostic();
+        return false;
+    }
     uint64_t observation = 0;
     if (const JsonValue* token = options.Find("observationId")) {
-        if (!token->IsString() || token->AsString().empty()) { diagnostic = "observationId must be a decimal snapshot identity."; return false; }
+        if (!token->IsString() || token->AsString().empty()) {
+            diagnostic = "observationId must be a decimal snapshot identity.";
+            return false;
+        }
         for (const char digit : token->AsString()) {
             if (digit < '0' || digit > '9' || observation > (UINT64_MAX - static_cast<unsigned>(digit - '0')) / 10) {
-                diagnostic = "observationId must be a decimal snapshot identity."; return false;
+                diagnostic = "observationId must be a decimal snapshot identity.";
+                return false;
             }
             observation = observation * 10 + static_cast<unsigned>(digit - '0');
         }
-        if (!observation) { diagnostic = "observationId must be nonzero."; return false; }
+        if (!observation) {
+            diagnostic = "observationId must be nonzero.";
+            return false;
+        }
     }
     const bool close = options.Find("close") && options.Find("close")->AsBool();
     scene::ManagedBridgeRequest request;
-    request.generation = adapter.Generation(); request.instanceId = adapter.InstanceId(); request.ownerId = adapter.OwnerId();
+    request.generation = adapter.Generation();
+    request.instanceId = adapter.InstanceId();
+    request.ownerId = adapter.OwnerId();
     scene::ManagedBridgeReply reply;
     if (close) {
-        if (!observation) { diagnostic = "close requires observationId."; return false; }
-        request.op = scene::ManagedBridgeOp::CLOSE_OBSERVATION; request.integer = std::bit_cast<int64_t>(observation);
-        if (!runtime.Dispatch(request, reply)) { diagnostic = runtime.LastDiagnostic(); return false; }
-        result.Set("observationId", JsonValue(std::to_string(observation))); result.Set("closed", JsonValue(true)); return true;
+        if (!observation) {
+            diagnostic = "close requires observationId.";
+            return false;
+        }
+        request.op = scene::ManagedBridgeOp::CLOSE_OBSERVATION;
+        request.integer = std::bit_cast<int64_t>(observation);
+        if (!runtime.Dispatch(request, reply)) {
+            diagnostic = runtime.LastDiagnostic();
+            return false;
+        }
+        result.Set("observationId", JsonValue(std::to_string(observation)));
+        result.Set("closed", JsonValue(true));
+        return true;
     }
     int64_t start = 0;
-    int count = 64, wireBytes = 65536;
+    int count = 64;
+    int wireBytes = 65536;
     std::string path;
     if (const JsonValue* value = options.Find("path")) {
-        if (!value->IsString()) { diagnostic = "path must be an RFC 6901 string."; return false; }
+        if (!value->IsString()) {
+            diagnostic = "path must be an RFC 6901 string.";
+            return false;
+        }
         path = value->AsString();
     }
-    if ((options.Find("start") && !options.Find("start")->TryGetInt64(start)) || start < 0
-        || (options.Find("count") && !options.Find("count")->TryGetInt32(count)) || count < 1
-        || (options.Find("wireBytes") && !options.Find("wireBytes")->TryGetInt32(wireBytes)) || wireBytes < 2048) {
-        diagnostic = "Page requires nonnegative start, positive count and at least 2048 wire bytes."; return false;
+    // ページの位置と通信量の制限を検査してから、観測を開く。
+    constexpr char INVALID_PAGE_OPTIONS[] = "Page requires nonnegative start, positive count and at least 2048 wire bytes.";
+    const auto* startValue = options.Find("start");
+    if ((startValue && !startValue->TryGetInt64(start)) || start < 0) {
+        diagnostic = INVALID_PAGE_OPTIONS;
+        return false;
     }
+    const auto* countValue = options.Find("count");
+    if ((countValue && !countValue->TryGetInt32(count)) || count < 1) {
+        diagnostic = INVALID_PAGE_OPTIONS;
+        return false;
+    }
+    const auto* wireBytesValue = options.Find("wireBytes");
+    if ((wireBytesValue && !wireBytesValue->TryGetInt32(wireBytes)) || wireBytes < 2048) {
+        diagnostic = INVALID_PAGE_OPTIONS;
+        return false;
+    }
+
     bool opened = false;
     if (!observation) {
         request.op = scene::ManagedBridgeOp::OPEN_OBSERVATION;
-        request.input = path.data(); request.inputBytes = static_cast<uint32_t>(path.size());
-        if (!runtime.Dispatch(request, reply)) { diagnostic = runtime.LastDiagnostic(); return false; }
-        observation = std::bit_cast<uint64_t>(reply.integer); opened = true;
+        request.input = path.data();
+        request.inputBytes = static_cast<uint32_t>(path.size());
+        if (!runtime.Dispatch(request, reply)) {
+            diagnostic = runtime.LastDiagnostic();
+            return false;
+        }
+        observation = std::bit_cast<uint64_t>(reply.integer);
+        opened = true;
     }
     JsonValue input = JsonValue::MakeObject();
-    input.Set("path", JsonValue(path)); input.Set("start", JsonValue(start)); input.Set("count", JsonValue(count));
+    input.Set("path", JsonValue(path));
+    input.Set("start", JsonValue(start));
+    input.Set("count", JsonValue(count));
     input.Set("wireBytes", JsonValue(wireBytes));
     const std::string json = SerializeJson(input);
-    request.op = scene::ManagedBridgeOp::READ_OBSERVATION; request.integer = std::bit_cast<int64_t>(observation);
-    request.input = json.data(); request.inputBytes = static_cast<uint32_t>(json.size());
+    request.op = scene::ManagedBridgeOp::READ_OBSERVATION;
+    request.integer = std::bit_cast<int64_t>(observation);
+    request.input = json.data();
+    request.inputBytes = static_cast<uint32_t>(json.size());
     std::string output;
     if (!runtime.Dispatch(request, reply, &output)) {
         diagnostic = runtime.LastDiagnostic();
-        if (opened) { request.op = scene::ManagedBridgeOp::CLOSE_OBSERVATION; runtime.Dispatch(request, reply); }
+        if (opened) {
+            request.op = scene::ManagedBridgeOp::CLOSE_OBSERVATION;
+            runtime.Dispatch(request, reply);
+        }
         return false;
     }
     auto parsed = ParseJson(output);
     if (!parsed || !parsed->IsObject()) {
         diagnostic = "Host returned an invalid observation page.";
-        if (opened) { request.op = scene::ManagedBridgeOp::CLOSE_OBSERVATION; runtime.Dispatch(request, reply); }
+        if (opened) {
+            request.op = scene::ManagedBridgeOp::CLOSE_OBSERVATION;
+            runtime.Dispatch(request, reply);
+        }
         return false;
     }
     result.Set("observation", std::move(*parsed));
@@ -505,4 +667,4 @@ void CatalogManagedFields(scene::ManagedScriptAdapter& adapter, JsonValue& resul
     ProjectFields(adapter, nullptr, result, true);
 }
 
-} /// @note namespace fbzz::editor::ai::bus
+} // namespace fbzz::editor::ai::bus

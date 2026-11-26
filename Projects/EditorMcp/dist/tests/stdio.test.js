@@ -47,7 +47,7 @@ for (const permission of ['read', 'dry-run', 'write']) {
             await client.connect(transport);
             const tools = new Set((await client.listTools()).tools.map(tool => tool.name));
             const instructions = client.getInstructions() ?? '';
-            /// @note Operator ID はドット区切りの名前全体で読み、構成要素を MCP ツール名として扱わない。
+            // Operator ID はドット区切りの名前全体で読み、構成要素を MCP ツール名として扱わない。
             const identifiers = instructions.match(/\b[a-z][a-z0-9_]*(?:\.[a-z][a-z0-9_]*)*\b/g) ?? [];
             const mentioned = identifiers.filter(name => name.includes('_') && !name.includes('.'));
             assert.ok(mentioned.includes('editor_op_list'));

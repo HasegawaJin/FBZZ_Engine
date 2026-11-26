@@ -41,14 +41,20 @@ void SetEntityDrag(scene::EntityID grabbed, const std::vector<scene::EntityID>& 
     g_entities.frame   = ImGui::GetFrameCount();
     g_entities.entities.clear();
     g_entities.entities.push_back(grabbed);
-    if (std::find(selection.begin(), selection.end(), grabbed) == selection.end()) return;
+    if (std::find(selection.begin(), selection.end(), grabbed) == selection.end()) {
+        return;
+    }
     for (scene::EntityID id : selection)
-        if (id != grabbed) g_entities.entities.push_back(id);
+        if (id != grabbed) {
+            g_entities.entities.push_back(id);
+        }
 }
 
 std::vector<scene::EntityID> DraggedEntities(scene::EntityID payloadId)
 {
-    if (g_entities.grabbed != payloadId || !IsFresh(g_entities.frame)) return { payloadId };
+    if (g_entities.grabbed != payloadId || !IsFresh(g_entities.frame)) {
+        return { payloadId };
+    }
     return g_entities.entities;
 }
 
@@ -58,16 +64,21 @@ void SetAssetDrag(const std::string& grabbedPayload, std::vector<std::string> pa
     g_assets.frame   = ImGui::GetFrameCount();
     g_assets.paths.clear();
     g_assets.paths.push_back(grabbedPayload);
-    if (std::find(paths.begin(), paths.end(), grabbedPayload) == paths.end()) return;
+    if (std::find(paths.begin(), paths.end(), grabbedPayload) == paths.end()) {
+        return;
+    }
     for (std::string& path : paths)
         if (path != grabbedPayload
-            && std::find(g_assets.paths.begin(), g_assets.paths.end(), path) == g_assets.paths.end())
+            && std::find(g_assets.paths.begin(), g_assets.paths.end(), path) == g_assets.paths.end()) {
             g_assets.paths.push_back(std::move(path));
+        }
 }
 
 std::vector<std::string> DraggedAssetPaths(const std::string& payloadPath)
 {
-    if (g_assets.grabbed != payloadPath || !IsFresh(g_assets.frame)) return { payloadPath };
+    if (g_assets.grabbed != payloadPath || !IsFresh(g_assets.frame)) {
+        return { payloadPath };
+    }
     return g_assets.paths;
 }
 

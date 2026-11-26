@@ -13,8 +13,8 @@ namespace fbzz::editor {
 struct EditorContext;
 
 struct AssetMount {
-    std::string name;
-    std::string path;
+    std::string name; ///< Asset Browser のツリーに表示するマウント名。
+    std::string path; ///< マウントのルートとなるフォルダーの絶対パス。
 };
 
 [[nodiscard]] std::vector<AssetMount> ResolveAssetBrowserMounts(
@@ -26,7 +26,7 @@ struct AssetMount {
 /// @note Windows のパス比較と同様に ASCII の大文字・小文字と区切り文字の違いを吸収する。
 [[nodiscard]] std::string AssetBrowserFolderKey(const std::string& path);
 
-/// @return ImGui の packed 色を不透明な #RRGGBB として返す。
+/// @return ImGui の packed 色を不透明な `#RRGGBB` として返す。
 [[nodiscard]] std::string FormatAssetBrowserFolderColor(std::uint32_t color);
 
-} /// @note namespace fbzz::editor
+} // namespace fbzz::editor

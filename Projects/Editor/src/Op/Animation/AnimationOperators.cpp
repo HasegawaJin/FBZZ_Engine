@@ -29,9 +29,15 @@ namespace {
 ///       直接書くとパネルの編集中モデルと食い違う 2 つの真実ができる。
 scene::AnimatorComponent* OpenController(const OpContext& c, std::string* pathOut)
 {
-    if (!c.ctx.animationControllerEditor) return nullptr;
-    if (c.ctx.animationControllerEditorPath.empty()) return nullptr;
-    if (pathOut != nullptr) *pathOut = c.ctx.animationControllerEditorPath;
+    if (!c.ctx.animationControllerEditor) {
+        return nullptr;
+    }
+    if (c.ctx.animationControllerEditorPath.empty()) {
+        return nullptr;
+    }
+    if (pathOut != nullptr) {
+        *pathOut = c.ctx.animationControllerEditorPath;
+    }
     return c.ctx.animationControllerEditor.get();
 }
 
@@ -114,13 +120,14 @@ void RegisterAnimationOperators(OperatorRegistry& registry)
                                      "Animation Graph で .animcontroller を開いてください");
 
             const std::string stateName = args.GetString("state");
-            /// @note 実在しないステート名を黙って受けると、座標だけが亡霊として layout に残り、
-            ///       「設定したのに動かない」という形でしか現れない。
+            // 実在しないステート名を黙って受けると、座標だけが亡霊として layout に残り、
+            // 「設定したのに動かない」という形でしか現れない。
             const bool exists = std::any_of(
                 animator->states.begin(), animator->states.end(),
                 [&stateName](const scene::AnimationState& s) { return s.name == stateName; });
-            if (!exists)
+            if (!exists) {
                 return OpResult::Err("UNKNOWN_STATE", "そのステートはありません: " + stateName);
+            }
 
             GraphLayout& layout = c.ctx.graphLayouts[path];
             const auto found = layout.nodePositions.find(stateName);
@@ -140,10 +147,13 @@ void RegisterAnimationOperators(OperatorRegistry& registry)
                 },
                 [context, path, stateName, before, hadPosition]() {
                     auto& positions = context->graphLayouts[path].nodePositions;
-                    /// @note 元々座標を持っていなかったノードは「未配置」へ戻す。
-                    ///       0,0 を書き戻すと、Undo するたび左上へ寄る挙動になる。
-                    if (hadPosition) positions[stateName] = before;
-                    else             positions.erase(stateName);
+                    // 元々座標を持っていなかったノードは「未配置」へ戻す。
+                    // 0,0 を書き戻すと、Undo するたび左上へ寄る挙動になる。
+                    if (hadPosition) {
+                        positions[stateName] = before;
+                    } else {
+                        positions.erase(stateName);
+                    }
                 });
             return result;
         };
@@ -161,7 +171,7 @@ void RegisterAssetOperators(OperatorRegistry& registry)
                   "Animation Graph が開いている Controller を保存する。"
                   "Editor の Save ボタンと同じ保存関数を通るので、"
                   "Animator のキャンバス配置など保存時にだけ書き出される情報も欠落しない。";
-    /// @note ファイル I/O は Undo に載せない (Undo で保存が巻き戻る事故になる)
+    // ファイル I/O は Undo に載せない (Undo で保存が巻き戻る事故になる)
     op.kind     = OpKind::Action;
 
     OpParam pathParam;
@@ -171,33 +181,37 @@ void RegisterAssetOperators(OperatorRegistry& registry)
     pathParam.required = false;
     op.params = { pathParam };
 
-    /// @note 保存対象が 1 つも無いときに「押せるのに何も起きない」を作らない。
+    // 保存対象が 1 つも無いときに「押せるのに何も起きない」を作らない。
     op.poll = [](const OpContext& context, const OpArgs& args) {
         const std::string path = args.GetString("path");
-        /// @note path を指定した AI 呼び出しは、そのアセットだけを可否判定する。別アセットが dirty
-        ///       なら対象外の path も available になると、dry-run と実行結果の意味がずれる。
+        // path を指定した AI 呼び出しは、そのアセットだけを可否判定する。別アセットが dirty
+        // なら対象外の path も available になると、dry-run と実行結果の意味がずれる。
         return path.empty() ? AssetDirtyRegistry::HasAny()
                             : AssetDirtyRegistry::IsDirty(path);
     };
 
     op.exec = [](OpContext& c, const OpArgs& args) -> OpResult {
         std::string path = args.GetString("path");
-        if (path.empty()) path = c.ctx.animationControllerEditorPath;
+        if (path.empty()) {
+            path = c.ctx.animationControllerEditorPath;
+        }
         if (path.empty())
             return OpResult::Err("BAD_ARG",
                                  "path を指定するか、Animation Graph でアセットを開いてください");
 
         if (!AssetDirtyRegistry::IsDirty(path)) {
-            /// @note 「保存できない」と「保存するものが無い」は別。後者はエラーにしない。
+            // 「保存できない」と「保存するものが無い」は別。後者はエラーにしない。
             OpResult result;
             result.message = "未保存の変更がありません: " + path;
             return result;
         }
-        if (!AssetDirtyRegistry::Save(path))
+        if (!AssetDirtyRegistry::Save(path)) {
             return OpResult::Err("SAVE_FAILED", "保存に失敗しました: " + path);
+        }
 
-        if (path == c.ctx.animationControllerEditorPath)
+        if (path == c.ctx.animationControllerEditorPath) {
             c.ctx.animationControllerDirty = false;
+        }
         c.ctx.requestAssetBrowserRefresh = true;
 
         OpResult result;

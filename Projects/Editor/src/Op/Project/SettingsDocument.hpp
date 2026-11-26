@@ -12,4 +12,4 @@ namespace fbzz::editor::settingsdocument {
 [[nodiscard]] bool Patch(const std::string& text, const OpData& patch, std::string& output);
 /// @note 型付きローダーが無視・丸め・削除した要求値を成功として返さない。
 [[nodiscard]] bool Preserves(const std::string& text, const OpData& patch);
-} /// @note namespace fbzz::editor::settingsdocument
+} // namespace fbzz::editor::settingsdocument

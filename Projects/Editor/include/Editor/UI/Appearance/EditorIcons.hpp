@@ -32,7 +32,7 @@ struct Glyph {
 /// @note 読むのは Available() / Or() を通す。
 extern bool g_iconFontLoaded;
 
-} /// @note namespace detail
+} // namespace detail
 
 inline constexpr detail::Glyph kPlay     = detail::ToUtf8(0xE768);
 inline constexpr detail::Glyph kPause    = detail::ToUtf8(0xE769);
@@ -42,7 +42,7 @@ inline constexpr detail::Glyph kStep     = detail::ToUtf8(0xE893);
 inline constexpr detail::Glyph kInfo     = detail::ToUtf8(0xE946);
 inline constexpr detail::Glyph kWarning  = detail::ToUtf8(0xE7BA);
 inline constexpr detail::Glyph kError    = detail::ToUtf8(0xE783);
-inline constexpr detail::Glyph kDetail   = detail::ToUtf8(0xE712); ///< @note 詳細ログ (…)
+inline constexpr detail::Glyph kDetail   = detail::ToUtf8(0xE712); ///< 詳細ログ (…)
 inline constexpr detail::Glyph kAccept   = detail::ToUtf8(0xE8FB);
 inline constexpr detail::Glyph kCancel   = detail::ToUtf8(0xE711);
 
@@ -85,4 +85,4 @@ inline constexpr detail::Glyph kTimeline = detail::ToUtf8(0xE916);
 /// @note 戻り値は静的記憶域を指す。書き換えない。
 [[nodiscard]] const char* Or(const detail::Glyph& glyph, const char* fallback);
 
-} /// @note namespace fbzz::editor::icons
+} // namespace fbzz::editor::icons

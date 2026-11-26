@@ -24,13 +24,13 @@ namespace fbzz::editor {
 
 bool AssetBrowserPanel::IsImportableRaw(const std::string& ext)
 {
-    /// @note この関数は .fzasset 生成が必要な raw モデル形式だけを扱う。テクスチャ形式は .meta sidecar 生成なので IsTextureRaw() と併用する。
+    // この関数は .fzasset 生成が必要な raw モデル形式だけを扱う。テクスチャ形式は .meta sidecar 生成なので IsTextureRaw() と併用する。
     return asset::IsModelSourcePath(ext);
 }
 
 bool AssetBrowserPanel::IsTextureRaw(const std::string& ext)
 {
-    /// @note .dds は IBL ベイク済みキューブマップ等の GPU 直接ロード形式のため除外する。.meta サイドカー経由のインポートパイプラインは通さない。
+    // .dds は IBL ベイク済みキューブマップ等の GPU 直接ロード形式のため除外する。.meta サイドカー経由のインポートパイプラインは通さない。
     return ext == ".png" || ext == ".jpg" || ext == ".jpeg" ||
            ext == ".tga" || ext == ".bmp" ||
            ext == ".hdr" || ext == ".exr";
@@ -44,8 +44,10 @@ namespace {
 /// @note 原本 (.fbx / .png) は含めない。あちらは再インポートで生成物を焼き直す経路 (NotifyAssetTouched) が別にあり GPU 資源の作り直しも伴うため、ここはキャッシュ済みの値を入れ替えるだけで済む軽くて失敗しても巻き戻せる対象に限る。
 bool IsHotReloadableAsset(const std::string& absPath)
 {
-    /// @note 判定は AssetManager が持つ 1 つの表にする。写しを置いていた頃は «並びは ReloadPath と一致させること» というコメントで守る運用で、実際 .curve / .gradient を足したときに片方だけ更新されていた。
-    if (asset::IsVectorFieldPng(absPath)) return true;
+    // 判定は AssetManager が持つ 1 つの表にする。写しを置いていた頃は «並びは ReloadPath と一致させること» というコメントで守る運用で、実際 .curve / .gradient を足したときに片方だけ更新されていた。
+    if (asset::IsVectorFieldPng(absPath)) {
+        return true;
+    }
     return asset::AssetManager::IsHotReloadableExtension(
         util::FileSystem::GetExtension(absPath));
 }
@@ -76,37 +78,55 @@ std::vector<ImportPreset> LoadPresetsFromDir(const std::string& presetsDir)
     std::vector<ImportPreset> result;
     namespace fs = std::filesystem;
     const fs::path dir = util::FileSystem::PathFromUtf8(presetsDir);
-    if (!util::FileSystem::Exists(dir)) return result;
+    if (!util::FileSystem::Exists(dir)) {
+        return result;
+    }
     try {
         for (const auto& entry : fs::directory_iterator(dir)) {
-            if (!entry.is_regular_file()) continue;
+            if (!entry.is_regular_file()) {
+                continue;
+            }
             const std::string ext = util::StringUtils::ToLower(
                 util::FileSystem::PathToUtf8(entry.path().extension()));
-            if (ext != ".toml") continue;
+            if (ext != ".toml") {
+                continue;
+            }
             std::string text;
-            if (!util::FileSystem::ReadText(util::FileSystem::PathToUtf8(entry.path()), text)) continue;
+            if (!util::FileSystem::ReadText(util::FileSystem::PathToUtf8(entry.path()), text)) {
+                continue;
+            }
             std::istringstream ss(text);
             const auto parsed = toml::parse(ss);
-            if (!parsed) continue;
+            if (!parsed) {
+                continue;
+            }
             ImportPreset p;
             p.name = entry.path().stem().string();
             const auto& tbl = parsed.table();
-            if (auto v = tbl["options"]["source_dcc"].value<int64_t>())
+            if (auto v = tbl["options"]["source_dcc"].value<int64_t>()) {
                 p.options.sourceDcc = static_cast<FbxSourceDcc>(*v);
-            if (auto v = tbl["options"]["up_axis"].value<int64_t>())
+            }
+            if (auto v = tbl["options"]["up_axis"].value<int64_t>()) {
                 p.options.upAxis = static_cast<FbxUpAxis>(*v);
-            if (auto v = tbl["options"]["normal_map_convention"].value<int64_t>())
+            }
+            if (auto v = tbl["options"]["normal_map_convention"].value<int64_t>()) {
                 p.options.normalMapConvention = static_cast<NormalMapConvention>(*v);
-            if (auto v = tbl["options"]["unit_scale_multiplier"].value<float>())
+            }
+            if (auto v = tbl["options"]["unit_scale_multiplier"].value<float>()) {
                 p.options.unitScaleMultiplier = *v;
-            if (auto v = tbl["options"]["generate_normals"].value<bool>())
+            }
+            if (auto v = tbl["options"]["generate_normals"].value<bool>()) {
                 p.options.generateNormals = *v;
-            if (auto v = tbl["options"]["generate_tangents"].value<bool>())
+            }
+            if (auto v = tbl["options"]["generate_tangents"].value<bool>()) {
                 p.options.generateTangents = *v;
-            if (auto v = tbl["options"]["generate_tex_descriptors"].value<bool>())
+            }
+            if (auto v = tbl["options"]["generate_tex_descriptors"].value<bool>()) {
                 p.options.generateTexDescriptors = *v;
-            if (auto v = tbl["options"]["default_compression"].value<int64_t>())
+            }
+            if (auto v = tbl["options"]["default_compression"].value<int64_t>()) {
                 p.options.defaultCompression = static_cast<asset::TextureCompression>(*v);
+            }
             result.push_back(std::move(p));
         }
     } catch (...) {}
@@ -150,14 +170,17 @@ std::filesystem::path GetExistingImportedModelPath(const std::filesystem::path& 
 {
     const std::string stem = util::FileSystem::PathToUtf8(sourcePath.stem());
 
-    /// @note 論理パッケージパスからの逆引きは FBX を仮定するため、原本 GUID からインポータと同じ保存先を引く。
+    // 論理パッケージパスからの逆引きは FBX を仮定するため、原本 GUID からインポータと同じ保存先を引く。
     const std::string guid = asset::AssetDatabase::TryGetGuidFromPath(
         util::FileSystem::PathToUtf8(sourcePath));
     const std::string projectRoot = asset::AssetDatabase::ProjectRoot();
-    if (guid.empty() || projectRoot.empty()) return {};
+    if (guid.empty() || projectRoot.empty()) {
+        return {};
+    }
     const std::string resolved = projectRoot + "Library/Baked/" + guid + "/" + stem + ".fzasset";
-    if (util::FileSystem::Exists(resolved))
+    if (util::FileSystem::Exists(resolved)) {
         return util::FileSystem::PathFromUtf8(resolved);
+    }
 
     return {};
 }
@@ -171,7 +194,7 @@ bool LoadTexMeta(const std::string& texAbsPath, asset::TextureImportSettings& se
         settings = texAsset.settings;
         return true;
     }
-    /// @note fallback: 旧 stem.asset [texture] セクション形式
+    // fallback: 旧 stem.asset [texture] セクション形式
     const std::filesystem::path p = util::FileSystem::PathFromUtf8(texAbsPath);
     const std::string oldPath = util::FileSystem::PathToUtf8(
         p.parent_path() / (util::FileSystem::PathToUtf8(p.stem()) + ".asset"));
@@ -183,13 +206,19 @@ bool LoadTexMeta(const std::string& texAbsPath, asset::TextureImportSettings& se
             const auto& tbl = parsed.table();
             settings = asset::DefaultSettingsForType(asset::GuessTextureType(
                 util::FileSystem::GetFilename(texAbsPath)));
-            if (auto v = tbl["texture"]["srgb"].value<bool>())              settings.srgb      = *v;
-            if (auto v = tbl["texture"]["generate_mipmaps"].value<bool>())  settings.mipmaps   = *v;
-            if (auto v = tbl["texture"]["flip_green_channel"].value<bool>()) settings.flipGreen = *v;
+            if (auto v = tbl["texture"]["srgb"].value<bool>()) {
+                settings.srgb      = *v;
+            }
+            if (auto v = tbl["texture"]["generate_mipmaps"].value<bool>()) {
+                settings.mipmaps   = *v;
+            }
+            if (auto v = tbl["texture"]["flip_green_channel"].value<bool>()) {
+                settings.flipGreen = *v;
+            }
             return true;
         }
     }
-    /// @note .meta も .asset もない: ファイル名からデフォルトを生成
+    // .meta も .asset もない: ファイル名からデフォルトを生成
     settings = asset::DefaultSettingsForType(asset::GuessTextureType(
         util::FileSystem::GetFilename(texAbsPath)));
     return true;
@@ -215,8 +244,9 @@ bool IsExcludedByPattern(const std::string& absPath)
     };
     for (const auto* suffix : kExcludeSuffixes) {
         const size_t slen = std::strlen(suffix);
-        if (stem.size() >= slen && stem.compare(stem.size() - slen, slen, suffix) == 0)
+        if (stem.size() >= slen && stem.compare(stem.size() - slen, slen, suffix) == 0) {
             return true;
+        }
     }
     return false;
 }
@@ -225,16 +255,20 @@ bool IsExcludedByPattern(const std::string& absPath)
 /// @note エクスプローラーからの取り込みで既存アセットを黙って上書きしないよう、Unity 同様に採番する。
 std::filesystem::path MakeUniqueDestPath(const std::filesystem::path& desired)
 {
-    if (!util::FileSystem::Exists(desired)) return desired;
+    if (!util::FileSystem::Exists(desired)) {
+        return desired;
+    }
     const std::filesystem::path dir  = desired.parent_path();
     const std::string           stem = util::FileSystem::PathToUtf8(desired.stem());
     const std::string           ext  = util::FileSystem::PathToUtf8(desired.extension());
     for (int i = 1; i < 10000; ++i) {
         const std::filesystem::path candidate =
             dir / (stem + " (" + std::to_string(i) + ")" + ext);
-        if (!util::FileSystem::Exists(candidate)) return candidate;
+        if (!util::FileSystem::Exists(candidate)) {
+            return candidate;
+        }
     }
-    /// @note 事実上到達しない
+    // 事実上到達しない
     return desired;
 }
 
@@ -245,7 +279,9 @@ void MigrateImportRecord(const std::string& absPath, const FbxImportOptions& opt
                          uint64_t size, int64_t mtime, bool haveStamp)
 {
     const std::string guid = asset::AssetDatabase::TryGetGuidFromPath(absPath);
-    if (guid.empty()) return;
+    if (guid.empty()) {
+        return;
+    }
 
     ImportCacheStore::Entry entry;
     entry.contentHash  = FbxMetaSerializer::SourceContentHash(absPath);
@@ -254,10 +290,12 @@ void MigrateImportRecord(const std::string& absPath, const FbxImportOptions& opt
         entry.size  = size;
         entry.mtime = mtime;
     }
-    if (entry.contentHash.empty()) return;
+    if (entry.contentHash.empty()) {
+        return;
+    }
     (void)ImportCacheStore::Save(guid, entry);
 }
-} /// @note namespace
+} // namespace
 
 bool AssetBrowserPanel::IsOutdated(const std::string& absPath)
 {
@@ -267,68 +305,99 @@ bool AssetBrowserPanel::IsOutdated(const std::string& absPath)
 
     if (IsTextureRaw(ext)) {
         const fs::path texFile = util::FileSystem::PathFromUtf8(GetTexDescPath(absPath));
-        if (!util::FileSystem::Exists(texFile)) return false;
+        if (!util::FileSystem::Exists(texFile)) {
+            return false;
+        }
         std::error_code ec;
-        const auto srcTime = fs::last_write_time(p,       ec); if (ec) return false;
-        const auto texTime = fs::last_write_time(texFile, ec); if (ec) return false;
+        const auto srcTime = fs::last_write_time(p,       ec);
+        if (ec) {
+            return false;
+        }
+        const auto texTime = fs::last_write_time(texFile, ec);
+        if (ec) {
+            return false;
+        }
         return srcTime > texTime;
     }
 
     const fs::path modelFile = GetExistingImportedModelPath(p);
-    if (modelFile.empty()) return false;
+    if (modelFile.empty()) {
+        return false;
+    }
 
-    /// @note インポータ自体が更新されていたら、原本が変わっていなくても作り直す。原本と設定だけを見ていると、インポータのコードを直しても «どちらも変わっていない» ので古い生成物が使われ続ける (詳細は FbxMetaSerializer::kModelImporterVersion のコメント)。
+    // インポータ自体が更新されていたら、原本が変わっていなくても作り直す。原本と設定だけを見ていると、インポータのコードを直しても «どちらも変わっていない» ので古い生成物が使われ続ける (詳細は FbxMetaSerializer::kModelImporterVersion のコメント)。
     if (FbxMetaSerializer::LoadImporterVersion(absPath)
-        < FbxMetaSerializer::kModelImporterVersion)
+        < FbxMetaSerializer::kModelImporterVersion) {
         return true;
+    }
 
-    /// @note 前回 import 成功時の記録 (ImportCacheStore) と突き合わせる。見るのは「設定が変わったか」と「原本の中身が変わったか」の 2 つだけ。
-    /// @note mtime は判定材料にしない。mtime が答えるのは «触られたか» であって «変わったか» ではなく、git pull・clone・コピーは中身を変えずに mtime を動かすため材料にすると全 FBX の焼き直しが走る。import 直後は必ず生成物より .meta が新しくなるため «原本より生成物が古い» という比較も成立しない (以前これで永久に再インポート対象だった)。
-    /// @note そこで mtime とサイズは «中身を読まずに変わっていないと言い切る» 目印としてだけ使い、どちらかが動いていたら原本を読み中身のハッシュで最終判断する。Inspector やテキストエディタで .meta の import 設定を触った場合は settings_hash が動くため、同じ 1 本の判定で拾える。
+    // 前回 import 成功時の記録 (ImportCacheStore) と突き合わせる。見るのは「設定が変わったか」と「原本の中身が変わったか」の 2 つだけ。
+    // mtime は判定材料にしない。mtime が答えるのは «触られたか» であって «変わったか» ではなく、git pull・clone・コピーは中身を変えずに mtime を動かすため材料にすると全 FBX の焼き直しが走る。import 直後は必ず生成物より .meta が新しくなるため «原本より生成物が古い» という比較も成立しない (以前これで永久に再インポート対象だった)。
+    // そこで mtime とサイズは «中身を読まずに変わっていないと言い切る» 目印としてだけ使い、どちらかが動いていたら原本を読み中身のハッシュで最終判断する。Inspector やテキストエディタで .meta の import 設定を触った場合は settings_hash が動くため、同じ 1 本の判定で拾える。
     const FbxMetaSerializer::CacheInfo cache = FbxMetaSerializer::LoadCacheInfo(absPath);
     const bool haveRecord =
         (!cache.contentHash.empty() || !cache.legacyStamp.empty()) && !cache.settingsHash.empty();
     if (haveRecord) {
         FbxImportOptions options{};
         (void)FbxMetaSerializer::LoadOptions(absPath, options);
-        if (cache.settingsHash != FbxMetaSerializer::SettingsHash(options)) return true;
+        if (cache.settingsHash != FbxMetaSerializer::SettingsHash(options)) {
+            return true;
+        }
 
         uint64_t size = 0;
         int64_t  mtime = 0;
         const bool haveStamp = FbxMetaSerializer::SourceStamp(absPath, size, mtime);
 
-        /// @note 旧形式 (パス + サイズ + 更新時刻) しか無い記録は、その形式のまま突き合わせる。 一致していれば中身も変わっていないので、焼き直さずに新形式へ書き換えるだけにする。
+        // 旧形式 (パス + サイズ + 更新時刻) しか無い記録は、その形式のまま突き合わせる。 一致していれば中身も変わっていないので、焼き直さずに新形式へ書き換えるだけにする。
         if (cache.contentHash.empty()) {
-            if (cache.legacyStamp != FbxMetaSerializer::LegacyStampHash(absPath)) return true;
+            if (cache.legacyStamp != FbxMetaSerializer::LegacyStampHash(absPath)) {
+                return true;
+            }
             MigrateImportRecord(absPath, options, size, mtime, haveStamp);
             return false;
         }
 
-        /// @note 原本を stat できない。触らない方が安全
-        if (!haveStamp) return false;
+        // 原本を stat できない。触らない方が安全
+        if (!haveStamp) {
+            return false;
+        }
 
-        /// @note サイズが違えば中身が違う。読むまでもない。
-        if (cache.size != 0 && cache.size != size) return true;
-        /// @note サイズも更新時刻も前回のままなら、触られてすらいない。ここが通常の経路。
-        if (cache.size == size && cache.mtime == mtime) return false;
+        // サイズが違えば中身が違う。読むまでもない。
+        if (cache.size != 0 && cache.size != size) {
+            return true;
+        }
+        // サイズも更新時刻も前回のままなら、触られてすらいない。ここが通常の経路。
+        if (cache.size == size && cache.mtime == mtime) {
+            return false;
+        }
 
-        /// @note 触られてはいるが中身は同じかもしれない。ここで初めて原本を読む。 (git pull / clone / コピーはどれも中身を変えずに更新時刻を動かす)
+        // 触られてはいるが中身は同じかもしれない。ここで初めて原本を読む。 (git pull / clone / コピーはどれも中身を変えずに更新時刻を動かす)
         if (cache.contentHash == FbxMetaSerializer::SourceContentHash(absPath)) {
-            /// @note 次回から上の «更新時刻が同じ» で抜けられるよう、目印だけ今の値にする。
+            // 次回から上の «更新時刻が同じ» で抜けられるよう、目印だけ今の値にする。
             const std::string guid = asset::AssetDatabase::TryGetGuidFromPath(absPath);
-            if (!guid.empty()) ImportCacheStore::RefreshStamp(guid, size, mtime);
+            if (!guid.empty()) {
+                ImportCacheStore::RefreshStamp(guid, size, mtime);
+            }
             return false;
         }
         return true;
     }
 
-    /// @note fingerprint が未記録のケース (Library を消した / 記録が失われた) は mtime へ落とす。
+    // fingerprint が未記録のケース (Library を消した / 記録が失われた) は mtime へ落とす。
     std::error_code ec;
-    const auto srcTime   = fs::last_write_time(p,         ec); if (ec) return false;
-    const auto assetTime = fs::last_write_time(modelFile,  ec); if (ec) return false;
-    if (srcTime > assetTime) return true;
+    const auto srcTime   = fs::last_write_time(p,         ec);
+    if (ec) {
+        return false;
+    }
+    const auto assetTime = fs::last_write_time(modelFile,  ec);
+    if (ec) {
+        return false;
+    }
+    if (srcTime > assetTime) {
+        return true;
+    }
 
-    /// @note 生成物の方が新しい = 今の原本から焼かれたもの、と見なせるのでここで記録を作っておく。作らないと «記録が無いから mtime を見る» を毎回繰り返しこの経路から永久に抜けられず、mtime は触っただけで動くので git pull のたびに焼き直しが走り続ける。原本を 1 度読む代わりに、以降は «中身が変わったか» で判定できるようになる。
+    // 生成物の方が新しい = 今の原本から焼かれたもの、と見なせるのでここで記録を作っておく。作らないと «記録が無いから mtime を見る» を毎回繰り返しこの経路から永久に抜けられず、mtime は触っただけで動くので git pull のたびに焼き直しが走り続ける。原本を 1 度読む代わりに、以降は «中身が変わったか» で判定できるようになる。
     FbxImportOptions options{};
     (void)FbxMetaSerializer::LoadOptions(absPath, options);
     uint64_t size = 0;
@@ -343,8 +412,9 @@ bool AssetBrowserPanel::IsAlreadyImported(const std::string& absPath)
     namespace fs = std::filesystem;
     const fs::path p = util::FileSystem::PathFromUtf8(absPath);
     const std::string ext = util::StringUtils::ToLower(util::FileSystem::GetExtension(absPath));
-    if (IsTextureRaw(ext))
+    if (IsTextureRaw(ext)) {
         return util::FileSystem::Exists(util::FileSystem::PathFromUtf8(GetTexDescPath(absPath)));
+    }
 
     return !GetExistingImportedModelPath(p).empty();
 }
@@ -355,28 +425,41 @@ void AssetBrowserPanel::TryQueuePendingImport(const std::string& relPath)
         util::FileSystem::GetExtension(relPath));
     const bool isModelRaw = IsImportableRaw(ext);
     const bool isTextureRaw = IsTextureRaw(ext);
-    if (!isModelRaw && !isTextureRaw) return;
+    if (!isModelRaw && !isTextureRaw) {
+        return;
+    }
 
     namespace fs = std::filesystem;
     const std::string absPath = util::FileSystem::PathToUtf8(
         util::FileSystem::PathFromUtf8(m_rootPath) / util::FileSystem::PathFromUtf8(relPath));
 
-    if (IsAlreadyImported(absPath)) return;
-    if (IsExcludedByPattern(absPath)) return;
+    if (IsAlreadyImported(absPath)) {
+        return;
+    }
+    if (IsExcludedByPattern(absPath)) {
+        return;
+    }
 
-    /// @note 重複チェック
+    // 重複チェック
     for (const auto& p : m_pendingImports)
-        if (p.path == absPath) return;
+        if (p.path == absPath) {
+            return;
+        }
     for (const auto& p : m_pendingConfirmImports)
-        if (p == absPath) return;
+        if (p == absPath) {
+            return;
+        }
     for (const auto& p : m_pendingTextureConfirmImports)
-        if (p == absPath) return;
+        if (p == absPath) {
+            return;
+        }
 
-    /// @note ウォッチャー経由の新規ファイルは種類別の確認キューへ積む。FBX は変換ジョブ、テクスチャは .meta サイドカー保存で責務が違う。
-    if (isTextureRaw)
+    // ウォッチャー経由の新規ファイルは種類別の確認キューへ積む。FBX は変換ジョブ、テクスチャは .meta サイドカー保存で責務が違う。
+    if (isTextureRaw) {
         m_pendingTextureConfirmImports.push_back(absPath);
-    else
+    } else {
         m_pendingConfirmImports.push_back(absPath);
+    }
 }
 
 void AssetBrowserPanel::QueueAutomaticReimport(const std::string& absPath)
@@ -384,14 +467,16 @@ void AssetBrowserPanel::QueueAutomaticReimport(const std::string& absPath)
     const std::string ext = util::StringUtils::ToLower(
         util::FileSystem::GetExtension(absPath));
     if (!IsImportableRaw(ext) || IsExcludedByPattern(absPath) ||
-        !IsAlreadyImported(absPath) || !IsOutdated(absPath))
+        !IsAlreadyImported(absPath) || !IsOutdated(absPath)) {
         return;
+    }
 
-    /// @note 既にキュー投入済み、または焼き直し中なら二重に積まない。m_pendingImports だけでは足りない。インポート開始時にキューはワーカースレッドへ move されて空になるため走行中の重複判定に使えず、完了時に取り除かれる m_outdatedPaths を「処理中」の印として兼用する。
-    if (!m_outdatedPaths.insert(absPath).second)
+    // 既にキュー投入済み、または焼き直し中なら二重に積まない。m_pendingImports だけでは足りない。インポート開始時にキューはワーカースレッドへ move されて空になるため走行中の重複判定に使えず、完了時に取り除かれる m_outdatedPaths を「処理中」の印として兼用する。
+    if (!m_outdatedPaths.insert(absPath).second) {
         return;
+    }
 
-    /// @note 元の .meta に保存された選択メッシュ・クリップ範囲を維持し、 インポータ更新だけを適用する。設定が壊れている場合は既定値で復旧する。
+    // 元の .meta に保存された選択メッシュ・クリップ範囲を維持し、 インポータ更新だけを適用する。設定が壊れている場合は既定値で復旧する。
     FbxImportOptions options{};
     (void)FbxMetaSerializer::LoadOptions(absPath, options);
     m_pendingImports.push_back({ absPath, std::move(options) });
@@ -402,24 +487,33 @@ void AssetBrowserPanel::NotifyAssetTouched(const std::string& absPath)
 {
     std::string source = absPath;
 
-    /// @note `<原本>.meta` への変更は原本の import 設定変更。原本側へ読み替えて判定に回す。Inspector の Import Settings もテキストエディタでの直接編集も、最終的に書き換わるのは .meta だけで、ここを拾わないと「設定を変えたのに生成物が変わらない」ので結局 Reimport を手で押す運用に戻ってしまう。
+    // `<原本>.meta` への変更は原本の import 設定変更。原本側へ読み替えて判定に回す。Inspector の Import Settings もテキストエディタでの直接編集も、最終的に書き換わるのは .meta だけで、ここを拾わないと「設定を変えたのに生成物が変わらない」ので結局 Reimport を手で押す運用に戻ってしまう。
     const std::string ext = util::StringUtils::ToLower(util::FileSystem::GetExtension(source));
-    if (ext == ".meta")
+    if (ext == ".meta") {
         source = source.substr(0, source.size() - 5);
+    }
 
     const std::string sourceExt = util::StringUtils::ToLower(
         util::FileSystem::GetExtension(source));
-    if (!IsImportableRaw(sourceExt))    return;
-    if (IsExcludedByPattern(source))    return;
-    /// @note まだ一度も import していない原本は「新規」であり、設定を確認させる経路が別にある。
-    if (!IsAlreadyImported(source))     return;
+    if (!IsImportableRaw(sourceExt)) {
+        return;
+    }
+    if (IsExcludedByPattern(source)) {
+        return;
+    }
+    // まだ一度も import していない原本は「新規」であり、設定を確認させる経路が別にある。
+    if (!IsAlreadyImported(source)) {
+        return;
+    }
 
     m_scheduledReimports[source] = std::chrono::steady_clock::now();
 }
 
 void AssetBrowserPanel::FlushScheduledReimports()
 {
-    if (m_scheduledReimports.empty()) return;
+    if (m_scheduledReimports.empty()) {
+        return;
+    }
 
     const auto now = std::chrono::steady_clock::now();
     for (auto it = m_scheduledReimports.begin(); it != m_scheduledReimports.end(); ) {
@@ -427,9 +521,9 @@ void AssetBrowserPanel::FlushScheduledReimports()
             ++it;
             continue;
         }
-        /// @note 待っている間に消された / 別名になったファイルは黙って落とす。
+        // 待っている間に消された / 別名になったファイルは黙って落とす。
         if (util::FileSystem::Exists(util::FileSystem::PathFromUtf8(it->first))) {
-            /// @note 実際に作り直しが要るかは QueueAutomaticReimport の IsOutdated が決める。 保存し直しただけで中身が同じなら source_hash が変わるので焼き直す。
+            // 実際に作り直しが要るかは QueueAutomaticReimport の IsOutdated が決める。 保存し直しただけで中身が同じなら source_hash が変わるので焼き直す。
             QueueAutomaticReimport(it->first);
         }
         it = m_scheduledReimports.erase(it);
@@ -438,34 +532,41 @@ void AssetBrowserPanel::FlushScheduledReimports()
 
 void AssetBrowserPanel::ScanAndQueueUnimported(const std::string& dirAbsPath)
 {
-    /// @note ここで m_outdatedPaths は空にしない。この集合は「バッジ表示用の再計算結果」から「キュー投入済み / 焼き直し中の印」へ役割が変わった。マウント追加でも呼ばれるため、走行中のバッチの印まで消すと同じ原本を二重に積んでしまう。
+    // ここで m_outdatedPaths は空にしない。この集合は「バッジ表示用の再計算結果」から「キュー投入済み / 焼き直し中の印」へ役割が変わった。マウント追加でも呼ばれるため、走行中のバッチの印まで消すと同じ原本を二重に積んでしまう。
     for (const auto& path : util::FileSystem::ListFilesRecursive(util::FileSystem::PathFromUtf8(dirAbsPath)))
     {
         const std::string absPath = util::FileSystem::PathToUtf8(path);
         const std::string ext = util::StringUtils::ToLower(
             util::FileSystem::GetExtension(absPath));
-        if (!IsImportableRaw(ext) && !IsTextureRaw(ext)) continue;
+        if (!IsImportableRaw(ext) && !IsTextureRaw(ext)) {
+            continue;
+        }
 
-        if (IsExcludedByPattern(absPath)) continue;
+        if (IsExcludedByPattern(absPath)) {
+            continue;
+        }
 
         if (IsAlreadyImported(absPath)) {
-            /// @note インポータ版更新や原本更新で既存モデルが古くなった場合は、ユーザー確認を挟まず保存済み設定のまま再インポートする。targetPath のような派生データの修正を、全 FBX 手動操作へしないため。
+            // インポータ版更新や原本更新で既存モデルが古くなった場合は、ユーザー確認を挟まず保存済み設定のまま再インポートする。targetPath のような派生データの修正を、全 FBX 手動操作へしないため。
             QueueAutomaticReimport(absPath);
             continue;
         }
 
-        /// @note 重複チェック
+        // 重複チェック
         bool found = false;
         for (const auto& p : m_pendingImports)       if (p.path == absPath) { found = true; break; }
         for (const auto& p : m_pendingConfirmImports) if (p == absPath)      { found = true; break; }
         for (const auto& p : m_pendingTextureConfirmImports) if (p == absPath) { found = true; break; }
-        if (found) continue;
+        if (found) {
+            continue;
+        }
 
-        /// @note ウォッチャー経由と同じ経路へ積む → 必ず種類別 Import Settings を経由してインポート
-        if (IsTextureRaw(ext))
+        // ウォッチャー経由と同じ経路へ積む → 必ず種類別 Import Settings を経由してインポート
+        if (IsTextureRaw(ext)) {
             m_pendingTextureConfirmImports.push_back(absPath);
-        else
+        } else {
             m_pendingConfirmImports.push_back(absPath);
+        }
     }
 }
 
@@ -473,12 +574,14 @@ void AssetBrowserPanel::ScanAndQueueUnimported(const std::string& dirAbsPath)
 
 void AssetBrowserPanel::AcceptExternalDrop(EditorContext& ctx)
 {
-    /// @note ドラッグ中のライブハイライト状態を毎フレーム取り込む (ドロップ確定前のフォルダ強調に使う)。
+    // ドラッグ中のライブハイライト状態を毎フレーム取り込む (ドロップ確定前のフォルダ強調に使う)。
     m_extDragActive = ctx.externalDragActive;
     m_extDragPoint  = { ctx.externalDragX, ctx.externalDragY };
 
-    if (ctx.droppedExternalFiles.empty()) return;
-    /// @note 実コピーは OnRenderContent 末尾で確定する。ここではドロップ内容と位置を退避するだけ。
+    if (ctx.droppedExternalFiles.empty()) {
+        return;
+    }
+    // 実コピーは OnRenderContent 末尾で確定する。ここではドロップ内容と位置を退避するだけ。
     m_externalDrop.files     = std::move(ctx.droppedExternalFiles);
     m_externalDrop.point     = { ctx.droppedExternalFilesX, ctx.droppedExternalFilesY };
     m_externalDrop.targetDir.clear();
@@ -494,13 +597,13 @@ void AssetBrowserPanel::ConsiderExternalDropTarget(
         return p.x >= mn.x && p.x < mx.x && p.y >= mn.y && p.y < mx.y;
     };
 
-    /// @note (1) 実ドロップ: 最初にヒットしたフォルダを取り込み先に採用する。
+    // (1) 実ドロップ: 最初にヒットしたフォルダを取り込み先に採用する。
     if (m_externalDrop.active && !m_externalDrop.hit && contains(m_externalDrop.point)) {
         m_externalDrop.targetDir = folderAbs;
         m_externalDrop.hit       = true;
     }
 
-    /// @note (2) ドラッグ中: ドロップ確定前のフォルダをハイライトして落とし先を明示する (Unity 風)。
+    // (2) ドラッグ中: ドロップ確定前のフォルダをハイライトして落とし先を明示する (Unity 風)。
     if (m_extDragActive && contains(m_extDragPoint)) {
         ImDrawList* dl = ImGui::GetWindowDrawList();
         dl->AddRectFilled(mn, mx, ImGui::GetColorU32(ImVec4(0.35f, 0.62f, 0.95f, 0.16f)), 3.0f);
@@ -510,22 +613,26 @@ void AssetBrowserPanel::ConsiderExternalDropTarget(
 
 void AssetBrowserPanel::FinalizeExternalDrop()
 {
-    if (!m_externalDrop.active) return;
-    /// @note ヒットしたフォルダが無ければ現在フォルダへ取り込む。
+    if (!m_externalDrop.active) {
+        return;
+    }
+    // ヒットしたフォルダが無ければ現在フォルダへ取り込む。
     const std::string target = m_externalDrop.targetDir.empty()
         ? m_currentPath : m_externalDrop.targetDir;
     CopyExternalFilesInto(m_externalDrop.files, target);
-    /// @note クリア
+    // クリア
     m_externalDrop = ExternalDrop{};
 }
 
 void AssetBrowserPanel::CopyExternalFilesInto(
     const std::vector<std::string>& sources, const std::string& destDirUtf8)
 {
-    if (sources.empty()) return;
+    if (sources.empty()) {
+        return;
+    }
 
     namespace fs = std::filesystem;
-    /// @note 取り込み先が無効ならルートへフォールバック。
+    // 取り込み先が無効ならルートへフォールバック。
     const std::string destUtf8 =
         util::FileSystem::IsDirectory(destDirUtf8) ? destDirUtf8 : m_rootPath;
     const fs::path destDir = util::FileSystem::PathFromUtf8(destUtf8);
@@ -533,9 +640,13 @@ void AssetBrowserPanel::CopyExternalFilesInto(
     int  copiedCount = 0;
     bool anyCopied = false;
     for (const std::string& src : sources) {
-        if (!util::FileSystem::Exists(src)) continue;
-        /// @note 既に Assets 配下にあるものはコピーしない (自分自身への複製を防ぐ)。
-        if (util::FileSystem::IsChildPathText(src, m_rootPath)) continue;
+        if (!util::FileSystem::Exists(src)) {
+            continue;
+        }
+        // 既に Assets 配下にあるものはコピーしない (自分自身への複製を防ぐ)。
+        if (util::FileSystem::IsChildPathText(src, m_rootPath)) {
+            continue;
+        }
 
         const fs::path srcPath = util::FileSystem::PathFromUtf8(src);
         const fs::path dest    = MakeUniqueDestPath(destDir / srcPath.filename());
@@ -556,7 +667,7 @@ void AssetBrowserPanel::CopyExternalFilesInto(
         }
     }
 
-    /// @note ウォッチャーが Added を拾ってインポート設定モーダルを自動表示するが、 表示中フォルダのグリッドは即座に反映されるよう明示的に更新する。
+    // ウォッチャーが Added を拾ってインポート設定モーダルを自動表示するが、 表示中フォルダのグリッドは即座に反映されるよう明示的に更新する。
     if (anyCopied) {
         const std::string where = util::FileSystem::GetFilename(destUtf8);
         Toast::Success(std::to_string(copiedCount) +
@@ -576,34 +687,39 @@ void AssetBrowserPanel::CopyExternalFilesInto(
 
 void AssetBrowserPanel::OnBeforeBegin(EditorContext& ctx)
 {
-    /// @name エクスプローラーからの D&D 取り込み
-    /// @note 実コピーはドロップ位置のフォルダを判定できる OnRenderContent 末尾で行う。前フレームで解決されなかったドロップ (パネルが畳まれていた等) はここで現在フォルダへ確定する。
-    if (m_externalDrop.active)
+    // エクスプローラーからの D&D 取り込み
+    // 実コピーはドロップ位置のフォルダを判定できる OnRenderContent 末尾で行う。前フレームで解決されなかったドロップ (パネルが畳まれていた等) はここで現在フォルダへ確定する。
+    if (m_externalDrop.active) {
         FinalizeExternalDrop();
+    }
     AcceptExternalDrop(ctx);
 
-    /// @note ファイル監視とインポートは 1 枚目のパネルだけが回す。Asset Browser は複数開けるが、監視もインポートもプロジェクト全体に対する 1 つの仕事で、枚数ぶん走らせると同じファイルを何度も焼きインポート確認ウィンドウも枚数ぶん出る。他の枚は純粋な閲覧側に徹し、一覧の作り直しは ctx の世代番号を通じて受け取る。
-    if (!IsAssetPipelineOwner()) return;
+    // ファイル監視とインポートは 1 枚目のパネルだけが回す。Asset Browser は複数開けるが、監視もインポートもプロジェクト全体に対する 1 つの仕事で、枚数ぶん走らせると同じファイルを何度も焼きインポート確認ウィンドウも枚数ぶん出る。他の枚は純粋な閲覧側に徹し、一覧の作り直しは ctx の世代番号を通じて受け取る。
+    if (!IsAssetPipelineOwner()) {
+        return;
+    }
 
-    /// @name ファイルシステム監視
-    /// @note Poll() を OnBeforeBegin に置くことで、パネルが collapsed / 非表示でもイベントを取りこぼさず、追加ファイルのインポートとツリー更新が即座に走る。
+    // ファイルシステム監視
+    // Poll() を OnBeforeBegin に置くことで、パネルが collapsed / 非表示でもイベントを取りこぼさず、追加ファイルのインポートとツリー更新が即座に走る。
     bool needsDirectoryRefresh = false;
     const std::vector<AssetFileWatcher::FileEvent> watcherEvents = m_watcher.Poll();
-    if (!watcherEvents.empty()) ++ctx.assetBrowserMetadataGeneration;
+    if (!watcherEvents.empty()) {
+        ++ctx.assetBrowserMetadataGeneration;
+    }
 
-    /// @note 素材を一度に大量投入すると OS の通知バッファが溢れ、その回の変更が丸ごと捨てられる。 個別イベントに追従する処理は全て空振りするので、ここだけは総取っ替えで作り直す。
+    // 素材を一度に大量投入すると OS の通知バッファが溢れ、その回の変更が丸ごと捨てられる。 個別イベントに追従する処理は全て空振りするので、ここだけは総取っ替えで作り直す。
     if (m_watcher.ConsumeOverflow()) {
         ++ctx.assetBrowserMetadataGeneration;
         ResyncAfterWatcherOverflow();
         Toast::Info("Asset Browser resynced (file notifications overflowed)");
     }
 
-    /// @note 共通アセット索引へ同じイベントを流し、検索結果を実ファイルに追従させる。AssetBrowser が唯一の AssetFileWatcher 所有者であり Poll() はイベントを消費してキューを空にするため、ここを通さないと索引は次のフル再構築まで古いままになる。
+    // 共通アセット索引へ同じイベントを流し、検索結果を実ファイルに追従させる。AssetBrowser が唯一の AssetFileWatcher 所有者であり Poll() はイベントを消費してキューを空にするため、ここを通さないと索引は次のフル再構築まで古いままになる。
     AssetSearch::ApplyFileEvents(watcherEvents);
 
     for (const auto& ev : watcherEvents)
     {
-        /// @note 文字列連結では m_rootPath 末尾に '/' がない場合、監視パスが壊れる。
+        // 文字列連結では m_rootPath 末尾に '/' がない場合、監視パスが壊れる。
         const std::filesystem::path watcherRoot = util::FileSystem::PathFromUtf8(m_rootPath);
         const std::string absPath = util::FileSystem::PathToUtf8(
             (watcherRoot / util::FileSystem::PathFromUtf8(ev.path)).lexically_normal());
@@ -612,15 +728,17 @@ void AssetBrowserPanel::OnBeforeBegin(EditorContext& ctx)
             : util::FileSystem::PathToUtf8(
                 (watcherRoot / util::FileSystem::PathFromUtf8(ev.oldPath)).lexically_normal());
 
-        /// @note 中身が変わったアセットのサムネイルは作り直させる。プレビューは「まだ書き込み途中」「まだインポートされていない」を失敗として抱え込む。素材を一括で入れた直後は必ずその状態を通るので、書き終わりの通知でキャッシュを捨てないと直ったこと自体に気付けずアイコンのまま残る。
+        // 中身が変わったアセットのサムネイルは作り直させる。プレビューは「まだ書き込み途中」「まだインポートされていない」を失敗として抱え込む。素材を一括で入れた直後は必ずその状態を通るので、書き終わりの通知でキャッシュを捨てないと直ったこと自体に気付けずアイコンのまま残る。
         {
             const std::string touched = util::FileSystem::NormalizePathSeparators(absPath);
             ResetAssetPreviewCache(touched);
-            /// @note `<原本>.meta` の更新は原本の見た目 (Sprite 切り抜き / インポート設定) に効く。
-            if (util::StringUtils::ToLower(util::FileSystem::GetExtension(touched)) == ".meta")
+            // `<原本>.meta` の更新は原本の見た目 (Sprite 切り抜き / インポート設定) に効く。
+            if (util::StringUtils::ToLower(util::FileSystem::GetExtension(touched)) == ".meta") {
                 ResetAssetPreviewCache(touched.substr(0, touched.size() - 5));
-            if (!oldAbsPath.empty())
+            }
+            if (!oldAbsPath.empty()) {
                 ResetAssetPreviewCache(util::FileSystem::NormalizePathSeparators(oldAbsPath));
+            }
         }
 
         if (ev.type == AssetFileWatcher::EventType::Added   ||
@@ -629,44 +747,48 @@ void AssetBrowserPanel::OnBeforeBegin(EditorContext& ctx)
         {
             if (ev.type == AssetFileWatcher::EventType::Removed
                 && util::StringUtils::ToLower(util::FileSystem::GetExtension(absPath)) != ".meta") {
-                /// @note 削除後に同じ名前で別アセットを作成しても、旧 GUID の逆引きが残らないよう watcher の Removed を索引にも通知する。.meta 単体の通知は本体が残るため無視する。
+                // 削除後に同じ名前で別アセットを作成しても、旧 GUID の逆引きが残らないよう watcher の Removed を索引にも通知する。.meta 単体の通知は本体が残るため無視する。
                 asset::AssetDatabase::OnAssetRemoved(absPath);
             }
             if (ev.type == AssetFileWatcher::EventType::Renamed && !oldAbsPath.empty()) {
-                /// @note Explorer / IDE からの移動も Asset Browser 内の移動と同じ GUID 更新経路へ 通す。ここを欠くと .meta は一緒に移動しても、実行中の索引だけが旧パスを 保持し、次回保存時に参照を正しく GUID 化できない。
+                // Explorer / IDE からの移動も Asset Browser 内の移動と同じ GUID 更新経路へ 通す。ここを欠くと .meta は一緒に移動しても、実行中の索引だけが旧パスを 保持し、次回保存時に参照を正しく GUID 化できない。
                 asset::AssetDatabase::OnAssetMoved(oldAbsPath, absPath);
             }
 
-            /// @note 変更が起きたディレクトリのツリーキャッシュを無効化
+            // 変更が起きたディレクトリのツリーキャッシュを無効化
             InvalidateTreeCache(util::FileSystem::GetDirectory(absPath));
-            if (!oldAbsPath.empty())
+            if (!oldAbsPath.empty()) {
                 InvalidateTreeCache(util::FileSystem::GetDirectory(oldAbsPath));
+            }
 
-            /// @note 移動元・移動先、または表示中フォルダ自体の変化ならグリッドも再スキャンする。
+            // 移動元・移動先、または表示中フォルダ自体の変化ならグリッドも再スキャンする。
             if (util::FileSystem::IsChildPathText(absPath, m_currentPath) ||
                 util::FileSystem::IsChildPathText(m_currentPath, absPath) ||
                 (!oldAbsPath.empty() &&
                  (util::FileSystem::IsChildPathText(oldAbsPath, m_currentPath) ||
-                  util::FileSystem::IsChildPathText(m_currentPath, oldAbsPath))))
+                  util::FileSystem::IsChildPathText(m_currentPath, oldAbsPath)))) {
                 needsDirectoryRefresh = true;
+            }
         }
 
         if (ev.type == AssetFileWatcher::EventType::Added) {
             TryQueuePendingImport(ev.path);
-            /// @note 追加された対象に guid (.meta) を発行する。フォルダもここを通る。生成箇所 (Create メニュー / ツリー右クリック / エクスプローラー D&D / OS 側の操作) ごとに .meta 発行を書くと必ずどれかが抜けるため、ウォッチャーの Added という全経路が合流する唯一の地点に集約する。ただしモデル原本は Import ボタンまで原本の .meta を作らない。
+            // 追加された対象に guid (.meta) を発行する。フォルダもここを通る。生成箇所 (Create メニュー / ツリー右クリック / エクスプローラー D&D / OS 側の操作) ごとに .meta 発行を書くと必ずどれかが抜けるため、ウォッチャーの Added という全経路が合流する唯一の地点に集約する。ただしモデル原本は Import ボタンまで原本の .meta を作らない。
             const std::string addedExt = util::StringUtils::ToLower(
                 util::FileSystem::GetExtension(absPath));
-            if (!IsImportableRaw(addedExt))
+            if (!IsImportableRaw(addedExt)) {
                 (void)asset::AssetDatabase::GuidFromPath(absPath);
+            }
         }
 
-        /// @note 追加・更新・リネームのどれで届いても、インポート済みの原本 (とその .meta) は自動再インポートの候補として拾う。実際に焼き直すかは fingerprint が決める。「上書き保存」が必ず Modified で届くとは限らず、DCC やエクスプローラーはテンポラリへ書いてから置き換える実装が多くその場合は Added / Renamed になる。Modified だけを見ていたので書き出し方によっては変更が黙って無視され、結局 Reimport を手で押す運用が残っていた。
+        // 追加・更新・リネームのどれで届いても、インポート済みの原本 (とその .meta) は自動再インポートの候補として拾う。実際に焼き直すかは fingerprint が決める。「上書き保存」が必ず Modified で届くとは限らず、DCC やエクスプローラーはテンポラリへ書いてから置き換える実装が多くその場合は Added / Renamed になる。Modified だけを見ていたので書き出し方によっては変更が黙って無視され、結局 Reimport を手で押す運用が残っていた。
         if (ev.type == AssetFileWatcher::EventType::Added    ||
             ev.type == AssetFileWatcher::EventType::Modified ||
-            ev.type == AssetFileWatcher::EventType::Renamed)
+            ev.type == AssetFileWatcher::EventType::Renamed) {
             NotifyAssetTouched(absPath);
+        }
 
-        /// @note .prefab の内容が変わったら、シーンに置いてあるインスタンスへ反映させる。アセットを直したのに配置済みの実体が古いままだとシーンとアセットの内容が黙って食い違う。反映の実行は EditorApp 側 (シーンを作り直すためパネル描画中に走らせられない) なので、ここでは対象パスを積むだけにする。自分の Apply / Prefab 保存で起きた変更は PrefabSerializer 側で弾かれる。
+        // .prefab の内容が変わったら、シーンに置いてあるインスタンスへ反映させる。アセットを直したのに配置済みの実体が古いままだとシーンとアセットの内容が黙って食い違う。反映の実行は EditorApp 側 (シーンを作り直すためパネル描画中に走らせられない) なので、ここでは対象パスを積むだけにする。自分の Apply / Prefab 保存で起きた変更は PrefabSerializer 側で弾かれる。
         if ((ev.type == AssetFileWatcher::EventType::Modified ||
              ev.type == AssetFileWatcher::EventType::Added) &&
             util::FileSystem::GetExtension(absPath) == ".prefab")
@@ -674,11 +796,13 @@ void AssetBrowserPanel::OnBeforeBegin(EditorContext& ctx)
             ctx.pendingPrefabReloads.push_back(absPath);
         }
 
-        /// @note 手書き / 外部ツール / AI が直したアセットを、実行中のキャッシュへ反映させる。.prefab とは分ける。プレファブはシーン内の実体を作り直す必要があり、こちらは AssetManager の中身を差し替えるだけで済む。処理の重さも失敗したときの影響範囲も違うので同じキューに混ぜない。
+        // 手書き / 外部ツール / AI が直したアセットを、実行中のキャッシュへ反映させる。.prefab とは分ける。プレファブはシーン内の実体を作り直す必要があり、こちらは AssetManager の中身を差し替えるだけで済む。処理の重さも失敗したときの影響範囲も違うので同じキューに混ぜない。
         std::string reloadPath = absPath;
         if (util::StringUtils::ToLower(util::FileSystem::GetExtension(absPath)) == ".meta") {
             const std::string sourcePath = absPath.substr(0, absPath.size() - 5);
-            if (asset::IsVectorFieldPng(sourcePath)) reloadPath = sourcePath;
+            if (asset::IsVectorFieldPng(sourcePath)) {
+                reloadPath = sourcePath;
+            }
         }
         if ((ev.type == AssetFileWatcher::EventType::Modified ||
              ev.type == AssetFileWatcher::EventType::Added    ||
@@ -688,7 +812,7 @@ void AssetBrowserPanel::OnBeforeBegin(EditorContext& ctx)
             ctx.pendingAssetReloads.push_back(reloadPath);
         }
 
-        /// @note 開いているシーンがディスク上で書き換わった場合。判断 (未保存か / Play 中か) は EditorApp 側でやるので、ここでは候補として渡すだけにする。
+        // 開いているシーンがディスク上で書き換わった場合。判断 (未保存か / Play 中か) は EditorApp 側でやるので、ここでは候補として渡すだけにする。
         if ((ev.type == AssetFileWatcher::EventType::Modified ||
              ev.type == AssetFileWatcher::EventType::Added    ||
              ev.type == AssetFileWatcher::EventType::Renamed) &&
@@ -699,18 +823,19 @@ void AssetBrowserPanel::OnBeforeBegin(EditorContext& ctx)
     }
 
     if (needsDirectoryRefresh) {
-        /// @note 表示中フォルダ自体が移動・削除された場合は Assets ルートへ戻す。
-        if (!util::FileSystem::IsDirectory(m_currentPath))
+        // 表示中フォルダ自体が移動・削除された場合は Assets ルートへ戻す。
+        if (!util::FileSystem::IsDirectory(m_currentPath)) {
             m_currentPath = m_rootPath;
+        }
         RefreshDirectory();
-        /// @note 他の枚も同じ変更を反映させる (監視しているのはこのパネルだけなので、 伝えないと 2 枚目以降は古い一覧のままになる)。
+        // 他の枚も同じ変更を反映させる (監視しているのはこのパネルだけなので、 伝えないと 2 枚目以降は古い一覧のままになる)。
         ctx.requestAssetBrowserRefresh = true;
     }
 
-    /// @note 書き込みが落ち着いた候補をインポートキューへ流す。ここから先は 手動 Import と同じ経路なので、進捗はいつもの EditorTaskOverlay に出る。
+    // 書き込みが落ち着いた候補をインポートキューへ流す。ここから先は 手動 Import と同じ経路なので、進捗はいつもの EditorTaskOverlay に出る。
     FlushScheduledReimports();
 
-    /// @name スレッド完了チェック
+    // スレッド完了チェック
     if (m_importThreadDone.load()) {
         m_importThreadDone.store(false);
         m_isImporting.store(false);
@@ -726,16 +851,17 @@ void AssetBrowserPanel::OnBeforeBegin(EditorContext& ctx)
             asset::AssetManager::Unload<asset::ModelAsset>(path);
             ResetAssetPreviewCache(path);
         }
-        /// @note 成否にかかわらず「処理中」の印を外す。失敗したものを外さないと、 原本を直して保存し直しても処理中と見なされ、二度と再試行されない。 失敗した原本は .meta の fingerprint が更新されていないので、 次に触られた時点で改めて再インポート候補になる。
-        for (const std::string& path : m_inFlightImports)
+        // 成否にかかわらず「処理中」の印を外す。失敗したものを外さないと、 原本を直して保存し直しても処理中と見なされ、二度と再試行されない。 失敗した原本は .meta の fingerprint が更新されていないので、 次に触られた時点で改めて再インポート候補になる。
+        for (const std::string& path : m_inFlightImports) {
             m_outdatedPaths.erase(path);
+        }
         const size_t attempted = m_inFlightImports.size();
         m_inFlightImports.clear();
         if (!completedImports.empty()) {
             Toast::Success(std::to_string(completedImports.size()) +
                            (completedImports.size() == 1 ? " model imported" : " models imported"));
         }
-        /// @note 失敗は必ず見せる。自動化した以上、黙って落ちると「保存したのに反映されない」 としか見えず、原因を追う手掛かりがどこにも残らない。
+        // 失敗は必ず見せる。自動化した以上、黙って落ちると「保存したのに反映されない」 としか見えず、原因を追う手掛かりがどこにも残らない。
         if (attempted > completedImports.size()) {
             const size_t failed = attempted - completedImports.size();
             Toast::Error(std::to_string(failed) +
@@ -745,7 +871,7 @@ void AssetBrowserPanel::OnBeforeBegin(EditorContext& ctx)
         return;
     }
 
-    /// @name インポート中: 毎フレーム進捗をオーバーレイに反映
+    // インポート中: 毎フレーム進捗をオーバーレイに反映
     if (m_isImporting.load()) {
         const size_t total = m_importTotal.load();
         if (total > 0) {
@@ -759,7 +885,7 @@ void AssetBrowserPanel::OnBeforeBegin(EditorContext& ctx)
         return;
     }
 
-    /// @name インポート開始
+    // インポート開始
     if (!m_importAllRequested || m_pendingImports.empty()) {
         m_importAllRequested = false;
         return;
@@ -779,14 +905,15 @@ void AssetBrowserPanel::OnBeforeBegin(EditorContext& ctx)
     EditorTaskOverlay::SetProgress(0.0f);
 
     auto imports = std::move(m_pendingImports);
-    /// @note move 後の状態に依存しない (以降このフレームでも積まれ得る)
+    // move 後の状態に依存しない (以降このフレームでも積まれ得る)
     m_pendingImports.clear();
 
-    /// @note このバッチで焼く原本を控える。完了時にここを見て「処理中」の印を外す。
+    // このバッチで焼く原本を控える。完了時にここを見て「処理中」の印を外す。
     m_inFlightImports.clear();
     m_inFlightImports.reserve(imports.size());
-    for (const auto& imp : imports)
+    for (const auto& imp : imports) {
         m_inFlightImports.push_back(imp.path);
+    }
 
     m_importFuture = fbzz::TaskSystem::Submit([this, imports = std::move(imports)]() mutable {
         for (const auto& imp : imports) {
@@ -810,11 +937,11 @@ void AssetBrowserPanel::OnBeforeBegin(EditorContext& ctx)
 
 void AssetBrowserPanel::DrawImportSettingsModal(EditorContext& ctx)
 {
-    /// @note Inspector からの Reimport リクエスト（優先度高）
+    // Inspector からの Reimport リクエスト（優先度高）
     if (!ctx.requestOpenImportModal.empty()
         && !m_importSettings.visible
         && !m_textureImportSettings.visible) {
-        /// @note 拡張子の分類で開くウィンドウを決める。以前は「テクスチャでなければモデル」という二分岐だったため、.mat や .wav に Reimport をかけると Model Import Settings が開き、Source DCC などそのアセットに存在しない項目が並んでいた。分類外は単に無視する。
+        // 拡張子の分類で開くウィンドウを決める。以前は「テクスチャでなければモデル」という二分岐だったため、.mat や .wav に Reimport をかけると Model Import Settings が開き、Source DCC などそのアセットに存在しない項目が並んでいた。分類外は単に無視する。
         const ImportCategory reqCategory = CategoryForExtension(util::StringUtils::ToLower(
             util::FileSystem::GetExtension(ctx.requestOpenImportModal)));
         if (IsTextureCategory(reqCategory)) {
@@ -837,7 +964,7 @@ void AssetBrowserPanel::DrawImportSettingsModal(EditorContext& ctx)
         ctx.requestOpenImportModal.clear();
     }
 
-    /// @note ウォッチャー確認キューが溜まっていて、Model Import Settings が閉じているなら自動オープン
+    // ウォッチャー確認キューが溜まっていて、Model Import Settings が閉じているなら自動オープン
     if (!m_pendingConfirmImports.empty()
         && !m_importSettings.open
         && !m_importSettings.visible) {
@@ -851,7 +978,7 @@ void AssetBrowserPanel::DrawImportSettingsModal(EditorContext& ctx)
         m_importSettings.fromWatcher = true;
     }
 
-    /// @note テクスチャ確認キューはモデルインポートと別ウィンドウでまとめて扱う。
+    // テクスチャ確認キューはモデルインポートと別ウィンドウでまとめて扱う。
     if (!m_pendingTextureConfirmImports.empty()
         && !m_textureImportSettings.open
         && !m_textureImportSettings.visible) {
@@ -912,17 +1039,20 @@ void AssetBrowserPanel::DrawImportSettingsModal(EditorContext& ctx)
                     180.0f);
                 ImGui::BeginChild("##texture_confirm_list", { 0.0f, listH }, true);
                 for (int i = 0; i < total; ++i) {
-                    if (i >= static_cast<int>(m_pendingTextureConfirmIncludes.size()))
+                    if (i >= static_cast<int>(m_pendingTextureConfirmIncludes.size())) {
                         m_pendingTextureConfirmIncludes.push_back(true);
+                    }
                     bool inc = m_pendingTextureConfirmIncludes[i];
                     ImGui::PushID(i);
-                    if (ImGui::Checkbox("##tex_inc", &inc))
+                    if (ImGui::Checkbox("##tex_inc", &inc)) {
                         m_pendingTextureConfirmIncludes[i] = inc;
+                    }
                     ImGui::SameLine();
                     ImGui::TextUnformatted(
                         util::FileSystem::GetFilename(m_pendingTextureConfirmImports[i]).c_str());
-                    if (ImGui::IsItemHovered())
+                    if (ImGui::IsItemHovered()) {
                         ImGui::SetTooltip("%s", m_pendingTextureConfirmImports[i].c_str());
+                    }
                     ImGui::PopID();
                 }
                 ImGui::EndChild();
@@ -932,27 +1062,31 @@ void AssetBrowserPanel::DrawImportSettingsModal(EditorContext& ctx)
                     ? m_pendingTextureConfirmImports.front()
                     : m_textureImportSettings.path;
                 ImGui::TextUnformatted(util::FileSystem::GetFilename(displayPath).c_str());
-                if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", displayPath.c_str());
+                if (ImGui::IsItemHovered()) {
+                    ImGui::SetTooltip("%s", displayPath.c_str());
+                }
             }
 
             ImGui::Separator();
             auto& s = m_textureImportSettings.settings;
 
-            /// @note 拡張子で分類し、その分類で意味を持つ項目だけを描く。以前は全項目を無条件に並べていたため、.hdr に sRGB、Color テクスチャに Flip Green / Normalize Mipmaps といった無関係な項目が出ていた。
-            /// @note 複数選択時は先頭ファイルの分類を代表として使う。混在時はいちばん制約の緩い分類ではなく先頭に合わせ、Apply 時に個別 Sanitize する。
+            // 拡張子で分類し、その分類で意味を持つ項目だけを描く。以前は全項目を無条件に並べていたため、.hdr に sRGB、Color テクスチャに Flip Green / Normalize Mipmaps といった無関係な項目が出ていた。
+            // 複数選択時は先頭ファイルの分類を代表として使う。混在時はいちばん制約の緩い分類ではなく先頭に合わせ、Apply 時に個別 Sanitize する。
             const std::string categoryPath = m_textureImportSettings.fromWatcher
                 && !m_pendingTextureConfirmImports.empty()
                 ? m_pendingTextureConfirmImports.front()
                 : m_textureImportSettings.path;
             const ImportCategory category = CategoryForExtension(
                 util::StringUtils::ToLower(util::FileSystem::GetExtension(categoryPath)));
-            if (initTexturePanel) SanitizeTextureSettings(category, s);
+            if (initTexturePanel) {
+                SanitizeTextureSettings(category, s);
+            }
             const TextureFieldMask mask = TextureFieldsFor(category, s);
 
             ImGui::SeparatorText("Type");
             ImGui::SetNextItemWidth(160.0f);
             if (DrawTextureTypeCombo("Type##tex_batch", category, s.type)) {
-                /// @note 型が変わると適切な既定値一式も変わるため作り直す。
+                // 型が変わると適切な既定値一式も変わるため作り直す。
                 s = asset::DefaultSettingsForType(s.type);
                 SanitizeTextureSettings(category, s);
             }
@@ -966,10 +1100,12 @@ void AssetBrowserPanel::DrawImportSettingsModal(EditorContext& ctx)
 
             if (mask.srgb || mask.mipmaps || mask.flipGreen || mask.normalizeMips) {
                 ImGui::SeparatorText("Encoding");
-                /// @note 表示される項目だけを 2 列へ詰める。項目を条件で消すと、固定で書いた SameLine が空振りして次の項目が思わぬ位置に流れるため、描いた個数で列を決めて回避する。
+                // 表示される項目だけを 2 列へ詰める。項目を条件で消すと、固定で書いた SameLine が空振りして次の項目が思わぬ位置に流れるため、描いた個数で列を決めて回避する。
                 int drawnInRow = 0;
                 const auto beginField = [&drawnInRow]() {
-                    if (drawnInRow % 2 == 1) ImGui::SameLine(140.0f);
+                    if (drawnInRow % 2 == 1) {
+                        ImGui::SameLine(140.0f);
+                    }
                     ++drawnInRow;
                 };
 
@@ -1003,8 +1139,9 @@ void AssetBrowserPanel::DrawImportSettingsModal(EditorContext& ctx)
                 int qualIdx = static_cast<int>(s.compressionQuality);
                 ImGui::SameLine();
                 ImGui::SetNextItemWidth(80.0f);
-                if (ImGui::Combo("##tex_batch_compq", &qualIdx, kQualNames, 3))
+                if (ImGui::Combo("##tex_batch_compq", &qualIdx, kQualNames, 3)) {
                     s.compressionQuality = static_cast<asset::CompQuality>(qualIdx);
+                }
             }
 
             if (mask.maxSize || mask.sampling) {
@@ -1012,26 +1149,32 @@ void AssetBrowserPanel::DrawImportSettingsModal(EditorContext& ctx)
                 if (mask.maxSize) {
                     int maxSize = static_cast<int>(s.maxSize);
                     ImGui::SetNextItemWidth(100.0f);
-                    if (ImGui::InputInt("Max Size##tex_batch", &maxSize))
+                    if (ImGui::InputInt("Max Size##tex_batch", &maxSize)) {
                         s.maxSize = static_cast<uint32_t>(std::max(1, maxSize));
+                    }
                 }
                 if (mask.sampling) {
                     static constexpr const char* kWrapNames[] = { "Repeat", "Clamp", "Mirror", "Border" };
                     int wrapU = static_cast<int>(s.wrapU);
                     int wrapV = static_cast<int>(s.wrapV);
                     ImGui::SetNextItemWidth(100.0f);
-                    if (ImGui::Combo("Wrap U##tex_batch", &wrapU, kWrapNames, 4)) s.wrapU = static_cast<asset::TextureWrap>(wrapU);
+                    if (ImGui::Combo("Wrap U##tex_batch", &wrapU, kWrapNames, 4)) {
+                        s.wrapU = static_cast<asset::TextureWrap>(wrapU);
+                    }
                     ImGui::SameLine();
                     ImGui::SetNextItemWidth(100.0f);
-                    if (ImGui::Combo("Wrap V##tex_batch", &wrapV, kWrapNames, 4)) s.wrapV = static_cast<asset::TextureWrap>(wrapV);
+                    if (ImGui::Combo("Wrap V##tex_batch", &wrapV, kWrapNames, 4)) {
+                        s.wrapV = static_cast<asset::TextureWrap>(wrapV);
+                    }
                     int anisoLv = static_cast<int>(s.anisoLevel);
-                    if (ImGui::SliderInt("Aniso Level##tex_batch", &anisoLv, 1, 16))
+                    if (ImGui::SliderInt("Aniso Level##tex_batch", &anisoLv, 1, 16)) {
                         s.anisoLevel = static_cast<uint32_t>(anisoLv);
+                    }
                 }
             }
 
             if (mask.sprite) {
-                /// @note Sprite の矩形編集は Sprite Editor / Inspector の担当。 ここは「Sprite として取り込む」ことだけ確定させる。
+                // Sprite の矩形編集は Sprite Editor / Inspector の担当。 ここは「Sprite として取り込む」ことだけ確定させる。
                 ImGui::SeparatorText("Sprite");
                 ImGui::TextDisabled("Sprite rects can be edited in the Sprite Editor after import.");
             }
@@ -1045,12 +1188,14 @@ void AssetBrowserPanel::DrawImportSettingsModal(EditorContext& ctx)
                 m_textureImportSettings.fromWatcher = false;
                 m_textureImportSettings.needsInit = false;
             };
-            /// @note 保存前に、その 1 枚の拡張子に照らして設定を正す。一括適用では .png と .hdr が同じチェックリストに混在しうる。画面上の値をそのまま全ファイルへ書くと、.hdr の .meta に sRGB=true のような「その拡張子ではありえない設定」が残る。
+            // 保存前に、その 1 枚の拡張子に照らして設定を正す。一括適用では .png と .hdr が同じチェックリストに混在しうる。画面上の値をそのまま全ファイルへ書くと、.hdr の .meta に sRGB=true のような「その拡張子ではありえない設定」が残る。
             auto saveSanitized = [](const std::string& path, asset::TextureImportSettings settings) {
                 const ImportCategory perFile = CategoryForExtension(
                     util::StringUtils::ToLower(util::FileSystem::GetExtension(path)));
                 SanitizeTextureSettings(perFile, settings);
-                if (SaveTexMeta(path, settings)) return true;
+                if (SaveTexMeta(path, settings)) {
+                    return true;
+                }
                 FBZZ_LOG_ERROR("AssetBrowser: texture import settings could not be saved [%s]", path.c_str());
                 Toast::Error("Texture import settings could not be saved: " + util::FileSystem::GetFilename(path));
                 return false;
@@ -1061,13 +1206,16 @@ void AssetBrowserPanel::DrawImportSettingsModal(EditorContext& ctx)
                     for (int i = 0; i < static_cast<int>(m_pendingTextureConfirmImports.size()); ++i) {
                         const bool inc = i < static_cast<int>(m_pendingTextureConfirmIncludes.size())
                             && m_pendingTextureConfirmIncludes[i];
-                        if (inc)
+                        if (inc) {
                             saved = saveSanitized(m_pendingTextureConfirmImports[i], m_textureImportSettings.settings) && saved;
+                        }
                     }
                 } else {
                     saved = saveSanitized(m_textureImportSettings.path, m_textureImportSettings.settings);
                 }
-                if (saved) closeTextureWindow();
+                if (saved) {
+                    closeTextureWindow();
+                }
                 RefreshDirectory();
             };
 
@@ -1078,13 +1226,19 @@ void AssetBrowserPanel::DrawImportSettingsModal(EditorContext& ctx)
             }
             char applyLabel[48];
             std::snprintf(applyLabel, sizeof(applyLabel), "Apply (%d)", checkedCount);
-            if (checkedCount == 0) ImGui::BeginDisabled();
-            if (ImGui::Button(applyLabel, { 100.0f, 0.0f }))
+            if (checkedCount == 0) {
+                ImGui::BeginDisabled();
+            }
+            if (ImGui::Button(applyLabel, { 100.0f, 0.0f })) {
                 applyTextureSettings();
-            if (checkedCount == 0) ImGui::EndDisabled();
+            }
+            if (checkedCount == 0) {
+                ImGui::EndDisabled();
+            }
             ImGui::SameLine();
-            if (ImGui::Button("Cancel", { 90.0f, 0.0f }))
+            if (ImGui::Button("Cancel", { 90.0f, 0.0f })) {
                 closeTextureWindow();
+            }
         }
         ImGui::End();
 
@@ -1097,8 +1251,9 @@ void AssetBrowserPanel::DrawImportSettingsModal(EditorContext& ctx)
         }
     }
 
-    if (!m_importSettings.visible)
+    if (!m_importSettings.visible) {
         return;
+    }
 
     auto advanceConfirmQueue = [&]() {
         if (!m_pendingConfirmImports.empty()
@@ -1138,7 +1293,9 @@ void AssetBrowserPanel::DrawImportSettingsModal(EditorContext& ctx)
     bool windowOpen = true;
     if (!ImGui::Begin("Model Import Settings", &windowOpen, ImGuiWindowFlags_AlwaysAutoResize)) {
         ImGui::End();
-        if (!windowOpen) advanceConfirmQueue();
+        if (!windowOpen) {
+            advanceConfirmQueue();
+        }
         return;
     }
     if (!windowOpen) {
@@ -1150,7 +1307,7 @@ void AssetBrowserPanel::DrawImportSettingsModal(EditorContext& ctx)
     const bool initPanel = ImGui::IsWindowAppearing() || m_importSettings.needsInit;
     m_importSettings.needsInit = false;
 
-    /// @note このウィンドウが扱えるのはモデルソースだけ。Inspector の Reimport は拡張子を問わずここへ流れてくるため、モデルでないアセットに対して Source DCC / Normal Map Convention / Contents といったまったく無関係な項目が並んでいた。開く前に弾いて誤操作の余地をなくす。
+    // このウィンドウが扱えるのはモデルソースだけ。Inspector の Reimport は拡張子を問わずここへ流れてくるため、モデルでないアセットに対して Source DCC / Normal Map Convention / Contents といったまったく無関係な項目が並んでいた。開く前に弾いて誤操作の余地をなくす。
     if (CategoryForExtension(util::StringUtils::ToLower(
             util::FileSystem::GetExtension(m_importSettings.path))) != ImportCategory::Model) {
         ImGui::TextUnformatted(util::FileSystem::GetFilename(m_importSettings.path).c_str());
@@ -1159,13 +1316,14 @@ void AssetBrowserPanel::DrawImportSettingsModal(EditorContext& ctx)
                            "このアセットにはモデルインポート設定がありません。");
         ImGui::TextDisabled("Model Import Settings は .fbx / .obj / .gltf / .glb 専用です。");
         ImGui::Spacing();
-        if (ImGui::Button("Close", { 90.0f, 0.0f }))
+        if (ImGui::Button("Close", { 90.0f, 0.0f })) {
             advanceConfirmQueue();
+        }
         ImGui::End();
         return;
     }
 
-    /// @name 初期化（ポップアップが開くたびに実行）
+    // 初期化（ポップアップが開くたびに実行）
     const std::string presetsDir = GetPresetsDir(m_rootPath);
     static std::vector<ImportPreset> s_presets;
     static std::size_t               s_loadRevision = static_cast<std::size_t>(-1);
@@ -1179,11 +1337,12 @@ void AssetBrowserPanel::DrawImportSettingsModal(EditorContext& ctx)
         m_scanResult  = {};
         if (!isMulti) {
             FbxImportOptions metaOptions = m_importSettings.options;
-            if (FbxMetaSerializer::LoadOptions(m_importSettings.path, metaOptions))
+            if (FbxMetaSerializer::LoadOptions(m_importSettings.path, metaOptions)) {
                 m_importSettings.options = metaOptions;
+            }
         }
         if (!isMulti) {
-            /// @note Assimp パースはレンダースレッドをブロックすると D3D11 TDR が起きるため非同期で実行
+            // Assimp パースはレンダースレッドをブロックすると D3D11 TDR が起きるため非同期で実行
             m_scanPending = true;
             const std::string scanPath = m_importSettings.path;
             m_scanFuture = fbzz::TaskSystem::Submit([scanPath]() {
@@ -1192,24 +1351,26 @@ void AssetBrowserPanel::DrawImportSettingsModal(EditorContext& ctx)
         } else {
             m_scanPending = false;
         }
-        /// @note 複数ファイル: チェック状態を初期化（全選択）
+        // 複数ファイル: チェック状態を初期化（全選択）
         m_pendingConfirmIncludes.assign(m_pendingConfirmImports.size(), true);
     }
 
-    /// @note スキャン完了チェック（ポーリング: 非ブロッキング）
+    // スキャン完了チェック（ポーリング: 非ブロッキング）
     if (m_scanPending && m_scanFuture.valid() &&
         m_scanFuture.wait_for(std::chrono::seconds(0)) == std::future_status::ready) {
         m_scanResult  = m_scanFuture.get();
         m_scanPending = false;
-        if (m_importSettings.options.selectedMeshNames.empty())
+        if (m_importSettings.options.selectedMeshNames.empty()) {
             m_importSettings.options.selectedMeshNames = m_scanResult.meshNames;
-        if (m_importSettings.options.selectedAnimNames.empty())
+        }
+        if (m_importSettings.options.selectedAnimNames.empty()) {
             m_importSettings.options.selectedAnimNames = m_scanResult.animNames;
+        }
     }
 
-    /// @name ヘッダー
+    // ヘッダー
     if (isMulti) {
-        /// @name 複数ファイルリスト
+        // 複数ファイルリスト
         const int total = static_cast<int>(m_pendingConfirmImports.size());
         int checkedCount = 0;
         for (bool b : m_pendingConfirmIncludes) if (b) ++checkedCount;
@@ -1219,40 +1380,51 @@ void AssetBrowserPanel::DrawImportSettingsModal(EditorContext& ctx)
         ImGui::SameLine();
         ImGui::TextDisabled("(%d selected)", checkedCount);
 
-        /// @note All / None ボタンを右端に配置
+        // All / None ボタンを右端に配置
         const float btnW = 38.0f;
         ImGui::SameLine(ImGui::GetContentRegionAvail().x - btnW * 2.0f - ImGui::GetStyle().ItemSpacing.x);
-        if (ImGui::SmallButton("All##chk"))
+        if (ImGui::SmallButton("All##chk")) {
             std::fill(m_pendingConfirmIncludes.begin(), m_pendingConfirmIncludes.end(), true);
+        }
         ImGui::SameLine();
-        if (ImGui::SmallButton("None##chk"))
+        if (ImGui::SmallButton("None##chk")) {
             std::fill(m_pendingConfirmIncludes.begin(), m_pendingConfirmIncludes.end(), false);
+        }
 
-        /// @note スクロール可能なファイルリスト
+        // スクロール可能なファイルリスト
         const float listH = std::min(static_cast<float>(total) * ImGui::GetTextLineHeightWithSpacing() + 8.0f, 160.0f);
         ImGui::BeginChild("##confirm_list", { 0.0f, listH }, true);
         for (int i = 0; i < total; ++i) {
-            if (i >= static_cast<int>(m_pendingConfirmIncludes.size()))
+            if (i >= static_cast<int>(m_pendingConfirmIncludes.size())) {
                 m_pendingConfirmIncludes.push_back(true);
+            }
             bool inc = m_pendingConfirmIncludes[i];
             ImGui::PushID(i);
-            if (ImGui::Checkbox("##inc", &inc))
+            if (ImGui::Checkbox("##inc", &inc)) {
                 m_pendingConfirmIncludes[i] = inc;
+            }
             ImGui::SameLine();
 
-            /// @note 拡張子バッジ（色付き）
+            // 拡張子バッジ（色付き）
             const std::string rawExt = util::FileSystem::GetExtension(m_pendingConfirmImports[i]);
             std::string badge = rawExt.size() > 1 ? rawExt.substr(1) : rawExt;
-            for (char& c : badge) c = static_cast<char>(std::toupper(static_cast<unsigned char>(c)));
+            for (char& c : badge) {
+                c = static_cast<char>(std::toupper(static_cast<unsigned char>(c)));
+            }
             ImGui::TextDisabled("[%s]", badge.c_str());
             ImGui::SameLine();
 
             const std::string fname = util::FileSystem::GetFilename(m_pendingConfirmImports[i]);
-            if (!inc) ImGui::PushStyleColor(ImGuiCol_Text, EditorTheme::Color(ThemeColor::TextFaint));
+            if (!inc) {
+                ImGui::PushStyleColor(ImGuiCol_Text, EditorTheme::Color(ThemeColor::TextFaint));
+            }
             ImGui::TextUnformatted(fname.c_str());
-            if (!inc) ImGui::PopStyleColor();
-            if (ImGui::IsItemHovered())
+            if (!inc) {
+                ImGui::PopStyleColor();
+            }
+            if (ImGui::IsItemHovered()) {
                 ImGui::SetTooltip("%s", m_pendingConfirmImports[i].c_str());
+            }
             ImGui::PopID();
         }
         ImGui::EndChild();
@@ -1260,16 +1432,17 @@ void AssetBrowserPanel::DrawImportSettingsModal(EditorContext& ctx)
         ImGui::Spacing();
         ImGui::TextDisabled("Settings below apply to all checked files.");
     } else {
-        /// @name 単一ファイルヘッダー
+        // 単一ファイルヘッダー
         ImGui::TextUnformatted(util::FileSystem::GetFilename(m_importSettings.path).c_str());
-        if (ImGui::IsItemHovered())
+        if (ImGui::IsItemHovered()) {
             ImGui::SetTooltip("%s", m_importSettings.path.c_str());
+        }
     }
 
     ImGui::Separator();
     ImGui::Spacing();
 
-    /// @name プリセット
+    // プリセット
     if (!s_presets.empty()) {
         ImGui::TextDisabled("Preset");
         ImGui::SameLine();
@@ -1279,18 +1452,26 @@ void AssetBrowserPanel::DrawImportSettingsModal(EditorContext& ctx)
         if (ImGui::BeginCombo("##preset", previewName)) {
             for (int i = 0; i < (int)s_presets.size(); ++i) {
                 const bool sel = (s_presetSel == i);
-                if (ImGui::Selectable(s_presets[i].name.c_str(), sel))
+                if (ImGui::Selectable(s_presets[i].name.c_str(), sel)) {
                     s_presetSel = i;
-                if (sel) ImGui::SetItemDefaultFocus();
+                }
+                if (sel) {
+                    ImGui::SetItemDefaultFocus();
+                }
             }
             ImGui::EndCombo();
         }
         ImGui::SameLine();
         const bool canLoad = (s_presetSel >= 0 && s_presetSel < (int)s_presets.size());
-        if (!canLoad) ImGui::BeginDisabled();
-            if (ImGui::SmallButton("Load"))
+        if (!canLoad) {
+            ImGui::BeginDisabled();
+        }
+            if (ImGui::SmallButton("Load")) {
                 m_importSettings.options = s_presets[s_presetSel].options;
-        if (!canLoad) ImGui::EndDisabled();
+            }
+        if (!canLoad) {
+            ImGui::EndDisabled();
+        }
         ImGui::SameLine();
         if (canLoad && ImGui::SmallButton("Delete")) {
             const std::string delPath = util::FileSystem::PathToUtf8(
@@ -1303,7 +1484,7 @@ void AssetBrowserPanel::DrawImportSettingsModal(EditorContext& ctx)
         ImGui::Spacing();
     }
 
-    /// @name テクスチャ生成オプション
+    // テクスチャ生成オプション
     ImGui::SeparatorText("Source");
     {
         static constexpr const char* kSourceDccNames[] = {
@@ -1311,8 +1492,9 @@ void AssetBrowserPanel::DrawImportSettingsModal(EditorContext& ctx)
         };
         int sourceDccIdx = static_cast<int>(m_importSettings.options.sourceDcc);
         ImGui::SetNextItemWidth(180.0f);
-        if (ImGui::Combo("Source DCC", &sourceDccIdx, kSourceDccNames, 3))
+        if (ImGui::Combo("Source DCC", &sourceDccIdx, kSourceDccNames, 3)) {
             m_importSettings.options.sourceDcc = static_cast<FbxSourceDcc>(sourceDccIdx);
+        }
         if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayShort))
             ImGui::SetTooltip(
                 "Auto Detect: FBX の Creator メタデータから Blender を判定します。\n"
@@ -1342,8 +1524,9 @@ void AssetBrowserPanel::DrawImportSettingsModal(EditorContext& ctx)
         static constexpr const char* kAxisNames[] = { "Auto", "Y Up", "Z Up" };
         int axisIdx = static_cast<int>(m_importSettings.options.upAxis);
         ImGui::SetNextItemWidth(180.0f);
-        if (ImGui::Combo("Source Up Axis", &axisIdx, kAxisNames, 3))
+        if (ImGui::Combo("Source Up Axis", &axisIdx, kAxisNames, 3)) {
             m_importSettings.options.upAxis = static_cast<FbxUpAxis>(axisIdx);
+        }
     }
     ImGui::SetNextItemWidth(180.0f);
     ImGui::DragFloat("Unit Scale", &m_importSettings.options.unitScaleMultiplier,
@@ -1391,7 +1574,7 @@ void AssetBrowserPanel::DrawImportSettingsModal(EditorContext& ctx)
                 "Auto = テクスチャタイプから自動選択。");
     }
 
-    /// @name 選択的インポート（単一ファイルのみ）
+    // 選択的インポート（単一ファイルのみ）
     if (!isMulti) {
         if (m_scanPending) {
             ImGui::Spacing();
@@ -1406,17 +1589,23 @@ void AssetBrowserPanel::DrawImportSettingsModal(EditorContext& ctx)
                                      const std::vector<std::string>& all,
                                      std::vector<std::string>& selected)
             {
-                if (all.empty()) return;
+                if (all.empty()) {
+                    return;
+                }
                 ImGui::TextDisabled("%s", label);
                 ImGui::SameLine();
-                if (ImGui::SmallButton("All##sel_all")) selected = all;
+                if (ImGui::SmallButton("All##sel_all")) {
+                    selected = all;
+                }
                 ImGui::SameLine();
-                if (ImGui::SmallButton("None##sel_none")) selected.clear();
+                if (ImGui::SmallButton("None##sel_none")) {
+                    selected.clear();
+                }
                 ImGui::Spacing();
                 for (const auto& name : all) {
                     bool checked = false;
                     for (const auto& s : selected) if (s == name) { checked = true; break; }
-                    /// @note FBX のメッシュ名・クリップ名は重複しうる。
+                    // FBX のメッシュ名・クリップ名は重複しうる。
                     ImGui::PushID(&name);
                     const bool toggled = ImGui::Checkbox(name.c_str(), &checked);
                     ImGui::PopID();
@@ -1446,34 +1635,40 @@ void AssetBrowserPanel::DrawImportSettingsModal(EditorContext& ctx)
 
     ImGui::Spacing();
 
-    /// @name プリセット保存
+    // プリセット保存
     ImGui::SetNextItemWidth(160.0f);
     ImGui::InputTextWithHint("##preset_name", "Preset name...", s_presetNameBuf, sizeof(s_presetNameBuf));
     ImGui::SameLine();
     const bool hasName = (s_presetNameBuf[0] != '\0');
-    if (!hasName) ImGui::BeginDisabled();
+    if (!hasName) {
+        ImGui::BeginDisabled();
+    }
     if (ImGui::SmallButton("Save Preset")) {
         if (SavePreset(presetsDir, s_presetNameBuf, m_importSettings.options)) {
             s_presets = LoadPresetsFromDir(presetsDir);
             s_presetNameBuf[0] = '\0';
         }
     }
-    if (!hasName) ImGui::EndDisabled();
+    if (!hasName) {
+        ImGui::EndDisabled();
+    }
 
     ImGui::Spacing();
     ImGui::Separator();
     ImGui::Spacing();
 
-    /// @name ボタン行
+    // ボタン行
     if (isMulti) {
-        /// @note ─ 複数ファイルモード ─
+        // ─ 複数ファイルモード ─
         int checkedCount = 0;
         for (bool b : m_pendingConfirmIncludes) if (b) ++checkedCount;
 
-        /// @note "Import (N)" ボタン
+        // "Import (N)" ボタン
         char importBtnLabel[40];
         std::snprintf(importBtnLabel, sizeof(importBtnLabel), "Import (%d)", checkedCount);
-        if (checkedCount == 0) ImGui::BeginDisabled();
+        if (checkedCount == 0) {
+            ImGui::BeginDisabled();
+        }
         if (ImGui::Button(importBtnLabel, { 120.0f, 0.0f })) {
             for (int i = 0; i < (int)m_pendingConfirmImports.size(); ++i) {
                 const bool inc = (i < (int)m_pendingConfirmIncludes.size()) && m_pendingConfirmIncludes[i];
@@ -1486,9 +1681,12 @@ void AssetBrowserPanel::DrawImportSettingsModal(EditorContext& ctx)
             m_importAllRequested = true;
             m_importSettings.visible = false;
         }
-        if (checkedCount == 0) ImGui::EndDisabled();
-        if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled))
+        if (checkedCount == 0) {
+            ImGui::EndDisabled();
+        }
+        if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled)) {
             ImGui::SetTooltip("チェックされたファイルをインポート");
+        }
 
         ImGui::SameLine();
         if (ImGui::Button("Import All", { 95.0f, 0.0f })) {
@@ -1500,7 +1698,9 @@ void AssetBrowserPanel::DrawImportSettingsModal(EditorContext& ctx)
             m_importAllRequested = true;
             m_importSettings.visible = false;
         }
-        if (ImGui::IsItemHovered()) ImGui::SetTooltip("全 %zu 件をインポート", m_pendingConfirmImports.size());
+        if (ImGui::IsItemHovered()) {
+            ImGui::SetTooltip("全 %zu 件をインポート", m_pendingConfirmImports.size());
+        }
 
         ImGui::SameLine();
         if (ImGui::Button("Cancel", { 75.0f, 0.0f })) {
@@ -1508,9 +1708,11 @@ void AssetBrowserPanel::DrawImportSettingsModal(EditorContext& ctx)
             m_importSettings.fromWatcher = false;
             m_importSettings.visible = false;
         }
-        if (ImGui::IsItemHovered()) ImGui::SetTooltip("全件スキップ");
+        if (ImGui::IsItemHovered()) {
+            ImGui::SetTooltip("全件スキップ");
+        }
     } else {
-        /// @note ─ 単一ファイルモード ─
+        // ─ 単一ファイルモード ─
         auto enqueueCurrentFile = [&]() {
             bool found = false;
             for (auto& p : m_pendingImports) {
@@ -1520,24 +1722,29 @@ void AssetBrowserPanel::DrawImportSettingsModal(EditorContext& ctx)
                     break;
                 }
             }
-            if (!found)
+            if (!found) {
                 m_pendingImports.push_back({ m_importSettings.path, m_importSettings.options });
+            }
         };
         if (ImGui::Button("Import", { 90.0f, 0.0f })) {
             enqueueCurrentFile();
             m_importAllRequested = true;
             advanceConfirmQueue();
         }
-        if (ImGui::IsItemHovered()) ImGui::SetTooltip("インポートして次へ");
+        if (ImGui::IsItemHovered()) {
+            ImGui::SetTooltip("インポートして次へ");
+        }
 
         ImGui::SameLine();
         if (ImGui::Button("Cancel", { 90.0f, 0.0f })) {
             advanceConfirmQueue();
         }
-        if (ImGui::IsItemHovered()) ImGui::SetTooltip("スキップ");
+        if (ImGui::IsItemHovered()) {
+            ImGui::SetTooltip("スキップ");
+        }
     }
 
     ImGui::End();
 }
 
-} /// @note namespace fbzz::editor
+} // namespace fbzz::editor

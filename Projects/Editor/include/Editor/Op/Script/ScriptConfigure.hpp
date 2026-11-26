@@ -18,4 +18,4 @@ class OperatorRegistry;
     scene::GameObject* owner, std::vector<scene::GameObject*>& output, std::string& diagnostic);
 
 void RegisterScriptConfigureOperators(OperatorRegistry& registry);
-} /// @note namespace fbzz::editor
+} // namespace fbzz::editor

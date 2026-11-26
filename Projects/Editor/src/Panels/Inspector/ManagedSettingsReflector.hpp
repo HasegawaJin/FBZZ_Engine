@@ -89,4 +89,4 @@ private:
     scene::ManagedScriptAdapter* m_adapter = nullptr;
     std::vector<scene::ManagedScriptAdapter*> m_adapters;
 };
-} /// @note namespace fbzz::editor
+} // namespace fbzz::editor

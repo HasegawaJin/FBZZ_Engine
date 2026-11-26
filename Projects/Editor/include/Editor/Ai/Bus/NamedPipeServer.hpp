@@ -40,4 +40,4 @@ private:
     std::unique_ptr<Impl> m_impl;
 };
 
-} /// @note namespace fbzz::editor::ai
+} // namespace fbzz::editor::ai

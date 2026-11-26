@@ -38,20 +38,20 @@ private:
     /// @note 診断と生ログの境界。ドラッグで m_splitRatio を動かす。
     void DrawSplitter();
 
-    std::string m_managedDiagnosticRequestId;
-    std::size_t m_managedDiagnosticPage = 0;
-    std::size_t m_managedDiagnosticSelection = 0;
+    std::string m_managedDiagnosticRequestId; ///< 現在の C# 診断一覧に対応するビルド要求 ID。
+    std::size_t m_managedDiagnosticPage = 0; ///< C# 診断で現在表示しているページの添字。
+    std::size_t m_managedDiagnosticSelection = 0; ///< 現在の C# 診断一覧で選択している項目の位置。
 
-    std::uint64_t m_selectedBuild = 0; ///< @note 0 は最新への追従。履歴の入れ替わりで別のビルドを選ばない。
-    bool  m_focusFirstError  = false; ///< @note 次フレームで最初のエラー行へスクロール
-    float m_splitRatio       = 0.45f; ///< @note 診断一覧が占める高さの比率
+    std::uint64_t m_selectedBuild = 0; ///< 0 は最新への追従。履歴の入れ替わりで別のビルドを選ばない。
+    bool  m_focusFirstError  = false; ///< 次フレームで最初のエラー行へスクロール
+    float m_splitRatio       = 0.45f; ///< 診断一覧が占める高さの比率
 
-    LogListView  m_diagView{ "build_diagnostics" };
-    LogListView  m_rawView{ "build_raw_output" };
-    BuildLogFeed m_rawFeed;
+    LogListView  m_diagView{ "build_diagnostics" }; ///< 解析した診断を選択可能な一覧へ表示する状態。
+    LogListView  m_rawView{ "build_raw_output" }; ///< ビルドの生ログを選択可能な一覧へ表示する状態。
+    BuildLogFeed m_rawFeed; ///< 生ログの増分をログ一覧へ流し込む状態。
 
-    std::uint64_t      m_diagRecord = 0;
-    std::size_t        m_diagCount  = ~static_cast<std::size_t>(0);
+    std::uint64_t      m_diagRecord = 0; ///< 診断一覧を作ったときのビルド記録 ID。
+    std::size_t        m_diagCount  = ~static_cast<std::size_t>(0); ///< 一覧を構築したときの診断件数。件数が変われば更新する。
 };
 
-} /// @note namespace fbzz::editor
+} // namespace fbzz::editor

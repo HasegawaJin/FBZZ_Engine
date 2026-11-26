@@ -21,9 +21,10 @@ void BindFluidInspectorContext(EditorContext* ctx);
 /// @note 焼いた結果 (フリップブック/Motion Vector/速度場 PNG) は .fluid の隣に置き、Create/Update Particle
 ///       Material で同名の .mat へ反映する。コマ割り・再生モード・強さは焼いた側にしか正しい値が無く、
 ///       人が写すと食い違ってもエラーにならない。
-/// @param absPath   開いている .fluid の実パス
-/// @param resources / imguiRenderer 今は使わない (プレビューは Fluid Editor へ移った。呼び手の互換のため残す)
-/// @param volumeBakeRequest 今は使わない (.fluid の 3D は Fluid Editor が持つ。呼び手の互換のため残す)
+/// @param[in] absPath 開いている .fluid の実パス
+/// @param[in] resources 互換性のため受け取る描画リソース。関数内では使用しない。
+/// @param[in] imguiRenderer 互換性のため受け取る描画インターフェース。関数内では使用しない。
+/// @param[in] volumeBakeRequest 互換性のため受け取るベイク要求先。関数内では読み書きしない。
 void DrawFluidAssetInspector(const std::string& absPath,
                              renderer::ResourceManager* resources = nullptr,
                              renderer::IImGuiRenderer* imguiRenderer = nullptr,

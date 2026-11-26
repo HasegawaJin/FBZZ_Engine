@@ -48,21 +48,27 @@ void DrawAudioInspectors(scene::GameObject* go, EditorContext& ctx, std::any& co
             ImGui::PlotLines("Distance Gain", curve.data(), static_cast<int>(curve.size()), 0,
                 nullptr, 0.0f, 1.0f, ImVec2(0.0f, 72.0f));
             ImGui::TextDisabled("0 to %.2f m | gain at far distance: %.2f", farDistance, curve.back());
-            if (source.maxDistance <= source.minDistance)
+            if (source.maxDistance <= source.minDistance) {
                 ImGui::TextWrapped("Max distance should exceed min distance. Playback uses a 0.001 m minimum span.");
-            if (blend > 0.0f)
+            }
+            if (blend > 0.0f) {
                 ImGui::TextWrapped("An enabled listener is required for the 3D contribution. OneShots follow this object.");
+            }
             r.FloatRange("airAbsorption", source.airAbsorption, 0.0f, 1.0f);
             r.FloatRange("dopplerLevel", source.dopplerLevel, 0.0f, 1.0f);
             ImGui::SeparatorText("Local Mix and Voice Budget");
             float cutoff = source.lowPassCutoff;
             r.FloatRange("lowPassCutoff", cutoff, 0.0f, 1.0f);
-            if (cutoff != source.lowPassCutoff) source.SetLowPassCutoff(cutoff);
+            if (cutoff != source.lowPassCutoff) {
+                source.SetLowPassCutoff(cutoff);
+            }
             ImGui::TextDisabled("Low-pass: 1 = unfiltered; shared bus settings stay separate.");
             r.Field("priority", source.priority);
             ImGui::TextWrapped("Higher priority protects new one-shot voices when the project voice budget is full.");
             ImGui::TextDisabled("Active OneShots per source: maximum 16.");
-            if (source.loop) ImGui::TextWrapped("Loop voices are protected from automatic stealing. Reuse a small source pool.");
+            if (source.loop) {
+                ImGui::TextWrapped("Loop voices are protected from automatic stealing. Reuse a small source pool.");
+            }
         });
 }
-} /// @note namespace fbzz::editor
+} // namespace fbzz::editor

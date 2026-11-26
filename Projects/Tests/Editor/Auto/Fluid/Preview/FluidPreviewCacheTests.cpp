@@ -72,7 +72,9 @@ bool TickUntil(FluidPreviewCache& cache, Predicate done,
     const auto deadline = std::chrono::steady_clock::now() + timeout;
     while (std::chrono::steady_clock::now() < deadline) {
         cache.Tick(nullptr, nullptr);
-        if (done()) return true;
+        if (done()) {
+            return true;
+        }
         std::this_thread::sleep_for(std::chrono::milliseconds(5));
     }
     return false;
@@ -267,7 +269,7 @@ TEST(FluidPreviewCache, LookChangeKeepsShowingTheSolvedFrames)
 
     recipe.render.opacity += 2.0f;
     cache.SetRecipe(recipe, 2, -1.0f);
-    /// @note 描き直しが済むまでは古い絵を出し続ける (空白にしない)。
+    // 描き直しが済むまでは古い絵を出し続ける (空白にしない)。
     EXPECT_NE(cache.FrameAt(0.1f), nullptr);
     ASSERT_TRUE(TickUntil(cache, [&cache] { return !cache.IsSolving(); }));
     EXPECT_FLOAT_EQ(cache.SolvedUntil(), cache.Duration());
@@ -287,9 +289,9 @@ TEST(FluidPreviewCache, PartChangeDropsFramesFromItsStartTime)
     ASSERT_TRUE(TickUntil(cache, [&cache] { return !cache.IsSolving(); }));
 
     recipe.sources[1].density = 6.0f;
-    /// @note 呼び手が «描き直しだけ» と申告しても、キャッシュ自身の比較が部品の変化を拾う。
+    // 呼び手が «描き直しだけ» と申告しても、キャッシュ自身の比較が部品の変化を拾う。
     cache.SetRecipe(recipe, 2, -1.0f);
-    /// @note 0.1 秒より前のコマ (0 と 0.05) は残り、そこで帯が止まる。
+    // 0.1 秒より前のコマ (0 と 0.05) は残り、そこで帯が止まる。
     EXPECT_NEAR(cache.SolvedUntil(), 0.1f, 1.0e-5f);
     ASSERT_TRUE(TickUntil(cache, [&cache] { return !cache.IsSolving(); }));
     EXPECT_FLOAT_EQ(cache.SolvedUntil(), cache.Duration());
@@ -314,19 +316,19 @@ TEST(FluidPreviewCache, PartEditResumesInsteadOfSolvingFromTheStart)
 
     recipe.sources[1].density = 6.0f;
     cache.SetRecipe(recipe, 2, -1.0f);
-    /// @note 0.5 秒より前の 5 枚 (0.0〜0.4) は残り、そこで «解けた帯» が止まる。
+    // 0.5 秒より前の 5 枚 (0.0〜0.4) は残り、そこで «解けた帯» が止まる。
     EXPECT_NEAR(cache.SolvedUntil(), 0.5f, 1.0e-5f);
     EXPECT_NE(cache.FrameAt(0.4f), nullptr);
 
-    /// @note 全部解くのに掛かった時間の半分を締め切りにする。続きから解けば 3 コマぶん (1 割ほど) で終わるが、
-    ///       頭から解き直すと warmup ぶんだけで既に超える。下限は «速い機械で締め切りが潰れない» ための余裕。
+    // 全部解くのに掛かった時間の半分を締め切りにする。続きから解けば 3 コマぶん (1 割ほど) で終わるが、
+    //       頭から解き直すと warmup ぶんだけで既に超える。下限は «速い機械で締め切りが潰れない» ための余裕。
     const std::chrono::milliseconds half = fromScratch / 2;
     const std::chrono::milliseconds budget = half > std::chrono::milliseconds(100)
                                                  ? half
                                                  : std::chrono::milliseconds(100);
     bool bandHeld = true;
     const bool finished = TickUntil(cache, [&] {
-        /// @note 続きから解く間も、残した帯は縮まない。
+        // 続きから解く間も、残した帯は縮まない。
         if (cache.SolvedUntil() + 1.0e-5f < 0.5f) bandHeld = false;
         return !cache.IsSolving();
     }, budget);

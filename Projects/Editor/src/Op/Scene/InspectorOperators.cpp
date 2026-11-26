@@ -40,9 +40,13 @@ namespace {
 /// @note        であり、AI 側のプロトコルも NodeId = instanceId で統一されているため。
 scene::GameObject* ResolveNode(const OpContext& c, const std::string& nodeId)
 {
-    if (c.ctx.activeScene == nullptr) return nullptr;
-    /// @note 省略時は選択中の 1 つを対象にする (Inspector が映しているものと同じ)。
-    if (nodeId.empty()) return c.ctx.GetSelectedGO();
+    if (c.ctx.activeScene == nullptr) {
+        return nullptr;
+    }
+    // 省略時は選択中の 1 つを対象にする (Inspector が映しているものと同じ)。
+    if (nodeId.empty()) {
+        return c.ctx.GetSelectedGO();
+    }
     return c.ctx.activeScene->FindByGuid(nodeId);
 }
 
@@ -57,13 +61,19 @@ std::unique_ptr<ICommand> MakeTransformCommand(EditorContext& ctx,
 {
     EditorContext* context = &ctx;
     const auto apply = [context, entityId](const scene::Transform& value) {
-        if (context->activeScene == nullptr) return;
+        if (context->activeScene == nullptr) {
+            return;
+        }
         scene::GameObject* go = context->activeScene->GetGameObject(entityId);
-        if (go == nullptr) return;
+        if (go == nullptr) {
+            return;
+        }
         go->transform.position = value.position;
         go->transform.rotation = value.rotation;
         go->transform.scale    = value.scale;
-        if (context->markSceneDirty) context->markSceneDirty();
+        if (context->markSceneDirty) {
+            context->markSceneDirty();
+        }
     };
     return std::make_unique<LambdaCommand>(
         std::move(label),
@@ -85,11 +95,15 @@ std::unique_ptr<ICommand> MakeComponentOrderCommand(EditorContext& ctx,
         std::move(label),
         [context, instanceId, after]() {
             context->editorSceneState.SetComponentOrder(instanceId, after);
-            if (context->markSceneDirty) context->markSceneDirty();
+            if (context->markSceneDirty) {
+                context->markSceneDirty();
+            }
         },
         [context, instanceId, before]() {
             context->editorSceneState.SetComponentOrder(instanceId, before);
-            if (context->markSceneDirty) context->markSceneDirty();
+            if (context->markSceneDirty) {
+                context->markSceneDirty();
+            }
         });
 }
 
@@ -103,13 +117,20 @@ std::unique_ptr<ICommand> MakeComponentResetCommand(EditorContext& ctx,
 {
     EditorContext* context = &ctx;
     const auto apply = [context, entityId](const T& value) {
-        if (context->activeScene == nullptr) return;
+        if (context->activeScene == nullptr) {
+            return;
+        }
         scene::GameObject* go = context->activeScene->GetGameObject(entityId);
-        if (go == nullptr) return;
+        if (go == nullptr) {
+            return;
+        }
         if (T* component = go->GetComponent<T>()) {
-            if constexpr (std::is_same_v<T, scene::WaterComponent>) ApplyWaterAuthoringValues(*component, value);
-            else *component = value;
-            /// @note 丸ごと差し替えた地形・水・マテリアルは GPU 側を組み直させる (Inspector の Undo と同じ規則)。
+            if constexpr (std::is_same_v<T, scene::WaterComponent>) {
+                ApplyWaterAuthoringValues(*component, value);
+            } else {
+                *component = value;
+            }
+            // 丸ごと差し替えた地形・水・マテリアルは GPU 側を組み直させる (Inspector の Undo と同じ規則)。
             if constexpr (std::is_same_v<T, scene::TerrainComponent>) {
                 component->heightDirty = true;
                 component->splatDirty = true;
@@ -122,7 +143,9 @@ std::unique_ptr<ICommand> MakeComponentResetCommand(EditorContext& ctx,
                 component->material.reset();
             }
         }
-        if (context->markSceneDirty) context->markSceneDirty();
+        if (context->markSceneDirty) {
+            context->markSceneDirty();
+        }
     };
     T beforeValues = before;
     T afterValues = after;
@@ -141,13 +164,19 @@ std::unique_ptr<ICommand> MakeComponentResetCommand(EditorContext& ctx,
 bool ShiftComponent(std::vector<std::string>& order, const std::string& key, bool down)
 {
     const auto at = std::find(order.begin(), order.end(), key);
-    if (at == order.end()) return false;
+    if (at == order.end()) {
+        return false;
+    }
     if (down) {
-        if (std::next(at) == order.end()) return false;
+        if (std::next(at) == order.end()) {
+            return false;
+        }
         std::iter_swap(at, std::next(at));
         return true;
     }
-    if (at == order.begin()) return false;
+    if (at == order.begin()) {
+        return false;
+    }
     std::iter_swap(at, std::prev(at));
     return true;
 }
@@ -179,7 +208,9 @@ std::string ResolveComponentCardKey(std::string_view component)
 {
     std::string key(component);
     scene::ForEachRegisteredComponent([&]<typename T, typename Reg>() {
-        if (component == Reg::serializedName) key = Reg::displayName;
+        if (component == Reg::serializedName) {
+            key = Reg::displayName;
+        }
     });
     return key;
 }
@@ -190,22 +221,24 @@ std::string ResolveComponentSerializedName(std::string_view component)
 {
     std::string name(component);
     scene::ForEachRegisteredComponent([&]<typename T, typename Reg>() {
-        if (component == Reg::displayName) name = Reg::serializedName;
+        if (component == Reg::displayName) {
+            name = Reg::serializedName;
+        }
     });
     return name;
 }
 
-} /// @note namespace
+} // namespace
 
 void RegisterInspectorOperators(OperatorRegistry& registry)
 {
     RegisterScriptRequirementOperators(registry);
     RegisterScriptConfigureOperators(registry);
     RegisterScriptApiCatalogOperator(registry);
-    /// @note poll は引数も受け取るので「この呼び出しで対象を解決できるか」を判定できる。node 省略
-    /// @note        (メニュー・パレット) は選択が必要、node 明示 (AI) は選択不要という非対称な条件を
-    /// @note        表現できないと、選択必須だと AI の正当な要求を弾き、シーン有無だけだとパレットで
-    /// @note        「押せるのに何も起きない」が残る。
+    // poll は引数も受け取るので「この呼び出しで対象を解決できるか」を判定できる。node 省略
+    // (メニュー・パレット) は選択が必要、node 明示 (AI) は選択不要という非対称な条件を
+    // 表現できないと、選択必須だと AI の正当な要求を弾き、シーン有無だけだとパレットで
+    // 「押せるのに何も起きない」が残る。
     const auto hasTarget = [](const OpContext& c, const OpArgs& args) {
         return ResolveNode(c, args.GetString("node")) != nullptr;
     };
@@ -223,7 +256,9 @@ void RegisterInspectorOperators(OperatorRegistry& registry)
         op.poll     = hasTarget;
         op.exec     = [](OpContext& c, const OpArgs& args) -> OpResult {
             scene::GameObject* go = ResolveNode(c, args.GetString("node"));
-            if (go == nullptr) return OpResult::Err("NO_NODE", "対象の GameObject が見つかりません");
+            if (go == nullptr) {
+                return OpResult::Err("NO_NODE", "対象の GameObject が見つかりません");
+            }
             auto& clip = c.ctx.transformClipboard;
             clip.position = go->transform.position;
             clip.rotation = go->transform.rotation;
@@ -243,15 +278,19 @@ void RegisterInspectorOperators(OperatorRegistry& registry)
         op.kind      = OpKind::Mutation;
         op.undoLabel = "Paste Transform";
         op.params    = { NodeParam() };
-        /// @note クリップボードが空のときに「押せるのに何も起きない」を作らない。
+        // クリップボードが空のときに「押せるのに何も起きない」を作らない。
         op.poll      = [hasTarget](const OpContext& c, const OpArgs& args) {
             return c.ctx.transformClipboard.has && hasTarget(c, args);
         };
         op.exec      = [](OpContext& c, const OpArgs& args) -> OpResult {
             scene::GameObject* go = ResolveNode(c, args.GetString("node"));
-            if (go == nullptr) return OpResult::Err("NO_NODE", "対象の GameObject が見つかりません");
+            if (go == nullptr) {
+                return OpResult::Err("NO_NODE", "対象の GameObject が見つかりません");
+            }
             const auto& clip = c.ctx.transformClipboard;
-            if (!clip.has) return OpResult::Err("EMPTY_CLIPBOARD", "Transform クリップボードが空です");
+            if (!clip.has) {
+                return OpResult::Err("EMPTY_CLIPBOARD", "Transform クリップボードが空です");
+            }
 
             const scene::Transform before = go->transform;
             scene::Transform after = before;
@@ -261,11 +300,13 @@ void RegisterInspectorOperators(OperatorRegistry& registry)
 
             OpResult result;
             result.command = MakeTransformCommand(c.ctx, go->GetID(), before, after, "Paste Transform");
-            /// @note 画面へは先に反映しておく (UndoStack::Push は再実行しない契約)。
+            // 画面へは先に反映しておく (UndoStack::Push は再実行しない契約)。
             go->transform.position = after.position;
             go->transform.rotation = after.rotation;
             go->transform.scale    = after.scale;
-            if (c.ctx.markSceneDirty) c.ctx.markSceneDirty();
+            if (c.ctx.markSceneDirty) {
+                c.ctx.markSceneDirty();
+            }
             return result;
         };
         registry.Register(std::move(op));
@@ -283,7 +324,9 @@ void RegisterInspectorOperators(OperatorRegistry& registry)
         op.poll      = hasTarget;
         op.exec      = [](OpContext& c, const OpArgs& args) -> OpResult {
             scene::GameObject* go = ResolveNode(c, args.GetString("node"));
-            if (go == nullptr) return OpResult::Err("NO_NODE", "対象の GameObject が見つかりません");
+            if (go == nullptr) {
+                return OpResult::Err("NO_NODE", "対象の GameObject が見つかりません");
+            }
 
             const scene::Transform before = go->transform;
             scene::Transform after = before;
@@ -296,15 +339,17 @@ void RegisterInspectorOperators(OperatorRegistry& registry)
             go->transform.position = after.position;
             go->transform.rotation = after.rotation;
             go->transform.scale    = after.scale;
-            if (c.ctx.markSceneDirty) c.ctx.markSceneDirty();
+            if (c.ctx.markSceneDirty) {
+                c.ctx.markSceneDirty();
+            }
             return result;
         };
         registry.Register(std::move(op));
     }
 
-    /// @name コンポーネントの並べ替え
-    /// @note Inspector の並び順は「よく触る順に並べる」オーサリング情報でシーンと一緒に保存される。
-    /// @note        人が整えた順を AI が崩さないよう、AI が読める・直せる対象にしておく。
+    // コンポーネントの並べ替え
+    // Inspector の並び順は「よく触る順に並べる」オーサリング情報でシーンと一緒に保存される。
+    // 人が整えた順を AI が崩さないよう、AI が読める・直せる対象にしておく。
     const auto registerMove = [&registry](const char* id, const char* label, bool down) {
         EditorOperator op;
         op.id        = id;
@@ -315,29 +360,37 @@ void RegisterInspectorOperators(OperatorRegistry& registry)
         op.kind      = OpKind::Mutation;
         op.undoLabel = label;
         op.params    = { NodeParam(), ComponentParam() };
-        /// @note 並び順での位置まで判定するので、端に居るカードの Move Up はメニュー上でも淡色になる。
+        // 並び順での位置まで判定するので、端に居るカードの Move Up はメニュー上でも淡色になる。
         op.poll      = [down](const OpContext& c, const OpArgs& args) {
             scene::GameObject* go = ResolveNode(c, args.GetString("node"));
-            if (go == nullptr) return false;
+            if (go == nullptr) {
+                return false;
+            }
             const std::string key = ResolveComponentCardKey(args.GetString("component"));
-            /// @note 引数なしの面 (パレット) では対象カードを選べないので通す。
-            if (key.empty()) return true;
+            // 引数なしの面 (パレット) では対象カードを選べないので通す。
+            if (key.empty()) {
+                return true;
+            }
             std::vector<std::string> order =
                 c.ctx.editorSceneState.GetComponentOrder(go->instanceId);
             return ShiftComponent(order, key, down);
         };
         op.exec      = [down](OpContext& c, const OpArgs& args) -> OpResult {
             scene::GameObject* go = ResolveNode(c, args.GetString("node"));
-            if (go == nullptr) return OpResult::Err("NO_NODE", "対象の GameObject が見つかりません");
+            if (go == nullptr) {
+                return OpResult::Err("NO_NODE", "対象の GameObject が見つかりません");
+            }
 
             const std::string key = ResolveComponentCardKey(args.GetString("component"));
-            if (key.empty()) return OpResult::Err("BAD_ARG", "component は必須です");
+            if (key.empty()) {
+                return OpResult::Err("BAD_ARG", "component は必須です");
+            }
 
             std::vector<std::string> before =
                 c.ctx.editorSceneState.GetComponentOrder(go->instanceId);
             std::vector<std::string> after = before;
             if (!ShiftComponent(after, key, down)) {
-                /// @note 端に居るのか綴り違いなのかを区別して返す。
+                // 端に居るのか綴り違いなのかを区別して返す。
                 const bool present =
                     std::find(before.begin(), before.end(), key) != before.end();
                 return OpResult::Err(present ? "AT_EDGE" : "UNKNOWN_COMPONENT",
@@ -346,7 +399,9 @@ void RegisterInspectorOperators(OperatorRegistry& registry)
             }
 
             c.ctx.editorSceneState.SetComponentOrder(go->instanceId, after);
-            if (c.ctx.markSceneDirty) c.ctx.markSceneDirty();
+            if (c.ctx.markSceneDirty) {
+                c.ctx.markSceneDirty();
+            }
 
             OpResult result;
             result.command = MakeComponentOrderCommand(
@@ -374,8 +429,9 @@ void RegisterInspectorOperators(OperatorRegistry& registry)
         };
         op.exec = [](OpContext& context, const OpArgs& args) {
             auto* object = ResolveNode(context, args.GetString("node"));
-            if (!object || !SetUIImageNativeSize(*object, context.ctx))
+            if (!object || !SetUIImageNativeSize(*object, context.ctx)) {
                 return OpResult::Err("NATIVE_SIZE_UNAVAILABLE", "画像の原寸を取得できないか、両軸がストレッチされています。");
+            }
             return OpResult::Ok();
         };
         registry.Register(std::move(op));
@@ -394,11 +450,15 @@ void RegisterInspectorOperators(OperatorRegistry& registry)
         op.poll       = [](const OpContext& c, const OpArgs& args) {
             scene::GameObject* go = ResolveNode(c, args.GetString("node"));
             const std::string componentName = ResolveComponentSerializedName(args.GetString("component"));
-            if (go == nullptr || componentName.empty()) return false;
+            if (go == nullptr || componentName.empty()) {
+                return false;
+            }
 
             bool available = false;
             scene::ForEachRegisteredComponent([&]<typename T, typename Reg>() {
-                if (available || std::string_view(Reg::serializedName) != componentName) return;
+                if (available || std::string_view(Reg::serializedName) != componentName) {
+                    return;
+                }
                 if constexpr (Reg::inspectorMode != scene::ComponentInspectorMode::Hidden
                            && Reg::addable
                            && std::is_default_constructible_v<T>
@@ -411,17 +471,23 @@ void RegisterInspectorOperators(OperatorRegistry& registry)
         };
         op.exec = [](OpContext& c, const OpArgs& args) -> OpResult {
             scene::GameObject* go = ResolveNode(c, args.GetString("node"));
-            if (go == nullptr) return OpResult::Err("NO_NODE", "対象の GameObject が見つかりません");
+            if (go == nullptr) {
+                return OpResult::Err("NO_NODE", "対象の GameObject が見つかりません");
+            }
 
             const std::string componentName = ResolveComponentSerializedName(args.GetString("component"));
-            if (componentName.empty()) return OpResult::Err("BAD_ARG", "component は必須です");
+            if (componentName.empty()) {
+                return OpResult::Err("BAD_ARG", "component は必須です");
+            }
 
             OpResult result;
             bool applied = false;
             bool known = false;
             bool resettable = false;
             scene::ForEachRegisteredComponent([&]<typename T, typename Reg>() {
-                if (applied || std::string_view(Reg::serializedName) != componentName) return;
+                if (applied || std::string_view(Reg::serializedName) != componentName) {
+                    return;
+                }
                 known = true;
                 if constexpr (Reg::inspectorMode != scene::ComponentInspectorMode::Hidden
                            && Reg::addable
@@ -430,30 +496,45 @@ void RegisterInspectorOperators(OperatorRegistry& registry)
                            && std::is_copy_assignable_v<T>) {
                     resettable = true;
                     T* component = go->GetComponent<T>();
-                    if (component == nullptr) return;
+                    if (component == nullptr) {
+                        return;
+                    }
 
                     T before = *component;
-                    if constexpr (std::is_same_v<T, scene::WaterComponent>) before = CaptureWaterAuthoringValues(*component);
-                    /// @note Inspector の Reset と同じ既定値・同じ有効フラグ保持規則 (T{} だと RigidBody の本体が消える)。
+                    if constexpr (std::is_same_v<T, scene::WaterComponent>) {
+                        before = CaptureWaterAuthoringValues(*component);
+                    }
+                    // Inspector の Reset と同じ既定値・同じ有効フラグ保持規則 (T{} だと RigidBody の本体が消える)。
                     T after = MakeDefaultComponent<T>(*go);
                     CopyComponentEnabledFlag(before, after);
 
-                    if constexpr (std::is_same_v<T, scene::WaterComponent>) ApplyWaterAuthoringValues(*component, after);
-                    else *component = after;
-                    if (c.ctx.markSceneDirty) c.ctx.markSceneDirty();
+                    if constexpr (std::is_same_v<T, scene::WaterComponent>) {
+                        ApplyWaterAuthoringValues(*component, after);
+                    } else {
+                        *component = after;
+                    }
+                    if (c.ctx.markSceneDirty) {
+                        c.ctx.markSceneDirty();
+                    }
                     result.command = MakeComponentResetCommand(
                         c.ctx, go->GetID(), before, after);
                     applied = true;
                 }
             });
 
-            if (!known) return OpResult::Err("UNKNOWN_COMPONENT", "未知のコンポーネント: " + componentName);
-            if (!resettable) return OpResult::Err("NOT_RESETTABLE", "既定値へ戻せないコンポーネントです: " + componentName);
-            if (!applied) return OpResult::Err("NOT_PRESENT", "そのコンポーネントは装着されていません: " + componentName);
+            if (!known) {
+                return OpResult::Err("UNKNOWN_COMPONENT", "未知のコンポーネント: " + componentName);
+            }
+            if (!resettable) {
+                return OpResult::Err("NOT_RESETTABLE", "既定値へ戻せないコンポーネントです: " + componentName);
+            }
+            if (!applied) {
+                return OpResult::Err("NOT_PRESENT", "そのコンポーネントは装着されていません: " + componentName);
+            }
             return result;
         };
         registry.Register(std::move(op));
     }
 }
 
-} /// @note namespace fbzz::editor
+} // namespace fbzz::editor

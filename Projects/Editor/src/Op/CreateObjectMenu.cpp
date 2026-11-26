@@ -30,7 +30,9 @@ namespace {
 OpArgs MakeCreateMenuArgs(const std::string& parentGuid)
 {
     OpArgs args;
-    if (!parentGuid.empty()) args.Set("parent", parentGuid);
+    if (!parentGuid.empty()) {
+        args.Set("parent", parentGuid);
+    }
     args.Set("placeInView", true);
     return args;
 }
@@ -46,14 +48,17 @@ void DrawCreateMenuEntry(EditorContext& ctx, const char* label, const char* tool
         out.beginRename = true;
     }
     if (tooltip != nullptr && tooltip[0] != '\0'
-        && ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled))
+        && ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled)) {
         ImGui::SetTooltip("%s", tooltip);
+    }
 }
 
 scene::GameObject* DefaultCreateMenuParent(EditorContext& ctx)
 {
-    if (ctx.activeScene == nullptr || ctx.selectedEntities.empty()) return nullptr;
-    /// @note 複数選択なら最後に選んだもの (Unity の active object 相当)。削除直後の古い選択はルート扱い。
+    if (ctx.activeScene == nullptr || ctx.selectedEntities.empty()) {
+        return nullptr;
+    }
+    // 複数選択なら最後に選んだもの (Unity の active object 相当)。削除直後の古い選択はルート扱い。
     return ctx.activeScene->GetGameObject(ctx.selectedEntities.back());
 }
 
@@ -62,7 +67,9 @@ void DrawCreateMenuPresets(EditorContext& ctx, const std::string& parentGuid, Pe
     std::string_view openCategory;
     bool             categoryOpen = false;
     const auto closeCategory = [&]() {
-        if (categoryOpen) ImGui::EndMenu();
+        if (categoryOpen) {
+            ImGui::EndMenu();
+        }
         categoryOpen = false;
         openCategory = {};
     };
@@ -74,7 +81,9 @@ void DrawCreateMenuPresets(EditorContext& ctx, const std::string& parentGuid, Pe
             categoryOpen = !preset.category.empty()
                 && ImGui::BeginMenu(LOC(std::string(preset.category).c_str()));
         }
-        if (!preset.category.empty() && !categoryOpen) continue;
+        if (!preset.category.empty() && !categoryOpen) {
+            continue;
+        }
 
         OpArgs args = MakeCreateMenuArgs(parentGuid);
         args.Set("preset", std::string(preset.id));
@@ -86,20 +95,26 @@ void DrawCreateMenuPresets(EditorContext& ctx, const std::string& parentGuid, Pe
 
 void DrawCreateMenuPrefabs(EditorContext& ctx, const std::string& parentGuid, PendingObjectCreate& out)
 {
-    if (!ImGui::BeginMenu(LOC("Prefab"))) return;
+    if (!ImGui::BeginMenu(LOC("Prefab"))) {
+        return;
+    }
 
     const std::string assetRoot = ctx.projectRoot.empty() ? "Assets" : ctx.projectRoot + "/Assets";
     bool anyFound = false;
     for (const std::string& path : util::FileSystem::ListAll(assetRoot + "/Prefabs")) {
         const std::string ext = util::StringUtils::ToLower(util::FileSystem::GetExtension(path));
-        if (ext != ".prefab") continue;
+        if (ext != ".prefab") {
+            continue;
+        }
         anyFound = true;
         OpArgs args = MakeCreateMenuArgs(parentGuid);
         args.Set("path", path);
         DrawCreateMenuEntry(ctx, util::FileSystem::GetFilename(path).c_str(), nullptr,
                             "prefab.instantiate", std::move(args), out);
     }
-    if (!anyFound) ImGui::TextDisabled("(No prefabs found in Assets/Prefabs)");
+    if (!anyFound) {
+        ImGui::TextDisabled("(No prefabs found in Assets/Prefabs)");
+    }
     ImGui::EndMenu();
 }
 
@@ -109,11 +124,15 @@ void DrawCreateMenuScripts(EditorContext& ctx, const std::string& parentGuid, Pe
     if (ImGui::IsItemHovered()) {
         ImGui::SetTooltip("%s", LOCT("Create a GameObject with a C# script and its required components."));
     }
-    if (!open) return;
+    if (!open) {
+        return;
+    }
 
     const std::vector<std::string> types = ScriptObjectTypeNames();
-    /// @note C# 未ビルド・ビルド失敗中は空になるため理由を表示する。
-    if (types.empty()) ImGui::TextDisabled("%s", LOCT("No C# scripts are available in the current project."));
+    // C# 未ビルド・ビルド失敗中は空になるため理由を表示する。
+    if (types.empty()) {
+        ImGui::TextDisabled("%s", LOCT("No C# scripts are available in the current project."));
+    }
     for (const std::string& typeName : types) {
         const std::string displayName = scene::ScriptFactory::DisplayName(typeName);
         OpArgs args = MakeCreateMenuArgs(parentGuid);
@@ -123,7 +142,7 @@ void DrawCreateMenuScripts(EditorContext& ctx, const std::string& parentGuid, Pe
     ImGui::EndMenu();
 }
 
-} /// @note namespace
+} // namespace
 
 void DrawCreateObjectMenuItems(EditorContext& ctx, const std::string& parentGuid, PendingObjectCreate& out)
 {
@@ -133,7 +152,9 @@ void DrawCreateObjectMenuItems(EditorContext& ctx, const std::string& parentGuid
         ImGui::PushStyleColor(ImGuiCol_Text, EditorTheme::Color(ThemeColor::Warning));
         ImGui::TextUnformatted("Adding under a prefab instance");
         ImGui::PopStyleColor();
-        if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", PrefabInstanceChildWarning());
+        if (ImGui::IsItemHovered()) {
+            ImGui::SetTooltip("%s", PrefabInstanceChildWarning());
+        }
         ImGui::Separator();
     }
 
@@ -174,31 +195,40 @@ OpResult InvokePendingObjectCreate(EditorContext& ctx, PendingObjectCreate& pend
     pending = {};
     OpResult result = InvokeOperator(ctx, taken.operatorId, taken.args);
     if (!taken.moreArgs.empty()) {
-        /// @note Operator は呼ぶたびに作ったものだけを選ぶので、全部作ってから選択を束ね直す。
+        // Operator は呼ぶたびに作ったものだけを選ぶので、全部作ってから選択を束ね直す。
         std::vector<scene::EntityID> created;
         const auto collect = [&ctx, &created](const OpResult& r) {
             const OpData* ids = r.ok ? r.data.Find("ids") : nullptr;
-            if (ids == nullptr || !ctx.activeScene) return;
+            if (ids == nullptr || !ctx.activeScene) {
+                return;
+            }
             for (const OpData& guid : ids->AsArray())
-                if (const scene::GameObject* go = ctx.activeScene->FindByGuid(guid.AsString()))
+                if (const scene::GameObject* go = ctx.activeScene->FindByGuid(guid.AsString())) {
                     created.push_back(go->GetID());
+                }
         };
         collect(result);
         for (const OpArgs& args : taken.moreArgs) {
             OpResult more = InvokeOperator(ctx, taken.operatorId, args);
             collect(more);
-            if (result.ok || !more.ok) result = std::move(more);
+            if (result.ok || !more.ok) {
+                result = std::move(more);
+            }
         }
-        if (!created.empty()) SelectEntities(ctx, std::move(created), SelectionReveal::Skip);
+        if (!created.empty()) {
+            SelectEntities(ctx, std::move(created), SelectionReveal::Skip);
+        }
         return result;
     }
-    /// @note Map Mode の絞り込み中は作った行が出ないことがあり、出ない行のリネームはキー操作を塞いだまま残る。
+    // Map Mode の絞り込み中は作った行が出ないことがあり、出ない行のリネームはキー操作を塞いだまま残る。
     const bool rowMayBeHidden = ctx.mapEditingMode && ctx.mapHierarchyFilter;
     if (result.ok && taken.beginRename && !rowMayBeHidden) {
         const OpData* ids = result.data.Find("ids");
-        if (ids != nullptr && ids->AsArray().size() == 1) ctx.requestRenameSelected = true;
+        if (ids != nullptr && ids->AsArray().size() == 1) {
+            ctx.requestRenameSelected = true;
+        }
     }
     return result;
 }
 
-} /// @note namespace fbzz::editor
+} // namespace fbzz::editor

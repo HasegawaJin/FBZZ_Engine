@@ -487,9 +487,9 @@ export type EditorCommand =
     | { t: 'editor.transaction'; label: string; cmds: EditorCommand[] };
 export const EditorCommandSchema: z.ZodType<EditorCommand> = z.lazy(() =>
     z.discriminatedUnion('t', [
-        /// @note args の中身は Editor 側の params 宣言に従って検証される。
-        /// @note ここで形を固定しないのは、operator が増えてもこのファイルを触らずに済ませるため
-        /// @note (Editor に 1 つ足すたび TypeScript も直す、が今回無くしたい重複そのもの)。
+        // args の中身は Editor 側の params 宣言に従って検証される。
+        // ここで形を固定しないのは、operator が増えてもこのファイルを触らずに済ませるため
+        // (Editor に 1 つ足すたび TypeScript も直す、が今回無くしたい重複そのもの)。
         z.object({
             t: z.literal('editor.op.invoke'),
             id: z.string().min(1).max(128),
@@ -554,17 +554,17 @@ export const EditorCommandSchema: z.ZodType<EditorCommand> = z.lazy(() =>
             path: z.string().min(1),
             shaderPath: z.string().min(1),
         }).strict(),
-        /// @note フリップブックアトラスからモーションベクターアトラスを生成する。
-        /// @note MV は外部ツールでしか作れず、AI が flipbook のブレンド品質を上げたくても
-        /// @note 手段が無かったため、コマンドとして公開する。
+        // フリップブックアトラスからモーションベクターアトラスを生成する。
+        // MV は外部ツールでしか作れず、AI が flipbook のブレンド品質を上げたくても
+        // 手段が無かったため、コマンドとして公開する。
         z.object({ t: z.literal('vfx.generateMotionVectors'), texturePath: z.string().min(1).max(1024),
             columns: z.number().int().min(1).max(64), rows: z.number().int().min(1).max(64),
             searchRadius: z.number().int().min(1).max(64).optional(),
             loop: z.boolean().optional(),
             rowSequences: z.boolean().optional(),
-            /// @note 推奨 strength は生成結果でしか決まらないため、渡されたら .mat へ直接書き込む。
+            // 推奨 strength は生成結果でしか決まらないため、渡されたら .mat へ直接書き込む。
             materialPath: z.string().min(1).max(1024).optional() }).strict(),
-        /// @note ── Sprite ──
+        // スプライトを編集するコマンドの入力を検証する。
         z.object({ t: z.literal('sprite.rename'), path: z.string().min(1).max(1024),
             sprite: z.string().min(1).max(256), name: z.string().min(1).max(128) }).strict(),
         z.object({ t: z.literal('sprite.slice'), path: z.string().min(1).max(1024),
@@ -582,7 +582,7 @@ export const EditorCommandSchema: z.ZodType<EditorCommand> = z.lazy(() =>
             keepEmptyRects: z.boolean().optional(),
             prefix: z.string().min(1).max(64).optional(),
             mode: z.enum(['smart', 'safe', 'replace']).optional() }).strict(),
-        /// @note ── Behavior Tree ──
+        // Behavior Tree を編集するコマンドの入力を検証する。
         z.object({ t: z.literal('bt.node.add'), path: z.string().min(1).max(1024),
             nodeType: z.string().min(1).max(64), parentId: z.number().int().min(1).optional(),
             name: z.string().min(1).max(128).optional() }).strict(),
@@ -604,7 +604,7 @@ export const EditorCommandSchema: z.ZodType<EditorCommand> = z.lazy(() =>
         z.object({ t: z.literal('bt.blackboard.remove'), path: z.string().min(1).max(1024),
             name: z.string().min(1).max(64) }).strict(),
         z.object({ t: z.literal('bt.autoLayout'), path: z.string().min(1).max(1024) }).strict(),
-        /// @note bt.lint が autoFixable=true と言った code だけを機械的に直す (Undo 可能)。
+        // bt.lint が autoFixable=true と言った code だけを機械的に直す (Undo 可能)。
         z.object({ t: z.literal('bt.repair'), path: z.string().min(1).max(1024),
             fixAborts: z.boolean().optional(), fixDurations: z.boolean().optional(),
             fixWeights: z.boolean().optional(), fixKeys: z.boolean().optional() }).strict(),
@@ -628,14 +628,14 @@ export const EditorCommandSchema: z.ZodType<EditorCommand> = z.lazy(() =>
             t: z.literal('animation.setParameter'),
             id: NodeIdSchema,
             name: z.string().min(1).max(128),
-            /// @note float/int は number、bool/trigger は boolean。trigger は value 省略で発火。
+            // float/int は number、bool/trigger は boolean。trigger は value 省略で発火。
             value: z.union([z.number().finite(), z.boolean()]).optional(),
         }).strict(),
         z.object({
             t: z.literal('animation.addTransition'),
             id: NodeIdSchema,
             layer: z.string().min(1).max(128).optional(),
-            /// @note from 省略 = Any State 遷移。指定時はそのステートからの遷移。
+            // from 省略 = Any State 遷移。指定時はそのステートからの遷移。
             from: z.string().min(1).max(128).optional(),
             to: z.string().min(1).max(128),
             hasExitTime: z.boolean().optional(),
@@ -655,7 +655,7 @@ export const EditorCommandSchema: z.ZodType<EditorCommand> = z.lazy(() =>
             threshold: z.number().finite().optional(),
             conditionIndex: z.number().int().nonnegative().optional(),
         }).strict().superRefine((input, context) => {
-            /// @note add/update は parameter と op が必須。update/remove は conditionIndex が必須。
+            // add/update は parameter と op が必須。update/remove は conditionIndex が必須。
             if ((input.action === 'add' || input.action === 'update')
                 && (input.parameter === undefined || input.op === undefined)) {
                 context.addIssue({ code: 'custom', message: `action=${input.action} には parameter と op が必要です` });
@@ -853,7 +853,7 @@ export const EditorCommandSchema: z.ZodType<EditorCommand> = z.lazy(() =>
             }),
         z.object({ t: z.literal('editor.undo') }).strict(),
         z.object({ t: z.literal('editor.redo') }).strict(),
-        /// @note ── ワールドオーサリング ──
+        // ワールドを編集するコマンドの入力を検証する。
         z.object({
             t: z.literal('preset.create'),
             preset: z.string().min(1).max(64),
@@ -956,7 +956,7 @@ export const EditorCommandSchema: z.ZodType<EditorCommand> = z.lazy(() =>
         z.object({
             t: z.literal('fluid.preview'),
             path: FluidPathSchema,
-            /// @note frame が第一級 (焼きの第 n コマ)。time は «一番近いコマ» へ吸着させる旧来の指定。
+            // frame が第一級 (焼きの第 n コマ)。time は «一番近いコマ» へ吸着させる旧来の指定。
             frame: z.number().int().min(0).max(1023).optional(),
             time: z.number().finite().min(0).max(600).optional(),
             size: z.number().int().min(32).max(2048).optional(),
@@ -973,7 +973,7 @@ export const EditorCommandSchema: z.ZodType<EditorCommand> = z.lazy(() =>
         z.object({ t: z.literal('fluid.cancel'), job: FluidJobIdSchema }).strict(),
         z.object({
             t: z.literal('fluid.createEffect'),
-            /// @note ファイル名の素になる。区切り文字を許すと dir の外へ書けてしまう。
+            // ファイル名の素になる。区切り文字を許すと dir の外へ書けてしまう。
             name: FluidEffectNameSchema,
             dir: z.string().min(1).max(1024).optional(),
             preset: FluidPresetSchema.optional(),
@@ -997,7 +997,7 @@ export const EditorCommandSchema: z.ZodType<EditorCommand> = z.lazy(() =>
         }).strict(),
         z.object({
             t: z.literal('visual.compare'),
-            /// @note Tests/Golden 相対・拡張子なし。".." を許すと基準画像の置き場の外へ書ける。
+            // Tests/Golden 相対・拡張子なし。".." を許すと基準画像の置き場の外へ書ける。
             baseline: z.string().min(1).max(128).regex(/^[A-Za-z0-9_\-/]+$/),
             view: z.enum(['game', 'scene']).optional(),
             updateBaseline: z.boolean().optional(),

@@ -130,16 +130,16 @@ TEST(JsonParse, ReadsEscapeSequencesInStrings)
 /// @brief Reads raw UTF-8 in strings.
 TEST(JsonParse, ReadsRawUtf8InStrings)
 {
-    /// @note MCP はパス・アセット名に日本語を載せる。ここが壊れると名前が化ける。
+    // MCP はパス・アセット名に日本語を載せる。ここが壊れると名前が化ける。
     const JsonValue root = MustParse(R"({"s":"あ"})");
-    /// @note U+3042 'あ'
+    // U+3042 'あ'
     EXPECT_EQ(root.Find("s")->AsString(), "\xE3\x81\x82");
 }
 
 /// @brief Decodes unicode escapes to UTF-8.
 TEST(JsonParse, DecodesUnicodeEscapesToUtf8)
 {
-    /// @note 送信側が \uXXXX で寄こす場合。生の UTF-8 と同じ結果にならなければならない。
+    // 送信側が \uXXXX で寄こす場合。生の UTF-8 と同じ結果にならなければならない。
     const JsonValue root = MustParse(R"({"s":"\u3042"})");
     EXPECT_EQ(root.Find("s")->AsString(), "\xE3\x81\x82");
 }
@@ -147,17 +147,17 @@ TEST(JsonParse, DecodesUnicodeEscapesToUtf8)
 /// @brief Decodes ascii and two byte unicode escapes.
 TEST(JsonParse, DecodesAsciiAndTwoByteUnicodeEscapes)
 {
-    /// @note 1 バイト
+    // 1 バイト
     EXPECT_EQ(MustParse(R"("\u0041")").AsString(), "A");
-    /// @note 2 バイト (é)
+    // 2 バイト (é)
     EXPECT_EQ(MustParse(R"("\u00E9")").AsString(), "\xC3\xA9");
 }
 
 /// @brief Combines surrogate pairs.
 TEST(JsonParse, CombinesSurrogatePairs)
 {
-    /// @note 絵文字は上位 + 下位の 2 つ組で来る。片方だけを文字にすると化ける。
-    /// @note U+1F600 😀
+    // 絵文字は上位 + 下位の 2 つ組で来る。片方だけを文字にすると化ける。
+    // U+1F600 😀
     const JsonValue root = MustParse(R"("\uD83D\uDE00")");
     EXPECT_EQ(root.AsString(), "\xF0\x9F\x98\x80");
 }
@@ -165,7 +165,7 @@ TEST(JsonParse, CombinesSurrogatePairs)
 /// @brief Rejects a broken surrogate pair.
 TEST(JsonParse, RejectsABrokenSurrogatePair)
 {
-    /// @note 上位だけ、あるいは下位が下位でない組み合わせ。黙って化けさせない。
+    // 上位だけ、あるいは下位が下位でない組み合わせ。黙って化けさせない。
     EXPECT_FALSE(ParseJson(R"("\uD83D")", nullptr).has_value());
     EXPECT_FALSE(ParseJson(R"("\uD83DA")", nullptr).has_value());
 }
@@ -188,7 +188,7 @@ TEST(JsonParse, ReadsAnEmptyContainer)
 /// @brief Rejects malformed input instead of guessing.
 TEST(JsonParse, RejectsMalformedInputInsteadOfGuessing)
 {
-    /// @note 中途半端に読めた «つもり» で返すと、欠けた値が既定値として通ってしまう。
+    // 中途半端に読めた «つもり» で返すと、欠けた値が既定値として通ってしまう。
     const char* broken[] = {
         "",  "{",  "}",  "[",  "[1,",  "{\"a\"}",  "{\"a\":}",
         "{a:1}",  "tru",  "\"unterminated",  "--1",
@@ -210,7 +210,7 @@ TEST(JsonParse, ReportsAReasonWhenItFails)
 /// @brief Works without an error sink.
 TEST(JsonParse, WorksWithoutAnErrorSink)
 {
-    /// @note error は省略可能。null 渡しで落ちないこと。
+    // error は省略可能。null 渡しで落ちないこと。
     EXPECT_FALSE(ParseJson("{", nullptr).has_value());
     EXPECT_TRUE(ParseJson("{}", nullptr).has_value());
 }
@@ -237,7 +237,7 @@ TEST(JsonSerialize, EscapesCharactersThatWouldBreakTheDocument)
     JsonValue root = JsonValue::MakeObject();
     root.Set("s", JsonValue(std::string("quote\" back\\ newline\n tab\t")));
 
-    /// @note 往復して元に戻れば、エスケープと解除が噛み合っている。
+    // 往復して元に戻れば、エスケープと解除が噛み合っている。
     const JsonValue back = MustParse(SerializeJson(root));
     EXPECT_EQ(back.Find("s")->AsString(), "quote\" back\\ newline\n tab\t");
 }
@@ -286,7 +286,7 @@ TEST(JsonValueBuild, PushTurnsTheValueIntoAnArray)
 /// @brief Checks accessors fall back when the type differs.
 TEST(JsonValueBuild, AccessorsFallBackWhenTheTypeDiffers)
 {
-    /// @note 相手の型を取り違えても «それらしい値» を返さず、指定した既定値に落ちること。
+    // 相手の型を取り違えても «それらしい値» を返さず、指定した既定値に落ちること。
     const JsonValue text{"not a number"};
     EXPECT_DOUBLE_EQ(text.AsNumber(-1.0), -1.0);
     EXPECT_EQ(text.AsInt(-1), -1);
@@ -301,7 +301,7 @@ TEST(JsonValueBuild, AccessorsFallBackWhenTheTypeDiffers)
 /// @brief Matches the known vectors.
 TEST(JsonBase64, MatchesTheKnownVectors)
 {
-    /// @note RFC 4648 の例。スクリーンショット転送が化けたときに «どちら側か» を切り分けられる。
+    // RFC 4648 の例。スクリーンショット転送が化けたときに «どちら側か» を切り分けられる。
     const auto encode = [](const std::string& text) {
         return editor::ai::Base64Encode(
             reinterpret_cast<const std::uint8_t*>(text.data()), text.size());

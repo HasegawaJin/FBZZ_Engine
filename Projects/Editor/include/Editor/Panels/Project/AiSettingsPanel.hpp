@@ -26,12 +26,12 @@ private:
     /// 直近の操作結果を成功・失敗の色付きメッセージとして保持する。
     void SetMessage(std::string message, bool error);
 
-    ai::AiSetupStatus m_status;
-    std::string m_inspectedEngineRoot;
-    std::string m_message;
-    int m_permissionIndex = 0;
-    bool m_hasDiagnostics = false;
-    bool m_messageIsError = false;
+    ai::AiSetupStatus m_status; ///< 最新の AI 連携環境の診断結果。
+    std::string m_inspectedEngineRoot; ///< m_status を取得したときに調べた Editor の SDK またはリポジトリのルート。
+    std::string m_message; ///< 直近の AI 連携設定操作の結果を表示する文言。
+    int m_permissionIndex = 0; ///< AI 連携設定で選択した権限プリセットの添字。
+    bool m_hasDiagnostics = false; ///< 現在表示できる AI 連携の診断結果を取得済みか。
+    bool m_messageIsError = false; ///< m_message をエラーとして表示するか。
 };
 
 } // namespace fbzz::editor

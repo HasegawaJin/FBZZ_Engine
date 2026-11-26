@@ -54,15 +54,23 @@ ImU32 CategoryAccent(VolumeOverrideCategory category)
 /// 部分一致 (大文字小文字を無視)。Add Override の検索に使う。
 bool ContainsFold(std::string_view haystack, std::string_view needle)
 {
-    if (needle.empty()) return true;
-    if (needle.size() > haystack.size()) return false;
+    if (needle.empty()) {
+        return true;
+    }
+    if (needle.size() > haystack.size()) {
+        return false;
+    }
     const auto lower = [](char c) {
         return static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
     };
     for (std::size_t i = 0; i + needle.size() <= haystack.size(); ++i) {
         std::size_t j = 0;
-        while (j < needle.size() && lower(haystack[i + j]) == lower(needle[j])) ++j;
-        if (j == needle.size()) return true;
+        while (j < needle.size() && lower(haystack[i + j]) == lower(needle[j])) {
+            ++j;
+        }
+        if (j == needle.size()) {
+            return true;
+        }
     }
     return false;
 }
@@ -72,7 +80,9 @@ int CountActive(const asset::PostProcessProfile& profile)
 {
     int count = 0;
     for (const auto& entry : profile.overrides)
-        if (entry && entry->active) ++count;
+        if (entry && entry->active) {
+            ++count;
+        }
     return count;
 }
 
@@ -88,12 +98,19 @@ SlotConflicts DetectConflicts(const asset::PostProcessProfile& profile)
 {
     bool fxaa = false, taa = false, ssao = false, gtao = false;
     for (const auto& entry : profile.overrides) {
-        if (!entry || !entry->active) continue;
+        if (!entry || !entry->active) {
+            continue;
+        }
         const char* type = entry->GetTypeName();
-        if (std::strcmp(type, "FXAA") == 0) fxaa = true;
-        else if (std::strcmp(type, "TAA")  == 0) taa  = true;
-        else if (std::strcmp(type, "SSAO") == 0) ssao = true;
-        else if (std::strcmp(type, "GTAO") == 0) gtao = true;
+        if (std::strcmp(type, "FXAA") == 0) {
+            fxaa = true;
+        } else if (std::strcmp(type, "TAA")  == 0) {
+            taa  = true;
+        } else if (std::strcmp(type, "SSAO") == 0) {
+            ssao = true;
+        } else if (std::strcmp(type, "GTAO") == 0) {
+            gtao = true;
+        }
     }
     return { fxaa && taa, ssao && gtao };
 }
@@ -140,7 +157,7 @@ std::string DrawAddOverridePopup(const asset::PostProcessProfile& profile)
     static char s_filter[64] = "";
     std::string picked;
 
-    /// @note ポップアップを開いた直後は検索欄へフォーカスを置く。27 種あるため即打ち始められる方が体感が良い。
+    // ポップアップを開いた直後は検索欄へフォーカスを置く。27 種あるため即打ち始められる方が体感が良い。
     if (ImGui::IsWindowAppearing()) {
         s_filter[0] = '\0';
         ImGui::SetKeyboardFocusHere();
@@ -156,14 +173,16 @@ std::string DrawAddOverridePopup(const asset::PostProcessProfile& profile)
     bool anyVisible = false;
 
     for (const auto& entry : VolumeOverrideFactory::RegisteredEntries()) {
-        if (!ContainsFold(entry.displayName, s_filter)) continue;
+        if (!ContainsFold(entry.displayName, s_filter)) {
+            continue;
+        }
         anyVisible = true;
 
         if (firstCategory || entry.category != currentCategory) {
             currentCategory = entry.category;
             firstCategory = false;
             ImGui::Spacing();
-            /// @note カテゴリ見出しにも帯の色を小さく添えて、カードの色と対応付ける。
+            // カテゴリ見出しにも帯の色を小さく添えて、カードの色と対応付ける。
             const ImVec2 dotMin = ImGui::GetCursorScreenPos();
             const float  dotH   = ImGui::GetTextLineHeight();
             ImGui::GetWindowDrawList()->AddRectFilled(
@@ -176,14 +195,16 @@ std::string DrawAddOverridePopup(const asset::PostProcessProfile& profile)
                                "%s", asset::ToString(entry.category));
         }
 
-        /// @note 既に入っている型は選べない (Custom Effect だけは複数可)。
+        // 既に入っている型は選べない (Custom Effect だけは複数可)。
         const bool alreadyAdded = !entry.allowsMultiple && profile.Contains(entry.typeName.c_str());
         ImGui::BeginDisabled(alreadyAdded);
-        if (ImGui::Selectable(entry.displayName.c_str()))
+        if (ImGui::Selectable(entry.displayName.c_str())) {
             picked = entry.typeName;
+        }
         ImGui::EndDisabled();
-        if (alreadyAdded && ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled))
+        if (alreadyAdded && ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled)) {
             ImGui::SetTooltip("既に追加されています");
+        }
     }
 
     if (!anyVisible) {
@@ -193,7 +214,9 @@ std::string DrawAddOverridePopup(const asset::PostProcessProfile& profile)
 
     ImGui::EndChild();
 
-    if (!picked.empty()) ImGui::CloseCurrentPopup();
+    if (!picked.empty()) {
+        ImGui::CloseCurrentPopup();
+    }
     return picked;
 }
 
@@ -213,7 +236,9 @@ struct CardDragResult {
 int ResolveDropDestination(int dragged, int target, bool insertAfter)
 {
     int destination = insertAfter ? target + 1 : target;
-    if (dragged < destination) --destination;
+    if (dragged < destination) {
+        --destination;
+    }
     return destination;
 }
 
@@ -225,14 +250,14 @@ CardAction DrawOverrideCard(VolumeOverride& entry, int index, int count,
 {
     CardAction action = CardAction::None;
 
-    /// @note ImGui ID は表示名だけだと Custom Effect が複数あるとき衝突する。
+    // ImGui ID は表示名だけだと Custom Effect が複数あるとき衝突する。
     ImGui::PushID(index);
 
     const ImU32 accent = CategoryAccent(entry.GetCategory());
     const bool activeBefore = entry.active;
 
-    /// @note 適用順は Bloom → Tonemap のように結果を左右するため、ドラッグでも並び替えられる。
-    ///       dragKey に index を使うのは、同名カード (Custom Effect) を区別するため。
+    // 適用順は Bloom → Tonemap のように結果を左右するため、ドラッグでも並び替えられる。
+    // dragKey に index を使うのは、同名カード (Custom Effect) を区別するため。
     const std::string dragKey = std::to_string(index);
     widgets::ComponentReorderTarget reorder;
     reorder.scope   = "POSTFX";
@@ -242,7 +267,9 @@ CardAction DrawOverrideCard(VolumeOverride& entry, int index, int count,
         const char* begin = draggedKey.data();
         const char* end   = draggedKey.data() + draggedKey.size();
         const auto [ptr, ec] = std::from_chars(begin, end, dragged);
-        if (ec != std::errc{} || ptr != end || dragged < 0) return;
+        if (ec != std::errc{} || ptr != end || dragged < 0) {
+            return;
+        }
         drag.from = dragged;
         drag.to   = ResolveDropDestination(dragged, index, insertAfter);
     };
@@ -250,24 +277,34 @@ CardAction DrawOverrideCard(VolumeOverride& entry, int index, int count,
     widgets::ComponentHeaderResult header =
         widgets::ComponentHeader(entry.GetDisplayName(), accent, &entry.active,
                                  true, reorder);
-    if (entry.active != activeBefore) changed = true;
+    if (entry.active != activeBefore) {
+        changed = true;
+    }
 
-    /// @note ⋯ メニュー / ヘッダー右クリック。
-    if (header.menuClicked) ImGui::OpenPopup("##overrideMenu");
+    // ⋯ メニュー / ヘッダー右クリック。
+    if (header.menuClicked) {
+        ImGui::OpenPopup("##overrideMenu");
+    }
     if (ImGui::BeginPopup("##overrideMenu")) {
-        if (ImGui::MenuItem("Reset", nullptr, false))        action = CardAction::Reset;
+        if (ImGui::MenuItem("Reset", nullptr, false)) {
+            action = CardAction::Reset;
+        }
         ImGui::Separator();
-        if (ImGui::MenuItem("Move Up", nullptr, false, index > 0))
+        if (ImGui::MenuItem("Move Up", nullptr, false, index > 0)) {
             action = CardAction::MoveUp;
-        if (ImGui::MenuItem("Move Down", nullptr, false, index + 1 < count))
+        }
+        if (ImGui::MenuItem("Move Down", nullptr, false, index + 1 < count)) {
             action = CardAction::MoveDown;
+        }
         ImGui::Separator();
-        if (ImGui::MenuItem("Remove"))                       action = CardAction::Remove;
+        if (ImGui::MenuItem("Remove")) {
+            action = CardAction::Remove;
+        }
         ImGui::EndPopup();
     }
 
-    /// @note 現在のパイプラインで効かない効果は、折りたたんでいてもヘッダー直下に理由と直し方を出す。
-    ///       ただし entry.active が false (ユーザーが自分で切った) のときは黙る。
+    // 現在のパイプラインで効かない効果は、折りたたんでいてもヘッダー直下に理由と直し方を出す。
+    // ただし entry.active が false (ユーザーが自分で切った) のときは黙る。
     const char* inertReason =
         (renderSettings && entry.active && entry.GetTypeName())
             ? renderer::DescribeInertOverride(*renderSettings, entry.GetTypeName())
@@ -276,8 +313,9 @@ CardAction DrawOverrideCard(VolumeOverride& entry, int index, int count,
         ImGui::Indent();
         ImGui::TextColored(EditorTheme::Color(ThemeColor::Warning),
                            "このパイプラインでは効きません");
-        if (ImGui::IsItemHovered())
+        if (ImGui::IsItemHovered()) {
             ImGui::SetTooltip("%s\n→ Project Settings > Rendering > Pipeline", inertReason);
+        }
         ImGui::Unindent();
     }
 
@@ -291,14 +329,16 @@ CardAction DrawOverrideCard(VolumeOverride& entry, int index, int count,
             ImGui::Spacing();
         }
 
-        /// @note 無効化中は本文をグレーアウトする。値は見えるが、効いていないことが分かる。
+        // 無効化中は本文をグレーアウトする。値は見えるが、効いていないことが分かる。
         ImGui::BeginDisabled(!entry.active);
         reflector.m_changed = false;
         entry.Reflect(reflector);
-        if (reflector.m_changed) changed = true;
+        if (reflector.m_changed) {
+            changed = true;
+        }
 
-        /// @note パラメーターを持たない効果 (FXAA) は本文が空になる。
-        ///       空のカードは「壊れている」ように見えるので、そうでないことを書いておく。
+        // パラメーターを持たない効果 (FXAA) は本文が空になる。
+        // 空のカードは「壊れている」ように見えるので、そうでないことを書いておく。
         if (entry.GetTypeName() && std::strcmp(entry.GetTypeName(), "FXAA") == 0) {
             ImGui::TextColored(EditorTheme::Color(ThemeColor::TextFaint),
                                "調整するパラメーターはありません。");
@@ -340,14 +380,15 @@ PostProcessInspectorResult DrawVolumeOverrideListInspector(
     DrawSummaryBar(profile);
     ImGui::Spacing();
 
-    /// @name Add Override
-    /// @note 幅いっぱいのボタンにする。カードの横幅と端をそろえると、
-    ///       「このボタンは下のリストに対する操作だ」が形で伝わる。
+    // Add Override
+    // 幅いっぱいのボタンにする。カードの横幅と端をそろえると、
+    // 「このボタンは下のリストに対する操作だ」が形で伝わる。
     ImGui::PushStyleColor(ImGuiCol_Button,        EditorTheme::Color(ThemeColor::AccentSoft));
     ImGui::PushStyleColor(ImGuiCol_ButtonHovered, EditorTheme::Color(ThemeColor::AccentHover));
     ImGui::PushStyleColor(ImGuiCol_ButtonActive,  EditorTheme::Color(ThemeColor::AccentActive));
-    if (ImGui::Button("+  Add Override", ImVec2(-1.0f, 0.0f)))
+    if (ImGui::Button("+  Add Override", ImVec2(-1.0f, 0.0f))) {
         ImGui::OpenPopup("##addOverride");
+    }
     ImGui::PopStyleColor(3);
 
     if (ImGui::BeginPopup("##addOverride")) {
@@ -363,7 +404,7 @@ PostProcessInspectorResult DrawVolumeOverrideListInspector(
 
     ImGui::Spacing();
 
-    /// @name カード一覧
+    // カード一覧
     if (profile.overrides.empty()) {
         DrawEmptyState();
         ImGui::PopID();
@@ -371,7 +412,7 @@ PostProcessInspectorResult DrawVolumeOverrideListInspector(
     }
 
     int removeIndex = -1;
-    /// @note この要素と swapIndex+1 を入れ替える
+    // この要素と swapIndex+1 を入れ替える
     int swapIndex   = -1;
     int resetIndex  = -1;
     CardDragResult drag;
@@ -379,7 +420,9 @@ PostProcessInspectorResult DrawVolumeOverrideListInspector(
     const int count = static_cast<int>(profile.overrides.size());
     for (int i = 0; i < count; ++i) {
         VolumeOverride* entry = profile.overrides[static_cast<std::size_t>(i)].get();
-        if (!entry) continue;
+        if (!entry) {
+            continue;
+        }
 
         switch (DrawOverrideCard(*entry, i, count, reflector, result.changed, drag,
                                  renderSettings)) {
@@ -392,10 +435,10 @@ PostProcessInspectorResult DrawVolumeOverrideListInspector(
         ImGui::Spacing();
     }
 
-    /// @name 収集した操作の適用
+    // 収集した操作の適用
     if (resetIndex >= 0) {
-        /// @note 同じ型を作り直して差し替える = 既定値へ戻す。
-        ///       active は「表示上の状態」なので引き継ぐ (リセットで勝手に有効化しない)。
+        // 同じ型を作り直して差し替える = 既定値へ戻す。
+        // active は「表示上の状態」なので引き継ぐ (リセットで勝手に有効化しない)。
         auto& slot = profile.overrides[static_cast<std::size_t>(resetIndex)];
         if (auto fresh = VolumeOverrideFactory::Create(slot->GetTypeName())) {
             fresh->active = slot->active;
@@ -408,13 +451,14 @@ PostProcessInspectorResult DrawVolumeOverrideListInspector(
                   profile.overrides[static_cast<std::size_t>(swapIndex + 1)]);
         result.changed = result.structureChanged = true;
     }
-    /// @note ドラッグでの移動。unique_ptr の配列なので 1 要素だけを回転させて移す。
+    // ドラッグでの移動。unique_ptr の配列なので 1 要素だけを回転させて移す。
     if (drag.Valid() && drag.from < count && drag.to < count) {
         const auto begin = profile.overrides.begin();
-        if (drag.from < drag.to)
+        if (drag.from < drag.to) {
             std::rotate(begin + drag.from, begin + drag.from + 1, begin + drag.to + 1);
-        else
+        } else {
             std::rotate(begin + drag.to, begin + drag.from, begin + drag.from + 1);
+        }
         result.changed = result.structureChanged = true;
     }
     if (removeIndex >= 0) {

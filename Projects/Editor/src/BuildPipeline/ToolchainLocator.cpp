@@ -17,8 +17,9 @@ namespace {
 std::filesystem::path NormalizeConfigPath(const std::filesystem::path& configPath, const std::string& value)
 {
     std::filesystem::path path = util::FileSystem::PathFromUtf8(value);
-    if (!path.is_absolute())
+    if (!path.is_absolute()) {
         path = configPath.parent_path() / path;
+    }
     return path.lexically_normal();
 }
 
@@ -27,16 +28,20 @@ std::filesystem::path NormalizeConfigPath(const std::filesystem::path& configPat
 ///       直下にも置けるよう両方を試す。
 std::filesystem::path FindBuildConfigUnderRoot(const std::filesystem::path& buildRoot)
 {
-    if (buildRoot.empty()) return {};
+    if (buildRoot.empty()) {
+        return {};
+    }
 
     const std::filesystem::path direct = buildRoot / L"build.config";
-    if (util::FileSystem::Exists(direct))
+    if (util::FileSystem::Exists(direct)) {
         return direct;
+    }
 
     for (const auto& dir : util::FileSystem::ListDirectories(buildRoot)) {
         const std::filesystem::path candidate = dir / L"build.config";
-        if (util::FileSystem::Exists(candidate))
+        if (util::FileSystem::Exists(candidate)) {
             return candidate;
+        }
     }
     return {};
 }
@@ -44,13 +49,17 @@ std::filesystem::path FindBuildConfigUnderRoot(const std::filesystem::path& buil
 bool ReadBuildConfig(const std::filesystem::path& path, ToolchainLocator::Result& out)
 {
     std::string text;
-    if (!util::FileSystem::ReadText(path, text)) return false;
+    if (!util::FileSystem::ReadText(path, text)) {
+        return false;
+    }
 
     std::string line;
     std::istringstream lines(text);
     while (std::getline(lines, line)) {
         const size_t eq = line.find('=');
-        if (eq == std::string::npos) continue;
+        if (eq == std::string::npos) {
+            continue;
+        }
 
         const std::string key = util::StringUtils::Trim(line.substr(0, eq));
         const std::string value = util::StringUtils::Trim(line.substr(eq + 1));
@@ -80,16 +89,22 @@ std::filesystem::path FindVisualStudioCMake()
 {
     wchar_t programFilesX86[MAX_PATH]{};
     const DWORD len = GetEnvironmentVariableW(L"ProgramFiles(x86)", programFilesX86, MAX_PATH);
-    if (len == 0 || len >= MAX_PATH) return {};
+    if (len == 0 || len >= MAX_PATH) {
+        return {};
+    }
 
     const std::filesystem::path vswhere =
         std::filesystem::path(programFilesX86) / L"Microsoft Visual Studio" / L"Installer" / L"vswhere.exe";
-    if (!util::FileSystem::Exists(vswhere)) return {};
+    if (!util::FileSystem::Exists(vswhere)) {
+        return {};
+    }
 
     SECURITY_ATTRIBUTES sa{ sizeof(sa), nullptr, TRUE };
     HANDLE readPipe = INVALID_HANDLE_VALUE;
     HANDLE writePipe = INVALID_HANDLE_VALUE;
-    if (!CreatePipe(&readPipe, &writePipe, &sa, 0)) return {};
+    if (!CreatePipe(&readPipe, &writePipe, &sa, 0)) {
+        return {};
+    }
     SetHandleInformation(readPipe, HANDLE_FLAG_INHERIT, 0);
 
     std::wstring command = L"\"" + vswhere.wstring() + L"\" -latest -products * -property installationPath";
@@ -118,16 +133,20 @@ std::filesystem::path FindVisualStudioCMake()
     std::string output;
     char buffer[512]{};
     DWORD read = 0;
-    while (ReadFile(readPipe, buffer, sizeof(buffer) - 1, &read, nullptr) && read > 0)
+    while (ReadFile(readPipe, buffer, sizeof(buffer) - 1, &read, nullptr) && read > 0) {
         output.append(buffer, read);
+    }
 
     CloseHandle(readPipe);
     CloseHandle(pi.hThread);
     CloseHandle(pi.hProcess);
 
-    while (!output.empty() && (output.back() == '\r' || output.back() == '\n'))
+    while (!output.empty() && (output.back() == '\r' || output.back() == '\n')) {
         output.pop_back();
-    if (output.empty()) return {};
+    }
+    if (output.empty()) {
+        return {};
+    }
 
     const std::filesystem::path cmake =
         util::FileSystem::PathFromUtf8(output) /
@@ -160,10 +179,12 @@ ToolchainLocator::Result ToolchainLocator::Locate(const std::filesystem::path& b
         return result;
     }
 
-    if (result.cmakeExe.empty() || !util::FileSystem::Exists(result.cmakeExe))
+    if (result.cmakeExe.empty() || !util::FileSystem::Exists(result.cmakeExe)) {
         result.cmakeExe = FindCMakeOnPath();
-    if (result.cmakeExe.empty() || !util::FileSystem::Exists(result.cmakeExe))
+    }
+    if (result.cmakeExe.empty() || !util::FileSystem::Exists(result.cmakeExe)) {
         result.cmakeExe = FindVisualStudioCMake();
+    }
 
     result.found = !result.cmakeExe.empty()
                 && util::FileSystem::Exists(result.cmakeExe)

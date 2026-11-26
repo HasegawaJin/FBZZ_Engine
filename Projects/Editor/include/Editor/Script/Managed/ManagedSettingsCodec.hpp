@@ -49,4 +49,4 @@ using ManagedStructuredReferencePaths = std::unordered_map<std::string, scene::S
 [[nodiscard]] std::string ManagedSettingChildPath(std::string_view parent, std::string_view key);
 [[nodiscard]] bool IndexManagedStructuredReferences(const OpData& value,
     const std::vector<scene::ScriptObjectReference>& references, ManagedStructuredReferencePaths& output);
-} /// @note namespace fbzz::editor
+} // namespace fbzz::editor

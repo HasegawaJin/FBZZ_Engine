@@ -32,8 +32,8 @@ private:
         uint64_t indexRevision = 0;
         bool operator==(const Key&) const = default;
     };
-    RevisionCache<Key> m_revision;
-    std::vector<CachedAssetHit> m_results;
+    RevisionCache<Key> m_revision; ///< 索引の更新とクエリーの変更に対してキャッシュを有効とみなせるか管理する。
+    std::vector<CachedAssetHit> m_results; ///< 現在キャッシュしているクエリーの検索結果。
 };
 
-} /// @note namespace fbzz::editor
+} // namespace fbzz::editor

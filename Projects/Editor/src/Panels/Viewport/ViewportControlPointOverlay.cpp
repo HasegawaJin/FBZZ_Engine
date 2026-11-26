@@ -62,10 +62,15 @@ bool HasPointOwner(scene::GameObject& object)
 
 scene::GameObject* ResolveOwner(EditorContext& ctx)
 {
-    if (!ctx.activeScene) return nullptr;
-    if (scene::GameObject* selected = ctx.GetSelectedGO(); selected && HasPointOwner(*selected))
+    if (!ctx.activeScene) {
+        return nullptr;
+    }
+    if (scene::GameObject* selected = ctx.GetSelectedGO(); selected && HasPointOwner(*selected)) {
         return selected;
-    if (ctx.controlPointOwnerGuid.empty()) return nullptr;
+    }
+    if (ctx.controlPointOwnerGuid.empty()) {
+        return nullptr;
+    }
     scene::GameObject* owner = ctx.activeScene->FindByGuid(ctx.controlPointOwnerGuid);
     return owner && HasPointOwner(*owner) ? owner : nullptr;
 }
@@ -170,11 +175,21 @@ void CollectComponentViews(scene::Scene& world, scene::GameObject& owner,
 
 const char* UnavailableReason(const EditorContext& ctx, bool editable)
 {
-    if (!ctx.activeScene) return "編集対象 Scene がありません";
-    if (!editable) return "Play / Pause 中は編集できません";
-    if (ctx.playMode && ctx.playMode->HasPendingRestore()) return "Play Scene の復元中です";
-    if (ctx.managedBuildBusy) return "Managed build の実行中です";
-    if (!ctx.undoStack || !ctx.undoStack->IsRecordingEnabled()) return "Undo 記録が利用できません";
+    if (!ctx.activeScene) {
+        return "編集対象 Scene がありません";
+    }
+    if (!editable) {
+        return "Play / Pause 中は編集できません";
+    }
+    if (ctx.playMode && ctx.playMode->HasPendingRestore()) {
+        return "Play Scene の復元中です";
+    }
+    if (ctx.managedBuildBusy) {
+        return "Managed build の実行中です";
+    }
+    if (!ctx.undoStack || !ctx.undoStack->IsRecordingEnabled()) {
+        return "Undo 記録が利用できません";
+    }
     return nullptr;
 }
 
@@ -205,17 +220,22 @@ bool ConvertSource(EditorContext& ctx, OverlayState& state, scene::GameObject& o
     const OpResult converted = InvokeOperator(ctx, "control_points.convert", convert);
     state.statusMessage.clear();
     state.message = converted.ok ? std::string{} : converted.message;
-    if (!converted.ok) return true;
+    if (!converted.ok) {
+        return true;
+    }
 
     if (toObjects) {
         OpArgs edit;
         edit.Set("owner", ownerGuid);
-        if (!InvokeAction(ctx, state, "control_points.edit", edit)) return true;
+        if (!InvokeAction(ctx, state, "control_points.edit", edit)) {
+            return true;
+        }
         const auto* targets = converted.data.Find("targets");
         if (targets && targets->IsArray() && !targets->AsArray().empty()
             && targets->AsArray().front().IsString()) {
-            if (auto* target = ctx.activeScene->FindByGuid(targets->AsArray().front().AsString()))
+            if (auto* target = ctx.activeScene->FindByGuid(targets->AsArray().front().AsString())) {
                 RevealInHierarchy(ctx, target->GetID());
+            }
         }
     } else if (ctx.controlPointOwnerGuid == ownerGuid) {
         OpArgs edit;
@@ -234,17 +254,19 @@ bool DrawOwnerView(EditorContext& ctx, OverlayState& state, scene::GameObject& o
     const bool ownerLocked = ctx.IsLocked(owner.GetID());
     ImGui::PushID(view.kind);
     ImGui::Text("%s · %zu点", view.label, view.pointCount);
-    if (view.hasRuntimeMode)
+    if (view.hasRuntimeMode) {
         ImGui::TextDisabled("位置: %s | 実行: %s", SourceLabel(view.source), RuntimeLabel(view.runtime));
-    else
+    } else {
         ImGui::TextDisabled("位置: %s | 実行: NavMesh Bake時に取り込み", SourceLabel(view.source));
+    }
     if (!view.statusKnown) {
         ImGui::TextDisabled("常時解析を省略しています。");
         ImGui::BeginDisabled(!editable);
         const bool diagnosePressed = ImGui::SmallButton("状態を確認");
         ImGui::EndDisabled();
-        if (!editable)
+        if (!editable) {
             ImGui::TextDisabled("状態確認はEditモードで行えます。");
+        }
         if (diagnosePressed) {
             std::vector<ComponentView> diagnosedViews;
             CollectComponentViews(*ctx.activeScene, owner, diagnosedViews, true, view.kind);
@@ -254,26 +276,29 @@ bool DrawOwnerView(EditorContext& ctx, OverlayState& state, scene::GameObject& o
                     break;
                 }
             }
-            if (view.statusKnown && view.stale)
+            if (view.statusKnown && view.stale) {
                 state.statusMessage = "確認時点: 静的ベイクが古くなっています";
-            else if (view.statusKnown && !view.valid)
+            } else if (view.statusKnown && !view.valid) {
                 state.statusMessage = "確認時点: 点の参照先または座標を確認してください";
-            else if (view.statusKnown)
+            } else if (view.statusKnown) {
                 state.statusMessage = "確認時点: 制御点とベイクは有効です";
-            else
+            } else {
                 state.statusMessage = "状態を確認できませんでした";
+            }
             ImGui::TextWrapped("%s", state.statusMessage.c_str());
             ImGui::TextDisabled("詳細とベイク更新はInspectorで確認してください。");
             ImGui::PopID();
             return true;
         }
-        if (!state.statusMessage.empty())
+        if (!state.statusMessage.empty()) {
             ImGui::TextWrapped("%s", state.statusMessage.c_str());
+        }
         ImGui::TextDisabled("詳細とベイク更新はInspectorで確認してください。");
-    } else if (view.stale)
+    } else if (view.stale) {
         ImGui::TextColored({1.0f, 0.72f, 0.25f, 1.0f}, "静的ベイクが古くなっています");
-    else if (!view.valid)
+    } else if (!view.valid) {
         ImGui::TextColored({1.0f, 0.72f, 0.25f, 1.0f}, "点の参照先または座標を確認してください");
+    }
 
     const char* editLabel = active ? "点編集を終了" : "点編集を開始";
     OpArgs edit;
@@ -284,8 +309,11 @@ bool DrawOwnerView(EditorContext& ctx, OverlayState& state, scene::GameObject& o
     const bool editPressed = ImGui::SmallButton(editLabel);
     ImGui::EndDisabled();
     if (editPressed) {
-        if (!active && !objectSource) static_cast<void>(ConvertSource(ctx, state, owner, view));
-        else static_cast<void>(InvokeAction(ctx, state, "control_points.edit", edit));
+        if (!active && !objectSource) {
+            static_cast<void>(ConvertSource(ctx, state, owner, view));
+        } else {
+            static_cast<void>(InvokeAction(ctx, state, "control_points.edit", edit));
+        }
         ImGui::PopID();
         return true;
     }
@@ -308,15 +336,19 @@ bool DrawOwnerView(EditorContext& ctx, OverlayState& state, scene::GameObject& o
     return false;
 }
 
-} /// @note namespace
+} // namespace
 
 bool DrawControlPointOverlay(EditorContext& ctx, const ImVec2& viewportMin,
                              const ImVec2& viewportSize, bool editable, bool blocked)
 {
     auto& state = State();
-    /// @note カード非表示中のrelease eventを取り逃がしても、再表示時にmouse占有を残さない。
-    if (!ImGui::IsMouseDown(ImGuiMouseButton_Left)) state.capturedMouse = false;
-    if (!ctx.activeScene) return false;
+    // カード非表示中のrelease eventを取り逃がしても、再表示時にmouse占有を残さない。
+    if (!ImGui::IsMouseDown(ImGuiMouseButton_Left)) {
+        state.capturedMouse = false;
+    }
+    if (!ctx.activeScene) {
+        return false;
+    }
     scene::GameObject* owner = ResolveOwner(ctx);
     scene::GameObject* selectedPoint = nullptr;
     for (const scene::EntityID id : ctx.selectedEntities) {
@@ -326,7 +358,9 @@ bool DrawControlPointOverlay(EditorContext& ctx, const ImVec2& viewportMin,
             break;
         }
     }
-    if (!owner && !selectedPoint) return false;
+    if (!owner && !selectedPoint) {
+        return false;
+    }
 
     const std::uint64_t generation = ctx.activeScene->GetRenderSceneGeneration();
     const std::string identity = owner ? owner->instanceId : selectedPoint->instanceId;
@@ -347,7 +381,9 @@ bool DrawControlPointOverlay(EditorContext& ctx, const ImVec2& viewportMin,
     const float top = margin + toolbarRows * ImGui::GetFrameHeight() + 12.0f;
     const float height = (std::min)(196.0f, viewportSize.y - top - margin);
     const float minimumHeight = owner ? 160.0f : 62.0f;
-    if (width < 180.0f || height < minimumHeight) return false;
+    if (width < 180.0f || height < minimumHeight) {
+        return false;
+    }
 
     const ImVec2 cardMin{viewportMin.x + margin, viewportMin.y + top};
     const ImVec2 cardMax{cardMin.x + width, cardMin.y + height};
@@ -362,19 +398,23 @@ bool DrawControlPointOverlay(EditorContext& ctx, const ImVec2& viewportMin,
 
     ImGui::TextUnformatted("制御点");
     const char* unavailable = UnavailableReason(ctx, editable);
-    if (unavailable)
+    if (unavailable) {
         ImGui::TextColored({1.0f, 0.72f, 0.25f, 1.0f}, "編集不可: %s", unavailable);
-    else if (blocked)
+    } else if (blocked) {
         ImGui::TextDisabled("別のViewportツールが入力中です");
+    }
 
     bool handled = false;
     if (owner) {
-        if (!views.empty())
+        if (!views.empty()) {
             handled = DrawOwnerView(ctx, state, *owner, views.front(), editable, blocked);
-        if (!handled && views.size() > 1)
+        }
+        if (!handled && views.size() > 1) {
             ImGui::TextDisabled("他の点列設定はInspectorに表示されます");
-        if (!state.message.empty())
+        }
+        if (!state.message.empty()) {
             ImGui::TextColored({1.0f, 0.62f, 0.48f, 1.0f}, "%s", state.message.c_str());
+        }
         if (!handled && !views.empty()) {
             const auto& first = views.front();
             const char* help = nullptr;
@@ -394,8 +434,9 @@ bool DrawControlPointOverlay(EditorContext& ctx, const ImVec2& viewportMin,
             const float remainingHeight = cardMax.y - ImGui::GetCursorScreenPos().y - 6.0f;
             const float helpHeight = ImGui::CalcTextSize(help, nullptr, false, wrapWidth).y
                 + ImGui::GetStyle().ItemSpacing.y;
-            if (remainingHeight >= helpHeight)
+            if (remainingHeight >= helpHeight) {
                 ImGui::TextWrapped("%s", help);
+            }
         }
     } else if (!state.message.empty()) {
         ImGui::TextColored({1.0f, 0.62f, 0.48f, 1.0f}, "%s", state.message.c_str());
@@ -409,18 +450,23 @@ bool DrawControlPointOverlay(EditorContext& ctx, const ImVec2& viewportMin,
             const char* instructions = "クリックで選択、Shiftで追加、Ctrlで切替。移動Gizmoをドラッグして位置を調整します。";
             const float instructionHeight = ImGui::CalcTextSize(instructions, nullptr, false, wrapWidth).y
                 + ImGui::GetStyle().ItemSpacing.y;
-            if (cardMax.y - ImGui::GetCursorScreenPos().y - 6.0f >= instructionHeight)
+            if (cardMax.y - ImGui::GetCursorScreenPos().y - 6.0f >= instructionHeight) {
                 ImGui::TextWrapped("%s", instructions);
+            }
         }
     }
 
     const bool hovered = ImGui::IsMouseHoveringRect(cardMin, cardMax);
-    if (hovered && ImGui::IsMouseClicked(ImGuiMouseButton_Left)) state.capturedMouse = true;
-    if (ImGui::IsMouseReleased(ImGuiMouseButton_Left)) state.capturedMouse = false;
+    if (hovered && ImGui::IsMouseClicked(ImGuiMouseButton_Left)) {
+        state.capturedMouse = true;
+    }
+    if (ImGui::IsMouseReleased(ImGuiMouseButton_Left)) {
+        state.capturedMouse = false;
+    }
     ImGui::PopTextWrapPos();
     ImGui::SetCursorScreenPos(savedCursor);
     ImGui::PopClipRect();
     return hovered || state.capturedMouse || handled;
 }
 
-} /// @note namespace fbzz::editor
+} // namespace fbzz::editor

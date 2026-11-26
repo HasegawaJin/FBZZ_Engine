@@ -73,7 +73,9 @@ const editor::OpData* FindNatureIssue(const editor::OpResult& result, std::strin
     const auto* issues = result.data.Find("issues");
     if (issues) {
         for (const auto& row : issues->AsArray())
-            if (row.Find("code")->AsString() == code) return &row;
+            if (row.Find("code")->AsString() == code) {
+                return &row;
+            }
     }
     return nullptr;
 }
@@ -1721,7 +1723,9 @@ TEST_F(TerrainAuthoringTest, FlowNetworkWaterPreviewExtendsTributariesOntoTheDow
         int tributaries = 0;
         for (std::size_t upstream = 0; upstream < lines.size(); ++upstream) {
             const auto& points = lines[upstream].AsArray();
-            if (upstream == downstream || points.size() < 3 || points[points.size() - 2].AsVec3() != junction) continue;
+            if (upstream == downstream || points.size() < 3 || points[points.size() - 2].AsVec3() != junction) {
+                continue;
+            }
             bool overlap = false;
             for (const auto& offset : OFFSETS) {
                 scene::WaterSplineSample a, b;

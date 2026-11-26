@@ -9,10 +9,12 @@ namespace fbzz::editor {
 
 bool ReadAssetPayload(const ImGuiPayload* payload, std::string& outPath)
 {
-    if (!payload || payload->DataSize <= 0) return false;
+    if (!payload || payload->DataSize <= 0) {
+        return false;
+    }
     outPath.assign(static_cast<const char*>(payload->Data),
                    static_cast<size_t>(payload->DataSize - 1));
     return !outPath.empty();
 }
 
-} /// @note namespace fbzz::editor
+} // namespace fbzz::editor

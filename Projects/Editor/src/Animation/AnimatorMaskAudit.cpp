@@ -25,8 +25,8 @@ float MaskWeightOf(const LayerInfo& layer,
                    const std::string& bonePath,
                    const std::string& boneName)
 {
-    /// @note AnimatorSystem::LayerBoneWeight と同じ規則。マスクを «指定した» のに読めない間は
-    ///       全身ではなく 0 として扱う。ここが食い違うと、監査だけが «効いている» と答える。
+    // AnimatorSystem::LayerBoneWeight と同じ規則。マスクを «指定した» のに読めない間は
+    // 全身ではなく 0 として扱う。ここが食い違うと、監査だけが «効いている» と答える。
     if (!layer.mask) return layer.maskLoadFailed ? 0.0f : 1.0f;
     return asset::EvaluateAvatarMaskWeight(*layer.mask, bonePath, boneName);
 }
@@ -53,9 +53,9 @@ std::vector<LayerInfo> CollectLayers(scene::AnimatorComponent& animator)
         info.weight   = layer.weight;
         info.maskPath = layer.mask.path;
 
-        /// @note AnimatorSystem はシミュレーション中しかマスクを読まない。編集中は誰も読んで
-        ///       いないので、ここで同じキャッシュへ読み込む (別キャッシュにすると再生中と
-        ///       編集中で違うマスクを見ることになる)。
+        // AnimatorSystem はシミュレーション中しかマスクを読まない。編集中は誰も読んで
+        // いないので、ここで同じキャッシュへ読み込む (別キャッシュにすると再生中と
+        // 編集中で違うマスクを見ることになる)。
         if (!layer.mask.path.empty()) {
             if (!layer.mask.loaded || layer.mask.loadedPath != layer.mask.path) {
                 layer.mask.loadedPath = layer.mask.path;
@@ -64,8 +64,11 @@ std::vector<LayerInfo> CollectLayers(scene::AnimatorComponent& animator)
                     asset::AssetManager::ResolveAssetPath(layer.mask.path), layer.mask.asset);
                 layer.mask.failed = !layer.mask.loaded;
             }
-            if (layer.mask.loaded) info.mask = &layer.mask.asset;
-            else                   info.maskLoadFailed = true;
+            if (layer.mask.loaded) {
+                info.mask = &layer.mask.asset;
+            } else {
+                info.maskLoadFailed = true;
+            }
         }
         layers.push_back(std::move(info));
     }
@@ -82,24 +85,29 @@ BoneContribution Evaluate(const std::vector<LayerInfo>& layers,
 
     for (std::size_t i = 0; i < layers.size(); ++i) {
         const LayerInfo& layer = layers[i];
-        if (!layer.enabled) continue;
+        if (!layer.enabled) {
+            continue;
+        }
 
         const float maskWeight = MaskWeightOf(layer, bonePath, boneName);
         if (layer.additive) {
-            /// @note 加算は誰の取り分も奪わない。倍率としてそのまま持つ。
+            // 加算は誰の取り分も奪わない。倍率としてそのまま持つ。
             result.additiveGain[i] =
                 std::clamp(layer.weight * maskWeight, 0.0f, scene::MAX_LAYER_WEIGHT);
             continue;
         }
 
         const float alpha = std::clamp(layer.weight * maskWeight, 0.0f, 1.0f);
-        if (alpha <= 0.0f) continue;
+        if (alpha <= 0.0f) {
+            continue;
+        }
 
-        /// @note ApplyAnimationLayers と同じ Lerp(現在のポーズ, レイヤーのポーズ, alpha) を畳む。
-        ///       先に積まれた取り分は (1 - alpha) 倍に薄まる。
+        // ApplyAnimationLayers と同じ Lerp(現在のポーズ, レイヤーのポーズ, alpha) を畳む。
+        // 先に積まれた取り分は (1 - alpha) 倍に薄まる。
         result.baseShare *= (1.0f - alpha);
-        for (std::size_t j = 0; j < i; ++j)
+        for (std::size_t j = 0; j < i; ++j) {
             result.share[j] *= (1.0f - alpha);
+        }
         result.share[i] = alpha;
     }
 
@@ -119,8 +127,9 @@ int CountMaskedBones(const asset::Skeleton& skeleton, const asset::AvatarMaskAss
     for (int i = 0; i < static_cast<int>(skeleton.nodes.size()); ++i) {
         const std::string path = asset::BuildSkeletonNodePath(skeleton, i);
         if (asset::EvaluateAvatarMaskWeight(
-                mask, path, skeleton.nodes[static_cast<size_t>(i)].name) > 0.0f)
+                mask, path, skeleton.nodes[static_cast<size_t>(i)].name) > 0.0f) {
             ++count;
+        }
     }
     return count;
 }
@@ -133,20 +142,24 @@ std::vector<float> BlendDepthRamp(float weight, int blendDepth)
     asset::AvatarMaskEntry entry;
     entry.weight = weight;
     entry.blendDepth = blendDepth;
-    for (int depth = 0; depth <= steps; ++depth)
+    for (int depth = 0; depth <= steps; ++depth) {
         ramp.push_back(std::clamp(asset::AvatarMaskRampedWeight(entry, depth), 0.0f, 1.0f));
+    }
     return ramp;
 }
 
 std::vector<Issue> Audit(const asset::Skeleton& skeleton, const std::vector<LayerInfo>& layers)
 {
     std::vector<Issue> issues;
-    if (skeleton.nodes.empty() || layers.empty()) return issues;
+    if (skeleton.nodes.empty() || layers.empty()) {
+        return issues;
+    }
 
-    /// @note ボーンパスは 1 度だけ組む。Evaluate は全レイヤーぶんここを参照する。
+    // ボーンパスは 1 度だけ組む。Evaluate は全レイヤーぶんここを参照する。
     std::vector<std::string> paths(skeleton.nodes.size());
-    for (int i = 0; i < static_cast<int>(skeleton.nodes.size()); ++i)
+    for (int i = 0; i < static_cast<int>(skeleton.nodes.size()); ++i) {
         paths[static_cast<size_t>(i)] = asset::BuildSkeletonNodePath(skeleton, i);
+    }
 
     struct LayerStat {
         int   maskedBones   = 0;   ///< マスクが 0 より大きい値を返したボーン
@@ -172,17 +185,23 @@ std::vector<Issue> Audit(const asset::Skeleton& skeleton, const std::vector<Laye
 
         for (std::size_t li = 0; li < layers.size(); ++li) {
             const LayerInfo& layer = layers[li];
-            if (!layer.enabled) continue;
+            if (!layer.enabled) {
+                continue;
+            }
             LayerStat& stat = stats[li];
             const float maskWeight = MaskWeightOf(layer, path, node.name);
-            if (maskWeight > 0.0f) ++stat.maskedBones;
+            if (maskWeight > 0.0f) {
+                ++stat.maskedBones;
+            }
 
             if (layer.additive) {
-                /// @note 加算の基準ポーズは「その骨を誰が動かしているか」を前提に作られている。
-                ///       ベースがまだ大半を占める骨に乗ると、基準ポーズとの差が二重に出る。
+                // 加算の基準ポーズは「その骨を誰が動かしているか」を前提に作られている。
+                // ベースがまだ大半を占める骨に乗ると、基準ポーズとの差が二重に出る。
                 if (contribution.additiveGain[li] > NEGLIGIBLE_THRESHOLD &&
                     contribution.baseShare > 0.5f) {
-                    if (stat.additiveOnBase == 0) stat.additiveOnBaseBone = node.name;
+                    if (stat.additiveOnBase == 0) {
+                        stat.additiveOnBaseBone = node.name;
+                    }
                     ++stat.additiveOnBase;
                 }
                 continue;
@@ -204,8 +223,13 @@ std::vector<Issue> Audit(const asset::Skeleton& skeleton, const std::vector<Laye
                 }
             }
 
-            if (alpha >= OWNED_THRESHOLD) { ++stat.ownedBones; continue; }
-            if (alpha <= NEGLIGIBLE_THRESHOLD) continue;
+            if (alpha >= OWNED_THRESHOLD) {
+                ++stat.ownedBones;
+                continue;
+            }
+            if (alpha <= NEGLIGIBLE_THRESHOLD) {
+                continue;
+            }
             ++stat.partialBones;
             if (alpha < stat.worstPartial) {
                 stat.worstPartial = alpha;
@@ -217,7 +241,9 @@ std::vector<Issue> Audit(const asset::Skeleton& skeleton, const std::vector<Laye
     for (std::size_t li = 0; li < layers.size(); ++li) {
         const LayerInfo& layer = layers[li];
         const LayerStat& stat = stats[li];
-        if (!layer.enabled) continue;
+        if (!layer.enabled) {
+            continue;
+        }
 
         if (layer.maskLoadFailed) {
             issues.push_back({ Severity::Warning, layer.name, {},
@@ -226,8 +252,8 @@ std::vector<Issue> Audit(const asset::Skeleton& skeleton, const std::vector<Laye
             continue;
         }
 
-        /// @note これが最初に見るべき警告。マスクの骨名が骨格と噛み合っていないと、
-        ///       レイヤーは 1 本も動かさないまま「設定はしてある」状態になる。
+        // これが最初に見るべき警告。マスクの骨名が骨格と噛み合っていないと、
+        // レイヤーは 1 本も動かさないまま「設定はしてある」状態になる。
         if (layer.mask && stat.maskedBones == 0) {
             issues.push_back({ Severity::Warning, layer.name, {},
                 "Mask がスケルトンのどのボーンにも一致しません。"
@@ -257,8 +283,8 @@ std::vector<Issue> Audit(const asset::Skeleton& skeleton, const std::vector<Laye
                 "最小 " + FormatPercent(stat.worstPartial) + " (" + stat.worstPartialBone +
                 ")。Base が残り続けます。" });
         } else if (stat.weakRoots > 0) {
-            /// @note マスク領域の起点が薄い = そのレイヤーは胴体を乗っ取れていない。
-            ///       blend depth のランプは起点から始まるため、意図せずここが最弱になる。
+            // マスク領域の起点が薄い = そのレイヤーは胴体を乗っ取れていない。
+            // blend depth のランプは起点から始まるため、意図せずここが最弱になる。
             issues.push_back({ Severity::Warning, layer.name, stat.weakRootBone,
                 "マスクの起点 " + stat.weakRootBone + " が " +
                 FormatPercent(stat.weakRootAlpha) + " しか効きません (Base が " +

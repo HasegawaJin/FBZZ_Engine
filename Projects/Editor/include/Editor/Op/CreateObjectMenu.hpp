@@ -19,19 +19,19 @@ struct EditorContext;
 
 /// @brief メニューで選ばれた生成。描画中にシーンを変えないよう、呼び出し側が後で実行する。
 struct PendingObjectCreate {
-    std::string operatorId;
-    OpArgs      args;
+    std::string operatorId; ///< 描画が終わった後に呼び出す生成 Operator の ID。空なら保留なし。
+    OpArgs      args; ///< 最初の生成操作へ渡す引数。配置先の親やアセットを指定する。
     /// @brief 同じ Operator を続けて呼ぶ残りの引数 (複数アセットのドロップ)。生成物はまとめて選択する。
-    std::vector<OpArgs> moreArgs;
+    std::vector<OpArgs> moreArgs; ///< 同じ Operator で続けて生成するアセットの引数。複数ドロップのときに使う。
     /// @brief 1 つだけ作れたら Hierarchy のインラインリネームを始める。メニューからの生成だけ true。
-    bool        beginRename = true;
+    bool        beginRename = true; ///< 生成結果が一つのときに Hierarchy で名前の編集を開始するか。
 
     [[nodiscard]] bool IsSet() const { return !operatorId.empty(); }
 };
 
 /// @brief Create の中身 (プリセット・Prefab・Script Object) を描く。
-/// @param parentGuid 空ならルートに置く。
-/// @param out 選ばれた項目。何も選ばれなければ変更しない。
+/// @param[in] parentGuid 空ならルートに置く。
+/// @param[out] out 選ばれた項目。何も選ばれなければ変更しない。
 void DrawCreateObjectMenuItems(EditorContext& ctx, const std::string& parentGuid, PendingObjectCreate& out);
 
 /// @brief 選択 (最後に選んだもの) を既定の親にした Create メニュー一式。

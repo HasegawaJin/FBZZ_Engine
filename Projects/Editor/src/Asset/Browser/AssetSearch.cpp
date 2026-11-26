@@ -22,13 +22,13 @@ namespace {
 const std::unordered_set<std::string>& ExcludedDirectories()
 {
     static const std::unordered_set<std::string> kExcluded = {
-        /// @note ビルド生成物
+        // ビルド生成物
         "build", "out", "bin", "obj", "x64", "Debug", "Release", "Development",
-        /// @note 依存ライブラリ
+        // 依存ライブラリ
         "ThirdParty", "node_modules",
-        /// @note バージョン管理・IDE
+        // バージョン管理・IDE
         ".git", ".vs", ".vscode", ".idea",
-        /// @note エンジンが生成する中間物 (原本から再生成されるため検索対象にしない)
+        // エンジンが生成する中間物 (原本から再生成されるため検索対象にしない)
         "Library", "Baked", "Temp", "Intermediate",
     };
     return kExcluded;
@@ -66,7 +66,9 @@ SearchContext& Ctx()
 std::string NormalizeSlashes(std::string path)
 {
     for (char& c : path)
-        if (c == '\\') c = '/';
+        if (c == '\\') {
+            c = '/';
+        }
     return path;
 }
 
@@ -77,11 +79,15 @@ bool MakeEntry(const std::filesystem::path& absolutePath,
 {
     const std::string extension = util::StringUtils::ToLower(
         util::FileSystem::PathToUtf8(absolutePath.extension()));
-    if (ExcludedExtensions().count(extension) != 0) return false;
+    if (ExcludedExtensions().count(extension) != 0) {
+        return false;
+    }
 
     const std::string filename = util::FileSystem::PathToUtf8(absolutePath.filename());
-    /// @note ドット始まりは隠しファイル扱いで索引しない (.gitignore / .fbzz_proj 等)。.fbzz_proj はプロジェクトファイルでアセットスロットへの割り当て対象になり得ないため同様に除く。
-    if (!filename.empty() && filename[0] == '.') return false;
+    // ドット始まりは隠しファイル扱いで索引しない (.gitignore / .fbzz_proj 等)。.fbzz_proj はプロジェクトファイルでアセットスロットへの割り当て対象になり得ないため同様に除く。
+    if (!filename.empty() && filename[0] == '.') {
+        return false;
+    }
 
     std::error_code error;
     const std::filesystem::path relative = std::filesystem::relative(absolutePath, root, error);
@@ -97,8 +103,9 @@ bool MakeEntry(const std::filesystem::path& absolutePath,
 std::string ToLowerCopy(std::string_view text)
 {
     std::string lower(text);
-    for (char& c : lower)
+    for (char& c : lower) {
         c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+    }
     return lower;
 }
 
@@ -115,33 +122,43 @@ int SubsequenceScore(std::string_view text, std::string_view query)
     for (const char target : query) {
         bool found = false;
         for (; textIndex < text.size(); ++textIndex) {
-            if (text[textIndex] != target) continue;
-            if (!first) gapPenalty += static_cast<int>(textIndex - lastMatch - 1);
+            if (text[textIndex] != target) {
+                continue;
+            }
+            if (!first) {
+                gapPenalty += static_cast<int>(textIndex - lastMatch - 1);
+            }
             lastMatch = textIndex;
             first = false;
             ++textIndex;
             found = true;
             break;
         }
-        if (!found) return 0;
+        if (!found) {
+            return 0;
+        }
     }
 
-    /// @note 密集しているほど高い。最低でも 1 は返す (一致はしているため)。
+    // 密集しているほど高い。最低でも 1 は返す (一致はしているため)。
     return std::max(1, 200 - gapPenalty);
 }
 
-} /// @note namespace
+} // namespace
 
 /// @name 索引
 
 void AssetSearch::SetProjectRoot(const std::string& projectRoot)
 {
-    /// @note 空のルートは無視する: 索引はプロセス全体で 1 つ。配線し忘れたウィジェットが空文字で呼ぶと Rebuild() が索引を空にして早期 return し、全画面の検索が死ぬ。
-    /// @note 索引を捨てるのは Rebuild() を明示的に呼んだときだけにする (毎フレーム全再走査になるのを避ける)。
-    if (projectRoot.empty()) return;
+    // 空のルートは無視する: 索引はプロセス全体で 1 つ。配線し忘れたウィジェットが空文字で呼ぶと Rebuild() が索引を空にして早期 return し、全画面の検索が死ぬ。
+    // 索引を捨てるのは Rebuild() を明示的に呼んだときだけにする (毎フレーム全再走査になるのを避ける)。
+    if (projectRoot.empty()) {
+        return;
+    }
 
     SearchContext& context = Ctx();
-    if (context.projectRoot == projectRoot) return;
+    if (context.projectRoot == projectRoot) {
+        return;
+    }
 
     context.projectRoot = projectRoot;
     Rebuild();
@@ -153,11 +170,15 @@ void AssetSearch::Rebuild()
     context.entries.clear();
     ++context.revision;
 
-    if (context.projectRoot.empty()) return;
+    if (context.projectRoot.empty()) {
+        return;
+    }
 
     namespace fs = std::filesystem;
     const fs::path root = util::FileSystem::PathFromUtf8(context.projectRoot);
-    if (!util::FileSystem::Exists(root)) return;
+    if (!util::FileSystem::Exists(root)) {
+        return;
+    }
 
     std::error_code error;
     fs::recursive_directory_iterator iterator(
@@ -172,7 +193,7 @@ void AssetSearch::Rebuild()
 
     for (; iterator != end; iterator.increment(error)) {
         if (error) {
-            /// @note 個別のエントリが読めなくても走査は続ける (権限・シンボリックリンク等)。
+            // 個別のエントリが読めなくても走査は続ける (権限・シンボリックリンク等)。
             error.clear();
             continue;
         }
@@ -181,22 +202,30 @@ void AssetSearch::Rebuild()
 
         if (entry.is_directory(error)) {
             const std::string name = util::FileSystem::PathToUtf8(entry.path().filename());
-            /// @note 除外ディレクトリはその配下ごと降りない: 中へ入ってから弾くと build/ 以下の数万ファイルを走査するコストを払うことになる。
-            if (ExcludedDirectories().count(name) != 0 || (!name.empty() && name[0] == '.'))
+            // 除外ディレクトリはその配下ごと降りない: 中へ入ってから弾くと build/ 以下の数万ファイルを走査するコストを払うことになる。
+            if (ExcludedDirectories().count(name) != 0 || (!name.empty() && name[0] == '.')) {
                 iterator.disable_recursion_pending();
+            }
             continue;
         }
 
-        if (!entry.is_regular_file(error)) continue;
+        if (!entry.is_regular_file(error)) {
+            continue;
+        }
 
         AssetSearchEntry indexed;
-        if (!MakeEntry(entry.path(), root, indexed)) continue;
+        if (!MakeEntry(entry.path(), root, indexed)) {
+            continue;
+        }
 
         context.entries.push_back(std::move(indexed));
-        if (context.entries.size() >= MAX_INDEXED_FILES) { truncated = true; break; }
+        if (context.entries.size() >= MAX_INDEXED_FILES) {
+            truncated = true;
+            break;
+        }
     }
 
-    /// @note パス順に並べておく。query が空のときの表示順を安定させる。
+    // パス順に並べておく。query が空のときの表示順を安定させる。
     std::sort(context.entries.begin(), context.entries.end(),
         [](const AssetSearchEntry& lhs, const AssetSearchEntry& rhs) {
             return lhs.relativePath < rhs.relativePath;
@@ -210,16 +239,20 @@ void AssetSearch::Rebuild()
 
 void AssetSearch::ApplyFileEvents(std::span<const AssetFileWatcher::FileEvent> events)
 {
-    if (events.empty()) return;
+    if (events.empty()) {
+        return;
+    }
 
     SearchContext& context = Ctx();
-    if (context.projectRoot.empty()) return;
+    if (context.projectRoot.empty()) {
+        return;
+    }
 
     namespace fs = std::filesystem;
     const fs::path root = util::FileSystem::PathFromUtf8(context.projectRoot);
 
-    /// @note 監視は Assets/ を起点にしているため、イベントの相対パスもそこからになる。
-    ///       索引はプロジェクトルート基準なので、突き合わせは絶対パスで行う。
+    // 監視は Assets/ を起点にしているため、イベントの相対パスもそこからになる。
+    // 索引はプロジェクトルート基準なので、突き合わせは絶対パスで行う。
     const auto findEntry = [&context](const std::string& absolutePath) {
         return std::find_if(context.entries.begin(), context.entries.end(),
             [&absolutePath](const AssetSearchEntry& entry) {
@@ -228,7 +261,7 @@ void AssetSearch::ApplyFileEvents(std::span<const AssetFileWatcher::FileEvent> e
     };
 
     const auto watcherRoot = [&]() -> fs::path {
-        /// @note AssetFileWatcher は Assets/ を監視する。相対パスの起点を合わせる。
+        // AssetFileWatcher は Assets/ を監視する。相対パスの起点を合わせる。
         const fs::path assets = root / L"Assets";
         return util::FileSystem::Exists(assets) ? assets : root;
     }();
@@ -242,7 +275,10 @@ void AssetSearch::ApplyFileEvents(std::span<const AssetFileWatcher::FileEvent> e
         switch (event.type) {
         case AssetFileWatcher::EventType::Removed: {
             const auto it = findEntry(absoluteUtf8);
-            if (it != context.entries.end()) { context.entries.erase(it); dirty = true; }
+            if (it != context.entries.end()) {
+                context.entries.erase(it);
+                dirty = true;
+            }
             break;
         }
         case AssetFileWatcher::EventType::Renamed: {
@@ -250,23 +286,32 @@ void AssetSearch::ApplyFileEvents(std::span<const AssetFileWatcher::FileEvent> e
                 const fs::path oldAbsolute = watcherRoot
                     / util::FileSystem::PathFromUtf8(event.oldPath);
                 const auto it = findEntry(util::FileSystem::PathToUtf8(oldAbsolute));
-                if (it != context.entries.end()) { context.entries.erase(it); dirty = true; }
+                if (it != context.entries.end()) {
+                    context.entries.erase(it);
+                    dirty = true;
+                }
             }
             [[fallthrough]];
         }
         case AssetFileWatcher::EventType::Added: {
             std::error_code error;
-            if (!fs::is_regular_file(absolute, error)) break;
-            if (findEntry(absoluteUtf8) != context.entries.end()) break;
+            if (!fs::is_regular_file(absolute, error)) {
+                break;
+            }
+            if (findEntry(absoluteUtf8) != context.entries.end()) {
+                break;
+            }
 
             AssetSearchEntry indexed;
-            if (!MakeEntry(absolute, root, indexed)) break;
+            if (!MakeEntry(absolute, root, indexed)) {
+                break;
+            }
             context.entries.push_back(std::move(indexed));
             dirty = true;
             break;
         }
         case AssetFileWatcher::EventType::Modified:
-            /// @note 内容の変更は索引 (パスと名前のみ) に影響しない。
+            // 内容の変更は索引 (パスと名前のみ) に影響しない。
             break;
         }
     }
@@ -289,28 +334,35 @@ uint64_t AssetSearch::Revision() { return Ctx().revision; }
 
 int AssetSearch::Match(std::string_view text, std::string_view query)
 {
-    if (query.empty()) return 1;
-    if (text.empty())  return 0;
+    if (query.empty()) {
+        return 1;
+    }
+    if (text.empty()) {
+        return 0;
+    }
 
     const std::string lowerText  = ToLowerCopy(text);
     const std::string lowerQuery = ToLowerCopy(query);
 
-    /// @note 完全一致
-    if (lowerText == lowerQuery) return 10000;
+    // 完全一致
+    if (lowerText == lowerQuery) {
+        return 10000;
+    }
 
-    /// @note 前方一致。同じ前方一致なら短い名前を優先する
-    ///       ("Player" と "PlayerController" なら前者)。
-    ///       下限を設けて、名前が長くても部分一致より下に落ちないようにする。
-    if (lowerText.starts_with(lowerQuery))
+    // 前方一致。同じ前方一致なら短い名前を優先する
+    // ("Player" と "PlayerController" なら前者)。
+    // 下限を設けて、名前が長くても部分一致より下に落ちないようにする。
+    if (lowerText.starts_with(lowerQuery)) {
         return std::max(5000 - static_cast<int>(lowerText.size()), 2000);
+    }
 
-    /// @note 部分一致。出現位置が前ほど高スコア。
+    // 部分一致。出現位置が前ほど高スコア。
     if (const std::size_t position = lowerText.find(lowerQuery);
         position != std::string::npos) {
         return std::max(1000 - static_cast<int>(position) * 5, 300);
     }
 
-    /// @note 部分列一致 (曖昧検索)
+    // 部分列一致 (曖昧検索)
     return SubsequenceScore(lowerText, lowerQuery);
 }
 
@@ -324,34 +376,46 @@ std::vector<AssetSearchHit> AssetSearch::Query(std::string_view query,
     hits.reserve(std::min(maxResults, context.entries.size()));
 
     const auto extensionAllowed = [&extensions](const std::string& extension) {
-        if (extensions.empty()) return true;
+        if (extensions.empty()) {
+            return true;
+        }
         for (const std::string& allowed : extensions)
-            if (allowed == extension) return true;
+            if (allowed == extension) {
+                return true;
+            }
         return false;
     };
 
     for (const AssetSearchEntry& entry : context.entries) {
-        if (!extensionAllowed(entry.extension)) continue;
+        if (!extensionAllowed(entry.extension)) {
+            continue;
+        }
 
-        /// @note ファイル名を主対象にし、当たらなければ相対パスでも見る ("UI/Button" のようにフォルダ名で絞りたい場合があるため)。パス一致はファイル名一致より弱く扱う (スコアを割り引く)。
+        // ファイル名を主対象にし、当たらなければ相対パスでも見る ("UI/Button" のようにフォルダ名で絞りたい場合があるため)。パス一致はファイル名一致より弱く扱う (スコアを割り引く)。
         int score = Match(entry.filename, query);
         if (score == 0) {
             const int pathScore = Match(entry.relativePath, query);
             score = pathScore == 0 ? 0 : pathScore / 4;
         }
-        if (score == 0) continue;
+        if (score == 0) {
+            continue;
+        }
 
         hits.push_back({ &entry, score });
     }
 
-    /// @note スコア降順。同点はパス順で安定させる: 順序が揺れると同じ検索語でも開くたびに並びが変わり「さっき上にあった項目」が消えたように見える。
+    // スコア降順。同点はパス順で安定させる: 順序が揺れると同じ検索語でも開くたびに並びが変わり「さっき上にあった項目」が消えたように見える。
     std::stable_sort(hits.begin(), hits.end(),
         [](const AssetSearchHit& lhs, const AssetSearchHit& rhs) {
-            if (lhs.score != rhs.score) return lhs.score > rhs.score;
+            if (lhs.score != rhs.score) {
+                return lhs.score > rhs.score;
+            }
             return lhs.entry->relativePath < rhs.entry->relativePath;
         });
 
-    if (hits.size() > maxResults) hits.resize(maxResults);
+    if (hits.size() > maxResults) {
+        hits.resize(maxResults);
+    }
     return hits;
 }
 
@@ -361,21 +425,28 @@ std::vector<std::string> AssetSearch::ParseExtensionFilter(std::string_view csv)
     std::string current;
 
     const auto flush = [&]() {
-        if (current.empty()) return;
+        if (current.empty()) {
+            return;
+        }
         std::string extension = util::StringUtils::ToLower(current);
-        /// @note ドットを補う ("mat" → ".mat")
-        if (extension[0] != '.') extension.insert(extension.begin(), '.');
+        // ドットを補う ("mat" → ".mat")
+        if (extension[0] != '.') {
+            extension.insert(extension.begin(), '.');
+        }
         result.push_back(std::move(extension));
         current.clear();
     };
 
     for (const char c : csv) {
-        if (c == ',' || c == ';' || c == ' ') flush();
-        else current.push_back(c);
+        if (c == ',' || c == ';' || c == ' ') {
+            flush();
+        } else {
+            current.push_back(c);
+        }
     }
     flush();
 
     return result;
 }
 
-} /// @note namespace fbzz::editor
+} // namespace fbzz::editor

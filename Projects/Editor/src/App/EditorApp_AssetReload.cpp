@@ -32,32 +32,40 @@ bool SamePathCI(const std::string& a, const std::string& b)
 bool HasUnsavedEdits(const std::string& absPath)
 {
     for (const DirtyAsset& dirty : AssetDirtyRegistry::GetAll())
-        if (SamePathCI(dirty.path, absPath)) return true;
+        if (SamePathCI(dirty.path, absPath)) {
+            return true;
+        }
     return false;
 }
 
-} /// @note namespace
+} // namespace
 
 void EditorApp::ProcessAssetDiskReloads()
 {
     const auto now = std::chrono::steady_clock::now();
-    for (const std::string& path : m_ctx.pendingAssetReloads)
+    for (const std::string& path : m_ctx.pendingAssetReloads) {
         m_pendingAssetReloadAt[path] = now;
+    }
     m_ctx.pendingAssetReloads.clear();
 
-    if (m_pendingAssetReloadAt.empty()) return;
+    if (m_pendingAssetReloadAt.empty()) {
+        return;
+    }
 
     int acceptedFiles = 0;
     std::string lastName;
 
     for (auto it = m_pendingAssetReloadAt.begin(); it != m_pendingAssetReloadAt.end(); ) {
-        if (now - it->second < kAssetReloadQuietTime) { ++it; continue; }
+        if (now - it->second < kAssetReloadQuietTime) {
+            ++it;
+            continue;
+        }
 
         const std::string absPath = it->first;
         it = m_pendingAssetReloadAt.erase(it);
 
-        /// @note 未保存の編集があるアセットは読み直さない。Inspector で触っている値が
-        /// @note 黙って巻き戻る方が、ディスクの内容が反映されないことより悪い。
+        // 未保存の編集があるアセットは読み直さない。Inspector で触っている値が
+        // 黙って巻き戻る方が、ディスクの内容が反映されないことより悪い。
         if (HasUnsavedEdits(absPath)) {
             FBZZ_LOG_INFO("Asset changed on disk but has unsaved edits, skipped: %s",
                           absPath.c_str());
@@ -67,17 +75,19 @@ void EditorApp::ProcessAssetDiskReloads()
         ++acceptedFiles;
         lastName = util::FileSystem::GetFilename(absPath);
 
-        /// @note 戻り値は「キャッシュに載っていた実体を差し替えた件数」。まだ誰もロードして
-        /// @note いないアセットなら 0 になるが、それは失敗ではないので握って進む。
+        // 戻り値は「キャッシュに載っていた実体を差し替えた件数」。まだ誰もロードして
+        // いないアセットなら 0 になるが、それは失敗ではないので握って進む。
         (void)asset::AssetManager::ReloadPath(absPath);
         (void)asset::DataAssetRegistry::ReloadFile(absPath);
     }
 
-    if (acceptedFiles == 0) return;
+    if (acceptedFiles == 0) {
+        return;
+    }
 
-    /// @note .mask のようにストアを通さず直読みするアセットは ReloadPath の対象にならず
-    /// @note 常に 0 を返すため、差し替え件数を条件にしない。世代を進めないと、マスクを
-    /// @note 直しても Animator の派生キャッシュが古いまま残る。
+    // .mask のようにストアを通さず直読みするアセットは ReloadPath の対象にならず
+    // 常に 0 を返すため、差し替え件数を条件にしない。世代を進めないと、マスクを
+    // 直しても Animator の派生キャッシュが古いまま残る。
     asset::AssetManager::BumpAssetGeneration();
 
     Toast::Info(acceptedFiles == 1
@@ -85,4 +95,4 @@ void EditorApp::ProcessAssetDiskReloads()
         : "Reloaded " + std::to_string(acceptedFiles) + " assets");
 }
 
-} /// @note namespace fbzz::editor
+} // namespace fbzz::editor

@@ -29,11 +29,11 @@ public:
     /// @note 記録済みの fingerprint。未記録・読めない場合は空文字が入る。
     /// @note ImportCacheStore を引き、無ければ旧形式 (.meta の [cache]) へフォールバックする。
     struct CacheInfo {
-        std::string contentHash;   ///< @note 原本の «中身» のハッシュ
+        std::string contentHash;   ///< 原本の «中身» のハッシュ
         std::string settingsHash;
-        uint64_t    size  = 0;     ///< @note 前回 import 時のファイルサイズ
-        int64_t     mtime = 0;     ///< @note 前回 import 時の更新時刻
-        std::string legacyStamp;   ///< @note 旧形式の記録。移行判定にだけ使う
+        uint64_t    size  = 0;     ///< 前回 import 時のファイルサイズ
+        int64_t     mtime = 0;     ///< 前回 import 時の更新時刻
+        std::string legacyStamp;   ///< 旧形式の記録。移行判定にだけ使う
     };
     [[nodiscard]] static CacheInfo LoadCacheInfo(const std::string& fbxAbsPath);
 
@@ -61,4 +61,4 @@ public:
     /// @}
 };
 
-} /// @note namespace fbzz::editor
+} // namespace fbzz::editor

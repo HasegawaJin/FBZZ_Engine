@@ -41,7 +41,7 @@ namespace {
 constexpr float kUiScaleMin = 0.7f;
 constexpr float kUiScaleMax = 2.0f;
 
-} /// @note namespace
+} // namespace
 
 void PreviewPanel::OnRegisterOperators(OperatorRegistry& registry)
 {
@@ -57,7 +57,9 @@ const BuildRecord* BuildOutputPanel::SelectedRecord(const BuildConsole& console)
 {
     const auto& history = console.History();
     for (const auto& record : history)
-        if (record.id == m_selectedBuild) return &record;
+        if (record.id == m_selectedBuild) {
+            return &record;
+        }
     return console.Latest();
 }
 
@@ -118,7 +120,9 @@ void BuildOutputPanel::OnRegisterOperators(OperatorRegistry& registry)
         int index = 0;
         int selectedIndex = -1;
         for (const auto& record : console.History()) {
-            if (record.id == m_selectedBuild) selectedIndex = index;
+            if (record.id == m_selectedBuild) {
+                selectedIndex = index;
+            }
             ++index;
         }
         result.Set("index", selectedIndex);
@@ -162,16 +166,18 @@ void BuildOutputPanel::OnRegisterOperators(OperatorRegistry& registry)
     control.params.push_back({"list", OpParamType::String, "Log list", false, {}});
     control.params.back().enumValues = {"diagnostics", "output"};
     control.params.push_back({"search", OpParamType::String, "Search text", false, {}});
-    for (const char* key : {"showInfo", "showWarnings", "showErrors", "autoScroll"})
+    for (const char* key : {"showInfo", "showWarnings", "showErrors", "autoScroll"}) {
         control.params.push_back({key, OpParamType::Bool, "Log list display flag", false, {}});
+    }
     control.poll = [](const OpContext& context, const OpArgs&) { return context.ctx.buildConsole != nullptr; };
     control.exec = [this](OpContext& context, const OpArgs& args) {
         auto& console = *context.ctx.buildConsole;
         const auto actionName = args.GetString("action");
         if (actionName == "select") {
             const auto selected = args.GetInt("index", -1);
-            if (selected < 0 || selected >= static_cast<int>(console.History().size()))
+            if (selected < 0 || selected >= static_cast<int>(console.History().size())) {
                 return OpResult::Err("BAD_ARG", "index");
+            }
             m_selectedBuild = console.History()[static_cast<std::size_t>(selected)].id;
         } else if (actionName == "latest") {
             m_selectedBuild = 0;
@@ -185,24 +191,37 @@ void BuildOutputPanel::OnRegisterOperators(OperatorRegistry& registry)
             const auto* record = SelectedRecord(console);
             const int index = args.GetInt("index", -1);
             if (!record || index < 0 || static_cast<size_t>(index) >= record->diagnostics.size()
-                || record->diagnostics[static_cast<size_t>(index)].file.empty())
+                || record->diagnostics[static_cast<size_t>(index)].file.empty()) {
                 return OpResult::Err("NO_DIAGNOSTIC_SOURCE", "index");
+            }
             const auto& diagnostic = record->diagnostics[static_cast<size_t>(index)];
             OpenSourceInExternalEditor(diagnostic.file, diagnostic.line);
         } else if (actionName == "filter") {
             const auto list = args.GetString("list");
-            if (list != "diagnostics" && list != "output") return OpResult::Err("BAD_ARG", "list");
+            if (list != "diagnostics" && list != "output") {
+                return OpResult::Err("BAD_ARG", "list");
+            }
             auto& view = list == "diagnostics" ? m_diagView : m_rawView;
-            if (args.Has("search") && !view.SetFilterText(args.GetString("search")))
+            if (args.Has("search") && !view.SetFilterText(args.GetString("search"))) {
                 return OpResult::Err("BAD_ARG", "search");
-            if (args.Has("showInfo")) view.SetShowSeverity(LogListSeverity::Info, args.GetBool("showInfo"));
-            if (args.Has("showWarnings")) view.SetShowSeverity(LogListSeverity::Warning, args.GetBool("showWarnings"));
-            if (args.Has("showErrors")) view.SetShowSeverity(LogListSeverity::Error, args.GetBool("showErrors"));
-            if (args.Has("autoScroll")) view.autoScroll = args.GetBool("autoScroll");
+            }
+            if (args.Has("showInfo")) {
+                view.SetShowSeverity(LogListSeverity::Info, args.GetBool("showInfo"));
+            }
+            if (args.Has("showWarnings")) {
+                view.SetShowSeverity(LogListSeverity::Warning, args.GetBool("showWarnings"));
+            }
+            if (args.Has("showErrors")) {
+                view.SetShowSeverity(LogListSeverity::Error, args.GetBool("showErrors"));
+            }
+            if (args.Has("autoScroll")) {
+                view.autoScroll = args.GetBool("autoScroll");
+            }
         } else if (actionName == "resize") {
             const auto splitRatio = args.GetFloat("splitRatio", 0.0f);
-            if (!(splitRatio >= 0.1f && splitRatio <= 0.85f))
+            if (!(splitRatio >= 0.1f && splitRatio <= 0.85f)) {
                 return OpResult::Err("BAD_ARG", "splitRatio");
+            }
             m_splitRatio = splitRatio;
         } else {
             return OpResult::Err("BAD_ARG", "action");
@@ -228,7 +247,9 @@ void RegisterSearchOperators(OperatorRegistry& registry)
     search.poll = [](const OpContext& context, const OpArgs&) { return !context.ctx.projectRoot.empty(); };
     search.exec = [](OpContext& context, const OpArgs& args) {
         const auto queryText = args.GetString("query");
-        if (queryText.empty() || queryText.size() >= 256) return OpResult::Err("BAD_ARG", "query");
+        if (queryText.empty() || queryText.size() >= 256) {
+            return OpResult::Err("BAD_ARG", "query");
+        }
         auto objects = OpData::MakeArray();
         auto assets = OpData::MakeArray();
         auto& ctx = context.ctx;
@@ -239,7 +260,9 @@ void RegisterSearchOperators(OperatorRegistry& registry)
             index.Refresh(world, 0);
             for (const auto id : index.FindNames(queryText, 100)) {
                 const auto* object = world.GetGameObject(id);
-                if (!object) continue;
+                if (!object) {
+                    continue;
+                }
                 auto row = OpData::MakeObject();
                 row.Set("id", object->instanceId);
                 row.Set("name", object->name);
@@ -272,7 +295,9 @@ void RegisterSearchOperators(OperatorRegistry& registry)
     focus.exec = [](OpContext& context, const OpArgs& args) {
         auto& ctx = context.ctx;
         auto* object = ctx.activeScene ? ctx.activeScene->FindByGuid(args.GetString("node")) : nullptr;
-        if (!object) return OpResult::Err("NODE_NOT_FOUND", "node");
+        if (!object) {
+            return OpResult::Err("NODE_NOT_FOUND", "node");
+        }
         SelectEntity(ctx, object->GetID());
         ctx.focusTargetPosition = object->transform.worldPosition;
         ctx.focusTargetRadius = 0.0f;
@@ -289,42 +314,52 @@ void RegisterSearchOperators(OperatorRegistry& registry)
     refresh.desc = "Search Everything と共有するアセット索引を作り直す。";
     refresh.poll = [](const OpContext& context, const OpArgs&) { return !context.ctx.projectRoot.empty(); };
     refresh.exec = [](OpContext& context, const OpArgs&) {
-        if (AssetSearch::ProjectRoot() == context.ctx.projectRoot) AssetSearch::Rebuild();
-        else AssetSearch::SetProjectRoot(context.ctx.projectRoot);
+        if (AssetSearch::ProjectRoot() == context.ctx.projectRoot) {
+            AssetSearch::Rebuild();
+        } else {
+            AssetSearch::SetProjectRoot(context.ctx.projectRoot);
+        }
         return OpResult::Ok();
     };
     registry.Register(std::move(refresh));
 }
 
-} /// @note namespace
+} // namespace
 
 /// @brief パネルを名前で引く。ウィンドウ名 → View メニュー名の順に、大小無視の完全一致。
 /// @note 部分一致にすると意図しないパネルに当たりうる。候補は panel.list で全部返すので曖昧一致は不要。
 IPanel* EditorApp::FindPanelByName(const std::string& name) const
 {
     for (const auto& panel : m_panels)
-        if (util::StringUtils::EqualsCI(panel->GetWindowName(), name)) return panel.get();
+        if (util::StringUtils::EqualsCI(panel->GetWindowName(), name)) {
+            return panel.get();
+        }
     for (const auto& panel : m_panels)
-        if (util::StringUtils::EqualsCI(panel->GetViewMenuName(), name)) return panel.get();
+        if (util::StringUtils::EqualsCI(panel->GetViewMenuName(), name)) {
+            return panel.get();
+        }
     return nullptr;
 }
 
 void EditorApp::CaptureNormalPanelVisibility()
 {
-    /// @note Map Mode / Play Maximized 中は panel->visible がその一時レイアウト用に潰されている。
-    ///       入る前に控えたスナップショットがあるなら、そちらが「通常の開閉状態」。
+    // Map Mode / Play Maximized 中は panel->visible がその一時レイアウト用に潰されている。
+    // 入る前に控えたスナップショットがあるなら、そちらが「通常の開閉状態」。
     const std::vector<bool>* snapshot = nullptr;
-    if (m_playViewportLayoutActive && m_playPanelVisibility.size() == m_panels.size())
+    if (m_playViewportLayoutActive && m_playPanelVisibility.size() == m_panels.size()) {
         snapshot = &m_playPanelVisibility;
-    else if (m_ctx.mapEditingMode && m_normalPanelVisibility.size() == m_panels.size())
+    } else if (m_ctx.mapEditingMode && m_normalPanelVisibility.size() == m_panels.size()) {
         snapshot = &m_normalPanelVisibility;
+    }
 
     m_settings.panelVisibility.clear();
     for (std::size_t index = 0; index < m_panels.size(); ++index) {
         const IPanel& panel = *m_panels[index];
-        /// @note View > Panels に出ないパネル (Build Settings / IBL Bake / Map Editor) は
-        ///       開閉が操作や編集モードに従属する。復元すると自分で開いた覚えの無い窓が出る。
-        if (!panel.ShowInViewMenu()) continue;
+        // View > Panels に出ないパネル (Build Settings / IBL Bake / Map Editor) は
+        // 開閉が操作や編集モードに従属する。復元すると自分で開いた覚えの無い窓が出る。
+        if (!panel.ShowInViewMenu()) {
+            continue;
+        }
         const bool open = snapshot ? (*snapshot)[index] : panel.visible;
         m_settings.panelVisibility.emplace_back(panel.GetWindowName(), open);
     }
@@ -332,23 +367,30 @@ void EditorApp::CaptureNormalPanelVisibility()
 
 void EditorApp::RestorePanelVisibility()
 {
-    if (m_settings.panelVisibility.empty()) return;
+    if (m_settings.panelVisibility.empty()) {
+        return;
+    }
 
     for (auto& panel : m_panels) {
-        if (!panel->ShowInViewMenu()) continue;
+        if (!panel->ShowInViewMenu()) {
+            continue;
+        }
         const std::string name = panel->GetWindowName();
         const auto it = std::find_if(
             m_settings.panelVisibility.begin(), m_settings.panelVisibility.end(),
             [&name](const auto& entry) { return entry.first == name; });
-        /// @note 保存に無いパネル (このバージョンで増えたもの) は既定の表示のままにする。
-        if (it != m_settings.panelVisibility.end())
+        // 保存に無いパネル (このバージョンで増えたもの) は既定の表示のままにする。
+        if (it != m_settings.panelVisibility.end()) {
             panel->visible = it->second;
+        }
     }
 }
 
 void EditorApp::InvokePanelFocus(IPanel* panel)
 {
-    if (panel == nullptr) return;
+    if (panel == nullptr) {
+        return;
+    }
     OpArgs args;
     args.Set("panel", std::string(panel->GetWindowName()));
     InvokeOperator("panel.focus", args);
@@ -357,8 +399,8 @@ void EditorApp::InvokePanelFocus(IPanel* panel)
 void EditorApp::RegisterPanelOperators()
 {
     RegisterSearchOperators(m_operators);
-    /// @name パネルの目録 (Query)
-    /// @note 名前を知らなければ panel.set_visible は呼べない。ウィンドウ名と表示ラベルは別物なので、AI が画面の文言から推測すると外す。
+    // パネルの目録 (Query)
+    // 名前を知らなければ panel.set_visible は呼べない。ウィンドウ名と表示ラベルは別物なので、AI が画面の文言から推測すると外す。
     {
         EditorOperator op;
         op.id       = "panel.list";
@@ -374,9 +416,9 @@ void EditorApp::RegisterPanelOperators()
                 entry.Set("name", OpData(std::string(panel->GetWindowName())));
                 entry.Set("label", OpData(std::string(panel->GetViewMenuName())));
                 entry.Set("visible", OpData(panel->visible));
-                /// @note visible と「実際に描かれたか」は別物。ドッキングされたタブが
-                ///       非アクティブなら visible は true のまま中身は 1 px も出ない。
-                ///       見えている前提で撮ると、無い画を探すことになる。
+                // visible と「実際に描かれたか」は別物。ドッキングされたタブが
+                // 非アクティブなら visible は true のまま中身は 1 px も出ない。
+                // 見えている前提で撮ると、無い画を探すことになる。
                 entry.Set("contentRendered", OpData(panel->WasContentRendered()));
                 entry.Set("inViewMenu", OpData(panel->ShowInViewMenu()));
                 panels.Push(std::move(entry));
@@ -389,7 +431,7 @@ void EditorApp::RegisterPanelOperators()
         m_operators.Register(std::move(op));
     }
 
-    /// @name 表示の切り替え
+    // 表示の切り替え
     {
         EditorOperator op;
         op.id       = "panel.set_visible";
@@ -410,9 +452,11 @@ void EditorApp::RegisterPanelOperators()
         op.params = { panelParam, visibleParam };
 
         op.poll = [this](const OpContext&, const OpArgs& args) {
-            /// @note 引数なしの評価 (メニュー / パレット) では「操作自体は使える」と答える。
-            ///       対象が決まらないうちに false を返すと、パレットで常に淡色表示になる。
-            if (!args.Has("panel")) return true;
+            // 引数なしの評価 (メニュー / パレット) では「操作自体は使える」と答える。
+            // 対象が決まらないうちに false を返すと、パレットで常に淡色表示になる。
+            if (!args.Has("panel")) {
+                return true;
+            }
             return FindPanelByName(args.GetString("panel")) != nullptr;
         };
         op.checked = [this](const OpContext&, const OpArgs& args) {
@@ -436,8 +480,8 @@ void EditorApp::RegisterPanelOperators()
         m_operators.Register(std::move(op));
     }
 
-    /// @name フォーカス
-    /// @note set_visible と分ける理由: 表示済みでも背面タブは描かれない (IPanel::WasContentRendered)。直し方が再表示でなく前面化なので別操作にする。
+    // フォーカス
+    // set_visible と分ける理由: 表示済みでも背面タブは描かれない (IPanel::WasContentRendered)。直し方が再表示でなく前面化なので別操作にする。
     {
         EditorOperator op;
         op.id       = "panel.focus";
@@ -455,7 +499,9 @@ void EditorApp::RegisterPanelOperators()
         op.params = { panelParam };
 
         op.poll = [this](const OpContext&, const OpArgs& args) {
-            if (!args.Has("panel")) return true;
+            if (!args.Has("panel")) {
+                return true;
+            }
             return FindPanelByName(args.GetString("panel")) != nullptr;
         };
         op.exec = [this](OpContext&, const OpArgs& args) -> OpResult {
@@ -465,16 +511,16 @@ void EditorApp::RegisterPanelOperators()
                 return OpResult::Err("UNKNOWN_PANEL",
                                      "そのパネルはありません: " + name + " (panel.list で一覧できます)");
             panel->visible = true;
-            /// @note AI バスの drain は ImGui::NewFrame の後 (EditorApp::OnUpdate) なので、
-            ///       ここから ImGui を呼んでよい。次のフレームまで持ち越す必要がない。
+            // AI バスの drain は ImGui::NewFrame の後 (EditorApp::OnUpdate) なので、
+            // ここから ImGui を呼んでよい。次のフレームまで持ち越す必要がない。
             ImGui::SetWindowFocus(panel->GetWindowName());
             return OpResult::Ok();
         };
         m_operators.Register(std::move(op));
     }
 
-    /// @name UI スケール
-    /// @note View メニューのスライダーにしか無いと、エディター全体のスクリーンショットで文字が潰れたとき AI に撮り直す手段が無い。
+    // UI スケール
+    // View メニューのスライダーにしか無いと、エディター全体のスクリーンショットで文字が潰れたとき AI に撮り直す手段が無い。
     {
         EditorOperator op;
         op.id       = "view.set_ui_scale";
@@ -519,9 +565,9 @@ void EditorApp::RegisterPanelOperators()
         m_operators.Register(std::move(op));
     }
 
-    /// @name Prefab 編集モードの離脱
-    /// @note File メニューの Close Prefab に operator が無く、Prefab 編集中は scene.open/new が poll で拒否されるため、AI に出る手段が無かった。
-    /// @note 要求は ProcessPrefabEditRequests がフレーム先頭で処理する。パネル描画中にシーンを差し替えると破棄済み GameObject を掴むため、ここでは要求のみ立てる。
+    // Prefab 編集モードの離脱
+    // File メニューの Close Prefab に operator が無く、Prefab 編集中は scene.open/new が poll で拒否されるため、AI に出る手段が無かった。
+    // 要求は ProcessPrefabEditRequests がフレーム先頭で処理する。パネル描画中にシーンを差し替えると破棄済み GameObject を掴むため、ここでは要求のみ立てる。
     {
         EditorOperator op;
         op.id       = "prefab.close";
@@ -539,4 +585,4 @@ void EditorApp::RegisterPanelOperators()
     }
 }
 
-} /// @note namespace fbzz::editor
+} // namespace fbzz::editor

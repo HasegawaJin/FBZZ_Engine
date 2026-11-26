@@ -71,4 +71,4 @@ private:
     struct Impl;
     std::unique_ptr<Impl> m_impl;
 };
-} /// @note namespace fbzz::editor
+} // namespace fbzz::editor

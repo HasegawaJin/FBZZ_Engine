@@ -1,5 +1,5 @@
 /// @file    StandalonePlaySession.hpp
-/// @brief   Owns one separate-process Play session independently of the Game View layout.
+/// @brief   Game View のレイアウトから独立した別プロセスの Play セッションを管理する。
 /// @author  Hasegawa Jin
 /// @date    2026-10-23
 #pragma once
@@ -16,12 +16,11 @@ void RegisterStandalonePlayOperators(OperatorRegistry& registry);
 enum class PlayExecutionMode { IN_EDITOR, STANDALONE };
 
 struct StandalonePlayRequest {
-    std::filesystem::path executable;
-    std::filesystem::path project;
-    std::filesystem::path scene;
-    std::filesystem::path log;
-    /// @note Automated Play must not activate its window or acquire physical input; manual Play keeps the default.
-    bool allowPhysicalInput = true;
+    std::filesystem::path executable; ///< 起動する Editor ランチャーの絶対パス。
+    std::filesystem::path project; ///< 子プロセスが開くプロジェクトルートの絶対パス。
+    std::filesystem::path scene; ///< 子プロセスがディスクから開くシーンの絶対パス。
+    std::filesystem::path log; ///< 起動診断と実行中のログを書き込む絶対パス。
+    bool allowPhysicalInput = true; ///< 実機入力とウィンドウのアクティブ化を許可する。自動 Play では false を渡す。
 };
 
 /// @note Start failure must leave no child running. Every operation addresses only that Start's retained process handle.
@@ -59,15 +58,15 @@ public:
     [[nodiscard]] static std::wstring CommandLine(const StandalonePlayRequest& request);
 
 private:
-    std::unique_ptr<IStandalonePlayProcess> m_process;
-    std::filesystem::path m_log;
-    std::string m_diagnostic;
-    uint32_t m_exitCode = 0;
-    float m_stopSeconds = 0.0f;
-    bool m_active = false;
-    bool m_stopRequested = false;
-    bool m_terminationRequested = false;
-    bool m_failed = false;
+    std::unique_ptr<IStandalonePlayProcess> m_process; ///< このセッションの子プロセスを制御する所有インターフェース。
+    std::filesystem::path m_log; ///< 現在のセッションが出力するログのパス。
+    std::string m_diagnostic; ///< 起動、停止、異常終了について直近に発生した診断。
+    uint32_t m_exitCode = 0; ///< 終了を確認した子プロセスの終了コード。
+    float m_stopSeconds = 0.0f; ///< 停止を要求してからの経過時間 [s]。
+    bool m_active = false; ///< 子プロセスが起動済みで終了をまだ確認していないか。
+    bool m_stopRequested = false; ///< 子プロセスに通常の停止を要求したか。
+    bool m_terminationRequested = false; ///< 停止待ちの制限時間を過ぎ、強制終了を要求したか。
+    bool m_failed = false; ///< 現在のセッションでプロセス操作や実行が失敗したか。
 };
 
-} /// @note namespace fbzz::editor
+} // namespace fbzz::editor

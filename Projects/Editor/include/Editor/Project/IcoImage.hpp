@@ -24,7 +24,7 @@ struct IcoImage {
 };
 
 /// 面積最大のフレームを展開する。
-/// @param outError 失敗理由 (UI へそのまま出す)
+/// @param[out] outError 失敗理由 (UI へそのまま出す)
 [[nodiscard]] bool DecodeIcoFile(const std::filesystem::path& path,
                                  IcoImage& out,
                                  std::string& outError);

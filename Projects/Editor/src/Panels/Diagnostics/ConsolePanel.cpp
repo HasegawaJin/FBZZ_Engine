@@ -56,8 +56,10 @@ ImVec4 LogMessageColor(core::LogLevel level)
 /// @note 0 を返す行は背景を描かない。
 ImU32 LogRowTint(core::LogLevel level, bool selected)
 {
-    /// @note 選択色を濁らせない
-    if (selected) return 0;
+    // 選択色を濁らせない
+    if (selected) {
+        return 0;
+    }
     switch (level) {
     case core::LogLevel::WARNING:   return EditorTheme::ColorU32(ThemeColor::Warning, 0.10f);
     case core::LogLevel::LOG_ERROR: return EditorTheme::ColorU32(ThemeColor::Danger,  0.14f);
@@ -108,7 +110,9 @@ const char* LogLevelName(core::LogLevel level)
 /// @note InputTextMultiline は折り返しを持たないため、表示直前に自前で折る。
 std::string WrapText(const std::string& text, float width)
 {
-    if (width <= 1.0f) return text;
+    if (width <= 1.0f) {
+        return text;
+    }
 
     ImFont*     font     = ImGui::GetFont();
     const float fontSize = ImGui::GetFontSize();
@@ -120,16 +124,22 @@ std::string WrapText(const std::string& text, float width)
     const char* end    = cursor + text.size();
     while (cursor < end) {
         const char* lineEnd = std::find(cursor, end, '\n');
-        /// @note 論理行 1 本を、収まる幅ごとに切り出す。
+        // 論理行 1 本を、収まる幅ごとに切り出す。
         while (cursor < lineEnd) {
             const char* wrap = font->CalcWordWrapPosition(fontSize, cursor, lineEnd, width);
-            /// @note 1 文字も置けない幅のときは無限ループになるので、最低 1 文字は進める。
-            if (wrap == cursor) ++wrap;
+            // 1 文字も置けない幅のときは無限ループになるので、最低 1 文字は進める。
+            if (wrap == cursor) {
+                ++wrap;
+            }
             out.append(cursor, wrap);
             cursor = wrap;
-            /// @note 折り返し位置の空白は行頭に残さない。
-            while (cursor < lineEnd && *cursor == ' ') ++cursor;
-            if (cursor < lineEnd) out += '\n';
+            // 折り返し位置の空白は行頭に残さない。
+            while (cursor < lineEnd && *cursor == ' ') {
+                ++cursor;
+            }
+            if (cursor < lineEnd) {
+                out += '\n';
+            }
         }
         if (lineEnd < end) {
             out += '\n';
@@ -144,11 +154,13 @@ std::string WrapText(const std::string& text, float width)
 std::string FirstLineOf(const std::string& message)
 {
     const std::size_t nl = message.find('\n');
-    if (nl == std::string::npos) return message;
+    if (nl == std::string::npos) {
+        return message;
+    }
     return message.substr(0, nl) + "  ...";
 }
 
-} /// @note namespace
+} // namespace
 
 ConsolePanel::ConsolePanel(ConsoleSink& sink) : m_sink(sink) {}
 
@@ -201,39 +213,50 @@ bool ConsolePanel::FiltersChanged() const
 void ConsolePanel::RebuildRows()
 {
     const std::string filter(m_filterBuf.data());
-    /// @note GetEntries()[i] の通し番号は oldest + i。リングバッファから押し出された行は
-    /// @note ここより小さい番号になるので、選択から落とす判定にも使える。
+    // GetEntries()[i] の通し番号は oldest + i。リングバッファから押し出された行は
+    // ここより小さい番号になるので、選択から落とす判定にも使える。
     const std::uint64_t oldest = m_sink.GetOldestSequence();
 
     m_rows.clear();
     m_visibleLogText.clear();
     m_levelCounts.fill(0);
 
-    /// @note Collapse 時の集約先を引くための索引。key はレベルと本文の組。
-    /// @note 連続していない同一メッセージも 1 行へまとめるため、前方の行を引き直す索引が要る。
+    // Collapse 時の集約先を引くための索引。key はレベルと本文の組。
+    // 連続していない同一メッセージも 1 行へまとめるため、前方の行を引き直す索引が要る。
     std::unordered_map<std::string, std::size_t> collapseIndex;
 
     const auto& entries = m_sink.GetEntries();
     for (std::size_t i = 0; i < entries.size(); ++i) {
         const core::LogEntry& entry = entries[i];
 
-        /// @note 件数はフィルタと無関係に数える (フィルタで隠しても総数は把握したい)。
+        // 件数はフィルタと無関係に数える (フィルタで隠しても総数は把握したい)。
         const int levelIndex = static_cast<int>(entry.level);
-        if (levelIndex >= 0 && levelIndex < static_cast<int>(m_levelCounts.size()))
+        if (levelIndex >= 0 && levelIndex < static_cast<int>(m_levelCounts.size())) {
             ++m_levelCounts[static_cast<std::size_t>(levelIndex)];
+        }
 
-        if (entry.level == core::LogLevel::DEBUG     && !m_showDebug) continue;
-        if (entry.level == core::LogLevel::INFO      && !m_showInfo)  continue;
-        if (entry.level == core::LogLevel::WARNING   && !m_showWarn)  continue;
-        if (entry.level == core::LogLevel::LOG_ERROR && !m_showError) continue;
-        /// @note 他の検索欄 (Add Component / Asset Browser) と同じく大文字小文字を無視する。
-        if (!filter.empty() && !util::StringUtils::ContainsCI(entry.message, filter)) continue;
+        if (entry.level == core::LogLevel::DEBUG     && !m_showDebug) {
+            continue;
+        }
+        if (entry.level == core::LogLevel::INFO      && !m_showInfo) {
+            continue;
+        }
+        if (entry.level == core::LogLevel::WARNING   && !m_showWarn) {
+            continue;
+        }
+        if (entry.level == core::LogLevel::LOG_ERROR && !m_showError) {
+            continue;
+        }
+        // 他の検索欄 (Add Component / Asset Browser) と同じく大文字小文字を無視する。
+        if (!filter.empty() && !util::StringUtils::ContainsCI(entry.message, filter)) {
+            continue;
+        }
 
         if (m_collapse) {
             std::string key;
             key.reserve(entry.message.size() + 2);
             key += static_cast<char>('0' + static_cast<int>(entry.level));
-            /// @note レベルと本文の区切り (本文に現れない制御文字)
+            // レベルと本文の区切り (本文に現れない制御文字)
             key += '\x1f';
             key += entry.message;
 
@@ -258,30 +281,45 @@ void ConsolePanel::RebuildRows()
     m_cachedShowError = m_showError;
     m_cachedCollapse  = m_collapse;
 
-    /// @note フィルタで隠れただけの行は選択を保つ。捨てるのはバッファから消えた行だけ。
+    // フィルタで隠れただけの行は選択を保つ。捨てるのはバッファから消えた行だけ。
     std::erase_if(m_selection, [oldest](std::uint64_t sequence) { return sequence < oldest; });
-    if (m_anchorSequence < oldest) m_anchorSequence = 0;
-    if (m_detailSequence < oldest) m_detailSequence = 0;
+    if (m_anchorSequence < oldest) {
+        m_anchorSequence = 0;
+    }
+    if (m_detailSequence < oldest) {
+        m_detailSequence = 0;
+    }
 }
 
 int ConsolePanel::RowIndexOf(std::uint64_t sequence) const
 {
-    if (sequence == 0) return -1;
+    if (sequence == 0) {
+        return -1;
+    }
     for (std::size_t i = 0; i < m_rows.size(); ++i) {
-        if (m_rows[i].sequence == sequence) return static_cast<int>(i);
+        if (m_rows[i].sequence == sequence) {
+            return static_cast<int>(i);
+        }
     }
     return -1;
 }
 
 void ConsolePanel::SelectRange(int fromRow, int toRow, bool additive)
 {
-    if (!additive) m_selection.clear();
-    if (m_rows.empty()) return;
-    if (fromRow > toRow) std::swap(fromRow, toRow);
+    if (!additive) {
+        m_selection.clear();
+    }
+    if (m_rows.empty()) {
+        return;
+    }
+    if (fromRow > toRow) {
+        std::swap(fromRow, toRow);
+    }
     fromRow = std::max(fromRow, 0);
     toRow   = std::min(toRow, static_cast<int>(m_rows.size()) - 1);
-    for (int row = fromRow; row <= toRow; ++row)
+    for (int row = fromRow; row <= toRow; ++row) {
         m_selection.insert(m_rows[static_cast<std::size_t>(row)].sequence);
+    }
 }
 
 void ConsolePanel::ApplyRowClick(int row)
@@ -291,10 +329,12 @@ void ConsolePanel::ApplyRowClick(int row)
     const int anchor = RowIndexOf(m_anchorSequence);
 
     if (io.KeyShift && anchor >= 0) {
-        /// @note 起点を動かすと Shift クリックのたびに範囲が「そこから」になり選び直せない。
+        // 起点を動かすと Shift クリックのたびに範囲が「そこから」になり選び直せない。
         SelectRange(anchor, row, io.KeyCtrl);
     } else if (io.KeyCtrl) {
-        if (!m_selection.insert(sequence).second) m_selection.erase(sequence);
+        if (!m_selection.insert(sequence).second) {
+            m_selection.erase(sequence);
+        }
         m_anchorSequence = sequence;
     } else {
         m_selection.clear();
@@ -308,10 +348,14 @@ std::string ConsolePanel::SelectedText() const
 {
     const auto& entries = m_sink.GetEntries();
     std::string text;
-    /// @note m_rows の順で拾う。選択は集合なので、そのまま回すと画面と並びが変わる。
+    // m_rows の順で拾う。選択は集合なので、そのまま回すと画面と並びが変わる。
     for (const Row& row : m_rows) {
-        if (!m_selection.contains(row.sequence)) continue;
-        if (row.entryIndex >= entries.size()) continue;
+        if (!m_selection.contains(row.sequence)) {
+            continue;
+        }
+        if (row.entryIndex >= entries.size()) {
+            continue;
+        }
         text += entries[row.entryIndex].message;
         text += '\n';
     }
@@ -321,7 +365,9 @@ std::string ConsolePanel::SelectedText() const
 void ConsolePanel::CopySelection() const
 {
     const std::string text = SelectedText();
-    if (!text.empty()) ImGui::SetClipboardText(text.c_str());
+    if (!text.empty()) {
+        ImGui::SetClipboardText(text.c_str());
+    }
 }
 
 void ConsolePanel::JumpToSource(EditorContext& ctx, const std::string& message)
@@ -340,9 +386,11 @@ void ConsolePanel::JumpToSource(EditorContext& ctx, const std::string& message)
     std::string file;
     int         line = 0;
     std::size_t bodyOffset = 0;
-    if (!ParseLogLocationPrefix(message, file, line, bodyOffset)) return;
+    if (!ParseLogLocationPrefix(message, file, line, bodyOffset)) {
+        return;
+    }
 
-    /// @note Logger はベース名しか残さないため、プロジェクトとエンジンのソースツリーから引き直す。
+    // Logger はベース名しか残さないため、プロジェクトとエンジンのソースツリーから引き直す。
     const std::string resolved = ResolveSourceFileByName(file, roots);
     if (resolved.empty()) {
         FBZZ_LOG_WARN("Console: source file not found for '%s'", file.c_str());
@@ -378,8 +426,8 @@ void ConsolePanel::DrawDetailPane(EditorContext& ctx)
     int managedLine = 0;
     const bool hasManagedLocation = ParseManagedSourceLocation(entry.message, managedFile, managedLine);
 
-    /// @name 見出し: レベル / 件数 / 発生位置 / 操作
-    /// @note 読む前に要る情報 (レベル・件数・発生位置) は本文の外へ出す。
+    // 見出し: レベル / 件数 / 発生位置 / 操作
+    // 読む前に要る情報 (レベル・件数・発生位置) は本文の外へ出す。
     ImGui::PushStyleColor(ImGuiCol_Text, LogLevelColor(entry.level));
     ImGui::TextUnformatted(LogLevelName(entry.level));
     ImGui::PopStyleColor();
@@ -402,24 +450,29 @@ void ConsolePanel::DrawDetailPane(EditorContext& ctx)
         char label[320];
         std::snprintf(label, sizeof(label), "%s:%d###detail_open", fileLabel.c_str(), managedLine);
         ImGui::BeginDisabled(!sourceExists);
-        if (ImGui::SmallButton(label)) JumpToSource(ctx, entry.message);
+        if (ImGui::SmallButton(label)) {
+            JumpToSource(ctx, entry.message);
+        }
         ImGui::EndDisabled();
     } else if (hasLocation) {
         char label[320];
         std::snprintf(label, sizeof(label), "%s:%d###detail_open", file.c_str(), line);
-        if (ImGui::SmallButton(label)) JumpToSource(ctx, entry.message);
+        if (ImGui::SmallButton(label)) {
+            JumpToSource(ctx, entry.message);
+        }
     } else {
         ImGui::TextDisabled("(no source location)");
     }
     ImGui::SameLine();
-    if (ImGui::SmallButton("Copy##detail"))
+    if (ImGui::SmallButton("Copy##detail")) {
         ImGui::SetClipboardText(entry.message.c_str());
+    }
 
     ImGui::Separator();
 
-    /// @name 本文
-    /// @note 重大度は見出しが担うため本文は通常色に固定する。
-    /// @note TextWrapped は選択・部分コピーができないため、読み取り専用の InputTextMultiline を使う。
+    // 本文
+    // 重大度は見出しが担うため本文は通常色に固定する。
+    // TextWrapped は選択・部分コピーができないため、読み取り専用の InputTextMultiline を使う。
     const float avail = ImGui::GetContentRegionAvail().x
                       - ImGui::GetStyle().FramePadding.x * 2.0f
                       - ImGui::GetStyle().ScrollbarSize;
@@ -443,11 +496,12 @@ void ConsolePanel::DrawDetailSplitter()
     ImGui::InvisibleButton("##detail_splitter",
                            ImVec2(ImGui::GetContentRegionAvail().x, thickness));
 
-    if (ImGui::IsItemHovered() || ImGui::IsItemActive())
+    if (ImGui::IsItemHovered() || ImGui::IsItemActive()) {
         ImGui::SetMouseCursor(ImGuiMouseCursor_ResizeNS);
+    }
 
     if (ImGui::IsItemActive()) {
-        /// @note 掴んだ量をパネル高で正規化する。パネルを広げても掴み心地が変わらない。
+        // 掴んだ量をパネル高で正規化する。パネルを広げても掴み心地が変わらない。
         const float panelH = std::max(ImGui::GetWindowHeight(), 1.0f);
         m_detailRatio = std::clamp(m_detailRatio - ImGui::GetIO().MouseDelta.y / panelH,
                                    0.10f, 0.80f);
@@ -471,37 +525,40 @@ void ConsolePanel::DrawLogRow(EditorContext& ctx, int row, const core::LogEntry&
 
     const float rowH = ConsoleRowHeight();
 
-    /// @note 本文をそのまま Selectable のラベルにすると "##" を含むログ (シェーダー診断等) で
-    /// @note 以降が表示されなくなる。当たり判定は ID だけの Selectable に任せ本文は重ね描きする。
+    // 本文をそのまま Selectable のラベルにすると "##" を含むログ (シェーダー診断等) で
+    // 以降が表示されなくなる。当たり判定は ID だけの Selectable に任せ本文は重ね描きする。
     const ImVec2 origin = ImGui::GetCursorScreenPos();
     if (ImGui::Selectable("##row", selected,
-                          ImGuiSelectableFlags_AllowDoubleClick, { 0.0f, rowH }))
+                          ImGuiSelectableFlags_AllowDoubleClick, { 0.0f, rowH })) {
         ApplyRowClick(row);
+    }
 
     const ImVec2 rowMin = ImGui::GetItemRectMin();
     const ImVec2 rowMax = ImGui::GetItemRectMax();
     ImDrawList*  dl     = ImGui::GetWindowDrawList();
 
-    /// @note 警告・エラーだけ面で塗り、走査で拾えるようにする。
-    if (const ImU32 tint = LogRowTint(r.level, selected); tint != 0)
+    // 警告・エラーだけ面で塗り、走査で拾えるようにする。
+    if (const ImU32 tint = LogRowTint(r.level, selected); tint != 0) {
         dl->AddRectFilled(rowMin, rowMax, tint);
+    }
 
-    /// @note 左端のレベルバー。色が読めない環境でも次のバッジ文字で判別できる。
+    // 左端のレベルバー。色が読めない環境でも次のバッジ文字で判別できる。
     const ImVec4 levelColor = LogLevelColor(r.level);
     dl->AddRectFilled(rowMin, { rowMin.x + 3.0f, rowMax.y },
                       ImGui::ColorConvertFloat4ToU32(levelColor));
 
-    /// @name 押下・ドラッグ・右クリックの取り回し (見た目より前に判定を済ませる)
-    /// @note Selectable は離した時に true を返すため、それを待たず押下の瞬間に起点を取る。
+    // 押下・ドラッグ・右クリックの取り回し (見た目より前に判定を済ませる)
+    // Selectable は離した時に true を返すため、それを待たず押下の瞬間に起点を取る。
     const ImGuiIO& io = ImGui::GetIO();
     if (ImGui::IsItemHovered() && ImGui::IsMouseClicked(ImGuiMouseButton_Left)
-        && !io.KeyShift && !io.KeyCtrl)
+        && !io.KeyShift && !io.KeyCtrl) {
         m_anchorSequence = r.sequence;
+    }
 
-    /// @note 押したままなぞって範囲を伸ばす。飛ばした行も起点からの範囲で埋まるため、
-    /// @note クリッパーが間引いた行が選択から抜け落ちることはない。
-    /// @note ドラッグ中は押した行が ActiveId を握るため、他の行の IsItemHovered には
-    /// @note AllowWhenBlockedByActiveItem が要る。
+    // 押したままなぞって範囲を伸ばす。飛ばした行も起点からの範囲で埋まるため、
+    // クリッパーが間引いた行が選択から抜け落ちることはない。
+    // ドラッグ中は押した行が ActiveId を握るため、他の行の IsItemHovered には
+    // AllowWhenBlockedByActiveItem が要る。
     if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenBlockedByActiveItem)
         && ImGui::IsMouseDragging(ImGuiMouseButton_Left)) {
         const int anchor = RowIndexOf(m_anchorSequence);
@@ -511,9 +568,9 @@ void ConsolePanel::DrawLogRow(EditorContext& ctx, int row, const core::LogEntry&
         }
     }
 
-    /// @note 右クリックは選択外の行なら選び直す。選択内ならまとめて扱いたいので触らない。
-    /// @note ポップアップは開いている間ずっと毎フレーム走るため、そこで選び直すと
-    /// @note 複数選択が毎フレーム 1 行へ潰れる。
+    // 右クリックは選択外の行なら選び直す。選択内ならまとめて扱いたいので触らない。
+    // ポップアップは開いている間ずっと毎フレーム走るため、そこで選び直すと
+    // 複数選択が毎フレーム 1 行へ潰れる。
     if (ImGui::IsItemHovered() && ImGui::IsMouseClicked(ImGuiMouseButton_Right)) {
         if (!m_selection.contains(r.sequence)) {
             m_selection.clear();
@@ -528,16 +585,16 @@ void ConsolePanel::DrawLogRow(EditorContext& ctx, int row, const core::LogEntry&
         JumpToSource(ctx, entry.message);
     }
 
-    /// @name 本文
+    // 本文
     const float textY = origin.y + (rowH - ImGui::GetTextLineHeight()) * 0.5f;
     float x = rowMin.x + 10.0f;
 
-    /// @note レベルバッジ。固定幅で置き、本文の開始位置を揃える。
+    // レベルバッジ。固定幅で置き、本文の開始位置を揃える。
     const char* badge = LogLevelBadge(r.level);
     dl->AddText({ x, textY }, ImGui::ColorConvertFloat4ToU32(levelColor), badge);
     x += LogLevelBadgeWidth() + 8.0f;
 
-    /// @note "[File.cpp:123]" は本文と分けて淡色で出す。本文と同じ濃さだと毎行読み飛ばす手間がかかる。
+    // "[File.cpp:123]" は本文と分けて淡色で出す。本文と同じ濃さだと毎行読み飛ばす手間がかかる。
     std::string file;
     int         line = 0;
     std::size_t bodyOffset = 0;
@@ -562,7 +619,7 @@ void ConsolePanel::DrawLogRow(EditorContext& ctx, int row, const core::LogEntry&
     dl->AddText({ x, textY }, ImGui::ColorConvertFloat4ToU32(LogMessageColor(r.level)),
                 body.c_str(), body.c_str() + body.size());
 
-    /// @note Collapse 件数バッジを行の右端へ重ねる。
+    // Collapse 件数バッジを行の右端へ重ねる。
     if (r.count > 1) {
         char countText[16];
         std::snprintf(countText, sizeof(countText), "%d", r.count);
@@ -579,20 +636,26 @@ void ConsolePanel::DrawLogRow(EditorContext& ctx, int row, const core::LogEntry&
         std::snprintf(copySelectedLabel, sizeof(copySelectedLabel),
                       "Copy Selected (%d)###ctx_copy_selected",
                       static_cast<int>(m_selection.size()));
-        if (ImGui::MenuItem(copySelectedLabel, "Ctrl+C", false, !m_selection.empty()))
+        if (ImGui::MenuItem(copySelectedLabel, "Ctrl+C", false, !m_selection.empty())) {
             CopySelection();
-        if (ImGui::MenuItem("Copy This Line"))
+        }
+        if (ImGui::MenuItem("Copy This Line")) {
             ImGui::SetClipboardText(entry.message.c_str());
-        if (ImGui::MenuItem("Copy All Visible"))
+        }
+        if (ImGui::MenuItem("Copy All Visible")) {
             ImGui::SetClipboardText(m_visibleLogText.c_str());
+        }
         ImGui::Separator();
-        if (ImGui::MenuItem("Select All", "Ctrl+A", false, !m_rows.empty()))
+        if (ImGui::MenuItem("Select All", "Ctrl+A", false, !m_rows.empty())) {
             SelectRange(0, static_cast<int>(m_rows.size()) - 1, false);
-        if (ImGui::MenuItem("Deselect All", nullptr, false, !m_selection.empty()))
+        }
+        if (ImGui::MenuItem("Deselect All", nullptr, false, !m_selection.empty())) {
             m_selection.clear();
+        }
         ImGui::Separator();
-        if (ImGui::MenuItem("Open Source", nullptr, false, hasLocation))
+        if (ImGui::MenuItem("Open Source", nullptr, false, hasLocation)) {
             JumpToSource(ctx, entry.message);
+        }
         ImGui::EndPopup();
     }
 
@@ -601,11 +664,13 @@ void ConsolePanel::DrawLogRow(EditorContext& ctx, int row, const core::LogEntry&
 
 void ConsolePanel::DrawLevelToggle(const char* label, core::LogLevel level, bool& enabled)
 {
-    /// @note 押下状態 = そのレベルを表示中。件数を同じボタンに載せ、件数と表示可否を 1 か所で確認できるようにする。
+    // 押下状態 = そのレベルを表示中。件数を同じボタンに載せ、件数と表示可否を 1 か所で確認できるようにする。
     const int count = m_levelCounts[static_cast<std::size_t>(level)];
     char text[32];
     std::snprintf(text, sizeof(text), "%s %d###%s", LogLevelBadge(level), count, label);
-    if (level != core::LogLevel::DEBUG) toolbar::SameLineIfFits(toolbar::ButtonWidth(text));
+    if (level != core::LogLevel::DEBUG) {
+        toolbar::SameLineIfFits(toolbar::ButtonWidth(text));
+    }
 
     const ImVec4 levelColor = LogLevelColor(level);
     if (enabled) {
@@ -616,7 +681,9 @@ void ConsolePanel::DrawLevelToggle(const char* label, core::LogLevel level, bool
         ImGui::PushStyleColor(ImGuiCol_Button, EditorTheme::Color(ThemeColor::Surface));
         ImGui::PushStyleColor(ImGuiCol_Text, EditorTheme::Color(ThemeColor::TextFaint));
     }
-    if (ImGui::Button(text)) enabled = !enabled;
+    if (ImGui::Button(text)) {
+        enabled = !enabled;
+    }
     ImGui::PopStyleColor(2);
 
     if (ImGui::IsItemHovered()) {
@@ -628,11 +695,12 @@ void ConsolePanel::DrawLevelToggle(const char* label, core::LogLevel level, bool
 bool ConsolePanel::DrawToolbar()
 {
     const float spacing = ImGui::GetStyle().ItemSpacing.x;
-    /// @note DEBUG は表示と収集の両方に影響するため、切り替えたフレームだけ収集レベルを変更する。
+    // DEBUG は表示と収集の両方に影響するため、切り替えたフレームだけ収集レベルを変更する。
     const bool debugBefore = m_showDebug;
     DrawLevelToggle("D", core::LogLevel::DEBUG, m_showDebug);
-    if (m_showDebug != debugBefore)
+    if (m_showDebug != debugBefore) {
         core::Logger::SetMinLevel(m_showDebug ? core::LogLevel::DEBUG : core::LogLevel::INFO);
+    }
     DrawLevelToggle("I", core::LogLevel::INFO, m_showInfo);
     DrawLevelToggle("W", core::LogLevel::WARNING, m_showWarn);
     DrawLevelToggle("E", core::LogLevel::LOG_ERROR, m_showError);
@@ -655,11 +723,14 @@ bool ConsolePanel::DrawToolbar()
     toolbar::SearchField("##console_filter", "Search logs...", m_filterBuf.data(), m_filterBuf.size(), searchWidth);
 
     toolbar::SameLineIfFits(options.Width(compact));
-    if (options.Draw(compact)) ImGui::OpenPopup("##console_options");
+    if (options.Draw(compact)) {
+        ImGui::OpenPopup("##console_options");
+    }
     if (ImGui::BeginPopup("##console_options")) {
         ImGui::Checkbox(LOC("Collapse"), &m_collapse);
-        if (ImGui::IsItemHovered())
+        if (ImGui::IsItemHovered()) {
             ImGui::SetTooltip("%s", LOCT("Merge identical messages into one row with a count"));
+        }
         ImGui::Checkbox(LOC("Clear on Play"), &m_clearOnPlay);
         ImGui::Checkbox(LOC("Auto Scroll"), &m_autoScroll);
         ImGui::Checkbox(LOC("Details"), &m_showDetail);
@@ -682,8 +753,8 @@ bool ConsolePanel::DrawToolbar()
 
 void ConsolePanel::OnRenderContent(EditorContext& ctx)
 {
-    /// @name Clear on Play: 編集中 → Play へ遷移した瞬間だけ消す
-    /// @note 毎フレーム状態を比較しエッジでのみ実行する。Play 中の再入で消え続けないようにする。
+    // Clear on Play: 編集中 → Play へ遷移した瞬間だけ消す
+    // 毎フレーム状態を比較しエッジでのみ実行する。Play 中の再入で消え続けないようにする。
     const bool inEditor = (ctx.playMode == nullptr) || ctx.playMode->IsInEditor();
     if (m_clearOnPlay && m_wasInEditor && !inEditor) {
         m_sink.Clear();
@@ -696,21 +767,23 @@ void ConsolePanel::OnRenderContent(EditorContext& ctx)
     const bool copySelectedRequested = DrawToolbar();
     ImGui::Separator();
 
-    /// @note フィルタ条件かログ内容が変わったときだけ、表示行を作り直す。
-    /// @note logChanged は Auto Scroll の追従判定にも使う。行数比較だと、リングバッファが満杯で
-    /// @note 「古い行が落ちて新しい行が入る」状況を新着として検出できない。
+    // フィルタ条件かログ内容が変わったときだけ、表示行を作り直す。
+    // logChanged は Auto Scroll の追従判定にも使う。行数比較だと、リングバッファが満杯で
+    // 「古い行が落ちて新しい行が入る」状況を新着として検出できない。
     const bool logChanged = (m_cachedRevision != m_sink.GetRevision());
-    if (logChanged || FiltersChanged())
+    if (logChanged || FiltersChanged()) {
         RebuildRows();
+    }
 
-    /// @note ツールバーは RebuildRows より前に描くため、押した瞬間の m_visibleLogText / 選択は
-    /// @note 1 フレーム古い可能性がある。コピーは RebuildRows の後で行う。
-    if (copySelectedRequested)
+    // ツールバーは RebuildRows より前に描くため、押した瞬間の m_visibleLogText / 選択は
+    // 1 フレーム古い可能性がある。コピーは RebuildRows の後で行う。
+    if (copySelectedRequested) {
         CopySelection();
+    }
 
-    /// @name ログ一覧
-    /// @note ImVec2(0, 0) は「残り全部」を意味するため、詳細ペイン分の高さを先に引いておかないと
-    /// @note 一覧が下端まで伸びて詳細が押し出される。
+    // ログ一覧
+    // ImVec2(0, 0) は「残り全部」を意味するため、詳細ペイン分の高さを先に引いておかないと
+    // 一覧が下端まで伸びて詳細が押し出される。
     const bool showSelection = m_showDetail && RowIndexOf(m_detailSequence) >= 0;
     const float splitterH = showSelection ? 4.0f + ImGui::GetStyle().ItemSpacing.y * 2.0f : 0.0f;
     const float detailH   = showSelection
@@ -718,8 +791,12 @@ void ConsolePanel::OnRenderContent(EditorContext& ctx)
                           : 0.0f;
     ImVec2 logRegion = ImGui::GetContentRegionAvail();
     logRegion.y -= detailH;
-    if (logRegion.x < 1.0f) logRegion.x = 1.0f;
-    if (logRegion.y < 1.0f) logRegion.y = 1.0f;
+    if (logRegion.x < 1.0f) {
+        logRegion.x = 1.0f;
+    }
+    if (logRegion.y < 1.0f) {
+        logRegion.y = 1.0f;
+    }
 
     ImGui::BeginChild("##log", logRegion, true, ImGuiWindowFlags_HorizontalScrollbar);
 
@@ -733,8 +810,8 @@ void ConsolePanel::OnRenderContent(EditorContext& ctx)
     } else {
         const auto& entries = m_sink.GetEntries();
 
-        /// @note 全行を毎フレーム ImGui へ積むと無駄な文字列処理とジオメトリ生成が走るため、
-        /// @note 可視範囲だけ描く。行間は 1px のみ (既定の 5px を足すと 1 画面の行数が減る)。
+        // 全行を毎フレーム ImGui へ積むと無駄な文字列処理とジオメトリ生成が走るため、
+        // 可視範囲だけ描く。行間は 1px のみ (既定の 5px を足すと 1 画面の行数が減る)。
         ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing,
                             ImVec2(ImGui::GetStyle().ItemSpacing.x, 1.0f));
 
@@ -743,7 +820,9 @@ void ConsolePanel::OnRenderContent(EditorContext& ctx)
         while (clipper.Step()) {
             for (int row = clipper.DisplayStart; row < clipper.DisplayEnd; ++row) {
                 const Row& r = m_rows[static_cast<std::size_t>(row)];
-                if (r.entryIndex >= entries.size()) continue;
+                if (r.entryIndex >= entries.size()) {
+                    continue;
+                }
                 const core::LogEntry& entry = entries[r.entryIndex];
 
                 DrawLogRow(ctx, row, entry);
@@ -754,28 +833,31 @@ void ConsolePanel::OnRenderContent(EditorContext& ctx)
         ImGui::PopStyleVar();
     }
 
-    /// @note Ctrl+C / Ctrl+A は Console にフォーカスがある間だけ拾う。HotkeyManager の
-    /// @note edit.copy / select.all は Scene View / Hierarchy に閉じ、Console では発火しない。
-    /// @note WantTextInput で降りる: 検索欄編集中の Ctrl+C は入力欄のコピー。
-    /// @note Shortcut() でなく素の IsKeyPressed を使う: Shortcut は子ウィンドウの focused 状態で
-    /// @note 決まり、ツールバー操作直後など一覧側へフォーカスが入っていないフレームで落ちるため。
+    // Ctrl+C / Ctrl+A は Console にフォーカスがある間だけ拾う。HotkeyManager の
+    // edit.copy / select.all は Scene View / Hierarchy に閉じ、Console では発火しない。
+    // WantTextInput で降りる: 検索欄編集中の Ctrl+C は入力欄のコピー。
+    // Shortcut() でなく素の IsKeyPressed を使う: Shortcut は子ウィンドウの focused 状態で
+    // 決まり、ツールバー操作直後など一覧側へフォーカスが入っていないフレームで落ちるため。
     const ImGuiIO& shortcutIo = ImGui::GetIO();
     if (ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows)
         && !shortcutIo.WantTextInput && shortcutIo.KeyCtrl) {
-        if (ImGui::IsKeyPressed(ImGuiKey_C, false))
+        if (ImGui::IsKeyPressed(ImGuiKey_C, false)) {
             CopySelection();
-        if (ImGui::IsKeyPressed(ImGuiKey_A, false) && !m_rows.empty())
+        }
+        if (ImGui::IsKeyPressed(ImGuiKey_A, false) && !m_rows.empty()) {
             SelectRange(0, static_cast<int>(m_rows.size()) - 1, false);
+        }
     }
 
-    /// @note Auto Scroll: 最下部に居るときだけ追従する。無条件だと過去ログを読もうと
-    /// @note 上へスクロールしても毎フレーム引き戻される (Unity / VSCode の出力ペインと同じ挙動)。
-    if (m_autoScroll && logChanged && ImGui::GetScrollY() >= ImGui::GetScrollMaxY())
+    // Auto Scroll: 最下部に居るときだけ追従する。無条件だと過去ログを読もうと
+    // 上へスクロールしても毎フレーム引き戻される (Unity / VSCode の出力ペインと同じ挙動)。
+    if (m_autoScroll && logChanged && ImGui::GetScrollY() >= ImGui::GetScrollMaxY()) {
         ImGui::SetScrollHereY(1.0f);
+    }
 
     ImGui::EndChild();
 
-    /// @name 詳細ペイン
+    // 詳細ペイン
     if (showSelection) {
         DrawDetailSplitter();
         ImGui::BeginChild("##log_detail", ImVec2(0, 0), true);
@@ -784,4 +866,4 @@ void ConsolePanel::OnRenderContent(EditorContext& ctx)
     }
 }
 
-} /// @note namespace fbzz::editor
+} // namespace fbzz::editor

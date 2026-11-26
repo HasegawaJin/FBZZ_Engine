@@ -31,19 +31,19 @@ protected:
 
 private:
     struct ObjectQueryKey {
-        std::string query;
-        uint64_t sceneRevision = 0;
-        uint64_t sceneGeneration = 0;
+        std::string query; ///< Scene 内の名前検索に使った検索語。
+        uint64_t sceneRevision = 0; ///< 名前索引を検索した時点のリビジョン。
+        uint64_t sceneGeneration = 0; ///< 名前索引を検索したシーンの世代番号。
         bool operator==(const ObjectQueryKey&) const = default;
     };
-    RevisionCache<ObjectQueryKey> m_objectQuery;
-    std::vector<scene::EntityID> m_objectHits;
-    AssetQueryCache m_assetQuery;
+    RevisionCache<ObjectQueryKey> m_objectQuery; ///< 検索語、シーン世代、名前索引の版から結果を再利用するためのキャッシュ。
+    std::vector<scene::EntityID> m_objectHits; ///< 現在の名前検索に一致したシーンオブジェクトの EntityID。
+    AssetQueryCache m_assetQuery; ///< 現在の検索語とアセット索引の版に対応する検索結果のキャッシュ。
     /// @note 走査・除外規則・一致判定は AssetSearch (Editor/Asset/Browser/AssetSearch.hpp) に集約した。
     ///       以前はこのパネルとアセットピッカーが別々の規則で走査し、同じ語でも結果が違っていた。
-    char m_query[128] = {};
-    bool m_requestFocus  = false; /// @note 次フレームでウィンドウをフォーカス
-    bool m_refocusInput  = false; /// @note 次フレームで入力欄へキーボードフォーカス
+    char m_query[128] = {}; ///< アセットとシーンオブジェクトを横断検索する入力バッファ。
+    bool m_requestFocus  = false; ///< パネルが開いたら検索欄へフォーカスする要求。
+    bool m_refocusInput  = false; ///< 選択操作などの後で検索欄へフォーカスを戻す要求。
 };
 
-} /// @note namespace fbzz::editor
+} // namespace fbzz::editor

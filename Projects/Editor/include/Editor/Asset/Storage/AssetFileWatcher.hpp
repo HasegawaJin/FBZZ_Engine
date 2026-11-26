@@ -54,15 +54,15 @@ private:
     /// 通知バッファを解析してイベントキューに積む
     void ParseBuffer(std::uint32_t bytesTransferred);
 
-    std::unique_ptr<NativeWatch> m_native;
-    std::string m_rootPath;
+    std::unique_ptr<NativeWatch> m_native; ///< 監視に使う OS 側のハンドルと通知バッファの所有者。
+    std::string m_rootPath; ///< 監視するファイルツリーのルートパス。
 
-    std::vector<FileEvent> m_queue;
+    std::vector<FileEvent> m_queue; ///< Editor の次回ポーリングへ渡すために蓄積したファイル通知。
     /// FILE_ACTION_RENAMED_OLD_NAME と NEW_NAME が別の通知バッファへ分割されても
     /// ペアを失わないため、ParseBuffer をまたいで一時保持する。
-    std::string m_pendingRenameOld;
-    bool m_readPending = false;
-    bool m_overflowed  = false;
+    std::string m_pendingRenameOld; ///< 名前変更の新しいパスの通知を待っている間に控える古いパス。
+    bool m_readPending = false; ///< OS からの非同期読み取りの完了を待っているか。
+    bool m_overflowed  = false; ///< 通知を取りこぼしたためルート以下の再走査が必要か。
 };
 
 } // namespace fbzz::editor

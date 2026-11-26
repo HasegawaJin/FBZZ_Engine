@@ -46,7 +46,9 @@ public:
     std::uint64_t RequestRefresh() override { return ++requestedRevision; }
     bool Poll(editor::ManagedSourceSnapshot& snapshot) override
     {
-        if (!m_started || hold) return false;
+        if (!m_started || hold) {
+            return false;
+        }
         snapshot.revision = usePublishedRevision ? publishedRevision : requestedRevision;
         snapshot.valid = editor::ComputeManagedSourceSnapshot(m_project, m_manifest, snapshot);
         return true;
@@ -497,7 +499,7 @@ TEST_F(ManagedScriptBuildTest, DefaultManagedBuildOpReturnsTheRequestThatStatusO
     EXPECT_EQ(record->Find("state")->AsString(), "scanning");
     EXPECT_FALSE(record->Find("terminal")->AsBool());
     EXPECT_TRUE(managed->Find("busy")->AsBool());
-    /// @note 他のビルドを実行中として監視だけを進め、このテストは子プロセスを開始しない。
+    // 他のビルドを実行中として監視だけを進め、このテストは子プロセスを開始しない。
     service.Tick(nullptr, true, 0.5f, true);
     EXPECT_EQ(service.Builds().Find(requestId)->state, editor::ManagedBuildState::QUEUED);
     service.Shutdown(nullptr);
@@ -521,7 +523,7 @@ TEST_F(ManagedScriptBuildTest, AutomaticSourceMonitoringSupersedesTheExplicitReq
     service.Tick(nullptr, false, 0.0f, true);
     const std::uint64_t requestedVersion = service.Builds().Find(explicitRequest)->sourceFingerprint;
     ASSERT_TRUE(util::FileSystem::WriteText(File("Assets/Scripts/Probe.cs"), "class Probe { int changed; }\n"));
-    /// @note コンパイルを保留したまま自動監視だけを進め、明示要求の版固定を検証する。
+    // コンパイルを保留したまま自動監視だけを進め、明示要求の版固定を検証する。
     service.Tick(nullptr, false, 0.5f, true);
     const editor::ManagedBuildRequest* old = service.Builds().Find(explicitRequest);
     ASSERT_NE(old, nullptr);
@@ -763,13 +765,13 @@ TEST_F(ManagedGenerationCleanupTest, GenerationCleanupDoesNotWaitForDiskAndRemov
     EXPECT_EQ(TaskSystem::GetStats().queuedCount, 1);
     resume.release();
     blocker.get();
-    /// @note 単一 worker の FIFO 後続タスクで削除完了を確定し、実時間や sleep で推測しない。
+    // 単一 worker の FIFO 後続タスクで削除完了を確定し、実時間や sleep で推測しない。
     DrainCleanup(service);
     EXPECT_FALSE(util::FileSystem::Exists(retired));
     EXPECT_FALSE(util::FileSystem::Exists(pending));
     EXPECT_TRUE(util::FileSystem::Exists(unowned));
     EXPECT_TRUE(util::FileSystem::Exists(File("Assets")));
-    /// @note 保存された所有世代が空になれば、待機フレームに削除・再確認の区間を記録しない。
+    // 保存された所有世代が空になれば、待機フレームに削除・再確認の区間を記録しない。
     for (int idleFrame = 0; idleFrame < 3; ++idleFrame) {
         profiler::Profiler::BeginFrame();
         service.Tick(nullptr, false, 1.0f, true);

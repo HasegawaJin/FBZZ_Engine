@@ -32,62 +32,92 @@ void HotkeyManager::RegisterInfo(std::string name,
 
 bool HotkeyManager::ScopeActive(HotkeyScope scope) const
 {
-    if (HasScope(scope, HotkeyScope::Global)) return true;
-    /// @note 解決手段が無いなら Global 以外は発火させない
-    if (!m_scopeResolver) return false;
+    if (HasScope(scope, HotkeyScope::Global)) {
+        return true;
+    }
+    // 解決手段が無いなら Global 以外は発火させない
+    if (!m_scopeResolver) {
+        return false;
+    }
     return m_scopeResolver(scope);
 }
 
 bool HotkeyManager::IsCurrentlyActive(const Hotkey& hk) const
 {
-    if (!ScopeActive(hk.scope)) return false;
-    if (hk.enabled && !hk.enabled()) return false;
+    if (!ScopeActive(hk.scope)) {
+        return false;
+    }
+    if (hk.enabled && !hk.enabled()) {
+        return false;
+    }
     return true;
 }
 
 void HotkeyManager::SuppressOperatorThisFrame(std::string_view operatorId)
 {
-    if (operatorId.empty()) return;
+    if (operatorId.empty()) {
+        return;
+    }
     for (const auto& id : m_suppressedOperators)
-        /// @note 同じフレームに何度呼ばれても 1 件
-        if (id == operatorId) return;
+        // 同じフレームに何度呼ばれても 1 件
+        if (id == operatorId) {
+            return;
+        }
     m_suppressedOperators.emplace_back(operatorId);
 }
 
 void HotkeyManager::ProcessInput(bool capture)
 {
-    /// @note 申告は «前回の ProcessInput 以降に積まれた分» を効かせ、ここで空にする。ProcessInput は EditorApp::BeginFrame (どのパネルの描画よりも前) で走るため、
-    ///       パネル側の申告は «次に来る» ProcessInput にしか届かず、持ち越さないと押したフレームに間に合わない。早期 return の経路でも必ず空にするため最初に取り出す。
+    // 申告は «前回の ProcessInput 以降に積まれた分» を効かせ、ここで空にする。ProcessInput は EditorApp::BeginFrame (どのパネルの描画よりも前) で走るため、
+    // パネル側の申告は «次に来る» ProcessInput にしか届かず、持ち越さないと押したフレームに間に合わない。早期 return の経路でも必ず空にするため最初に取り出す。
     std::vector<std::string> suppressed;
     suppressed.swap(m_suppressedOperators);
 
-    /// @note テキスト入力中はキーが文字として消費される: 名前入力の途中で "D" がオブジェクト複製になってはいけない。
-    if (capture || ImGui::GetIO().WantTextInput) return;
+    // テキスト入力中はキーが文字として消費される: 名前入力の途中で "D" がオブジェクト複製になってはいけない。
+    if (capture || ImGui::GetIO().WantTextInput) {
+        return;
+    }
 
     const ImGuiIO& io = ImGui::GetIO();
     std::bitset<ImGuiKey_NamedKey_COUNT> consumed;
     for (const auto& hk : m_hotkeys) {
-        if (hk.infoOnly || !hk.callback) continue;
-        if (hk.imguiKey < ImGuiKey_NamedKey_BEGIN || hk.imguiKey >= ImGuiKey_NamedKey_END) continue;
-        const auto index = static_cast<std::size_t>(hk.imguiKey - ImGuiKey_NamedKey_BEGIN);
-        if (consumed.test(index)) continue;
-
-        /// @note 修飾キーは完全一致を要求する: 部分一致にすると Ctrl+Z (Undo) が Z (Pivot 切替) も同時に発火させる。
-        if (hk.ctrl != io.KeyCtrl || hk.shift != io.KeyShift || hk.alt != io.KeyAlt)
+        if (hk.infoOnly || !hk.callback) {
             continue;
-        /// @note フォーカス中の Shortcut に割り当てられたキーは、別の全体操作に再割り当てされていても奪わない。
-        if (!ImGui::IsKeyPressed(static_cast<ImGuiKey>(hk.imguiKey), ImGuiInputFlags_None, ImGuiKeyOwner_NoOwner)) continue;
-        if (!IsCurrentlyActive(hk)) continue;
+        }
+        if (hk.imguiKey < ImGuiKey_NamedKey_BEGIN || hk.imguiKey >= ImGuiKey_NamedKey_END) {
+            continue;
+        }
+        const auto index = static_cast<std::size_t>(hk.imguiKey - ImGuiKey_NamedKey_BEGIN);
+        if (consumed.test(index)) {
+            continue;
+        }
+
+        // 修飾キーは完全一致を要求する: 部分一致にすると Ctrl+Z (Undo) が Z (Pivot 切替) も同時に発火させる。
+        if (hk.ctrl != io.KeyCtrl || hk.shift != io.KeyShift || hk.alt != io.KeyAlt) {
+            continue;
+        }
+        // フォーカス中の Shortcut に割り当てられたキーは、別の全体操作に再割り当てされていても奪わない。
+        if (!ImGui::IsKeyPressed(static_cast<ImGuiKey>(hk.imguiKey), ImGuiInputFlags_None, ImGuiKeyOwner_NoOwner)) {
+            continue;
+        }
+        if (!IsCurrentlyActive(hk)) {
+            continue;
+        }
 
         if (!hk.operatorId.empty()) {
             bool claimed = false;
             for (const auto& id : suppressed)
-                if (id == hk.operatorId) { claimed = true; break; }
-            /// @note フォーカスのあるパネルがこのキーを自分で処理する
-            if (claimed) continue;
+                if (id == hk.operatorId) {
+                    claimed = true;
+                    break;
+                }
+            // フォーカスのあるパネルがこのキーを自分で処理する
+            if (claimed) {
+                continue;
+            }
         }
 
-        /// @note 旧設定に同じ割り当てが残っていても、入力ごとに一つだけ実行する。
+        // 旧設定に同じ割り当てが残っていても、入力ごとに一つだけ実行する。
         consumed.set(index);
         hk.callback();
     }
@@ -102,16 +132,22 @@ void HotkeyManager::Clear()
 const Hotkey* HotkeyManager::FindByOperator(std::string_view operatorId) const
 {
     for (const auto& hk : m_hotkeys)
-        if (!hk.operatorId.empty() && hk.operatorId == operatorId) return &hk;
+        if (!hk.operatorId.empty() && hk.operatorId == operatorId) {
+            return &hk;
+        }
     return nullptr;
 }
 
 void HotkeyManager::Rebind(const std::string& key, int imguiKey, bool ctrl, bool shift, bool alt)
 {
-    /// @note operatorId を優先し、見つからなければ表示名で引く (旧形式の設定ファイル互換)。
+    // operatorId を優先し、見つからなければ表示名で引く (旧形式の設定ファイル互換)。
     for (auto& hk : m_hotkeys) {
-        if (hk.operatorId.empty() || hk.operatorId != key) continue;
-        if (hk.infoOnly) return;
+        if (hk.operatorId.empty() || hk.operatorId != key) {
+            continue;
+        }
+        if (hk.infoOnly) {
+            return;
+        }
         hk.imguiKey = imguiKey;
         hk.ctrl     = ctrl;
         hk.shift    = shift;
@@ -120,9 +156,13 @@ void HotkeyManager::Rebind(const std::string& key, int imguiKey, bool ctrl, bool
     }
 
     for (auto& hk : m_hotkeys) {
-        if (hk.name != key) continue;
-        /// @note 説明専用エントリは割り当てを持たない
-        if (hk.infoOnly) return;
+        if (hk.name != key) {
+            continue;
+        }
+        // 説明専用エントリは割り当てを持たない
+        if (hk.infoOnly) {
+            return;
+        }
         hk.imguiKey = imguiKey;
         hk.ctrl     = ctrl;
         hk.shift    = shift;
@@ -134,36 +174,53 @@ void HotkeyManager::Rebind(const std::string& key, int imguiKey, bool ctrl, bool
 std::string HotkeyManager::FindConflict(const std::string& name,
                                         int imguiKey, bool ctrl, bool shift, bool alt) const
 {
-    /// @note 対象自身の scope を引く (見つからなければ Global 扱いで最も厳しく判定する)。
+    // 対象自身の scope を引く (見つからなければ Global 扱いで最も厳しく判定する)。
     HotkeyScope selfScope = HotkeyScope::Global;
     for (const auto& hk : m_hotkeys)
-        if (hk.name == name) { selfScope = hk.scope; break; }
+        if (hk.name == name) {
+            selfScope = hk.scope;
+            break;
+        }
 
     for (const auto& hk : m_hotkeys) {
-        if (hk.infoOnly || hk.name == name) continue;
-        if (hk.imguiKey != imguiKey || hk.ctrl != ctrl || hk.shift != shift || hk.alt != alt)
+        if (hk.infoOnly || hk.name == name) {
             continue;
+        }
+        if (hk.imguiKey != imguiKey || hk.ctrl != ctrl || hk.shift != shift || hk.alt != alt) {
+            continue;
+        }
 
-        /// @note 文脈が重ならないなら共存できる: Scene View の Delete と Hierarchy の Delete は同じキーでよく、揃っている方が自然。Global はどこでも効くので必ず衝突する。
+        // 文脈が重ならないなら共存できる: Scene View の Delete と Hierarchy の Delete は同じキーでよく、揃っている方が自然。Global はどこでも効くので必ず衝突する。
         const bool conflicts =
             HasScope(hk.scope, HotkeyScope::Global) ||
             HasScope(selfScope, HotkeyScope::Global) ||
             (static_cast<std::uint32_t>(hk.scope) & static_cast<std::uint32_t>(selfScope)) != 0;
-        if (conflicts) return hk.name;
+        if (conflicts) {
+            return hk.name;
+        }
     }
     return {};
 }
 
 std::string HotkeyManager::FormatBinding(const Hotkey& hk)
 {
-    if (hk.infoOnly) return hk.infoBinding;
+    if (hk.infoOnly) {
+        return hk.infoBinding;
+    }
 
     std::string s;
-    if (hk.ctrl)  s += "Ctrl+";
-    if (hk.shift) s += "Shift+";
-    if (hk.alt)   s += "Alt+";
-    if (const char* keyName = ImGui::GetKeyName(static_cast<ImGuiKey>(hk.imguiKey)))
+    if (hk.ctrl) {
+        s += "Ctrl+";
+    }
+    if (hk.shift) {
+        s += "Shift+";
+    }
+    if (hk.alt) {
+        s += "Alt+";
+    }
+    if (const char* keyName = ImGui::GetKeyName(static_cast<ImGuiKey>(hk.imguiKey))) {
         s += keyName;
+    }
     return s;
 }
 
@@ -182,4 +239,4 @@ const char* HotkeyManager::CategoryLabel(HotkeyCategory category)
     return "Other";
 }
 
-} /// @note namespace fbzz::editor
+} // namespace fbzz::editor

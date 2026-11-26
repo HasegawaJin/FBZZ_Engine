@@ -25,10 +25,10 @@ void SearchEverythingPanel::OnBeforeBegin(EditorContext&)
 
 void SearchEverythingPanel::OnRenderContent(EditorContext& ctx)
 {
-    /// @note 索引は AssetSearch が保持する。ルートが変わったときだけ作り直される。
+    // 索引は AssetSearch が保持する。ルートが変わったときだけ作り直される。
     AssetSearch::SetProjectRoot(ctx.projectRoot);
 
-    /// @name 検索欄 + 更新ボタン
+    // 検索欄 + 更新ボタン
     if (m_refocusInput) {
         ImGui::SetKeyboardFocusHere();
         m_refocusInput = false;
@@ -38,8 +38,9 @@ void SearchEverythingPanel::OnRenderContent(EditorContext& ctx)
     ImGui::InputTextWithHint("##search_all", "Search objects and assets...",
                              m_query, sizeof(m_query));
     ImGui::SameLine();
-    if (ImGui::Button("Refresh"))
+    if (ImGui::Button("Refresh")) {
         AssetSearch::Rebuild();
+    }
 
     const std::string query = m_query;
     if (query.empty()) {
@@ -52,7 +53,7 @@ void SearchEverythingPanel::OnRenderContent(EditorContext& ctx)
     ImGui::Separator();
     ImGui::BeginChild("##results");
 
-    /// @name GameObject 検索 (名前一致)
+    // GameObject 検索 (名前一致)
     if (ctx.activeScene) {
         auto& index = SceneQueries(*ctx.activeScene, static_cast<uint64_t>(ImGui::GetFrameCount()));
         const ObjectQueryKey key{query, index.NameRevision(), ctx.activeScene->GetRenderSceneGeneration()};
@@ -64,7 +65,9 @@ void SearchEverythingPanel::OnRenderContent(EditorContext& ctx)
             ImGui::SeparatorText("Objects");
             for (const auto id : m_objectHits) {
                 auto* go = ctx.activeScene->GetGameObject(id);
-                if (!go) continue;
+                if (!go) {
+                    continue;
+                }
                 ImGui::PushID(go);
                 if (ImGui::Selectable(go->name.c_str())) {
                     OpArgs args;
@@ -76,8 +79,8 @@ void SearchEverythingPanel::OnRenderContent(EditorContext& ctx)
         }
     }
 
-    /// @name アセット検索 (共通 AssetSearch 経由)
-    /// @note スコア順に並ぶため、完全一致・前方一致が上に来る。
+    // アセット検索 (共通 AssetSearch 経由)
+    // スコア順に並ぶため、完全一致・前方一致が上に来る。
     {
         constexpr std::size_t MAX_ASSET_RESULTS = 200;
         m_assetQuery.Update(query, {}, MAX_ASSET_RESULTS);
@@ -87,29 +90,34 @@ void SearchEverythingPanel::OnRenderContent(EditorContext& ctx)
         for (const auto& hit : hits) {
             const std::string& path = hit.entry.absolutePath;
             const std::string& name = hit.entry.filename;
-            if (!headerDrawn) { ImGui::SeparatorText("Assets"); headerDrawn = true; }
+            if (!headerDrawn) {
+                ImGui::SeparatorText("Assets");
+                headerDrawn = true;
+            }
 
             ImGui::PushID(path.c_str());
-            /// @note 開き方の振り分けは asset.open operator が持つ。同じ拡張子分岐を複数箇所に
-            ///       写すと欠落が起きる (過去に .behaviortree が抜けていた) ため実体を 1 つに保つ。
+            // 開き方の振り分けは asset.open operator が持つ。同じ拡張子分岐を複数箇所に
+            // 写すと欠落が起きる (過去に .behaviortree が抜けていた) ため実体を 1 つに保つ。
             if (ImGui::Selectable(name.c_str())) {
                 OpArgs args;
                 args.Set("path", path);
                 InvokeOperator(ctx, "asset.open", args);
             }
-            /// @note 相対パスを添えて、同名ファイルをその場で区別できるようにする。
+            // 相対パスを添えて、同名ファイルをその場で区別できるようにする。
             ImGui::SameLine();
             ImGui::TextDisabled("%s", hit.entry.relativePath.c_str());
-            if (ImGui::IsItemHovered())
+            if (ImGui::IsItemHovered()) {
                 ImGui::SetTooltip("%s", path.c_str());
+            }
             ImGui::PopID();
         }
 
-        if (hits.size() >= MAX_ASSET_RESULTS)
+        if (hits.size() >= MAX_ASSET_RESULTS) {
             ImGui::TextDisabled("... more results hidden, refine your query");
+        }
     }
 
     ImGui::EndChild();
 }
 
-} /// @note namespace fbzz::editor
+} // namespace fbzz::editor

@@ -7,6 +7,7 @@
 #include <Engine/Util/Text/StringUtils.hpp>
 #include <DirectXTex.h>
 #include <wincodec.h>
+#include <assimp/config.h>
 #include <assimp/material.h>
 #include <assimp/scene.h>
 #include <stb_image.h>
@@ -43,8 +44,9 @@ constexpr TexSlot kTexSlots[] = {
 bool DecodeEmbeddedTexture(const aiTexture* texture, DirectX::ScratchImage& decoded)
 {
     std::string format(texture->achFormatHint, strnlen(texture->achFormatHint, 4));
-    for (char& c : format)
+    for (char& c : format) {
         c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+    }
 
     const auto* bytes = static_cast<const uint8_t*>(static_cast<const void*>(texture->pcData));
     const size_t byteCount = static_cast<size_t>(texture->mWidth);
@@ -53,7 +55,9 @@ bool DecodeEmbeddedTexture(const aiTexture* texture, DirectX::ScratchImage& deco
             bytes, byteCount, DirectX::DDS_FLAGS_NONE, nullptr, decoded));
     }
 
-    if (byteCount > static_cast<size_t>(std::numeric_limits<int>::max())) return false;
+    if (byteCount > static_cast<size_t>(std::numeric_limits<int>::max())) {
+        return false;
+    }
 
     int width = 0;
     int height = 0;
@@ -85,55 +89,73 @@ std::string DumpEmbeddedAsPng(const aiTexture* texture,
                               int textureIndex,
                               const std::string& texturesDir)
 {
-    /// @note 元名を残すことで normal/roughness 等の型推定を維持し、index で同名衝突を避ける。
+    // 元名を残すことで normal/roughness 等の型推定を維持し、index で同名衝突を避ける。
     std::string fileStem = util::FileSystem::PathToUtf8(
         util::FileSystem::PathFromUtf8(texture->mFilename.C_Str()).stem());
-    if (fileStem.empty()) fileStem = "embedded";
+    if (fileStem.empty()) {
+        fileStem = "embedded";
+    }
     for (char& c : fileStem) {
         const unsigned char uc = static_cast<unsigned char>(c);
-        if (!std::isalnum(uc) && c != '_' && c != '-') c = '_';
+        if (!std::isalnum(uc) && c != '_' && c != '-') {
+            c = '_';
+        }
     }
     const std::string filename =
         fileStem + "_" + std::to_string(textureIndex) + ".png";
     const std::filesystem::path outPath = util::FileSystem::PathFromUtf8(texturesDir) / filename;
-    if (util::FileSystem::Exists(outPath)) return filename;
+    if (util::FileSystem::Exists(outPath)) {
+        return filename;
+    }
 
     DirectX::ScratchImage source;
     if (texture->mHeight == 0) {
-        if (!DecodeEmbeddedTexture(texture, source)) return {};
+        if (!DecodeEmbeddedTexture(texture, source)) {
+            return {};
+        }
     } else {
         if (FAILED(source.Initialize2D(DXGI_FORMAT_B8G8R8A8_UNORM,
-                                       texture->mWidth, texture->mHeight, 1, 1)))
+                                       texture->mWidth, texture->mHeight, 1, 1))) {
             return {};
+        }
         std::memcpy(source.GetPixels(), texture->pcData,
                     static_cast<size_t>(texture->mWidth) * texture->mHeight * sizeof(aiTexel));
     }
 
     const DirectX::Image* image = source.GetImage(0, 0, 0);
-    if (!image) return {};
+    if (!image) {
+        return {};
+    }
 
     DirectX::ScratchImage rgba;
     if (DirectX::IsCompressed(image->format)) {
-        if (FAILED(DirectX::Decompress(*image, DXGI_FORMAT_R8G8B8A8_UNORM, rgba)))
+        if (FAILED(DirectX::Decompress(*image, DXGI_FORMAT_R8G8B8A8_UNORM, rgba))) {
             return {};
+        }
         image = rgba.GetImage(0, 0, 0);
     } else if (image->format != DXGI_FORMAT_R8G8B8A8_UNORM &&
                image->format != DXGI_FORMAT_B8G8R8A8_UNORM) {
         if (FAILED(DirectX::Convert(*image, DXGI_FORMAT_R8G8B8A8_UNORM,
-                                    DirectX::TEX_FILTER_DEFAULT, 0.0f, rgba)))
+                                    DirectX::TEX_FILTER_DEFAULT, 0.0f, rgba))) {
             return {};
+        }
         image = rgba.GetImage(0, 0, 0);
     }
 
-    if (!image) return {};
+    if (!image) {
+        return {};
+    }
 
-    /// @note textures/ の作成はここまで遅延させる。先に掘ると、埋め込みテクスチャが無い/デコード失敗の
-    ///       FBX でも空フォルダだけが残るため、書き出す直前に親を用意する。
-    if (!util::FileSystem::EnsureParentDirectory(outPath)) return {};
+    // textures/ の作成はここまで遅延させる。先に掘ると、埋め込みテクスチャが無い/デコード失敗の
+    // FBX でも空フォルダだけが残るため、書き出す直前に親を用意する。
+    if (!util::FileSystem::EnsureParentDirectory(outPath)) {
+        return {};
+    }
 
     if (FAILED(DirectX::SaveToWICFile(*image, DirectX::WIC_FLAGS_NONE,
-                                       GUID_ContainerFormatPng, outPath.c_str())))
+                                       GUID_ContainerFormatPng, outPath.c_str()))) {
         return {};
+    }
     return filename;
 }
 
@@ -144,20 +166,23 @@ std::string ResolveTexture(const aiScene* scene,
                             const std::string& fbxBaseName,
                             const std::string& texturesDir)
 {
-    /// @note ここで texturesDir を掘らない。参照が解決できなければ空フォルダだけが残るため、書き出しを行う
-    ///       DumpEmbeddedAsPng と FileSystem::CopyFile 側で書き込み直前に親ディレクトリを作る。
+    // ここで texturesDir を掘らない。参照が解決できなければ空フォルダだけが残るため、書き出しを行う
+    // DumpEmbeddedAsPng と FileSystem::CopyFile 側で書き込み直前に親ディレクトリを作る。
 
-    /// @note Assimp は埋め込みを "*0" または元ファイル名で返すため、両形式を公式 API で解決する。
+    // Assimp は埋め込みを "*0" または元ファイル名で返すため、両形式を公式 API で解決する。
     const auto [embedded, embeddedIndex] = scene->GetEmbeddedTextureAndIndex(rawPath.c_str());
-    if (embedded && embeddedIndex >= 0)
+    if (embedded && embeddedIndex >= 0) {
         return DumpEmbeddedAsPng(embedded, embeddedIndex, texturesDir);
+    }
 
-    /// @note 外部ファイル → texturesDir にコピー
+    // 外部ファイル → texturesDir にコピー
     fs::path srcPath = util::FileSystem::PathFromUtf8(rawPath);
-    if (srcPath.is_relative()) srcPath = util::FileSystem::PathFromUtf8(fbxDir) / srcPath;
+    if (srcPath.is_relative()) {
+        srcPath = util::FileSystem::PathFromUtf8(fbxDir) / srcPath;
+    }
     if (!util::FileSystem::Exists(srcPath)) {
-        /// @note DCC が絶対パスを書いた FBX では原本の場所を再現できない。実体は FBX の隣か、
-        ///       FBX SDK が埋め込みメディアを展開した `"<FBX名>.fbm/"` のどちらかに残っている。
+        // DCC が絶対パスを書いた FBX では原本の場所を再現できない。実体は FBX の隣か、
+        // FBX SDK が埋め込みメディアを展開した `"<FBX名>.fbm/"` のどちらかに残っている。
         const fs::path fbxFsDir = util::FileSystem::PathFromUtf8(fbxDir);
         const fs::path candidates[] = {
             fbxFsDir / srcPath.filename(),
@@ -165,22 +190,27 @@ std::string ResolveTexture(const aiScene* scene,
         };
         bool resolved = false;
         for (const fs::path& candidate : candidates) {
-            if (!util::FileSystem::Exists(candidate)) continue;
+            if (!util::FileSystem::Exists(candidate)) {
+                continue;
+            }
             srcPath  = candidate;
             resolved = true;
             break;
         }
-        if (!resolved) return {};
+        if (!resolved) {
+            return {};
+        }
     }
 
     const std::string filename = util::FileSystem::PathToUtf8(srcPath.filename());
     const fs::path dest = util::FileSystem::PathFromUtf8(texturesDir) / srcPath.filename();
-    if (util::FileSystem::Exists(dest))
+    if (util::FileSystem::Exists(dest)) {
         return filename;
+    }
     return util::FileSystem::CopyFile(srcPath, dest) ? filename : std::string{};
 }
 
-} /// @note namespace
+} // namespace
 
 bool MaterialExporter::Export(const aiMaterial* material,
                                   const aiScene* scene,
@@ -190,14 +220,15 @@ bool MaterialExporter::Export(const aiMaterial* material,
                                   const std::string& outputPath,
                                   bool skinned)
 {
-    /// @note マテリアルの既知スロットに現れない画像も含め、FBX 内包テクスチャを全て PNG 化する
-    ///       (Assimp が UNKNOWN/HEIGHT 等へ分類した画像も欠落させないため)。
-    /// @note ここでディレクトリを掘らない。mNumTextures == 0 だとループが回らず空の textures/ だけが
-    ///       残るため、作成は DumpEmbeddedAsPng に任せる。
+    // マテリアルの既知スロットに現れない画像も含め、FBX 内包テクスチャを全て PNG 化する
+    // (Assimp が UNKNOWN/HEIGHT 等へ分類した画像も欠落させないため)。
+    // ここでディレクトリを掘らない。mNumTextures == 0 だとループが回らず空の textures/ だけが
+    // 残るため、作成は DumpEmbeddedAsPng に任せる。
     for (uint32_t textureIndex = 0; textureIndex < scene->mNumTextures; ++textureIndex) {
         if (DumpEmbeddedAsPng(scene->mTextures[textureIndex],
-                              static_cast<int>(textureIndex), texturesDir).empty())
+                              static_cast<int>(textureIndex), texturesDir).empty()) {
             return false;
+        }
     }
 
     toml::table tbl;
@@ -205,13 +236,14 @@ bool MaterialExporter::Export(const aiMaterial* material,
     tbl.insert("shader", skinned
         ? std::string{ "Assets/Shaders/Material/Skinned/SkinnedPBR.hlsl" }
         : std::string{ "Assets/Shaders/Material/Surface/PBR.hlsl" });
-    /// @note 通常材質の描画経路はプロジェクト設定が決めるため、インポート時に固定しない。
+    // 通常材質の描画経路はプロジェクト設定が決めるため、インポート時に固定しない。
     tbl.insert("render_path", std::string{ "auto" });
     tbl.insert("mesh_type", skinned ? std::string{ "skinned" } : std::string{ "surface" });
 
     aiString matName;
-    if (material->Get(AI_MATKEY_NAME, matName) == AI_SUCCESS)
+    if (material->Get(AI_MATKEY_NAME, matName) == AI_SUCCESS) {
         tbl.insert("name", std::string(matName.C_Str()));
+    }
 
     toml::table paramsTbl;
     aiColor4D baseColor;
@@ -225,8 +257,8 @@ bool MaterialExporter::Export(const aiMaterial* material,
     material->Get(AI_MATKEY_ROUGHNESS_FACTOR, roughness);
     paramsTbl.insert("metallic",  metallic);
     paramsTbl.insert("roughness", roughness);
-    /// @note 拡張 PBR ローブは既存 FBX の外観を変えないよう無効値で初期化し、
-    ///       必要なマテリアルだけが .mat 上で有効化できるようにする。
+    // 拡張 PBR ローブは既存 FBX の外観を変えないよう無効値で初期化し、
+    // 必要なマテリアルだけが .mat 上で有効化できるようにする。
     paramsTbl.insert("clearcoat",          0.0f);
     paramsTbl.insert("clearcoatRoughness", 0.10f);
     paramsTbl.insert("sheen",              0.0f);
@@ -241,20 +273,22 @@ bool MaterialExporter::Export(const aiMaterial* material,
             const std::string filename =
                 ResolveTexture(scene, texPath.C_Str(), fbxDir, fbxBaseName, texturesDir);
             if (!filename.empty()) {
-                /// @note マテリアルは元画像を直接参照する。インポート設定は元画像隣の
-                ///       "<画像>.meta" サイドカーが担うため、.mat 側は source を指すだけでよい。
+                // マテリアルは元画像を直接参照する。インポート設定は元画像隣の
+                // "<画像>.meta" サイドカーが担うため、.mat 側は source を指すだけでよい。
                 texTbl.insert(slot.key, filename);
             }
         }
     }
-    if (!texTbl.empty())
+    if (!texTbl.empty()) {
         tbl.insert("textures", std::move(texTbl));
+    }
 
     std::ostringstream out;
     out << tbl << '\n';
-    if (!util::FileSystem::WriteText(util::FileSystem::PathFromUtf8(outputPath), out.str()))
+    if (!util::FileSystem::WriteText(util::FileSystem::PathFromUtf8(outputPath), out.str())) {
         return false;
+    }
     return true;
 }
 
-} /// @note namespace fbzz::editor
+} // namespace fbzz::editor

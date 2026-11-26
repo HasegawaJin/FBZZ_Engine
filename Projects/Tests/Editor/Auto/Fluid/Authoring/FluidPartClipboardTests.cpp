@@ -49,18 +49,18 @@ TEST(FluidPartClipboardTest, UniqueNameAddsSerialWithinTheSameList)
 {
     const fluid::FluidRecipe recipe = RecipeWithNamedSources({ "Vortex", "Vortex (1)", "Jet" });
 
-    /// @note 衝突しなければそのまま。
+    // 衝突しなければそのまま。
     EXPECT_EQ(fluidpanel::MakeUniqueFluidPartName(recipe, FluidSelectionKind::Source, "Puff", -1), "Puff");
-    /// @note 連番は «埋まっていない最初の番号»。"Vortex (1) (1)" のようには伸ばさない。
+    // 連番は «埋まっていない最初の番号»。"Vortex (1) (1)" のようには伸ばさない。
     EXPECT_EQ(fluidpanel::MakeUniqueFluidPartName(recipe, FluidSelectionKind::Source, "Vortex", -1),
               "Vortex (2)");
     EXPECT_EQ(fluidpanel::MakeUniqueFluidPartName(recipe, FluidSelectionKind::Source, "Vortex (1)", -1),
               "Vortex (2)");
-    /// @note 自分自身の名前は衝突と数えない (リネームで «変えていないのに連番が付く» を防ぐ)。
+    // 自分自身の名前は衝突と数えない (リネームで «変えていないのに連番が付く» を防ぐ)。
     EXPECT_EQ(fluidpanel::MakeUniqueFluidPartName(recipe, FluidSelectionKind::Source, "Vortex", 0), "Vortex");
-    /// @note 名前が空の部品は添字から表示名を作るので、空のままでも衝突しない。
+    // 名前が空の部品は添字から表示名を作るので、空のままでも衝突しない。
     EXPECT_EQ(fluidpanel::MakeUniqueFluidPartName(recipe, FluidSelectionKind::Source, "", -1), "");
-    /// @note 別のリストの名前は見ない。
+    // 別のリストの名前は見ない。
     EXPECT_EQ(fluidpanel::MakeUniqueFluidPartName(recipe, FluidSelectionKind::Force, "Vortex", -1), "Vortex");
 }
 
@@ -75,17 +75,17 @@ TEST(FluidPartClipboardTest, PasteCarriesThePartIntoAnotherRecipe)
     EXPECT_EQ(fluidpanel::FluidPartClipboardKind(), FluidSelectionKind::Source);
     EXPECT_FALSE(fluidpanel::FluidPartClipboardLabel().empty());
 
-    /// @note 別の .fluid を開いたのと同じこと — 控えは元のレシピを参照しない。
+    // 別の .fluid を開いたのと同じこと — 控えは元のレシピを参照しない。
     fluid::FluidRecipe into = RecipeWithNamedSources({ "Vortex" });
     ASSERT_TRUE(fluidpanel::PasteFluidPartClipboard(into, FluidSelectionKind::Source, 1));
 
     ASSERT_EQ(into.sources.size(), 2u);
     EXPECT_FLOAT_EQ(into.sources[1].startTime, 1.0f);
-    /// @note 貼る先で名前が衝突したら連番を振り直す。
+    // 貼る先で名前が衝突したら連番を振り直す。
     EXPECT_EQ(into.sources[1].name, "Vortex (1)");
     EXPECT_EQ(into.sources[0].name, "Vortex");
 
-    /// @note 範囲外の位置は末尾へ寄せる。
+    // 範囲外の位置は末尾へ寄せる。
     ASSERT_TRUE(fluidpanel::PasteFluidPartClipboard(into, FluidSelectionKind::Source, 99));
     ASSERT_EQ(into.sources.size(), 3u);
     EXPECT_EQ(into.sources[2].name, "Vortex (2)");
@@ -117,22 +117,22 @@ TEST(FluidVisibilityRemapTest, HiddenAndSoloFollowTheirPart)
     document.SetHidden(FluidSelectionKind::Force, 1, true);
     document.ToggleSolo(FluidSelectionKind::Source, 1);
 
-    /// @note 前へ 1 つ挿し込んだら、その後ろの印は 1 つ後ろへ。挿し込んだ部品自身は印なしで始まる。
+    // 前へ 1 つ挿し込んだら、その後ろの印は 1 つ後ろへ。挿し込んだ部品自身は印なしで始まる。
     document.RemapVisibilityAfterInsert(FluidSelectionKind::Source, 0);
     EXPECT_FALSE(document.IsHidden(FluidSelectionKind::Source, 0));
     EXPECT_FALSE(document.IsHidden(FluidSelectionKind::Source, 1));
     EXPECT_TRUE(document.IsHidden(FluidSelectionKind::Source, 2));
     EXPECT_TRUE(document.IsSolo(FluidSelectionKind::Source, 2));
-    /// @note 別のリストの印は動かさない。
+    // 別のリストの印は動かさない。
     EXPECT_TRUE(document.IsHidden(FluidSelectionKind::Force, 1));
 
-    /// @note 並べ替え (2 → 0)。間に挟まれた部品は 1 つずつずれる。
+    // 並べ替え (2 → 0)。間に挟まれた部品は 1 つずつずれる。
     document.RemapVisibilityAfterMove(FluidSelectionKind::Source, 2, 0);
     EXPECT_TRUE(document.IsHidden(FluidSelectionKind::Source, 0));
     EXPECT_TRUE(document.IsSolo(FluidSelectionKind::Source, 0));
     EXPECT_FALSE(document.IsHidden(FluidSelectionKind::Source, 2));
 
-    /// @note 消えた部品の印は落とす (残すと «隣の部品が勝手に隠れる»)。
+    // 消えた部品の印は落とす (残すと «隣の部品が勝手に隠れる»)。
     document.RemapVisibilityAfterRemove(FluidSelectionKind::Source, 0);
     EXPECT_FALSE(document.IsHidden(FluidSelectionKind::Source, 0));
     EXPECT_FALSE(document.IsSolo(FluidSelectionKind::Source, 0));

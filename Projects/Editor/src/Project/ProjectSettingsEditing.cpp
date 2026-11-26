@@ -30,15 +30,19 @@ void ApplySettings(EditorContext& context, const ProjectSettings& settings)
                 manager->SetBusVolume(bus.name, bus.volume);
                 manager->SetBusLowPass(bus.name, bus.lowPassCutoff);
             }
-        } else manager->ApplyBusLayout(layout);
+        } else {
+            manager->ApplyBusLayout(layout);
+        }
     }
 }
-} /// @note namespace
+} // namespace
 
 std::unique_ptr<ICommand> CommitProjectSettingsEdit(EditorContext& context,
     const ProjectSettings& before, const ProjectSettings& after)
 {
-    if (before.ToToml() == after.ToToml()) return nullptr;
+    if (before.ToToml() == after.ToToml()) {
+        return nullptr;
+    }
     const std::string project = context.projectRoot;
     const auto apply = [&context, project](const ProjectSettings& expected, const ProjectSettings& next, std::string& reason) {
         if (context.projectRoot != project || context.projectSettings.ToToml() != expected.ToToml()) {
@@ -54,4 +58,4 @@ std::unique_ptr<ICommand> CommitProjectSettingsEdit(EditorContext& context,
     ApplySettings(context, after);
     return command;
 }
-} /// @note namespace fbzz::editor
+} // namespace fbzz::editor

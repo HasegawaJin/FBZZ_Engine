@@ -37,7 +37,9 @@ constexpr std::size_t HISTORY_LIMIT = 64;
 renderer::RenderSettings ViewerRenderSettings(const EditorContext& ctx)
 {
     if (ctx.playMode && !ctx.playMode->IsInEditor()) {
-        if (const auto* runtime = core::Application::Get().GetActiveRenderSettings()) return *runtime;
+        if (const auto* runtime = core::Application::Get().GetActiveRenderSettings()) {
+            return *runtime;
+        }
     }
     renderer::RenderSettings resolved;
     (void)asset::ResolveRenderPipelineSettings(ctx.projectSettings.render,
@@ -121,23 +123,32 @@ std::string ResourceOfOutput(const std::string& output)
 /// @brief 希望として渡した論理名を、実在する出力名 (MRT スライス) へ前方一致で解決する。
 void ResolvePreferredOutput(Capture::Request& request, const std::vector<Capture::OutputInfo>& outputs)
 {
-    if (!request.outputIsPreference || request.outputName.empty()) return;
+    if (!request.outputIsPreference || request.outputName.empty()) {
+        return;
+    }
     const auto exact = std::find_if(outputs.begin(), outputs.end(),
         [&request](const Capture::OutputInfo& output) { return output.name == request.outputName; });
-    if (exact != outputs.end()) return;
+    if (exact != outputs.end()) {
+        return;
+    }
     const std::string prefix = request.outputName + " / ";
     const auto sliced = std::find_if(outputs.begin(), outputs.end(),
         [&prefix](const Capture::OutputInfo& output) { return output.name.compare(0, prefix.size(), prefix) == 0; });
-    if (sliced != outputs.end()) request.outputName = sliced->name;
+    if (sliced != outputs.end()) {
+        request.outputName = sliced->name;
+    }
 }
 
 void FormatMs(char* buffer, std::size_t size, double ms)
 {
-    if (ms < 0.0) std::snprintf(buffer, size, "--");
-    else          std::snprintf(buffer, size, "%.3f", ms);
+    if (ms < 0.0) {
+        std::snprintf(buffer, size, "--");
+    } else {
+        std::snprintf(buffer, size, "%.3f", ms);
+    }
 }
 
-/// @param t 0 = 速い (緑)、1 = 最も遅い (赤)。
+/// @param[in] t 0 = 速い (緑)、1 = 最も遅い (赤)。
 ImU32 HeatColor(float t, float alpha)
 {
     t = std::clamp(t, 0.0f, 1.0f);
@@ -155,7 +166,9 @@ float LabeledWidth(float itemWidth, const char* label)
 void FlowSameLine(float nextWidth)
 {
     ImGui::SameLine();
-    if (ImGui::GetContentRegionAvail().x < nextWidth) ImGui::NewLine();
+    if (ImGui::GetContentRegionAvail().x < nextWidth) {
+        ImGui::NewLine();
+    }
 }
 
 /// @brief 残り幅の右端へ width ぶんの項目を寄せる。
@@ -163,7 +176,9 @@ void AlignRight(float width)
 {
     ImGui::SameLine();
     const float offset = ImGui::GetContentRegionAvail().x - width;
-    if (offset > 0.0f) ImGui::SetCursorPosX(ImGui::GetCursorPosX() + offset);
+    if (offset > 0.0f) {
+        ImGui::SetCursorPosX(ImGui::GetCursorPosX() + offset);
+    }
 }
 
 float ButtonWidth(const char* label)
@@ -173,16 +188,22 @@ float ButtonWidth(const char* label)
 
 bool ToggleButton(const char* label, bool active)
 {
-    if (active) ImGui::PushStyleColor(ImGuiCol_Button, ImGui::GetStyleColorVec4(ImGuiCol_ButtonActive));
+    if (active) {
+        ImGui::PushStyleColor(ImGuiCol_Button, ImGui::GetStyleColorVec4(ImGuiCol_ButtonActive));
+    }
     const bool pressed = ImGui::Button(label);
-    if (active) ImGui::PopStyleColor();
+    if (active) {
+        ImGui::PopStyleColor();
+    }
     return pressed;
 }
 
 /// @brief 色付きの小ボタン。先頭以外は行末に収まらなければ折り返す。
 bool Chip(const char* label, const ImVec4& color, bool first)
 {
-    if (!first) FlowSameLine(ButtonWidth(label));
+    if (!first) {
+        FlowSameLine(ButtonWidth(label));
+    }
     ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(color.x, color.y, color.z, 0.16f));
     ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(color.x, color.y, color.z, 0.34f));
     ImGui::PushStyleColor(ImGuiCol_ButtonActive, ImVec4(color.x, color.y, color.z, 0.50f));
@@ -201,7 +222,7 @@ void DrawOverlayText(ImDrawList* draw, const ImVec2& pos, const char* text, ImU3
     draw->AddText({ pos.x + pad, pos.y + pad }, color, text);
 }
 
-} /// @note namespace
+} // namespace
 
 void RenderPassViewerPanel::OnInit(EditorContext& ctx)
 {
@@ -210,17 +231,22 @@ void RenderPassViewerPanel::OnInit(EditorContext& ctx)
 
 void RenderPassViewerPanel::OnShutdown()
 {
-    if (m_resources) m_capture.Release(*m_resources);
+    if (m_resources) {
+        m_capture.Release(*m_resources);
+    }
     m_resources = nullptr;
     m_captureActive = false;
 }
 
 void RenderPassViewerPanel::PrepareFrame()
 {
-    if (!visible && !m_apiCapture && m_captureActive && m_resources)
+    if (!visible && !m_apiCapture && m_captureActive && m_resources) {
         m_capture.Release(*m_resources);
+    }
     m_captureActive = visible || m_apiCapture;
-    if (m_apiCapture) m_capture.galleryEnabled = m_apiGallery;
+    if (m_apiCapture) {
+        m_capture.galleryEnabled = m_apiGallery;
+    }
     m_capturedGameView = m_gameView;
     m_capture.Invalidate();
 }
@@ -241,7 +267,7 @@ void RenderPassViewerPanel::OnRenderContent(EditorContext& ctx)
     DrawToolbar(ctx);
     ImGui::Separator();
 
-    /// @note Resources タブは開いている間だけ焼く。閉じていればタイルの描画も RT も発生しない。
+    // Resources タブは開いている間だけ焼く。閉じていればタイルの描画も RT も発生しない。
     bool galleryOpen = false;
     if (ImGui::BeginTable("PassViewerLayout", 2, ImGuiTableFlags_Resizable | ImGuiTableFlags_BordersInnerV)) {
         ImGui::TableSetupColumn("Passes", ImGuiTableColumnFlags_WidthFixed, 330.0f);
@@ -285,23 +311,32 @@ void RenderPassViewerPanel::SyncSnapshot()
         m_graphNeedsFit = true;
     }
     m_live = !m_capture.Passes().empty() && m_capturedGameView == m_gameView;
-    if (m_live) m_passes = m_capture.Passes();
+    if (m_live) {
+        m_passes = m_capture.Passes();
+    }
 
     m_executedCount = 0;
     m_totalCpuMs = -1.0;
     m_totalGpuMs = -1.0;
     m_slowestMs = 0.0;
     for (const auto& pass : m_passes) {
-        if (pass.culled) continue;
+        if (pass.culled) {
+            continue;
+        }
         ++m_executedCount;
-        if (pass.cpuMs >= 0.0) m_totalCpuMs = std::max(m_totalCpuMs, 0.0) + pass.cpuMs;
-        if (pass.gpuMs >= 0.0) m_totalGpuMs = std::max(m_totalGpuMs, 0.0) + pass.gpuMs;
+        if (pass.cpuMs >= 0.0) {
+            m_totalCpuMs = std::max(m_totalCpuMs, 0.0) + pass.cpuMs;
+        }
+        if (pass.gpuMs >= 0.0) {
+            m_totalGpuMs = std::max(m_totalGpuMs, 0.0) + pass.gpuMs;
+        }
         m_slowestMs = std::max(m_slowestMs, std::max(pass.cpuMs, pass.gpuMs));
     }
 
     const auto& captured = m_capture.CapturedRequest();
-    if (captured.passName == m_capture.request.passName && captured.occurrence == m_capture.request.occurrence)
+    if (captured.passName == m_capture.request.passName && captured.occurrence == m_capture.request.occurrence) {
         ResolvePreferredOutput(m_capture.request, m_capture.Outputs());
+    }
     if (m_capture.HasPreview() && m_capturedGameView == m_gameView) {
         m_lastPreview = m_capture.CapturedRequest();
         m_lastPreviewValid = true;
@@ -316,21 +351,31 @@ void RenderPassViewerPanel::DrawToolbar(EditorContext& ctx)
     const bool canForward = m_historyPos + 1 < m_history.size();
 
     ImGui::BeginDisabled(!canBack);
-    if (ImGui::ArrowButton("##Back", ImGuiDir_Left)) StepHistory(-1);
+    if (ImGui::ArrowButton("##Back", ImGuiDir_Left)) {
+        StepHistory(-1);
+    }
     ImGui::EndDisabled();
-    if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled | ImGuiHoveredFlags_ForTooltip))
+    if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled | ImGuiHoveredFlags_ForTooltip)) {
         ImGui::SetTooltip("Back (Alt+Left / Mouse 4)");
+    }
     ImGui::SameLine(0.0f, 2.0f);
     ImGui::BeginDisabled(!canForward);
-    if (ImGui::ArrowButton("##Forward", ImGuiDir_Right)) StepHistory(+1);
+    if (ImGui::ArrowButton("##Forward", ImGuiDir_Right)) {
+        StepHistory(+1);
+    }
     ImGui::EndDisabled();
-    if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled | ImGuiHoveredFlags_ForTooltip))
+    if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled | ImGuiHoveredFlags_ForTooltip)) {
         ImGui::SetTooltip("Forward (Alt+Right / Mouse 5)");
+    }
 
     ImGui::SameLine(0.0f, 16.0f);
-    if (ToggleButton("Scene", !m_gameView)) m_gameView = false;
+    if (ToggleButton("Scene", !m_gameView)) {
+        m_gameView = false;
+    }
     ImGui::SameLine(0.0f, 1.0f);
-    if (ToggleButton("Game", m_gameView)) m_gameView = true;
+    if (ToggleButton("Game", m_gameView)) {
+        m_gameView = true;
+    }
 
     ImGui::SameLine(0.0f, 16.0f);
     ImGui::AlignTextToFramePadding();
@@ -370,10 +415,14 @@ void RenderPassViewerPanel::DrawToolbar(EditorContext& ctx)
         : "Options (" + std::to_string(overrides.size()) + " overrides)";
     AlignRight(ButtonWidth(optionsLabel.c_str()) + ImGui::GetStyle().ItemSpacing.x + ImGui::CalcTextSize("(?)").x);
     if (overrides.empty()) {
-        if (ImGui::Button(optionsLabel.c_str())) ImGui::OpenPopup("ViewerOptions");
+        if (ImGui::Button(optionsLabel.c_str())) {
+            ImGui::OpenPopup("ViewerOptions");
+        }
     } else {
         ImGui::PushStyleColor(ImGuiCol_Text, WARN_COLOR);
-        if (ImGui::Button(optionsLabel.c_str())) ImGui::OpenPopup("ViewerOptions");
+        if (ImGui::Button(optionsLabel.c_str())) {
+            ImGui::OpenPopup("ViewerOptions");
+        }
         ImGui::PopStyleColor();
     }
     DrawOptionsPopup(ctx);
@@ -390,7 +439,9 @@ void RenderPassViewerPanel::DrawToolbar(EditorContext& ctx)
 
 void RenderPassViewerPanel::DrawOptionsPopup(EditorContext& ctx)
 {
-    if (!ImGui::BeginPopup("ViewerOptions")) return;
+    if (!ImGui::BeginPopup("ViewerOptions")) {
+        return;
+    }
 
     auto resolved = ViewerRenderSettings(ctx);
     const bool readOnly = ViewerPipelineControlsReadOnly(ctx);
@@ -416,7 +467,9 @@ void RenderPassViewerPanel::DrawOptionsPopup(EditorContext& ctx)
     if (overrides.empty()) {
         ImGui::TextDisabled("None. Right-click a pass to add one.");
     } else {
-        if (!readOnly) ImGui::TextDisabled("Saved in ProjectSettings.");
+        if (!readOnly) {
+            ImGui::TextDisabled("Saved in ProjectSettings.");
+        }
         if (ImGui::BeginTable("Overrides", 3, ImGuiTableFlags_RowBg | ImGuiTableFlags_SizingFixedFit)) {
             for (std::size_t i = 0; i < overrides.size(); ++i) {
                 const auto& entry = overrides[i];
@@ -426,9 +479,15 @@ void RenderPassViewerPanel::DrawOptionsPopup(EditorContext& ctx)
                 ImGui::TextUnformatted(entry.name.c_str());
                 ImGui::TableSetColumnIndex(1);
                 std::string summary;
-                if (!entry.enabled) summary += "disabled  ";
-                if (!entry.allowCulling) summary += "keep  ";
-                if (!entry.extraReads.empty()) summary += "+" + std::to_string(entry.extraReads.size()) + " reads";
+                if (!entry.enabled) {
+                    summary += "disabled  ";
+                }
+                if (!entry.allowCulling) {
+                    summary += "keep  ";
+                }
+                if (!entry.extraReads.empty()) {
+                    summary += "+" + std::to_string(entry.extraReads.size()) + " reads";
+                }
                 ImGui::TextDisabled("%s", summary.c_str());
                 ImGui::TableSetColumnIndex(2);
                 const bool clear = ImGui::SmallButton("Clear");
@@ -440,7 +499,9 @@ void RenderPassViewerPanel::DrawOptionsPopup(EditorContext& ctx)
             }
             ImGui::EndTable();
         }
-        if (ImGui::Button("Clear all") && !readOnly) overrides.clear();
+        if (ImGui::Button("Clear all") && !readOnly) {
+            overrides.clear();
+        }
     }
     ImGui::EndDisabled();
     ImGui::EndPopup();
@@ -451,10 +512,14 @@ void RenderPassViewerPanel::SelectPass(const std::string& passName, std::size_t 
     auto& request = m_capture.request;
     const PassKey current{ request.passName, request.occurrence };
     const PassKey next{ passName, occurrence };
-    /// @note 履歴に積むのはクリックやジャンプだけ。↑↓ の 1 行送りまで積むと «戻る» が役に立たない。
+    // 履歴に積むのはクリックやジャンプだけ。↑↓ の 1 行送りまで積むと «戻る» が役に立たない。
     if (record && !(current == next)) {
-        if (!m_history.empty()) m_history.resize(m_historyPos + 1);
-        if (m_history.empty() || !(m_history.back() == current)) m_history.push_back(current);
+        if (!m_history.empty()) {
+            m_history.resize(m_historyPos + 1);
+        }
+        if (m_history.empty() || !(m_history.back() == current)) {
+            m_history.push_back(current);
+        }
         m_history.push_back(next);
         if (m_history.size() > HISTORY_LIMIT)
             m_history.erase(m_history.begin(),
@@ -462,7 +527,7 @@ void RenderPassViewerPanel::SelectPass(const std::string& passName, std::size_t 
         m_historyPos = m_history.size() - 1;
     }
 
-    /// @note 表示設定は見る側の好みなのでパスを跨いで持ち越す。送るたびに戻ると比較にならない。
+    // 表示設定は見る側の好みなのでパスを跨いで持ち越す。送るたびに戻ると比較にならない。
     const auto view = request.view;
     request = {};
     request.passName = passName;
@@ -474,7 +539,9 @@ void RenderPassViewerPanel::SelectPass(const std::string& passName, std::size_t 
 
 void RenderPassViewerPanel::RevealPass(std::size_t passIndex)
 {
-    if (passIndex >= m_passes.size()) return;
+    if (passIndex >= m_passes.size()) {
+        return;
+    }
     SelectPass(m_passes[passIndex].name, m_passes[passIndex].occurrence);
     m_scrollToSelected = true;
     m_scrollToGraphNode = true;
@@ -485,30 +552,40 @@ void RenderPassViewerPanel::ShowResource(const std::string& resource)
     auto& request = m_capture.request;
     request.outputName = resource;
     request.outputIsPreference = true;
-    /// @note 露出とガンマは残し、画像の種類に依存するモードとレンジだけ戻す。
+    // 露出とガンマは残し、画像の種類に依存するモードとレンジだけ戻す。
     request.view.mode = Capture::DisplayMode::AUTO;
     request.view.rangeMin = 0.0f;
     request.view.rangeMax = 1.0f;
     const auto& captured = m_capture.CapturedRequest();
-    if (captured.passName == request.passName && captured.occurrence == request.occurrence)
+    if (captured.passName == request.passName && captured.occurrence == request.occurrence) {
         ResolvePreferredOutput(request, m_capture.Outputs());
-    if (!m_pinnedOutput.empty()) m_pinnedOutput = request.outputName;
+    }
+    if (!m_pinnedOutput.empty()) {
+        m_pinnedOutput = request.outputName;
+    }
     m_tabRequest = Tab::PREVIEW;
 }
 
 void RenderPassViewerPanel::StepHistory(int step)
 {
-    if (m_history.empty()) return;
+    if (m_history.empty()) {
+        return;
+    }
     const PassKey current{ m_capture.request.passName, m_capture.request.occurrence };
     std::size_t target = NPOS;
     if (step < 0) {
-        /// @note ↑↓ で履歴の位置から離れていれば、まずその位置へ戻す。
-        if (!(m_history[m_historyPos] == current)) target = m_historyPos;
-        else if (m_historyPos > 0)                 target = m_historyPos - 1;
+        // ↑↓ で履歴の位置から離れていれば、まずその位置へ戻す。
+        if (!(m_history[m_historyPos] == current)) {
+            target = m_historyPos;
+        } else if (m_historyPos > 0) {
+            target = m_historyPos - 1;
+        }
     } else if (m_historyPos + 1 < m_history.size()) {
         target = m_historyPos + 1;
     }
-    if (target == NPOS) return;
+    if (target == NPOS) {
+        return;
+    }
     m_historyPos = target;
     SelectPass(m_history[target].name, m_history[target].occurrence, false);
     m_scrollToSelected = true;
@@ -518,33 +595,49 @@ void RenderPassViewerPanel::StepHistory(int step)
 void RenderPassViewerPanel::HandleNavigation()
 {
     if (ImGui::IsWindowHovered(ImGuiHoveredFlags_RootAndChildWindows | ImGuiHoveredFlags_AllowWhenBlockedByActiveItem)) {
-        if (ImGui::IsMouseClicked(3)) StepHistory(-1);
-        if (ImGui::IsMouseClicked(4)) StepHistory(+1);
+        if (ImGui::IsMouseClicked(3)) {
+            StepHistory(-1);
+        }
+        if (ImGui::IsMouseClicked(4)) {
+            StepHistory(+1);
+        }
     }
-    /// @note キーはフォーカス中だけ効かせる。Viewer を開いたままシーンを操作するときに矢印を奪わない。
-    if (!ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows)) return;
-
-    if (ImGui::GetIO().KeyAlt) {
-        if (ImGui::IsKeyPressed(ImGuiKey_LeftArrow, false))  StepHistory(-1);
-        if (ImGui::IsKeyPressed(ImGuiKey_RightArrow, false)) StepHistory(+1);
+    // キーはフォーカス中だけ効かせる。Viewer を開いたままシーンを操作するときに矢印を奪わない。
+    if (!ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows)) {
         return;
     }
 
-    if (m_visibleOrder.empty()) return;
+    if (ImGui::GetIO().KeyAlt) {
+        if (ImGui::IsKeyPressed(ImGuiKey_LeftArrow, false)) {
+            StepHistory(-1);
+        }
+        if (ImGui::IsKeyPressed(ImGuiKey_RightArrow, false)) {
+            StepHistory(+1);
+        }
+        return;
+    }
+
+    if (m_visibleOrder.empty()) {
+        return;
+    }
     const bool down = ImGui::IsKeyPressed(ImGuiKey_DownArrow, true);
     const bool up = ImGui::IsKeyPressed(ImGuiKey_UpArrow, true);
-    if (!down && !up) return;
+    if (!down && !up) {
+        return;
+    }
 
     const PassKey current{ m_capture.request.passName, m_capture.request.occurrence };
     const auto found = std::find(m_visibleOrder.begin(), m_visibleOrder.end(), current);
     const auto last = static_cast<std::ptrdiff_t>(m_visibleOrder.size()) - 1;
-    /// @note 選択が一覧から消えている (カリング・フィルタ) ときは端から入り直す。
+    // 選択が一覧から消えている (カリング・フィルタ) ときは端から入り直す。
     std::ptrdiff_t next = found == m_visibleOrder.end()
         ? (down ? 0 : last)
         : (found - m_visibleOrder.begin()) + (down ? 1 : -1);
     next = std::clamp<std::ptrdiff_t>(next, 0, last);
     const PassKey target = m_visibleOrder[static_cast<std::size_t>(next)];
-    if (target == current) return;
+    if (target == current) {
+        return;
+    }
 
     SelectPass(target.name, target.occurrence, false);
     m_scrollToSelected = true;
@@ -554,7 +647,9 @@ void RenderPassViewerPanel::HandleNavigation()
 std::size_t RenderPassViewerPanel::FindPass(const std::string& name, std::size_t occurrence) const
 {
     for (std::size_t i = 0; i < m_passes.size(); ++i)
-        if (m_passes[i].name == name && m_passes[i].occurrence == occurrence) return i;
+        if (m_passes[i].name == name && m_passes[i].occurrence == occurrence) {
+            return i;
+        }
     return NPOS;
 }
 
@@ -566,7 +661,9 @@ std::size_t RenderPassViewerPanel::SelectedIndex() const
 std::size_t RenderPassViewerPanel::ProducerOf(const std::string& resource, std::size_t beforeIndex) const
 {
     for (std::size_t i = std::min(beforeIndex, m_passes.size()); i-- > 0;)
-        if (!m_passes[i].culled && Writes(m_passes[i], resource)) return i;
+        if (!m_passes[i].culled && Writes(m_passes[i], resource)) {
+            return i;
+        }
     return NPOS;
 }
 
@@ -574,9 +671,15 @@ std::vector<std::size_t> RenderPassViewerPanel::ConsumersOf(const std::string& r
 {
     std::vector<std::size_t> consumers;
     for (std::size_t i = afterIndex + 1; i < m_passes.size(); ++i) {
-        if (m_passes[i].culled) continue;
-        if (Reads(m_passes[i], resource)) consumers.push_back(i);
-        if (Writes(m_passes[i], resource)) break;
+        if (m_passes[i].culled) {
+            continue;
+        }
+        if (Reads(m_passes[i], resource)) {
+            consumers.push_back(i);
+        }
+        if (Writes(m_passes[i], resource)) {
+            break;
+        }
     }
     return consumers;
 }
@@ -589,10 +692,12 @@ void RenderPassViewerPanel::DrawPassOverride(EditorContext& ctx, const std::stri
     const auto found = std::find_if(overrides.begin(), overrides.end(),
         [&passName](const renderer::RenderPassOverride& entry) { return entry.name == passName; });
 
-    /// @note 表に無いパスも既定値で編集させ、既定から外れたときだけ表へ足す。何も変えていない行を溜めない。
+    // 表に無いパスも既定値で編集させ、既定から外れたときだけ表へ足す。何も変えていない行を溜めない。
     renderer::RenderPassOverride edited;
     edited.name = passName;
-    if (found != overrides.end()) edited = *found;
+    if (found != overrides.end()) {
+        edited = *found;
+    }
     const renderer::RenderPassOverride before = edited;
 
     if (readOnly) ImGui::TextDisabled("%s", ctx.playMode && !ctx.playMode->IsInEditor()
@@ -600,10 +705,11 @@ void RenderPassViewerPanel::DrawPassOverride(EditorContext& ctx, const std::stri
     ImGui::BeginDisabled(readOnly);
     ImGui::Checkbox("Enabled", &edited.enabled);
     ImGui::SetItemTooltip("Drop this pass from the graph. Passes that consume its output are culled with it.");
-    /// @note allowCulling は «刈ってよいか»。UI では意図に近い逆向きの «残す» で見せる。
+    // allowCulling は «刈ってよいか»。UI では意図に近い逆向きの «残す» で見せる。
     bool keepAlive = !edited.allowCulling;
-    if (ImGui::Checkbox("Keep even if unused", &keepAlive))
+    if (ImGui::Checkbox("Keep even if unused", &keepAlive)) {
         edited.allowCulling = !keepAlive;
+    }
     ImGui::SetItemTooltip("Run this pass even when nothing reads its output.\n"
                           "Unchecking restores the pass's own setting; it cannot make a\n"
                           "must-run pass cullable.");
@@ -624,34 +730,48 @@ void RenderPassViewerPanel::DrawPassOverride(EditorContext& ctx, const std::stri
         }
     }
 
-    /// @note 候補は «このフレームに実在する名前» だけ。手打ちを許すと綴り違いで Plan が落ち画面が消える。
+    // 候補は «このフレームに実在する名前» だけ。手打ちを許すと綴り違いで Plan が落ち画面が消える。
     std::vector<std::string> offered;
     for (const auto& pass : m_passes)
-        for (const auto& access : pass.accesses) offered.push_back(access.name);
-    for (const auto& tile : m_capture.Gallery()) offered.push_back(tile.resource);
+        for (const auto& access : pass.accesses) {
+            offered.push_back(access.name);
+        }
+    for (const auto& tile : m_capture.Gallery()) {
+        offered.push_back(tile.resource);
+    }
     std::sort(offered.begin(), offered.end());
     offered.erase(std::unique(offered.begin(), offered.end()), offered.end());
 
     ImGui::SetNextItemWidth(220.0f);
     if (ImGui::BeginCombo("##AddRead", "Add read...", ImGuiComboFlags_HeightLarge)) {
         for (const auto& name : offered) {
-            if (std::find(edited.extraReads.begin(), edited.extraReads.end(), name) != edited.extraReads.end())
+            if (std::find(edited.extraReads.begin(), edited.extraReads.end(), name) != edited.extraReads.end()) {
                 continue;
-            if (!ImGui::Selectable(name.c_str())) continue;
+            }
+            if (!ImGui::Selectable(name.c_str())) {
+                continue;
+            }
             edited.extraReads.push_back(name);
             break;
         }
         ImGui::EndCombo();
     }
     ImGui::EndDisabled();
-    if (readOnly) return;
+    if (readOnly) {
+        return;
+    }
 
     if (edited.enabled == before.enabled && edited.allowCulling == before.allowCulling
-        && edited.extraReads == before.extraReads) return;
+        && edited.extraReads == before.extraReads) {
+        return;
+    }
 
     if (found != overrides.end()) {
-        if (edited.IsDefault()) overrides.erase(found);
-        else                    *found = std::move(edited);
+        if (edited.IsDefault()) {
+            overrides.erase(found);
+        } else {
+            *found = std::move(edited);
+        }
     } else if (!edited.IsDefault()) {
         overrides.push_back(std::move(edited));
     }
@@ -660,16 +780,18 @@ void RenderPassViewerPanel::DrawPassOverride(EditorContext& ctx, const std::stri
 void RenderPassViewerPanel::DrawPassTooltip(const Capture::PassInfo& pass) const
 {
     ImGui::TextUnformatted(PassLabel(pass).c_str());
-    if (pass.culled)
+    if (pass.culled) {
         ImGui::TextColored(WARN_COLOR, "Culled - nothing consumed its output.");
+    }
     char cpu[32];
     char gpu[32];
     FormatMs(cpu, sizeof(cpu), pass.cpuMs);
     FormatMs(gpu, sizeof(gpu), pass.gpuMs);
     ImGui::TextDisabled("CPU %s ms   GPU* %s ms", cpu, gpu);
     ImGui::Separator();
-    if (pass.accesses.empty())
+    if (pass.accesses.empty()) {
         ImGui::TextDisabled("No image resources declared.");
+    }
     for (const auto& access : pass.accesses) {
         ImGui::TextColored(UsageColor(access.usage), "%-2s", UsageTag(access.usage));
         ImGui::SameLine();
@@ -681,7 +803,9 @@ void RenderPassViewerPanel::DrawResourceLinks(const std::string& resource, std::
 {
     ImGui::TextUnformatted(resource.c_str());
     ImGui::Separator();
-    if (passIndex != NPOS && ImGui::MenuItem("Show in Preview")) ShowResource(resource);
+    if (passIndex != NPOS && ImGui::MenuItem("Show in Preview")) {
+        ShowResource(resource);
+    }
 
     const bool writesHere = passIndex != NPOS && Writes(m_passes[passIndex], resource);
     const std::size_t producer = ProducerOf(resource, passIndex);
@@ -697,15 +821,18 @@ void RenderPassViewerPanel::DrawResourceLinks(const std::string& resource, std::
         ImGui::PopID();
     }
 
-    /// @note 消費者は «このパスの書き込み» か、読むだけなら «読んでいる値を書いたパス» を起点に数える。
+    // 消費者は «このパスの書き込み» か、読むだけなら «読んでいる値を書いたパス» を起点に数える。
     const std::size_t origin = writesHere ? passIndex : producer;
     const auto consumers = origin == NPOS ? std::vector<std::size_t>{} : ConsumersOf(resource, origin);
     ImGui::SeparatorText("Consumers");
-    if (consumers.empty()) ImGui::TextDisabled("None this frame");
+    if (consumers.empty()) {
+        ImGui::TextDisabled("None this frame");
+    }
     for (const std::size_t consumer : consumers) {
         ImGui::PushID(static_cast<int>(consumer));
-        if (ImGui::MenuItem(PassLabel(m_passes[consumer]).c_str(), nullptr, consumer == passIndex))
+        if (ImGui::MenuItem(PassLabel(m_passes[consumer]).c_str(), nullptr, consumer == passIndex)) {
             RevealPass(consumer);
+        }
         ImGui::PopID();
     }
 }
@@ -717,8 +844,9 @@ void RenderPassViewerPanel::DrawPassList(EditorContext& ctx)
     const ImGuiStyle& style = ImGui::GetStyle();
     const float culledWidth = LabeledWidth(ImGui::GetFrameHeight(), "Culled");
     ImGui::SetNextItemWidth(std::max(80.0f, ImGui::GetContentRegionAvail().x - culledWidth - style.ItemSpacing.x));
-    if (ImGui::InputTextWithHint("##PassFilter", "Filter passes", m_filter.InputBuf, IM_ARRAYSIZE(m_filter.InputBuf)))
+    if (ImGui::InputTextWithHint("##PassFilter", "Filter passes", m_filter.InputBuf, IM_ARRAYSIZE(m_filter.InputBuf))) {
         m_filter.Build();
+    }
     ImGui::SetItemTooltip("Comma-separated terms; prefix with - to exclude.\n"
                           "Up / Down steps through the list while this panel has focus.");
     ImGui::SameLine();
@@ -728,7 +856,9 @@ void RenderPassViewerPanel::DrawPassList(EditorContext& ctx)
     m_visibleOrder.clear();
     if (!ImGui::BeginTable("Passes", 4,
         ImGuiTableFlags_RowBg | ImGuiTableFlags_ScrollY | ImGuiTableFlags_Resizable | ImGuiTableFlags_BordersInnerV,
-        { 0.0f, std::max(80.0f, ImGui::GetContentRegionAvail().y) })) return;
+        { 0.0f, std::max(80.0f, ImGui::GetContentRegionAvail().y) })) {
+        return;
+    }
     ImGui::TableSetupColumn("#", ImGuiTableColumnFlags_WidthFixed, 26.0f);
     ImGui::TableSetupColumn("Pass", ImGuiTableColumnFlags_WidthStretch);
     ImGui::TableSetupColumn("CPU ms", ImGuiTableColumnFlags_WidthFixed, 64.0f);
@@ -743,7 +873,9 @@ void RenderPassViewerPanel::DrawPassList(EditorContext& ctx)
 
     for (std::size_t index = 0; index < m_passes.size(); ++index) {
         const auto& pass = m_passes[index];
-        if ((!m_showCulled && pass.culled) || !m_filter.PassFilter(pass.name.c_str())) continue;
+        if ((!m_showCulled && pass.culled) || !m_filter.PassFilter(pass.name.c_str())) {
+            continue;
+        }
         m_visibleOrder.push_back({ pass.name, pass.occurrence });
         ImGui::PushID(static_cast<int>(pass.graphIndex));
         ImGui::TableNextRow();
@@ -756,15 +888,24 @@ void RenderPassViewerPanel::DrawPassList(EditorContext& ctx)
             m_scrollToSelected = false;
         }
         char number[16];
-        if (pass.culled) std::snprintf(number, sizeof(number), "--");
-        else             std::snprintf(number, sizeof(number), "%zu", index + 1);
-        if (pass.culled) ImGui::PushStyleColor(ImGuiCol_Text, disabledText);
+        if (pass.culled) {
+            std::snprintf(number, sizeof(number), "--");
+        } else {
+            std::snprintf(number, sizeof(number), "%zu", index + 1);
+        }
+        if (pass.culled) {
+            ImGui::PushStyleColor(ImGuiCol_Text, disabledText);
+        }
         const bool clicked = ImGui::Selectable(number, selected,
             ImGuiSelectableFlags_SpanAllColumns | ImGuiSelectableFlags_AllowDoubleClick);
-        if (pass.culled) ImGui::PopStyleColor();
+        if (pass.culled) {
+            ImGui::PopStyleColor();
+        }
         if (clicked) {
             SelectPass(pass.name, pass.occurrence);
-            if (ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left)) m_tabRequest = Tab::PREVIEW;
+            if (ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left)) {
+                m_tabRequest = Tab::PREVIEW;
+            }
         }
         if (ImGui::BeginItemTooltip()) {
             DrawPassTooltip(pass);
@@ -779,8 +920,11 @@ void RenderPassViewerPanel::DrawPassList(EditorContext& ctx)
         }
 
         ImGui::TableSetColumnIndex(1);
-        if (pass.culled) ImGui::TextDisabled("%s", pass.name.c_str());
-        else             ImGui::TextUnformatted(pass.name.c_str());
+        if (pass.culled) {
+            ImGui::TextDisabled("%s", pass.name.c_str());
+        } else {
+            ImGui::TextUnformatted(pass.name.c_str());
+        }
         if (pass.occurrence > 0) {
             ImGui::SameLine(0.0f, 4.0f);
             ImGui::TextDisabled("[%zu]", pass.occurrence + 1);
@@ -796,7 +940,7 @@ void RenderPassViewerPanel::DrawPassList(EditorContext& ctx)
         if (pass.cpuMs < 0.0) {
             ImGui::TextDisabled("--");
         } else {
-            /// @note 行の中の棒で重さを一目で比べられるようにする。基準はフレーム内の最も遅いパス。
+            // 行の中の棒で重さを一目で比べられるようにする。基準はフレーム内の最も遅いパス。
             const float ratio = m_slowestMs > 0.0 ? static_cast<float>(pass.cpuMs / m_slowestMs) : 0.0f;
             const ImVec2 origin = ImGui::GetCursorScreenPos();
             const float width = ImGui::GetContentRegionAvail().x;
@@ -805,17 +949,24 @@ void RenderPassViewerPanel::DrawPassList(EditorContext& ctx)
             ImGui::Text("%.3f", pass.cpuMs);
         }
         ImGui::TableSetColumnIndex(3);
-        if (pass.gpuMs < 0.0) ImGui::TextDisabled("--");
-        else                  ImGui::Text("%.3f", pass.gpuMs);
+        if (pass.gpuMs < 0.0) {
+            ImGui::TextDisabled("--");
+        } else {
+            ImGui::Text("%.3f", pass.gpuMs);
+        }
         ImGui::PopID();
     }
 
-    /// @note 無効化したパスはグラフに載らず一覧から消えるので、上書き側から復帰の口を残す。
+    // 無効化したパスはグラフに載らず一覧から消えるので、上書き側から復帰の口を残す。
     for (std::size_t i = 0; i < overrides.size(); ++i) {
-        /// @note 値で受ける。行の編集がこのベクターを組み替えるので要素への参照は残せない。
+        // 値で受ける。行の編集がこのベクターを組み替えるので要素への参照は残せない。
         const std::string name = overrides[i].name;
-        if (overrides[i].enabled) continue;
-        if (!m_filter.PassFilter(name.c_str())) continue;
+        if (overrides[i].enabled) {
+            continue;
+        }
+        if (!m_filter.PassFilter(name.c_str())) {
+            continue;
+        }
         ImGui::PushID(static_cast<int>(1000000 + i));
         ImGui::TableNextRow();
         ImGui::TableSetColumnIndex(0);
@@ -869,9 +1020,15 @@ void RenderPassViewerPanel::DrawSelection(EditorContext& ctx)
         [&request](const renderer::RenderPassOverride& entry) { return entry.name == request.passName; });
     const char* overrideLabel = overridden ? "Overridden..." : "Override...";
     AlignRight(ButtonWidth(overrideLabel));
-    if (overridden) ImGui::PushStyleColor(ImGuiCol_Text, WARN_COLOR);
-    if (ImGui::SmallButton(overrideLabel)) ImGui::OpenPopup("SelectionOverride");
-    if (overridden) ImGui::PopStyleColor();
+    if (overridden) {
+        ImGui::PushStyleColor(ImGuiCol_Text, WARN_COLOR);
+    }
+    if (ImGui::SmallButton(overrideLabel)) {
+        ImGui::OpenPopup("SelectionOverride");
+    }
+    if (overridden) {
+        ImGui::PopStyleColor();
+    }
     if (ImGui::BeginPopup("SelectionOverride")) {
         const std::string passName = request.passName;
         ImGui::TextUnformatted(passName.c_str());
@@ -882,19 +1039,25 @@ void RenderPassViewerPanel::DrawSelection(EditorContext& ctx)
 
     if (index != NPOS) {
         const auto& pass = m_passes[index];
-        if (pass.accesses.empty())
+        if (pass.accesses.empty()) {
             ImGui::TextDisabled("No image resources declared (e.g. compute buffers only).");
+        }
         for (std::size_t i = 0; i < pass.accesses.size(); ++i) {
             const auto& access = pass.accesses[i];
             ImGui::PushID(static_cast<int>(i));
             const std::string label = std::string(UsageTag(access.usage)) + "  " + access.name;
-            if (Chip(label.c_str(), UsageColor(access.usage), i == 0)) ShowResource(access.name);
+            if (Chip(label.c_str(), UsageColor(access.usage), i == 0)) {
+                ShowResource(access.name);
+            }
             if (ImGui::BeginItemTooltip()) {
                 ImGui::TextUnformatted(access.name.c_str());
                 if (access.usage != Usage::Write) {
                     const std::size_t producer = ProducerOf(access.name, index);
-                    if (producer == NPOS) ImGui::TextDisabled("No earlier producer this frame.");
-                    else ImGui::Text("Produced by %s", PassLabel(m_passes[producer]).c_str());
+                    if (producer == NPOS) {
+                        ImGui::TextDisabled("No earlier producer this frame.");
+                    } else {
+                        ImGui::Text("Produced by %s", PassLabel(m_passes[producer]).c_str());
+                    }
                 }
                 if (access.usage != Usage::Read) {
                     const std::size_t consumers = ConsumersOf(access.name, index).size();
@@ -917,14 +1080,17 @@ void RenderPassViewerPanel::DrawSelection(EditorContext& ctx)
 void RenderPassViewerPanel::DrawViewSettings(Capture::ViewSettings& view, bool inlineRow)
 {
     const auto place = [inlineRow](float width) {
-        if (inlineRow) FlowSameLine(width);
+        if (inlineRow) {
+            FlowSameLine(width);
+        }
     };
 
     int mode = static_cast<int>(view.mode);
     place(LabeledWidth(140.0f, "Display"));
     ImGui::SetNextItemWidth(140.0f);
-    if (ImGui::Combo("Display", &mode, "Auto\0RGB\0Red\0Green\0Blue\0Alpha\0Signed vector\0Linear depth\0"))
+    if (ImGui::Combo("Display", &mode, "Auto\0RGB\0Red\0Green\0Blue\0Alpha\0Signed vector\0Linear depth\0")) {
         view.mode = static_cast<Capture::DisplayMode>(mode);
+    }
     ImGui::SetItemTooltip("Auto: depth as linear depth (camera) or red, everything else as RGB.");
 
     place(LabeledWidth(ImGui::GetFrameHeight(), "Gamma"));
@@ -947,7 +1113,9 @@ void RenderPassViewerPanel::DrawViewSettings(Capture::ViewSettings& view, bool i
                           "Shadow atlases use raw depth in Auto. G-Buffer normals use RGB.");
 
     place(ButtonWidth("Reset"));
-    if (ImGui::SmallButton("Reset")) view = {};
+    if (ImGui::SmallButton("Reset")) {
+        view = {};
+    }
 }
 
 void RenderPassViewerPanel::DrawPreview(EditorContext& ctx)
@@ -960,29 +1128,36 @@ void RenderPassViewerPanel::DrawPreview(EditorContext& ctx)
     const std::string& resolved = m_capture.ResolvedOutputName();
     const std::size_t index = SelectedIndex();
 
-    /// @note コンボは «実際に映しているもの» を出す。固定が通らず主出力へ落ちたとき名前と絵が食い違わないように。
+    // コンボは «実際に映しているもの» を出す。固定が通らず主出力へ落ちたとき名前と絵が食い違わないように。
     const char* comboLabel = !resolved.empty() ? resolved.c_str()
                            : (request.outputName.empty() ? "Select output" : request.outputName.c_str());
     ImGui::SetNextItemWidth(std::clamp(ImGui::GetContentRegionAvail().x * 0.4f, 180.0f, 360.0f));
     if (ImGui::BeginCombo("##Output", comboLabel, ImGuiComboFlags_HeightLarge)) {
-        if (!samePass) ImGui::TextDisabled("Capturing...");
-        else if (outputs.empty()) ImGui::TextDisabled("This pass has no 2D image outputs.");
+        if (!samePass) {
+            ImGui::TextDisabled("Capturing...");
+        } else if (outputs.empty()) {
+            ImGui::TextDisabled("This pass has no 2D image outputs.");
+        }
         for (std::size_t i = 0; samePass && i < outputs.size(); ++i) {
             const auto& output = outputs[i];
             const std::string resource = ResourceOfOutput(output.name);
             const char* tag = "  ";
             if (index != NPOS) {
                 for (const auto& access : m_passes[index].accesses)
-                    if (access.name == resource) tag = UsageTag(access.usage);
+                    if (access.name == resource) {
+                        tag = UsageTag(access.usage);
+                    }
             }
             char label[512];
             std::snprintf(label, sizeof(label), "%-2s  %s", tag, output.name.c_str());
             ImGui::PushID(static_cast<int>(i));
             if (ImGui::Selectable(label, resolved == output.name)) {
                 request.outputName = output.name;
-                /// @note 手で選んだ名前は «指定»。固定中なら固定先も差し替える。
+                // 手で選んだ名前は «指定»。固定中なら固定先も差し替える。
                 request.outputIsPreference = !m_pinnedOutput.empty();
-                if (!m_pinnedOutput.empty()) m_pinnedOutput = output.name;
+                if (!m_pinnedOutput.empty()) {
+                    m_pinnedOutput = output.name;
+                }
                 request.view.mode = Capture::DisplayMode::AUTO;
                 request.view.rangeMin = 0.0f;
                 request.view.rangeMax = 1.0f;
@@ -995,7 +1170,7 @@ void RenderPassViewerPanel::DrawPreview(EditorContext& ctx)
     ImGui::SameLine();
     bool pinned = !m_pinnedOutput.empty();
     if (ImGui::Checkbox("Pin", &pinned)) {
-        /// @note 空の request.outputName を掴むと何も固定されないので、解決後の名前を掴む。
+        // 空の request.outputName を掴むと何も固定されないので、解決後の名前を掴む。
         m_pinnedOutput = pinned ? resolved : std::string{};
         request.outputName = m_pinnedOutput;
         request.outputIsPreference = pinned;
@@ -1021,7 +1196,7 @@ void RenderPassViewerPanel::DrawPreview(EditorContext& ctx)
         return;
     }
 
-    /// @note 捕捉が追いつくまでは直前の絵を残して注記だけ重ねる。消すと設定を触るたびに点滅する。
+    // 捕捉が追いつくまでは直前の絵を残して注記だけ重ねる。消すと設定を触るたびに点滅する。
     std::string overlay;
     if (!haveCurrent) {
         overlay = m_live ? m_capture.Status() : "Stale - the view did not render this frame.";
@@ -1030,7 +1205,9 @@ void RenderPassViewerPanel::DrawPreview(EditorContext& ctx)
         overlay = "Updating...";
     }
     if (pinned && !resolved.empty() && resolved != m_pinnedOutput) {
-        if (!overlay.empty()) overlay += '\n';
+        if (!overlay.empty()) {
+            overlay += '\n';
+        }
         overlay += m_pinnedOutput + " is not used here - showing " + resolved;
     }
     DrawImageCanvas(texture, static_cast<float>(m_capture.Width()), static_cast<float>(m_capture.Height()),
@@ -1057,8 +1234,12 @@ void RenderPassViewerPanel::DrawImageCanvas(ImTextureID texture, float width, fl
         const bool active = ImGui::IsItemActive();
         const bool keys = hovered && !io.WantTextInput;
 
-        if (hovered && ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left)) m_fit = true;
-        if (keys && ImGui::IsKeyPressed(ImGuiKey_F, false)) m_fit = true;
+        if (hovered && ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left)) {
+            m_fit = true;
+        }
+        if (keys && ImGui::IsKeyPressed(ImGuiKey_F, false)) {
+            m_fit = true;
+        }
         if (keys && ImGui::IsKeyPressed(ImGuiKey_1, false)) {
             m_fit = false;
             m_zoom = 1.0f;
@@ -1071,7 +1252,7 @@ void RenderPassViewerPanel::DrawImageCanvas(ImTextureID texture, float width, fl
             m_panY = 0.0f;
         }
         if (hovered && io.MouseWheel != 0.0f) {
-            /// @note カーソル下の画素を動かさずに拡大する。パンは画像中心からのずれで持つ。
+            // カーソル下の画素を動かさずに拡大する。パンは画像中心からのずれで持つ。
             const float next = std::clamp(m_zoom * std::pow(1.2f, io.MouseWheel), 0.02f, 64.0f);
             const float relX = io.MousePos.x - (min.x + area.x * 0.5f + m_panX);
             const float relY = io.MousePos.y - (min.y + area.y * 0.5f + m_panY);
@@ -1087,8 +1268,10 @@ void RenderPassViewerPanel::DrawImageCanvas(ImTextureID texture, float width, fl
             m_panY += io.MouseDelta.y;
             m_fit = false;
         }
-        if (dragging) ImGui::SetMouseCursor(ImGuiMouseCursor_ResizeAll);
-        /// @note 画像を見失わないよう、中心がキャンバス外へ半分以上出ないように留める。
+        if (dragging) {
+            ImGui::SetMouseCursor(ImGuiMouseCursor_ResizeAll);
+        }
+        // 画像を見失わないよう、中心がキャンバス外へ半分以上出ないように留める。
         const float limitX = (width * m_zoom + area.x) * 0.5f;
         const float limitY = (height * m_zoom + area.y) * 0.5f;
         m_panX = std::clamp(m_panX, -limitX, limitX);
@@ -1106,7 +1289,9 @@ void RenderPassViewerPanel::DrawImageCanvas(ImTextureID texture, float width, fl
         draw->AddImage(texture, imageMin, imageMax);
         draw->AddRect({ imageMin.x - 1.0f, imageMin.y - 1.0f }, { imageMax.x + 1.0f, imageMax.y + 1.0f },
                       ImGui::GetColorU32(ImGuiCol_Border));
-        if (overlay) DrawOverlayText(draw, { min.x + 8.0f, min.y + 8.0f }, overlay, ImGui::GetColorU32(WARN_COLOR));
+        if (overlay) {
+            DrawOverlayText(draw, { min.x + 8.0f, min.y + 8.0f }, overlay, ImGui::GetColorU32(WARN_COLOR));
+        }
         draw->PopClipRect();
 
         if (hovered) {
@@ -1125,14 +1310,19 @@ void RenderPassViewerPanel::DrawImageCanvas(ImTextureID texture, float width, fl
     ImGui::SameLine(0.0f, 16.0f);
     ImGui::TextDisabled("%.0f%%", m_zoom * 100.0f);
     ImGui::SameLine(0.0f, 16.0f);
-    if (hoverX >= 0) ImGui::Text("px %d, %d", hoverX, hoverY);
-    else             ImGui::TextDisabled("px --");
+    if (hoverX >= 0) {
+        ImGui::Text("px %d, %d", hoverX, hoverY);
+    } else {
+        ImGui::TextDisabled("px --");
+    }
     ImGui::SameLine(0.0f, 16.0f);
     ImGui::TextDisabled("(?)");
     ImGui::SetItemTooltip("Wheel: zoom at cursor   Drag: pan   Double-click / F: fit   1: 100%%\n"
                           "Magenta = non-finite value.");
     AlignRight(ButtonWidth("Fit") + ImGui::GetStyle().ItemSpacing.x + ButtonWidth("1:1"));
-    if (ImGui::Button("Fit")) m_fit = true;
+    if (ImGui::Button("Fit")) {
+        m_fit = true;
+    }
     ImGui::SameLine();
     if (ImGui::Button("1:1")) {
         m_fit = false;
@@ -1146,10 +1336,12 @@ void RenderPassViewerPanel::DrawGraph(EditorContext& ctx)
 {
     std::vector<std::size_t> executed;
     for (std::size_t i = 0; i < m_passes.size(); ++i)
-        if (!m_passes[i].culled) executed.push_back(i);
+        if (!m_passes[i].culled) {
+            executed.push_back(i);
+        }
     const std::size_t count = executed.size();
 
-    /// @note 辺は «前で最後にそれを書いたパス» への read-after-write。スケジューラーと同じ規則なので申告漏れはここにも出ない。
+    // 辺は «前で最後にそれを書いたパス» への read-after-write。スケジューラーと同じ規則なので申告漏れはここにも出ない。
     struct Edge {
         std::size_t from;
         std::size_t to;
@@ -1160,9 +1352,13 @@ void RenderPassViewerPanel::DrawGraph(EditorContext& ctx)
     std::vector<std::vector<std::size_t>> predecessors(count);
     for (std::size_t slot = 0; slot < count; ++slot) {
         for (const auto& access : m_passes[executed[slot]].accesses) {
-            if (access.usage == Usage::Write) continue;
+            if (access.usage == Usage::Write) {
+                continue;
+            }
             for (std::size_t back = slot; back-- > 0;) {
-                if (!Writes(m_passes[executed[back]], access.name)) continue;
+                if (!Writes(m_passes[executed[back]], access.name)) {
+                    continue;
+                }
                 const auto edge = std::find_if(edges.begin(), edges.end(),
                     [back, slot](const Edge& e) { return e.from == back && e.to == slot; });
                 if (edge == edges.end()) {
@@ -1178,14 +1374,19 @@ void RenderPassViewerPanel::DrawGraph(EditorContext& ctx)
     }
 
     int columns = 0;
-    for (const int c : column) columns = std::max(columns, c + 1);
+    for (const int c : column) {
+        columns = std::max(columns, c + 1);
+    }
     std::vector<std::vector<std::size_t>> byColumn(static_cast<std::size_t>(columns));
-    for (std::size_t slot = 0; slot < count; ++slot)
+    for (std::size_t slot = 0; slot < count; ++slot) {
         byColumn[static_cast<std::size_t>(column[slot])].push_back(slot);
+    }
     std::size_t tallest = 0;
-    for (const auto& members : byColumn) tallest = std::max(tallest, members.size());
+    for (const auto& members : byColumn) {
+        tallest = std::max(tallest, members.size());
+    }
 
-    /// @note 列の中は前段の行の平均で並べる (重心法)。実行順のまま積むと辺が交差して追えない。
+    // 列の中は前段の行の平均で並べる (重心法)。実行順のまま積むと辺が交差して追えない。
     std::vector<float> row(count, 0.0f);
     for (auto& members : byColumn) {
         std::vector<std::pair<float, std::size_t>> order;
@@ -1194,7 +1395,9 @@ void RenderPassViewerPanel::DrawGraph(EditorContext& ctx)
             float key = static_cast<float>(i);
             if (!predecessors[slot].empty()) {
                 key = 0.0f;
-                for (const std::size_t pred : predecessors[slot]) key += row[pred];
+                for (const std::size_t pred : predecessors[slot]) {
+                    key += row[pred];
+                }
                 key /= static_cast<float>(predecessors[slot].size());
             }
             order.emplace_back(key, slot);
@@ -1202,8 +1405,9 @@ void RenderPassViewerPanel::DrawGraph(EditorContext& ctx)
         std::stable_sort(order.begin(), order.end(),
             [](const auto& a, const auto& b) { return a.first < b.first; });
         const float offset = static_cast<float>(tallest - members.size()) * 0.5f;
-        for (std::size_t i = 0; i < order.size(); ++i)
+        for (std::size_t i = 0; i < order.size(); ++i) {
             row[order[i].second] = offset + static_cast<float>(i);
+        }
     }
 
     ImGui::Checkbox("Heat", &m_graphHeat);
@@ -1252,8 +1456,9 @@ void RenderPassViewerPanel::DrawGraph(EditorContext& ctx)
         std::size_t selectedSlot = NPOS;
         for (std::size_t slot = 0; slot < count; ++slot) {
             const auto& pass = m_passes[executed[slot]];
-            if (pass.name == m_capture.request.passName && pass.occurrence == m_capture.request.occurrence)
+            if (pass.name == m_capture.request.passName && pass.occurrence == m_capture.request.occurrence) {
                 selectedSlot = slot;
+            }
         }
 
         const auto nodeX = [&column](std::size_t slot) {
@@ -1314,21 +1519,29 @@ void RenderPassViewerPanel::DrawGraph(EditorContext& ctx)
                 SelectPass(pass.name, pass.occurrence);
                 m_scrollToSelected = true;
                 selectedSlot = hoveredSlot;
-                if (ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left)) m_tabRequest = Tab::PREVIEW;
+                if (ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left)) {
+                    m_tabRequest = Tab::PREVIEW;
+                }
             }
             if (ImGui::IsItemClicked(ImGuiMouseButton_Right)) {
                 m_graphMenuPass = pass.name;
                 ImGui::OpenPopup("GraphNodeMenu");
             }
-            if (!active) ImGui::SetMouseCursor(ImGuiMouseCursor_Hand);
+            if (!active) {
+                ImGui::SetMouseCursor(ImGuiMouseCursor_Hand);
+            }
         }
 
-        /// @note 注目するパス (ホバー優先、無ければ選択) の前後だけを色付けし、残りは沈める。
+        // 注目するパス (ホバー優先、無ければ選択) の前後だけを色付けし、残りは沈める。
         const std::size_t focus = hoveredSlot != NPOS ? hoveredSlot : selectedSlot;
         std::vector<int> relation(count, 0);
         for (const Edge& edge : edges) {
-            if (edge.to == focus)   relation[edge.from] |= 1;
-            if (edge.from == focus) relation[edge.to] |= 2;
+            if (edge.to == focus) {
+                relation[edge.from] |= 1;
+            }
+            if (edge.from == focus) {
+                relation[edge.to] |= 2;
+            }
         }
 
         ImDrawList* draw = ImGui::GetWindowDrawList();
@@ -1342,7 +1555,9 @@ void RenderPassViewerPanel::DrawGraph(EditorContext& ctx)
             draw->AddBezierCubic(out, { out.x + bend, out.y }, { in.x - bend, in.y }, in, color, thickness);
             const float arrow = std::max(3.0f, 5.0f * zoom);
             draw->AddTriangleFilled(in, { in.x - arrow * 1.6f, in.y - arrow }, { in.x - arrow * 1.6f, in.y + arrow }, color);
-            if (!label || zoom < 0.6f) return;
+            if (!label || zoom < 0.6f) {
+                return;
+            }
             const std::string text = widgets::ElideToWidth(edge.resources.c_str(), 180.0f);
             const ImVec2 size = ImGui::CalcTextSize(text.c_str());
             const ImVec2 mid{ (out.x + in.x) * 0.5f - size.x * 0.5f, (out.y + in.y) * 0.5f - size.y * 0.5f };
@@ -1353,10 +1568,16 @@ void RenderPassViewerPanel::DrawGraph(EditorContext& ctx)
 
         const ImU32 idleEdge = ImGui::GetColorU32(ImGuiCol_PlotLines, focus == NPOS ? 0.7f : 0.18f);
         for (const Edge& edge : edges)
-            if (edge.from != focus && edge.to != focus) drawEdge(edge, idleEdge, 1.4f, false);
+            if (edge.from != focus && edge.to != focus) {
+                drawEdge(edge, idleEdge, 1.4f, false);
+            }
         for (const Edge& edge : edges) {
-            if (edge.to == focus)   drawEdge(edge, ImGui::GetColorU32(READ_COLOR), 2.2f, true);
-            if (edge.from == focus) drawEdge(edge, ImGui::GetColorU32(WRITE_COLOR), 2.2f, true);
+            if (edge.to == focus) {
+                drawEdge(edge, ImGui::GetColorU32(READ_COLOR), 2.2f, true);
+            }
+            if (edge.from == focus) {
+                drawEdge(edge, ImGui::GetColorU32(WRITE_COLOR), 2.2f, true);
+            }
         }
 
         const float fontScale = std::min(zoom, 1.3f);
@@ -1365,7 +1586,9 @@ void RenderPassViewerPanel::DrawGraph(EditorContext& ctx)
             const auto& pass = m_passes[executed[slot]];
             const ImVec2 p{ screenX(nodeX(slot)), screenY(nodeY(slot)) };
             const ImVec2 q{ p.x + NODE_WIDTH * zoom, p.y + NODE_HEIGHT * zoom };
-            if (q.x < min.x || p.x > max.x || q.y < min.y || p.y > max.y) continue;
+            if (q.x < min.x || p.x > max.x || q.y < min.y || p.y > max.y) {
+                continue;
+            }
 
             const bool dim = focus != NPOS && slot != focus && relation[slot] == 0;
             const float alpha = dim ? 0.35f : 1.0f;
@@ -1381,13 +1604,27 @@ void RenderPassViewerPanel::DrawGraph(EditorContext& ctx)
 
             ImU32 border = ImGui::GetColorU32(ImGuiCol_Border, alpha);
             float borderWidth = 1.0f;
-            if (relation[slot] & 1) { border = ImGui::GetColorU32(READ_COLOR); borderWidth = 1.6f; }
-            if (relation[slot] & 2) { border = ImGui::GetColorU32(WRITE_COLOR); borderWidth = 1.6f; }
-            if (slot == hoveredSlot) { border = ImGui::GetColorU32(ImGuiCol_HeaderHovered); borderWidth = 1.8f; }
-            if (slot == selectedSlot) { border = ImGui::GetColorU32(ImGuiCol_ButtonActive); borderWidth = 2.5f; }
+            if (relation[slot] & 1) {
+                border = ImGui::GetColorU32(READ_COLOR);
+                borderWidth = 1.6f;
+            }
+            if (relation[slot] & 2) {
+                border = ImGui::GetColorU32(WRITE_COLOR);
+                borderWidth = 1.6f;
+            }
+            if (slot == hoveredSlot) {
+                border = ImGui::GetColorU32(ImGuiCol_HeaderHovered);
+                borderWidth = 1.8f;
+            }
+            if (slot == selectedSlot) {
+                border = ImGui::GetColorU32(ImGuiCol_ButtonActive);
+                borderWidth = 2.5f;
+            }
             draw->AddRect(p, q, border, rounding, 0, borderWidth);
 
-            if (zoom < 0.45f) continue;
+            if (zoom < 0.45f) {
+                continue;
+            }
             const float padX = 11.0f * zoom;
             const std::string name = widgets::ElideToWidth(PassLabel(pass).c_str(),
                                                            (NODE_WIDTH - 18.0f) * zoom / fontScale);
@@ -1426,17 +1663,20 @@ void RenderPassViewerPanel::DrawGallery(EditorContext& ctx)
 {
     ImGui::SetNextItemWidth(220.0f);
     if (ImGui::InputTextWithHint("##GalleryFilter", "Filter resources", m_galleryFilter.InputBuf,
-                                 IM_ARRAYSIZE(m_galleryFilter.InputBuf)))
+                                 IM_ARRAYSIZE(m_galleryFilter.InputBuf))) {
         m_galleryFilter.Build();
+    }
     ImGui::SameLine();
     ImGui::Checkbox("Issues only", &m_galleryIssuesOnly);
     ImGui::SameLine();
     ImGui::SetNextItemWidth(120.0f);
     ImGui::SliderFloat("Size", &m_tileZoom, 0.5f, 3.0f, "%.1fx");
-    /// @note 焼く解像度そのものを拡大率へ合わせる。表示だけ引き伸ばすと拡大しても粗いまま。
+    // 焼く解像度そのものを拡大率へ合わせる。表示だけ引き伸ばすと拡大しても粗いまま。
     m_capture.galleryTileWidth = static_cast<uint32_t>(std::clamp(192.0f * m_tileZoom, 32.0f, 1024.0f));
     ImGui::SameLine();
-    if (ImGui::Button("Display...")) ImGui::OpenPopup("GalleryDisplay");
+    if (ImGui::Button("Display...")) {
+        ImGui::OpenPopup("GalleryDisplay");
+    }
     if (ImGui::BeginPopup("GalleryDisplay")) {
         DrawViewSettings(m_capture.galleryView, false);
         ImGui::EndPopup();
@@ -1445,7 +1685,9 @@ void RenderPassViewerPanel::DrawGallery(EditorContext& ctx)
     const auto& tiles = m_capture.Gallery();
     std::size_t issues = 0;
     for (const auto& tile : tiles)
-        if (tile.issue != Capture::GalleryTile::Issue::None) ++issues;
+        if (tile.issue != Capture::GalleryTile::Issue::None) {
+            ++issues;
+        }
 
     ImGui::TextDisabled("%zu images | end of frame", tiles.size());
     ImGui::SetItemTooltip("Every image is the last state written this frame.\n"
@@ -1454,7 +1696,9 @@ void RenderPassViewerPanel::DrawGallery(EditorContext& ctx)
         ImGui::SameLine();
         ImGui::TextColored({ 0.95f, 0.55f, 0.35f, 1.0f }, "| %zu declaration mismatches", issues);
         ImGui::SameLine();
-        if (!m_galleryIssuesOnly && ImGui::SmallButton("Show")) m_galleryIssuesOnly = true;
+        if (!m_galleryIssuesOnly && ImGui::SmallButton("Show")) {
+            m_galleryIssuesOnly = true;
+        }
     }
 
     if (tiles.empty()) {
@@ -1462,9 +1706,12 @@ void RenderPassViewerPanel::DrawGallery(EditorContext& ctx)
             ? "Waiting for the selected view to render." : m_capture.GalleryStatus().c_str());
         return;
     }
-    if (!m_capture.GalleryStatus().empty())
+    if (!m_capture.GalleryStatus().empty()) {
         ImGui::TextWrapped("%s", m_capture.GalleryStatus().c_str());
-    if (!ctx.imguiRenderer || !ctx.resources) return;
+    }
+    if (!ctx.imguiRenderer || !ctx.resources) {
+        return;
+    }
 
     const float tileWidth = static_cast<float>(m_capture.galleryTileWidth);
     const float spacing = ImGui::GetStyle().ItemSpacing.x;
@@ -1475,8 +1722,12 @@ void RenderPassViewerPanel::DrawGallery(EditorContext& ctx)
         && ImGui::BeginTable("Gallery", columns, ImGuiTableFlags_SizingFixedFit)) {
         for (const auto& tile : tiles) {
             const bool hasIssue = tile.issue != Capture::GalleryTile::Issue::None;
-            if (m_galleryIssuesOnly && !hasIssue) continue;
-            if (!m_galleryFilter.PassFilter(tile.label.c_str())) continue;
+            if (m_galleryIssuesOnly && !hasIssue) {
+                continue;
+            }
+            if (!m_galleryFilter.PassFilter(tile.label.c_str())) {
+                continue;
+            }
 
             ImGui::TableNextColumn();
             ImGui::PushID(tile.label.c_str());
@@ -1508,7 +1759,9 @@ void RenderPassViewerPanel::DrawGallery(EditorContext& ctx)
                                : hasIssue ? ImGui::GetColorU32(StyleOf(tile.issue).color)
                                : ImGui::GetColorU32(ImGuiCol_Border);
             draw->AddRect(origin, corner, border, 0.0f, 0, hovered || hasIssue ? 2.0f : 1.0f);
-            if (hovered && producer != NPOS) ImGui::SetMouseCursor(ImGuiMouseCursor_Hand);
+            if (hovered && producer != NPOS) {
+                ImGui::SetMouseCursor(ImGuiMouseCursor_Hand);
+            }
 
             if (ImGui::BeginItemTooltip()) {
                 ImGui::TextUnformatted(tile.label.c_str());
@@ -1536,10 +1789,11 @@ void RenderPassViewerPanel::DrawGallery(EditorContext& ctx)
                 ImGui::TextColored(style.color, "%s", style.label);
             }
             ImGui::TextUnformatted(widgets::ElideToWidth(tile.label.c_str(), tileWidth).c_str());
-            if (tile.sourceWidth > 0)
+            if (tile.sourceWidth > 0) {
                 ImGui::TextDisabled("%u x %u%s", tile.sourceWidth, tile.sourceHeight, tile.depth ? " depth" : "");
-            else
+            } else {
                 ImGui::TextDisabled("--");
+            }
 
             ImGui::EndGroup();
             ImGui::PopID();
@@ -1549,4 +1803,4 @@ void RenderPassViewerPanel::DrawGallery(EditorContext& ctx)
     ImGui::EndChild();
 }
 
-} /// @note namespace fbzz::editor
+} // namespace fbzz::editor

@@ -35,10 +35,14 @@ void WriteFile(const std::filesystem::path& path, const std::string& bytes)
 {
     std::error_code ec;
     const auto before = std::filesystem::last_write_time(path, ec);
-    if (ec) return false;
+    if (ec) {
+        return false;
+    }
 
     std::filesystem::last_write_time(path, before + std::chrono::hours(1), ec);
-    if (ec) return false;
+    if (ec) {
+        return false;
+    }
 
     const auto after = std::filesystem::last_write_time(path, ec);
     return !ec && after != before;
@@ -92,7 +96,7 @@ TEST_F(ImportFingerprintTest, DifferentBytesGiveDifferentHashes)
 /// @brief Touching the file does not change the hash.
 TEST_F(ImportFingerprintTest, TouchingTheFileDoesNotChangeTheHash)
 {
-    /// @note これが修正の核心。git pull は中身を変えずに更新時刻だけ動かす。
+    // これが修正の核心。git pull は中身を変えずに更新時刻だけ動かす。
     const auto model = Model("Player.fbx");
     WriteFile(model, "unchanged content");
     const std::string before = FbxMetaSerializer::SourceContentHash(Utf8(model));
@@ -106,7 +110,7 @@ TEST_F(ImportFingerprintTest, TouchingTheFileDoesNotChangeTheHash)
 /// @brief Moving the file does not change the hash.
 TEST_F(ImportFingerprintTest, MovingTheFileDoesNotChangeTheHash)
 {
-    /// @note 以前はパスを種に混ぜていたため、フォルダを整理しただけで焼き直しが走っていた。
+    // 以前はパスを種に混ぜていたため、フォルダを整理しただけで焼き直しが走っていた。
     const auto from = Model("Player.fbx");
     const auto to   = Model("Models/Player.fbx");
     WriteFile(from, "unchanged content");
@@ -128,7 +132,7 @@ TEST_F(ImportFingerprintTest, ContentHashIsEmptyForAMissingFile)
 /// @brief Hash spans the whole file not just the head.
 TEST_F(ImportFingerprintTest, HashSpansTheWholeFileNotJustTheHead)
 {
-    /// @note 先頭だけを見ていると、末尾を差し替えた FBX を «変わっていない» と誤判定する。
+    // 先頭だけを見ていると、末尾を差し替えた FBX を «変わっていない» と誤判定する。
     const std::string head(128 * 1024, 'x');
     const auto a = Model("A.fbx");
     const auto b = Model("B.fbx");
@@ -159,7 +163,7 @@ TEST_F(ImportFingerprintTest, StampReportsSizeAndMovesWithTheWriteTime)
     int64_t  mtime2 = 0;
     ASSERT_TRUE(FbxMetaSerializer::SourceStamp(Utf8(model), size2, mtime2));
     EXPECT_EQ(size2, size);
-    /// @note 目印は «触られたか» を表す。中身のハッシュと違い、ここは動いてよい。
+    // 目印は «触られたか» を表す。中身のハッシュと違い、ここは動いてよい。
     EXPECT_NE(mtime2, mtime);
 }
 
@@ -174,7 +178,7 @@ TEST_F(ImportFingerprintTest, StampFailsForAMissingFile)
 /// @brief Legacy stamp still reacts to the write time.
 TEST_F(ImportFingerprintTest, LegacyStampStillReactsToTheWriteTime)
 {
-    /// @note 旧形式は «触られたか» を見る値。移行判定に使うので、その性質のまま残っている必要がある。
+    // 旧形式は «触られたか» を見る値。移行判定に使うので、その性質のまま残っている必要がある。
     const auto model = Model("Player.fbx");
     WriteFile(model, "unchanged content");
     const std::string before = FbxMetaSerializer::LegacyStampHash(Utf8(model));

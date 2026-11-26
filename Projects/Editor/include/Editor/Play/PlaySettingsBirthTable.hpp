@@ -38,4 +38,4 @@ private:
     uint64_t m_editLifetime = 0, m_playLifetime = 0;
     std::vector<Owner> m_owners;
 };
-} /// @note namespace fbzz::editor
+} // namespace fbzz::editor

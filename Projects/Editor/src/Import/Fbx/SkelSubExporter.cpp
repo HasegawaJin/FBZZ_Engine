@@ -10,7 +10,6 @@
 #include <Editor/Import/Fbx/SkelSubExporter.hpp>
 #include <Engine/Format/FzAssetFormat.hpp>
 #include <Engine/Util/Files/FileSystem.hpp>
-#include <assimp/scene.h>
 #include "AssimpNodeExport.hpp"
 #include <cstring>
 #include <fstream>
@@ -45,14 +44,16 @@ struct BoneEntry {
 
 
 
-} /// @note namespace
+} // namespace
 
 bool SkelSubExporter::Export(FbxImportContext& ctx)
 {
     using namespace asset;
     const aiScene* scene = ctx.scene;
-    /// @note シーンなしは正常スキップ
-    if (!scene || !scene->mRootNode) return true;
+    // シーンなしは正常スキップ
+    if (!scene || !scene->mRootNode) {
+        return true;
+    }
 
     namespace fs = std::filesystem;
     const std::string outputPath = util::FileSystem::PathToUtf8(
@@ -62,8 +63,9 @@ bool SkelSubExporter::Export(FbxImportContext& ctx)
     struct TempGuard {
         std::string path; bool committed = false;
         ~TempGuard() {
-            if (!committed && !path.empty())
+            if (!committed && !path.empty()) {
                 util::FileSystem::RemoveAll(util::FileSystem::PathFromUtf8(path));
+            }
         }
     } guard{ tempPath };
 
@@ -72,14 +74,14 @@ bool SkelSubExporter::Export(FbxImportContext& ctx)
     nodes.reserve(128);
     TraverseNodes(scene->mRootNode, -1, ctx.unitScale, nodeIndexMap, nodes);
 
-    /// @note ModelSubExporter がスキンメッシュ頂点へ焼き込んだバインド回転 R を
-    ///       offsetMatrix 側で打ち消す (offset·R⁻¹)。両者は必ず同じ R を使うこと。
+    // ModelSubExporter がスキンメッシュ頂点へ焼き込んだバインド回転 R を
+    // offsetMatrix 側で打ち消す (offset·R⁻¹)。両者は必ず同じ R を使うこと。
     const aiQuaternion bakeInvQ(ctx.bindBakeRotation[3], -ctx.bindBakeRotation[0],
                                 -ctx.bindBakeRotation[1], -ctx.bindBakeRotation[2]);
     const aiMatrix4x4 bakeInv(bakeInvQ.GetMatrix());
 
-    /// @note ボーン収集 (全メッシュのボーン情報をマージ)
-    ///       スキンなし FBX ではボーンがないため空になる。その場合でもノード階層は書き出す。
+    // ボーン収集 (全メッシュのボーン情報をマージ)
+    // スキンなし FBX ではボーンがないため空になる。その場合でもノード階層は書き出す。
     std::vector<BoneEntry> bones;
     std::unordered_map<std::string, size_t> boneMap;
     for (uint32_t mi = 0; mi < scene->mNumMeshes; ++mi) {
@@ -87,13 +89,15 @@ bool SkelSubExporter::Export(FbxImportContext& ctx)
         for (uint32_t bi = 0; bi < mesh->mNumBones; ++bi) {
             const aiBone* bone = mesh->mBones[bi];
             const std::string bname = bone->mName.C_Str();
-            if (boneMap.count(bname)) continue;
+            if (boneMap.count(bname)) {
+                continue;
+            }
             boneMap[bname] = bones.size();
             BoneEntry be;
             be.name = bname;
             be.nodeIndex = nodeIndexMap.count(bname) ? nodeIndexMap.at(bname) : -1;
             CopyMatrix(bone->mOffsetMatrix * bakeInv, be.offsetMatrix, ctx.unitScale);
-            /// @note 対応ノードに boneIndex を書き込む
+            // 対応ノードに boneIndex を書き込む
             if (be.nodeIndex >= 0)
                 nodes[static_cast<size_t>(be.nodeIndex)].boneIndex =
                     static_cast<int>(bones.size());
@@ -101,10 +105,13 @@ bool SkelSubExporter::Export(FbxImportContext& ctx)
         }
     }
 
-    /// @note ルートノードインデックスと逆変換行列
+    // ルートノードインデックスと逆変換行列
     int rootIdx = 0;
     for (size_t ni = 0; ni < nodes.size(); ++ni)
-        if (nodes[ni].parentIndex < 0) { rootIdx = static_cast<int>(ni); break; }
+        if (nodes[ni].parentIndex < 0) {
+            rootIdx = static_cast<int>(ni);
+            break;
+        }
 
     aiMatrix4x4 rootInv = scene->mRootNode->mTransformation;
     rootInv.Inverse();
@@ -112,10 +119,15 @@ bool SkelSubExporter::Export(FbxImportContext& ctx)
     CopyMatrix(rootInv, rootInvData, 1.0f);
 
     std::ofstream out(tempPath, std::ios::binary);
-    if (!out) return false;
+    if (!out) {
+        return false;
+    }
 
     FzSkelHeader skelHdr{};
-    skelHdr.magic[0]='F'; skelHdr.magic[1]='Z'; skelHdr.magic[2]='S'; skelHdr.magic[3]='K';
+    skelHdr.magic[0]='F';
+    skelHdr.magic[1]='Z';
+    skelHdr.magic[2]='S';
+    skelHdr.magic[3]='K';
     skelHdr.version       = FZSKEL_VERSION;
     skelHdr.rootNodeIndex = rootIdx;
     skelHdr.nodeCount     = static_cast<uint32_t>(nodes.size());
@@ -148,7 +160,9 @@ bool SkelSubExporter::Export(FbxImportContext& ctx)
         out.write(reinterpret_cast<const char*>(&bd), sizeof(bd));
     }
 
-    if (!out.good()) return false;
+    if (!out.good()) {
+        return false;
+    }
     out.close();
 
     util::FileSystem::RemoveAll(util::FileSystem::PathFromUtf8(outputPath));
@@ -161,4 +175,4 @@ bool SkelSubExporter::Export(FbxImportContext& ctx)
     return true;
 }
 
-} /// @note namespace fbzz::editor
+} // namespace fbzz::editor

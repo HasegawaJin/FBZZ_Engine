@@ -15,4 +15,4 @@ protected:
     void OnBeforeBegin(EditorContext& ctx) override;
     void OnRenderContent(EditorContext& ctx) override;
 };
-} /// @note namespace fbzz::editor
+} // namespace fbzz::editor

@@ -54,7 +54,7 @@ std::string LegacyPcgSignature(std::string_view signature, std::string_view refe
         return {};
 
     const auto append = [](uint64_t& value, uint64_t word) { value = (value ^ word) * PRIME; };
-    /// @note The prior format hashed the reference hint before the same trailing component and row data.
+    // 旧形式は参照ヒント、末尾のコンポーネント、行データの順にハッシュへ加えていた。
     std::vector<uint64_t> suffix{1, 1, 0};
     const auto captureText = [&](std::string_view text) {
         for (unsigned char character : text) suffix.push_back(character);
@@ -131,9 +131,13 @@ protected:
         std::map<std::pair<std::string,uint32_t>,math::Vector3> result;
         for (auto* owner : Owners()) {
             const auto* metadata = owner->GetComponent<scene::WorldPcgGeneratedComponent>();
-            if (!ruleKey.empty() && metadata->ruleKey != ruleKey) continue;
+            if (!ruleKey.empty() && metadata->ruleKey != ruleKey) {
+                continue;
+            }
             const auto snapshot = owner->GetComponent<scene::InstancedMeshComponent>()->Snapshot();
-            if (!snapshot) continue;
+            if (!snapshot) {
+                continue;
+            }
             for (const auto& placement : snapshot->placements)
                 if (placement.active) result[{owner->instanceId, placement.id}] = placement.position;
         }
@@ -606,7 +610,9 @@ TEST_F(WorldPcgAuthoringTest, LocalTerrainRefreshMatchesFullQuotaAcrossCellBound
     std::string diagnostic;
     ASSERT_TRUE(scene::GenerateWorldPcg(m_profile, [&](float x, float z, scene::WorldPcgSurfaceSample& out) {
         scene::TerrainSurfaceSample sample;
-        if (!scene::TrySampleTerrainWorld(*terrain, ground->transform, x, z, sample)) return false;
+        if (!scene::TrySampleTerrainWorld(*terrain, ground->transform, x, z, sample)) {
+            return false;
+        }
         out.position = sample.position;
         out.normal = sample.normal;
         return true;
@@ -631,7 +637,9 @@ TEST_F(WorldPcgAuthoringTest, LocalTerrainRefreshMatchesFullQuotaAcrossCellBound
             distantSnapshots.erase(distant);
         }
         for (const auto& placement : snapshot->placements) {
-            if (!placement.active) continue;
+            if (!placement.active) {
+                continue;
+            }
             const auto found = expected.find({{metadata->cellX, metadata->cellZ}, placement.id});
             ASSERT_NE(found, expected.end()) << owner->name << " placement " << placement.id;
             EXPECT_VEC3_NEAR(placement.position, found->second.position, 0.00001f);
@@ -754,7 +762,7 @@ TEST_F(WorldPcgAuthoringTest, ReopenedTerrainRefreshKeepsGeneratedOwnership)
     ASSERT_TRUE(m_undo.Undo()) << m_undo.LastDiagnostic();
     EXPECT_EQ(Placements(), before);
 
-    /// @note An unrelated asset with the same rows cannot claim the legacy signature.
+    // An unrelated asset with the same rows cannot claim the legacy signature.
     const auto differentPath = util::FileSystem::PathToUtf8(ProjectRoot() / "Assets" / "DifferentOwner.meshinstances");
     ASSERT_TRUE(asset::SaveMeshInstancesAsset(differentPath, ownerAsset));
     ASSERT_FALSE(asset::AssetDatabase::GuidFromPath(differentPath).empty());
@@ -882,7 +890,9 @@ TEST_F(WorldPcgAuthoringTest, IndexedSurfaceSamplingMatchesFullSceneQueries)
             const auto& water = *world.GetComponent<scene::WaterComponent>(id);
             const auto& pose = world.GetGameObject(id)->transform;
             scene::WaterSurfaceHeightSample sample;
-            if (!scene::TrySampleInsideWaterSurfaceHeightWorld(water, pose, out.position, 0, sample)) continue;
+            if (!scene::TrySampleInsideWaterSurfaceHeightWorld(water, pose, out.position, 0, sample)) {
+                continue;
+            }
             if (!habitat && out.position.y <= sample.position.y + 0.15f) {
                 out.water = true;
                 out.waterDistance = 0.0f;
@@ -901,22 +911,31 @@ TEST_F(WorldPcgAuthoringTest, IndexedSurfaceSamplingMatchesFullSceneQueries)
         for (const auto id : world.GetEntities<scene::TerrainComponent>()) {
             const auto& terrain = *world.GetComponent<scene::TerrainComponent>(id);
             scene::TerrainSurfaceSample sample;
-            if (!scene::TrySampleTerrainWorld(terrain, world.GetGameObject(id)->transform, x, z, sample)) continue;
-            if (found && sample.position.y <= out.position.y) continue;
+            if (!scene::TrySampleTerrainWorld(terrain, world.GetGameObject(id)->transform, x, z, sample)) {
+                continue;
+            }
+            if (found && sample.position.y <= out.position.y) {
+                continue;
+            }
             out.position = sample.position;
             out.normal = sample.normal;
             found = true;
         }
-        if (!found) return false;
+        if (!found) {
+            return false;
+        }
+        // 隣接するボリュームを水平面で二重に選ばないよう、X/Z の上端を除外する。
         for (auto* object : biomes) {
             const auto& biome = *object->GetComponent<scene::WorldBiomeVolumeComponent>();
-            if (x >= biome.boundsMin.x && x < biome.boundsMax.x && z >= biome.boundsMin.z && z < biome.boundsMax.z
-                && out.position.y >= biome.boundsMin.y && out.position.y <= biome.boundsMax.y) {
+            const bool insideHorizontal = x >= biome.boundsMin.x && x < biome.boundsMax.x
+                && z >= biome.boundsMin.z && z < biome.boundsMax.z;
+            if (insideHorizontal && out.position.y >= biome.boundsMin.y && out.position.y <= biome.boundsMax.y) {
                 out.biome = biome.biome;
                 out.biomeDensity = biome.density;
                 break;
             }
         }
+
         sampleWater(out, false);
         return true;
     };

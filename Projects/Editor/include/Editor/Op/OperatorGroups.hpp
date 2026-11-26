@@ -82,4 +82,4 @@ void RegisterDeveloperOperators(OperatorRegistry& registry);
 /// @see Docs/design/pix-profiling.md
 void RegisterPixOperators(OperatorRegistry& registry);
 
-} /// @note namespace fbzz::editor
+} // namespace fbzz::editor

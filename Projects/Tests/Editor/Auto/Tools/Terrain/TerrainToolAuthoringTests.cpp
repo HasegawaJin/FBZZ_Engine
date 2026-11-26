@@ -142,7 +142,7 @@ protected:
         ImGui::SetNextWindowSize({1000, 1400});
         ImGui::Begin("Terrain paint test", nullptr, ImGuiWindowFlags_NoSavedSettings);
         if (activate) {
-            /// @note ImGui::Combo の選択肢IDには表示ラベルだけでなく配列の添字も含まれる。
+            // ImGui::Combo の選択肢IDには表示ラベルだけでなく配列の添字も含まれる。
             const int heightMapItem = 3;
             const auto seed = popup ? ImHashData(&heightMapItem, sizeof(heightMapItem), popup->IDStack.back()) : 0;
             const auto id = popup ? ImHashStr(activate, 0, seed) : ImGui::GetID(activate);

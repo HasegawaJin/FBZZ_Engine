@@ -71,4 +71,4 @@ struct GpuHistoryDisplaySample {
 [[nodiscard]] std::vector<GpuHistoryDisplaySample> BuildGpuObservationPlot(
     const std::vector<GpuHistoryDisplaySample>& samples, const std::deque<uint64_t>& observedFrames);
 
-} /// @note namespace fbzz::editor::detail
+} // namespace fbzz::editor::detail

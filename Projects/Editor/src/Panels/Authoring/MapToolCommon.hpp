@@ -42,10 +42,13 @@ inline void ActivateMapTool(EditorContext& ctx, EditorContext::MapTool tool)
     if (ctx.terrainTool) {
         ctx.terrainTool->SetActive(IsTerrainMapTool(tool));
         TerrainTool::Mode mode = TerrainTool::Mode::Sculpt;
-        if (tool == EditorContext::MapTool::TerrainPaint)     mode = TerrainTool::Mode::Paint;
-        else if (tool == EditorContext::MapTool::TerrainHole) mode = TerrainTool::Mode::Hole;
+        if (tool == EditorContext::MapTool::TerrainPaint) {
+            mode = TerrainTool::Mode::Paint;
+        } else if (tool == EditorContext::MapTool::TerrainHole) {
+            mode = TerrainTool::Mode::Hole;
+        }
         ctx.terrainTool->SetMode(mode);
     }
 }
 
-} /// @note namespace fbzz::editor
+} // namespace fbzz::editor

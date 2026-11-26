@@ -22,11 +22,15 @@ using editor::ai::JsonValue;
 const JsonValue* Diagnostic(const JsonValue& result, const char* key, const char* code)
 {
     const auto* diagnostics = result.Find("fieldDiagnostics");
-    if (!diagnostics) return nullptr;
+    if (!diagnostics) {
+        return nullptr;
+    }
     for (const auto& diagnostic : diagnostics->AsArray()) {
         const auto* actualKey = diagnostic.Find("key");
         const auto* actualCode = diagnostic.Find("code");
-        if (actualKey && actualCode && actualKey->AsString() == key && actualCode->AsString() == code) return &diagnostic;
+        if (actualKey && actualCode && actualKey->AsString() == key && actualCode->AsString() == code) {
+            return &diagnostic;
+        }
     }
     return nullptr;
 }
@@ -34,9 +38,13 @@ const JsonValue* Diagnostic(const JsonValue& result, const char* key, const char
 const JsonValue* Schema(const JsonValue& result, const char* key, const char* collection = "schema")
 {
     const auto* schema = result.Find(collection);
-    if (!schema) return nullptr;
+    if (!schema) {
+        return nullptr;
+    }
     for (const auto& field : schema->AsArray())
-        if (const auto* name = field.Find("name"); name && name->AsString() == key) return &field;
+        if (const auto* name = field.Find("name"); name && name->AsString() == key) {
+            return &field;
+        }
     return nullptr;
 }
 
@@ -86,7 +94,9 @@ protected:
     {
         const auto response = Send("node.components", object.instanceId);
         const auto* result = response.Find("result");
-        if (!result || !result->Find("scripts") || result->Find("scripts")->AsArray().empty()) return {};
+        if (!result || !result->Find("scripts") || result->Find("scripts")->AsArray().empty()) {
+            return {};
+        }
         return result->Find("scripts")->AsArray().front().Find("scriptId")->AsString();
     }
 
@@ -94,7 +104,9 @@ protected:
     {
         auto& entry = object.AddComponent<scene::ScriptComponent>().scripts.emplace_back();
         entry.script = scene::ScriptFactory::Create(type, entry.savedScriptId);
-        if (!entry.script) return nullptr;
+        if (!entry.script) {
+            return nullptr;
+        }
         entry.script->SetContext(AttachedScene(), &object);
         auto* adapter = scene::ManagedScriptRuntime::Instance().FindAdapter(entry.script.get());
         return adapter && adapter->RefreshOwnerBinding() ? adapter : nullptr;
@@ -159,7 +171,7 @@ TEST_F(ManagedScriptInspectionTest, ReturnsSafeFieldsAndOriginalFaultWithoutRunn
     JsonValue nested = JsonValue::MakeObject();
     nested.Set("label", JsonValue("plain value"));
     nested.Set("target", JsonValue(targetGuid));
-    /// @note 構造値の復元は constructor を呼ばないため、保持する値は入力に明示する。
+    // 構造値の復元は constructor を呼ばないため、保持する値は入力に明示する。
     nested.Set("$version", JsonValue(23));
     JsonValue weights = JsonValue::MakeArray(); weights.Push(JsonValue(1.0)); weights.Push(JsonValue(2.0));
     nested.Set("weights", std::move(weights));
@@ -355,7 +367,9 @@ TEST_F(ManagedScriptInspectionTest, PublicSavedScriptIdsReacquireDuplicateTypesA
     const auto verify = [&]() {
         const auto listed = Send("node.components", ownerGuid);
         EXPECT_NE(listed.Find("result"), nullptr);
-        if (!listed.Find("result")) return;
+        if (!listed.Find("result")) {
+            return;
+        }
         const auto& current = listed.Find("result")->Find("scripts")->AsArray();
         EXPECT_EQ(current.size(), 2u);
         for (const auto& row : current) {
@@ -369,7 +383,7 @@ TEST_F(ManagedScriptInspectionTest, PublicSavedScriptIdsReacquireDuplicateTypesA
             EXPECT_EQ(inspected.Find("result")->Find("fields")->Find("health")->AsInt(), saved == first ? 3 : 7);
         }
     };
-    /// @note Editor fixture の公開 assembly を新 ALC に再読込し、保存 ID と個体 handle の境界を検証する。
+    // Editor fixture の公開 assembly を新 ALC に再読込し、保存 ID と個体 handle の境界を検証する。
     ASSERT_TRUE(runtime.Reload(*AttachedScene(), FBZZ_MANAGED_FIXTURE_TEST_ASSEMBLY, true));
     verify();
     const std::string text = scene::SceneSerializer::SaveToText(*AttachedScene()); ASSERT_FALSE(text.empty());

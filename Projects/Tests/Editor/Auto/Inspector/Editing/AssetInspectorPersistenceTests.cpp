@@ -389,7 +389,7 @@ TEST_F(AssetInspectorPersistenceTest, PhysicsFailureKeepsDirtyValueAndSaveAllRet
     HANDLE lock = CreateFileW(util::FileSystem::PathFromUtf8(first).c_str(), GENERIC_READ,
         FILE_SHARE_READ | FILE_SHARE_WRITE, nullptr, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
     ASSERT_NE(lock, INVALID_HANDLE_VALUE);
-    /// @note FloatRange の ID は field key → RangeField label → slider の順に入れ子になる。
+    // FloatRange の ID は field key → RangeField label → slider の順に入れ子になる。
     EditNumber(first, "##slider", "1234", "density", "##v");
     const auto* edited = asset::AssetManager::Get<asset::PhysicsMaterialAsset>(
         asset::AssetManager::Load<asset::PhysicsMaterialAsset>(first));
@@ -638,7 +638,7 @@ TEST_F(AssetInspectorPersistenceTest, AcceptedSamePathElementRetiresRuntimeAndPr
     ASSERT_EQ(slot.propertyValidationDescriptor, &descriptor);
     auto edit = slot.BeginAuthoringEdit();
     ASSERT_EQ(edit.Draft().materialPath, path);
-    /// @note Simulate AssetPathField's accepted=true event with identical text; execute the actual Element finalization helper once.
+    // 同じ文字列で AssetPathField の accepted=true を再現し、Element の確定処理を1回通す。
     EXPECT_EQ(editor::material_edit_detail::FinishSlotPathEdit(target, edit, true),
         asset::detail::MaterialAuthoringCommitResult::COMMITTED);
     EXPECT_EQ(slot.GetMaterialPath(), path);

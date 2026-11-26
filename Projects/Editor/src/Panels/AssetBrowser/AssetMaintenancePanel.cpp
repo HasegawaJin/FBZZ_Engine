@@ -37,7 +37,9 @@ std::string MetaWriteText(const std::string& assetPath)
     std::error_code ec;
     const auto ft = std::filesystem::last_write_time(
         util::FileSystem::PathFromUtf8(assetPath + ".meta"), ec);
-    if (ec) return "-";
+    if (ec) {
+        return "-";
+    }
     const auto sysTp = std::chrono::time_point_cast<std::chrono::system_clock::duration>(
         ft - std::filesystem::file_time_type::clock::now() + std::chrono::system_clock::now());
     const std::time_t t = std::chrono::system_clock::to_time_t(sysTp);
@@ -51,8 +53,9 @@ std::string ToRelativeForDisplay(const std::string& absPath)
 {
     const std::string root = asset::AssetDatabase::ProjectRoot();
     const std::string norm = util::FileSystem::NormalizePathSeparators(absPath);
-    if (!root.empty() && norm.size() > root.size() && norm.compare(0, root.size(), root) == 0)
+    if (!root.empty() && norm.size() > root.size() && norm.compare(0, root.size(), root) == 0) {
         return norm.substr(root.size());
+    }
     return norm;
 }
 
@@ -63,9 +66,9 @@ void AssetMaintenancePanel::Rescan()
     m_groups.clear();
     m_scanned = true;
 
-    /// @note AssetDatabase は «弾かれた 1 件» 単位で記録する。同じ guid の記録をまとめ直し、先勝ち側も候補に含める:
-    ///       索引の採用はスキャン順で決まり古さとは無関係なので、3 つ以上が同じ guid を名乗ると
-    ///       残すべき 1 つが «弾かれた側» に居ることがある。
+    // AssetDatabase は «弾かれた 1 件» 単位で記録する。同じ guid の記録をまとめ直し、先勝ち側も候補に含める:
+    // 索引の採用はスキャン順で決まり古さとは無関係なので、3 つ以上が同じ guid を名乗ると
+    // 残すべき 1 つが «弾かれた側» に居ることがある。
     std::unordered_map<std::string, std::unordered_set<std::string>> byGuid;
     for (const auto& c : asset::AssetDatabase::GuidConflicts()) {
         auto& paths = byGuid[c.guid];
@@ -80,13 +83,15 @@ void AssetMaintenancePanel::Rescan()
             group.entries.push_back({ path, ToRelativeForDisplay(path), MetaWriteText(path),
                                       util::FileSystem::Exists(path) });
         }
-        /// @note .meta が古い順。同時刻ならパスで決める (毎回同じ並びにして、押すたびに
-        ///       残る側が入れ替わらないようにする)。
+        // .meta が古い順。同時刻ならパスで決める (毎回同じ並びにして、押すたびに
+        // 残る側が入れ替わらないようにする)。
         std::sort(group.entries.begin(), group.entries.end(),
                   [](const ConflictGroup::Entry& a, const ConflictGroup::Entry& b) {
                       const long long ta = MetaWriteTicks(a.path);
                       const long long tb = MetaWriteTicks(b.path);
-                      if (ta != tb) return ta < tb;
+                      if (ta != tb) {
+                          return ta < tb;
+                      }
                       return a.path < b.path;
                   });
         m_groups.push_back(std::move(group));
@@ -99,14 +104,18 @@ void AssetMaintenancePanel::Rescan()
 int AssetMaintenancePanel::FixGroup(const ConflictGroup& group)
 {
     int fixed = 0;
-    /// @note 先頭 (いちばん古い .meta) は触らない。既存の参照はそこへ解決されている。
+    // 先頭 (いちばん古い .meta) は触らない。既存の参照はそこへ解決されている。
     for (std::size_t i = 1; i < group.entries.size(); ++i) {
         const ConflictGroup::Entry& entry = group.entries[i];
-        if (!entry.exists) continue;
+        if (!entry.exists) {
+            continue;
+        }
         std::string newGuid;
-        if (!asset::AssetDatabase::ReassignGuid(entry.path, newGuid)) continue;
-        /// @note ReassignGuid は `Library/Baked/<guid>/` を連れて行く。fingerprint の索引も
-        ///       同じ guid をキーにしているので、揃えて移さないと焼き直しが走る。
+        if (!asset::AssetDatabase::ReassignGuid(entry.path, newGuid)) {
+            continue;
+        }
+        // ReassignGuid は `Library/Baked/<guid>/` を連れて行く。fingerprint の索引も
+        // 同じ guid をキーにしているので、揃えて移さないと焼き直しが走る。
         ImportCacheStore::Rekey(group.guid, newGuid);
         FBZZ_LOG_INFO("Asset Maintenance: %s  %s -> %s",
                       entry.relative.c_str(), group.guid.c_str(), newGuid.c_str());
@@ -117,7 +126,9 @@ int AssetMaintenancePanel::FixGroup(const ConflictGroup& group)
 
 void AssetMaintenancePanel::OnRenderContent(EditorContext& /*ctx*/)
 {
-    if (!m_scanned) Rescan();
+    if (!m_scanned) {
+        Rescan();
+    }
 
     ImGui::TextWrapped(
         "Assets that share a guid resolve to one side only: every \"guid:\" reference "
@@ -134,17 +145,19 @@ void AssetMaintenancePanel::OnRenderContent(EditorContext& /*ctx*/)
     ImGui::SameLine();
 
     ImGui::BeginDisabled(m_groups.empty());
-    if (ImGui::Button("Fix All"))
+    if (ImGui::Button("Fix All")) {
         ImGui::OpenPopup("Reassign guids?");
+    }
     ImGui::EndDisabled();
 
-    /// @note 確認を挟む: guid の振り直しは «参照キーを書き換える» 操作で取り消せないため、
-    ///       押す前に «何件が新しい guid になるのか» が分かる形にしておく。
+    // 確認を挟む: guid の振り直しは «参照キーを書き換える» 操作で取り消せないため、
+    // 押す前に «何件が新しい guid になるのか» が分かる形にしておく。
     if (ImGui::BeginPopupModal("Reassign guids?", nullptr,
                                ImGuiWindowFlags_AlwaysAutoResize)) {
         int affected = 0;
-        for (const ConflictGroup& group : m_groups)
+        for (const ConflictGroup& group : m_groups) {
             affected += static_cast<int>(group.entries.size()) - 1;
+        }
 
         ImGui::Text("%d asset(s) in %d group(s) will get a new guid.",
                     affected, static_cast<int>(m_groups.size()));
@@ -155,7 +168,9 @@ void AssetMaintenancePanel::OnRenderContent(EditorContext& /*ctx*/)
         if (ImGui::Button("Reassign")) {
             int fixed = 0;
             const int groups = static_cast<int>(m_groups.size());
-            for (const ConflictGroup& group : m_groups) fixed += FixGroup(group);
+            for (const ConflictGroup& group : m_groups) {
+                fixed += FixGroup(group);
+            }
             m_lastResult = "Reassigned " + std::to_string(fixed) + " asset(s) in "
                          + std::to_string(groups) + " group(s).";
             Toast::Info(m_lastResult);
@@ -163,7 +178,9 @@ void AssetMaintenancePanel::OnRenderContent(EditorContext& /*ctx*/)
             ImGui::CloseCurrentPopup();
         }
         ImGui::SameLine();
-        if (ImGui::Button("Cancel")) ImGui::CloseCurrentPopup();
+        if (ImGui::Button("Cancel")) {
+            ImGui::CloseCurrentPopup();
+        }
         ImGui::EndPopup();
     }
 
@@ -190,7 +207,7 @@ void AssetMaintenancePanel::OnRenderContent(EditorContext& /*ctx*/)
             Toast::Info(m_lastResult);
             Rescan();
             ImGui::PopID();
-            /// @note Rescan で m_groups が入れ替わったので、この描画は打ち切る
+            // Rescan で m_groups が入れ替わったので、この描画は打ち切る
             break;
         }
 
@@ -208,19 +225,24 @@ void AssetMaintenancePanel::OnRenderContent(EditorContext& /*ctx*/)
                 ImGui::TableNextRow();
 
                 ImGui::TableSetColumnIndex(0);
-                if (i == 0)
+                if (i == 0) {
                     ImGui::TextColored(EditorTheme::Color(ThemeColor::Success), "keep");
-                else
+                } else {
                     ImGui::TextColored(EditorTheme::Color(ThemeColor::Warning), "new guid");
+                }
 
                 ImGui::TableSetColumnIndex(1);
-                if (entry.exists) ImGui::TextUnformatted(entry.relative.c_str());
-                else              ImGui::TextDisabled("%s (missing)", entry.relative.c_str());
-                /// @note 表示は相対形 (プロジェクトルートを落とす) なので、«同じ実体を別表記で
-                ///       二重登録している» 類の衝突だと 2 行が同じ文字に見え区別できない。
-                ///       ホバーでフルパスを出す。
-                if (ImGui::IsItemHovered())
+                if (entry.exists) {
+                    ImGui::TextUnformatted(entry.relative.c_str());
+                } else {
+                    ImGui::TextDisabled("%s (missing)", entry.relative.c_str());
+                }
+                // 表示は相対形 (プロジェクトルートを落とす) なので、«同じ実体を別表記で
+                // 二重登録している» 類の衝突だと 2 行が同じ文字に見え区別できない。
+                // ホバーでフルパスを出す。
+                if (ImGui::IsItemHovered()) {
                     ImGui::SetTooltip("%s", entry.path.c_str());
+                }
 
                 ImGui::TableSetColumnIndex(2);
                 ImGui::TextDisabled("%s", entry.metaTime.c_str());

@@ -18,11 +18,13 @@ namespace {
 std::string CurrentLocalDate();
 
 /// @brief C# の ASCII 識別子と予約語を検証する。
-/// @param name 検証する型名。
+/// @param[in] name 検証する型名。
 /// @return 識別子として使える場合は true。
 bool IsCSharpIdentifier(std::string_view name)
 {
-    if (name.empty() || name.size() > 128) return false;
+    if (name.empty() || name.size() > 128) {
+        return false;
+    }
     const auto isStart = [](unsigned char value) {
         return (value >= 'A' && value <= 'Z') ||
                (value >= 'a' && value <= 'z') || value == '_';
@@ -30,9 +32,13 @@ bool IsCSharpIdentifier(std::string_view name)
     const auto isPart = [&isStart](unsigned char value) {
         return isStart(value) || (value >= '0' && value <= '9');
     };
-    if (!isStart(static_cast<unsigned char>(name.front()))) return false;
+    if (!isStart(static_cast<unsigned char>(name.front()))) {
+        return false;
+    }
     for (const char value : name) {
-        if (!isPart(static_cast<unsigned char>(value))) return false;
+        if (!isPart(static_cast<unsigned char>(value))) {
+            return false;
+        }
     }
 
     static constexpr std::string_view keywords[] = {
@@ -56,14 +62,18 @@ std::string CurrentLocalDate()
 {
     const std::time_t now = std::time(nullptr);
     std::tm date{};
-    if (localtime_s(&date, &now) != 0) return {};
+    if (localtime_s(&date, &now) != 0) {
+        return {};
+    }
     char text[11]{};
-    if (std::strftime(text, sizeof(text), "%Y-%m-%d", &date) == 0) return {};
+    if (std::strftime(text, sizeof(text), "%Y-%m-%d", &date) == 0) {
+        return {};
+    }
     return text;
 }
 
 /// @brief GameObject に追加する C# Script の初期ソースを作る。
-/// @param className 生成する型名。
+/// @param[in] className 生成する型名。
 /// @return C# ソース。
 std::string BuildCSharpScriptTemplate(const std::string& className)
 {
@@ -83,7 +93,7 @@ std::string BuildCSharpScriptTemplate(const std::string& className)
 }
 
 /// @brief アタッチしない C# helper の初期ソースを作る。
-/// @param className 生成する型名。
+/// @param[in] className 生成する型名。
 /// @return C# ソース。
 std::string BuildCSharpHelperTemplate(const std::string& className)
 {
@@ -99,7 +109,7 @@ std::string BuildCSharpHelperTemplate(const std::string& className)
 }
 
 /// @brief C# DataAsset 型の初期ソースを作る。
-/// @param className 生成する型名。
+/// @param[in] className 生成する型名。
 /// @return C# ソース。
 std::string BuildCSharpDataAssetTemplate(const std::string& className)
 {
@@ -311,7 +321,7 @@ std::string BuildComputeHlslTemplate(const std::string& name)
     return ss.str();
 }
 
-} /// @note namespace
+} // namespace
 
 /// @name 公開 API
 
@@ -324,12 +334,17 @@ std::string ScriptCodeGen::CreateCSharpClass(const std::string& name,
                                              const std::string& scriptsDir,
                                              CSharpKind kind)
 {
-    if (scriptsDir.empty() || !IsCSharpIdentifier(name)) return {};
+    if (scriptsDir.empty() || !IsCSharpIdentifier(name)) {
+        return {};
+    }
 
     std::string className = name;
-    if (kind == CSharpKind::Script && !className.ends_with("Component"))
+    if (kind == CSharpKind::Script && !className.ends_with("Component")) {
         className += "Component";
-    if (!IsCSharpIdentifier(className)) return {};
+    }
+    if (!IsCSharpIdentifier(className)) {
+        return {};
+    }
 
     const std::string filePath = scriptsDir + "/" + className + ".cs";
     if (util::FileSystem::Exists(filePath)) {
@@ -360,7 +375,9 @@ std::string ScriptCodeGen::CreateHlsl(const std::string& name,
                                       const std::string& hlslDir,
                                       HlslKind kind)
 {
-    if (name.empty() || hlslDir.empty()) return {};
+    if (name.empty() || hlslDir.empty()) {
+        return {};
+    }
 
     std::string subDir;
     std::string fileName;
@@ -411,4 +428,4 @@ std::string ScriptCodeGen::CreateHlsl(const std::string& name,
 
 /// @name 内部実装
 
-} /// @note namespace fbzz::editor
+} // namespace fbzz::editor

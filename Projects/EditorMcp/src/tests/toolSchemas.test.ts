@@ -100,7 +100,7 @@ test('流体ツールは照会だけが readOnly で、残りは書き込みと�
         'fluid_add_operator', 'fluid_remove_operator', 'fluid_move_operator']) {
         assert.equal(byName.get(name)?.annotations?.readOnlyHint, false, name);
     }
-    /// @note list は固定の enum として公開する。自由文字列だと AI が旧名 (gas_source) を書いてくる。
+    // list は固定の enum として公開する。自由文字列だと AI が旧名 (gas_source) を書いてくる。
     const addSchema = byName.get('fluid_add_operator')?.inputSchema as { properties: Record<string, Record<string, unknown>>; required?: string[] };
     assert.deepEqual(addSchema.properties.list?.enum, ['source', 'force', 'collider']);
     for (const name of ['fluid_remove_operator', 'fluid_move_operator']) {
@@ -110,7 +110,7 @@ test('流体ツールは照会だけが readOnly で、残りは書き込みと�
     assert.deepEqual([...(addSchema.required ?? [])].sort(), ['list', 'path']);
     const moveSchema = byName.get('fluid_move_operator')?.inputSchema as { required?: string[] };
     assert.deepEqual([...(moveSchema.required ?? [])].sort(), ['from', 'list', 'path', 'to']);
-    /// @note fields は任意 JSON の部分レシピ。object として公開されていないと AI が文字列で渡してくる。
+    // fields は任意 JSON の部分レシピ。object として公開されていないと AI が文字列で渡してくる。
     const setSchema = byName.get('fluid_set')?.inputSchema as { properties: Record<string, Record<string, unknown>>; required?: string[] };
     assert.equal(setSchema.properties.fields?.type, 'object');
     assert.deepEqual([...(setSchema.required ?? [])].sort(), ['fields', 'path']);

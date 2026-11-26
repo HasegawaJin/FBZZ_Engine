@@ -47,7 +47,7 @@ TEST_F(AssetBrowserThumbnailTest, OriginalIconCategoriesLeaveRealPreviewTypesAva
 /// @brief Shrinks source without losing source aspect and alpha.
 TEST_F(AssetBrowserThumbnailTest, ShrinksSourceWithoutLosingSourceAspectAndAlpha)
 {
-    /// @note A deterministic uncompressed RGBA TGA verifies the decoder without a GPU or external fixture.
+    // 無圧縮 RGBA の TGA を固定データで作り、GPU や外部ファイルに依存せずデコーダーを検証する。
     std::vector<uint8_t> bytes(18 + 512 * 128 * 4, 0);
     bytes[2] = 2; bytes[12] = 0; bytes[13] = 2; bytes[14] = 128; bytes[16] = 32; bytes[17] = 0x28;
     for (size_t index = 18; index < bytes.size(); index += 4) {

@@ -29,8 +29,9 @@ bool ContainsOrEquals(const std::filesystem::path& a, const std::filesystem::pat
     auto left = a.begin();
     auto right = b.begin();
     for (; left != a.end(); ++left, ++right) {
-        if (right == b.end() || CompareStringOrdinal(left->c_str(), -1, right->c_str(), -1, TRUE) != CSTR_EQUAL)
+        if (right == b.end() || CompareStringOrdinal(left->c_str(), -1, right->c_str(), -1, TRUE) != CSTR_EQUAL) {
             return false;
+        }
     }
     return true;
 }
@@ -41,12 +42,16 @@ bool CanonicalPath(const std::filesystem::path& input, std::filesystem::path& re
 {
     std::error_code error;
     const std::filesystem::path absolute = std::filesystem::absolute(input, error);
-    if (!error) result = std::filesystem::weakly_canonical(absolute, error).lexically_normal();
+    if (!error) {
+        result = std::filesystem::weakly_canonical(absolute, error).lexically_normal();
+    }
     if (error || result.empty()) {
         reason = "Output path could not be resolved: " + error.message();
         return false;
     }
-    while (result.has_relative_path() && result.filename().empty()) result = result.parent_path();
+    while (result.has_relative_path() && result.filename().empty()) {
+        result = result.parent_path();
+    }
     return true;
 }
 
@@ -54,30 +59,37 @@ bool CanonicalPath(const std::filesystem::path& input, std::filesystem::path& re
 constexpr const char* kProtectedDirs[] = {
     "Assets", "Library", "ProjectSettings", "Src", "Include", "Binaries", "Build",
 };
-} /// @note namespace
+} // namespace
 
 std::vector<std::string> BuildSettings::EnabledScenes() const
 {
     std::vector<std::string> result;
     for (const auto& scene : scenes)
-        if (scene.enabled)
+        if (scene.enabled) {
             result.push_back(scene.path);
+        }
     return result;
 }
 
 std::filesystem::path BuildSettings::ResolveOutputPath(const std::string& projectRoot) const
 {
-    /// @note 絶対/相対パスどちらも受け付け、保存時は相対パスを優先する (別 PC へ移しても動くように)。
+    // 絶対/相対パスどちらも受け付け、保存時は相対パスを優先する (別 PC へ移しても動くように)。
     std::filesystem::path out = util::FileSystem::PathFromUtf8(outputDirectory);
-    if (out.is_absolute()) return out;
+    if (out.is_absolute()) {
+        return out;
+    }
     return util::FileSystem::PathFromUtf8(projectRoot) / out;
 }
 
 std::filesystem::path BuildSettings::ResolveIconPath(const std::string& projectRoot) const
 {
-    if (iconPath.empty()) return {};
+    if (iconPath.empty()) {
+        return {};
+    }
     std::filesystem::path icon = util::FileSystem::PathFromUtf8(iconPath);
-    if (icon.is_absolute()) return icon;
+    if (icon.is_absolute()) {
+        return icon;
+    }
     return util::FileSystem::PathFromUtf8(projectRoot) / icon;
 }
 
@@ -101,7 +113,9 @@ bool BuildSettings::ValidateOutputPath(const std::string& projectRoot, std::stri
     std::filesystem::path root;
     std::filesystem::path out;
     if (!CanonicalPath(util::FileSystem::PathFromUtf8(projectRoot), root, outReason)
-        || !CanonicalPath(ResolveOutputPath(projectRoot), out, outReason)) return false;
+        || !CanonicalPath(ResolveOutputPath(projectRoot), out, outReason)) {
+        return false;
+    }
     std::error_code error;
     const bool rootExists = std::filesystem::is_directory(root, error);
     if (error || !rootExists) {
@@ -121,14 +135,18 @@ bool BuildSettings::ValidateOutputPath(const std::string& projectRoot, std::stri
     }
     for (const char* name : kProtectedDirs) {
         std::filesystem::path dir;
-        if (!CanonicalPath(root / name, dir, outReason)) return false;
-        if (!ContainsOrEquals(dir, out) && !ContainsOrEquals(out, dir)) continue;
+        if (!CanonicalPath(root / name, dir, outReason)) {
+            return false;
+        }
+        if (!ContainsOrEquals(dir, out) && !ContainsOrEquals(out, dir)) {
+            continue;
+        }
         outReason = std::string("Output Directory overlaps the project's ") + name + "/ folder.";
         return false;
     }
 
-    /// @note 既に中身があるフォルダは、前回の配布物 (game.manifest.toml を持つ) でない限り拒否する。
-    /// @note 検査できない既存フォルダーや通常ファイルは、削除対象として許可しない。
+    // 既に中身があるフォルダは、前回の配布物 (game.manifest.toml を持つ) でない限り拒否する。
+    // 検査できない既存フォルダーや通常ファイルは、削除対象として許可しない。
     const std::filesystem::file_status status = std::filesystem::status(out, error);
     if (error && error != std::errc::no_such_file_or_directory) {
         outReason = "Output Directory could not be inspected: " + error.message();
@@ -144,12 +162,16 @@ bool BuildSettings::ValidateOutputPath(const std::string& projectRoot, std::stri
                 return false;
             }
             if (std::filesystem::exists(parentStatus)) {
-                if (std::filesystem::is_directory(parentStatus)) return true;
+                if (std::filesystem::is_directory(parentStatus)) {
+                    return true;
+                }
                 outReason = "Output parent exists and is not a directory.";
                 return false;
             }
             const std::filesystem::path next = parent.parent_path();
-            if (next == parent) break;
+            if (next == parent) {
+                break;
+            }
             parent = next;
         }
         outReason = "Output Directory has no existing directory ancestor.";
@@ -185,11 +207,15 @@ bool BuildSettings::ValidateOutputPath(const std::string& projectRoot, std::stri
 
 bool BuildSettings::LoadLegacyFile(const std::string& projectRoot, BuildSettings& out)
 {
-    if (projectRoot.empty()) return false;
+    if (projectRoot.empty()) {
+        return false;
+    }
 
     const std::string path = projectRoot + "/" + LEGACY_BUILD_SETTINGS_FILE;
     std::string text;
-    if (!util::FileSystem::ReadText(path, text)) return false;
+    if (!util::FileSystem::ReadText(path, text)) {
+        return false;
+    }
 
     auto result = toml::parse(text);
     if (!result) {
@@ -209,12 +235,15 @@ bool BuildSettings::LoadLegacyFile(const std::string& projectRoot, BuildSettings
     if (auto* scenesArr = tbl["scenes"].as_array()) {
         for (auto& elem : *scenesArr) {
             auto* entryTbl = elem.as_table();
-            if (!entryTbl) continue;
+            if (!entryTbl) {
+                continue;
+            }
             SceneEntry entry;
             entry.path    = (*entryTbl)["path"].value_or(std::string{});
             entry.enabled = (*entryTbl)["enabled"].value_or(true);
-            if (!entry.path.empty())
+            if (!entry.path.empty()) {
                 out.scenes.push_back(std::move(entry));
+            }
         }
     }
 
@@ -223,4 +252,4 @@ bool BuildSettings::LoadLegacyFile(const std::string& projectRoot, BuildSettings
     return true;
 }
 
-} /// @note namespace fbzz::editor
+} // namespace fbzz::editor

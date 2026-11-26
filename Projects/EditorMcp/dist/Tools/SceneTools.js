@@ -244,7 +244,7 @@ export function RegisterSceneCommandTools(server, bus, permission) {
         inputSchema: { id: NodeIdSchema.describe('Prefab インスタンスのルート NodeId') },
         annotations: writeAnnotations,
     }, ({ id }) => run({ t: 'prefab.revert', id }));
-    /// @note ── ワールドオーサリングの編集 ──
+    // 地形やワールドの編集操作を登録する。
     server.registerTool('preset_create', {
         description: 'Add Object プリセットから GameObject を生成します。preset は preset_catalog の id です。'
             + 'Hierarchy メニューと同じ生成関数を通るので、人が置いたものと中身が完全に一致します'

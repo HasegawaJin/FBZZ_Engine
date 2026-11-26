@@ -22,15 +22,18 @@ namespace {
 void DrawRendererMaterialStatus(EditorContext& ctx, size_t submeshCount, bool skinned)
 {
     scene::GameObject* go = ctx.GetSelectedGO();
-    if (!go || submeshCount == 0) return;
+    if (!go || submeshCount == 0) {
+        return;
+    }
 
     auto* mc = go->GetComponent<scene::MaterialComponent>();
     if (!mc) {
         ImGui::SeparatorText("Materials");
         ImGui::TextColored(EditorTheme::Color(ThemeColor::Warning),
                            "! Material component required");
-        if (ImGui::Button("Add Material"))
+        if (ImGui::Button("Add Material")) {
             go->AddComponent<scene::MaterialComponent>(CreateDefaultMaterialComponent(skinned));
+        }
         return;
     }
 
@@ -38,7 +41,7 @@ void DrawRendererMaterialStatus(EditorContext& ctx, size_t submeshCount, bool sk
                         mc->SlotCount());
 }
 
-} /// @note namespace
+} // namespace
 
 void DrawRenderingInspectors(scene::GameObject* go, EditorContext& ctx, std::any& m_componentClipboard, const std::type_info*& m_componentClipboardType)
 {
@@ -55,7 +58,10 @@ void DrawRenderingInspectors(scene::GameObject* go, EditorContext& ctx, std::any
 
             int sel = 0;
             for (int i = 1; i < kPrimitiveCount; ++i)
-                if (mr.meshPath == kPrimitivePaths[i]) { sel = i; break; }
+                if (mr.meshPath == kPrimitivePaths[i]) {
+                    sel = i;
+                    break;
+                }
 
             if (property::Combo("Mesh", &sel, kPrimitiveNames, kPrimitiveCount)) {
                 if (sel > 0) {
@@ -84,8 +90,9 @@ void DrawRenderingInspectors(scene::GameObject* go, EditorContext& ctx, std::any
                     [&mr]() {
                         if (!mr.meshPath.empty())
                             if (auto* model = asset::AssetManager::LoadAndGet<asset::Model>(mr.meshPath))
-                                if (!model->meshes.empty())
+                                if (!model->meshes.empty()) {
                                     mr.mesh = model->meshes[0].get();
+                                }
                     });
             }
 
@@ -98,8 +105,9 @@ void DrawRenderingInspectors(scene::GameObject* go, EditorContext& ctx, std::any
 
             if (mr.castShadows) {
                 property::Checkbox("Bake Static Shadow", &mr.bakeStaticShadow);
-                if (ImGui::IsItemHovered())
+                if (ImGui::IsItemHovered()) {
                     ImGui::SetTooltip("Include this stationary mesh in directional Auto Bake.");
+                }
             }
 
             DrawRendererMaterialStatus(ctx, mr.mesh ? 1u : 0u, false);
@@ -110,12 +118,13 @@ void DrawRenderingInspectors(scene::GameObject* go, EditorContext& ctx, std::any
             property::AssetPathFieldWithLoad("Model", smr.modelPath, ".fbx,.obj,.gltf,.glb", ctx.projectRoot,
                 [&smr]() {
                     smr.model = nullptr;
-                    if (!smr.modelPath.empty())
+                    if (!smr.modelPath.empty()) {
                         smr.model = asset::AssetManager::LoadAndGet<asset::Model>(smr.modelPath);
+                    }
                 });
 
             if (smr.model) {
-                /// @note submesh の指定 UI は持たない。担当は FBX のノード構造から配置時に決まる (submeshIndices 参照)。
+                // submesh の指定 UI は持たない。担当は FBX のノード構造から配置時に決まる (submeshIndices 参照)。
                 const size_t meshCount = smr.SubmeshCount();
                 ImGui::TextDisabled("%zu submesh(es) of %zu | %s skeleton",
                     meshCount, smr.model->meshes.size(),
@@ -132,8 +141,9 @@ void DrawRenderingInspectors(scene::GameObject* go, EditorContext& ctx, std::any
             property::DragFloat("Size", &group.size, 0.05f, 0.001f, 100000.0f);
             property::Checkbox("Cull Below Last LOD", &group.cullBelowLastLevel);
             property::DragFloat("Fade Duration", &group.fadeDuration, 0.01f, 0.0f, 2.0f, "%.2f s");
-            if (ImGui::IsItemHovered())
+            if (ImGui::IsItemHovered()) {
                 ImGui::SetTooltip("LOD を入れ替えるときのディザクロスフェード時間。0 で即差し替え");
+            }
 
             int removeLevel = -1;
             for (size_t levelIndex = 0; levelIndex < group.levels.size(); ++levelIndex) {
@@ -151,12 +161,16 @@ void DrawRenderingInspectors(scene::GameObject* go, EditorContext& ctx, std::any
                         ImGui::PushID(static_cast<int>(rendererIndex));
                         ImGui::TextUnformatted(rendererGo ? rendererGo->name.c_str() : "Missing Renderer");
                         ImGui::SameLine();
-                        if (ImGui::SmallButton("Remove")) removeRenderer = static_cast<int>(rendererIndex);
+                        if (ImGui::SmallButton("Remove")) {
+                            removeRenderer = static_cast<int>(rendererIndex);
+                        }
                         ImGui::PopID();
                     }
                     if (removeRenderer >= 0) {
                         level.renderers.erase(level.renderers.begin() + removeRenderer);
-                        if (ctx.markSceneDirty) ctx.markSceneDirty();
+                        if (ctx.markSceneDirty) {
+                            ctx.markSceneDirty();
+                        }
                     }
 
                     ImGui::Button("Drop Renderer Here", { -1.0f, 0.0f });
@@ -167,18 +181,24 @@ void DrawRenderingInspectors(scene::GameObject* go, EditorContext& ctx, std::any
                             reference.instanceId = dropped->instanceId;
                             reference.entity = dropped->GetID();
                             level.renderers.push_back(std::move(reference));
-                            if (ctx.markSceneDirty) ctx.markSceneDirty();
+                            if (ctx.markSceneDirty) {
+                                ctx.markSceneDirty();
+                            }
                         }
                     }
 
-                    if (ImGui::SmallButton("Remove LOD")) removeLevel = static_cast<int>(levelIndex);
+                    if (ImGui::SmallButton("Remove LOD")) {
+                        removeLevel = static_cast<int>(levelIndex);
+                    }
                     ImGui::TreePop();
                 }
                 ImGui::PopID();
             }
             if (removeLevel >= 0) {
                 group.levels.erase(group.levels.begin() + removeLevel);
-                if (ctx.markSceneDirty) ctx.markSceneDirty();
+                if (ctx.markSceneDirty) {
+                    ctx.markSceneDirty();
+                }
             }
 
             if (ImGui::Button("Add LOD")) {
@@ -186,11 +206,13 @@ void DrawRenderingInspectors(scene::GameObject* go, EditorContext& ctx, std::any
                 level.screenRelativeHeight = group.levels.empty()
                     ? 0.5f : group.levels.back().screenRelativeHeight * 0.5f;
                 group.levels.push_back(std::move(level));
-                if (ctx.markSceneDirty) ctx.markSceneDirty();
+                if (ctx.markSceneDirty) {
+                    ctx.markSceneDirty();
+                }
             }
         });
 
-    /// @note 形の正本はスクリプト (mesh.Apply) で保存もされないので、中身は読み取り専用で出す。
+    // 形の正本はスクリプト (mesh.Apply) で保存もされないので、中身は読み取り専用で出す。
     DrawComponentSection<scene::ProceduralMeshComponent>(go, ctx, m_componentClipboard, m_componentClipboardType, "Procedural Mesh",
         [](scene::ProceduralMeshComponent& procedural, EditorContext&) {
             const uint32_t vertexCount = procedural.builder.VertexCount();
@@ -206,4 +228,4 @@ void DrawRenderingInspectors(scene::GameObject* go, EditorContext& ctx, std::any
 }
 
 
-} /// @note namespace fbzz::editor
+} // namespace fbzz::editor

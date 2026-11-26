@@ -17,4 +17,4 @@ void RegisterTargetPointReferenceOperators(OperatorRegistry& registry);
 /// @return 操作を実行したらtrue。呼び出し側は古いGO/Component参照を使う描画を終了すること。
 [[nodiscard]] bool DrawTargetPointReferenceInspector(EditorContext& ctx, scene::GameObject& object);
 
-} /// @note namespace fbzz::editor
+} // namespace fbzz::editor

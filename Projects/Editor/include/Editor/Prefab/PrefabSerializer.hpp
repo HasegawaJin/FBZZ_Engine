@@ -81,4 +81,4 @@ public:
                                                      double withinSeconds = 2.0);
 };
 
-} /// @note namespace fbzz::editor
+} // namespace fbzz::editor

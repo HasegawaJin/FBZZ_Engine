@@ -31,31 +31,36 @@ namespace {
 /// @note 旧実装は「Undo = そのパスを RemoveAll する」を積んでいたが、ディスク上のファイルの存在自体を Undo 対象にすると壊れる: 中身を編集後に無関係な Ctrl+Z で編集ぶんごとファイルが消える、フォルダ Undo で後から追加した中身まで巻き添えで消える、パスだけで別物を消しうる。Undo スタックはシーン編集と共有のため、ファイルの生成・削除は Unity と同じく対象外にし、履歴には「メモリ上の値の編集」だけを載せる。
 void NotifyAssetCreated(const std::string& path)
 {
-    if (path.empty()) return;
+    if (path.empty()) {
+        return;
+    }
     FBZZ_LOG_INFO("Asset created: %s", path.c_str());
 
-    /// @note 失敗キャッシュを掃除する。AssetManager はロード失敗も cache へ焼き付けるため、実体が生まれる前に一度でも参照されたパスはファイルを作っても無音で無効なままになる (先にパスを書いてからアセットを作る順序は普通に起きる)。ここは全生成経路が通る唯一の合流点なので、1 か所で掃除を効かせられる。
-    /// @note RefreshDirectory() 側では掃除しない。あちらはファイル監視や各操作の後に高頻度で走り、そこで掃除すると壊れているアセットの再インポートを延々と試み続けるため、「実体が増えた瞬間」だけに絞る。
+    // 失敗キャッシュを掃除する。AssetManager はロード失敗も cache へ焼き付けるため、実体が生まれる前に一度でも参照されたパスはファイルを作っても無音で無効なままになる (先にパスを書いてからアセットを作る順序は普通に起きる)。ここは全生成経路が通る唯一の合流点なので、1 か所で掃除を効かせられる。
+    // RefreshDirectory() 側では掃除しない。あちらはファイル監視や各操作の後に高頻度で走り、そこで掃除すると壊れているアセットの再インポートを延々と試み続けるため、「実体が増えた瞬間」だけに絞る。
     asset::AssetManager::FlushFailed();
 
     Toast::Success("Created " + util::FileSystem::GetFilename(path));
 }
 
-} /// @note namespace
+} // namespace
 
 void AssetBrowserPanel::BeginRenameForPath(const std::string& path, EditorContext* ctx)
 {
-    if (path.empty()) return;
+    if (path.empty()) {
+        return;
+    }
 
     m_renamingPath = path;
     m_pendingRenamePath.clear();
     m_selectedPaths.clear();
 
-    if (ctx && !util::FileSystem::IsDirectory(path))
+    if (ctx && !util::FileSystem::IsDirectory(path)) {
         SelectAsset(*ctx, path);
+    }
 
-    /// @note 編集させるのは拡張子より前だけ。拡張子は m_renameExtension に退避して固定表示する。拡張子はアセットの種類そのものなので、名前を直すついでに変えられると困る。ここは新規作成・複製・F2・遅延リネームの全経路が通る唯一の開始地点なので、分割をここでやれば呼び出し側に手を入れずに全リネームへ効く。
-    /// @note フォルダと、先頭がドットのファイル (.gitignore 等) は分割しない。後者は「拡張子だけの名前」であり、切り出すと編集できる部分が無くなる。
+    // 編集させるのは拡張子より前だけ。拡張子は m_renameExtension に退避して固定表示する。拡張子はアセットの種類そのものなので、名前を直すついでに変えられると困る。ここは新規作成・複製・F2・遅延リネームの全経路が通る唯一の開始地点なので、分割をここでやれば呼び出し側に手を入れずに全リネームへ効く。
+    // フォルダと、先頭がドットのファイル (.gitignore 等) は分割しない。後者は「拡張子だけの名前」であり、切り出すと編集できる部分が無くなる。
     const std::string fileName = util::FileSystem::GetFilename(path);
     std::string       stem     = fileName;
     m_renameExtension.clear();
@@ -75,7 +80,9 @@ void AssetBrowserPanel::BeginRenameForPath(const std::string& path, EditorContex
 
 void AssetBrowserPanel::DrawFbxContents(EditorContext& ctx)
 {
-    if (m_selectedFbxPath.empty()) return;
+    if (m_selectedFbxPath.empty()) {
+        return;
+    }
 
     ImGui::Separator();
     ImGui::TextDisabled("  %s", util::FileSystem::GetFilename(m_selectedFbxPath).c_str());
@@ -94,7 +101,7 @@ void AssetBrowserPanel::DrawFbxContents(EditorContext& ctx)
         return;
     }
 
-    /// @note アイコン描画ラムダ (DrawEntry と同じスタイル)
+    // アイコン描画ラムダ (DrawEntry と同じスタイル)
     const float padding = 8.0f;
     const float avail   = ImGui::GetContentRegionAvail().x;
     const int   cols    = std::max(1, (int)(avail / (m_iconSize + padding)));
@@ -106,7 +113,9 @@ void AssetBrowserPanel::DrawFbxContents(EditorContext& ctx)
                            const std::string& payload,
                            EditorContext& ctx)
     {
-        if (col > 0 && (col % cols) != 0) ImGui::SameLine(0.0f, padding);
+        if (col > 0 && (col % cols) != 0) {
+            ImGui::SameLine(0.0f, padding);
+        }
 
         char uid[64];
         std::snprintf(uid, sizeof(uid), "##sub%d", iconIdx++);
@@ -142,15 +151,19 @@ void AssetBrowserPanel::DrawFbxContents(EditorContext& ctx)
             ImGui::EndDragDropSource();
         }
 
-        if (hov) ImGui::SetTooltip("%s", tooltip);
+        if (hov) {
+            ImGui::SetTooltip("%s", tooltip);
+        }
 
-        /// @note 名前テキスト (省略、中央揃え)
-        /// @note 1 バイトずつ pop_back すると日本語のファイル名が文字の途中で切れる。
-        /// @note 文字境界を知っている共通の縮め方へ寄せる。
+        // 名前テキスト (省略、中央揃え)
+        // 1 バイトずつ pop_back すると日本語のファイル名が文字の途中で切れる。
+        // 文字境界を知っている共通の縮め方へ寄せる。
         const std::string disp = widgets::ElideToWidth(displayName, sz, "..");
 
         const float ind = (sz - ImGui::CalcTextSize(disp.c_str()).x) * 0.5f;
-        if (ind > 0.0f) ImGui::SetCursorPosX(ImGui::GetCursorPosX() + ind);
+        if (ind > 0.0f) {
+            ImGui::SetCursorPosX(ImGui::GetCursorPosX() + ind);
+        }
         ImGui::TextUnformatted(disp.c_str());
 
         ImGui::PopID();
@@ -158,7 +171,7 @@ void AssetBrowserPanel::DrawFbxContents(EditorContext& ctx)
         ++col;
     };
 
-    /// @name MESH アイコン
+    // MESH アイコン
     if (hasMesh) {
         char tip[256];
         std::snprintf(tip, sizeof(tip), "%zu mesh(es)%s\nDrag → Skinned Mesh Renderer",
@@ -170,7 +183,7 @@ void AssetBrowserPanel::DrawFbxContents(EditorContext& ctx)
         drawSubIcon("MESH", "Mesh", tip, { 0.80f, 0.45f, 0.10f, 1.0f }, m_selectedFbxPath, ctx);
     }
 
-    /// @name ANIM アイコン (クリップ1件につき1個)
+    // ANIM アイコン (クリップ1件につき1個)
     for (const auto& clip : model.clips) {
         const float dur = static_cast<float>(clip.GetDurationSeconds());
         char tip[256];
@@ -189,37 +202,47 @@ void AssetBrowserPanel::DrawCreateMenu(EditorContext& ctx, const std::string& di
     };
     if (ImGui::MenuItem(LOC("Folder"))) {
         std::string newDir = directory + "/New Folder";
-        /// @note 重複回避
+        // 重複回避
         int suffix = 1;
-        while (util::FileSystem::Exists(newDir))
+        while (util::FileSystem::Exists(newDir)) {
             newDir = directory + "/New Folder " + std::to_string(suffix++);
-        if (!CreateEditorAsset("folder", newDir)) return;
+        }
+        if (!CreateEditorAsset("folder", newDir)) {
+            return;
+        }
         finishCreate(newDir);
     }
     ImGui::Separator();
     if (ImGui::MenuItem("Scene")) {
         std::string newPath = directory + "/New Scene.scene";
         int suffix = 1;
-        while (util::FileSystem::Exists(newPath))
+        while (util::FileSystem::Exists(newPath)) {
             newPath = directory + "/New Scene " + std::to_string(suffix++) + ".scene";
-        if (!CreateEditorAsset("scene", newPath)) return;
+        }
+        if (!CreateEditorAsset("scene", newPath)) {
+            return;
+        }
         finishCreate(newPath);
     }
     if (ImGui::MenuItem("Material")) {
         std::string newPath = directory + "/New Material.mat";
         int suffix = 1;
-        while (util::FileSystem::Exists(newPath))
+        while (util::FileSystem::Exists(newPath)) {
             newPath = directory + "/New Material " + std::to_string(suffix++) + ".mat";
-        if (!CreateEditorAsset("material", newPath)) return;
+        }
+        if (!CreateEditorAsset("material", newPath)) {
+            return;
+        }
         finishCreate(newPath);
     }
     if (ImGui::MenuItem("Vector Field")) {
         std::string newPath = directory + "/New Vector Field.png";
         int suffix = 1;
-        while (util::FileSystem::Exists(newPath))
+        while (util::FileSystem::Exists(newPath)) {
             newPath = directory + "/New Vector Field " + std::to_string(suffix++) + ".png";
-        /// @note 既定は 32³ のカールノイズ。空のグリッドを置くと «貼っても何も起きない» という
-        /// @note 最も分かりにくい状態から始まるので、開いた時点で流れが見えるものを焼く。
+        }
+        // 既定は 32³ のカールノイズ。空のグリッドを置くと «貼っても何も起きない» という
+        // 最も分かりにくい状態から始まるので、開いた時点で流れが見えるものを焼く。
         if (CreateEditorAsset("vector_field", newPath)) {
             finishCreate(newPath);
         }
@@ -227,10 +250,11 @@ void AssetBrowserPanel::DrawCreateMenu(EditorContext& ctx, const std::string& di
     if (ImGui::MenuItem("Fluid Effect")) {
         std::string newPath = directory + "/New Fluid.fluid";
         int suffix = 1;
-        while (util::FileSystem::Exists(newPath))
+        while (util::FileSystem::Exists(newPath)) {
             newPath = directory + "/New Fluid " + std::to_string(suffix++) + ".fluid";
-        /// @note 既定は煙のプリセット。空のレシピだと焼いても何も写らず、«壊れている» のか
-        /// @note «設定が無い» のか区別できない。
+        }
+        // 既定は煙のプリセット。空のレシピだと焼いても何も写らず、«壊れている» のか
+        // «設定が無い» のか区別できない。
         if (CreateEditorAsset("fluid", newPath)) {
             finishCreate(newPath);
         }
@@ -242,7 +266,7 @@ void AssetBrowserPanel::DrawCreateMenu(EditorContext& ctx, const std::string& di
             newPath = directory + "/New Post Process Profile " +
                 std::to_string(suffix++) + ".fzdata";
 
-        /// @note DataAssetRegistry::Create は型名から実体を生成し既定値のまま保存するため、Inspector が期待する全セクションが Reflect() 経由で自動的に揃う。専用のテンプレート文字列を持たなくて済む。
+        // DataAssetRegistry::Create は型名から実体を生成し既定値のまま保存するため、Inspector が期待する全セクションが Reflect() 経由で自動的に揃う。専用のテンプレート文字列を持たなくて済む。
         if (!CreateEditorAsset("post_process_profile", newPath)) {
             FBZZ_LOG_ERROR("Post Process Profile creation failed: %s", newPath.c_str());
             return;
@@ -261,24 +285,26 @@ void AssetBrowserPanel::DrawCreateMenu(EditorContext& ctx, const std::string& di
         }
         finishCreate(newPath);
     }
-    /// @note 演出タイムライン。空でも「合図を並べる EventTrack 1 本」だけは入れて出す。完全に空の .sequence は SequencePlayerComponent に挿しても何も起きず、設定が足りないのかアセットが壊れているのか見分けが付かない。
+    // 演出タイムライン。空でも「合図を並べる EventTrack 1 本」だけは入れて出す。完全に空の .sequence は SequencePlayerComponent に挿しても何も起きず、設定が足りないのかアセットが壊れているのか見分けが付かない。
     if (ImGui::MenuItem("Sequence")) {
         std::string newPath = directory + "/New Sequence.sequence";
         int suffix = 1;
-        while (util::FileSystem::Exists(newPath))
+        while (util::FileSystem::Exists(newPath)) {
             newPath = directory + "/New Sequence " + std::to_string(suffix++) + ".sequence";
+        }
         if (!CreateEditorAsset("sequence", newPath)) {
             FBZZ_LOG_ERROR("Sequence creation failed: %s", newPath.c_str());
             return;
         }
         finishCreate(newPath);
     }
-    /// @note Avatar Mask: アニメーションレイヤーを「どのボーンに効かせるか」の再利用アセット。上半身だけ / 下半身だけの制御はこれが無いと毎回ボーンパスを手書きすることになる。
+    // Avatar Mask: アニメーションレイヤーを「どのボーンに効かせるか」の再利用アセット。上半身だけ / 下半身だけの制御はこれが無いと毎回ボーンパスを手書きすることになる。
     if (ImGui::MenuItem("Avatar Mask")) {
         std::string newPath = directory + "/New Avatar Mask.mask";
         int suffix = 1;
-        while (util::FileSystem::Exists(newPath))
+        while (util::FileSystem::Exists(newPath)) {
             newPath = directory + "/New Avatar Mask " + std::to_string(suffix++) + ".mask";
+        }
         if (!CreateEditorAsset("avatar_mask", newPath)) {
             FBZZ_LOG_ERROR("Avatar Mask creation failed: %s", newPath.c_str());
             return;
@@ -292,7 +318,7 @@ void AssetBrowserPanel::DrawCreateMenu(EditorContext& ctx, const std::string& di
             newPath = directory + "/New Behavior Tree " + std::to_string(suffix++)
                     + ".behaviortree";
 
-        /// @note ルート 1 個の最小構成で作る。ValidateBehaviorTreeAsset が「ルート 0 個」を拒否するため空のまま保存できず、すぐ編集を始められる形で生成する。
+        // ルート 1 個の最小構成で作る。ValidateBehaviorTreeAsset が「ルート 0 個」を拒否するため空のまま保存できず、すぐ編集を始められる形で生成する。
         if (!CreateEditorAsset("behavior_tree", newPath)) {
             FBZZ_LOG_ERROR("Behavior Tree creation failed: %s", newPath.c_str());
             return;
@@ -300,12 +326,14 @@ void AssetBrowserPanel::DrawCreateMenu(EditorContext& ctx, const std::string& di
         finishCreate(newPath);
     }
 
-    /// @name Physics Material (共有物理マテリアル)
-    /// @note プリセットを選んで .physmat を生成する。反発 0.3 / 摩擦 0.6 のような数値だけでは「どんな材質か」が分からないため、ゴム・氷・金属という名前から始めて微調整させる。
+    // Physics Material (共有物理マテリアル)
+    // プリセットを選んで .physmat を生成する。反発 0.3 / 摩擦 0.6 のような数値だけでは「どんな材質か」が分からないため、ゴム・氷・金属という名前から始めて微調整させる。
     if (ImGui::BeginMenu("Physics Material")) {
         for (int i = 0; i < physics::PhysicsMaterial::PRESET_COUNT; ++i) {
             const char* presetName = physics::PhysicsMaterial::PresetName(i);
-            if (!ImGui::MenuItem(presetName)) continue;
+            if (!ImGui::MenuItem(presetName)) {
+                continue;
+            }
 
             std::string newPath = directory + "/" + presetName + ".physmat";
             int suffix = 1;
@@ -322,13 +350,15 @@ void AssetBrowserPanel::DrawCreateMenu(EditorContext& ctx, const std::string& di
         ImGui::EndMenu();
     }
 
-    /// @name Data Asset (純共有 ScriptableObject)
-    /// @note プリセットを選んで .synth を生成する。空の SynthSpec は無音に近く、そこから耳で目的の音へ辿り着くのは現実的でないため、「Laser」から始めて調整させる。
+    // Data Asset (純共有 ScriptableObject)
+    // プリセットを選んで .synth を生成する。空の SynthSpec は無音に近く、そこから耳で目的の音へ辿り着くのは現実的でないため、「Laser」から始めて調整させる。
     if (ImGui::BeginMenu("Synth Clip")) {
         for (int i = 0; i < static_cast<int>(audio::SynthPreset::Count); ++i) {
             const auto preset = static_cast<audio::SynthPreset>(i);
             const char* presetName = audio::PresetToString(preset);
-            if (!ImGui::MenuItem(presetName)) continue;
+            if (!ImGui::MenuItem(presetName)) {
+                continue;
+            }
 
             std::string newPath = directory + "/" + presetName + ".synth";
             int suffix = 1;
@@ -346,15 +376,17 @@ void AssetBrowserPanel::DrawCreateMenu(EditorContext& ctx, const std::string& di
     }
 
     if (ImGui::MenuItem("Terrain Paint Asset")) {
-        OpArgs args; args.Set("directory", NormalizeAssetPath(directory));
+        OpArgs args;
+        args.Set("directory", NormalizeAssetPath(directory));
         (void)InvokeOperator(ctx, "terrain.paint_asset.new", args);
     }
-    /// @note 登録済み DataAsset 型を列挙し、選んだ型の .fzdata を生成する。フィールドの既定値は Inspector の初回 Resolve 時に補完する。
+    // 登録済み DataAsset 型を列挙し、選んだ型の .fzdata を生成する。フィールドの既定値は Inspector の初回 Resolve 時に補完する。
     if (ImGui::BeginMenu("Data Asset")) {
         DrawManagedDataAssetCreateMenu(ctx, directory);
         const auto types = asset::DataAssetFactory::RegisteredTypeNames();
-        if (types.empty())
+        if (types.empty()) {
             ImGui::TextDisabled("(no DataAsset types registered)");
+        }
         for (const auto& typeName : types) {
             if (ImGui::MenuItem(typeName.c_str())) {
                 std::string newPath = directory + "/New " + typeName + ".fzdata";
@@ -419,18 +451,25 @@ void AssetBrowserPanel::DrawCreateMenu(EditorContext& ctx, const std::string& di
         ImGui::EndMenu();
     }
 
-    /// @name HLSL シェーダー
+    // HLSL シェーダー
     if (ImGui::BeginMenu(LOC("HLSL in Assets/Shaders..."))) {
         auto makeHlslCallback = [this, &ctx](ScriptCodeGen::HlslKind kind) {
             return [this, &ctx, kind](const std::string& name) {
                 const char* value = kind == ScriptCodeGen::HlslKind::SurfaceVSPS ? "surface"
                     : kind == ScriptCodeGen::HlslKind::ParticlePS ? "particle"
                     : kind == ScriptCodeGen::HlslKind::ComputeCS ? "compute" : "post_process";
-                OpArgs args; args.Set("name", name); args.Set("kind", std::string(value));
+                OpArgs args;
+                args.Set("name", name);
+                args.Set("kind", std::string(value));
                 const OpResult result = InvokeOperator(ctx, "asset.hlsl.create", args);
-                if (!result.ok) { FBZZ_LOG_WARN("HLSL creation failed: %s", result.message.c_str()); return; }
+                if (!result.ok) {
+                    FBZZ_LOG_WARN("HLSL creation failed: %s", result.message.c_str());
+                    return;
+                }
                 const auto* path = result.data.Find("path");
-                if (!path) return;
+                if (!path) {
+                    return;
+                }
                 NotifyAssetCreated(path->AsString());
                 m_pendingNavigate = util::FileSystem::GetDirectory(path->AsString());
                 RefreshDirectory();
@@ -466,4 +505,4 @@ void AssetBrowserPanel::DrawCreateMenu(EditorContext& ctx, const std::string& di
 /// @name ファイル監視ヘルパー
 
 
-} /// @note namespace fbzz::editor
+} // namespace fbzz::editor

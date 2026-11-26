@@ -21,9 +21,15 @@
 namespace fbzz::editor {
 bool CreateEditorAsset(std::string_view kind, const std::string& path, const std::string& preset)
 {
-    if (path.empty() || util::FileSystem::Exists(path) || util::FileSystem::Exists(path + ".meta")) return false;
-    if (kind == "folder") return util::FileSystem::EnsureDirectory(path);
-    if (kind == "scene") return util::FileSystem::WriteTextAtomic(path, "# FBZZ Scene\n");
+    if (path.empty() || util::FileSystem::Exists(path) || util::FileSystem::Exists(path + ".meta")) {
+        return false;
+    }
+    if (kind == "folder") {
+        return util::FileSystem::EnsureDirectory(path);
+    }
+    if (kind == "scene") {
+        return util::FileSystem::WriteTextAtomic(path, "# FBZZ Scene\n");
+    }
     if (kind == "material") {
         const char* materialTemplate =
             "version = 1\n"
@@ -54,13 +60,20 @@ bool CreateEditorAsset(std::string_view kind, const std::string& path, const std
         fluid::BakeVectorField(fluid::VectorFieldRecipe::Curl, 32, {5.0f, 5.0f, 5.0f}, 1, 1.0f, field);
         return asset::SaveVectorField(path, field);
     }
-    if (kind == "fluid") return asset::SaveFluidRecipe(path, asset::MakeFluidPreset(asset::FluidPreset::Smoke));
-    if (kind == "post_process_profile") return asset::DataAssetRegistry::Create(path, asset::PostProcessProfile::TYPE_NAME);
-    if (kind == "animator_controller") return asset::SaveAnimatorControllerAsset(path, asset::AnimatorControllerAsset{});
+    if (kind == "fluid") {
+        return asset::SaveFluidRecipe(path, asset::MakeFluidPreset(asset::FluidPreset::Smoke));
+    }
+    if (kind == "post_process_profile") {
+        return asset::DataAssetRegistry::Create(path, asset::PostProcessProfile::TYPE_NAME);
+    }
+    if (kind == "animator_controller") {
+        return asset::SaveAnimatorControllerAsset(path, asset::AnimatorControllerAsset{});
+    }
     if (kind == "sequence") {
         asset::SequenceAsset sequence; sequence.name = util::FileSystem::PathToUtf8(util::FileSystem::PathFromUtf8(path).stem()); sequence.duration = 3.0;
         asset::SequenceTrack cues; cues.type = asset::SequenceTrackType::Event; cues.name = "Cues";
-        sequence.tracks.push_back(std::move(cues)); return asset::SaveSequenceAsset(path, sequence);
+        sequence.tracks.push_back(std::move(cues));
+        return asset::SaveSequenceAsset(path, sequence);
     }
     if (kind == "avatar_mask") {
         asset::AvatarMaskAsset mask; mask.name = "New Avatar Mask"; mask.defaultInclude = false;
@@ -69,12 +82,17 @@ bool CreateEditorAsset(std::string_view kind, const std::string& path, const std
     if (kind == "behavior_tree") {
         ai::BehaviorTreeAsset tree; ai::EnsureReservedBlackboardKeys(tree);
         ai::BTNodeDef root; root.id = 1; root.type = ai::BTNodeType::Selector; root.name = "Root";
-        root.editorX = 80.0f; root.editorY = 80.0f; tree.nodes.push_back(root); tree.nextNodeId = 2;
+        root.editorX = 80.0f;
+        root.editorY = 80.0f;
+        tree.nodes.push_back(root);
+        tree.nextNodeId = 2;
         std::string error; return ai::SaveBehaviorTreeAsset(path, tree, &error);
     }
     if (kind == "physics_material") {
         for (int i = 0; i < physics::PhysicsMaterial::PRESET_COUNT; ++i) {
-            if (preset != physics::PhysicsMaterial::PresetName(i)) continue;
+            if (preset != physics::PhysicsMaterial::PresetName(i)) {
+                continue;
+            }
             asset::PhysicsMaterialAsset material; material.material = *physics::PhysicsMaterial::PresetAt(i); material.presetName = preset;
             return asset::SavePhysicsMaterialAssetToFile(path, material);
         }
@@ -83,16 +101,20 @@ bool CreateEditorAsset(std::string_view kind, const std::string& path, const std
     if (kind == "synth") {
         for (int i = 0; i < static_cast<int>(audio::SynthPreset::Count); ++i) {
             const auto value = static_cast<audio::SynthPreset>(i);
-            if (preset != audio::PresetToString(value)) continue;
+            if (preset != audio::PresetToString(value)) {
+                continue;
+            }
             asset::SynthAsset synth; synth.spec = audio::MakePreset(value); synth.presetName = preset;
             return asset::SaveSynthAssetToFile(path, synth);
         }
         return false;
     }
     if (kind == "data_asset") {
-        if (preset == asset::RenderPipelineAsset::TYPE_NAME) return asset::CreateRenderPipelineAsset(path, renderer::RenderSettings{});
+        if (preset == asset::RenderPipelineAsset::TYPE_NAME) {
+            return asset::CreateRenderPipelineAsset(path, renderer::RenderSettings{});
+        }
         return asset::DataAssetRegistry::Create(path, preset);
     }
     return false;
 }
-} /// @note namespace fbzz::editor
+} // namespace fbzz::editor

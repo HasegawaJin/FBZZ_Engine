@@ -63,7 +63,7 @@ TEST_F(BuildOutputPathTest, AcceptsTheDefaultOutputDirectory)
 /// @brief Rejects an empty output directory.
 TEST_F(BuildOutputPathTest, RejectsAnEmptyOutputDirectory)
 {
-    /// @note 空欄は projectRoot へ解決される。ここを通すとプロジェクトごと消える。
+    // 空欄は projectRoot へ解決される。ここを通すとプロジェクトごと消える。
     std::string reason;
     EXPECT_FALSE(Accepts("", &reason));
     EXPECT_FALSE(reason.empty());
@@ -79,7 +79,7 @@ TEST_F(BuildOutputPathTest, RejectsPathsThatResolveToTheProjectRoot)
 /// @brief Rejects an ancestor of the project.
 TEST_F(BuildOutputPathTest, RejectsAnAncestorOfTheProject)
 {
-    /// @note 親を指すと remove_all がプロジェクトを巻き込む。
+    // 親を指すと remove_all がプロジェクトを巻き込む。
     EXPECT_FALSE(Accepts(".."));
 }
 
@@ -87,7 +87,7 @@ TEST_F(BuildOutputPathTest, RejectsAnAncestorOfTheProject)
 TEST_F(BuildOutputPathTest, RejectsProjectDataDirectories)
 {
     EXPECT_FALSE(Accepts("Assets"));
-    /// @note 保護フォルダーの子も置換先にしない。
+    // 保護フォルダーの子も置換先にしない。
     EXPECT_FALSE(Accepts("Assets/Dist"));
     EXPECT_FALSE(Accepts("Library"));
     EXPECT_FALSE(Accepts("ProjectSettings"));
@@ -96,7 +96,7 @@ TEST_F(BuildOutputPathTest, RejectsProjectDataDirectories)
 /// @brief Allows a directory whose name merely shares a prefix.
 TEST_F(BuildOutputPathTest, AllowsADirectoryWhoseNameMerelySharesAPrefix)
 {
-    /// @note "Build" は保護対象、"Builds" は別物。前方一致で巻き込まないこと。
+    // "Build" は保護対象、"Builds" は別物。前方一致で巻き込まないこと。
     EXPECT_FALSE(Accepts("Build"));
     EXPECT_TRUE(Accepts("Builds"));
 }
@@ -104,7 +104,7 @@ TEST_F(BuildOutputPathTest, AllowsADirectoryWhoseNameMerelySharesAPrefix)
 /// @brief Rejects an existing folder that is not a previous build.
 TEST_F(BuildOutputPathTest, RejectsAnExistingFolderThatIsNotAPreviousBuild)
 {
-    /// @note Browse... でデスクトップや素材置き場を選んだ状況。
+    // Browse... でデスクトップや素材置き場を選んだ状況。
     Touch(m_temp.Path() / "Elsewhere" / "notes.txt");
     std::string reason;
     EXPECT_FALSE(Accepts("Elsewhere", &reason));
@@ -114,7 +114,7 @@ TEST_F(BuildOutputPathTest, RejectsAnExistingFolderThatIsNotAPreviousBuild)
 /// @brief Accepts an existing previous build.
 TEST_F(BuildOutputPathTest, AcceptsAnExistingPreviousBuild)
 {
-    /// @note 再ビルドは通す。前回の配布物は game.manifest.toml を持つ。
+    // 再ビルドは通す。前回の配布物は game.manifest.toml を持つ。
     Touch(m_temp.Path() / "Dist" / "notes.txt");
     Touch(m_temp.Path() / "Dist" / "game.manifest.toml");
     EXPECT_TRUE(Accepts("Dist"));

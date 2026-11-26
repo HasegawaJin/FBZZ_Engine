@@ -23,15 +23,19 @@ namespace {
 /// @note Editor から選ぶ手段が無く、実質使われていなかった。
 void DrawPhysicsMaterialPresetMenu(physics::PhysicsMaterial& material)
 {
-    /// @note 選択結果を保持しない「適用するだけ」のコンボ。適用後に値を手で触れるため、プリセット名を
-    /// @note 出すと実際の値と食い違ったまま表示が残る。適用の入口としてだけ機能させる。
-    if (!property::BeginCombo("Preset", "Apply preset..."))
+    // 選択結果を保持しない「適用するだけ」のコンボ。適用後に値を手で触れるため、プリセット名を
+    // 出すと実際の値と食い違ったまま表示が残る。適用の入口としてだけ機能させる。
+    if (!property::BeginCombo("Preset", "Apply preset...")) {
         return;
+    }
     for (int i = 0; i < physics::PhysicsMaterial::PRESET_COUNT; ++i) {
         const char* name = physics::PhysicsMaterial::PresetName(i);
-        if (!ImGui::Selectable(name)) continue;
-        if (const auto* preset = physics::PhysicsMaterial::PresetAt(i))
+        if (!ImGui::Selectable(name)) {
+            continue;
+        }
+        if (const auto* preset = physics::PhysicsMaterial::PresetAt(i)) {
             material = *preset;
+        }
     }
     ImGui::EndCombo();
 }
@@ -43,18 +47,18 @@ void DrawColliderCommon(scene::ColliderComponent& col, scene::GameObject& go,
     widgets::DragVec3("Center", col.center, 0.01f, -1000.0f, 1000.0f);
     property::Checkbox("Is Trigger", &col.isTrigger);
 
-    /// @note 共有 .physmat スロット。割り当てるとインライン編集を閉じる。変更検知の戻り値は使わない。
-    /// @note 参照がある間はどのみち毎フレーム解決するため、解決口を 1 つに絞る。
+    // 共有 .physmat スロット。割り当てるとインライン編集を閉じる。変更検知の戻り値は使わない。
+    // 参照がある間はどのみち毎フレーム解決するため、解決口を 1 つに絞る。
     property::AssetPathField("Physics Material", col.physicsMaterialPath, ".physmat", projectRoot);
 
     const bool usesSharedAsset = !col.physicsMaterialPath.empty();
     if (usesSharedAsset) {
-        /// @note 解決済みの実効値を読み取り専用で見せる。.physmat を開き直さずに実効物性を
-        /// @note 確認できるようにする。編集は共有アセット側で行う。
+        // 解決済みの実効値を読み取り専用で見せる。.physmat を開き直さずに実効物性を
+        // 確認できるようにする。編集は共有アセット側で行う。
         const bool resolved = col.ResolvePhysicsMaterial();
 
-        /// @note 解決できなくても col.material には最後に解決できた値 (無ければ既定値) が残り続け、
-        /// @note 数値だけでは正常時と区別が付かないため、失敗を明示する。
+        // 解決できなくても col.material には最後に解決できた値 (無ければ既定値) が残り続け、
+        // 数値だけでは正常時と区別が付かないため、失敗を明示する。
         if (!resolved) {
             ImGui::TextColored({ 1.0f, 0.4f, 0.3f, 1.0f },
                                "参照を解決できません。下の値は最後に解決できた値です");
@@ -66,11 +70,12 @@ void DrawColliderCommon(scene::ColliderComponent& col, scene::GameObject& go,
                             col.material.dynamicFriction,
                             col.material.staticFriction,
                             col.material.density);
-        if (resolved)
+        if (resolved) {
             ImGui::TextDisabled("値の編集は .physmat 側で行う (参照している全コライダーへ反映)");
+        }
 
-        /// @note Density は RigidBody の Mass Mode が From Density のときだけ質量へ効く。既定の
-        /// @note Manual では density をいくら変えても何も起きないため、ここで断る。
+        // Density は RigidBody の Mass Mode が From Density のときだけ質量へ効く。既定の
+        // Manual では density をいくら変えても何も起きないため、ここで断る。
         if (auto* rb = go.GetComponent<scene::RigidBodyComponent>();
             rb && rb->massMode != scene::MassMode::FromDensity) {
             ImGui::TextDisabled("Density は RigidBody の Mass Mode = From Density でのみ質量に反映されます");
@@ -89,7 +94,7 @@ void DrawAabbCollider(scene::AabbColliderComponent& col, scene::GameObject& go, 
 {
     DrawColliderCommon(col, go, projectRoot);
     widgets::DragVec3("Size", col.size, 0.01f, 0.001f, 1000.0f);
-    /// @note 形状パラメータの反映と姿勢同期は SyncColliderPreview (= ColliderSync) が行う。
+    // 形状パラメータの反映と姿勢同期は SyncColliderPreview (= ColliderSync) が行う。
     SyncColliderPreview(go, col);
 }
 
@@ -133,23 +138,32 @@ void DrawMeshCollider(scene::MeshColliderComponent& col, scene::GameObject& go, 
     property::DragInt("Mesh Index", &col.meshIndex, 1.0f, 0, 1024);
     property::Checkbox("Use Transform Scale", &col.useTransformScale);
     const auto rebuild = [&](const char* source) {
-        OpArgs args; args.Set("node", go.instanceId); args.Set("component", std::string("MeshCollider")); args.Set("source", std::string(source));
+        OpArgs args;
+        args.Set("node", go.instanceId);
+        args.Set("component", std::string("MeshCollider"));
+        args.Set("source", std::string(source));
         const auto result = InvokeOperator(ctx, "component.collider.rebuild", args);
         if (!result.ok) FBZZ_LOG_WARN("Collider rebuild failed: %s", result.message.c_str());
     };
-    if (ImGui::Button("Rebuild From Renderer")) rebuild("renderer");
+    if (ImGui::Button("Rebuild From Renderer")) {
+        rebuild("renderer");
+    }
     ImGui::SameLine();
-    if (ImGui::Button("Rebuild From FBX")) rebuild("model");
-    if (!col.collider)
+    if (ImGui::Button("Rebuild From FBX")) {
+        rebuild("model");
+    }
+    if (!col.collider) {
         ImGui::TextDisabled("No mesh data. Drop FBX or rebuild from renderer.");
+    }
     SyncColliderPreview(go, col);
 }
 
 void DrawTerrainCollider(scene::TerrainColliderComponent& col, scene::GameObject& go, const std::string& projectRoot)
 {
     DrawColliderCommon(col, go, projectRoot);
-    if (!go.GetComponent<scene::TerrainComponent>())
+    if (!go.GetComponent<scene::TerrainComponent>()) {
         ImGui::TextColored({ 1.0f, 0.6f, 0.2f, 1.0f }, "TerrainComponent が同じ GO に必要です");
+    }
     SyncColliderPreview(go, col);
 }
 
@@ -160,15 +174,23 @@ void DrawConvexHullCollider(scene::ConvexHullColliderComponent& col, scene::Game
     property::DragInt("Mesh Index", &col.meshIndex, 1.0f, 0, 1024);
     property::Checkbox("Use Transform Scale", &col.useTransformScale);
     const auto rebuild = [&](const char* source) {
-        OpArgs args; args.Set("node", go.instanceId); args.Set("component", std::string("ConvexHullCollider")); args.Set("source", std::string(source));
+        OpArgs args;
+        args.Set("node", go.instanceId);
+        args.Set("component", std::string("ConvexHullCollider"));
+        args.Set("source", std::string(source));
         const auto result = InvokeOperator(ctx, "component.collider.rebuild", args);
         if (!result.ok) FBZZ_LOG_WARN("Collider rebuild failed: %s", result.message.c_str());
     };
-    if (ImGui::Button("Rebuild From Renderer")) rebuild("renderer");
+    if (ImGui::Button("Rebuild From Renderer")) {
+        rebuild("renderer");
+    }
     ImGui::SameLine();
-    if (ImGui::Button("Rebuild From FBX")) rebuild("model");
-    if (!col.collider)
+    if (ImGui::Button("Rebuild From FBX")) {
+        rebuild("model");
+    }
+    if (!col.collider) {
         ImGui::TextDisabled("No hull data. Drop FBX or rebuild from renderer.");
+    }
     SyncColliderPreview(go, col);
 }
 
@@ -197,8 +219,8 @@ struct MeshColliderValue {
             && material.staticFriction  == o.material.staticFriction
             && material.dynamicFriction == o.material.dynamicFriction
             && material.density         == o.material.density
-            /// @note 合成規則は現在 Inspector から編集できないが、.physmat の割り当てで
-            /// @note 差し替わる値なので比較に含めておく (将来 UI を出したときの取りこぼし防止)。
+            // 合成規則は現在 Inspector から編集できないが、.physmat の割り当てで
+            // 差し替わる値なので比較に含めておく (将来 UI を出したときの取りこぼし防止)。
             && material.restitutionCombine == o.material.restitutionCombine
             && material.frictionCombine    == o.material.frictionCombine
             && physicsMaterialPath == o.physicsMaterialPath
@@ -232,7 +254,9 @@ void ApplyMeshBasedColliderValue(ColliderT& c, const MeshColliderValue& v)
     c.meshPath = v.meshPath;
     c.meshIndex = v.meshIndex;
     c.useTransformScale = v.useTransformScale;
-    if (geomChanged) c.collider.reset();
+    if (geomChanged) {
+        c.collider.reset();
+    }
 }
 
 void ApplyMeshColliderValue(scene::MeshColliderComponent& c, const MeshColliderValue& v)
@@ -256,7 +280,9 @@ MeshColliderValue CaptureConvexHullValue(const scene::ConvexHullColliderComponen
 void ConfigureJointRefReflector(ComponentImGuiReflector& reflector, EditorContext& ctx)
 {
     reflector.m_projectRoot = ctx.projectRoot;
-    if (!ctx.activeScene) return;
+    if (!ctx.activeScene) {
+        return;
+    }
 
     reflector.m_goNameResolver = [scene = ctx.activeScene](scene::EntityID id) -> std::string {
         auto* target = scene->GetGameObject(id);
@@ -265,13 +291,16 @@ void ConfigureJointRefReflector(ComponentImGuiReflector& reflector, EditorContex
     reflector.m_goListProvider =
         [scene = ctx.activeScene]() -> std::vector<std::pair<scene::EntityID, std::string>> {
             std::vector<std::pair<scene::EntityID, std::string>> out;
-            for (auto& object : scene->GameObjects())
+            for (auto& object : scene->GameObjects()) {
                 out.emplace_back(object.GetID(), object.name);
+            }
             return out;
         };
     reflector.m_refTypeValidator =
         [scene = ctx.activeScene](scene::EntityID id, const char* typeName) -> bool {
-            if (!typeName || !typeName[0]) return true;
+            if (!typeName || !typeName[0]) {
+                return true;
+            }
             auto* target = scene->GetGameObject(id);
             return target && HasRegisteredComponentByName(*target, typeName);
         };
@@ -291,8 +320,8 @@ void DrawJointStatus(const scene::JointComponent& joint, scene::GameObject& go, 
         return;
     }
 
-    /// @note 張れていない理由を名指しする。Play 前は «まだ物理が回っていない» が普通なので、
-    /// @note «設定が足りない» と区別できるようにしておく。
+    // 張れていない理由を名指しする。Play 前は «まだ物理が回っていない» が普通なので、
+    // «設定が足りない» と区別できるようにしておく。
     const bool hasSelfBody = go.GetComponent<scene::RigidBodyComponent>() != nullptr;
     ImGui::PushStyleColor(ImGuiCol_Text, EditorTheme::Color(ThemeColor::Warning));
     ImGui::TextUnformatted("Not connected");
@@ -302,8 +331,9 @@ void DrawJointStatus(const scene::JointComponent& joint, scene::GameObject& go, 
         return;
     }
     if (joint.type == scene::JointType::Chain) {
-        if (joint.chainBodies.empty())
+        if (joint.chainBodies.empty()) {
             ImGui::TextDisabled("Chain Bodies に 2 節目以降を並べてください");
+        }
         return;
     }
     if (!joint.connectedBody.IsValid() && !joint.connectToParent) {
@@ -312,10 +342,11 @@ void DrawJointStatus(const scene::JointComponent& joint, scene::GameObject& go, 
     }
     if (ctx.activeScene && joint.connectedBody.IsValid()) {
         scene::GameObject* target = joint.connectedBody.Resolve(*ctx.activeScene);
-        if (!target)
+        if (!target) {
             ImGui::TextDisabled("Connected Body の参照先が見つかりません");
-        else if (!target->GetComponent<scene::RigidBodyComponent>())
+        } else if (!target->GetComponent<scene::RigidBodyComponent>()) {
             ImGui::TextDisabled("相手 (%s) に Rigid Body がありません", target->name.c_str());
+        }
         return;
     }
     ImGui::TextDisabled("Play 中に PhysicsSystem が張ります");
@@ -336,7 +367,7 @@ void ApplyConvexHullValue(scene::ConvexHullColliderComponent& c, const MeshColli
     ApplyMeshBasedColliderValue(c, v);
 }
 
-} /// @note namespace
+} // namespace
 
 void DrawPhysicsInspectors(scene::GameObject* go, EditorContext& ctx, std::any& m_componentClipboard, const std::type_info*& m_componentClipboardType)
 {
@@ -400,12 +431,13 @@ void DrawPhysicsInspectors(scene::GameObject* go, EditorContext& ctx, std::any& 
                 body.SetMass(body.GetMass());
             }
 
-            /// @note 質量の決め方。From Density は「コライダー体積 × PhysicsMaterial.density」を
-            /// @note PhysicsSystem が毎フレーム算出して上書きするため、ここでは手入力させない。
+            // 質量の決め方。From Density は「コライダー体積 × PhysicsMaterial.density」を
+            // PhysicsSystem が毎フレーム算出して上書きするため、ここでは手入力させない。
             static constexpr const char* kMassModeLabels[] = { "Manual", "From Density" };
             int massModeIndex = static_cast<int>(rb.massMode);
-            if (property::Combo("Mass Mode", &massModeIndex, kMassModeLabels, 2))
+            if (property::Combo("Mass Mode", &massModeIndex, kMassModeLabels, 2)) {
                 rb.massMode = static_cast<scene::MassMode>(massModeIndex);
+            }
 
             float mass = body.GetMass();
             if (rb.massMode == scene::MassMode::FromDensity) {
@@ -418,39 +450,47 @@ void DrawPhysicsInspectors(scene::GameObject* go, EditorContext& ctx, std::any& 
             }
 
             math::Vector3 velocity = body.GetVelocity();
-            if (widgets::DragVec3("Velocity", velocity, 0.05f))
+            if (widgets::DragVec3("Velocity", velocity, 0.05f)) {
                 body.SetVelocity(velocity);
+            }
 
             math::Vector3 angularVelocity = body.GetAngularVelocity();
-            if (widgets::DragVec3("Angular Velocity", angularVelocity, 0.05f))
+            if (widgets::DragVec3("Angular Velocity", angularVelocity, 0.05f)) {
                 body.SetAngularVelocity(angularVelocity);
+            }
 
             auto freezePosition = body.GetFreezePosition();
-            if (property::Checkbox("Freeze Position X", &freezePosition.x))
+            if (property::Checkbox("Freeze Position X", &freezePosition.x)) {
                 body.SetFreezePosition(freezePosition);
+            }
             ImGui::SameLine();
-            if (ImGui::Checkbox("Y##FreezePosition", &freezePosition.y))
+            if (ImGui::Checkbox("Y##FreezePosition", &freezePosition.y)) {
                 body.SetFreezePosition(freezePosition);
+            }
             ImGui::SameLine();
-            if (ImGui::Checkbox("Z##FreezePosition", &freezePosition.z))
+            if (ImGui::Checkbox("Z##FreezePosition", &freezePosition.z)) {
                 body.SetFreezePosition(freezePosition);
+            }
 
             auto freezeRotation = body.GetFreezeRotation();
-            if (property::Checkbox("Freeze Rotation X", &freezeRotation.x))
+            if (property::Checkbox("Freeze Rotation X", &freezeRotation.x)) {
                 body.SetFreezeRotation(freezeRotation);
+            }
             ImGui::SameLine();
-            if (ImGui::Checkbox("Y##FreezeRotation", &freezeRotation.y))
+            if (ImGui::Checkbox("Y##FreezeRotation", &freezeRotation.y)) {
                 body.SetFreezeRotation(freezeRotation);
+            }
             ImGui::SameLine();
-            if (ImGui::Checkbox("Z##FreezeRotation", &freezeRotation.z))
+            if (ImGui::Checkbox("Z##FreezeRotation", &freezeRotation.z)) {
                 body.SetFreezeRotation(freezeRotation);
+            }
 
             property::Checkbox("Use Gravity", &body.m_useGravity);
             property::DragFloat("Gravity Scale", &body.m_gravityScale, 0.01f, -100.0f, 100.0f);
             property::DragFloat("Linear Drag", &body.m_linearDrag, 0.01f, 0.0f, 1000.0f);
             property::DragFloat("Angular Drag", &body.m_angularDrag, 0.01f, 0.0f, 1000.0f);
-            /// @note 流れ (Flow Field / 環境流) との結合係数。0 = 受けない (オプトイン)。
-            /// @note 正本はコンポーネント側で、PhysicsSystem が毎フレーム剛体へ押し込む。
+            // 流れ (Flow Field / 環境流) との結合係数。0 = 受けない (オプトイン)。
+            // 正本はコンポーネント側で、PhysicsSystem が毎フレーム剛体へ押し込む。
             widgets::RangeField("Flow Coupling", rb.flowCoupling, 0.0f, 20.0f, "%.2f",
                                 "流れに引きずられる強さ [1/s]。0 で風も水流も受けない");
             property::Checkbox("Allow Sleeping", &body.m_allowSleeping);
@@ -468,8 +508,8 @@ void DrawPhysicsInspectors(scene::GameObject* go, EditorContext& ctx, std::any& 
 
     DrawComponentSection<scene::VolumeComponent>(go, ctx, m_componentClipboard, m_componentClipboardType, "Volume",
         [](scene::VolumeComponent& volume, EditorContext&) {
-            /// @note 列挙は廃止した Buoyancy (= 2) の枠を空けたままなので、整数をそのまま
-            /// @note Combo の添字に使えない。並びと型を 1 対 1 の表で持つ。
+            // 列挙は廃止した Buoyancy (= 2) の枠を空けたままなので、整数をそのまま
+            // Combo の添字に使えない。並びと型を 1 対 1 の表で持つ。
             static constexpr const char* kVolumeNames[] = {
                 "Gravity", "Vortex", "Explosion", "Time Dilation", "Magnetic"
             };
@@ -484,17 +524,20 @@ void DrawPhysicsInspectors(scene::GameObject* go, EditorContext& ctx, std::any& 
                 static_cast<int>(sizeof(kVolumeTypes) / sizeof(kVolumeTypes[0]));
             int typeIdx = 0;
             for (int i = 0; i < kVolumeTypeCount; ++i)
-                if (kVolumeTypes[i] == volume.type) typeIdx = i;
-            if (property::Combo("Type", &typeIdx, kVolumeNames, kVolumeTypeCount))
+                if (kVolumeTypes[i] == volume.type) {
+                    typeIdx = i;
+                }
+            if (property::Combo("Type", &typeIdx, kVolumeNames, kVolumeTypeCount)) {
                 volume.type = kVolumeTypes[std::clamp(typeIdx, 0, kVolumeTypeCount - 1)];
+            }
 
             widgets::DragVec3("Gravity", volume.gravity, 0.05f);
             widgets::DragVec3("Magnetic Field", volume.magneticField, 0.05f);
             property::DragFloat("Swirl", &volume.swirlStrength, 0.05f, 0.0f, 1000.0f);
             property::DragFloat("Inward", &volume.inwardStrength, 0.05f, 0.0f, 1000.0f);
             property::DragFloat("Lift", &volume.liftStrength, 0.05f, 0.0f, 1000.0f);
-            /// @note Drag は撤去した。どの VolumeType も読んでいなかった死んだノブで、
-            /// @note 流れの抵抗は Rigid Body の Flow Coupling が持つ。
+            // Drag は撤去した。どの VolumeType も読んでいなかった死んだノブで、
+            // 流れの抵抗は Rigid Body の Flow Coupling が持つ。
             property::DragFloat("Explosion Impulse", &volume.explosionImpulse, 0.05f, 0.0f, 1000.0f);
             property::DragFloat("Time Scale", &volume.timeScale, 0.01f, 0.0f, 10.0f);
             property::DragFloat("Duration", &volume.duration, 0.05f, -1.0f, 1000.0f);
@@ -529,4 +572,4 @@ void DrawPhysicsInspectors(scene::GameObject* go, EditorContext& ctx, std::any& 
 }
 
 
-} /// @note namespace fbzz::editor
+} // namespace fbzz::editor

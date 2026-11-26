@@ -41,4 +41,4 @@ bool ComputePrefabOverrides(scene::Scene& scene,
 /// @note UI 表示用に node を 1 行の文字列へ整形する。
 [[nodiscard]] std::string FormatNodeForDisplay(const toml::node* node);
 
-} /// @note namespace fbzz::editor
+} // namespace fbzz::editor

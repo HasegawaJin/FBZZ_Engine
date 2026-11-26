@@ -111,7 +111,9 @@ TEST_F(EditorProjectFileTest, AiSaveToNewFilePreservesNamedObjectsAndMissingScri
     const std::string fields = "target = '" + target.instanceId + "'\ntargets = ['" + target.instanceId + "', '', 'missing-target']\n";
     entry.serialized = std::make_unique<scene::SerializedScriptData>(scene::SerializedScriptData{type, fields, true});
     Context().saveScenePathImmediate = [this](const std::string& path) {
-        if (!scene::SceneSerializer::Save(*AttachedScene(), path)) return false;
+        if (!scene::SceneSerializer::Save(*AttachedScene(), path)) {
+            return false;
+        }
         Context().currentScenePath = path;
         Context().sceneDirty = false;
         return true;

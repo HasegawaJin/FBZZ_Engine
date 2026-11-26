@@ -42,22 +42,22 @@ protected:
 private:
     /// .ico は 1 ファイルに複数サイズが入るので、面積最大のフレームを展開して持つ。
     struct IconPreview {
-        std::string                                    path;
-        renderer::ResourceHandle<renderer::TextureTag> texture;
-        int         width      = 0;
-        int         height     = 0;
-        int         frameCount = 0;
-        bool        resolved   = false;
-        std::string error;
+        std::string                                    path; ///< 現在調べているアイコンファイルのパス。
+        renderer::ResourceHandle<renderer::TextureTag> texture; ///< デコードしたアイコンのプレビュー用テクスチャハンドル。
+        int         width      = 0; ///< 表示に選んだアイコン画像の幅 [px]。
+        int         height     = 0; ///< 表示に選んだアイコン画像の高さ [px]。
+        int         frameCount = 0; ///< ICO ファイル内に検出した画像の数。
+        bool        resolved   = false; ///< 現在のアイコンパスを取得しようと試行済みか。
+        std::string error; ///< アイコンを読み込めない場合に表示する診断。
     };
 
     bool DrawIconPreview(EditorContext& ctx, std::string_view assetPath, float previewHeight);
 
-    IconPreview          m_iconPreview;
-    AnimationMaskPreview m_animationMaskPreview;
+    IconPreview          m_iconPreview; ///< 現在のアイコンプレビューで使う画像・読込状態。
+    AnimationMaskPreview m_animationMaskPreview; ///< Animation Mask を骨の状態として可視化する所有プレビュー。
     /// @note Inspector 内のプレビューと視点・照明を共有させると、片方を回したときにもう片方まで
     ///       動き、2 つ並べて比べられないため、パネルごとに持つ。
-    MaterialPreviewView  m_materialPreview;
+    MaterialPreviewView  m_materialPreview; ///< 現在表示している材質の GPU 表示と操作状態を持つプレビュー。
 };
 
-} /// @note namespace fbzz::editor
+} // namespace fbzz::editor

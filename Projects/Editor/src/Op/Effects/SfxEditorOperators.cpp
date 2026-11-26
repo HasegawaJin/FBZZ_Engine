@@ -17,7 +17,9 @@ void SfxEditorPanel::OnRegisterOperators(OperatorRegistry& registry)
         op.kind = configure ? OpKind::Action : OpKind::Query;
         op.dialog = OpDialog::NONE;
         op.desc = "SFX EditorのUI編集時の自動試聴を照会・変更し、個人設定へ保存する。";
-        if (configure) op.params.push_back({"autoPreview", OpParamType::Bool, "UI編集時の自動試聴", false, {}});
+        if (configure) {
+            op.params.push_back({"autoPreview", OpParamType::Bool, "UI編集時の自動試聴", false, {}});
+        }
         op.exec = [this, configure](OpContext& context, const OpArgs& args) {
             if (configure && args.Has("autoPreview")) {
                 m_autoPreview = args.GetBool("autoPreview");
@@ -30,4 +32,4 @@ void SfxEditorPanel::OnRegisterOperators(OperatorRegistry& registry)
         registry.Register(std::move(op));
     }
 }
-} /// @note namespace fbzz::editor
+} // namespace fbzz::editor

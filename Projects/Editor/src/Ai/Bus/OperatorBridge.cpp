@@ -28,7 +28,9 @@ std::string LowerAscii(std::string text)
 
 bool ContainsCI(const std::string& haystack, const std::string& lowerNeedle)
 {
-    if (lowerNeedle.empty()) return true;
+    if (lowerNeedle.empty()) {
+        return true;
+    }
     return LowerAscii(haystack).find(lowerNeedle) != std::string::npos;
 }
 
@@ -64,14 +66,17 @@ JsonValue ParamsToJson(const EditorOperator& op)
         entry.Set("name", JsonValue(p.name));
         entry.Set("type", JsonValue(ParamTypeName(p.type)));
         entry.Set("required", JsonValue(p.required));
-        if (!p.desc.empty()) entry.Set("desc", JsonValue(p.desc));
+        if (!p.desc.empty()) {
+            entry.Set("desc", JsonValue(p.desc));
+        }
 
-        /// @note 取りうる値と範囲は宣言から出す。desc の文章に書いてあっても
-        ///       機械可読ではないので、AI は綴りを推測することになる。
+        // 取りうる値と範囲は宣言から出す。desc の文章に書いてあっても
+        // 機械可読ではないので、AI は綴りを推測することになる。
         if (!p.enumValues.empty()) {
             JsonValue values = JsonValue::MakeArray();
-            for (const std::string& candidate : p.enumValues)
+            for (const std::string& candidate : p.enumValues) {
                 values.Push(JsonValue(candidate));
+            }
             entry.Set("enum", std::move(values));
         }
         if (p.hasRange) {
@@ -95,7 +100,7 @@ JsonValue OpDataToJson(const OpData& data)
     case OpData::Type::Float:  return JsonValue(data.AsDouble());
     case OpData::Type::String: return JsonValue(data.AsString());
     case OpData::Type::Vec3: {
-        /// @note 読んだ形をそのまま書き戻せるよう、引数側が受ける {x,y,z} で返す。
+        // 読んだ形をそのまま書き戻せるよう、引数側が受ける {x,y,z} で返す。
         const math::Vector3 v = data.AsVec3();
         JsonValue object = JsonValue::MakeObject();
         object.Set("x", JsonValue(static_cast<double>(v.x)));
@@ -105,14 +110,16 @@ JsonValue OpDataToJson(const OpData& data)
     }
     case OpData::Type::Array: {
         JsonValue array = JsonValue::MakeArray();
-        for (const OpData& element : data.AsArray())
+        for (const OpData& element : data.AsArray()) {
             array.Push(OpDataToJson(element));
+        }
         return array;
     }
     case OpData::Type::Object: {
         JsonValue object = JsonValue::MakeObject();
-        for (const OpData::Member& member : data.AsObject())
+        for (const OpData::Member& member : data.AsObject()) {
             object.Set(member.first, OpDataToJson(member.second));
+        }
         return object;
     }
     }
@@ -126,11 +133,15 @@ bool ReadVec3(const JsonValue& value, math::Vector3& out)
 {
     if (value.IsArray()) {
         const JsonValue::Array& array = value.AsArray();
-        if (array.size() != 3) return false;
+        if (array.size() != 3) {
+            return false;
+        }
         float components[3]{};
         for (std::size_t index = 0; index < array.size(); ++index) {
             const double number = array[index].AsNumber();
-            if (!array[index].IsNumber() || !std::isfinite(number) || std::abs(number) > std::numeric_limits<float>::max()) return false;
+            if (!array[index].IsNumber() || !std::isfinite(number) || std::abs(number) > std::numeric_limits<float>::max()) {
+                return false;
+            }
             components[index] = static_cast<float>(number);
         }
         out = math::Vector3{ components[0], components[1], components[2] };
@@ -140,13 +151,19 @@ bool ReadVec3(const JsonValue& value, math::Vector3& out)
         const JsonValue* x = value.Find("x");
         const JsonValue* y = value.Find("y");
         const JsonValue* z = value.Find("z");
-        if (x == nullptr || y == nullptr || z == nullptr) return false;
-        if (!x->IsNumber() || !y->IsNumber() || !z->IsNumber()) return false;
+        if (x == nullptr || y == nullptr || z == nullptr) {
+            return false;
+        }
+        if (!x->IsNumber() || !y->IsNumber() || !z->IsNumber()) {
+            return false;
+        }
         const JsonValue* values[] = {x, y, z};
         float components[3]{};
         for (std::size_t index = 0; index < 3; ++index) {
             const double number = values[index]->AsNumber();
-            if (!std::isfinite(number) || std::abs(number) > std::numeric_limits<float>::max()) return false;
+            if (!std::isfinite(number) || std::abs(number) > std::numeric_limits<float>::max()) {
+                return false;
+            }
             components[index] = static_cast<float>(number);
         }
         out = math::Vector3{ components[0], components[1], components[2] };
@@ -158,33 +175,55 @@ bool ReadVec3(const JsonValue& value, math::Vector3& out)
 /// @note 入れ子設定の null・順序を保持し、非有限数・重複キー・過度な入れ子を拒否する。
 bool ReadData(const JsonValue& value, OpData& output, std::string& error, std::size_t depth = 0)
 {
-    if (depth > 32) { error = "設定データの入れ子が深すぎます"; return false; }
-    if (value.IsNull()) { output = {}; return true; }
-    if (value.IsBool()) { output = OpData(value.AsBool()); return true; }
-    if (value.IsString()) { output = OpData(value.AsString()); return true; }
+    if (depth > 32) {
+        error = "設定データの入れ子が深すぎます";
+        return false;
+    }
+    if (value.IsNull()) {
+        output = {};
+        return true;
+    }
+    if (value.IsBool()) {
+        output = OpData(value.AsBool());
+        return true;
+    }
+    if (value.IsString()) {
+        output = OpData(value.AsString());
+        return true;
+    }
     if (value.IsNumber()) {
         const double number = value.AsNumber();
         if (!std::isfinite(number)) {
             error = "設定データの数値は有限である必要があります";
             return false;
         }
-        if (value.IsInteger()) output = OpData(value.AsInt64());
-        else output = OpData(number);
+        if (value.IsInteger()) {
+            output = OpData(value.AsInt64());
+        } else {
+            output = OpData(number);
+        }
         return true;
     }
     OpData result = value.IsArray() ? OpData::MakeArray() : OpData::MakeObject();
     if (value.IsArray()) {
         for (const JsonValue& item : value.AsArray()) {
             OpData child;
-            if (!ReadData(item, child, error, depth + 1)) return false;
+            if (!ReadData(item, child, error, depth + 1)) {
+                return false;
+            }
             result.Push(std::move(child));
         }
     } else if (value.IsObject()) {
         std::set<std::string> keys;
         for (const JsonValue::Member& item : value.AsObject()) {
-            if (!keys.insert(item.first).second) { error = "設定キーが重複しています: " + item.first; return false; }
+            if (!keys.insert(item.first).second) {
+                error = "設定キーが重複しています: " + item.first;
+                return false;
+            }
             OpData child;
-            if (!ReadData(item.second, child, error, depth + 1)) return false;
+            if (!ReadData(item.second, child, error, depth + 1)) {
+                return false;
+            }
             result.Set(item.first, std::move(child));
         }
     } else {
@@ -202,7 +241,7 @@ bool ReadData(const JsonValue& value, OpData& output, std::string& error, std::s
 bool ConvertArgs(const EditorOperator& op, const JsonValue* argsValue,
                  OpArgs& out, std::string& error)
 {
-    /// @note 宣言されていないキーが来ていないかを先に見る。
+    // 宣言されていないキーが来ていないかを先に見る。
     if (argsValue != nullptr && argsValue->IsObject()) {
         for (const JsonValue::Member& member : argsValue->AsObject()) {
             const bool declared = std::any_of(
@@ -224,20 +263,26 @@ bool ConvertArgs(const EditorOperator& op, const JsonValue* argsValue,
                 error = "必須の引数がありません: " + param.name;
                 return false;
             }
-            if (!std::holds_alternative<std::monostate>(param.defaultValue))
+            if (!std::holds_alternative<std::monostate>(param.defaultValue)) {
                 out.Set(param.name, param.defaultValue);
+            }
             continue;
         }
 
         switch (param.type) {
         case OpParamType::Data: {
             OpData data;
-            if (!ReadData(*value, data, error)) return false;
+            if (!ReadData(*value, data, error)) {
+                return false;
+            }
             out.Set(param.name, std::move(data));
             break;
         }
         case OpParamType::Bool:
-            if (!value->IsBool()) { error = param.name + " は bool です"; return false; }
+            if (!value->IsBool()) {
+                error = param.name + " は bool です";
+                return false;
+            }
             out.Set(param.name, value->AsBool());
             break;
         case OpParamType::Int:
@@ -262,7 +307,10 @@ bool ConvertArgs(const EditorOperator& op, const JsonValue* argsValue,
         }
         case OpParamType::String:
         case OpParamType::NodeId:
-            if (!value->IsString()) { error = param.name + " は文字列です"; return false; }
+            if (!value->IsString()) {
+                error = param.name + " は文字列です";
+                return false;
+            }
             out.Set(param.name, value->AsString());
             break;
         case OpParamType::Vec3: {
@@ -322,23 +370,33 @@ JsonValue OperatorToJson(const EditorOperator& op, bool available,
     entry.Set("dialog", JsonValue(DialogName(op)));
     JsonValue requiredArgs = JsonValue::MakeArray();
     for (const OpParam& param : op.params) {
-        if (param.required) requiredArgs.Push(JsonValue(param.name));
+        if (param.required) {
+            requiredArgs.Push(JsonValue(param.name));
+        }
     }
     const bool missingArgs = !requiredArgs.AsArray().empty();
     entry.Set("requiredArgs", std::move(requiredArgs));
     entry.Set("availability", AvailabilityToJson(op, available, missingArgs));
-    /// @note トグル操作の現在値。メニューのチェックマークと同じ式から出る。無いと
-    ///       「切り替えられるのに今どちらか読めない」ままになる。必須引数を持つ操作は
-    ///       目録では評価しない。対象不定のまま false を出すと「OFF」と誤読されるため、
-    ///       確定は invoke の dryRun で行う。
+    // トグル操作の現在値。メニューのチェックマークと同じ式から出る。無いと
+    // 「切り替えられるのに今どちらか読めない」ままになる。必須引数を持つ操作は
+    // 目録では評価しない。対象不定のまま false を出すと「OFF」と誤読されるため、
+    // 確定は invoke の dryRun で行う。
     if (op.checked && !missingArgs) {
         const OpArgs noArgs;
         entry.Set("checked", JsonValue(op.checked(opContext, noArgs)));
     }
-    if (!op.desc.empty())      entry.Set("desc", JsonValue(op.desc));
-    if (!op.caution.empty())   entry.Set("caution", JsonValue(op.caution));
-    if (!op.undoLabel.empty()) entry.Set("undoLabel", JsonValue(op.undoLabel));
-    if (!op.params.empty())    entry.Set("params", ParamsToJson(op));
+    if (!op.desc.empty()) {
+        entry.Set("desc", JsonValue(op.desc));
+    }
+    if (!op.caution.empty()) {
+        entry.Set("caution", JsonValue(op.caution));
+    }
+    if (!op.undoLabel.empty()) {
+        entry.Set("undoLabel", JsonValue(op.undoLabel));
+    }
+    if (!op.params.empty()) {
+        entry.Set("params", ParamsToJson(op));
+    }
     return entry;
 }
 
@@ -352,14 +410,15 @@ bool ResolveRegistry(editor::EditorContext& context,
     return registry != nullptr && undo != nullptr;
 }
 
-} /// @note namespace
+} // namespace
 
 OperatorBridgeResult ListOperators(editor::EditorContext& context, const JsonValue& payload)
 {
     OperatorRegistry* registry = nullptr;
     UndoStack*        undo     = nullptr;
-    if (!ResolveRegistry(context, registry, undo))
+    if (!ResolveRegistry(context, registry, undo)) {
         return OperatorBridgeResult::Err("NO_REGISTRY", "Operator レジストリが未初期化です");
+    }
 
     const JsonValue* searchValue   = payload.Find("search");
     const JsonValue* categoryValue = payload.Find("category");
@@ -369,8 +428,8 @@ OperatorBridgeResult ListOperators(editor::EditorContext& context, const JsonVal
         (searchValue != nullptr && searchValue->IsString()) ? searchValue->AsString() : std::string{});
     const std::string category =
         (categoryValue != nullptr && categoryValue->IsString()) ? categoryValue->AsString() : std::string{};
-    /// @note 既定で不可の操作も返す。「無い」と「今は使えない」を区別できないと、
-    ///       AI は存在する手段を諦めて別のやり方を組み立て始める。
+    // 既定で不可の操作も返す。「無い」と「今は使えない」を区別できないと、
+    // AI は存在する手段を諦めて別のやり方を組み立て始める。
     const bool includeUnavailable =
         (includeValue == nullptr) ? true : includeValue->AsBool();
 
@@ -379,18 +438,23 @@ OperatorBridgeResult ListOperators(editor::EditorContext& context, const JsonVal
     JsonValue list = JsonValue::MakeArray();
     int matched = 0;
     for (const EditorOperator& op : registry->All()) {
-        if (!category.empty() && op.category != category) continue;
+        if (!category.empty() && op.category != category) {
+            continue;
+        }
         if (!search.empty()
             && !ContainsCI(op.id, search)
             && !ContainsCI(op.label, search)
-            && !ContainsCI(op.desc, search))
+            && !ContainsCI(op.desc, search)) {
             continue;
+        }
 
-        /// @note 目録は引数なしの評価。引数で対象を指定する操作は、その呼び出し方での
-        ///       可否が変わりうるので、確定は editor.op.invoke の dryRun で行う。
+        // 目録は引数なしの評価。引数で対象を指定する操作は、その呼び出し方での
+        // 可否が変わりうるので、確定は editor.op.invoke の dryRun で行う。
         const OpArgs noArgs;
         const bool available = !op.poll || op.poll(opContext, noArgs);
-        if (!available && !includeUnavailable) continue;
+        if (!available && !includeUnavailable) {
+            continue;
+        }
 
         ++matched;
         list.Push(OperatorToJson(op, available, opContext));
@@ -409,12 +473,14 @@ OperatorBridgeResult InvokeOperator(editor::EditorContext& context,
 {
     OperatorRegistry* registry = nullptr;
     UndoStack*        undo     = nullptr;
-    if (!ResolveRegistry(context, registry, undo))
+    if (!ResolveRegistry(context, registry, undo)) {
         return OperatorBridgeResult::Err("NO_REGISTRY", "Operator レジストリが未初期化です");
+    }
 
     const JsonValue* idValue = payload.Find("id");
-    if (idValue == nullptr || !idValue->IsString() || idValue->AsString().empty())
+    if (idValue == nullptr || !idValue->IsString() || idValue->AsString().empty()) {
         return OperatorBridgeResult::Err("BAD_ARG", "id は必須です");
+    }
 
     const std::string     id = idValue->AsString();
     const EditorOperator* op = registry->Find(id);
@@ -424,21 +490,23 @@ OperatorBridgeResult InvokeOperator(editor::EditorContext& context,
 
     OpArgs      args;
     std::string argError;
-    if (!ConvertArgs(*op, payload.Find("args"), args, argError))
+    if (!ConvertArgs(*op, payload.Find("args"), args, argError)) {
         return OperatorBridgeResult::Err("BAD_ARG", argError);
+    }
 
-    /// @note 宣言された制約 (enum / range) は dryRun でも同じ判定を返す。
-    ///       ここを省くと「dry-run では通ったのに実行すると BAD_ARG」になり、
-    ///       dry-run が「実行前に確かめる」用途を果たさなくなる。
-    if (const OpResult argCheck = ValidateArgs(*op, args); !argCheck.ok)
+    // 宣言された制約 (enum / range) は dryRun でも同じ判定を返す。
+    // ここを省くと「dry-run では通ったのに実行すると BAD_ARG」になり、
+    // dry-run が「実行前に確かめる」用途を果たさなくなる。
+    if (const OpResult argCheck = ValidateArgs(*op, args); !argCheck.ok) {
         return OperatorBridgeResult::Err(argCheck.errorCode, argCheck.message);
+    }
 
     OpContext  opContext{ context, *undo, OpInvocationSource::AUTOMATION };
-    /// @note 実際に渡された args で判定する。dryRun の available もこれと同じ値になるので、
-    ///       「dry-run では可だったのに実行すると NOT_AVAILABLE」が起きない。
+    // 実際に渡された args で判定する。dryRun の available もこれと同じ値になるので、
+    // 「dry-run では可だったのに実行すると NOT_AVAILABLE」が起きない。
     const bool available = !op->poll || op->poll(opContext, args);
 
-    /// @note dryRun: 引数検証と実行可否だけを返し、シーンには一切触れない。
+    // dryRun: 引数検証と実行可否だけを返し、シーンには一切触れない。
     if (dryRun) {
         JsonValue result = JsonValue::MakeObject();
         result.Set("id", JsonValue(op->id));
@@ -448,17 +516,22 @@ OperatorBridgeResult InvokeOperator(editor::EditorContext& context,
         result.Set("dialog", JsonValue(DialogName(*op)));
         result.Set("availability", AvailabilityToJson(*op, available, false));
         result.Set("dryRun", JsonValue(true));
-        /// @note 渡された引数での現在状態。排他選択 (set_view_mode 等) は
-        ///       「その値が今の値か」がここで初めて確定する。
-        if (op->checked) result.Set("checked", JsonValue(op->checked(opContext, args)));
-        if (!op->undoLabel.empty()) result.Set("undoLabel", JsonValue(op->undoLabel));
-        if (!available)
+        // 渡された引数での現在状態。排他選択 (set_view_mode 等) は
+        // 「その値が今の値か」がここで初めて確定する。
+        if (op->checked) {
+            result.Set("checked", JsonValue(op->checked(opContext, args)));
+        }
+        if (!op->undoLabel.empty()) {
+            result.Set("undoLabel", JsonValue(op->undoLabel));
+        }
+        if (!available) {
             result.Set("reason", JsonValue("現在の状態ではこの操作を実行できません"));
+        }
         return OperatorBridgeResult::Ok(std::move(result));
     }
 
-    /// @note poll の再評価は Invoke 側でも行われる。ここで先に返すのはエラーコードを
-    ///       NOT_AVAILABLE として明示し、上の available と食い違わせないため。
+    // poll の再評価は Invoke 側でも行われる。ここで先に返すのはエラーコードを
+    // NOT_AVAILABLE として明示し、上の available と食い違わせないため。
     if (!available)
         return OperatorBridgeResult::Err("NOT_AVAILABLE",
                                          "現在の状態ではこの操作を実行できません: " + id);
@@ -476,14 +549,22 @@ OperatorBridgeResult InvokeOperator(editor::EditorContext& context,
     result.Set("label", JsonValue(op->label));
     result.Set("kind", JsonValue(KindName(op->kind)));
     result.Set("applied", JsonValue(true));
-    /// @note 「成功したが何も変わらなかった」を成功と区別して返す。区別が無いと、AI は
-    ///       同じ要求を「効かなかった」と読んで別の値で再試行し続けてしまう。
-    if (opResult.noChange) result.Set("noChange", JsonValue(true));
-    /// @note 何が Undo 履歴に残ったかを返す。AI が editor.undoHistory と突き合わせて
-    ///       自分の編集を識別できるようにするため。
-    if (undo->CanUndo()) result.Set("undoEntry", JsonValue(undo->GetUndoDescription()));
-    if (!opResult.message.empty()) result.Set("message", JsonValue(opResult.message));
-    if (!opResult.data.IsNull()) result.Set("data", OpDataToJson(opResult.data));
+    // 「成功したが何も変わらなかった」を成功と区別して返す。区別が無いと、AI は
+    // 同じ要求を「効かなかった」と読んで別の値で再試行し続けてしまう。
+    if (opResult.noChange) {
+        result.Set("noChange", JsonValue(true));
+    }
+    // 何が Undo 履歴に残ったかを返す。AI が editor.undoHistory と突き合わせて
+    // 自分の編集を識別できるようにするため。
+    if (undo->CanUndo()) {
+        result.Set("undoEntry", JsonValue(undo->GetUndoDescription()));
+    }
+    if (!opResult.message.empty()) {
+        result.Set("message", JsonValue(opResult.message));
+    }
+    if (!opResult.data.IsNull()) {
+        result.Set("data", OpDataToJson(opResult.data));
+    }
     return OperatorBridgeResult::Ok(std::move(result));
 }
 
@@ -491,12 +572,14 @@ OperatorBridgeResult QueryOperator(editor::EditorContext& context, const JsonVal
 {
     OperatorRegistry* registry = nullptr;
     UndoStack*        undo     = nullptr;
-    if (!ResolveRegistry(context, registry, undo))
+    if (!ResolveRegistry(context, registry, undo)) {
         return OperatorBridgeResult::Err("NO_REGISTRY", "Operator レジストリが未初期化です");
+    }
 
     const JsonValue* idValue = payload.Find("id");
-    if (idValue == nullptr || !idValue->IsString() || idValue->AsString().empty())
+    if (idValue == nullptr || !idValue->IsString() || idValue->AsString().empty()) {
         return OperatorBridgeResult::Err("BAD_ARG", "id は必須です");
+    }
 
     const std::string     id = idValue->AsString();
     const EditorOperator* op = registry->Find(id);
@@ -504,9 +587,9 @@ OperatorBridgeResult QueryOperator(editor::EditorContext& context, const JsonVal
         return OperatorBridgeResult::Err("UNKNOWN_OPERATOR",
                                          "未登録の操作です: " + id + " (editor.op.list で一覧できます)");
 
-    /// @note read 権限で到達できる入口なので、ここを通せるのは Query だけ。黙って実行すると
-    ///       read 権限のつもりの接続から Action/Mutation が通ってしまい、黙って無視すると
-    ///       AI が「呼んだのに何も返らない」を不具合として調べ始めるため、エラーで返す。
+    // read 権限で到達できる入口なので、ここを通せるのは Query だけ。黙って実行すると
+    // read 権限のつもりの接続から Action/Mutation が通ってしまい、黙って無視すると
+    // AI が「呼んだのに何も返らない」を不具合として調べ始めるため、エラーで返す。
     if (op->kind != OpKind::Query)
         return OperatorBridgeResult::Err("NOT_A_QUERY",
                                          "editor.op.query は kind=query の操作専用です: " + id
@@ -514,10 +597,12 @@ OperatorBridgeResult QueryOperator(editor::EditorContext& context, const JsonVal
 
     OpArgs      args;
     std::string argError;
-    if (!ConvertArgs(*op, payload.Find("args"), args, argError))
+    if (!ConvertArgs(*op, payload.Find("args"), args, argError)) {
         return OperatorBridgeResult::Err("BAD_ARG", argError);
-    if (const OpResult argCheck = ValidateArgs(*op, args); !argCheck.ok)
+    }
+    if (const OpResult argCheck = ValidateArgs(*op, args); !argCheck.ok) {
         return OperatorBridgeResult::Err(argCheck.errorCode, argCheck.message);
+    }
 
     OpContext opContext{ context, *undo, OpInvocationSource::AUTOMATION };
     if (op->poll && !op->poll(opContext, args))
@@ -535,9 +620,11 @@ OperatorBridgeResult QueryOperator(editor::EditorContext& context, const JsonVal
     result.Set("id", JsonValue(op->id));
     result.Set("label", JsonValue(op->label));
     result.Set("kind", JsonValue(KindName(op->kind)));
-    if (!opResult.message.empty()) result.Set("message", JsonValue(opResult.message));
+    if (!opResult.message.empty()) {
+        result.Set("message", JsonValue(opResult.message));
+    }
     result.Set("data", OpDataToJson(opResult.data));
     return OperatorBridgeResult::Ok(std::move(result));
 }
 
-} /// @note namespace fbzz::editor::ai
+} // namespace fbzz::editor::ai

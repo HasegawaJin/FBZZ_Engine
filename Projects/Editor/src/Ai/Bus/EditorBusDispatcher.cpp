@@ -31,8 +31,12 @@ using bus::Outcome;
 Outcome DoTransaction(BusCall& call)
 {
     editor::EditorContext& ctx = call.ctx;
-    if (ctx.playMode && !ctx.playMode->IsInEditor()) return Outcome::Err("PLAY_MUTATION_UNSUPPORTED", "Play temporary managed settings use one checked Configure batch, not a legacy editor transaction.");
-    if (ctx.undoStack == nullptr) return Outcome::Err("NO_UNDOSTACK", "UndoStack が未設定です");
+    if (ctx.playMode && !ctx.playMode->IsInEditor()) {
+        return Outcome::Err("PLAY_MUTATION_UNSUPPORTED", "Play temporary managed settings use one checked Configure batch, not a legacy editor transaction.");
+    }
+    if (ctx.undoStack == nullptr) {
+        return Outcome::Err("NO_UNDOSTACK", "UndoStack が未設定です");
+    }
     const std::string label = bus::StringField(call.payload, "label");
     const JsonValue* cmds = call.payload.Find("cmds");
     if (cmds == nullptr || !cmds->IsArray() || cmds->AsArray().empty()) {
@@ -40,7 +44,9 @@ Outcome DoTransaction(BusCall& call)
     }
     auto composite = std::make_unique<CompositeCommand>(label.empty() ? "AI: Transaction" : label);
     for (const JsonValue& sub : cmds->AsArray()) {
-        if (!sub.IsObject()) return Outcome::Err("BAD_ARG", "cmds の要素がオブジェクトではありません");
+        if (!sub.IsObject()) {
+            return Outcome::Err("BAD_ARG", "cmds の要素がオブジェクトではありません");
+        }
         const std::string subType = bus::StringField(sub, "t");
         const BusHandlerEntry* entry = call.table.Find(subType);
         if (entry == nullptr || entry->builder == nullptr) {
@@ -52,8 +58,12 @@ Outcome DoTransaction(BusCall& call)
         }
         Outcome subErr;
         std::unique_ptr<ICommand> subCommand = entry->builder(ctx, subType, sub, subErr, nullptr, nullptr);
-        if (subCommand == nullptr) return subErr;
-        if (!subCommand->SupportsLegacyComposition()) return Outcome::Err("UNSUPPORTED", "Checked settings transactions require one shared batch and cannot be grouped here: " + subType);
+        if (subCommand == nullptr) {
+            return subErr;
+        }
+        if (!subCommand->SupportsLegacyComposition()) {
+            return Outcome::Err("UNSUPPORTED", "Checked settings transactions require one shared batch and cannot be grouped here: " + subType);
+        }
         composite->Add(std::move(subCommand));
     }
     if (call.dryRun) {
@@ -64,7 +74,9 @@ Outcome DoTransaction(BusCall& call)
         result.Set("count", JsonValue(static_cast<int>(cmds->AsArray().size())));
         return Outcome::Ok(std::move(result));
     }
-    if (!ctx.undoStack->Execute(std::move(composite))) return Outcome::Err("TRANSACTION_FAILED", ctx.undoStack->LastDiagnostic());
+    if (!ctx.undoStack->Execute(std::move(composite))) {
+        return Outcome::Err("TRANSACTION_FAILED", ctx.undoStack->LastDiagnostic());
+    }
     JsonValue result = JsonValue::MakeObject();
     result.Set("committed", JsonValue(label));
     result.Set("atomic", JsonValue(false));
@@ -91,29 +103,43 @@ Outcome DoBusList(BusCall& call)
 /// @brief BUILDER の型を組み立て、dryRun なら予告だけ返し、そうでなければ UndoStack へ積む。
 Outcome RunBuilder(BusCall& call, const BusHandlerEntry& entry)
 {
-    if (call.ctx.playMode && !call.ctx.playMode->IsInEditor()) return Outcome::Err("PLAY_MUTATION_UNSUPPORTED", "Stop Play before applying native editor mutations; temporary managed settings use Configure.");
+    if (call.ctx.playMode && !call.ctx.playMode->IsInEditor()) {
+        return Outcome::Err("PLAY_MUTATION_UNSUPPORTED", "Stop Play before applying native editor mutations; temporary managed settings use Configure.");
+    }
     auto createdSink = entry.returnsCreatedId ? std::make_shared<std::string>() : nullptr;
     JsonValue detail = JsonValue::MakeObject();
     Outcome err;
     std::unique_ptr<ICommand> command = entry.builder(call.ctx, call.type, call.payload, err, createdSink, &detail);
-    if (command == nullptr) return err;
-    /// @note dryRun でも副作用の予告は返す。適用前に改名や上限の引き上げを知れる方が意味がある。
+    if (command == nullptr) {
+        return err;
+    }
+    // dryRun でも副作用の予告は返す。適用前に改名や上限の引き上げを知れる方が意味がある。
     if (call.dryRun) {
         Outcome preview = bus::DryRunPreview(call.type);
-        if (preview.ok && !detail.AsObject().empty()) preview.result.Set("detail", std::move(detail));
+        if (preview.ok && !detail.AsObject().empty()) {
+            preview.result.Set("detail", std::move(detail));
+        }
         return preview;
     }
-    if (call.ctx.undoStack == nullptr) return Outcome::Err("NO_UNDOSTACK", "UndoStack が未設定です");
-    if (!call.ctx.undoStack->Execute(std::move(command))) return Outcome::Err("COMMAND_FAILED", call.ctx.undoStack->LastDiagnostic());
+    if (call.ctx.undoStack == nullptr) {
+        return Outcome::Err("NO_UNDOSTACK", "UndoStack が未設定です");
+    }
+    if (!call.ctx.undoStack->Execute(std::move(command))) {
+        return Outcome::Err("COMMAND_FAILED", call.ctx.undoStack->LastDiagnostic());
+    }
     JsonValue result = JsonValue::MakeObject();
     result.Set("applied", JsonValue(true));
     result.Set("t", JsonValue(call.type));
-    if (createdSink && !createdSink->empty()) result.Set("id", JsonValue(*createdSink));
-    if (!detail.AsObject().empty()) result.Set("detail", std::move(detail));
+    if (createdSink && !createdSink->empty()) {
+        result.Set("id", JsonValue(*createdSink));
+    }
+    if (!detail.AsObject().empty()) {
+        result.Set("detail", std::move(detail));
+    }
     return Outcome::Ok(std::move(result));
 }
 
-} /// @note namespace
+} // namespace
 
 EditorBusDispatcher::EditorBusDispatcher(editor::EditorContext& context)
     : m_context(context)
@@ -152,13 +178,15 @@ void EditorBusDispatcher::SetGameViewportRT(renderer::ResourceHandle<renderer::R
 
 std::string EditorBusDispatcher::Handle(const std::string& requestLine)
 {
-    /// @note 空行は NDJSON の区切りとして正常。要求ではないので黙って捨てる。
-    if (requestLine.find_first_not_of(" \t\r\n") == std::string::npos) return {};
+    // 空行は NDJSON の区切りとして正常。要求ではないので黙って捨てる。
+    if (requestLine.find_first_not_of(" \t\r\n") == std::string::npos) {
+        return {};
+    }
 
     std::string parseError;
     std::optional<JsonValue> root = ParseJson(requestLine, &parseError);
     if (!root.has_value()) {
-        /// @note id を取り出せなくても応答は返す。黙ると送信側は «届いていない» と «壊れていた» を区別できず timeout まで固まる。
+        // id を取り出せなくても応答は返す。黙ると送信側は «届いていない» と «壊れていた» を区別できず timeout まで固まる。
         return SerializeJson(MakeErrorResponse({}, "BAD_JSON", parseError));
     }
 
@@ -187,13 +215,19 @@ std::string EditorBusDispatcher::Handle(const std::string& requestLine)
         outcome = RunBuilder(call, *entry);
     }
 
-    /// @note 途中で失敗した操作もシーンを更新した可能性がある。画像の読み戻しと比較だけは描画状態を変えない。
-    if (!request->IsQuery() && !request->dryRun && entry && entry->kind != BusKind::QUERY
-        && type != "visual.compare"
-        && !(type == "editor.op.invoke" && bus::StringField(request->payload, "id") == "renderpass.capture"))
-        ++m_context.captureRevision;
-    if (outcome.ok) return SerializeJson(MakeOkResponse(request->id, std::move(outcome.result)));
+    // 途中で失敗した操作もシーンを更新した可能性がある。画像の読み戻しと比較だけは描画状態を変えない。
+    const bool executedCommand = !request->IsQuery() && !request->dryRun && entry && entry->kind != BusKind::QUERY;
+    if (executedCommand && type != "visual.compare") {
+        const bool readsRenderPass = type == "editor.op.invoke"
+            && bus::StringField(request->payload, "id") == "renderpass.capture";
+        if (!readsRenderPass) {
+            ++m_context.captureRevision;
+        }
+    }
+    if (outcome.ok) {
+        return SerializeJson(MakeOkResponse(request->id, std::move(outcome.result)));
+    }
     return SerializeJson(MakeErrorResponse(request->id, outcome.code, outcome.message));
 }
 
-} /// @note namespace fbzz::editor::ai
+} // namespace fbzz::editor::ai

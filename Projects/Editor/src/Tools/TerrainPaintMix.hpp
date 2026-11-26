@@ -25,4 +25,4 @@ struct TerrainPaintMix {
 [[nodiscard]] bool SaveTerrainPaintMix(const std::string& path, const TerrainPaintMix& mix);
 [[nodiscard]] bool LoadTerrainPaintMix(const std::string& path, TerrainPaintMix& out);
 void RegisterTerrainPaintMixOperators(OperatorRegistry& registry);
-} /// @note namespace fbzz::editor
+} // namespace fbzz::editor

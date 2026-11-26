@@ -21,9 +21,9 @@ public:
     bool IsDirty() const { return m_dirty; }
 
 private:
-    std::size_t m_cleanHash = 0;
-    bool        m_hasCleanSnapshot = false;
-    bool        m_dirty = false;
+    std::size_t m_cleanHash = 0; ///< 最後に保存済みとして記録したシーン内容のハッシュ。
+    bool        m_hasCleanSnapshot = false; ///< 現在のシーンと比較できる保存済みの基準があるか。
+    bool        m_dirty = false; ///< 最後の評価または明示的な変更通知で、未保存と判定したか。
 };
 
-} /// @note namespace fbzz::editor
+} // namespace fbzz::editor

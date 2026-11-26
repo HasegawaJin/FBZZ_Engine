@@ -24,7 +24,9 @@ void BindWaterObjectReferenceFields(ComponentImGuiReflector& reflector, scene::S
         };
         reflector.m_goListProvider = [world] {
             std::vector<std::pair<scene::EntityID, std::string>> list;
-            for (auto& object : world->GameObjects()) list.emplace_back(object.GetID(), object.name);
+            for (auto& object : world->GameObjects()) {
+                list.emplace_back(object.GetID(), object.name);
+            }
             return list;
         };
         reflector.m_refTypeValidator = [world](scene::EntityID id, const char* type) {
@@ -44,16 +46,22 @@ void DrawWaterfallSettings(scene::WaterfallComponent& waterfall, scene::GameObje
     OpArgs args;
     args.Set("node", owner.instanceId);
     ImGui::BeginDisabled(!CanInvokeOperator(ctx, "waterfall.fluid.bake", args));
-    if (ImGui::Button("Bake 3D Fluid")) InvokeOperator(ctx, "waterfall.fluid.bake", args);
+    if (ImGui::Button("Bake 3D Fluid")) {
+        InvokeOperator(ctx, "waterfall.fluid.bake", args);
+    }
     ImGui::EndDisabled();
     if (CanInvokeOperator(ctx, "waterfall.fluid.cancel", args)) {
         ImGui::SameLine();
-        if (ImGui::Button("Cancel Bake")) InvokeOperator(ctx, "waterfall.fluid.cancel", args);
+        if (ImGui::Button("Cancel Bake")) {
+            InvokeOperator(ctx, "waterfall.fluid.cancel", args);
+        }
     }
     const auto status = WaterfallFluidBakeStatus(owner.instanceId);
-    if (!status.empty()) ImGui::TextWrapped("%s", status.c_str());
+    if (!status.empty()) {
+        ImGui::TextWrapped("%s", status.c_str());
+    }
 }
-} /// @note namespace
+} // namespace
 
 /// @brief RegistryでAutomatic指定された全コンポーネントを共通Reflectorへ接続する。
 /// @note 新しい単純コンポーネントは専用Inspector関数を追加せず、自動的にここへ入る。
@@ -85,4 +93,4 @@ void DrawAutomaticInspectors(scene::ComponentCategory category,
     });
 }
 
-} /// @note namespace fbzz::editor
+} // namespace fbzz::editor

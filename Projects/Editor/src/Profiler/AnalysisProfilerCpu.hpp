@@ -99,7 +99,11 @@ bool ProjectSelectedHistory(const ProfilerCaptureHistory<Snapshot>& history, Der
     size_t limit, Append append, Reset reset)
 {
     if (!history.selected) {
-        if (cursor.session != 0) { reset(); cursor = {}; return true; }
+        if (cursor.session != 0) {
+            reset();
+            cursor = {};
+            return true;
+        }
         return false;
     }
     const auto& selected = *history.selected;
@@ -109,25 +113,35 @@ bool ProjectSelectedHistory(const ProfilerCaptureHistory<Snapshot>& history, Der
     }
     const bool rebuild = cursor.session != selected.captureSessionId || cursor.limit != limit || cursor.frozen ||
         history.frozen || selected.applicationFrameSerial < cursor.serial;
-    if (rebuild) reset();
+    if (rebuild) {
+        reset();
+    }
     size_t begin = history.frames.size();
     size_t count = 0;
     if (rebuild) {
         for (size_t i = history.frames.size(); i-- > 0;) {
             const auto& frame = history.frames[i];
-            if (frame->captureSessionId != selected.captureSessionId || frame->applicationFrameSerial > selected.applicationFrameSerial) continue;
+            if (frame->captureSessionId != selected.captureSessionId || frame->applicationFrameSerial > selected.applicationFrameSerial) {
+                continue;
+            }
             begin = i;
-            if (++count == limit) break;
+            if (++count == limit) {
+                break;
+            }
         }
-    } else begin = 0;
+    } else {
+        begin = 0;
+    }
     for (size_t i = begin; i < history.frames.size(); ++i) {
         const auto& frame = *history.frames[i];
         if (frame.captureSessionId != selected.captureSessionId || frame.applicationFrameSerial > selected.applicationFrameSerial ||
-            (!rebuild && frame.applicationFrameSerial <= cursor.serial)) continue;
+            (!rebuild && frame.applicationFrameSerial <= cursor.serial)) {
+            continue;
+        }
         append(frame);
     }
     cursor = {selected.captureSessionId, selected.applicationFrameSerial, limit, history.frozen};
     return true;
 }
 
-} /// @note namespace fbzz::editor::detail
+} // namespace fbzz::editor::detail

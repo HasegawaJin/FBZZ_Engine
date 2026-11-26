@@ -12,10 +12,10 @@ const FluidPresetDescription = 'プリセット名。Smoke(Smoke Puff) / Fire(Fi
     + 'PlasmaBurst(Plasma Burst) / ArcHaze(Arc Haze (loop))。'
     + '正確な一覧は fluid_schema の presets。省略で Smoke';
 export function RegisterFluidQueryTools(server, bus) {
-    /// @note ── 流体 (.fluid) ──
-    /// @note 流体の見た目は数値からは予測できない (浮力を 2 倍にしても
-    /// @note     「2 倍上がる」とは限らない)。AI が自分で絵を見て直す反復が回らないと、
-    /// @note     レシピを書けても狙った煙にはならない。
+    // 流体レシピの編集項目とプレビューの取得手段を公開する。
+    // 流体の見た目は数値からは予測できない (浮力を 2 倍にしても
+    // 「2 倍上がる」とは限らない)。AI が自分で絵を見て直す反復が回らないと、
+    // レシピを書けても狙った煙にはならない。
     server.registerTool('fluid_schema', {
         description: '流体レシピ (.fluid) の編集可能フィールド目録 (型・範囲・enum)、部品の種類ごとの項目 (operators)、'
             + 'プリセット名、焼きモード (2d / 3d)、上限 (limits) を返します。'
@@ -66,7 +66,7 @@ export function RegisterFluidQueryTools(server, bus) {
         const raw = FluidJobStatusResultSchema.parse(await bus.Query({
             t: 'fluid.jobStatus', job, ...(includeImage === undefined ? {} : { includeImage }),
         }));
-        /// @note base64 を text に残すと、同じ画像を文字列でも読ませて context を浪費する。
+        // base64 を text に残すと、同じ画像を文字列でも読ませて context を浪費する。
         const { image, ...status } = raw;
         const text = { type: 'text', text: JSON.stringify(status, null, 2) };
         return {
@@ -79,7 +79,7 @@ export function RegisterFluidQueryTools(server, bus) {
 }
 export function RegisterFluidCommandTools(server, bus, permission) {
     const { run, writeAnnotations } = CreateCommandContext(bus, permission);
-    /// @note ── 流体 (.fluid) ──
+    // 流体の雛形を作る操作と、既存レシピを編集する操作を登録する。
     server.registerTool('fluid_create', {
         description: 'プリセットから .fluid レシピを 1 つ作ります (テクスチャはまだ焼きません)。'
             + '既存ファイルは既定で拒否 (FLUID_EXISTS) します。'
@@ -122,8 +122,8 @@ export function RegisterFluidCommandTools(server, bus, permission) {
         },
         annotations: writeAnnotations,
     }, ({ path, fields }) => run({ t: 'fluid.set', path, fields }));
-    /// @note fluid_set で配列を渡すと «全要素を並べ直す» ことになり、
-    /// @note     触るつもりのない部品の値を書き写し間違えると黙って変わる。1 つだけ足す・消すなら他は触らない。
+    // fluid_set で配列を渡すと «全要素を並べ直す» ことになり、
+    // 触るつもりのない部品の値を書き写し間違えると黙って変わる。1 つだけ足す・消すなら他は触らない。
     server.registerTool('fluid_add_operator', {
         description: '.fluid レシピに部品を 1 つ足します。list="source" は発生源 (気体は密度・温度・燃料を注ぎ、液体は粒子を撃ち出す)、'
             + 'list="force" は流れにかかる力、list="collider" は流体が入り込めない障害物 (動かせば流体を押しのける) です。'

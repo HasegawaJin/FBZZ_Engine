@@ -14,7 +14,9 @@ namespace fbzz::editor {
 namespace {
 void DrawCollectionControls(EditorContext& ctx)
 {
-    if (!ImGui::CollapsingHeader("CPU collection range")) return;
+    if (!ImGui::CollapsingHeader("CPU collection range")) {
+        return;
+    }
     static char category[129] = {};
     static char scope[257] = {};
     static profiler::PerformanceCaptureFilter observed;
@@ -28,13 +30,17 @@ void DrawCollectionControls(EditorContext& ctx)
     ImGui::InputTextWithHint("Category to collect", "Exact category; empty = all", category, sizeof(category));
     ImGui::InputTextWithHint("Scope to collect", "Case-sensitive name substring; empty = all", scope, sizeof(scope));
     if (ImGui::Button("Apply collection range")) {
-        OpArgs args; args.Set("category", std::string(category)); args.Set("scope", std::string(scope));
+        OpArgs args;
+        args.Set("category", std::string(category));
+        args.Set("scope", std::string(scope));
         InvokeOperator(ctx, "profiler.performance.set_capture_filter", args);
     }
     ImGui::SameLine();
     if (ImGui::Button("Collect all")) {
         InvokeOperator(ctx, "profiler.performance.set_capture_filter");
-        category[0] = '\0'; scope[0] = '\0'; observed = {};
+        category[0] = '\0';
+        scope[0] = '\0';
+        observed = {};
     }
     ImGui::EndDisabled();
     ImGui::TextWrapped("Applied before descriptor registration and timing, at the next frame boundary. Changes start a new capture session. Matching children remain visible under excluded parents.");
@@ -42,7 +48,9 @@ void DrawCollectionControls(EditorContext& ctx)
 }
 void DrawBenchmarkControls(EditorContext& ctx)
 {
-    if (!ImGui::CollapsingHeader("Same-condition benchmark")) return;
+    if (!ImGui::CollapsingHeader("Same-condition benchmark")) {
+        return;
+    }
     static char label[257] = "capture";
     static char scenario[257] = {};
     static char camera[257] = {};
@@ -59,10 +67,17 @@ void DrawBenchmarkControls(EditorContext& ctx)
     ImGui::InputInt("Warmup frames", &warmupFrames);
     ImGui::InputInt("Sample frames", &sampleFrames);
     if (ImGui::Button("Start benchmark")) {
-        OpArgs args; args.Set("label", std::string(label)); args.Set("warmupFrames", warmupFrames); args.Set("sampleFrames", sampleFrames);
-        args.Set("scenario", std::string(scenario)); args.Set("camera", std::string(camera)); args.Set("configuration", std::string(configuration));
+        OpArgs args;
+        args.Set("label", std::string(label));
+        args.Set("warmupFrames", warmupFrames);
+        args.Set("sampleFrames", sampleFrames);
+        args.Set("scenario", std::string(scenario));
+        args.Set("camera", std::string(camera));
+        args.Set("configuration", std::string(configuration));
         const auto result = InvokeOperator(ctx, "profiler.benchmark.start", args);
-        if (!result.ok) ImGui::OpenPopup("Invalid benchmark settings");
+        if (!result.ok) {
+            ImGui::OpenPopup("Invalid benchmark settings");
+        }
     }
     ImGui::EndDisabled();
     if (ImGui::BeginPopup("Invalid benchmark settings")) {
@@ -74,11 +89,16 @@ void DrawBenchmarkControls(EditorContext& ctx)
         ImGui::Text("%s: warmup %llu/%llu, samples %llu/%llu", capture.Label().c_str(),
             static_cast<unsigned long long>(status.warmedFrames), static_cast<unsigned long long>(status.warmupFrames),
             static_cast<unsigned long long>(status.capturedFrames), static_cast<unsigned long long>(status.sampleFrames));
-        if (ImGui::Button("Cancel benchmark")) InvokeOperator(ctx, "profiler.benchmark.cancel");
+        if (ImGui::Button("Cancel benchmark")) {
+            InvokeOperator(ctx, "profiler.benchmark.cancel");
+        }
     }
-    if (status.state == PerformanceBenchmarkState::FAILED || status.state == PerformanceBenchmarkState::CANCELLED)
+    if (status.state == PerformanceBenchmarkState::FAILED || status.state == PerformanceBenchmarkState::CANCELLED) {
         ImGui::TextColored(ImVec4(1.0f, 0.55f, 0.25f, 1.0f), "Capture interrupted. Restart the same conditions before comparing.");
-    if (status.state != PerformanceBenchmarkState::COMPLETE) return;
+    }
+    if (status.state != PerformanceBenchmarkState::COMPLETE) {
+        return;
+    }
     const auto report = capture.Report();
     ImGui::Text("%s: %llu frames; CPU p50 %.3f / p95 %.3f ms", report.label.c_str(),
         static_cast<unsigned long long>(status.capturedFrames), report.cpu.p50Ms, report.cpu.p95Ms);
@@ -87,13 +107,18 @@ void DrawBenchmarkControls(EditorContext& ctx)
     ImGui::Text("Incomplete %llu / dropped %llu / missing frames %llu",
         static_cast<unsigned long long>(status.incompleteFrames), static_cast<unsigned long long>(status.droppedSampleCount),
         static_cast<unsigned long long>(status.missingFrameCount));
-    if (ImGui::Button("Use as comparison reference")) InvokeOperator(ctx, "profiler.benchmark.set_reference");
+    if (ImGui::Button("Use as comparison reference")) {
+        InvokeOperator(ctx, "profiler.benchmark.set_reference");
+    }
     ImGui::SameLine();
     if (ImGui::Button("Copy benchmark summary JSON")) {
-        OpArgs args; args.Set("count", 1);
+        OpArgs args;
+        args.Set("count", 1);
         const auto result = InvokeOperator(ctx, "profiler.benchmark.result", args);
         std::string json;
-        if (result.ok && WriteOpDataJson(result.data, json)) ImGui::SetClipboardText(json.c_str());
+        if (result.ok && WriteOpDataJson(result.data, json)) {
+            ImGui::SetClipboardText(json.c_str());
+        }
     }
     const auto* reference = GetPerformanceBenchmarkReference();
     const auto comparison = ComparePerformanceBenchmarks(reference ? *reference : report, report);
@@ -102,10 +127,11 @@ void DrawBenchmarkControls(EditorContext& ctx)
         ImGui::TextWrapped("%s", warning.c_str());
         ImGui::PopStyleColor();
     }
-    if (reference && comparison.comparable)
+    if (reference && comparison.comparable) {
         ImGui::Text("vs %s: CPU p50 %+.3f / p95 %+.3f ms", reference->label.c_str(), comparison.cpuP50DeltaMs, comparison.cpuP95DeltaMs);
+    }
 }
-} /// @note namespace
+} // namespace
 void PerformanceProfilerPanel::OnLoadSettings(const EditorSettings& settings) { profiler::Profiler::RequestRecording(settings.performanceProfilerRecording); }
 void PerformanceProfilerPanel::OnSaveSettings(EditorSettings& settings) const { settings.performanceProfilerRecording = profiler::Profiler::IsEnabled(); }
 void PerformanceProfilerPanel::OnRenderContent(EditorContext& ctx)

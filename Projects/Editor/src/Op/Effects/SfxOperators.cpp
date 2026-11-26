@@ -59,22 +59,27 @@ std::vector<std::string> SpecFieldNames()
 {
     std::vector<std::string> names;
     names.reserve(std::size(kSpecFields));
-    for (const SpecField& field : kSpecFields) names.emplace_back(field.name);
+    for (const SpecField& field : kSpecFields) {
+        names.emplace_back(field.name);
+    }
     return names;
 }
 
 std::vector<std::string> PresetNames()
 {
     std::vector<std::string> names;
-    for (int i = 0; i < static_cast<int>(audio::SynthPreset::Count); ++i)
+    for (int i = 0; i < static_cast<int>(audio::SynthPreset::Count); ++i) {
         names.emplace_back(audio::PresetToString(static_cast<audio::SynthPreset>(i)));
+    }
     return names;
 }
 
 const SpecField* FindSpecField(const std::string& name)
 {
     for (const SpecField& field : kSpecFields)
-        if (name == field.name) return &field;
+        if (name == field.name) {
+            return &field;
+        }
     return nullptr;
 }
 
@@ -82,8 +87,9 @@ OpData SpecToData(const audio::SynthSpec& spec)
 {
     OpData data = OpData::MakeObject();
     data.Set("wave", std::string(audio::WaveToString(spec.wave)));
-    for (const SpecField& field : kSpecFields)
+    for (const SpecField& field : kSpecFields) {
         data.Set(field.name, spec.*(field.member));
+    }
     data.Set("seed", static_cast<int>(spec.seed));
     return data;
 }
@@ -106,20 +112,28 @@ OpData AnalysisToData(const audio::SynthAnalysis& analysis)
 void PreviewSpec(const audio::SynthSpec& spec)
 {
     auto* manager = core::Application::Get().GetAudioManager();
-    if (!manager) return;
+    if (!manager) {
+        return;
+    }
     const auto clip = manager->AcquireGeneratedClip(spec);
-    if (clip == 0) return;
+    if (clip == 0) {
+        return;
+    }
     (void)manager->PlayClipVoice(clip, false, manager->FindBus("UI"));
-    /// @note 再生中は voice が実体を押さえる。Application::Update が終了後に回収する。
+    // 再生中は voice が実体を押さえる。Application::Update が終了後に回収する。
     manager->ReleaseClip(clip);
 }
 
 /// "Assets/..." もプロジェクト外の絶対パスも受け取れるようにする。
 std::string ResolveSavePath(const EditorContext& ctx, const std::string& path)
 {
-    if (path.empty()) return {};
+    if (path.empty()) {
+        return {};
+    }
     const bool absolute = (path.size() > 1 && path[1] == ':') || path[0] == '/';
-    if (absolute || ctx.projectRoot.empty()) return path;
+    if (absolute || ctx.projectRoot.empty()) {
+        return path;
+    }
     return ctx.projectRoot + "/" + path;
 }
 
@@ -148,8 +162,8 @@ OpParam MakeSeedParam()
 
 void RegisterSfxOperators(OperatorRegistry& registry)
 {
-    /// @note 下書きは常に存在する (既定構築の SynthSpec)。「開いていないから使えない」を
-    ///       作らないことで、AI はパネルを開かずに音を作って保存まで到達できる。
+    // 下書きは常に存在する (既定構築の SynthSpec)。「開いていないから使えない」を
+    // 作らないことで、AI はパネルを開かずに音を作って保存まで到達できる。
     const auto hasSavePath = [](const OpContext& c, const OpArgs& args) {
         return !args.GetString("path").empty() || !c.ctx.sfxEditorPath.empty();
     };
@@ -206,14 +220,16 @@ void RegisterSfxOperators(OperatorRegistry& registry)
             return OpResult::Data(SpecToData(c.ctx.sfxEditorSpec));
         };
         op.checked = [](const OpContext& c, const OpArgs& args) {
-            if (!args.Has("wave")) return false;
+            if (!args.Has("wave")) {
+                return false;
+            }
             return args.GetString("wave") == audio::WaveToString(c.ctx.sfxEditorSpec.wave);
         };
         registry.Register(std::move(op));
     }
 
     {
-        /// @note 必須引数が 2 つあるためコマンドパレットには出ない (AI 向けの粒度)。
+        // 必須引数が 2 つあるためコマンドパレットには出ない (AI 向けの粒度)。
         EditorOperator op;
         op.id       = "sfx.set_param";
         op.label    = "Set SFX Parameter";
@@ -228,7 +244,7 @@ void RegisterSfxOperators(OperatorRegistry& registry)
         nameParam.desc       = "パラメーター名";
         nameParam.enumValues = SpecFieldNames();
 
-        /// @note 許容範囲は name ごとに違い、1 つの range 宣言では表せないので exec 側で表を引いて弾く。
+        // 許容範囲は name ごとに違い、1 つの range 宣言では表せないので exec 側で表を引いて弾く。
         OpParam valueParam;
         valueParam.name = "value";
         valueParam.type = OpParamType::Float;
@@ -238,12 +254,13 @@ void RegisterSfxOperators(OperatorRegistry& registry)
         op.exec = [](OpContext& c, const OpArgs& args) -> OpResult {
             const std::string name = args.GetString("name");
             const SpecField* field = FindSpecField(name);
-            if (!field)
+            if (!field) {
                 return OpResult::Err("BAD_ARG", "未知のパラメーター: " + name);
+            }
 
             const float value = args.GetFloat("value");
             if (value < field->min || value > field->max) {
-                /// @note クランプせず弾く: 黙って丸めると受理値が指定値と食い違い、AI が誤った前提で次の一手を決める。
+                // クランプせず弾く: 黙って丸めると受理値が指定値と食い違い、AI が誤った前提で次の一手を決める。
                 return OpResult::Err(
                     "BAD_ARG", name + " の範囲は " + std::to_string(field->min) + " 〜 "
                                    + std::to_string(field->max));
@@ -316,8 +333,9 @@ void RegisterSfxOperators(OperatorRegistry& registry)
         op.desc     = "編集中の音を 1 度鳴らす。Play モードでなくても鳴る。";
         op.kind     = OpKind::Action;
         op.exec     = [](OpContext& c, const OpArgs&) -> OpResult {
-            if (!core::Application::Get().GetAudioManager())
+            if (!core::Application::Get().GetAudioManager()) {
                 return OpResult::Err("NO_AUDIO", "オーディオデバイスが初期化されていません");
+            }
             PreviewSpec(c.ctx.sfxEditorSpec);
             return OpResult::Ok();
         };
@@ -325,7 +343,7 @@ void RegisterSfxOperators(OperatorRegistry& registry)
     }
 
     {
-        /// @note Query。パレットには出ず、AI の read 権限で呼べる。
+        // Query。パレットには出ず、AI の read 権限で呼べる。
         EditorOperator op;
         op.id       = "sfx.inspect";
         op.label    = "Inspect SFX";
@@ -354,8 +372,9 @@ void RegisterSfxOperators(OperatorRegistry& registry)
             if (const std::string path = args.GetString("path"); !path.empty()) {
                 asset::SynthAsset loaded;
                 const std::string resolved = asset::AssetManager::ResolveAssetPath(path);
-                if (!asset::LoadSynthAssetFromFile(resolved.empty() ? path : resolved, loaded))
+                if (!asset::LoadSynthAssetFromFile(resolved.empty() ? path : resolved, loaded)) {
                     return OpResult::Err("ASSET_NOT_FOUND", ".synth を読めません: " + path);
+                }
                 spec   = loaded.spec;
                 source = path;
                 preset = loaded.presetName;
@@ -380,7 +399,7 @@ void RegisterSfxOperators(OperatorRegistry& registry)
         op.category = "SFX";
         op.desc     = "編集中の音を .synth へ保存する。path を渡すと保存先を変え、"
                       "以後の編集対象もそちらへ移る。";
-        /// @note ファイル I/O。Undo には載せない
+        // ファイル I/O。Undo には載せない
         op.kind     = OpKind::Action;
 
         OpParam pathParam;
@@ -395,14 +414,16 @@ void RegisterSfxOperators(OperatorRegistry& registry)
             const std::string requested = args.GetString("path");
             const std::string target = requested.empty()
                 ? c.ctx.sfxEditorPath : ResolveSavePath(c.ctx, requested);
-            if (target.empty())
+            if (target.empty()) {
                 return OpResult::Err("NO_PATH", "保存先が決まっていません");
+            }
 
             asset::SynthAsset asset;
             asset.spec       = c.ctx.sfxEditorSpec;
             asset.presetName = c.ctx.sfxEditorPresetName;
-            if (!asset::SaveSynthAssetToFile(target, asset))
+            if (!asset::SaveSynthAssetToFile(target, asset)) {
                 return OpResult::Err("WRITE_FAILED", "保存できません: " + target);
+            }
 
             c.ctx.sfxEditorPath  = target;
             c.ctx.sfxEditorDirty = false;
@@ -423,20 +444,23 @@ void RegisterSfxOperators(OperatorRegistry& registry)
         op.kind     = OpKind::Action;
         op.poll     = hasSavePath;
         op.exec     = [](OpContext& c, const OpArgs&) -> OpResult {
-            if (c.ctx.sfxEditorPath.empty())
+            if (c.ctx.sfxEditorPath.empty()) {
                 return OpResult::Err("NO_PATH", "先に .synth を保存してください");
+            }
 
             audio::WaveFormat fmt{};
             const std::vector<uint8_t> pcm = audio::Render(c.ctx.sfxEditorSpec, fmt);
             const std::vector<uint8_t> wav = audio::EncodeWav(pcm.data(), pcm.size(), fmt);
-            if (wav.empty())
+            if (wav.empty()) {
                 return OpResult::Err("EMPTY", "無音のため書き出すものがありません");
+            }
 
             const std::string target =
                 c.ctx.sfxEditorPath.substr(0, c.ctx.sfxEditorPath.rfind('.')) + ".wav";
             if (!util::FileSystem::WriteBinary(util::FileSystem::PathFromUtf8(target),
-                                               wav.data(), wav.size()))
+                                               wav.data(), wav.size())) {
                 return OpResult::Err("WRITE_FAILED", "書き出せません: " + target);
+            }
 
             OpData data = OpData::MakeObject();
             data.Set("path", target);

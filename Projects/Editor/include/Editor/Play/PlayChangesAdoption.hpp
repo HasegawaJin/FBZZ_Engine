@@ -29,4 +29,4 @@ private:
 };
 void RegisterPlayChangesAdoptionOperators(OperatorRegistry& registry);
 void DrawPlayChangesAdoptionReview(EditorContext& context);
-} /// @note namespace fbzz::editor
+} // namespace fbzz::editor

@@ -44,8 +44,12 @@ bool ReadOption(const JsonValue& payload, const char* key)
 Outcome DoPlaytestRun(BusCall& call)
 {
     editor::EditorContext& ctx = call.ctx;
-    if (ctx.playtest == nullptr) return Outcome::Err("NO_PLAYTEST", "Playtest 実行器が未設定です");
-    if (ctx.playtest->IsRunning()) return Outcome::Err("PLAYTEST_BUSY", "別の Playtest が実行中です。scenario_status で終了を待つか scenario_cancel");
+    if (ctx.playtest == nullptr) {
+        return Outcome::Err("NO_PLAYTEST", "Playtest 実行器が未設定です");
+    }
+    if (ctx.playtest->IsRunning()) {
+        return Outcome::Err("PLAYTEST_BUSY", "別の Playtest が実行中です。scenario_status で終了を待つか scenario_cancel");
+    }
 
     JsonValue scenario;
     fs::path scenarioFile;
@@ -54,14 +58,19 @@ Outcome DoPlaytestRun(BusCall& call)
         scenario = *inlineScenario;
     } else {
         const std::string requested = StringField(call.payload, "path");
-        if (!ResolveProjectFile(ctx, requested, scenarioFile, relative))
+        if (!ResolveProjectFile(ctx, requested, scenarioFile, relative)) {
             return Outcome::Err("BAD_PATH", "path (projectRoot 相対の .playtest.json) か scenario が必要です");
+        }
         std::ifstream stream(scenarioFile, std::ios::binary);
-        if (!stream) return Outcome::Err("NOT_FOUND", "シナリオがありません: " + relative);
+        if (!stream) {
+            return Outcome::Err("NOT_FOUND", "シナリオがありません: " + relative);
+        }
         const std::string text((std::istreambuf_iterator<char>(stream)), std::istreambuf_iterator<char>());
         std::string parseError;
         std::optional<JsonValue> parsed = ParseJson(text, &parseError);
-        if (!parsed.has_value()) return Outcome::Err("BAD_JSON", relative + ": " + parseError);
+        if (!parsed.has_value()) {
+            return Outcome::Err("BAD_JSON", relative + ": " + parseError);
+        }
         scenario = std::move(*parsed);
     }
 
@@ -70,8 +79,9 @@ Outcome DoPlaytestRun(BusCall& call)
     options.skipImages = ReadOption(call.payload, "skipImages");
 
     const std::string name = [&]() {
-        if (const JsonValue* value = scenario.Find("name"); value != nullptr && value->IsString() && !value->AsString().empty())
+        if (const JsonValue* value = scenario.Find("name"); value != nullptr && value->IsString() && !value->AsString().empty()) {
             return value->AsString();
+        }
         return scenarioFile.empty() ? std::string("inline") : scenarioFile.stem().stem().string();
     }();
     std::string safeName = name;
@@ -84,22 +94,24 @@ Outcome DoPlaytestRun(BusCall& call)
     if (call.dryRun) {
         playtest::PlaytestRunner probe;
         std::string error;
-        if (!probe.Start(scenario, scenarioFile, ctx.projectRoot, outputDirectory, options, error))
+        if (!probe.Start(scenario, scenarioFile, ctx.projectRoot, outputDirectory, options, error)) {
             return Outcome::Err("BAD_SCENARIO", error);
+        }
         Outcome preview = DryRunPreview(call.type);
         preview.result.Set("name", JsonValue(name));
         return preview;
     }
 
     std::string error;
-    if (!ctx.playtest->Start(scenario, scenarioFile, ctx.projectRoot, outputDirectory, options, error))
+    if (!ctx.playtest->Start(scenario, scenarioFile, ctx.projectRoot, outputDirectory, options, error)) {
         return Outcome::Err("BAD_SCENARIO", error);
+    }
 
     JsonValue result = JsonValue::MakeObject();
     result.Set("started", JsonValue(true));
     result.Set("name", JsonValue(name));
     result.Set("reportPath", JsonValue((outputDirectory / "report.json").generic_string()));
-    /// @note 同期で待てないことを明示する。待ち方を書かないと AI は即座に結果を読みに行く。
+    // 同期で待てないことを明示する。待ち方を書かないと AI は即座に結果を読みに行く。
     result.Set("async", JsonValue(true));
     result.Set("poll", JsonValue("scenario_status で state が running でなくなるまで確認してください"));
     return Outcome::Ok(std::move(result));
@@ -107,15 +119,23 @@ Outcome DoPlaytestRun(BusCall& call)
 
 Outcome DoPlaytestStatus(BusCall& call)
 {
-    if (call.ctx.playtest == nullptr) return Outcome::Err("NO_PLAYTEST", "Playtest 実行器が未設定です");
+    if (call.ctx.playtest == nullptr) {
+        return Outcome::Err("NO_PLAYTEST", "Playtest 実行器が未設定です");
+    }
     return Outcome::Ok(call.ctx.playtest->Report());
 }
 
 Outcome DoPlaytestCancel(BusCall& call)
 {
-    if (call.ctx.playtest == nullptr) return Outcome::Err("NO_PLAYTEST", "Playtest 実行器が未設定です");
-    if (!call.ctx.playtest->IsRunning()) return Outcome::Err("NOT_RUNNING", "実行中の Playtest はありません");
-    if (call.dryRun) return DryRunPreview(call.type);
+    if (call.ctx.playtest == nullptr) {
+        return Outcome::Err("NO_PLAYTEST", "Playtest 実行器が未設定です");
+    }
+    if (!call.ctx.playtest->IsRunning()) {
+        return Outcome::Err("NOT_RUNNING", "実行中の Playtest はありません");
+    }
+    if (call.dryRun) {
+        return DryRunPreview(call.type);
+    }
     call.ctx.playtest->Cancel("playtest.cancel で中断");
     return Outcome::Ok(call.ctx.playtest->Report());
 }
@@ -129,7 +149,9 @@ Outcome DoPlaytestList(BusCall& call)
         std::vector<fs::path> files;
         for (fs::recursive_directory_iterator it(root, ec), end; it != end && !ec; it.increment(ec)) {
             const std::string filename = it->path().filename().string();
-            if (it->is_regular_file(ec) && filename.size() > 14 && filename.ends_with(".playtest.json")) files.push_back(it->path());
+            if (it->is_regular_file(ec) && filename.size() > 14 && filename.ends_with(".playtest.json")) {
+                files.push_back(it->path());
+            }
         }
         std::sort(files.begin(), files.end());
         for (const fs::path& file : files) {
@@ -147,19 +169,31 @@ Outcome DoPlaytestList(BusCall& call)
 Outcome DoInputRecord(BusCall& call)
 {
     editor::EditorContext& ctx = call.ctx;
-    if (ctx.inputRecorder == nullptr || ctx.playMode == nullptr) return Outcome::Err("NO_RECORDER", "入力記録が未設定です");
+    if (ctx.inputRecorder == nullptr || ctx.playMode == nullptr) {
+        return Outcome::Err("NO_RECORDER", "入力記録が未設定です");
+    }
     const std::string action = StringField(call.payload, "action");
     if (action == "start") {
-        if (ctx.playMode->IsInEditor()) return Outcome::Err("INVALID_PLAY_STATE", "記録は Play 中だけ開始できます");
-        if (ctx.inputRecorder->IsRecording()) return Outcome::Err("ALREADY_RECORDING", "既に記録中です");
-        if (call.dryRun) return DryRunPreview(call.type + ":start");
+        if (ctx.playMode->IsInEditor()) {
+            return Outcome::Err("INVALID_PLAY_STATE", "記録は Play 中だけ開始できます");
+        }
+        if (ctx.inputRecorder->IsRecording()) {
+            return Outcome::Err("ALREADY_RECORDING", "既に記録中です");
+        }
+        if (call.dryRun) {
+            return DryRunPreview(call.type + ":start");
+        }
         ctx.inputRecorder->Start();
         JsonValue result = JsonValue::MakeObject();
         result.Set("recording", JsonValue(true));
         return Outcome::Ok(std::move(result));
     }
-    if (action != "stop") return Outcome::Err("BAD_ARG", "action は start か stop です");
-    if (!ctx.inputRecorder->IsRecording()) return Outcome::Err("NOT_RECORDING", "記録していません");
+    if (action != "stop") {
+        return Outcome::Err("BAD_ARG", "action は start か stop です");
+    }
+    if (!ctx.inputRecorder->IsRecording()) {
+        return Outcome::Err("NOT_RECORDING", "記録していません");
+    }
 
     std::string requested = StringField(call.payload, "path");
     if (requested.empty()) {
@@ -172,15 +206,21 @@ Outcome DoInputRecord(BusCall& call)
     }
     fs::path file;
     std::string relative;
-    if (!ResolveProjectFile(ctx, requested, file, relative)) return Outcome::Err("BAD_PATH", "path は projectRoot 配下: " + requested);
-    if (call.dryRun) return DryRunPreview(call.type + ":stop");
+    if (!ResolveProjectFile(ctx, requested, file, relative)) {
+        return Outcome::Err("BAD_PATH", "path は projectRoot 配下: " + requested);
+    }
+    if (call.dryRun) {
+        return DryRunPreview(call.type + ":stop");
+    }
 
     JsonValue recording = ctx.inputRecorder->Stop();
     const std::string text = SerializeJson(recording);
     std::error_code ec;
     fs::create_directories(file.parent_path(), ec);
     std::ofstream stream(file, std::ios::binary | std::ios::trunc);
-    if (!stream) return Outcome::Err("WRITE_FAILED", "書けません: " + relative);
+    if (!stream) {
+        return Outcome::Err("WRITE_FAILED", "書けません: " + relative);
+    }
     stream << text << '\n';
 
     JsonValue result = JsonValue::MakeObject();
@@ -188,7 +228,7 @@ Outcome DoInputRecord(BusCall& call)
     const JsonValue* events = recording.Find("events");
     result.Set("events", JsonValue(static_cast<double>(events != nullptr ? events->AsArray().size() : 0)));
     result.Set("frames", *recording.Find("frames"));
-    /// @note 記録はロックステップの有無で再生時の進みが変わる。シナリオ側の lockstep と揃えて再生すること。
+    // 記録はロックステップの有無で再生時の進みが変わる。シナリオ側の lockstep と揃えて再生すること。
     result.Set("lockstep", JsonValue(static_cast<double>(fbzz::Time::GetLockstepDelta())));
     return Outcome::Ok(std::move(result));
 }
@@ -197,25 +237,36 @@ Outcome DoInputRecord(BusCall& call)
 Outcome DoVisualCompare(BusCall& call)
 {
     editor::EditorContext& ctx = call.ctx;
-    if (ctx.renderer == nullptr || ctx.resources == nullptr) return Outcome::Err("NO_RENDERER", "レンダラーが未初期化です");
+    if (ctx.renderer == nullptr || ctx.resources == nullptr) {
+        return Outcome::Err("NO_RENDERER", "レンダラーが未初期化です");
+    }
     const std::string view = StringField(call.payload, "view").empty() ? std::string("game") : StringField(call.payload, "view");
-    if (view != "game" && view != "scene") return Outcome::Err("BAD_ARG", "view は game か scene です");
+    if (view != "game" && view != "scene") {
+        return Outcome::Err("BAD_ARG", "view は game か scene です");
+    }
     const std::string baselineName = StringField(call.payload, "baseline");
-    if (baselineName.empty() || baselineName.find("..") != std::string::npos)
+    if (baselineName.empty() || baselineName.find("..") != std::string::npos) {
         return Outcome::Err("BAD_ARG", "baseline (Tests/Golden 相対、拡張子なし) が必要です");
+    }
 
     ctx.aiViewportRenderUntilFrame = std::max<std::uint64_t>(ctx.aiViewportRenderUntilFrame, fbzz::Time::frameCount + 8);
     const auto target = view == "game" ? call.state.gameViewportRT : call.state.sceneViewportRT;
-    if (!target.IsValid()) return Outcome::Err("NO_VIEWPORT", view + " ビューの RT が未生成です");
-    if (call.dryRun && ReadOption(call.payload, "updateBaseline")) return DryRunPreview(call.type + ":updateBaseline");
+    if (!target.IsValid()) {
+        return Outcome::Err("NO_VIEWPORT", view + " ビューの RT が未生成です");
+    }
+    if (call.dryRun && ReadOption(call.payload, "updateBaseline")) {
+        return DryRunPreview(call.type + ":updateBaseline");
+    }
     const auto& source = ctx.viewportCaptureFrames[view == "game" ? 1 : 0];
-    if (!CanReadCaptureFrame(ctx, source, target, 0))
+    if (!CanReadCaptureFrame(ctx, source, target, 0)) {
         return Outcome::Err("CAPTURE_NOT_READY", "CAPTURE_NOT_READY: 比較対象のビューが描画されるまで待ってください");
+    }
     std::vector<uint8_t> png;
     uint32_t width = 0;
     uint32_t height = 0;
-    if (!ctx.renderer->CaptureRenderTargetToPng(target, *ctx.resources, png, width, height) || png.empty())
+    if (!ctx.renderer->CaptureRenderTargetToPng(target, *ctx.resources, png, width, height) || png.empty()) {
         return Outcome::Err("CAPTURE_FAILED", "撮影に失敗しました");
+    }
 
     const fs::path baselinePath = fs::path(ctx.projectRoot) / "Tests" / "Golden" / (baselineName + ".png");
     const fs::path outputDirectory = PlaytestOutputRoot(ctx) / "_visual";
@@ -224,7 +275,9 @@ Outcome DoVisualCompare(BusCall& call)
     result.Set("provenance", source.Describe<JsonValue>("ViewportOutput", "Output"));
 
     if (ReadOption(call.payload, "updateBaseline")) {
-        if (!playtest::WriteBinaryFile(baselinePath, png)) return Outcome::Err("WRITE_FAILED", "基準画像を書けません");
+        if (!playtest::WriteBinaryFile(baselinePath, png)) {
+            return Outcome::Err("WRITE_FAILED", "基準画像を書けません");
+        }
         result.Set("status", JsonValue("updated"));
         return Outcome::Ok(std::move(result));
     }
@@ -232,15 +285,21 @@ Outcome DoVisualCompare(BusCall& call)
     playtest::RgbaImage actual;
     playtest::RgbaImage baseline;
     std::vector<uint8_t> baselineBytes;
-    if (!playtest::DecodePng(png, actual)) return Outcome::Err("DECODE_FAILED", "撮影した PNG を解読できません");
-    if (!playtest::ReadBinaryFile(baselinePath, baselineBytes) || !playtest::DecodePng(baselineBytes, baseline))
+    if (!playtest::DecodePng(png, actual)) {
+        return Outcome::Err("DECODE_FAILED", "撮影した PNG を解読できません");
+    }
+    if (!playtest::ReadBinaryFile(baselinePath, baselineBytes) || !playtest::DecodePng(baselineBytes, baseline)) {
         return Outcome::Err("NO_BASELINE", "基準画像がありません: " + baselinePath.generic_string() + " (updateBaseline=true で作る)");
+    }
 
     playtest::ImageDiffSettings settings;
-    if (const JsonValue* threshold = call.payload.Find("pixelThreshold"); threshold != nullptr && threshold->IsNumber())
+    if (const JsonValue* threshold = call.payload.Find("pixelThreshold"); threshold != nullptr && threshold->IsNumber()) {
         settings.pixelThreshold = static_cast<float>(threshold->AsNumber());
+    }
     const playtest::ImageDiffResult diff = playtest::CompareImages(actual, baseline, settings);
-    if (!diff.comparable) return Outcome::Err("SIZE_MISMATCH", "寸法が基準画像と違います");
+    if (!diff.comparable) {
+        return Outcome::Err("SIZE_MISMATCH", "寸法が基準画像と違います");
+    }
 
     result.Set("meanDiff", JsonValue(diff.meanDiff));
     result.Set("badPixelRatio", JsonValue(diff.badPixelRatio));
@@ -250,7 +309,9 @@ Outcome DoVisualCompare(BusCall& call)
         std::vector<uint8_t> diffPng;
         if (playtest::EncodePng(diff.diff, diffPng)) {
             const fs::path diffPath = outputDirectory / (baselineName + ".diff.png");
-            if (!call.dryRun && playtest::WriteBinaryFile(diffPath, diffPng)) result.Set("diffPath", JsonValue(diffPath.generic_string()));
+            if (!call.dryRun && playtest::WriteBinaryFile(diffPath, diffPng)) {
+                result.Set("diffPath", JsonValue(diffPath.generic_string()));
+            }
             result.Set("diffBase64", JsonValue(Base64Encode(diffPng)));
         }
     }
@@ -266,7 +327,7 @@ void RegisterPlaytestHandlers(BusHandlerTable& table)
     table.AddCommand("playtest.run", DoPlaytestRun);
     table.AddCommand("playtest.cancel", DoPlaytestCancel);
     table.AddCommand("input.record", DoInputRecord);
-    /// @note 基準画像の書き込み (updateBaseline) と差分画像の出力を伴うので Command 側に置く。
+    // 基準画像の書き込み (updateBaseline) と差分画像の出力を伴うので Command 側に置く。
     table.AddCommand("visual.compare", DoVisualCompare);
 }
 

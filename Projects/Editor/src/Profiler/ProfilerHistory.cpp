@@ -33,7 +33,9 @@ uint64_t s_memorySession = 1;
 size_t s_historyBytes = 0;
 void RestoreBenchmarkRecording()
 {
-    if (!s_benchmarkEnabledRecording) return;
+    if (!s_benchmarkEnabledRecording) {
+        return;
+    }
     profiler::Profiler::RequestRecording(false);
     s_benchmarkEnabledRecording = false;
 }
@@ -41,13 +43,17 @@ PerformanceBenchmarkDistribution Distribution(std::vector<double>& values)
 {
     PerformanceBenchmarkDistribution result;
     result.count = values.size();
-    if (values.empty()) return result;
+    if (values.empty()) {
+        return result;
+    }
     std::sort(values.begin(), values.end());
     const auto percentile = [&](size_t percent) {
         const size_t rank = values.size() / 100 * percent + (values.size() % 100 * percent + 99) / 100;
         return values[rank - 1];
     };
-    result.p50Ms = percentile(50); result.p95Ms = percentile(95); result.p99Ms = percentile(99);
+    result.p50Ms = percentile(50);
+    result.p95Ms = percentile(95);
+    result.p99Ms = percentile(99);
     result.maxMs = values.back();
     return result;
 }
@@ -55,10 +61,14 @@ PhysicsBenchmarkScope ScopeFor(const profiler::PerformanceSnapshot& snapshot, ui
 {
     const auto descriptor = std::find_if(snapshot.descriptors.begin(), snapshot.descriptors.end(),
         [key](const auto& value) { return value.sampleKey == key; });
-    if (descriptor == snapshot.descriptors.end()) return PhysicsBenchmarkScope::COUNT;
+    if (descriptor == snapshot.descriptors.end()) {
+        return PhysicsBenchmarkScope::COUNT;
+    }
     for (size_t index = 0; index < PHYSICS_BENCHMARK_SCOPE_COUNT; ++index) {
         const auto scope = static_cast<PhysicsBenchmarkScope>(index);
-        if (descriptor->name == PhysicsBenchmarkScopeName(scope)) return scope;
+        if (descriptor->name == PhysicsBenchmarkScopeName(scope)) {
+            return scope;
+        }
     }
     return PhysicsBenchmarkScope::COUNT;
 }
@@ -70,9 +80,12 @@ bool HasPhysicsSystemAncestor(const profiler::PerformanceSnapshot& snapshot,
         const auto parent = std::find_if(snapshot.samples.begin(), snapshot.samples.end(),
             [parentId](const auto& value) { return value.sampleId == parentId; });
         if (parent == snapshot.samples.end() || parent->sampleId == sample.sampleId) {
-            valid = false; return false;
+            valid = false;
+            return false;
         }
-        if (ScopeFor(snapshot, parent->sampleKey) == PhysicsBenchmarkScope::SYSTEM) return true;
+        if (ScopeFor(snapshot, parent->sampleKey) == PhysicsBenchmarkScope::SYSTEM) {
+            return true;
+        }
         parentId = parent->parentSampleId;
     }
     valid = parentId == 0;
@@ -81,12 +94,14 @@ bool HasPhysicsSystemAncestor(const profiler::PerformanceSnapshot& snapshot,
 PhysicsBenchmarkRow PhysicsRow(const profiler::PerformanceSnapshot& snapshot)
 {
     PhysicsBenchmarkRow row;
-    /// @note 収集を絞った記録から未収集 Physics を 0 ms と推定しない。
+    // 収集を絞った記録から未収集 Physics を 0 ms と推定しない。
     row.complete = snapshot.complete && snapshot.droppedSampleCount == 0
         && snapshot.captureFilter.category.empty() && snapshot.captureFilter.scope.empty();
     for (const auto& sample : snapshot.samples) {
         const auto scope = ScopeFor(snapshot, sample.sampleKey);
-        if (scope == PhysicsBenchmarkScope::COUNT) continue;
+        if (scope == PhysicsBenchmarkScope::COUNT) {
+            continue;
+        }
         if (sample.status == profiler::ProfileSampleStatus::FAULTED) {
             ++row.faultedScopeCount; row.complete = false; continue;
         }
@@ -99,9 +114,15 @@ PhysicsBenchmarkRow PhysicsRow(const profiler::PerformanceSnapshot& snapshot)
         }
         if (scope == PhysicsBenchmarkScope::SYSTEM) {
             bool valid = true;
-            /// @note scheduler と System 本体の同名 scope は最外区間だけを数える。
-            if (HasPhysicsSystemAncestor(snapshot, sample, valid)) continue;
-            if (!valid) { ++row.invalidScopeCount; row.complete = false; continue; }
+            // scheduler と System 本体の同名 scope は最外区間だけを数える。
+            if (HasPhysicsSystemAncestor(snapshot, sample, valid)) {
+                continue;
+            }
+            if (!valid) {
+                ++row.invalidScopeCount;
+                row.complete = false;
+                continue;
+            }
         }
         auto& value = row.scopes[static_cast<size_t>(scope)];
         ++value.calls; value.totalMs += sample.inclusiveMs;
@@ -114,18 +135,28 @@ size_t SnapshotBytes(const profiler::PerformanceSnapshot& snapshot)
     size_t bytes = sizeof(snapshot) + snapshot.samples.capacity() * sizeof(profiler::ProfileSample);
     bytes += snapshot.captureFilter.category.capacity() + snapshot.captureFilter.scope.capacity();
     bytes += snapshot.descriptors.capacity() * sizeof(profiler::PerformanceDescriptor);
-    for (const auto& descriptor : snapshot.descriptors) bytes += descriptor.name.capacity() + descriptor.category.capacity();
+    for (const auto& descriptor : snapshot.descriptors) {
+        bytes += descriptor.name.capacity() + descriptor.category.capacity();
+    }
     return bytes;
 }
 size_t SnapshotBytes(const PerformanceCapture& snapshot)
 {
     size_t bytes = SnapshotBytes(static_cast<const profiler::PerformanceSnapshot&>(snapshot));
     bytes += sizeof(snapshot.rendering) + snapshot.rendering.planDescription.capacity();
-    for (const auto& [name, ms] : snapshot.rendering.gpuPassTimings) { (void)ms; bytes += sizeof(name) + sizeof(ms) + name.capacity(); }
+    for (const auto& [name, ms] : snapshot.rendering.gpuPassTimings) {
+        (void)ms;
+        bytes += sizeof(name) + sizeof(ms) + name.capacity();
+    }
     bytes += snapshot.rendering.passTimings.capacity() * sizeof(std::pair<std::string, double>);
-    for (const auto& [name, ms] : snapshot.rendering.passTimings) { (void)ms; bytes += name.capacity(); }
+    for (const auto& [name, ms] : snapshot.rendering.passTimings) {
+        (void)ms;
+        bytes += name.capacity();
+    }
     bytes += snapshot.rendering.gpuProfiler.passes.capacity() * sizeof(renderer::GpuPassProfile);
-    for (const auto& pass : snapshot.rendering.gpuProfiler.passes) bytes += pass.name.capacity();
+    for (const auto& pass : snapshot.rendering.gpuProfiler.passes) {
+        bytes += pass.name.capacity();
+    }
     return bytes;
 }
 size_t SnapshotBytes(const scene::ScriptProfileSnapshot& snapshot)
@@ -133,14 +164,17 @@ size_t SnapshotBytes(const scene::ScriptProfileSnapshot& snapshot)
     size_t bytes = sizeof(snapshot) + snapshot.samples.capacity() * sizeof(profiler::ProfileSample);
     bytes += snapshot.contexts.capacity() * sizeof(scene::ScriptProfileContext);
     bytes += snapshot.descriptors.capacity() * sizeof(scene::ScriptProfileDescriptor);
-    for (const auto& descriptor : snapshot.descriptors)
+    for (const auto& descriptor : snapshot.descriptors) {
         bytes += descriptor.inspectionId.capacity() + descriptor.instanceId.capacity() + descriptor.objectName.capacity() + descriptor.typeName.capacity() + descriptor.callbackLabel.capacity();
+    }
     return bytes;
 }
 size_t SnapshotBytes(const MemoryProfileSnapshot& snapshot)
 {
     size_t bytes = sizeof(snapshot) + snapshot.tags.capacity() * sizeof(MemoryProfileTag);
-    for (const auto& tag : snapshot.tags) bytes += tag.name.capacity();
+    for (const auto& tag : snapshot.tags) {
+        bytes += tag.name.capacity();
+    }
     return bytes;
 }
 template<class Snapshot> bool EvictOne(ProfilerCaptureHistory<Snapshot>& history)
@@ -148,9 +182,13 @@ template<class Snapshot> bool EvictOne(ProfilerCaptureHistory<Snapshot>& history
     const auto it = std::find_if(history.frames.begin(), history.frames.end(), [&](const auto& frame) {
         return (!history.frozen || frame != history.selected) && frame != history.spike;
     });
-    if (it == history.frames.end()) return false;
+    if (it == history.frames.end()) {
+        return false;
+    }
     s_historyBytes -= SnapshotBytes(**it);
-    if (*it == history.selected) history.selected.reset();
+    if (*it == history.selected) {
+        history.selected.reset();
+    }
     history.frames.erase(it);
     ++history.historyEvictedFrameCount;
     return true;
@@ -158,7 +196,9 @@ template<class Snapshot> bool EvictOne(ProfilerCaptureHistory<Snapshot>& history
 template<class Snapshot> uint64_t OldestEvictableSerial(const ProfilerCaptureHistory<Snapshot>& history)
 {
     for (const auto& frame : history.frames)
-        if ((!history.frozen || frame != history.selected) && frame != history.spike) return frame->applicationFrameSerial;
+        if ((!history.frozen || frame != history.selected) && frame != history.spike) {
+            return frame->applicationFrameSerial;
+        }
     return (std::numeric_limits<uint64_t>::max)();
 }
 bool EvictOldest()
@@ -166,31 +206,45 @@ bool EvictOldest()
     const uint64_t performance = OldestEvictableSerial(s_performance);
     const uint64_t script = OldestEvictableSerial(s_script);
     const uint64_t memory = OldestEvictableSerial(s_memory);
-    if (performance == (std::numeric_limits<uint64_t>::max)() && script == performance && memory == performance) return false;
-    if (performance <= script && performance <= memory) return EvictOne(s_performance);
+    if (performance == (std::numeric_limits<uint64_t>::max)() && script == performance && memory == performance) {
+        return false;
+    }
+    if (performance <= script && performance <= memory) {
+        return EvictOne(s_performance);
+    }
     return script <= memory ? EvictOne(s_script) : EvictOne(s_memory);
 }
 template<class Snapshot> void Capture(ProfilerCaptureHistory<Snapshot>& history, Snapshot snapshot)
 {
     if (!snapshot.available || !snapshot.recording ||
-        (history.lastSession == snapshot.captureSessionId && history.lastSerial == snapshot.applicationFrameSerial)) return;
+        (history.lastSession == snapshot.captureSessionId && history.lastSerial == snapshot.applicationFrameSerial)) {
+        return;
+    }
     history.lastSession = snapshot.captureSessionId;
     history.lastSerial = snapshot.applicationFrameSerial;
     while (history.frames.size() >= MAX_HISTORY_FRAMES && EvictOne(history)) {}
     const size_t bytes = SnapshotBytes(snapshot);
     while (s_historyBytes + bytes > MAX_HISTORY_BYTES) {
-        if (!EvictOldest()) break;
+        if (!EvictOldest()) {
+            break;
+        }
     }
     history.budgetBlocked = s_historyBytes + bytes > MAX_HISTORY_BYTES;
-    if (history.budgetBlocked) return;
+    if (history.budgetBlocked) {
+        return;
+    }
     auto owned = std::make_shared<const Snapshot>(std::move(snapshot));
     s_historyBytes += SnapshotBytes(*owned);
     history.frames.push_back(owned);
-    if (!history.frozen) history.selected = std::move(owned);
+    if (!history.frozen) {
+        history.selected = std::move(owned);
+    }
 }
 template<class Snapshot> void Clear(ProfilerCaptureHistory<Snapshot>& history)
 {
-    for (const auto& frame : history.frames) s_historyBytes -= SnapshotBytes(*frame);
+    for (const auto& frame : history.frames) {
+        s_historyBytes -= SnapshotBytes(*frame);
+    }
     history = {};
 }
 std::string RowKey(const scene::ScriptProfileDescriptor& descriptor, const scene::ScriptProfileContext& context,
@@ -199,10 +253,13 @@ std::string RowKey(const scene::ScriptProfileDescriptor& descriptor, const scene
     std::string key = std::to_string(session) + "/" + std::to_string(context.executionContextId) + "/" + std::to_string(descriptor.typeId);
     if (group != ScriptProfileGroup::TYPE) {
         key += "/" + std::to_string(static_cast<int>(descriptor.callbackKind));
-        if (descriptor.callbackKind == scene::ScriptCallbackKind::UNKNOWN || descriptor.callbackKind == scene::ScriptCallbackKind::EVENT_HANDLER)
+        if (descriptor.callbackKind == scene::ScriptCallbackKind::UNKNOWN || descriptor.callbackKind == scene::ScriptCallbackKind::EVENT_HANDLER) {
             key += "/" + descriptor.callbackLabel;
+        }
     }
-    if (group == ScriptProfileGroup::INSTANCE) key += "/" + descriptor.inspectionId;
+    if (group == ScriptProfileGroup::INSTANCE) {
+        key += "/" + descriptor.inspectionId;
+    }
     return key;
 }
 }
@@ -226,72 +283,120 @@ bool PerformanceBenchmarkCapture::IsActive() const
 bool PerformanceBenchmarkCapture::Start(std::string label, size_t warmupFrames, size_t sampleFrames,
     const profiler::PerformanceSnapshot& baseline, PerformanceBenchmarkConditions conditions)
 {
-    if (IsActive() || label.empty() || label.size() > 256 || !sampleFrames || sampleFrames > 60000 || warmupFrames > 60000
-        || conditions.scenario.size() > 256 || conditions.camera.size() > 256 || conditions.configuration.size() > 1024
-        || sampleFrames > m_rows.max_size()
-        || sampleFrames > m_cpuTimings.max_size() || sampleFrames > m_wallTimings.max_size()) return false;
+    // 実行中の計測を保護し、新しい収集条件がレポートの上限に収まることを確認する。
+    if (IsActive()) {
+        return false;
+    }
+    if (label.empty() || label.size() > 256 || !sampleFrames || sampleFrames > 60000 || warmupFrames > 60000) {
+        return false;
+    }
+    const bool metadataTooLong = conditions.scenario.size() > 256 || conditions.camera.size() > 256
+        || conditions.configuration.size() > 1024;
+    if (metadataTooLong) {
+        return false;
+    }
+
+    // 予約前に、すべての保存先で指定のサンプル数を表現できることを確認する。
+    if (sampleFrames > m_rows.max_size()
+        || sampleFrames > m_cpuTimings.max_size() || sampleFrames > m_wallTimings.max_size()) {
+        return false;
+    }
     for (size_t index = 0; index < PHYSICS_BENCHMARK_SCOPE_COUNT; ++index) {
         if (sampleFrames > m_physicsFrameTimings[index].max_size()
-            || sampleFrames > m_physicsPerStepTimings[index].max_size()) return false;
+            || sampleFrames > m_physicsPerStepTimings[index].max_size()) {
+            return false;
+        }
     }
-    m_rows.clear(); m_rows.reserve(sampleFrames);
-    m_cpuTimings.clear(); m_cpuTimings.reserve(sampleFrames);
-    m_wallTimings.clear(); m_wallTimings.reserve(sampleFrames);
+    m_rows.clear();
+    m_rows.reserve(sampleFrames);
+    m_cpuTimings.clear();
+    m_cpuTimings.reserve(sampleFrames);
+    m_wallTimings.clear();
+    m_wallTimings.reserve(sampleFrames);
     for (size_t index = 0; index < PHYSICS_BENCHMARK_SCOPE_COUNT; ++index) {
-        m_physicsFrameTimings[index].clear(); m_physicsFrameTimings[index].reserve(sampleFrames);
-        m_physicsPerStepTimings[index].clear(); m_physicsPerStepTimings[index].reserve(sampleFrames);
+        m_physicsFrameTimings[index].clear();
+        m_physicsFrameTimings[index].reserve(sampleFrames);
+        m_physicsPerStepTimings[index].clear();
+        m_physicsPerStepTimings[index].reserve(sampleFrames);
     }
     m_label = std::move(label);
     m_conditions = std::move(conditions);
     m_captureFilter = baseline.captureFilter;
-    m_width = 0; m_height = 0; m_sceneGeneration = 0;
-    m_renderingMetadataAvailable = false; m_renderingConditionsChanged = false;
+    m_width = 0;
+    m_height = 0;
+    m_sceneGeneration = 0;
+    m_renderingMetadataAvailable = false;
+    m_renderingConditionsChanged = false;
     m_status = {};
     m_status.state = warmupFrames ? PerformanceBenchmarkState::WARMUP : PerformanceBenchmarkState::SAMPLING;
-    m_status.warmupFrames = warmupFrames; m_status.sampleFrames = sampleFrames;
-    m_cpuSummary = {}; m_wallSummary = {};
+    m_status.warmupFrames = warmupFrames;
+    m_status.sampleFrames = sampleFrames;
+    m_cpuSummary = {};
+    m_wallSummary = {};
     m_physicsSummary = {};
     m_hasBaseline = baseline.available;
-    m_lastSession = baseline.captureSessionId; m_lastSerial = baseline.applicationFrameSerial;
+    m_lastSession = baseline.captureSessionId;
+    m_lastSerial = baseline.applicationFrameSerial;
     m_hasAcceptedFrame = false;
     return true;
 }
 void PerformanceBenchmarkCapture::Feed(const profiler::PerformanceSnapshot& snapshot,
     const renderer::RenderDebugOverlay::Snapshot& rendering, bool recordingRequested)
 {
-    if (!IsActive()) return;
+    if (!IsActive()) {
+        return;
+    }
     if (!recordingRequested) {
-        m_status.state = PerformanceBenchmarkState::FAILED; m_status.failure = PerformanceBenchmarkFailure::RECORDING_STOPPED; return;
+        m_status.state = PerformanceBenchmarkState::FAILED;
+        m_status.failure = PerformanceBenchmarkFailure::RECORDING_STOPPED;
+        return;
     }
     if (!snapshot.recording) {
-        /// @note 有効化前の同じ snapshot は待つが、新しい停止 session/frame は最初の標本前でも拒否する。
+        // 有効化前の同じ snapshot は待つが、新しい停止 session/frame は最初の標本前でも拒否する。
         if (m_hasAcceptedFrame || snapshot.captureSessionId != m_lastSession || snapshot.applicationFrameSerial != m_lastSerial) {
-            m_status.state = PerformanceBenchmarkState::FAILED; m_status.failure = PerformanceBenchmarkFailure::RECORDING_STOPPED;
+            m_status.state = PerformanceBenchmarkState::FAILED;
+            m_status.failure = PerformanceBenchmarkFailure::RECORDING_STOPPED;
         }
         return;
     }
-    if (!snapshot.available) return;
+    if (!snapshot.available) {
+        return;
+    }
     if (m_hasAcceptedFrame && (snapshot.captureSessionId != m_status.captureSessionId || snapshot.captureFilter != m_captureFilter)) {
-        m_status.state = PerformanceBenchmarkState::FAILED; m_status.failure = PerformanceBenchmarkFailure::SESSION_CHANGED; return;
+        m_status.state = PerformanceBenchmarkState::FAILED;
+        m_status.failure = PerformanceBenchmarkFailure::SESSION_CHANGED;
+        return;
     }
     if ((m_hasBaseline || m_hasAcceptedFrame) && snapshot.captureSessionId == m_lastSession) {
-        if (snapshot.applicationFrameSerial == m_lastSerial) return;
-        if (snapshot.applicationFrameSerial < m_lastSerial) {
-            m_status.state = PerformanceBenchmarkState::FAILED; m_status.failure = PerformanceBenchmarkFailure::FRAME_ORDER_CHANGED; return;
+        if (snapshot.applicationFrameSerial == m_lastSerial) {
+            return;
         }
-        if (m_hasAcceptedFrame) m_status.missingFrameCount += snapshot.applicationFrameSerial - m_lastSerial - 1;
+        if (snapshot.applicationFrameSerial < m_lastSerial) {
+            m_status.state = PerformanceBenchmarkState::FAILED;
+            m_status.failure = PerformanceBenchmarkFailure::FRAME_ORDER_CHANGED;
+            return;
+        }
+        if (m_hasAcceptedFrame) {
+            m_status.missingFrameCount += snapshot.applicationFrameSerial - m_lastSerial - 1;
+        }
     }
-    if (!m_hasAcceptedFrame) m_captureFilter = snapshot.captureFilter;
+    if (!m_hasAcceptedFrame) {
+        m_captureFilter = snapshot.captureFilter;
+    }
     m_hasAcceptedFrame = true;
     m_status.captureSessionId = snapshot.captureSessionId;
-    m_lastSession = snapshot.captureSessionId; m_lastSerial = snapshot.applicationFrameSerial;
+    m_lastSession = snapshot.captureSessionId;
+    m_lastSerial = snapshot.applicationFrameSerial;
     if (m_status.warmedFrames < m_status.warmupFrames) {
         ++m_status.warmedFrames;
-        if (m_status.warmedFrames == m_status.warmupFrames) m_status.state = PerformanceBenchmarkState::SAMPLING;
+        if (m_status.warmedFrames == m_status.warmupFrames) {
+            m_status.state = PerformanceBenchmarkState::SAMPLING;
+        }
         return;
     }
     PerformanceBenchmarkRow row;
-    row.captureSessionId = snapshot.captureSessionId; row.applicationFrameSerial = snapshot.applicationFrameSerial;
+    row.captureSessionId = snapshot.captureSessionId;
+    row.applicationFrameSerial = snapshot.applicationFrameSerial;
     row.complete = snapshot.complete && snapshot.droppedSampleCount == 0
         && snapshot.faultedSampleCount == 0 && snapshot.abortedSampleCount == 0;
     row.droppedSampleCount = snapshot.droppedSampleCount;
@@ -301,16 +406,26 @@ void PerformanceBenchmarkCapture::Feed(const profiler::PerformanceSnapshot& snap
     row.cpuFrameElapsedAvailable = std::isfinite(snapshot.cpuFrameElapsedMs) && snapshot.cpuFrameElapsedMs >= 0.0;
     row.wallFrameIntervalAvailable = snapshot.wallFrameIntervalAvailable
         && std::isfinite(snapshot.wallFrameIntervalMs) && snapshot.wallFrameIntervalMs >= 0.0;
-    if (row.cpuFrameElapsedAvailable) { row.cpuFrameElapsedMs = snapshot.cpuFrameElapsedMs; m_cpuTimings.push_back(row.cpuFrameElapsedMs); }
-    if (row.wallFrameIntervalAvailable) { row.wallFrameIntervalMs = snapshot.wallFrameIntervalMs; m_wallTimings.push_back(row.wallFrameIntervalMs); }
+    if (row.cpuFrameElapsedAvailable) {
+        row.cpuFrameElapsedMs = snapshot.cpuFrameElapsedMs;
+        m_cpuTimings.push_back(row.cpuFrameElapsedMs);
+    }
+    if (row.wallFrameIntervalAvailable) {
+        row.wallFrameIntervalMs = snapshot.wallFrameIntervalMs;
+        m_wallTimings.push_back(row.wallFrameIntervalMs);
+    }
     row.renderingAvailable = rendering.gpuCurrentView.applicationFrameSerial == snapshot.applicationFrameSerial;
     if (row.renderingAvailable) {
-        row.drawCalls = rendering.renderStats.drawCalls; row.triangleCount = rendering.renderStats.triangleCount;
+        row.drawCalls = rendering.renderStats.drawCalls;
+        row.triangleCount = rendering.renderStats.triangleCount;
         const auto& view = rendering.gpuCurrentView;
-        if (m_renderingMetadataAvailable && (m_width != view.width || m_height != view.height || m_sceneGeneration != view.sceneGeneration))
+        if (m_renderingMetadataAvailable && (m_width != view.width || m_height != view.height || m_sceneGeneration != view.sceneGeneration)) {
             m_renderingConditionsChanged = true;
+        }
         if (!m_renderingMetadataAvailable) {
-            m_width = view.width; m_height = view.height; m_sceneGeneration = view.sceneGeneration;
+            m_width = view.width;
+            m_height = view.height;
+            m_sceneGeneration = view.sceneGeneration;
             m_renderingMetadataAvailable = true;
         }
     }
@@ -322,23 +437,33 @@ void PerformanceBenchmarkCapture::Feed(const profiler::PerformanceSnapshot& snap
     if (row.physics.complete) {
         ++m_physicsSummary.validFrames;
         m_physicsSummary.stepCount += row.physics.stepCount;
-        if (row.physics.stepCount == 0) ++m_physicsSummary.zeroStepFrames;
-        else if (row.physics.stepCount > 1) ++m_physicsSummary.multiStepFrames;
+        if (row.physics.stepCount == 0) {
+            ++m_physicsSummary.zeroStepFrames;
+        } else if (row.physics.stepCount > 1) {
+            ++m_physicsSummary.multiStepFrames;
+        }
         for (size_t index = 0; index < PHYSICS_BENCHMARK_SCOPE_COUNT; ++index) {
             const auto& value = row.physics.scopes[index];
             auto& summary = m_physicsSummary.scopes[index];
-            summary.calls += value.calls; summary.totalMs += value.totalMs;
+            summary.calls += value.calls;
+            summary.totalMs += value.totalMs;
             m_physicsFrameTimings[index].push_back(value.totalMs);
-            if (row.physics.stepCount != 0)
+            if (row.physics.stepCount != 0) {
                 m_physicsPerStepTimings[index].push_back(value.totalMs / row.physics.stepCount);
+            }
         }
-    } else ++m_physicsSummary.excludedFrames;
+    } else {
+        ++m_physicsSummary.excludedFrames;
+    }
     m_rows.push_back(row);
     ++m_status.capturedFrames;
-    if (!row.complete) ++m_status.incompleteFrames;
+    if (!row.complete) {
+        ++m_status.incompleteFrames;
+    }
     m_status.droppedSampleCount += row.droppedSampleCount;
     if (m_status.capturedFrames == m_status.sampleFrames) {
-        m_cpuSummary = Distribution(m_cpuTimings); m_wallSummary = Distribution(m_wallTimings);
+        m_cpuSummary = Distribution(m_cpuTimings);
+        m_wallSummary = Distribution(m_wallTimings);
         for (size_t index = 0; index < PHYSICS_BENCHMARK_SCOPE_COUNT; ++index) {
             m_physicsSummary.scopes[index].frameMs = Distribution(m_physicsFrameTimings[index]);
             m_physicsSummary.scopes[index].msPerStep = Distribution(m_physicsPerStepTimings[index]);
@@ -356,24 +481,43 @@ PerformanceBenchmarkComparison ComparePerformanceBenchmarks(const PerformanceBen
 {
     PerformanceBenchmarkComparison result;
     const auto quality = [&](const PerformanceBenchmarkReport& report) {
-        if (report.status.state != PerformanceBenchmarkState::COMPLETE) result.warnings.push_back(report.label + ": capture is not complete.");
-        if (report.status.incompleteFrames || report.status.droppedSampleCount) result.warnings.push_back(report.label + ": incomplete frames or dropped CPU samples; scope costs are partial.");
-        if (report.status.missingFrameCount) result.warnings.push_back(report.label + ": application frames are missing.");
-        if (report.cpu.count != report.status.sampleFrames || report.wall.count != report.status.sampleFrames)
+        if (report.status.state != PerformanceBenchmarkState::COMPLETE) {
+            result.warnings.push_back(report.label + ": capture is not complete.");
+        }
+        if (report.status.incompleteFrames || report.status.droppedSampleCount) {
+            result.warnings.push_back(report.label + ": incomplete frames or dropped CPU samples; scope costs are partial.");
+        }
+        if (report.status.missingFrameCount) {
+            result.warnings.push_back(report.label + ": application frames are missing.");
+        }
+        if (report.cpu.count != report.status.sampleFrames || report.wall.count != report.status.sampleFrames) {
             result.warnings.push_back(report.label + ": timing samples are unavailable.");
-        if (report.conditions.scenario.empty() || report.conditions.camera.empty() || report.conditions.configuration.empty())
+        }
+        if (report.conditions.scenario.empty() || report.conditions.camera.empty() || report.conditions.configuration.empty()) {
             result.warnings.push_back(report.label + ": declare scenario, camera and fixed configuration before comparison.");
-        if (report.renderingConditionsChanged) result.warnings.push_back(report.label + ": observed scene or viewport changed while sampling.");
+        }
+        if (report.renderingConditionsChanged) {
+            result.warnings.push_back(report.label + ": observed scene or viewport changed while sampling.");
+        }
     };
     quality(reference);
-    if (&reference != &candidate) quality(candidate);
-    if (reference.conditions != candidate.conditions) result.warnings.push_back("Declared fixed conditions differ.");
-    if (reference.captureFilter != candidate.captureFilter) result.warnings.push_back("CPU collection filters differ.");
-    if (reference.status.warmupFrames != candidate.status.warmupFrames || reference.status.sampleFrames != candidate.status.sampleFrames)
+    if (&reference != &candidate) {
+        quality(candidate);
+    }
+    if (reference.conditions != candidate.conditions) {
+        result.warnings.push_back("Declared fixed conditions differ.");
+    }
+    if (reference.captureFilter != candidate.captureFilter) {
+        result.warnings.push_back("CPU collection filters differ.");
+    }
+    if (reference.status.warmupFrames != candidate.status.warmupFrames || reference.status.sampleFrames != candidate.status.sampleFrames) {
         result.warnings.push_back("Warmup or requested sample count differs.");
+    }
     if (reference.renderingMetadataAvailable != candidate.renderingMetadataAvailable
         || (reference.renderingMetadataAvailable && (reference.width != candidate.width || reference.height != candidate.height
-            || reference.sceneGeneration != candidate.sceneGeneration))) result.warnings.push_back("Observed viewport or scene provenance differs.");
+            || reference.sceneGeneration != candidate.sceneGeneration))) {
+        result.warnings.push_back("Observed viewport or scene provenance differs.");
+    }
     result.comparable = result.warnings.empty();
     if (result.comparable) {
         result.cpuP50DeltaMs = candidate.cpu.p50Ms - reference.cpu.p50Ms;
@@ -383,23 +527,31 @@ PerformanceBenchmarkComparison ComparePerformanceBenchmarks(const PerformanceBen
 }
 bool SetPerformanceBenchmarkReference()
 {
-    if (s_benchmark.Status().state != PerformanceBenchmarkState::COMPLETE) return false;
+    if (s_benchmark.Status().state != PerformanceBenchmarkState::COMPLETE) {
+        return false;
+    }
     s_benchmarkReference = s_benchmark.Report();
     return true;
 }
 const PerformanceBenchmarkReport* GetPerformanceBenchmarkReference() { return s_benchmarkReference ? &*s_benchmarkReference : nullptr; }
 bool PerformanceBenchmarkCapture::Cancel()
 {
-    if (!IsActive()) return false;
+    if (!IsActive()) {
+        return false;
+    }
     m_status.state = PerformanceBenchmarkState::CANCELLED;
     return true;
 }
 PerformanceBenchmarkCapture& GetPerformanceBenchmarkCapture() { return s_benchmark; }
 bool StartPerformanceBenchmark(std::string label, size_t warmupFrames, size_t sampleFrames, PerformanceBenchmarkConditions conditions)
 {
-    if (s_passiveFrameElapsed.IsActive()) return false;
+    if (s_passiveFrameElapsed.IsActive()) {
+        return false;
+    }
     const bool priorRecordingRequested = profiler::Profiler::IsRecordingRequested();
-    if (!s_benchmark.Start(std::move(label), warmupFrames, sampleFrames, profiler::Profiler::GetSnapshot(), std::move(conditions))) return false;
+    if (!s_benchmark.Start(std::move(label), warmupFrames, sampleFrames, profiler::Profiler::GetSnapshot(), std::move(conditions))) {
+        return false;
+    }
     s_benchmarkEnabledRecording = !priorRecordingRequested;
     profiler::Profiler::RequestRecording(true);
     return true;
@@ -407,7 +559,9 @@ bool StartPerformanceBenchmark(std::string label, size_t warmupFrames, size_t sa
 bool CancelPerformanceBenchmark()
 {
     const bool cancelled = s_benchmark.Cancel();
-    if (!s_benchmark.IsActive()) RestoreBenchmarkRecording();
+    if (!s_benchmark.IsActive()) {
+        RestoreBenchmarkRecording();
+    }
     return cancelled;
 }
 PerformanceHistory& GetPerformanceHistory() { return s_performance; }
@@ -416,7 +570,9 @@ MemoryHistory& GetMemoryHistory() { return s_memory; }
 bool IsMemoryHistoryRecording() { return s_memoryRecording; }
 void SetMemoryHistoryRecording(bool recording)
 {
-    if (recording && !s_memoryRecording) ++s_memorySession;
+    if (recording && !s_memoryRecording) {
+        ++s_memorySession;
+    }
     s_memoryRecording = recording;
 }
 void ClearMemoryHistory() { Clear(s_memory); ++s_memorySession; }
@@ -428,17 +584,22 @@ void TickProfilerHistory(EditorContext& ctx)
             ctx.playMode != nullptr && ctx.playMode->IsPlaying());
         if (!s_passiveFrameElapsed.IsActive()) {
             profiler::detail::RequestStopApplicationFrameElapsedObserver();
-            if (s_passiveFrameElapsed.Status().state != PerformanceBenchmarkState::COMPLETE)
+            if (s_passiveFrameElapsed.Status().state != PerformanceBenchmarkState::COMPLETE) {
                 profiler::frame_timeline::CancelCapture(elapsed.observerSessionId);
+            }
         }
     }
     const auto& performance = profiler::Profiler::GetSnapshot();
     const bool benchmarking = s_benchmark.IsActive();
     if (benchmarking) {
         s_benchmark.Feed(performance, renderer::RenderDebugOverlay::GetLastSnapshot(), profiler::Profiler::IsRecordingRequested());
-        if (!s_benchmark.IsActive()) RestoreBenchmarkRecording();
+        if (!s_benchmark.IsActive()) {
+            RestoreBenchmarkRecording();
+        }
     }
-    if (!benchmarking) RestoreBenchmarkRecording();
+    if (!benchmarking) {
+        RestoreBenchmarkRecording();
+    }
     if (performance.available && performance.recording &&
         (performance.captureSessionId != s_performance.lastSession || performance.applicationFrameSerial != s_performance.lastSerial)) {
         PerformanceCapture capture;
@@ -446,14 +607,20 @@ void TickProfilerHistory(EditorContext& ctx)
         capture.rendering = renderer::RenderDebugOverlay::GetLastSnapshot();
         Capture(s_performance, std::move(capture));
     }
-    /// @note scalar benchmark中もCPU画面は最新の確定frameを採る。Script/Memoryの複製は従来どおり抑える。
-    if (benchmarking) return;
+    // scalar benchmark中もCPU画面は最新の確定frameを採る。Script/Memoryの複製は従来どおり抑える。
+    if (benchmarking) {
+        return;
+    }
     const auto& script = scene::ScriptProfiler::GetSnapshot();
     if (script.available && script.recording &&
-        (script.captureSessionId != s_script.lastSession || script.applicationFrameSerial != s_script.lastSerial)) Capture(s_script, script);
+        (script.captureSessionId != s_script.lastSession || script.applicationFrameSerial != s_script.lastSerial)) {
+        Capture(s_script, script);
+    }
     if (s_memoryRecording && ctx.memorySystem != nullptr && ctx.memorySystem->IsInitialized()) {
         MemoryProfileSnapshot memory;
-        memory.recording = true; memory.available = true; memory.captureSessionId = s_memorySession;
+        memory.recording = true;
+        memory.available = true;
+        memory.captureSessionId = s_memorySession;
         memory.applicationFrameSerial = ctx.resources != nullptr ? ctx.resources->FrameStamp() : (std::max)(performance.applicationFrameSerial, script.applicationFrameSerial);
         const auto& tracker = ctx.memorySystem->GetTracker();
         memory.frameAllocator = ctx.memorySystem->GetFrameAllocator().GetStats();
@@ -462,12 +629,14 @@ void TickProfilerHistory(EditorContext& ctx)
             memory.tags.push_back({tracker.GetTagName(tag), tracker.GetStats(tag)});
         }
         if (ctx.resources != nullptr) {
-            /// @note ResourcePool の追跡は RENDERER タグのみ。詳細一覧を複製せず、従来と同じ各フレームの合計を残す。
+            // ResourcePool の追跡は RENDERER タグのみ。詳細一覧を複製せず、従来と同じ各フレームの合計を残す。
             auto& stats = memory.tags[static_cast<size_t>(core::MemoryTag::RENDERER)].stats;
             const size_t bytes = ctx.resources->GetLiveDebugResourceBytes();
             const size_t count = ctx.resources->GetLiveDebugResourceCount();
-            stats.used += bytes; stats.peakUsed += bytes;
-            stats.activeCount += count; stats.allocationCount += count;
+            stats.used += bytes;
+            stats.peakUsed += bytes;
+            stats.activeCount += count;
+            stats.allocationCount += count;
         }
         Capture(s_memory, std::move(memory));
     }
@@ -502,54 +671,92 @@ std::vector<ScriptProfileRow> AggregateScriptProfiles(const std::vector<const sc
     std::unordered_map<std::string, double> contextSelf;
     std::unordered_map<std::string, bool> contextComplete;
     for (const auto* frame : frames) {
-        if (frame == nullptr) continue;
+        if (frame == nullptr) {
+            continue;
+        }
         const bool normalFrame = frame->recording && frame->available && frame->complete && !frame->transitionFrame;
         for (const auto& context : frame->contexts) {
             const std::string key = std::to_string(frame->captureSessionId) + "/" + std::to_string(context.executionContextId);
             auto [it, inserted] = contextComplete.emplace(key, normalFrame);
-            if (!inserted) it->second = it->second && normalFrame;
+            if (!inserted) {
+                it->second = it->second && normalFrame;
+            }
         }
         std::unordered_map<size_t, double> frameTotals;
         for (const auto& sample : frame->samples) {
             const auto* descriptor = FindScriptDescriptor(*frame, sample.sampleKey);
             const auto* context = descriptor != nullptr ? FindScriptContext(*frame, descriptor->executionContextId) : nullptr;
-            if (context == nullptr) continue;
+            if (context == nullptr) {
+                continue;
+            }
             const std::string contextKey = std::to_string(frame->captureSessionId) + "/" + std::to_string(context->executionContextId);
             contextComplete[contextKey] = contextComplete[contextKey] && sample.selfAvailable && sample.status == profiler::ProfileSampleStatus::COMPLETE;
-            if (normalFrame && sample.selfAvailable && sample.status == profiler::ProfileSampleStatus::COMPLETE) contextSelf[contextKey] += sample.selfMs;
-            if (!MatchesScriptProfile(*descriptor, *context, filter)) continue;
+            if (normalFrame && sample.selfAvailable && sample.status == profiler::ProfileSampleStatus::COMPLETE) {
+                contextSelf[contextKey] += sample.selfMs;
+            }
+            if (!MatchesScriptProfile(*descriptor, *context, filter)) {
+                continue;
+            }
             const std::string key = RowKey(*descriptor, *context, group, frame->captureSessionId);
             auto [it, inserted] = indices.emplace(key, rows.size());
-            if (inserted) { ScriptProfileRow row; row.descriptor = *descriptor; row.context = *context; rows.push_back(std::move(row)); sessions.push_back(frame->captureSessionId); }
+            if (inserted) {
+                ScriptProfileRow row;
+                row.descriptor = *descriptor;
+                row.context = *context;
+                rows.push_back(std::move(row));
+                sessions.push_back(frame->captureSessionId);
+            }
             const size_t index = it->second;
             auto& row = rows[index];
             ++row.calls;
-            if (sample.status == profiler::ProfileSampleStatus::FAULTED) ++row.faults;
-            if (sample.status != profiler::ProfileSampleStatus::COMPLETE) { row.faultElapsedMs += sample.inclusiveMs; row.selfAvailable = false; continue; }
-            if (!normalFrame) { row.selfAvailable = false; continue; }
+            if (sample.status == profiler::ProfileSampleStatus::FAULTED) {
+                ++row.faults;
+            }
+            if (sample.status != profiler::ProfileSampleStatus::COMPLETE) {
+                row.faultElapsedMs += sample.inclusiveMs;
+                row.selfAvailable = false;
+                continue;
+            }
+            if (!normalFrame) {
+                row.selfAvailable = false;
+                continue;
+            }
             ++row.completedCalls;
             row.inclusiveMs += sample.inclusiveMs;
             row.maxCallMs = (std::max)(row.maxCallMs, sample.inclusiveMs);
             row.selfAvailable = row.selfAvailable && sample.selfAvailable;
-            if (sample.selfAvailable) row.selfMs += sample.selfMs;
+            if (sample.selfAvailable) {
+                row.selfMs += sample.selfMs;
+            }
             frameTotals[index] += sample.inclusiveMs;
         }
-        for (const auto& [index, total] : frameTotals) rows[index].peakFrameMs = (std::max)(rows[index].peakFrameMs, total);
+        for (const auto& [index, total] : frameTotals) {
+            rows[index].peakFrameMs = (std::max)(rows[index].peakFrameMs, total);
+        }
     }
     for (size_t i = 0; i < rows.size(); ++i) {
         auto& row = rows[i];
         for (const auto* frame : frames) {
-            if (frame == nullptr || frame->captureSessionId != sessions[i]) continue;
-            if (FindScriptContext(*frame, row.context.executionContextId) == nullptr) continue;
-            if (frame->recording && frame->available && frame->complete && !frame->transitionFrame) ++row.validFrames;
-            else ++row.excludedFrames;
+            if (frame == nullptr || frame->captureSessionId != sessions[i]) {
+                continue;
+            }
+            if (FindScriptContext(*frame, row.context.executionContextId) == nullptr) {
+                continue;
+            }
+            if (frame->recording && frame->available && frame->complete && !frame->transitionFrame) {
+                ++row.validFrames;
+            } else {
+                ++row.excludedFrames;
+            }
         }
         row.avgPerCallMs = row.completedCalls != 0 ? row.inclusiveMs / static_cast<double>(row.completedCalls) : 0.0;
         row.avgPerFrameMs = row.validFrames != 0 ? row.inclusiveMs / static_cast<double>(row.validFrames) : 0.0;
         const std::string contextKey = std::to_string(sessions[i]) + "/" + std::to_string(row.context.executionContextId);
         row.shareAvailable = contextComplete[contextKey] && row.selfAvailable;
         const double totalSelf = contextSelf[contextKey];
-        if (row.shareAvailable && totalSelf > 0.0) row.share = row.selfMs / totalSelf;
+        if (row.shareAvailable && totalSelf > 0.0) {
+            row.share = row.selfMs / totalSelf;
+        }
     }
     std::stable_sort(rows.begin(), rows.end(), [](const auto& a, const auto& b) { return a.selfMs > b.selfMs; });
     return rows;
@@ -576,21 +783,36 @@ bool PassiveFrameElapsedCapture::CanStart(const std::string& label, size_t warmu
 bool PassiveFrameElapsedCapture::Start(std::string label, size_t warmup, size_t samples, uint64_t observerSession,
     profiler::detail::ApplicationFrameElapsedModeWitness baseline, PassiveFrameElapsedConditions conditions)
 {
-    if (!CanStart(label, warmup, samples, conditions) || observerSession == 0 || !baseline.IsOff()) return false;
-    m_rows.clear(); m_rows.reserve(samples); m_cpuTimings.clear(); m_cpuTimings.reserve(samples);
-    m_wallTimings.clear(); m_wallTimings.reserve(samples);
-    m_report = {}; m_report.label = std::move(label); m_report.conditions = std::move(conditions);
+    if (!CanStart(label, warmup, samples, conditions) || observerSession == 0 || !baseline.IsOff()) {
+        return false;
+    }
+    m_rows.clear();
+    m_rows.reserve(samples);
+    m_cpuTimings.clear();
+    m_cpuTimings.reserve(samples);
+    m_wallTimings.clear();
+    m_wallTimings.reserve(samples);
+    m_report = {};
+    m_report.label = std::move(label);
+    m_report.conditions = std::move(conditions);
     m_report.status.state = warmup ? PerformanceBenchmarkState::WARMUP : PerformanceBenchmarkState::SAMPLING;
-    m_report.status.warmupFrames = warmup; m_report.status.sampleFrames = samples;
+    m_report.status.warmupFrames = warmup;
+    m_report.status.sampleFrames = samples;
     m_report.status.observerSessionId = observerSession;
-    m_baseline = baseline; m_report.baselineMode = baseline; m_lastSerial = 0; m_lastOrdinal = 0; m_hasFrame = false;
+    m_baseline = baseline;
+    m_report.baselineMode = baseline;
+    m_lastSerial = 0;
+    m_lastOrdinal = 0;
+    m_hasFrame = false;
     return true;
 }
 void PassiveFrameElapsedCapture::Fail(PassiveFrameElapsedFailure failure,
     const profiler::detail::ApplicationFrameElapsedSnapshot& frame)
 {
-    m_report.status.state = PerformanceBenchmarkState::FAILED; m_report.status.failure = failure;
-    m_report.failureFrameAvailable = frame.available; m_report.failureFrame = frame;
+    m_report.status.state = PerformanceBenchmarkState::FAILED;
+    m_report.status.failure = failure;
+    m_report.failureFrameAvailable = frame.available;
+    m_report.failureFrame = frame;
     m_report.failureFrame.complete = false;
     m_report.failureFrame.cpuFrameElapsedAvailable = frame.cpuFrameElapsedAvailable && std::isfinite(frame.cpuFrameElapsedMs) && frame.cpuFrameElapsedMs >= 0.0;
     m_report.failureFrame.wallFrameIntervalAvailable = frame.wallFrameIntervalAvailable && std::isfinite(frame.wallFrameIntervalMs) && frame.wallFrameIntervalMs >= 0.0;
@@ -598,54 +820,101 @@ void PassiveFrameElapsedCapture::Fail(PassiveFrameElapsedFailure failure,
 void PassiveFrameElapsedCapture::Feed(const profiler::detail::ApplicationFrameElapsedSnapshot& elapsed,
     const renderer::RenderDebugOverlay::Snapshot& rendering, bool playing)
 {
-    if (!IsActive()) return;
-    if (!playing) { Fail(PassiveFrameElapsedFailure::PLAY_CHANGED, elapsed); return; }
-    if (!elapsed.available) return;
+    if (!IsActive()) {
+        return;
+    }
+    if (!playing) {
+        Fail(PassiveFrameElapsedFailure::PLAY_CHANGED, elapsed);
+        return;
+    }
+    if (!elapsed.available) {
+        return;
+    }
     auto& status = m_report.status;
-    if (!m_hasFrame && elapsed.observerSessionId < status.observerSessionId) return;
-    if (elapsed.observerSessionId != status.observerSessionId) { Fail(PassiveFrameElapsedFailure::SESSION_CHANGED, elapsed); return; }
+    if (!m_hasFrame && elapsed.observerSessionId < status.observerSessionId) {
+        return;
+    }
+    if (elapsed.observerSessionId != status.observerSessionId) {
+        Fail(PassiveFrameElapsedFailure::SESSION_CHANGED, elapsed);
+        return;
+    }
     if (!elapsed.beginMode.IsOff() || (elapsed.endModeAvailable && !elapsed.endMode.IsOff())) {
-        Fail(PassiveFrameElapsedFailure::MODE_CHANGED, elapsed); return;
+        Fail(PassiveFrameElapsedFailure::MODE_CHANGED, elapsed);
+        return;
     }
     if (elapsed.beginMode != m_baseline || (elapsed.endModeAvailable && elapsed.endMode != m_baseline)) {
-        Fail(PassiveFrameElapsedFailure::SESSION_CHANGED, elapsed); return;
+        Fail(PassiveFrameElapsedFailure::SESSION_CHANGED, elapsed);
+        return;
     }
-    if (m_hasFrame && elapsed.applicationFrameSerial == m_lastSerial && elapsed.publicationOrdinal == m_lastOrdinal) return;
+    if (m_hasFrame && elapsed.applicationFrameSerial == m_lastSerial && elapsed.publicationOrdinal == m_lastOrdinal) {
+        return;
+    }
     if (elapsed.publicationOrdinal == 0 || (m_hasFrame && (elapsed.applicationFrameSerial <= m_lastSerial
-        || elapsed.publicationOrdinal <= m_lastOrdinal))) { Fail(PassiveFrameElapsedFailure::FRAME_ORDER_CHANGED, elapsed); return; }
+        || elapsed.publicationOrdinal <= m_lastOrdinal))) {
+        Fail(PassiveFrameElapsedFailure::FRAME_ORDER_CHANGED, elapsed);
+        return;
+    }
     status.missingPublicationCount += elapsed.publicationOrdinal - m_lastOrdinal - 1;
-    if (m_hasFrame) status.missingFrameCount += elapsed.applicationFrameSerial - m_lastSerial - 1;
-    m_lastSerial = elapsed.applicationFrameSerial; m_lastOrdinal = elapsed.publicationOrdinal; m_hasFrame = true;
-    if (!elapsed.complete) ++status.incompleteFrames;
+    if (m_hasFrame) {
+        status.missingFrameCount += elapsed.applicationFrameSerial - m_lastSerial - 1;
+    }
+    m_lastSerial = elapsed.applicationFrameSerial;
+    m_lastOrdinal = elapsed.publicationOrdinal;
+    m_hasFrame = true;
+    if (!elapsed.complete) {
+        ++status.incompleteFrames;
+    }
     const auto& view = rendering.gpuCurrentView;
     const bool renderingAvailable = view.applicationFrameSerial == elapsed.applicationFrameSerial && view.viewId != 0
         && view.sceneGeneration != 0 && view.planGeneration != 0 && view.resourceEpoch != 0
         && view.outputId != 0 && view.outputGeneration != 0 && view.width > 0 && view.height > 0;
     if (renderingAvailable) {
-        auto expected = m_report.rendering; expected.applicationFrameSerial = view.applicationFrameSerial;
-        if (m_report.renderingMetadataAvailable && expected != view) m_report.renderingConditionsChanged = true;
-        if (!m_report.renderingMetadataAvailable) { m_report.rendering = view; m_report.renderingMetadataAvailable = true; }
+        auto expected = m_report.rendering;
+        expected.applicationFrameSerial = view.applicationFrameSerial;
+        if (m_report.renderingMetadataAvailable && expected != view) {
+            m_report.renderingConditionsChanged = true;
+        }
+        if (!m_report.renderingMetadataAvailable) {
+            m_report.rendering = view;
+            m_report.renderingMetadataAvailable = true;
+        }
     }
     if (status.warmedFrames < status.warmupFrames) {
-        if (!renderingAvailable) ++status.missingWarmupRenderingMetadataFrames;
+        if (!renderingAvailable) {
+            ++status.missingWarmupRenderingMetadataFrames;
+        }
         ++status.warmedFrames;
-        if (status.warmedFrames == status.warmupFrames) status.state = PerformanceBenchmarkState::SAMPLING;
+        if (status.warmedFrames == status.warmupFrames) {
+            status.state = PerformanceBenchmarkState::SAMPLING;
+        }
         return;
     }
-    PassiveFrameElapsedRow row; row.elapsed = elapsed;
+    PassiveFrameElapsedRow row;
+    row.elapsed = elapsed;
     row.elapsed.cpuFrameElapsedAvailable = elapsed.cpuFrameElapsedAvailable && std::isfinite(elapsed.cpuFrameElapsedMs) && elapsed.cpuFrameElapsedMs >= 0.0;
     row.elapsed.wallFrameIntervalAvailable = elapsed.wallFrameIntervalAvailable && std::isfinite(elapsed.wallFrameIntervalMs) && elapsed.wallFrameIntervalMs >= 0.0;
     if (!row.elapsed.cpuFrameElapsedAvailable || !row.elapsed.wallFrameIntervalAvailable) {
         row.elapsed.complete = false;
-        if (elapsed.complete) ++status.incompleteFrames;
+        if (elapsed.complete) {
+            ++status.incompleteFrames;
+        }
     }
     row.renderingAvailable = renderingAvailable;
     if (row.renderingAvailable) {
-        row.rendering = view; row.drawCalls = rendering.renderStats.drawCalls; row.triangleCount = rendering.renderStats.triangleCount;
-    } else ++status.missingRenderingMetadataFrames;
-    if (row.elapsed.cpuFrameElapsedAvailable) m_cpuTimings.push_back(row.elapsed.cpuFrameElapsedMs);
-    if (row.elapsed.wallFrameIntervalAvailable) m_wallTimings.push_back(row.elapsed.wallFrameIntervalMs);
-    m_rows.push_back(row); ++status.capturedFrames;
+        row.rendering = view;
+        row.drawCalls = rendering.renderStats.drawCalls;
+        row.triangleCount = rendering.renderStats.triangleCount;
+    } else {
+        ++status.missingRenderingMetadataFrames;
+    }
+    if (row.elapsed.cpuFrameElapsedAvailable) {
+        m_cpuTimings.push_back(row.elapsed.cpuFrameElapsedMs);
+    }
+    if (row.elapsed.wallFrameIntervalAvailable) {
+        m_wallTimings.push_back(row.elapsed.wallFrameIntervalMs);
+    }
+    m_rows.push_back(row);
+    ++status.capturedFrames;
     if (status.capturedFrames == status.sampleFrames) {
         m_report.cpu = {Distribution(m_cpuTimings), !m_cpuTimings.empty()};
         m_report.wall = {Distribution(m_wallTimings), !m_wallTimings.empty()};
@@ -654,35 +923,49 @@ void PassiveFrameElapsedCapture::Feed(const profiler::detail::ApplicationFrameEl
 }
 bool PassiveFrameElapsedCapture::Cancel()
 {
-    if (!IsActive()) return false;
-    m_report.status.state = PerformanceBenchmarkState::CANCELLED; return true;
+    if (!IsActive()) {
+        return false;
+    }
+    m_report.status.state = PerformanceBenchmarkState::CANCELLED;
+    return true;
 }
 PassiveFrameElapsedCapture& GetPassiveFrameElapsedCapture() { return s_passiveFrameElapsed; }
 bool StartPassiveFrameElapsedCapture(EditorContext& ctx, std::string label, size_t warmup, size_t samples,
     PassiveFrameElapsedConditions conditions)
 {
     if (s_benchmark.IsActive() || ctx.playMode == nullptr || !ctx.playMode->IsPlaying()
-        || !s_passiveFrameElapsed.CanStart(label, warmup, samples, conditions)) return false;
+        || !s_passiveFrameElapsed.CanStart(label, warmup, samples, conditions)) {
+        return false;
+    }
     const profiler::detail::ApplicationFrameElapsedModeWitness mode{profiler::Profiler::IsEnabled(),
         profiler::Profiler::IsRecordingRequested(), scene::ScriptProfiler::IsRecording(),
         profiler::Profiler::GetSnapshot().captureSessionId, scene::ScriptProfiler::GetSnapshot().captureSessionId,
         scene::ScriptProfiler::GetRuntimeEpoch(), scene::ScriptProfiler::GetDllGeneration()};
-    if (!mode.IsOff()) return false;
+    if (!mode.IsOff()) {
+        return false;
+    }
     const uint64_t session = profiler::detail::ArmApplicationFrameElapsedObserver();
     const bool started = s_passiveFrameElapsed.Start(std::move(label), warmup, samples, session, mode, std::move(conditions));
-    if (started) (void)profiler::frame_timeline::ArmFromEnvironment(session, warmup, samples);
+    if (started) {
+        (void)profiler::frame_timeline::ArmFromEnvironment(session, warmup, samples);
+    }
     return started;
 }
 bool CancelPassiveFrameElapsedCapture()
 {
     const bool cancelled = s_passiveFrameElapsed.Cancel();
-    if (cancelled) profiler::frame_timeline::CancelCapture(s_passiveFrameElapsed.Status().observerSessionId);
+    if (cancelled) {
+        profiler::frame_timeline::CancelCapture(s_passiveFrameElapsed.Status().observerSessionId);
+    }
     profiler::detail::RequestStopApplicationFrameElapsedObserver(); return cancelled;
 }
 bool SetPassiveFrameElapsedReference()
 {
-    if (s_passiveFrameElapsed.Status().state != PerformanceBenchmarkState::COMPLETE) return false;
-    s_passiveFrameElapsedReference = s_passiveFrameElapsed.Report(); return true;
+    if (s_passiveFrameElapsed.Status().state != PerformanceBenchmarkState::COMPLETE) {
+        return false;
+    }
+    s_passiveFrameElapsedReference = s_passiveFrameElapsed.Report();
+    return true;
 }
 const PassiveFrameElapsedReport* GetPassiveFrameElapsedReference()
 {
@@ -690,7 +973,8 @@ const PassiveFrameElapsedReport* GetPassiveFrameElapsedReference()
 }
 bool IsPassiveFrameElapsedEligible(const PassiveFrameElapsedReport& report)
 {
-    const auto& status = report.status; const auto& conditions = report.conditions;
+    const auto& status = report.status;
+    const auto& conditions = report.conditions;
     return report.baselineMode.IsOff() && report.cpu.available && report.wall.available
         && status.state == PerformanceBenchmarkState::COMPLETE && status.failure == PassiveFrameElapsedFailure::NONE
         && status.capturedFrames == status.sampleFrames && status.sampleFrames != 0 && status.incompleteFrames == 0
@@ -703,7 +987,8 @@ bool IsPassiveFrameElapsedEligible(const PassiveFrameElapsedReport& report)
 }
 bool ArePassiveFrameElapsedComparable(const PassiveFrameElapsedReport& reference, const PassiveFrameElapsedReport& candidate)
 {
-    auto expected = reference.rendering; expected.applicationFrameSerial = candidate.rendering.applicationFrameSerial;
+    auto expected = reference.rendering;
+    expected.applicationFrameSerial = candidate.rendering.applicationFrameSerial;
     return IsPassiveFrameElapsedEligible(reference) && IsPassiveFrameElapsedEligible(candidate)
         && reference.conditions.scenario == candidate.conditions.scenario && reference.conditions.camera == candidate.conditions.camera
         && reference.conditions.configuration == candidate.conditions.configuration

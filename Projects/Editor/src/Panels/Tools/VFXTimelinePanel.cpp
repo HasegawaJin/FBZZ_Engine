@@ -37,8 +37,12 @@ constexpr ImU32 kBarTriggered = IM_COL32(196, 138, 70, 210);
 
 [[nodiscard]] ImU32 BarColor(bool triggered, bool loop)
 {
-    if (triggered) return kBarTriggered;
-    if (loop) return kBarLooping;
+    if (triggered) {
+        return kBarTriggered;
+    }
+    if (loop) {
+        return kBarLooping;
+    }
     return kBarNormal;
 }
 
@@ -55,22 +59,28 @@ constexpr ImU32 kBarTriggered = IM_COL32(196, 138, 70, 210);
     return buffer;
 }
 
-} /// @note namespace
+} // namespace
 
 scene::GameObject* VFXTimelinePanel::ResolveRoot(EditorContext& ctx) const
 {
-    if (ctx.activeScene == nullptr) return nullptr;
-
-    /// @note 選択から遡って探す。子を選んだままでもタイムラインが消えないようにする。
-    if (scene::GameObject* selected = ctx.GetSelectedGO()) {
-        for (scene::GameObject* node = selected; node != nullptr; node = node->GetParent())
-            if (node->GetComponent<scene::VFXComponent>() != nullptr) return node;
+    if (ctx.activeScene == nullptr) {
+        return nullptr;
     }
 
-    /// @note 選択が無いときはシーンのルートから 1 つ拾う。プレハブ編集モードでは
-    /// @note       .vfx のルートが唯一のルートなので、開いた直後から中身が出る。
+    // 選択から遡って探す。子を選んだままでもタイムラインが消えないようにする。
+    if (scene::GameObject* selected = ctx.GetSelectedGO()) {
+        for (scene::GameObject* node = selected; node != nullptr; node = node->GetParent())
+            if (node->GetComponent<scene::VFXComponent>() != nullptr) {
+                return node;
+            }
+    }
+
+    // 選択が無いときはシーンのルートから 1 つ拾う。プレハブ編集モードでは
+    // .vfx のルートが唯一のルートなので、開いた直後から中身が出る。
     for (scene::GameObject* root : ctx.activeScene->GetRootGameObjects())
-        if (root != nullptr && root->GetComponent<scene::VFXComponent>() != nullptr) return root;
+        if (root != nullptr && root->GetComponent<scene::VFXComponent>() != nullptr) {
+            return root;
+        }
 
     return nullptr;
 }
@@ -80,7 +90,9 @@ void VFXTimelinePanel::CollectTracks(scene::Scene& scene, scene::GameObject& roo
     const int childCount = root.GetChildCount();
     for (int index = 0; index < childCount; ++index) {
         scene::GameObject* child = root.GetChild(index);
-        if (child == nullptr) continue;
+        if (child == nullptr) {
+            continue;
+        }
 
         Track track;
         track.entity = child->GetID();
@@ -99,12 +111,14 @@ void VFXTimelinePanel::CollectTracks(scene::Scene& scene, scene::GameObject& roo
             track.duration = emitter->settings.duration;
             track.loop = emitter->settings.loop;
         } else {
-            /// @note 窓を持たない = 層のまとめ役。行は出すが帯は描かない。
+            // 窓を持たない = 層のまとめ役。行は出すが帯は描かない。
             track.isGroup = true;
         }
         m_tracks.push_back(std::move(track));
 
-        if (!IsNestedRoot(*child)) CollectTracks(scene, *child, depth + 1);
+        if (!IsNestedRoot(*child)) {
+            CollectTracks(scene, *child, depth + 1);
+        }
     }
 }
 
@@ -112,7 +126,9 @@ void VFXTimelinePanel::ApplyTrack(scene::Scene& scene, const Track& track,
                                   float start, float duration) const
 {
     scene::GameObject* gameObject = scene.GetGameObject(track.entity);
-    if (gameObject == nullptr) return;
+    if (gameObject == nullptr) {
+        return;
+    }
 
     if (track.fromEmitter) {
         if (auto* emitter = gameObject->GetComponent<scene::ParticleEmitter>()) {
@@ -138,21 +154,26 @@ void VFXTimelinePanel::OnRenderContent(EditorContext& ctx)
     }
 
     auto* vfx = root->GetComponent<scene::VFXComponent>();
-    if (vfx == nullptr) return;
+    if (vfx == nullptr) {
+        return;
+    }
     scene::Scene& scene = *ctx.activeScene;
 
     m_tracks.clear();
     CollectTracks(scene, *root, 0);
 
-    /// @note 表示する尺。ランタイムが算出した実効尺を使い、まだ 0 なら帯から求める。
+    // 表示する尺。ランタイムが算出した実効尺を使い、まだ 0 なら帯から求める。
     float span = vfx->duration > 0.0f ? vfx->duration : vfx->resolvedDuration;
     if (span <= 0.0f) {
-        for (const Track& track : m_tracks)
+        for (const Track& track : m_tracks) {
             span = (std::max)(span, track.start + (std::max)(track.duration, 0.0f));
+        }
     }
-    if (span <= 0.0f) span = 1.0f;
+    if (span <= 0.0f) {
+        span = 1.0f;
+    }
 
-    /// @name ヘッダー
+    // ヘッダー
     ImGui::Text("%s", root->name.c_str());
     ImGui::SameLine();
     ImGui::TextDisabled("(%s / %d tracks)", FormatSeconds(span).c_str(),
@@ -161,8 +182,11 @@ void VFXTimelinePanel::OnRenderContent(EditorContext& ctx)
     if (ImGui::Button(vfx->playing ? "Pause" : "Play")) {
         m_apiScrubTime = -1.0f;
         m_scrubTime = -1.0f;
-        if (vfx->playing) vfx->Pause();
-        else vfx->Resume();
+        if (vfx->playing) {
+            vfx->Pause();
+        } else {
+            vfx->Resume();
+        }
     }
     ImGui::SameLine();
     if (ImGui::Button("Restart")) {
@@ -182,22 +206,25 @@ void VFXTimelinePanel::OnRenderContent(EditorContext& ctx)
         m_scrubTime = scrub;
         vfx->playing = false;
     }
-    /// @note 掴んでいる間だけ時刻を固定する。離しても固定し続けると
-    /// @note       「Play を押しても動かない」に見える。
-    if (m_scrubTime >= 0.0f && ImGui::IsItemDeactivated()) m_scrubTime = -1.0f;
+    // 掴んでいる間だけ時刻を固定する。離しても固定し続けると
+    // 「Play を押しても動かない」に見える。
+    if (m_scrubTime >= 0.0f && ImGui::IsItemDeactivated()) {
+        m_scrubTime = -1.0f;
+    }
     if (m_apiScrubTime < 0 || m_apiRoot != root->instanceId) {
         vfx->editorScrubTime = m_scrubTime;
         vfx->editorScrubFrame = Time::frameCount;
     }
 
-    /// @note 曲線で駆動する層 (光・デカール・メッシュ・画面演出) は時刻だけで決まるが、パーティクルは
-    /// @note       «それまでの積み重ね» なので巻き戻すと頭から出直す。断らないと «消えた» をバグとして追われる。
-    if (m_scrubTime >= 0.0f)
+    // 曲線で駆動する層 (光・デカール・メッシュ・画面演出) は時刻だけで決まるが、パーティクルは
+    // «それまでの積み重ね» なので巻き戻すと頭から出直す。断らないと «消えた» をバグとして追われる。
+    if (m_scrubTime >= 0.0f) {
         ImGui::TextDisabled("スクラブ中: パーティクルは前方向にのみ再現されます");
+    }
 
     ImGui::Separator();
 
-    /// @name トラック
+    // トラック
     ImDrawList* draw = ImGui::GetWindowDrawList();
     const ImVec2 laneOrigin = ImGui::GetCursorScreenPos();
     const float available = ImGui::GetContentRegionAvail().x;
@@ -216,9 +243,12 @@ void VFXTimelinePanel::OnRenderContent(EditorContext& ctx)
         ImGui::SetCursorScreenPos(ImVec2(rowTop.x + indent, rowTop.y));
         const auto label = widgets::ElideToWidth(track.label.c_str(), labelWidth - indent);
         if (ImGui::Selectable((label + "###track").c_str(), false, ImGuiSelectableFlags_None,
-                              ImVec2(labelWidth - indent, kRowHeight)))
+                              ImVec2(labelWidth - indent, kRowHeight))) {
             SelectEntity(ctx, track.entity);
-        if (label != track.label && ImGui::IsItemHovered()) ImGui::SetTooltip("%s", track.label.c_str());
+        }
+        if (label != track.label && ImGui::IsItemHovered()) {
+            ImGui::SetTooltip("%s", track.label.c_str());
+        }
 
         if (track.isGroup) {
             ImGui::SetCursorScreenPos(ImVec2(rowTop.x, rowTop.y + kRowHeight));
@@ -226,7 +256,7 @@ void VFXTimelinePanel::OnRenderContent(EditorContext& ctx)
             continue;
         }
 
-        /// @note duration <= 0 は「ルートが終わるまで」。描くときだけ実尺へ広げる。
+        // duration <= 0 は「ルートが終わるまで」。描くときだけ実尺へ広げる。
         const float drawDuration = track.duration > 0.0f
             ? track.duration : (std::max)(span - track.start, kMinDuration);
         const float x0 = timeToX(track.start);
@@ -235,11 +265,12 @@ void VFXTimelinePanel::OnRenderContent(EditorContext& ctx)
         const ImVec2 barMax((std::max)(x1, x0 + 3.0f), rowTop.y + kRowHeight - 3.0f);
 
         draw->AddRectFilled(barMin, barMax, BarColor(!track.trigger.empty(), track.loop), 3.0f);
-        if (track.duration <= 0.0f)
+        if (track.duration <= 0.0f) {
             draw->AddRect(barMin, barMax, IM_COL32(240, 240, 240, 140), 3.0f);
+        }
 
-        /// @note 当たり判定はレーン全幅に置く。帯そのものを幅 0 のボタンにすると、
-        /// @note       短い窓 (0.05 秒) が掴めなくなる。
+        // 当たり判定はレーン全幅に置く。帯そのものを幅 0 のボタンにすると、
+        // 短い窓 (0.05 秒) が掴めなくなる。
         ImGui::SetCursorScreenPos(ImVec2(laneLeft, rowTop.y));
         ImGui::InvisibleButton("##lane", ImVec2(laneWidth, kRowHeight));
 
@@ -261,17 +292,21 @@ void VFXTimelinePanel::OnRenderContent(EditorContext& ctx)
                 m_dragEntity = track.entity;
                 m_dragStart = track.start;
                 m_dragDuration = drawDuration;
-                if (mouseX - barMin.x <= kEdgeGrabPx)      m_dragEdge = -1;
-                else if (barMax.x - mouseX <= kEdgeGrabPx) m_dragEdge = 1;
-                else                                        m_dragEdge = 0;
+                if (mouseX - barMin.x <= kEdgeGrabPx) {
+                    m_dragEdge = -1;
+                } else if (barMax.x - mouseX <= kEdgeGrabPx) {
+                    m_dragEdge = 1;
+                } else {
+                    m_dragEdge = 0;
+                }
             } else {
                 m_dragEntity = scene::EntityID{};
             }
         }
 
         if (ImGui::IsItemActive() && m_dragEntity == track.entity) {
-            /// @note ドラッグ量は «掴んだ時点の値 + 総移動量» で出す。毎フレームの差分を足し込むと
-            /// @note       クランプのたびに誤差が残り «掴んだ場所と帯がずれていく»。
+            // ドラッグ量は «掴んだ時点の値 + 総移動量» で出す。毎フレームの差分を足し込むと
+            // クランプのたびに誤差が残り «掴んだ場所と帯がずれていく»。
             const float deltaTime = (ImGui::GetMouseDragDelta().x / laneWidth) * span;
             if (m_dragEdge == 0) {
                 m_dragResultStart = (std::max)(m_dragStart + deltaTime, 0.0f);
@@ -285,19 +320,21 @@ void VFXTimelinePanel::OnRenderContent(EditorContext& ctx)
                 m_dragResultDuration = (std::max)(m_dragDuration + deltaTime, kMinDuration);
             }
             ApplyTrack(scene, track, m_dragResultStart, m_dragResultDuration);
-            /// @note markSceneDirty は Prefab 編集モードを見て prefabEditDirty 側へ振り分ける。
-            /// @note       sceneDirty を直に立てると、編集モードを抜けたあと «触っていないシーン» に
-            /// @note       未保存扱いが残る。
-            if (ctx.markSceneDirty) ctx.markSceneDirty();
+            // markSceneDirty は Prefab 編集モードを見て prefabEditDirty 側へ振り分ける。
+            // sceneDirty を直に立てると、編集モードを抜けたあと «触っていないシーン» に
+            // 未保存扱いが残る。
+            if (ctx.markSceneDirty) {
+                ctx.markSceneDirty();
+            }
         }
 
-        /// @note Undo は «掴んで離すまで» を 1 手にする。ドラッグ中に積むと 1 回の調整で
-        /// @note       履歴が数十件になり、戻す操作が使い物にならなくなる。
+        // Undo は «掴んで離すまで» を 1 手にする。ドラッグ中に積むと 1 回の調整で
+        // 履歴が数十件になり、戻す操作が使い物にならなくなる。
         if (ImGui::IsItemDeactivated() && m_dragEntity == track.entity) {
             const Track captured = track;
             const float finalStart = m_dragResultStart;
             const float finalDuration = m_dragResultDuration;
-            /// @note スナップショットは «編集前» を撮る必要があるので、いったん元値へ戻す。
+            // スナップショットは «編集前» を撮る必要があるので、いったん元値へ戻す。
             ApplyTrack(scene, captured, m_dragStart, m_dragDuration);
             ExecuteSceneEditWithUndo(ctx, "Adjust VFX Track", [&] {
                 ApplyTrack(scene, captured, finalStart, finalDuration);
@@ -309,7 +346,7 @@ void VFXTimelinePanel::OnRenderContent(EditorContext& ctx)
         ImGui::PopID();
     }
 
-    /// @note 再生ヘッドは全トラックの上に引く。
+    // 再生ヘッドは全トラックの上に引く。
     const float laneBottom = ImGui::GetCursorScreenPos().y;
     if (laneBottom > laneOrigin.y) {
         const float headX = timeToX(std::clamp(vfx->time, 0.0f, span));
@@ -318,4 +355,4 @@ void VFXTimelinePanel::OnRenderContent(EditorContext& ctx)
     }
 }
 
-} /// @note namespace fbzz::editor
+} // namespace fbzz::editor

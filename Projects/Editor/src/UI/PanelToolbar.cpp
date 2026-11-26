@@ -22,7 +22,9 @@ float ButtonWidth(const char* label, const icons::detail::Glyph& icon)
 
 bool IconButton(const char* label, const icons::detail::Glyph& icon)
 {
-    if (!icons::Available()) return ImGui::Button(label);
+    if (!icons::Available()) {
+        return ImGui::Button(label);
+    }
     ImGui::PushStyleVar(ImGuiStyleVar_ButtonTextAlign, ImVec2(1.0f, 0.5f));
     const bool pressed = ImGui::Button(label, {ButtonWidth(label, icon), 0.0f});
     ImGui::PopStyleVar();
@@ -58,16 +60,18 @@ bool Action::Draw(bool compact) const
     } else {
         pressed = IconButton(label, icon);
     }
-    if (ImGui::IsItemHovered(ImGuiHoveredFlags_ForTooltip | ImGuiHoveredFlags_AllowWhenDisabled))
+    if (ImGui::IsItemHovered(ImGuiHoveredFlags_ForTooltip | ImGuiHoveredFlags_AllowWhenDisabled)) {
         ImGui::SetTooltip("%s", tooltip);
+    }
     return pressed;
 }
 
 void SameLineIfFits(float nextWidth)
 {
     const float right = ImGui::GetCursorScreenPos().x + ImGui::GetContentRegionAvail().x;
-    if (ImGui::GetItemRectMax().x + ImGui::GetStyle().ItemSpacing.x + nextWidth <= right)
+    if (ImGui::GetItemRectMax().x + ImGui::GetStyle().ItemSpacing.x + nextWidth <= right) {
         ImGui::SameLine();
+    }
 }
 
 void SearchField(const char* id, const char* hint, char* buffer, std::size_t capacity, float width)
@@ -84,11 +88,14 @@ void SearchField(const char* id, const char* hint, char* buffer, std::size_t cap
     const ImGuiID inputId = ImGui::GetID(id);
 
     ImGui::BeginGroup();
-    /// @note 同じドックのツリーや一覧からも検索できる。別パネルや開いたメニューからはフォーカスを奪わない。
-    if (ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows | ImGuiFocusedFlags_NoPopupHierarchy))
+    // 同じドックのツリーや一覧からも検索できる。別パネルや開いたメニューからはフォーカスを奪わない。
+    if (ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows | ImGuiFocusedFlags_NoPopupHierarchy)) {
         ImGui::SetNextItemShortcut(ImGuiMod_Ctrl | ImGuiKey_F, ImGuiInputFlags_RouteGlobal);
+    }
     ImGui::SetNextItemWidth(inputWidth);
-    if (showLens) ImGui::PushStyleVarX(ImGuiStyleVar_FramePadding, padding + font);
+    if (showLens) {
+        ImGui::PushStyleVarX(ImGuiStyleVar_FramePadding, padding + font);
+    }
     ImGui::InputTextWithHint(id, LOCT(hint), buffer, capacity, ImGuiInputTextFlags_EscapeClearsAll);
     if (showLens) {
         ImGui::PopStyleVar();

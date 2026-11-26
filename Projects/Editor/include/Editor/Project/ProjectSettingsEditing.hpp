@@ -11,4 +11,4 @@ class ICommand;
 /// @note afterを即時反映し、既に適用済みの履歴を返す。同値ならnullptr。Undo競合時は現在設定を保つ。
 [[nodiscard]] std::unique_ptr<ICommand> CommitProjectSettingsEdit(EditorContext& context,
     const ProjectSettings& before, const ProjectSettings& after);
-} /// @note namespace fbzz::editor
+} // namespace fbzz::editor

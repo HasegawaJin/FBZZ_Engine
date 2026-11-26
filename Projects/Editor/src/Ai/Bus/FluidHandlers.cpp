@@ -88,7 +88,9 @@ std::string FluidPresetIdList()
 {
     std::string list;
     for (const FluidPresetEntry& entry : kFluidPresets) {
-        if (!list.empty()) list += ", ";
+        if (!list.empty()) {
+            list += ", ";
+        }
         list += entry.id;
     }
     return list;
@@ -107,12 +109,16 @@ std::string FluidAbsolutePath(const std::filesystem::path& path)
 std::string FluidProjectRelative(const editor::EditorContext& ctx, const std::string& absolute)
 {
     namespace fs = std::filesystem;
-    if (absolute.empty() || ctx.projectRoot.empty()) return absolute;
+    if (absolute.empty() || ctx.projectRoot.empty()) {
+        return absolute;
+    }
     std::error_code ec;
     const fs::path root = fs::weakly_canonical(fs::path(ctx.projectRoot), ec);
     const fs::path path = fs::weakly_canonical(util::FileSystem::PathFromUtf8(absolute), ec);
     const fs::path relative = fs::relative(path, root, ec);
-    if (ec || relative.empty() || relative.begin()->generic_string() == "..") return absolute;
+    if (ec || relative.empty() || relative.begin()->generic_string() == "..") {
+        return absolute;
+    }
     return relative.generic_string();
 }
 
@@ -194,7 +200,9 @@ public:
     std::size_t BeginObjectList(const char* name, std::size_t count) override
     {
         m_path.emplace_back(PersistentKey(name));
-        if (m_mode != Mode::ResizeList || Joined() != m_target) return count;
+        if (m_mode != Mode::ResizeList || Joined() != m_target) {
+            return count;
+        }
         m_found = true;
         m_applied = true;
         return m_count;
@@ -209,11 +217,17 @@ public:
 
     void Enum(const char* name, int& v, std::span<const char* const> labels) override
     {
-        if (m_mode != Mode::EnumLabel || m_found) return;
+        if (m_mode != Mode::EnumLabel || m_found) {
+            return;
+        }
         std::string path = Joined();
-        if (!path.empty()) path += ".";
+        if (!path.empty()) {
+            path += ".";
+        }
         path += PersistentKey(name);
-        if (path != m_target) return;
+        if (path != m_target) {
+            return;
+        }
         m_found = true;
         const std::string wanted = LowerAscii(m_label);
         std::string accepted;
@@ -224,7 +238,9 @@ public:
                 m_applied = true;
                 return;
             }
-            if (!accepted.empty()) accepted += " | ";
+            if (!accepted.empty()) {
+                accepted += " | ";
+            }
             accepted += label;
         }
         m_error = "'" + m_target + "' は " + accepted + " のいずれか (または添字の数値) を指定してください";
@@ -235,7 +251,9 @@ private:
     {
         std::string joined;
         for (const std::string& segment : m_path) {
-            if (!joined.empty()) joined += ".";
+            if (!joined.empty()) {
+                joined += ".";
+            }
             joined += segment;
         }
         return joined;
@@ -243,7 +261,9 @@ private:
 
     void Leave()
     {
-        if (!m_path.empty()) m_path.pop_back();
+        if (!m_path.empty()) {
+            m_path.pop_back();
+        }
     }
 
     Mode                     m_mode;
@@ -267,18 +287,30 @@ struct FluidFieldReport {
 /// @note GPU の定数バッファに載る数と揃えてあり、超えて置くと CPU と GPU で絵が変わる。
 std::size_t FluidListLimit(const std::string& path)
 {
-    if (path == "source") return static_cast<std::size_t>(fluid::kMaxFluidSources);
-    if (path == "force") return static_cast<std::size_t>(fluid::kMaxFluidForces);
-    if (path == "collider") return static_cast<std::size_t>(fluid::kMaxFluidColliders);
-    if (path.ends_with(".motion.key")) return static_cast<std::size_t>(fluid::kMaxFluidMotionKeys);
-    if (path.ends_with(".amount.key")) return static_cast<std::size_t>(fluid::kMaxFluidAmountKeys);
+    if (path == "source") {
+        return static_cast<std::size_t>(fluid::kMaxFluidSources);
+    }
+    if (path == "force") {
+        return static_cast<std::size_t>(fluid::kMaxFluidForces);
+    }
+    if (path == "collider") {
+        return static_cast<std::size_t>(fluid::kMaxFluidColliders);
+    }
+    if (path.ends_with(".motion.key")) {
+        return static_cast<std::size_t>(fluid::kMaxFluidMotionKeys);
+    }
+    if (path.ends_with(".amount.key")) {
+        return static_cast<std::size_t>(fluid::kMaxFluidAmountKeys);
+    }
     return (std::numeric_limits<std::size_t>::max)();
 }
 
 JsonValue FluidStringArray(const std::vector<std::string>& items)
 {
     JsonValue array = JsonValue::MakeArray();
-    for (const std::string& item : items) array.Push(JsonValue(item));
+    for (const std::string& item : items) {
+        array.Push(JsonValue(item));
+    }
     return array;
 }
 
@@ -294,7 +326,9 @@ void ApplyFluidValue(fluid::FluidRecipe& recipe, const std::string& path,
                             member.second, report);
         return;
     }
-    if (path.empty()) return;
+    if (path.empty()) {
+        return;
+    }
 
     if (value.IsArray()) {
         const auto& items = value.AsArray();
@@ -307,15 +341,17 @@ void ApplyFluidValue(fluid::FluidRecipe& recipe, const std::string& path,
             asset::ReflectFluidRecipe(recipe, resize);
             if (resize.Found()) {
                 report.applied.push_back(path);
-                /// @note 上限は焼き側の都合で、AI が知らずに多めに並べることがある。全部拒否すると
-/// @note 残りの変更まで捨てることになるため切り詰め、落とした分は clamped で返す。
-                if (count < items.size())
+                // 上限は焼き側の都合で、AI が知らずに多めに並べることがある。全部拒否すると
+// 残りの変更まで捨てることになるため切り詰め、落とした分は clamped で返す。
+                if (count < items.size()) {
                     report.clamped.push_back(path + ": " + std::to_string(items.size()) + " -> " + std::to_string(count));
-                for (std::size_t i = 0; i < count; ++i)
+                }
+                for (std::size_t i = 0; i < count; ++i) {
                     ApplyFluidValue(recipe, path + "." + std::to_string(i), items[i], report);
+                }
                 return;
             }
-            /// @note 空配列はベクトル型の誤りとして JsonWriteReflector に型エラーを言わせる。
+            // 空配列はベクトル型の誤りとして JsonWriteReflector に型エラーを言わせる。
             if (!items.empty()) {
                 report.unknown.push_back(path);
                 return;
@@ -324,27 +360,34 @@ void ApplyFluidValue(fluid::FluidRecipe& recipe, const std::string& path,
     }
 
     if (value.IsString()) {
-        /// @note enum のラベルは TOML に書く名前と同じ ("smoke" / "3d")。fluid.get が添字で返した値を
-/// @note TOML と同じ綴りでも書き戻せるようにする。
+        // enum のラベルは TOML に書く名前と同じ ("smoke" / "3d")。fluid.get が添字で返した値を
+// TOML と同じ綴りでも書き戻せるようにする。
         FluidPathReflector label(FluidPathReflector::Mode::EnumLabel, path);
         label.SetLabel(value.AsString());
         asset::ReflectFluidRecipe(recipe, label);
         if (label.Found()) {
-            if (label.Applied()) report.applied.push_back(path);
-            else report.errors.push_back(label.Error());
+            if (label.Applied()) {
+                report.applied.push_back(path);
+            } else {
+                report.errors.push_back(label.Error());
+            }
             return;
         }
     }
 
     JsonWriteReflector writer(path, value);
     asset::ReflectFluidRecipe(recipe, writer);
-    if (writer.Applied()) report.applied.push_back(path);
-    else if (!writer.Error().empty()) report.errors.push_back(writer.Error());
-    else report.unknown.push_back(path);
+    if (writer.Applied()) {
+        report.applied.push_back(path);
+    } else if (!writer.Error().empty()) {
+        report.errors.push_back(writer.Error());
+    } else {
+        report.unknown.push_back(path);
+    }
 }
 
 /// @brief fields をレシピへ適用する。1 つでも書けないキーがあれば何も書かない。
-/// @param basePath 指定すると fields をその下 ("source.3" など) への部分指定として読む。
+/// @param[in] basePath 指定すると fields をその下 ("source.3" など) への部分指定として読む。
 /// @note 一部だけ書いて成功にすると、書けなかったキーを AI が見落としたまま焼き直しに進み、
 /// @note 何度焼いても狙いの絵にならない。
 bool ApplyFluidFields(fluid::FluidRecipe& recipe, const JsonValue& fields,
@@ -360,7 +403,9 @@ bool ApplyFluidFields(fluid::FluidRecipe& recipe, const JsonValue& fields,
     const auto join = [](const std::vector<std::string>& items) {
         std::string text;
         for (const std::string& item : items) {
-            if (!text.empty()) text += ", ";
+            if (!text.empty()) {
+                text += ", ";
+            }
             text += item;
         }
         return text;
@@ -376,7 +421,9 @@ bool ApplyFluidFields(fluid::FluidRecipe& recipe, const JsonValue& fields,
     }
     recipe = std::move(working);
     outChanged = std::move(report.applied);
-    if (outClamped != nullptr) *outClamped = std::move(report.clamped);
+    if (outClamped != nullptr) {
+        *outClamped = std::move(report.clamped);
+    }
     return true;
 }
 
@@ -393,20 +440,34 @@ void CollectFluidTextureChecks(const std::vector<std::string>& changed, std::vec
     constexpr std::string_view kPrefix = "source.";
     for (const std::string& path : changed) {
         const std::string_view view(path);
-        if (!view.starts_with(kPrefix)) continue;
+        if (!view.starts_with(kPrefix)) {
+            continue;
+        }
         const std::size_t dot = view.find('.', kPrefix.size());
-        if (dot == std::string_view::npos || dot == kPrefix.size()) continue;
+        if (dot == std::string_view::npos || dot == kPrefix.size()) {
+            continue;
+        }
         const std::string_view digits = view.substr(kPrefix.size(), dot - kPrefix.size());
-        if (!std::all_of(digits.begin(), digits.end(), [](char c) { return c >= '0' && c <= '9'; })) continue;
+        if (!std::all_of(digits.begin(), digits.end(), [](char c) { return c >= '0' && c <= '9'; })) {
+            continue;
+        }
         const std::string_view key = view.substr(dot + 1);
-        if (key != "texture" && key != "shape") continue;
-        /// @note changed に載るのは実在した要素の添字だけなので、桁あふれは起きない (上限 kMaxFluidSources)。
+        if (key != "texture" && key != "shape") {
+            continue;
+        }
+        // changed に載るのは実在した要素の添字だけなので、桁あふれは起きない (上限 kMaxFluidSources)。
         std::size_t index = 0;
-        for (const char digit : digits) index = index * 10 + static_cast<std::size_t>(digit - '0');
+        for (const char digit : digits) {
+            index = index * 10 + static_cast<std::size_t>(digit - '0');
+        }
         auto found = std::find_if(out.begin(), out.end(),
                                   [index](const FluidTextureCheck& check) { return check.index == index; });
-        if (found == out.end()) found = out.insert(out.end(), FluidTextureCheck{ index, false });
-        if (key == "texture") found->textureWritten = true;
+        if (found == out.end()) {
+            found = out.insert(out.end(), FluidTextureCheck{ index, false });
+        }
+        if (key == "texture") {
+            found->textureWritten = true;
+        }
     }
 }
 
@@ -423,26 +484,32 @@ bool CheckFluidTextureSources(const editor::EditorContext& ctx, const fluid::Flu
     CollectFluidTextureChecks(changed, checks);
     if (addedSource != kNoFluidSource
         && std::none_of(checks.begin(), checks.end(),
-                        [addedSource](const FluidTextureCheck& check) { return check.index == addedSource; }))
+                        [addedSource](const FluidTextureCheck& check) { return check.index == addedSource; })) {
         checks.push_back({ addedSource, false });
+    }
 
     for (const FluidTextureCheck& check : checks) {
-        if (check.index >= recipe.sources.size()) continue;
+        if (check.index >= recipe.sources.size()) {
+            continue;
+        }
         const fluid::FluidSource& source = recipe.sources[check.index];
-        if (source.shape != fluid::FluidSourceShape::Texture) continue;
+        if (source.shape != fluid::FluidSourceShape::Texture) {
+            continue;
+        }
         const std::string key = "source." + std::to_string(check.index) + ".texture";
         if (source.texture.empty()) {
             outWarnings.push_back(key + " is empty (shape=texture は画像が無いと何も湧きません)");
             continue;
         }
-        /// @note Sprite 参照 (`<画像>::sprite::<ID>`) は元画像を確かめ、コマの在処は別に見る。
-/// @note 参照のまま存在チェックへ回すと、実在する画像まで «見つからない» になる。
+        // Sprite 参照 (`<画像>::sprite::<ID>`) は元画像を確かめ、コマの在処は別に見る。
+// 参照のまま存在チェックへ回すと、実在する画像まで «見つからない» になる。
         std::string imagePath;
         std::string spriteToken;
         const bool isSprite = asset::ParseSpriteReference(source.texture, imagePath, spriteToken);
         if (imagePath.starts_with("guid:")) {
-            if (asset::AssetManager::ResolveAssetPath(imagePath).empty())
+            if (asset::AssetManager::ResolveAssetPath(imagePath).empty()) {
                 outWarnings.push_back("texture not found: " + source.texture + " (" + key + ")");
+            }
             continue;
         }
         fs::path file;
@@ -461,9 +528,11 @@ bool CheckFluidTextureSources(const editor::EditorContext& ctx, const fluid::Flu
             outWarnings.push_back("texture not found: " + relative + " (" + key + ")");
             continue;
         }
-        /// @note 切れた Sprite 参照は «アトラス全面» ではなく «読めない» になる (LoadFluidSourceMask)。
-/// @note 黙って板の形で湧くので、書いた側に見える形で言う。
-        if (!isSprite) continue;
+        // 切れた Sprite 参照は «アトラス全面» ではなく «読めない» になる (LoadFluidSourceMask)。
+// 黙って板の形で湧くので、書いた側に見える形で言う。
+        if (!isSprite) {
+            continue;
+        }
         const std::string image = file.generic_string();
         asset::TextureImportSettings settings;
         if (!asset::GetCachedTextureImportSettings(image, settings)) {
@@ -490,7 +559,9 @@ FluidFileSnapshot CaptureFluidFile(const std::filesystem::path& file)
     FluidFileSnapshot snapshot;
     std::error_code ec;
     snapshot.existed = std::filesystem::is_regular_file(file, ec);
-    if (snapshot.existed) (void)util::FileSystem::ReadText(file, snapshot.text);
+    if (snapshot.existed) {
+        (void)util::FileSystem::ReadText(file, snapshot.text);
+    }
     std::filesystem::path metaFile = file;
     metaFile += ".meta";
     snapshot.metaExisted = std::filesystem::exists(metaFile, ec);
@@ -505,7 +576,7 @@ void RestoreFluidFile(const std::filesystem::path& file, const FluidFileSnapshot
     }
     std::error_code ec;
     std::filesystem::remove(file, ec);
-    /// @note 書いた直後に Asset Browser が .meta を発行する。本体だけ消すと持ち主の無い GUID が残る。
+    // 書いた直後に Asset Browser が .meta を発行する。本体だけ消すと持ち主の無い GUID が残る。
     if (!snapshot.metaExisted) {
         std::filesystem::path metaFile = file;
         metaFile += ".meta";
@@ -513,7 +584,7 @@ void RestoreFluidFile(const std::filesystem::path& file, const FluidFileSnapshot
     }
 }
 
-/// @param written Execute が実際に書けたかを返す (nullptr 可)。
+/// @param[out] written Execute が実際に書けたかを返す (nullptr 可)。
 std::unique_ptr<ICommand> MakeFluidWriteCommand(editor::EditorContext& ctx, std::string label,
                                                 const std::filesystem::path& file,
                                                 const fluid::FluidRecipe& recipe,
@@ -526,8 +597,12 @@ std::unique_ptr<ICommand> MakeFluidWriteCommand(editor::EditorContext& ctx, std:
             std::error_code ec;
             std::filesystem::create_directories(file.parent_path(), ec);
             const bool ok = asset::SaveFluidRecipe(FluidAbsolutePath(file), recipe);
-            if (written) *written = ok;
-            if (ok) context->requestAssetBrowserRefresh = true;
+            if (written) {
+                *written = ok;
+            }
+            if (ok) {
+                context->requestAssetBrowserRefresh = true;
+            }
         },
         [context, file, before]() {
             RestoreFluidFile(file, before);
@@ -576,8 +651,12 @@ bool ReadFluidOperatorList(const JsonValue& payload, FluidOperatorList& out, Out
 template <typename Fn>
 auto WithFluidOperatorList(fluid::FluidRecipe& recipe, const std::string& list, Fn&& fn)
 {
-    if (list == "source") return fn(recipe.sources);
-    if (list == "force") return fn(recipe.forces);
+    if (list == "source") {
+        return fn(recipe.sources);
+    }
+    if (list == "force") {
+        return fn(recipe.forces);
+    }
     return fn(recipe.colliders);
 }
 
@@ -587,7 +666,9 @@ bool ReadFluidOperatorIndex(const JsonValue& payload, const char* key, std::size
 {
     const JsonValue* value = payload.Find(key);
     hasValue = value != nullptr && !value->IsNull();
-    if (!hasValue) return true;
+    if (!hasValue) {
+        return true;
+    }
     const bool integral = value->IsNumber() && value->AsNumber() >= 0.0
         && std::floor(value->AsNumber()) == value->AsNumber()
         && value->AsNumber() <= static_cast<double>(maxInclusive);
@@ -604,7 +685,9 @@ bool ReadFluidOperatorIndex(const JsonValue& payload, const char* key, std::size
 template <typename T>
 void MoveFluidOperator(std::vector<T>& items, std::size_t from, std::size_t to)
 {
-    if (from == to) return;
+    if (from == to) {
+        return;
+    }
     T moved = std::move(items[from]);
     items.erase(items.begin() + static_cast<std::ptrdiff_t>(from));
     items.insert(items.begin() + static_cast<std::ptrdiff_t>(to), std::move(moved));
@@ -617,9 +700,13 @@ std::unique_ptr<ICommand> BuildFluidOperatorCommand(editor::EditorContext& ctx, 
                                                     JsonValue* detailSink, std::shared_ptr<bool> written)
 {
     fluid::FluidRecipe recipe;
-    if (!LoadFluidAt(file, relative, recipe, err)) return nullptr;
+    if (!LoadFluidAt(file, relative, recipe, err)) {
+        return nullptr;
+    }
     FluidOperatorList list;
-    if (!ReadFluidOperatorList(payload, list, err)) return nullptr;
+    if (!ReadFluidOperatorList(payload, list, err)) {
+        return nullptr;
+    }
     const std::size_t count = WithFluidOperatorList(recipe, list.name,
                                                     [](const auto& items) { return items.size(); });
 
@@ -636,8 +723,12 @@ std::unique_ptr<ICommand> BuildFluidOperatorCommand(editor::EditorContext& ctx, 
         }
         std::size_t index = count;
         bool hasIndex = false;
-        if (!ReadFluidOperatorIndex(payload, "index", count, index, hasIndex, err)) return nullptr;
-        if (!hasIndex) index = count;
+        if (!ReadFluidOperatorIndex(payload, "index", count, index, hasIndex, err)) {
+            return nullptr;
+        }
+        if (!hasIndex) {
+            index = count;
+        }
         WithFluidOperatorList(recipe, list.name, [index](auto& items) {
             using Item = typename std::decay_t<decltype(items)>::value_type;
             items.insert(items.begin() + static_cast<std::ptrdiff_t>(index), Item{});
@@ -665,16 +756,24 @@ std::unique_ptr<ICommand> BuildFluidOperatorCommand(editor::EditorContext& ctx, 
                 err = Outcome::Err("BAD_ARG", "fields はオブジェクト (新しい部品 1 つぶんの部分指定) で指定してください");
                 return nullptr;
             }
-            if (!ApplyFluidFields(recipe, *fields, changed, err, &clamped, elementPath)) return nullptr;
+            if (!ApplyFluidFields(recipe, *fields, changed, err, &clamped, elementPath)) {
+                return nullptr;
+            }
         }
         std::vector<std::string> warnings;
         if (list.name == "source"
-            && !CheckFluidTextureSources(ctx, recipe, changed, warnings, err, index)) return nullptr;
+            && !CheckFluidTextureSources(ctx, recipe, changed, warnings, err, index)) {
+            return nullptr;
+        }
         detail.Set("index", JsonValue(static_cast<int>(index)));
         detail.Set("count", JsonValue(static_cast<int>(count + 1)));
         detail.Set("changed", FluidStringArray(changed));
-        if (!clamped.empty()) detail.Set("clamped", FluidStringArray(clamped));
-        if (!warnings.empty()) detail.Set("warnings", FluidStringArray(warnings));
+        if (!clamped.empty()) {
+            detail.Set("clamped", FluidStringArray(clamped));
+        }
+        if (!warnings.empty()) {
+            detail.Set("warnings", FluidStringArray(warnings));
+        }
         label = std::string("AI: Add Fluid ") + list.noun;
     } else if (type == "fluid.removeOperator") {
         if (count == 0) {
@@ -683,7 +782,9 @@ std::unique_ptr<ICommand> BuildFluidOperatorCommand(editor::EditorContext& ctx, 
         }
         std::size_t index = 0;
         bool hasIndex = false;
-        if (!ReadFluidOperatorIndex(payload, "index", count - 1, index, hasIndex, err)) return nullptr;
+        if (!ReadFluidOperatorIndex(payload, "index", count - 1, index, hasIndex, err)) {
+            return nullptr;
+        }
         if (!hasIndex) {
             err = Outcome::Err("BAD_ARG", "index (消す部品の添字) が必要です");
             return nullptr;
@@ -703,8 +804,12 @@ std::unique_ptr<ICommand> BuildFluidOperatorCommand(editor::EditorContext& ctx, 
         std::size_t to = 0;
         bool hasFrom = false;
         bool hasTo = false;
-        if (!ReadFluidOperatorIndex(payload, "from", count - 1, from, hasFrom, err)) return nullptr;
-        if (!ReadFluidOperatorIndex(payload, "to", count - 1, to, hasTo, err)) return nullptr;
+        if (!ReadFluidOperatorIndex(payload, "from", count - 1, from, hasFrom, err)) {
+            return nullptr;
+        }
+        if (!ReadFluidOperatorIndex(payload, "to", count - 1, to, hasTo, err)) {
+            return nullptr;
+        }
         if (!hasFrom || !hasTo) {
             err = Outcome::Err("BAD_ARG", "from と to (部品の添字) が必要です");
             return nullptr;
@@ -716,7 +821,9 @@ std::unique_ptr<ICommand> BuildFluidOperatorCommand(editor::EditorContext& ctx, 
     }
 
     if (detailSink != nullptr)
-        for (const auto& member : detail.AsObject()) detailSink->Set(member.first, member.second);
+        for (const auto& member : detail.AsObject()) {
+            detailSink->Set(member.first, member.second);
+        }
     return MakeFluidWriteCommand(ctx, std::move(label), file, recipe, std::move(written));
 }
 
@@ -724,7 +831,9 @@ std::unique_ptr<ICommand> BuildFluidOperatorCommand(editor::EditorContext& ctx, 
 /// @note 黙って書けたことにするより消えうると伝える方が、AI が次の書き込みを諦めるか人に知らせられる。
 void AppendFluidEditorWarning(const std::filesystem::path& file, std::vector<std::string>& warnings)
 {
-    if (!editor::FluidDocument::HasUnsavedChanges(FluidAbsolutePath(file))) return;
+    if (!editor::FluidDocument::HasUnsavedChanges(FluidAbsolutePath(file))) {
+        return;
+    }
     warnings.emplace_back("この .fluid は Fluid Editor が未保存の変更を抱えたまま開いています。"
                           "人が保存すると今の書き込みは消えます (エディター側で Reload を選んでください)");
 }
@@ -738,11 +847,15 @@ std::unique_ptr<ICommand> BuildFluidAssetCommand(editor::EditorContext& ctx, con
     namespace fs = std::filesystem;
     fs::path file;
     std::string relative;
-    if (!ResolveFluidPath(ctx, StringField(payload, "path"), file, relative, err)) return nullptr;
+    if (!ResolveFluidPath(ctx, StringField(payload, "path"), file, relative, err)) {
+        return nullptr;
+    }
 
     if (type == "fluid.create") {
         std::string presetName = StringField(payload, "preset");
-        if (presetName.empty()) presetName = "Smoke";
+        if (presetName.empty()) {
+            presetName = "Smoke";
+        }
         asset::FluidPreset preset = asset::FluidPreset::Smoke;
         if (!FindFluidPreset(presetName, preset)) {
             err = Outcome::Err("UNKNOWN_PRESET", "未知のプリセットです: " + presetName
@@ -763,7 +876,9 @@ std::unique_ptr<ICommand> BuildFluidAssetCommand(editor::EditorContext& ctx, con
             detailSink->Set("overwrote", JsonValue(exists));
             std::vector<std::string> warnings;
             AppendFluidEditorWarning(file, warnings);
-            if (!warnings.empty()) detailSink->Set("warnings", FluidStringArray(warnings));
+            if (!warnings.empty()) {
+                detailSink->Set("warnings", FluidStringArray(warnings));
+            }
         }
         return MakeFluidWriteCommand(ctx, "AI: Create Fluid", file, asset::MakeFluidPreset(preset),
                                      std::move(written));
@@ -771,7 +886,9 @@ std::unique_ptr<ICommand> BuildFluidAssetCommand(editor::EditorContext& ctx, con
 
     if (type == "fluid.set") {
         fluid::FluidRecipe recipe;
-        if (!LoadFluidAt(file, relative, recipe, err)) return nullptr;
+        if (!LoadFluidAt(file, relative, recipe, err)) {
+            return nullptr;
+        }
         const JsonValue* fields = payload.Find("fields");
         if (fields == nullptr || !fields->IsObject() || fields->AsObject().empty()) {
             err = Outcome::Err("BAD_ARG", "fields に 1 つ以上の項目を持つオブジェクトが必要です");
@@ -779,21 +896,30 @@ std::unique_ptr<ICommand> BuildFluidAssetCommand(editor::EditorContext& ctx, con
         }
         std::vector<std::string> changed;
         std::vector<std::string> clamped;
-        if (!ApplyFluidFields(recipe, *fields, changed, err, &clamped)) return nullptr;
+        if (!ApplyFluidFields(recipe, *fields, changed, err, &clamped)) {
+            return nullptr;
+        }
         std::vector<std::string> warnings;
-        if (!CheckFluidTextureSources(ctx, recipe, changed, warnings, err)) return nullptr;
+        if (!CheckFluidTextureSources(ctx, recipe, changed, warnings, err)) {
+            return nullptr;
+        }
         AppendFluidEditorWarning(file, warnings);
         if (detailSink != nullptr) {
             detailSink->Set("path", JsonValue(relative));
             detailSink->Set("changed", FluidStringArray(changed));
-            if (!clamped.empty()) detailSink->Set("clamped", FluidStringArray(clamped));
-            if (!warnings.empty()) detailSink->Set("warnings", FluidStringArray(warnings));
+            if (!clamped.empty()) {
+                detailSink->Set("clamped", FluidStringArray(clamped));
+            }
+            if (!warnings.empty()) {
+                detailSink->Set("warnings", FluidStringArray(warnings));
+            }
         }
         return MakeFluidWriteCommand(ctx, "AI: Set Fluid Fields", file, recipe, std::move(written));
     }
 
-    if (type == "fluid.addOperator" || type == "fluid.removeOperator" || type == "fluid.moveOperator")
+    if (type == "fluid.addOperator" || type == "fluid.removeOperator" || type == "fluid.moveOperator") {
         return BuildFluidOperatorCommand(ctx, type, payload, file, relative, err, detailSink, std::move(written));
+    }
 
     err = Outcome::Err("UNKNOWN_COMMAND", "未対応の fluid コマンドです: " + type);
     return nullptr;
@@ -802,8 +928,11 @@ std::unique_ptr<ICommand> BuildFluidAssetCommand(editor::EditorContext& ctx, con
 /// @brief UndoStack が無い文脈 (単体の VFX Editor 等) でもファイル操作そのものは成立させる。
 void ExecuteFluidCommand(editor::EditorContext& ctx, std::unique_ptr<ICommand> command)
 {
-    if (ctx.undoStack != nullptr) ctx.undoStack->Execute(std::move(command));
-    else command->Execute();
+    if (ctx.undoStack != nullptr) {
+        ctx.undoStack->Execute(std::move(command));
+    } else {
+        command->Execute();
+    }
 }
 
 bool ReadFluidJobId(const JsonValue& payload, std::uint32_t& outId, Outcome& err)
@@ -821,12 +950,20 @@ bool ReadFluidJobId(const JsonValue& payload, std::uint32_t& outId, Outcome& err
 /// @brief createEffect の name はそのままファイル名になる。区切り文字を許すと dir の外へ書けてしまう。
 bool IsFluidEffectName(const std::string& name)
 {
-    if (name.empty() || name.size() > 64 || name.front() == '.') return false;
-    /// @note Windows は末尾の空白とドットを黙って落とすため、書いた名前と実ファイル名がずれる。
-    if (name.back() == '.' || name.back() == ' ') return false;
+    if (name.empty() || name.size() > 64 || name.front() == '.') {
+        return false;
+    }
+    // Windows は末尾の空白とドットを黙って落とすため、書いた名前と実ファイル名がずれる。
+    if (name.back() == '.' || name.back() == ' ') {
+        return false;
+    }
     for (const char character : name) {
-        if (static_cast<unsigned char>(character) < 0x20) return false;
-        if (std::string_view("\\/:*?\"<>|").find(character) != std::string_view::npos) return false;
+        if (static_cast<unsigned char>(character) < 0x20) {
+            return false;
+        }
+        if (std::string_view("\\/:*?\"<>|").find(character) != std::string_view::npos) {
+            return false;
+        }
     }
     return true;
 }
@@ -858,10 +995,14 @@ JsonValue FluidCatalog(fluid::FluidRecipe recipe)
 
 const JsonValue* FindFluidCatalogField(const JsonValue* fields, std::string_view name)
 {
-    if (fields == nullptr || !fields->IsArray()) return nullptr;
+    if (fields == nullptr || !fields->IsArray()) {
+        return nullptr;
+    }
     for (const JsonValue& field : fields->AsArray()) {
         const JsonValue* fieldName = field.Find("name");
-        if (fieldName != nullptr && fieldName->IsString() && fieldName->AsString() == name) return &field;
+        if (fieldName != nullptr && fieldName->IsString() && fieldName->AsString() == name) {
+            return &field;
+        }
     }
     return nullptr;
 }
@@ -883,21 +1024,28 @@ JsonValue VisibleFluidOperatorFields(fluid::FluidRecipe recipe, std::string_view
         recipe.kind = kind;
         const JsonValue catalog = FluidCatalog(recipe);
         const JsonValue* elementFields = FluidOperatorElementFields(catalog, list);
-        if (elementFields == nullptr || !elementFields->IsArray()) continue;
+        if (elementFields == nullptr || !elementFields->IsArray()) {
+            continue;
+        }
         for (const JsonValue& field : elementFields->AsArray()) {
             const JsonValue* name = field.Find("name");
             const JsonValue* visible = field.Find("visible");
-            if (name == nullptr || !name->IsString()) continue;
-            if (visible != nullptr && visible->IsBool() && !visible->AsBool()) continue;
-            if (std::find(names.begin(), names.end(), name->AsString()) == names.end())
+            if (name == nullptr || !name->IsString()) {
+                continue;
+            }
+            if (visible != nullptr && visible->IsBool() && !visible->AsBool()) {
+                continue;
+            }
+            if (std::find(names.begin(), names.end(), name->AsString()) == names.end()) {
                 names.push_back(name->AsString());
+            }
         }
     }
     return FluidStringArray(names);
 }
 
 /// @brief 種類の一覧は enum のラベル (= TOML の綴り) から採る。
-/// @param makeElement makeElement(recipe, typeIndex) はその種類の要素を 1 つだけ持つレシピへ整える。
+/// @param[in] makeElement makeElement(recipe, typeIndex) はその種類の要素を 1 つだけ持つレシピへ整える。
 template <typename MakeElement>
 JsonValue FluidOperatorSchema(const JsonValue& baseCatalog, std::string_view list, std::string_view typeField,
                               int limit, MakeElement makeElement)
@@ -911,7 +1059,9 @@ JsonValue FluidOperatorSchema(const JsonValue& baseCatalog, std::string_view lis
         for (const JsonValue& label : labels->AsArray()) {
             fluid::FluidRecipe recipe;
             makeElement(recipe, typeIndex++);
-            if (!label.IsString()) continue;
+            if (!label.IsString()) {
+                continue;
+            }
             types.Push(label);
             fields.Set(label.AsString(), VisibleFluidOperatorFields(std::move(recipe), list));
         }
@@ -927,8 +1077,8 @@ JsonValue FluidOperatorSchema(const JsonValue& baseCatalog, std::string_view lis
 Outcome DoFluidSchema()
 {
     fluid::FluidRecipe recipe;
-    /// @note 配列のスキーマは先頭要素から採る (JsonCatalogReflector)。空のままだと要素の項目が 1 つも出ない。
-/// @note motion.key / amount.key も配列なので、部品ごとに 1 キーを持たせる (障害物に amount は無い)。
+    // 配列のスキーマは先頭要素から採る (JsonCatalogReflector)。空のままだと要素の項目が 1 つも出ない。
+// motion.key / amount.key も配列なので、部品ごとに 1 キーを持たせる (障害物に amount は無い)。
     recipe.sources.emplace_back();
     recipe.sources.back().motion.keys.emplace_back();
     recipe.sources.back().amount.keys.emplace_back();
@@ -1023,9 +1173,13 @@ Outcome DoFluidGet(editor::EditorContext& ctx, const JsonValue& payload)
     std::filesystem::path file;
     std::string relative;
     Outcome err;
-    if (!ResolveFluidPath(ctx, StringField(payload, "path"), file, relative, err)) return err;
+    if (!ResolveFluidPath(ctx, StringField(payload, "path"), file, relative, err)) {
+        return err;
+    }
     fluid::FluidRecipe recipe;
-    if (!LoadFluidAt(file, relative, recipe, err)) return err;
+    if (!LoadFluidAt(file, relative, recipe, err)) {
+        return err;
+    }
 
     JsonValue result = JsonValue::MakeObject();
     result.Set("path", JsonValue(relative));
@@ -1038,15 +1192,19 @@ Outcome DoFluidJobStatus(editor::EditorContext& ctx, const JsonValue& payload)
 {
     std::uint32_t id = 0;
     Outcome err;
-    if (!ReadFluidJobId(payload, id, err)) return err;
-    /// @note サービスが無ければジョブも存在し得ない。区別すると AI が «待てば出る» と誤読する。
+    if (!ReadFluidJobId(payload, id, err)) {
+        return err;
+    }
+    // サービスが無ければジョブも存在し得ない。区別すると AI が «待てば出る» と誤読する。
     const editor::FluidJobStatus* status = ctx.fluidBake != nullptr ? ctx.fluidBake->Find(id) : nullptr;
     if (status == nullptr)
         return Outcome::Err("FLUID_JOB_NOT_FOUND", "ジョブが見つかりません: " + std::to_string(id)
                             + " (終わったジョブは直近 32 件だけ残ります)");
 
     JsonValue outputs = JsonValue::MakeArray();
-    for (const std::string& output : status->outputs) outputs.Push(JsonValue(FluidProjectRelative(ctx, output)));
+    for (const std::string& output : status->outputs) {
+        outputs.Push(JsonValue(FluidProjectRelative(ctx, output)));
+    }
 
     JsonValue result = JsonValue::MakeObject();
     result.Set("job", JsonValue(static_cast<std::int64_t>(status->id)));
@@ -1072,14 +1230,21 @@ Outcome DoFluidJobStatus(editor::EditorContext& ctx, const JsonValue& payload)
     result.Set("materialPath", JsonValue(FluidProjectRelative(ctx, status->materialPath)));
     result.Set("vfxPath", JsonValue(FluidProjectRelative(ctx, status->vfxPath)));
     result.Set("previewPngPath", JsonValue(FluidProjectRelative(ctx, status->previewPngPath)));
-    /// @note 指紋は «前と同じ絵か» を画像を見比べずに決めるための値。ソルバーとフォールバックの理由も返し、
-/// @note «同じレシピなのに絵が違う» の原因 (GPU が使えず CPU で解かれた) を AI 側で切り分けられるようにする。
-    if (!status->fingerprint.empty()) result.Set("fingerprint", JsonValue(status->fingerprint));
-    if (!status->solverUsed.empty()) result.Set("solverUsed", JsonValue(status->solverUsed));
-    if (!status->fallbackReason.empty()) result.Set("fallbackReason", JsonValue(status->fallbackReason));
+    // 指紋は «前と同じ絵か» を画像を見比べずに決めるための値。ソルバーとフォールバックの理由も返し、
+// «同じレシピなのに絵が違う» の原因 (GPU が使えず CPU で解かれた) を AI 側で切り分けられるようにする。
+    if (!status->fingerprint.empty()) {
+        result.Set("fingerprint", JsonValue(status->fingerprint));
+    }
+    if (!status->solverUsed.empty()) {
+        result.Set("solverUsed", JsonValue(status->solverUsed));
+    }
+    if (!status->fallbackReason.empty()) {
+        result.Set("fallbackReason", JsonValue(status->fallbackReason));
+    }
     result.Set("seed", JsonValue(static_cast<std::int64_t>(status->seed)));
-    if (status->kind == editor::FluidJobKind::Preview)
+    if (status->kind == editor::FluidJobKind::Preview) {
         result.Set("frame", JsonValue(static_cast<std::int64_t>(status->previewFrame)));
+    }
 
     const JsonValue* includeValue = payload.Find("includeImage");
     const bool includeImage = includeValue == nullptr || includeValue->AsBool(true);
@@ -1088,7 +1253,7 @@ Outcome DoFluidJobStatus(editor::EditorContext& ctx, const JsonValue& payload)
         std::vector<std::uint8_t> bytes;
         if (util::FileSystem::ReadBinary(util::FileSystem::PathFromUtf8(status->previewPngPath), bytes)
             && !bytes.empty() && bytes.size() <= 16u * 1024u * 1024u) {
-            /// @note asset.thumbnail と同じ形。MCP 側はこれをそのまま image content へ移す。
+            // asset.thumbnail と同じ形。MCP 側はこれをそのまま image content へ移す。
             JsonValue image = JsonValue::MakeObject();
             image.Set("mimeType", JsonValue("image/png"));
             image.Set("base64", JsonValue(Base64Encode(bytes)));
@@ -1112,25 +1277,35 @@ Outcome DoFluidCommand(editor::EditorContext& ctx, const std::string& type, cons
         JsonValue detail = JsonValue::MakeObject();
         auto written = std::make_shared<bool>(false);
         std::unique_ptr<ICommand> command = BuildFluidAssetCommand(ctx, type, payload, err, &detail, written);
-        if (command == nullptr) return err;
+        if (command == nullptr) {
+            return err;
+        }
         if (dryRun) {
             Outcome preview = DryRunPreview(type);
             preview.result.Set("detail", std::move(detail));
             return preview;
         }
         ExecuteFluidCommand(ctx, std::move(command));
-        if (!*written) return Outcome::Err("FLUID_WRITE_FAILED", ".fluid を書き込めません: " + StringField(payload, "path"));
+        if (!*written) {
+            return Outcome::Err("FLUID_WRITE_FAILED", ".fluid を書き込めません: " + StringField(payload, "path"));
+        }
         return Outcome::Ok(std::move(detail));
     }
 
     if (type == "fluid.preview" || type == "fluid.bake") {
-        if (ctx.fluidBake == nullptr) return FluidServiceUnavailable();
+        if (ctx.fluidBake == nullptr) {
+            return FluidServiceUnavailable();
+        }
         fs::path file;
         std::string relative;
         Outcome err;
-        if (!ResolveFluidPath(ctx, StringField(payload, "path"), file, relative, err)) return err;
+        if (!ResolveFluidPath(ctx, StringField(payload, "path"), file, relative, err)) {
+            return err;
+        }
         std::error_code ec;
-        if (!fs::is_regular_file(file, ec)) return Outcome::Err("FLUID_NOT_FOUND", ".fluid が見つかりません: " + relative);
+        if (!fs::is_regular_file(file, ec)) {
+            return Outcome::Err("FLUID_NOT_FOUND", ".fluid が見つかりません: " + relative);
+        }
 
         fs::path materialRelative(relative);
         materialRelative.replace_extension(".mat");
@@ -1145,49 +1320,64 @@ Outcome DoFluidCommand(editor::EditorContext& ctx, const std::string& type, cons
         if (type == "fluid.preview") {
             editor::FluidPreviewRequest request;
             request.fluidPath = FluidAbsolutePath(file);
-            /// @note コマ番号が第一級。秒しか来なければ一番近いコマへ吸着させる (どのコマでもない絵を作らない)。
+            // コマ番号が第一級。秒しか来なければ一番近いコマへ吸着させる (どのコマでもない絵を作らない)。
             if (const JsonValue* frame = payload.Find("frame"); frame != nullptr && frame->IsNumber()) {
                 request.frame = std::clamp(frame->AsInt(), 0, 1023);
             } else if (const JsonValue* time = payload.Find("time"); time != nullptr && time->IsNumber()) {
                 request.frame = -1;
                 request.time = std::clamp(static_cast<float>(time->AsNumber()), 0.0f, 600.0f);
             }
-            if (const JsonValue* size = payload.Find("size"); size != nullptr && size->IsNumber())
+            if (const JsonValue* size = payload.Find("size"); size != nullptr && size->IsNumber()) {
                 request.size = std::clamp(size->AsInt(), 32, 2048);
-            if (const JsonValue* sheet = payload.Find("contactSheet"); sheet != nullptr)
+            }
+            if (const JsonValue* sheet = payload.Find("contactSheet"); sheet != nullptr) {
                 request.contactSheet = sheet->AsBool(false);
-            if (const JsonValue* variants = payload.Find("variants"); variants != nullptr && variants->IsNumber())
+            }
+            if (const JsonValue* variants = payload.Find("variants"); variants != nullptr && variants->IsNumber()) {
                 request.variants = std::clamp(variants->AsInt(), 1, 16);
-            if (const JsonValue* seed = payload.Find("seed"); seed != nullptr && seed->IsNumber())
+            }
+            if (const JsonValue* seed = payload.Find("seed"); seed != nullptr && seed->IsNumber()) {
                 request.seed = static_cast<std::uint32_t>(std::clamp(seed->AsNumber(), 0.0, 4294967295.0));
-            if (request.variants > 1) request.contactSheet = true;
+            }
+            if (request.variants > 1) {
+                request.contactSheet = true;
+            }
             id = ctx.fluidBake->EnqueuePreview(ctx, request, jobError);
         } else {
             editor::FluidBakeRequest request;
             request.fluidPath = FluidAbsolutePath(file);
-            if (const JsonValue* seed = payload.Find("seed"); seed != nullptr && seed->IsNumber())
+            if (const JsonValue* seed = payload.Find("seed"); seed != nullptr && seed->IsNumber()) {
                 request.seed = static_cast<std::uint32_t>(std::clamp(seed->AsNumber(), 0.0, 4294967295.0));
+            }
             id = ctx.fluidBake->EnqueueBake(ctx, request, jobError);
         }
-        if (id == 0)
+        if (id == 0) {
             return Outcome::Err(jobError.code.empty() ? "FLUID_BAKE_FAILED" : jobError.code, jobError.message);
+        }
 
         JsonValue result = JsonValue::MakeObject();
         result.Set("job", JsonValue(static_cast<std::int64_t>(id)));
         result.Set("async", JsonValue(true));
         result.Set("poll", JsonValue(kPoll));
         result.Set("path", JsonValue(relative));
-        if (type == "fluid.bake")
+        if (type == "fluid.bake") {
             result.Set("materialPath", JsonValue(materialRelative.generic_string()));
+        }
         return Outcome::Ok(std::move(result));
     }
 
     if (type == "fluid.cancel") {
         std::uint32_t id = 0;
         Outcome err;
-        if (!ReadFluidJobId(payload, id, err)) return err;
-        if (ctx.fluidBake == nullptr) return FluidServiceUnavailable();
-        if (dryRun) return DryRunPreview(type);
+        if (!ReadFluidJobId(payload, id, err)) {
+            return err;
+        }
+        if (ctx.fluidBake == nullptr) {
+            return FluidServiceUnavailable();
+        }
+        if (dryRun) {
+            return DryRunPreview(type);
+        }
         JsonValue result = JsonValue::MakeObject();
         result.Set("job", JsonValue(static_cast<std::int64_t>(id)));
         result.Set("cancelled", JsonValue(ctx.fluidBake->Cancel(id)));
@@ -1196,38 +1386,58 @@ Outcome DoFluidCommand(editor::EditorContext& ctx, const std::string& type, cons
 
     if (type == "fluid.createEffect") {
         const std::string name = StringField(payload, "name");
-        if (!IsFluidEffectName(name))
+        if (!IsFluidEffectName(name)) {
             return Outcome::Err("BAD_ARG", "name はファイル名 1 つ分 (64 文字以内・区切り文字と先頭の . は不可) で指定してください");
+        }
         std::string dir = StringField(payload, "dir");
-        while (!dir.empty() && (dir.back() == '/' || dir.back() == '\\')) dir.pop_back();
-        if (dir.empty()) dir = "Assets/VFX/Fluid";
+        while (!dir.empty() && (dir.back() == '/' || dir.back() == '\\')) {
+            dir.pop_back();
+        }
+        if (dir.empty()) {
+            dir = "Assets/VFX/Fluid";
+        }
 
         fs::path file;
         std::string relative;
         Outcome err;
-        if (!ResolveFluidPath(ctx, dir + "/" + name + ".fluid", file, relative, err)) return err;
+        if (!ResolveFluidPath(ctx, dir + "/" + name + ".fluid", file, relative, err)) {
+            return err;
+        }
         std::error_code ec;
-        if (fs::exists(file, ec)) return Outcome::Err("FLUID_EXISTS", "既にあります: " + relative);
+        if (fs::exists(file, ec)) {
+            return Outcome::Err("FLUID_EXISTS", "既にあります: " + relative);
+        }
 
         std::string presetName = StringField(payload, "preset");
-        if (presetName.empty()) presetName = "Smoke";
+        if (presetName.empty()) {
+            presetName = "Smoke";
+        }
         asset::FluidPreset preset = asset::FluidPreset::Smoke;
-        if (!FindFluidPreset(presetName, preset))
+        if (!FindFluidPreset(presetName, preset)) {
             return Outcome::Err("UNKNOWN_PRESET", "未知のプリセットです: " + presetName + " (" + FluidPresetIdList() + ")");
+        }
         fluid::FluidRecipe recipe = asset::MakeFluidPreset(preset);
         std::vector<std::string> changed;
         std::vector<std::string> clamped;
         std::vector<std::string> warnings;
         if (const JsonValue* fields = payload.Find("fields"); fields != nullptr) {
-            if (!fields->IsObject()) return Outcome::Err("BAD_ARG", "fields はオブジェクトで指定してください");
-            if (!ApplyFluidFields(recipe, *fields, changed, err, &clamped)) return err;
-            if (!CheckFluidTextureSources(ctx, recipe, changed, warnings, err)) return err;
+            if (!fields->IsObject()) {
+                return Outcome::Err("BAD_ARG", "fields はオブジェクトで指定してください");
+            }
+            if (!ApplyFluidFields(recipe, *fields, changed, err, &clamped)) {
+                return err;
+            }
+            if (!CheckFluidTextureSources(ctx, recipe, changed, warnings, err)) {
+                return err;
+            }
         }
 
         const JsonValue* bakeValue = payload.Find("bake");
         const bool bake = bakeValue == nullptr || bakeValue->AsBool(true);
-        /// @note 焼けないと分かっているのに .fluid だけ書くと、成功に見えて何も出ない。書く前に止める。
-        if (bake && ctx.fluidBake == nullptr) return FluidServiceUnavailable();
+        // 焼けないと分かっているのに .fluid だけ書くと、成功に見えて何も出ない。書く前に止める。
+        if (bake && ctx.fluidBake == nullptr) {
+            return FluidServiceUnavailable();
+        }
 
         fs::path vfxFile = file;
         vfxFile.replace_extension(".vfx");
@@ -1240,8 +1450,12 @@ Outcome DoFluidCommand(editor::EditorContext& ctx, const std::string& type, cons
         result.Set("fluidPath", JsonValue(relative));
         result.Set("preset", JsonValue(presetName));
         result.Set("changed", FluidStringArray(changed));
-        if (!clamped.empty()) result.Set("clamped", FluidStringArray(clamped));
-        if (!warnings.empty()) result.Set("warnings", FluidStringArray(warnings));
+        if (!clamped.empty()) {
+            result.Set("clamped", FluidStringArray(clamped));
+        }
+        if (!warnings.empty()) {
+            result.Set("warnings", FluidStringArray(warnings));
+        }
         if (bake) {
             result.Set("materialPath", JsonValue(materialRelative.generic_string()));
             result.Set("vfxPath", JsonValue(vfxRelative.generic_string()));
@@ -1254,8 +1468,12 @@ Outcome DoFluidCommand(editor::EditorContext& ctx, const std::string& type, cons
 
         auto written = std::make_shared<bool>(false);
         ExecuteFluidCommand(ctx, MakeFluidWriteCommand(ctx, "AI: Create Fluid Effect", file, recipe, written));
-        if (!*written) return Outcome::Err("FLUID_WRITE_FAILED", ".fluid を書き込めません: " + relative);
-        if (!bake) return Outcome::Ok(std::move(result));
+        if (!*written) {
+            return Outcome::Err("FLUID_WRITE_FAILED", ".fluid を書き込めません: " + relative);
+        }
+        if (!bake) {
+            return Outcome::Ok(std::move(result));
+        }
 
         editor::FluidBakeRequest request;
         request.fluidPath = FluidAbsolutePath(file);
@@ -1264,7 +1482,7 @@ Outcome DoFluidCommand(editor::EditorContext& ctx, const std::string& type, cons
         editor::FluidJobError jobError;
         const std::uint32_t id = ctx.fluidBake->EnqueueBake(ctx, request, jobError);
         if (id == 0) {
-            /// @note .fluid は書けているので失敗にはしない。焼きだけを fluid_bake でやり直せる。
+            // .fluid は書けているので失敗にはしない。焼きだけを fluid_bake でやり直せる。
             JsonValue bakeError = JsonValue::MakeObject();
             bakeError.Set("code", JsonValue(jobError.code.empty() ? std::string("FLUID_BAKE_FAILED") : jobError.code));
             bakeError.Set("message", JsonValue(jobError.message));
@@ -1288,16 +1506,18 @@ void RegisterFluidHandlers(BusHandlerTable& table)
     table.AddQuery("fluid.jobStatus", [](BusCall& call) { return DoFluidJobStatus(call.ctx, call.payload); });
 
     const CommandFn command = [](BusCall& call) { return DoFluidCommand(call.ctx, call.type, call.payload, call.dryRun); };
-    /// @note .fluid の作成・編集はファイル単体で完結し、transaction にも混ぜられる。
+    // .fluid の作成・編集はファイル単体で完結し、transaction にも混ぜられる。
     const BuilderFn assetEdit = [](editor::EditorContext& ctx, const std::string& type, const JsonValue& payload,
                                    Outcome& err, std::shared_ptr<std::string>, JsonValue* detailSink) {
         return BuildFluidAssetCommand(ctx, type, payload, err, detailSink, nullptr);
     };
-    for (const char* type : { "fluid.create", "fluid.set", "fluid.addOperator", "fluid.removeOperator", "fluid.moveOperator" })
+    for (const char* type : { "fluid.create", "fluid.set", "fluid.addOperator", "fluid.removeOperator", "fluid.moveOperator" }) {
         table.AddCommand(type, command, assetEdit);
-    /// @note 焼き系はジョブを積むだけで Undo できないため transaction へ混ぜさせない。
-    for (const char* type : { "fluid.preview", "fluid.bake", "fluid.cancel", "fluid.createEffect" })
+    }
+    // 焼き系はジョブを積むだけで Undo できないため transaction へ混ぜさせない。
+    for (const char* type : { "fluid.preview", "fluid.bake", "fluid.cancel", "fluid.createEffect" }) {
         table.AddCommand(type, command);
+    }
 }
 
 } /// namespace fbzz::editor::ai::bus

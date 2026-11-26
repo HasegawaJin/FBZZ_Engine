@@ -21,7 +21,9 @@ namespace {
 /// @note Save All に出ず、Double Sided 等の .mat 側パラメータが警告なしに消える。
 void RegisterMaterialDirty(const std::string& path, asset::AssetHandle<asset::MaterialAsset> handle, const EditorContext& ctx)
 {
-    if (path.empty() || !handle.IsValid()) return;
+    if (path.empty() || !handle.IsValid()) {
+        return;
+    }
     const std::string diskPath = MaterialAssetDiskPath(ctx, path);
     AssetDirtyRegistry::Register(
         diskPath, NormalizeAssetPath(path), "MAT",
@@ -36,11 +38,15 @@ void RegisterMaterialDirty(const std::string& path, asset::AssetHandle<asset::Ma
 void DrawMaterialSlotBody(const material_edit_detail::SlotTarget& target, EditorContext& ctx)
 {
             const auto* slot = target.Resolve();
-            if (!slot) return;
+            if (!slot) {
+                return;
+            }
             const auto materialHandle = slot->GetMaterialAsset();
             const std::string materialPath = slot->GetMaterialPath();
             auto materialEdit = material_edit_detail::BeginAssetEdit(materialHandle);
-            if (!materialEdit) return;
+            if (!materialEdit) {
+                return;
+            }
             auto& mat = materialEdit->Draft();
             struct MaterialUndoTracker {
                 ImGuiID activeId = 0;
@@ -60,10 +66,11 @@ void DrawMaterialSlotBody(const material_edit_detail::SlotTarget& target, Editor
             undo.expected = initialPublication;
             const bool canRecordUndo = CanRecordEditorUndo(ctx);
             asset::MaterialAssetAuthoring materialBeforeDraw;
-            if (canRecordUndo)
+            if (canRecordUndo) {
                 materialBeforeDraw = mat;
-            else
+            } else {
                 undo.active = false;
+            }
             const ImGuiID activeBefore = ImGui::GetActiveID();
             DrawMaterialAuthoringFields(mat, ctx.resources, ctx.projectRoot);
 
@@ -71,10 +78,15 @@ void DrawMaterialSlotBody(const material_edit_detail::SlotTarget& target, Editor
             bool authoringConflict = commitResult == material_edit_detail::CommitResult::CONFLICT;
             const bool materialDirty = commitResult == material_edit_detail::CommitResult::COMMITTED;
             const auto committedPublication = asset::ReadMaterialAuthoring(materialHandle);
-            if (authoringConflict) { undo.active = false; undo.changed = false; }
+            if (authoringConflict) {
+                undo.active = false;
+                undo.changed = false;
+            }
             if (materialDirty) {
-                if (auto* live = target.Resolve()) live->material.reset();
-                /// @note AssetBrowser のサムネイルを値変更のたびに追従させる (保存待ちにしない)。
+                if (auto* live = target.Resolve()) {
+                    live->material.reset();
+                }
+                // AssetBrowser のサムネイルを値変更のたびに追従させる (保存待ちにしない)。
                 ctx.BumpMaterialPreviewRevision(NormalizeAssetPath(materialPath));
                 if (ctx.activeScene) {
                     const std::string changedPath = NormalizeAssetPath(materialPath);
@@ -105,7 +117,9 @@ void DrawMaterialSlotBody(const material_edit_detail::SlotTarget& target, Editor
             const ImGuiID activeAfter = ImGui::GetActiveID();
             auto pushMaterialCommand = [&](const asset::MaterialAssetAuthoring& before,
                                            const asset::MaterialAssetAuthoring& after) {
-                if (!ctx.undoStack) return;
+                if (!ctx.undoStack) {
+                    return;
+                }
                 const auto handle = materialHandle;
                 const auto markDirty = ctx.markSceneDirty;
                 EditorContext* context = &ctx;
@@ -115,9 +129,11 @@ void DrawMaterialSlotBody(const material_edit_detail::SlotTarget& target, Editor
                                  const asset::MaterialAssetAuthoring& value) {
                     if (material_edit_detail::ReplaceAssetAuthoring(handle, value)) {
                         context->BumpMaterialPreviewRevision(relPath);
-                        if (markDirty) markDirty();
-                        /// @note Undo / Redo はメモリ上の値だけを戻す。保存済みでも
-                        /// @note ここでディスクとずれるので、改めて未保存として積み直す。
+                        if (markDirty) {
+                            markDirty();
+                        }
+                        // Undo / Redo はメモリ上の値だけを戻す。保存済みでも
+                        // ここでディスクとずれるので、改めて未保存として積み直す。
                         if (!diskPath.empty()) {
                             AssetDirtyRegistry::Register(
                                 diskPath, relPath, "MAT",
@@ -143,7 +159,9 @@ void DrawMaterialSlotBody(const material_edit_detail::SlotTarget& target, Editor
             } else if (undo.active && activeAfter == undo.activeId) {
                 undo.changed |= materialDirty;
             } else if (undo.active && activeAfter != undo.activeId) {
-                if (undo.changed) pushMaterialCommand(undo.before, mat);
+                if (undo.changed) {
+                    pushMaterialCommand(undo.before, mat);
+                }
                 undo.active = false;
                 undo.changed = false;
             } else if (!undo.active && materialDirty && activeAfter == 0) {
@@ -152,8 +170,9 @@ void DrawMaterialSlotBody(const material_edit_detail::SlotTarget& target, Editor
 
             ImGui::Separator();
             const bool canSave = !materialPath.empty() && !authoringConflict;
-            if (!canSave)
+            if (!canSave) {
                 ImGui::BeginDisabled();
+            }
             if (ImGui::Button("Save .mat")) {
                 const std::string diskPath = MaterialAssetDiskPath(ctx, materialPath);
                 if (material_edit_detail::SaveAssetSnapshot(diskPath, materialHandle)) {
@@ -161,8 +180,9 @@ void DrawMaterialSlotBody(const material_edit_detail::SlotTarget& target, Editor
                     ctx.requestAssetBrowserRefresh = true;
                 }
             }
-            if (!canSave)
+            if (!canSave) {
                 ImGui::EndDisabled();
+            }
 }
 
 /// @brief マテリアル配列の 1 行。D&D / クリックで辿る / 中身のインライン編集をここで完結させる。
@@ -174,16 +194,21 @@ void DrawMaterialElementRow(const material_edit_detail::SlotTarget& target,
                             EditorContext& ctx)
 {
     auto* initial = target.Resolve();
-    if (!initial) return;
+    if (!initial) {
+        return;
+    }
     auto slotEdit = initial->BeginAuthoringEdit();
     ImGui::PushID(static_cast<int>(slotIndex));
     const std::string label = "Element " + std::to_string(slotIndex);
     const std::string originalPath = slotEdit.Draft().materialPath;
     const bool fieldAccepted = property::AssetPathField(label.c_str(), slotEdit.Draft().materialPath, ".mat", ctx.projectRoot);
-    if (slotEdit.Draft().materialPath != originalPath)
+    if (slotEdit.Draft().materialPath != originalPath) {
         slotEdit.Draft().materialAsset = {};
+    }
     if (material_edit_detail::FinishSlotPathEdit(target, slotEdit, fieldAccepted) == material_edit_detail::CommitResult::COMMITTED)
-        if (target.Resolve() && ctx.markSceneDirty) ctx.markSceneDirty();
+        if (target.Resolve() && ctx.markSceneDirty) {
+            ctx.markSceneDirty();
+        }
     const auto* displaySlot = target.Resolve();
     const auto snapshot = displaySlot ? displaySlot->ReadAuthoring() : scene::MaterialSlot::AuthoringSnapshotPtr{};
     const auto materialHandle = displaySlot ? displaySlot->GetMaterialAsset() : asset::AssetHandle<asset::MaterialAsset>{};
@@ -197,10 +222,14 @@ void DrawMaterialElementRow(const material_edit_detail::SlotTarget& target,
     if (property::Checkbox("Visible", &visible)) {
         if (auto* live = target.Resolve(); live && live->visible != visible) {
             live->visible = visible;
-            if (ctx.markSceneDirty) ctx.markSceneDirty();
+            if (ctx.markSceneDirty) {
+                ctx.markSceneDirty();
+            }
         }
     }
-    if (ImGui::IsItemHovered()) ImGui::SetTooltip("この submesh を描画するか");
+    if (ImGui::IsItemHovered()) {
+        ImGui::SetTooltip("この submesh を描画するか");
+    }
     if (materialHandle.IsValid() && ImGui::TreeNode("Edit")) {
         DrawMaterialSlotBody(target, ctx);
         ImGui::TreePop();
@@ -212,14 +241,15 @@ void DrawMaterialElementRow(const material_edit_detail::SlotTarget& target,
 /// @note この GameObject の Renderer が描く submesh 数。Renderer が無ければ 0。
 size_t RendererSubmeshCount(scene::GameObject& go)
 {
-    if (const auto* smr = go.GetComponent<scene::SkinnedMeshRenderer>())
+    if (const auto* smr = go.GetComponent<scene::SkinnedMeshRenderer>()) {
         return smr->SubmeshCount();
+    }
     if (const auto* mr = go.GetComponent<scene::MeshRenderer>())
         return mr->mesh ? 1u : 0u;
     return 0u;
 }
 
-} /// @note namespace
+} // namespace
 
 void DrawMaterialInspectors(scene::GameObject* go, EditorContext& ctx, std::any& m_componentClipboard, const std::type_info*& m_componentClipboardType)
 {
@@ -231,16 +261,19 @@ void DrawMaterialInspectors(scene::GameObject* go, EditorContext& ctx, std::any&
             const uint64_t sceneGeneration = scene ? scene->GetRenderSceneGeneration() : 0;
             const std::string ownerId = owner ? owner->instanceId : std::string{};
 
-            /// @note 行数を submesh 数へ自動追従させる。手動の Add Slot / Match Submesh Count は廃止した。
-            /// @note ずれた状態はフォールバック描画という分かりにくい挙動を生むだけだった。
-            if (submeshCount > 0 && mc.SlotCount() != submeshCount)
+            // 行数を submesh 数へ自動追従させる。手動の Add Slot / Match Submesh Count は廃止した。
+            // ずれた状態はフォールバック描画という分かりにくい挙動を生むだけだった。
+            if (submeshCount > 0 && mc.SlotCount() != submeshCount) {
                 mc.ResizeSlots(submeshCount);
+            }
 
-            /// @note Renderer を持たない GameObject (VFX の Mesh 出力・デカール等) は
-            /// @note submesh の概念が無いので、単一マテリアルとして 1 行だけ出す。
+            // Renderer を持たない GameObject (VFX の Mesh 出力・デカール等) は
+            // submesh の概念が無いので、単一マテリアルとして 1 行だけ出す。
             if (submeshCount == 0) {
                 ImGui::SeparatorText("Material");
-                if (!ownerId.empty()) DrawMaterialElementRow(material_edit_detail::SlotTarget(ctx, scene, sceneGeneration, ownerId, 0), 0, false, ctx);
+                if (!ownerId.empty()) {
+                    DrawMaterialElementRow(material_edit_detail::SlotTarget(ctx, scene, sceneGeneration, ownerId, 0), 0, false, ctx);
+                }
                 return;
             }
 
@@ -248,11 +281,13 @@ void DrawMaterialInspectors(scene::GameObject* go, EditorContext& ctx, std::any&
             const size_t slotCount = mc.SlotCount();
             ImGui::TextDisabled("Size  %zu", slotCount);
             for (size_t i = 0; i < slotCount; ++i) {
-                /// @note Element 0 自身はフォールバック先なので注記の対象にしない。
-                if (!ownerId.empty()) DrawMaterialElementRow(material_edit_detail::SlotTarget(ctx, scene, sceneGeneration, ownerId, i), i, i > 0, ctx);
+                // Element 0 自身はフォールバック先なので注記の対象にしない。
+                if (!ownerId.empty()) {
+                    DrawMaterialElementRow(material_edit_detail::SlotTarget(ctx, scene, sceneGeneration, ownerId, i), i, i > 0, ctx);
+                }
             }
         });
 }
 
 
-} /// @note namespace fbzz::editor
+} // namespace fbzz::editor

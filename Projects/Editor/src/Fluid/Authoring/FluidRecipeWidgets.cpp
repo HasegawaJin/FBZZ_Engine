@@ -32,7 +32,9 @@ namespace fbzz::editor::fluidui {
 math::Vector3 EvaluateRamp(const fluid::FluidColorRamp& ramp, float t)
 {
     const auto& stops = ramp.stops;
-    if (t <= stops[0].position) return stops[0].color;
+    if (t <= stops[0].position) {
+        return stops[0].color;
+    }
     for (int i = 1; i < fluid::kFluidRampStops; ++i) {
         const fluid::FluidColorStop& a = stops[static_cast<std::size_t>(i) - 1];
         const fluid::FluidColorStop& b = stops[static_cast<std::size_t>(i)];
@@ -57,7 +59,9 @@ constexpr int kMaxCpuVolumeResolution = 96;
 
 void Tooltip(const char* text)
 {
-    if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", text);
+    if (ImGui::IsItemHovered()) {
+        ImGui::SetTooltip("%s", text);
+    }
 }
 
 std::filesystem::file_time_type FileStamp(const std::string& path)
@@ -74,7 +78,9 @@ std::filesystem::file_time_type FileStamp(const std::string& path)
 
 [[nodiscard]] FluidShading EffectiveShading(const fluid::FluidRecipe& recipe)
 {
-    if (recipe.kind == FluidKind::Liquid) return FluidShading::Liquid;
+    if (recipe.kind == FluidKind::Liquid) {
+        return FluidShading::Liquid;
+    }
     return recipe.render.shading == FluidShading::Liquid ? FluidShading::Smoke : recipe.render.shading;
 }
 
@@ -97,7 +103,9 @@ float SrgbToLinear(float value)
 ImVec4 RampDisplayColor(const fluid::FluidColorRamp& ramp, float t, bool perceptual)
 {
     const math::Vector3 color = EvaluateRamp(ramp, t);
-    if (perceptual) return { LinearToSrgb(color.x), LinearToSrgb(color.y), LinearToSrgb(color.z), 1.0f };
+    if (perceptual) {
+        return { LinearToSrgb(color.x), LinearToSrgb(color.y), LinearToSrgb(color.z), 1.0f };
+    }
     return { (std::min)(color.x, 1.0f), (std::min)(color.y, 1.0f), (std::min)(color.z, 1.0f), 1.0f };
 }
 
@@ -126,7 +134,9 @@ void RebuildMaskPreview(SourceMaskPreview& preview)
     preview.error.clear();
     preview.loaded = asset::LoadFluidSourceMask(preview.path, mask, &preview.error) && mask.IsValid();
     preview.cells.fill(0.0f);
-    if (!preview.loaded) return;
+    if (!preview.loaded) {
+        return;
+    }
     constexpr int kBlock = fluid::kFluidSourceMaskSize / kMaskPreviewCells;
     for (int y = 0; y < fluid::kFluidSourceMaskSize; ++y) {
         for (int x = 0; x < fluid::kFluidSourceMaskSize; ++x) {
@@ -135,19 +145,24 @@ void RebuildMaskPreview(SourceMaskPreview& preview)
         }
     }
     const float inverse = 1.0f / static_cast<float>(kBlock * kBlock);
-    for (float& cell : preview.cells) cell *= inverse;
+    for (float& cell : preview.cells) {
+        cell *= inverse;
+    }
 }
 
 /// @brief 画像を描き直して保存したときにも追従させたいが、ディスクを見るのは 1 秒に 1 回まで。
 /// @brief 返したポインタは次にこの関数を呼ぶまでしか使わないこと (追加で要素が動く)。
 const SourceMaskPreview* FindSourceMaskPreview(const std::string& path)
 {
-    if (path.empty()) return nullptr;
+    if (path.empty()) {
+        return nullptr;
+    }
     auto it = std::find_if(s_maskPreviews.begin(), s_maskPreviews.end(),
                            [&path](const SourceMaskPreview& preview) { return preview.path == path; });
     if (it == s_maskPreviews.end()) {
-        if (s_maskPreviews.size() >= static_cast<std::size_t>(fluid::kMaxFluidSources))
+        if (s_maskPreviews.size() >= static_cast<std::size_t>(fluid::kMaxFluidSources)) {
             s_maskPreviews.erase(s_maskPreviews.begin());
+        }
         SourceMaskPreview fresh;
         fresh.path = path;
         s_maskPreviews.push_back(std::move(fresh));
@@ -155,15 +170,17 @@ const SourceMaskPreview* FindSourceMaskPreview(const std::string& path)
     }
     const auto now = std::chrono::steady_clock::now();
     if (!it->checked || now - it->checkedAt >= std::chrono::seconds(1)) {
-        /// @note Sprite 参照は «::sprite::» を落とした元画像を見る。付けたまま渡すと存在しない
-        /// @note ファイルの時刻 (既定値) で固まり、絵を描き直しても縮小画がそのままになる。
+        // Sprite 参照は «::sprite::» を落とした元画像を見る。付けたまま渡すと存在しない
+        // ファイルの時刻 (既定値) で固まり、絵を描き直しても縮小画がそのままになる。
         std::string imagePath;
         std::string spriteToken;
         const bool isSprite = asset::ParseSpriteReference(path, imagePath, spriteToken);
         const std::string imageFile = asset::AssetManager::ResolveAssetPath(imagePath);
         std::filesystem::file_time_type stamp = FileStamp(imageFile);
-        /// @note 切り直し (.meta) でも矩形が変わる。新しいほうを代表にする。
-        if (isSprite) stamp = (std::max)(stamp, FileStamp(imageFile + ".meta"));
+        // 切り直し (.meta) でも矩形が変わる。新しいほうを代表にする。
+        if (isSprite) {
+            stamp = (std::max)(stamp, FileStamp(imageFile + ".meta"));
+        }
         if (!it->checked || stamp != it->stamp) {
             it->stamp = stamp;
             RebuildMaskPreview(*it);
@@ -283,7 +300,9 @@ const char* ForceTypeName(fluid::FluidForceType type)
 bool DragPair(const char* label, float& a, float& b, float speed, float min, float max)
 {
     float values[2] = { a, b };
-    if (!ImGui::DragFloat2(label, values, speed, min, max, "%.3f")) return false;
+    if (!ImGui::DragFloat2(label, values, speed, min, max, "%.3f")) {
+        return false;
+    }
     a = values[0];
     b = values[1];
     return true;
@@ -298,7 +317,9 @@ bool EditMotion(fluid::FluidMotion& motion, const char* inheritTooltip)
                                         static_cast<int>(keys.size()));
     Tooltip("時刻 → 中心からのずれ。キーの間は直線でつなぎ、先頭より前・末尾より後は端のキーで止まります。\n"
             "時刻はレシピの時計 (Warmup を含む) です。");
-    if (!open) return false;
+    if (!open) {
+        return false;
+    }
 
     if (inheritTooltip != nullptr) {
         changed |= property::Checkbox("Inherit Velocity", &motion.inheritVelocity);
@@ -320,13 +341,17 @@ bool EditMotion(fluid::FluidMotion& motion, const char* inheritTooltip)
             ImGui::TableNextColumn();
             ImGui::SetNextItemWidth(-FLT_MIN);
             changed |= ImGui::DragFloat("##time", &key.time, 0.01f, 0.0f, 60.0f, "%.2f s");
-            /// @note 並べ替えは手を離してから。ドラッグ中に行が入れ替わると、掴んでいる欄が別のキーを指してしまう。
-            if (ImGui::IsItemDeactivatedAfterEdit()) sortKeys = true;
+            // 並べ替えは手を離してから。ドラッグ中に行が入れ替わると、掴んでいる欄が別のキーを指してしまう。
+            if (ImGui::IsItemDeactivatedAfterEdit()) {
+                sortKeys = true;
+            }
             ImGui::TableNextColumn();
             ImGui::SetNextItemWidth(-FLT_MIN);
             changed |= widgets::DragAxes("##offset", key.offset, 0.01f, -2.0f, 2.0f);
             ImGui::TableNextColumn();
-            if (ImGui::SmallButton("X")) removeIndex = k;
+            if (ImGui::SmallButton("X")) {
+                removeIndex = k;
+            }
             ImGui::PopID();
         }
         ImGui::EndTable();
@@ -368,7 +393,9 @@ bool EditAmount(fluid::FluidAmount& amount, const char* header, const char* tool
     const bool open = ImGui::TreeNodeEx("##amount", ImGuiTreeNodeFlags_None, "%s (%d keys)", header,
                                         static_cast<int>(keys.size()));
     Tooltip(tooltip);
-    if (!open) return false;
+    if (!open) {
+        return false;
+    }
 
     int removeIndex = -1;
     bool sortKeys = false;
@@ -385,13 +412,17 @@ bool EditAmount(fluid::FluidAmount& amount, const char* header, const char* tool
             ImGui::TableNextColumn();
             ImGui::SetNextItemWidth(-FLT_MIN);
             changed |= ImGui::DragFloat("##time", &key.time, 0.01f, 0.0f, 60.0f, "%.2f s");
-            /// @note 並べ替えは手を離してから (EditMotion と同じ理由: ドラッグ中に行が入れ替わると掴んだ欄がずれる)。
-            if (ImGui::IsItemDeactivatedAfterEdit()) sortKeys = true;
+            // 並べ替えは手を離してから (EditMotion と同じ理由: ドラッグ中に行が入れ替わると掴んだ欄がずれる)。
+            if (ImGui::IsItemDeactivatedAfterEdit()) {
+                sortKeys = true;
+            }
             ImGui::TableNextColumn();
             ImGui::SetNextItemWidth(-FLT_MIN);
             changed |= ImGui::DragFloat("##scale", &key.scale, 0.01f, 0.0f, 8.0f, "x%.2f");
             ImGui::TableNextColumn();
-            if (ImGui::SmallButton("X")) removeIndex = k;
+            if (ImGui::SmallButton("X")) {
+                removeIndex = k;
+            }
             ImGui::PopID();
         }
         ImGui::EndTable();
@@ -432,7 +463,7 @@ fluid::FluidSource MakeDefaultSource(FluidKind kind, fluid::FluidSourceShape sha
     source.shape = shape;
     const bool liquid = kind == FluidKind::Liquid;
     if (liquid) {
-        /// @note 旧 Emitter の既定。重なって生まれた粒子は押し返されて弾けるため、0.15 秒に均して出す。
+        // 旧 Emitter の既定。重なって生まれた粒子は押し返されて弾けるため、0.15 秒に均して出す。
         source.velocity = { 0.0f, 2.5f, 0.0f };
         source.spread = 0.5f;
         source.count = 600;
@@ -444,23 +475,23 @@ fluid::FluidSource MakeDefaultSource(FluidKind kind, fluid::FluidSourceShape sha
     case Shape::Box:    source.size = { base * 1.5f, base * 0.5f, base * 1.5f }; break;
     case Shape::Cone:   source.size = { base, base * 3.0f, base }; break;
     case Shape::Ring:
-        /// @note 2D は奥行きを見ないので、法線を奥へ向けておくと画面でもそのまま輪に見える。
+        // 2D は奥行きを見ないので、法線を奥へ向けておくと画面でもそのまま輪に見える。
         source.size = { base * 2.0f, base * 0.35f, base * 0.35f };
         source.direction = { 0.0f, 0.0f, 1.0f };
         break;
     case Shape::Texture:
-        /// @note 手前向きの板にしておくと、画像が 2D でもそのまま正面に見える。
+        // 手前向きの板にしておくと、画像が 2D でもそのまま正面に見える。
         source.center = { 0.0f, 0.0f, 0.0f };
         source.size = { base * 2.5f, base * 2.5f, base * 0.5f };
         source.direction = { 0.0f, 0.0f, 1.0f };
         break;
     case Shape::Capsule:
-        /// @note 棒を寝かせた既定 (2D でも «横に伸びた形» として読める)。細く長いほうがカプセルらしい。
+        // 棒を寝かせた既定 (2D でも «横に伸びた形» として読める)。細く長いほうがカプセルらしい。
         source.size = { base * 0.5f, base * 2.0f, base * 0.5f };
         source.direction = { 1.0f, 0.0f, 0.0f };
         break;
     case Shape::Cylinder:
-        /// @note 立ち上る柱。軸は上向きのままにする。
+        // 立ち上る柱。軸は上向きのままにする。
         source.size = { base, base * 2.5f, base };
         break;
     }
@@ -482,12 +513,12 @@ fluid::FluidCollider MakeDefaultCollider(fluid::FluidColliderShape shape)
         collider.size = { 0.3f, 0.08f, 0.3f };
         break;
     case Shape::Plane:
-        /// @note 床は Simulation の Floor が持つので、既定は床と見分けの付く右の壁にする。
+        // 床は Simulation の Floor が持つので、既定は床と見分けの付く右の壁にする。
         collider.center = { 0.7f, 0.0f, 0.0f };
         collider.direction = { -1.0f, 0.0f, 0.0f };
         break;
     case Shape::Capsule:
-        /// @note 横棒。煙や飛沫が «乗り越える» のが分かる置き方にする。
+        // 横棒。煙や飛沫が «乗り越える» のが分かる置き方にする。
         collider.center = { 0.0f, 0.1f, 0.0f };
         collider.size = { 0.08f, 0.3f, 0.08f };
         collider.direction = { 1.0f, 0.0f, 0.0f };
@@ -526,7 +557,9 @@ void DrawTextureSourceStatus(const std::string& texture)
     const SourceMaskPreview* preview = FindSourceMaskPreview(texture);
     if (preview == nullptr || !preview->loaded) {
         ImGui::TextColored(kErrorColor, "画像を読めないので板の形で湧きます。");
-        if (preview != nullptr && !preview->error.empty()) Tooltip(preview->error.c_str());
+        if (preview != nullptr && !preview->error.empty()) {
+            Tooltip(preview->error.c_str());
+        }
         return;
     }
     const float cell = (std::max)(std::floor(ImGui::GetFrameHeight() * 2.0f / kMaskPreviewCells), 1.0f);
@@ -590,14 +623,17 @@ void DrawLiquidEmitScaleNote(const fluid::FluidSource& source, const fluid::Flui
 {
     const float flat = fluid::FluidLiquidEmitScale(source, liquid, false);
     const float volume = fluid::FluidLiquidEmitScale(source, liquid, true);
-    if (flat <= 1.01f && volume <= 1.01f) return;
+    if (flat <= 1.01f && volume <= 1.01f) {
+        return;
+    }
     const bool sphere = source.shape == fluid::FluidSourceShape::Sphere;
     if (std::fabs(volume - flat) <= 0.01f) {
         if (sphere)
             ImGui::TextColored(kWarnColor, "詰まりすぎ: 実際は ×%.2f (半径 %.3f) で湧きます", flat,
                                source.size.x * flat);
-        else
+        else {
             ImGui::TextColored(kWarnColor, "詰まりすぎ: 実際は ×%.2f の大きさで湧きます", flat);
+        }
     } else if (sphere) {
         ImGui::TextColored(kWarnColor, "詰まりすぎ: 実際は 2D ×%.2f (半径 %.3f) / 3D ×%.2f (半径 %.3f) で湧きます",
                            flat, source.size.x * flat, volume, source.size.x * volume);
@@ -621,8 +657,10 @@ bool EditSourceBody(fluid::FluidSource& source, FluidKind kind, const fluid::Flu
     if (property::Combo("Shape", &shape, kShapeNames, IM_ARRAYSIZE(kShapeNames))) {
         const Shape previous = source.shape;
         source.shape = static_cast<Shape>(shape);
-        /// @note Cone / Ring の上向きのまま板にすると、2D では真横から見た細い帯になり画像が見えない。
-        if (source.shape == Shape::Texture && previous != Shape::Texture) source.direction = { 0.0f, 0.0f, 1.0f };
+        // Cone / Ring の上向きのまま板にすると、2D では真横から見た細い帯になり画像が見えない。
+        if (source.shape == Shape::Texture && previous != Shape::Texture) {
+            source.direction = { 0.0f, 0.0f, 1.0f };
+        }
         changed = true;
     }
     changed |= widgets::DragVec3("Center", source.center, 0.01f, -1.5f, 1.5f);
@@ -682,7 +720,9 @@ bool EditSourceBody(fluid::FluidSource& source, FluidKind kind, const fluid::Flu
                 "(0,0,1) で画像がそのまま正面に見えます。2D は奥行きを見ないため、\n"
                 "法線を画面内へ倒すと板を真横から見た帯になります。");
     }
-    if (liquid) DrawLiquidEmitScaleNote(source, liquidSettings);
+    if (liquid) {
+        DrawLiquidEmitScaleNote(source, liquidSettings);
+    }
 
     if (!liquid) {
         changed |= property::DragFloat("Density", &source.density, 0.05f, 0.0f, 100.0f);
@@ -718,7 +758,7 @@ bool EditSourceBody(fluid::FluidSource& source, FluidKind kind, const fluid::Flu
     }
     changed |= EditMotion(source.motion, liquid ? "動く速さを撃ち出す速度に足します (振りながら撒く)。"
                                                 : "動く速さを流速に足します。動く発生源が周りの煙を引きずります。");
-    /// @note 掛かる先が無い液体では出さない (Density / Temperature / Fuel を隠すのと同じ理由)。
+    // 掛かる先が無い液体では出さない (Density / Temperature / Fuel を隠すのと同じ理由)。
     if (!liquid)
         changed |= EditAmount(source.amount, "Amount",
                               "時刻 → Density / Temperature / Fuel に掛かる倍率。キーが無ければ 1 倍のままです。\n"
@@ -758,7 +798,7 @@ bool EditForceBody(fluid::FluidForce& force)
         changed |= property::DragFloat("Falloff", &force.falloffPower, 0.01f, 0.0f, 8.0f, "%.2f");
         Tooltip("influence = (1 - 距離 / Radius)^Falloff。0 で半径の内側は一様です。");
     }
-    /// @note 中心は Attract / Repulse / Vortex と、半径を持つ力でしか意味を持たない。効かない欄は出さない。
+    // 中心は Attract / Repulse / Vortex と、半径を持つ力でしか意味を持たない。効かない欄は出さない。
     const bool usesCenter = force.radius > 0.0f || force.type == Type::Attract || force.type == Type::Repulse
                          || force.type == Type::Vortex;
     if (usesCenter) {
@@ -783,7 +823,9 @@ bool EditForceBody(fluid::FluidForce& force)
     changed |= property::DragFloat("Duration", &force.duration, 0.01f, 0.0f, 60.0f,
                                 force.duration <= 0.0f ? "always" : "%.2f s");
     Tooltip("効いている時間。0 はずっと効きます。");
-    if (usesCenter) changed |= EditMotion(force.motion, nullptr);
+    if (usesCenter) {
+        changed |= EditMotion(force.motion, nullptr);
+    }
     changed |= EditAmount(force.amount, "Amount",
                           force.type == Type::Drag
                               ? "時刻 → Damping に掛かる倍率。キーが無ければ 1 倍のままです。\n"
@@ -891,18 +933,23 @@ bool EditColorRamp(fluid::FluidColorRamp& ramp, const char* id, const char* lege
         ImGui::PushID(i);
         float color[3] = { stop.color.x, stop.color.y, stop.color.z };
         if (perceptual)
-            for (float& channel : color) channel = LinearToSrgb(channel);
+            for (float& channel : color) {
+                channel = LinearToSrgb(channel);
+            }
         ImGui::SetNextItemWidth(colorWidth);
         const ImGuiColorEditFlags flags =
             perceptual ? ImGuiColorEditFlags_Float : (ImGuiColorEditFlags_HDR | ImGuiColorEditFlags_Float);
         if (ImGui::ColorEdit3("##color", color, flags)) {
-            if (perceptual)
+            if (perceptual) {
                 stop.color = { SrgbToLinear(color[0]), SrgbToLinear(color[1]), SrgbToLinear(color[2]) };
-            else
+            } else {
                 stop.color = { (std::max)(color[0], 0.0f), (std::max)(color[1], 0.0f), (std::max)(color[2], 0.0f) };
+            }
             changed = true;
         }
-        if (perceptual) Tooltip("見た目の色 (sRGB) で選び、リニアに直して保存します。");
+        if (perceptual) {
+            Tooltip("見た目の色 (sRGB) で選び、リニアに直して保存します。");
+        }
         ImGui::SameLine();
         const float lo = i > 0 ? stops[static_cast<std::size_t>(i) - 1].position : 0.0f;
         const float hi = i + 1 < fluid::kFluidRampStops ? stops[static_cast<std::size_t>(i) + 1].position : 1.0f;
@@ -935,7 +982,7 @@ bool VisitPartList(fluid::FluidRecipe& recipe, FluidSelectionKind list, Fn&& fn)
     }
 }
 
-} ///< @note namespace
+} ///< namespace
 
 /// @name 公開部品
 
@@ -947,14 +994,18 @@ bool EditSimulation(FluidWidgetContext&  , fluid::FluidRecipe& recipe)
     int kind = static_cast<int>(recipe.kind);
     if (property::Combo("Kind", &kind, kKinds, IM_ARRAYSIZE(kKinds))) {
         recipe.kind = static_cast<FluidKind>(kind);
-        /// @note 種類を替えた直後に発生源が無いと、何も写らず «壊れた» ように見える。
-        /// @note 発生源は両方の種類で共通なので、ある分はそのまま読み替える。
-        if (recipe.sources.empty())
+        // 種類を替えた直後に発生源が無いと、何も写らず «壊れた» ように見える。
+        // 発生源は両方の種類で共通なので、ある分はそのまま読み替える。
+        if (recipe.sources.empty()) {
             recipe.sources.push_back(MakeDefaultSource(recipe.kind, fluid::FluidSourceShape::Sphere));
+        }
         changed = true;
     }
-    if (recipe.kind == FluidKind::Gas) changed |= EditGasSettings(recipe);
-    else                                changed |= EditLiquidSettings(recipe.liquid);
+    if (recipe.kind == FluidKind::Gas) {
+        changed |= EditGasSettings(recipe);
+    } else {
+        changed |= EditLiquidSettings(recipe.liquid);
+    }
     changed |= property::DragScalar("Seed", ImGuiDataType_U32, &recipe.seed, 1.0f);
     ImGui::PopID();
     return changed;
@@ -962,7 +1013,9 @@ bool EditSimulation(FluidWidgetContext&  , fluid::FluidRecipe& recipe)
 
 bool EditSource(FluidWidgetContext& wc, fluid::FluidRecipe& recipe, int index)
 {
-    if (index < 0 || index >= static_cast<int>(recipe.sources.size())) return false;
+    if (index < 0 || index >= static_cast<int>(recipe.sources.size())) {
+        return false;
+    }
     ImGui::PushID("fluid_source");
     ImGui::PushID(index);
     const bool changed = EditSourceBody(recipe.sources[static_cast<std::size_t>(index)], recipe.kind, recipe.liquid,
@@ -974,7 +1027,9 @@ bool EditSource(FluidWidgetContext& wc, fluid::FluidRecipe& recipe, int index)
 
 bool EditForce(FluidWidgetContext&  , fluid::FluidRecipe& recipe, int index)
 {
-    if (index < 0 || index >= static_cast<int>(recipe.forces.size())) return false;
+    if (index < 0 || index >= static_cast<int>(recipe.forces.size())) {
+        return false;
+    }
     ImGui::PushID("fluid_force");
     ImGui::PushID(index);
     const bool changed = EditForceBody(recipe.forces[static_cast<std::size_t>(index)]);
@@ -985,7 +1040,9 @@ bool EditForce(FluidWidgetContext&  , fluid::FluidRecipe& recipe, int index)
 
 bool EditCollider(FluidWidgetContext&  , fluid::FluidRecipe& recipe, int index)
 {
-    if (index < 0 || index >= static_cast<int>(recipe.colliders.size())) return false;
+    if (index < 0 || index >= static_cast<int>(recipe.colliders.size())) {
+        return false;
+    }
     ImGui::PushID("fluid_collider");
     ImGui::PushID(index);
     const bool changed = EditColliderBody(recipe.colliders[static_cast<std::size_t>(index)], recipe.kind);
@@ -1012,20 +1069,23 @@ bool EditLook(FluidWidgetContext&  , fluid::FluidRecipe& recipe)
                 "Distortion: 流れを歪みマップへ (陽炎・衝撃波)\n"
                 "どれも 2D・3D の両方で焼けます。");
         const FluidShading current = look.shading;
-        /// @note Distortion は色を焼かない (RG が変位) ので、地の色のグラデーションは出さない。
+        // Distortion は色を焼かない (RG が変位) ので、地の色のグラデーションは出さない。
         if (current != FluidShading::Distortion) {
             changed |= property::Checkbox("Use Albedo Ramp", &look.useAlbedoRamp);
             Tooltip("発生源ごとの Color Key (0〜1) → 煙の地の色を 4 点のグラデーション (リニア) で決めます。\n"
                     "色は煙に乗って運ばれ、複数の発生源の煙が混ざると色も混ざります。\n"
                     "Glow では発光色になります。2D・3D どちらの焼きにも効きます。");
-            if (look.useAlbedoRamp) changed |= EditColorRamp(look.albedoRamp, "albedo_ramp", "Color Key 0 → 1", true);
+            if (look.useAlbedoRamp) {
+                changed |= EditColorRamp(look.albedoRamp, "albedo_ramp", "Color Key 0 → 1", true);
+            }
         }
         if (current == FluidShading::Smoke || current == FluidShading::Fire) {
             ImGui::BeginDisabled(look.useAlbedoRamp);
             changed |= widgets::ColorEdit4("Lit Color", look.smokeColor);
             ImGui::EndDisabled();
-            if (look.useAlbedoRamp)
+            if (look.useAlbedoRamp) {
                 ImGui::TextDisabled("地の色は Albedo Ramp が決めます (影の濃さには Lit と Shadow の明るさの比が効きます)。");
+            }
             changed |= widgets::ColorEdit4("Shadow Color", look.shadowColor);
             changed |= property::DragFloat("Self Shadow", &look.selfShadow, 0.05f, 0.0f, 20.0f);
             changed |= widgets::DragVec3("Light Direction", look.lightDirection, 0.01f, -1.0f, 1.0f);
@@ -1035,8 +1095,9 @@ bool EditLook(FluidWidgetContext&  , fluid::FluidRecipe& recipe)
             ImGui::BeginDisabled(look.useEmissionRamp || look.useAlbedoRamp);
             changed |= widgets::ColorEdit4("Glow Color", look.smokeColor);
             ImGui::EndDisabled();
-            if (look.useAlbedoRamp && !look.useEmissionRamp)
+            if (look.useAlbedoRamp && !look.useEmissionRamp) {
                 ImGui::TextDisabled("発光色は Albedo Ramp が決めます。");
+            }
         }
         changed |= property::DragFloat("Opacity", &look.opacity, 0.05f, 0.0f, 50.0f);
         if (current != FluidShading::Distortion) {
@@ -1059,20 +1120,24 @@ bool EditLook(FluidWidgetContext&  , fluid::FluidRecipe& recipe)
             Tooltip("温度 (0〜1) → 発光の色を 4 点のグラデーションで決めます (HDR 可)。\n"
                     "外すと Fire は黒体放射、Glow は Glow Color で光ります。\n"
                     "3D で焼くときも、Blackbody Emission を切っていればこの色を使います。");
-            if (look.useEmissionRamp) changed |= EditColorRamp(look.emissionRamp, "emission_ramp", "冷 → 熱", false);
+            if (look.useEmissionRamp) {
+                changed |= EditColorRamp(look.emissionRamp, "emission_ramp", "冷 → 熱", false);
+            }
         }
     } else {
         changed |= property::Checkbox("Use Albedo Ramp", &look.useAlbedoRamp);
         Tooltip("発生源ごとの Color Key (0〜1) → 液の色を 4 点のグラデーション (リニア) で決めます。\n"
                 "粒子は撃ち出した発生源の色を一生持つので、水と血を 1 枚に焼き分けられます。\n"
                 "2D・3D どちらの焼きにも効きます。");
-        if (look.useAlbedoRamp) changed |= EditColorRamp(look.albedoRamp, "albedo_ramp", "Color Key 0 → 1", true);
+        if (look.useAlbedoRamp) {
+            changed |= EditColorRamp(look.albedoRamp, "albedo_ramp", "Color Key 0 → 1", true);
+        }
         ImGui::BeginDisabled(look.useAlbedoRamp);
         changed |= widgets::ColorEdit4("Liquid Color", look.liquidColor);
         ImGui::EndDisabled();
         Tooltip("A は液の透け具合。ハイライトは A に関わらず出ます。");
         if (look.useAlbedoRamp) {
-            /// @note ランプは RGB だけを置き換え、透け具合は liquidColor の A が持ち続ける。灰色にした欄から A を触れなくならないよう別に出す。
+            // ランプは RGB だけを置き換え、透け具合は liquidColor の A が持ち続ける。灰色にした欄から A を触れなくならないよう別に出す。
             ImGui::TextDisabled("液の色は Albedo Ramp が決めます。透け具合は下の Liquid Alpha で。");
             changed |= property::SliderFloat("Liquid Alpha", &look.liquidColor.w, 0.0f, 1.0f);
         }
@@ -1107,7 +1172,9 @@ bool EditOutput(FluidWidgetContext&  , fluid::FluidRecipe& recipe)
     static constexpr const char* kSizeLabels[] = { "64", "128", "256", "512" };
     int sizeIndex = 2;
     for (int i = 0; i < IM_ARRAYSIZE(kSizes); ++i)
-        if (kSizes[i] == output.frameSize) sizeIndex = i;
+        if (kSizes[i] == output.frameSize) {
+            sizeIndex = i;
+        }
     if (property::Combo("Frame Size", &sizeIndex, kSizeLabels, IM_ARRAYSIZE(kSizeLabels))) {
         output.frameSize = kSizes[sizeIndex];
         changed = true;
@@ -1168,8 +1235,9 @@ bool EditOutput(FluidWidgetContext&  , fluid::FluidRecipe& recipe)
     const int atlasHeight = output.frameSize * output.rows;
     ImGui::TextDisabled("%d frames  |  atlas %d x %d px  |  %.1f fps", frames, atlasWidth, atlasHeight,
                         static_cast<float>(frames) / (std::max)(output.duration, 0.05f));
-    if (atlasWidth > 4096 || atlasHeight > 4096)
+    if (atlasWidth > 4096 || atlasHeight > 4096) {
         ImGui::TextColored(kErrorColor, "4096px を超えるアトラスは GPU メモリを大きく使います。");
+    }
     ImGui::PopID();
     return changed;
 }
@@ -1195,7 +1263,9 @@ bool EditBake(FluidWidgetContext&  , fluid::FluidRecipe& recipe)
         static constexpr const char* kResolutionLabels[] = { "32", "48", "64", "96", "128", "160" };
         int resolutionIndex = 2;
         for (int i = 0; i < IM_ARRAYSIZE(kResolutions); ++i)
-            if (kResolutions[i] == bake.volumeResolution) resolutionIndex = i;
+            if (kResolutions[i] == bake.volumeResolution) {
+                resolutionIndex = i;
+            }
         if (property::Combo("Volume Resolution", &resolutionIndex, kResolutionLabels, IM_ARRAYSIZE(kResolutionLabels))) {
             bake.volumeResolution = kResolutions[resolutionIndex];
             changed = true;
@@ -1308,21 +1378,32 @@ std::string PartDisplayName(const fluid::FluidRecipe& recipe, FluidSelectionKind
 {
     const auto format = [index](const std::string& name, const char* prefix, const char* kind) {
         char text[192];
-        if (name.empty()) std::snprintf(text, sizeof(text), "%s %d (%s)", prefix, index, kind);
-        else              std::snprintf(text, sizeof(text), "%s (%s)", name.c_str(), kind);
+        if (name.empty()) {
+            std::snprintf(text, sizeof(text), "%s %d (%s)", prefix, index, kind);
+        } else {
+            std::snprintf(text, sizeof(text), "%s (%s)", name.c_str(), kind);
+        }
         return std::string(text);
     };
-    if (index < 0) return {};
+    if (index < 0) {
+        return {};
+    }
     const auto at = static_cast<std::size_t>(index);
     switch (list) {
     case FluidSelectionKind::Source:
-        if (at >= recipe.sources.size()) return {};
+        if (at >= recipe.sources.size()) {
+            return {};
+        }
         return format(recipe.sources[at].name, "Source", ShapeName(recipe.sources[at].shape));
     case FluidSelectionKind::Force:
-        if (at >= recipe.forces.size()) return {};
+        if (at >= recipe.forces.size()) {
+            return {};
+        }
         return format(recipe.forces[at].name, "Force", ForceTypeName(recipe.forces[at].type));
     case FluidSelectionKind::Collider:
-        if (at >= recipe.colliders.size()) return {};
+        if (at >= recipe.colliders.size()) {
+            return {};
+        }
         return format(recipe.colliders[at].name, "Collider", ColliderShapeName(recipe.colliders[at].shape));
     default:
         return {};
@@ -1331,7 +1412,9 @@ std::string PartDisplayName(const fluid::FluidRecipe& recipe, FluidSelectionKind
 
 bool* PartEnabled(fluid::FluidRecipe& recipe, FluidSelectionKind list, int index)
 {
-    if (index < 0) return nullptr;
+    if (index < 0) {
+        return nullptr;
+    }
     const auto at = static_cast<std::size_t>(index);
     switch (list) {
     case FluidSelectionKind::Source:   return at < recipe.sources.size() ? &recipe.sources[at].enabled : nullptr;
@@ -1349,7 +1432,9 @@ int PartCount(const fluid::FluidRecipe& recipe, FluidSelectionKind list)
 bool DuplicatePart(fluid::FluidRecipe& recipe, FluidSelectionKind list, int index)
 {
     return VisitPartList(recipe, list, [index](auto& parts, std::size_t limit) {
-        if (index < 0 || index >= static_cast<int>(parts.size()) || parts.size() >= limit) return false;
+        if (index < 0 || index >= static_cast<int>(parts.size()) || parts.size() >= limit) {
+            return false;
+        }
         auto copy = parts[static_cast<std::size_t>(index)];
         parts.insert(parts.begin() + index + 1, std::move(copy));
         return true;
@@ -1359,7 +1444,9 @@ bool DuplicatePart(fluid::FluidRecipe& recipe, FluidSelectionKind list, int inde
 bool RemovePart(fluid::FluidRecipe& recipe, FluidSelectionKind list, int index)
 {
     return VisitPartList(recipe, list, [index](auto& parts, std::size_t  ) {
-        if (index < 0 || index >= static_cast<int>(parts.size())) return false;
+        if (index < 0 || index >= static_cast<int>(parts.size())) {
+            return false;
+        }
         parts.erase(parts.begin() + index);
         return true;
     });
@@ -1369,12 +1456,17 @@ bool MovePart(fluid::FluidRecipe& recipe, FluidSelectionKind list, int from, int
 {
     return VisitPartList(recipe, list, [from, to](auto& parts, std::size_t  ) {
         const int count = static_cast<int>(parts.size());
-        if (from < 0 || from >= count || to < 0 || to >= count || from == to) return false;
+        if (from < 0 || from >= count || to < 0 || to >= count || from == to) {
+            return false;
+        }
         const auto first = parts.begin();
-        if (from < to) std::rotate(first + from, first + from + 1, first + to + 1);
-        else           std::rotate(first + to, first + from, first + from + 1);
+        if (from < to) {
+            std::rotate(first + from, first + from + 1, first + to + 1);
+        } else {
+            std::rotate(first + to, first + from, first + from + 1);
+        }
         return true;
     });
 }
 
-} ///< @note namespace fbzz::editor::fluidui
+} ///< namespace fbzz::editor::fluidui

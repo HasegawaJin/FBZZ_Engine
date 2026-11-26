@@ -17,11 +17,15 @@ InspectorEditTransition InspectorEditSession::Observe(scene::EntityID entity,
         return InspectorEditTransition::BEGIN;
     }
     if (m_active && m_entity != entity) {
-        if (activeAfter != m_activeId) Cancel();
+        if (activeAfter != m_activeId) {
+            Cancel();
+        }
         return InspectorEditTransition::NONE;
     }
-    if (!m_active || activeAfter == m_activeId) return InspectorEditTransition::NONE;
+    if (!m_active || activeAfter == m_activeId) {
+        return InspectorEditTransition::NONE;
+    }
     return InspectorEditTransition::END;
 }
 
-} /// @note namespace fbzz::editor
+} // namespace fbzz::editor

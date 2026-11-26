@@ -15,11 +15,11 @@
 namespace fbzz::editor {
 
 struct DirtyAsset {
-    std::string path;                 ///< @note 絶対パス。
+    std::string path;                 ///< 絶対パス。
     std::string displayPath;
     std::string typeLabel;
     std::function<bool()> saveFunc;
-    std::any draft;                   ///< @note 型付き shared_ptr の所有者。保存完了または明示破棄まで保持する。
+    std::any draft;                   ///< 型付き shared_ptr の所有者。保存完了または明示破棄まで保持する。
     std::function<void()> discardFunc;
     std::uint64_t revision = 0;
 };
@@ -49,8 +49,12 @@ public:
     static std::shared_ptr<T> FindDraft(const std::string& absPath)
     {
         for (const auto& entry : s_dirty) {
-            if (entry.path != absPath) continue;
-            if (const auto* draft = std::any_cast<std::shared_ptr<T>>(&entry.draft)) return *draft;
+            if (entry.path != absPath) {
+                continue;
+            }
+            if (const auto* draft = std::any_cast<std::shared_ptr<T>>(&entry.draft)) {
+                return *draft;
+            }
         }
         return {};
     }
@@ -78,4 +82,4 @@ private:
     static std::uint64_t s_nextRevision;
 };
 
-} /// @note namespace fbzz::editor
+} // namespace fbzz::editor

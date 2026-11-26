@@ -160,7 +160,7 @@ TEST_F(AssetDirtyRegistryTest, RegisterMarksTheAssetDirty)
 /// @brief Registering the same path twice keeps one entry.
 TEST_F(AssetDirtyRegistryTest, RegisteringTheSamePathTwiceKeepsOneEntry)
 {
-    /// @note 編集のたびに登録されるので、同じアセットが何度も並んではいけない。
+    // 編集のたびに登録されるので、同じアセットが何度も並んではいけない。
     RegisterOk("C:/a.mat");
     RegisterOk("C:/a.mat");
 
@@ -213,7 +213,7 @@ TEST_F(AssetDirtyRegistryTest, SaveRunsTheActionAndClearsTheEntry)
 /// @brief A failed save leaves the asset dirty.
 TEST_F(AssetDirtyRegistryTest, AFailedSaveLeavesTheAssetDirty)
 {
-    /// @note ここを clean にすると «保存したつもり» で閉じられ、編集内容が消える。
+    // ここを clean にすると «保存したつもり» で閉じられ、編集内容が消える。
     RegisterFailing("C:/a.mat");
 
     EXPECT_FALSE(AssetDirtyRegistry::Save("C:/a.mat"));
@@ -257,7 +257,7 @@ TEST_F(AssetDirtyRegistryTest, DiscardAllDropsEverythingWithoutSaving)
     AssetDirtyRegistry::DiscardAll();
 
     EXPECT_FALSE(AssetDirtyRegistry::HasAny());
-    /// @note 破棄なので保存は走らない
+    // 破棄なので保存は走らない
     EXPECT_FALSE(called);
 }
 
@@ -413,7 +413,7 @@ TEST_F(InspectorDataAssetSaveTest, FlushesOldSelectionAndHiddenInspectorWithoutL
     EXPECT_FALSE(AssetDirtyRegistry::IsDirty(first));
     EXPECT_TRUE(AssetDirtyRegistry::IsDirty(second));
 
-    /// @note A different panel may own the active item after Inspector closes.
+    // Inspector を閉じた後も、別のパネルが操作中の項目を所有している場合がある。
     m_imgui.Frame(3, true);
     editor::InspectorPanel::FlushPendingDataAssetSaves(Context());
     EXPECT_NE(Text(second), secondDisk);
@@ -563,7 +563,7 @@ TEST(TerrainWaterDefaults, ReturnsAPathForEveryTerrainLayer)
 /// @brief Layers have distinct paths.
 TEST(TerrainWaterDefaults, LayersHaveDistinctPaths)
 {
-    /// @note 全レイヤーが同じマテリアルを指すと、塗り分けても見た目が変わらない。
+    // 全レイヤーが同じマテリアルを指すと、塗り分けても見た目が変わらない。
     EXPECT_STRNE(editor::DefaultTerrainLayerMaterialPath(0),
                  editor::DefaultTerrainLayerMaterialPath(1));
     EXPECT_STRNE(editor::DefaultTerrainLayerMaterialPath(2),
@@ -573,7 +573,7 @@ TEST(TerrainWaterDefaults, LayersHaveDistinctPaths)
 /// @brief Returns an empty string outside the layer range.
 TEST(TerrainWaterDefaults, ReturnsAnEmptyStringOutsideTheLayerRange)
 {
-    /// @note 範囲外で配列の外を読むと、そのまま «存在しないパス» を掴んで落ちる。
+    // 範囲外で配列の外を読むと、そのまま «存在しないパス» を掴んで落ちる。
     EXPECT_STREQ(editor::DefaultTerrainLayerMaterialPath(-1), "");
     EXPECT_STREQ(editor::DefaultTerrainLayerMaterialPath(4), "");
     EXPECT_STREQ(editor::DefaultTerrainLayerMaterialPath(9999), "");
@@ -592,7 +592,7 @@ TEST(TerrainWaterDefaults, WaterPresetsStartWithTheDefaultAndPointAtDistinctMate
 {
     const auto presets = editor::WaterMaterialPresets();
     ASSERT_FALSE(presets.empty());
-    /// @note Create Water が既定と違う .mat を差すと、作った直後の Inspector でどのプリセットも選ばれていない。
+    // Create Water が既定と違う .mat を差すと、作った直後の Inspector でどのプリセットも選ばれていない。
     EXPECT_STREQ(presets[0].path, editor::DefaultWaterMaterialPath());
     for (size_t i = 0; i < presets.size(); ++i) {
         EXPECT_EQ(std::string(presets[i].path).rfind("Assets/Materials/Water/", 0), 0u) << presets[i].label;

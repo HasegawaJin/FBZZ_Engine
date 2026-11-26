@@ -23,4 +23,4 @@ struct AssetBrowserExplorerTarget {
 /// @return 失敗はログと Toast で通知して false。
 bool RevealAssetBrowserInExplorer(std::string_view projectRoot, std::string_view assetPath);
 
-} /// @note namespace fbzz::editor
+} // namespace fbzz::editor

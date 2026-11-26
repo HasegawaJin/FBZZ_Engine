@@ -53,4 +53,4 @@ bool ParseLogLocationPrefix(const std::string& message,
     const std::vector<std::string>& roots,
     const std::string& preferredRoot);
 
-} /// @note namespace fbzz::editor
+} // namespace fbzz::editor

@@ -96,8 +96,10 @@ struct GizmoPartPose {
 int PreviewTileSize(float viewSide, int cap)
 {
     constexpr int kStep = 64;
-    /// @note まだ一度も描いていない
-    if (viewSide <= 0.0f) return cap;
+    // まだ一度も描いていない
+    if (viewSide <= 0.0f) {
+        return cap;
+    }
     const int wanted = static_cast<int>(std::ceil(viewSide / static_cast<float>(kStep))) * kStep;
     return std::clamp(wanted, 128, cap);
 }
@@ -106,7 +108,7 @@ asset::VolumeFlipbookBakeSettings VolumePreviewSettings(const State& state)
 {
     asset::VolumeFlipbookBakeSettings settings =
         asset::MakeVolumeBakeSettings(state.document.Recipe(), state.document.Path());
-    /// @note 焼きと同じ重さで毎フレーム解くとエディターごと止まる。2D と同じ Draft / Normal / Final で落とす。
+    // 焼きと同じ重さで毎フレーム解くとエディターごと止まる。2D と同じ Draft / Normal / Final で落とす。
     switch (state.preview.Quality()) {
     case FluidPreviewQuality::Draft:
         settings.volumeResolution = (std::min)(settings.volumeResolution, 48);
@@ -121,14 +123,14 @@ asset::VolumeFlipbookBakeSettings VolumePreviewSettings(const State& state)
         settings.shadowSteps = (std::min)(settings.shadowSteps, 12);
         break;
     case FluidPreviewQuality::Final:
-        /// @note プレビューだけ 128 で止めるのは、CPU ソルバーの上限が 96 (kMaxFluidResolution) で、
-        /// @note       素通しにすると «切り替えただけ» でセル数が 4.6 倍に跳ね、追いつきの Dispatch が
-        /// @note       GPU のウォッチドッグに掛かるため。160 を使ってよいのは焼き (Begin) だけ。
+        // プレビューだけ 128 で止めるのは、CPU ソルバーの上限が 96 (kMaxFluidResolution) で、
+        // 素通しにすると «切り替えただけ» でセル数が 4.6 倍に跳ね、追いつきの Dispatch が
+        // GPU のウォッチドッグに掛かるため。160 を使ってよいのは焼き (Begin) だけ。
         settings.volumeResolution = (std::min)(settings.volumeResolution, 128);
         settings.tileSize = PreviewTileSize(state.volumeViewSide, 512);
         break;
     }
-    /// @note 見るのは色のタイル 1 枚。6-way と supersampling は見えない所に時間を使うだけ。
+    // 見るのは色のタイル 1 枚。6-way と supersampling は見えない所に時間を使うだけ。
     settings.sixWayLightmaps = false;
     settings.supersampling = 1;
     return settings;
@@ -166,9 +168,12 @@ VolumeGizmoCamera MakeVolumePreviewCamera(const asset::VolumeFlipbookBakeSetting
 void InitializeVolumeOrbit(State& state, const asset::VolumeFlipbookBakeSettings& settings)
 {
     const std::string& path = state.document.Path();
-    if (state.volumeOrbit.initialized && state.volumeOrbit.recipePath.empty())
+    if (state.volumeOrbit.initialized && state.volumeOrbit.recipePath.empty()) {
         state.volumeOrbit.recipePath = path;
-    if (state.volumeOrbit.initialized && state.volumeOrbit.recipePath == path) return;
+    }
+    if (state.volumeOrbit.initialized && state.volumeOrbit.recipePath == path) {
+        return;
+    }
     state.volumeOrbit = {};
     state.volumeOrbit.recipePath = path;
     state.volumeOrbit.yawDegrees = settings.cameraYawDegrees;
@@ -184,7 +189,9 @@ void VolumeForwardToYawPitch(const math::Vector3& forward, float& yaw, float& pi
 float VolumeShortestAngle(float from, float to)
 {
     float difference = std::fmod(to - from + 540.0f, 360.0f);
-    if (difference < 0.0f) difference += 360.0f;
+    if (difference < 0.0f) {
+        difference += 360.0f;
+    }
     return difference - 180.0f;
 }
 
@@ -202,7 +209,9 @@ bool ProjectToPreviewSquare(const math::Matrix4& viewProjRow, const math::Vector
                             ImVec2& out)
 {
     const math::Vector4 clip = viewProjRow * math::Vector4{ point.x, point.y, point.z, 1.0f };
-    if (std::fabs(clip.w) < 1.0e-6f) return false;
+    if (std::fabs(clip.w) < 1.0e-6f) {
+        return false;
+    }
     const float ndcX = clip.x / clip.w;
     const float ndcY = clip.y / clip.w;
     out = { min.x + (ndcX * 0.5f + 0.5f) * side, min.y + (0.5f - ndcY * 0.5f) * side };
@@ -215,8 +224,9 @@ void DrawVolumeSpatialLine(ImDrawList* drawList, const VolumeGizmoCamera& camera
     ImVec2 a;
     ImVec2 b;
     if (ProjectToPreviewSquare(camera.viewProjRow, from, min, side, a)
-        && ProjectToPreviewSquare(camera.viewProjRow, to, min, side, b))
+        && ProjectToPreviewSquare(camera.viewProjRow, to, min, side, b)) {
         drawList->AddLine(a, b, color, thickness);
+    }
 }
 
 void DrawVolumeSpatialGuides(ImDrawList* drawList, const VolumeGizmoCamera& camera, ImVec2 min, float side)
@@ -414,8 +424,9 @@ bool UpdateVolumeOrientationGizmo(State& state, const asset::VolumeFlipbookBakeS
         if (ImGui::IsMouseDown(ImGuiMouseButton_Left)) {
             const float pressX = mouse.x - orbit.pressPos.x;
             const float pressY = mouse.y - orbit.pressPos.y;
-            if (!orbit.dragging && pressX * pressX + pressY * pressY > kNav3DDragSlop * kNav3DDragSlop)
+            if (!orbit.dragging && pressX * pressX + pressY * pressY > kNav3DDragSlop * kNav3DDragSlop) {
                 orbit.dragging = true;
+            }
             if (orbit.dragging) {
                 orbit.yawDegrees += io.MouseDelta.x * kNav3DOrbitSensitivity;
                 orbit.pitchDegrees = std::clamp(orbit.pitchDegrees + io.MouseDelta.y * kNav3DOrbitSensitivity,
@@ -428,7 +439,9 @@ bool UpdateVolumeOrientationGizmo(State& state, const asset::VolumeFlipbookBakeS
                 float targetYaw = 0.0f;
                 float targetPitch = 0.0f;
                 VolumeForwardToYawPitch(targetForward, targetYaw, targetPitch);
-                if (kVolumeNavAxes[orbit.pressedAxis].direction.y != 0.0f) targetYaw = orbit.yawDegrees;
+                if (kVolumeNavAxes[orbit.pressedAxis].direction.y != 0.0f) {
+                    targetYaw = orbit.yawDegrees;
+                }
                 StartVolumeOrbitSnap(orbit, targetYaw, targetPitch);
             }
             orbit.pressed = false;
@@ -442,7 +455,9 @@ bool UpdateVolumeOrientationGizmo(State& state, const asset::VolumeFlipbookBakeS
         const float eased = t * t * (3.0f - 2.0f * t);
         orbit.yawDegrees = orbit.fromYaw + (orbit.toYaw - orbit.fromYaw) * eased;
         orbit.pitchDegrees = orbit.fromPitch + (orbit.toPitch - orbit.fromPitch) * eased;
-        if (t >= 1.0f) orbit.animActive = false;
+        if (t >= 1.0f) {
+            orbit.animActive = false;
+        }
     }
     return orbit.hovered || orbit.pressed || orbit.animActive;
 }
@@ -451,7 +466,9 @@ void DrawVolumeOrientationGizmo(ImDrawList* drawList, State& state,
                                 const VolumeGizmoCamera& camera, const ImVec2& viewportMin,
                                 const ImVec2& viewportSize)
 {
-    if ((std::min)(viewportSize.x, viewportSize.y) < 80.0f) return;
+    if ((std::min)(viewportSize.x, viewportSize.y) < 80.0f) {
+        return;
+    }
     const VolumeOrbitState& orbit = state.volumeOrbit;
     const ImVec2 center = VolumeNavCenter(viewportMin, viewportSize);
     VolumeNavBall balls[6];
@@ -488,7 +505,9 @@ void DrawVolumeOrientationGizmo(ImDrawList* drawList, State& state,
             drawList->AddText({ ball.position.x - textSize.x * 0.5f, ball.position.y - textSize.y * 0.5f },
                               ShadeVolumeNavColor(IM_COL32(18, 18, 20, 255), 1.0f, 0.92f * fade), axis.label);
         }
-        if (hot) drawList->AddCircle(ball.position, ballRadius + 3.0f, IM_COL32(255, 255, 255, 210), 24, 1.6f);
+        if (hot) {
+            drawList->AddCircle(ball.position, ballRadius + 3.0f, IM_COL32(255, 255, 255, 210), 24, 1.6f);
+        }
     }
 }
 
@@ -500,9 +519,15 @@ math::Matrix4 GizmoBasisFromDirection(const math::Vector3& direction)
     const math::Vector3 x = math::Vector3::Cross(reference, y).NormalizedOr(math::Vector3::RIGHT);
     const math::Vector3 z = math::Vector3::Cross(x, y);
     math::Matrix4 basis = math::Matrix4::Identity();
-    basis.m[0][0] = x.x; basis.m[1][0] = x.y; basis.m[2][0] = x.z;
-    basis.m[0][1] = y.x; basis.m[1][1] = y.y; basis.m[2][1] = y.z;
-    basis.m[0][2] = z.x; basis.m[1][2] = z.y; basis.m[2][2] = z.z;
+    basis.m[0][0] = x.x;
+    basis.m[1][0] = x.y;
+    basis.m[2][0] = x.z;
+    basis.m[0][1] = y.x;
+    basis.m[1][1] = y.y;
+    basis.m[2][1] = y.z;
+    basis.m[0][2] = z.x;
+    basis.m[1][2] = z.y;
+    basis.m[2][2] = z.z;
     return basis;
 }
 
@@ -521,13 +546,14 @@ GizmoPartPose ReadGizmoPose(const fluid::FluidRecipe& recipe, const FluidSelecti
     VisitPart(recipe, selection.kind, selection.index, [&](const auto& part) {
         using Part = std::decay_t<decltype(part)>;
         pose.valid = true;
-        if (keyIndex >= 0 && keyIndex < static_cast<int>(part.motion.keys.size()))
+        if (keyIndex >= 0 && keyIndex < static_cast<int>(part.motion.keys.size())) {
             pose.position = part.center + part.motion.keys[static_cast<std::size_t>(keyIndex)].offset;
-        else
+        } else {
             pose.position = part.center + MotionOffsetAt(part.motion, solverTime);
+        }
         pose.direction = part.direction;
         if constexpr (std::is_same_v<Part, fluid::FluidForce>) {
-            /// @note 半径 0 は «領域全体に一様» なので、掴める大きさが無い。
+            // 半径 0 は «領域全体に一様» なので、掴める大きさが無い。
             pose.canScale = part.radius > 0.0f;
             const float radius = (std::max)(part.radius, kMinGizmoSize);
             pose.size = { radius, radius, radius };
@@ -535,7 +561,7 @@ GizmoPartPose ReadGizmoPose(const fluid::FluidRecipe& recipe, const FluidSelecti
         } else if constexpr (std::is_same_v<Part, fluid::FluidCollider>) {
             pose.size = part.size;
             pose.canScale = part.shape != fluid::FluidColliderShape::Plane;
-            /// @note 平面は法線、カプセルと円柱は芯の軸を direction で持つ。
+            // 平面は法線、カプセルと円柱は芯の軸を direction で持つ。
             pose.canRotate = part.shape == fluid::FluidColliderShape::Plane
                           || part.shape == fluid::FluidColliderShape::Capsule
                           || part.shape == fluid::FluidColliderShape::Cylinder;
@@ -556,10 +582,11 @@ void ApplyGizmoEdit(fluid::FluidRecipe& recipe, const FluidSelection& selection,
         using Part = std::decay_t<decltype(part)>;
         if (op == GizmoOp::Translate) {
             const math::Vector3 target{ worldRow.m[0][3], worldRow.m[1][3], worldRow.m[2][3] };
-            if (keyIndex >= 0 && keyIndex < static_cast<int>(part.motion.keys.size()))
+            if (keyIndex >= 0 && keyIndex < static_cast<int>(part.motion.keys.size())) {
                 part.motion.keys[static_cast<std::size_t>(keyIndex)].offset = target - part.center;
-            else
+            } else {
                 part.center = target - MotionOffsetAt(part.motion, solverTime);
+            }
             return;
         }
         if (op == GizmoOp::Scale) {
@@ -569,12 +596,13 @@ void ApplyGizmoEdit(fluid::FluidRecipe& recipe, const FluidSelection& selection,
             } else {
                 math::Vector3 next{ (std::max)(scale.x, kMinGizmoSize), (std::max)(scale.y, kMinGizmoSize),
                                     (std::max)(scale.z, kMinGizmoSize) };
-                /// @note 球は size.x しか読まれない。3 軸がばらけると «絵は変わらないのに数字だけ動く» になる。
+                // 球は size.x しか読まれない。3 軸がばらけると «絵は変わらないのに数字だけ動く» になる。
                 bool uniform = false;
-                if constexpr (std::is_same_v<Part, fluid::FluidCollider>)
+                if constexpr (std::is_same_v<Part, fluid::FluidCollider>) {
                     uniform = part.shape == fluid::FluidColliderShape::Sphere;
-                else
+                } else {
                     uniform = part.shape == fluid::FluidSourceShape::Sphere;
+                }
                 if (uniform) {
                     const float side = (next.x + next.y + next.z) / 3.0f;
                     next = { side, side, side };
@@ -615,14 +643,22 @@ FluidSelection DrawVolumePartMarkers(ImDrawList* drawList, const State& state, c
     for (const FluidSelectionKind list : kLists) {
         for (int index = 0; index < MaxParts(list); ++index) {
             const GizmoPartPose pose = ReadGizmoPose(recipe, FluidSelection{ list, index }, -1, solverTime);
-            if (!pose.valid) break;
-            if (!PartShownInPreview(document, list, index)) continue;
+            if (!pose.valid) {
+                break;
+            }
+            if (!PartShownInPreview(document, list, index)) {
+                continue;
+            }
             ImVec2 screen;
-            if (!ProjectToPreviewSquare(camera.viewProjRow, pose.position, min, side, screen)) continue;
+            if (!ProjectToPreviewSquare(camera.viewProjRow, pose.position, min, side, screen)) {
+                continue;
+            }
             const bool selected = document.selection.kind == list && document.selection.index == index;
             drawList->AddCircleFilled(screen, selected ? 4.0f : 3.0f, ListColor(list, selected ? 1.0f : 0.7f));
             drawList->AddCircle(screen, selected ? 6.0f : 4.5f, IM_COL32(0, 0, 0, 160));
-            if (!allowPick) continue;
+            if (!allowPick) {
+                continue;
+            }
             const float distance = (std::max)(std::fabs(mouse.x - screen.x), std::fabs(mouse.y - screen.y));
             if (distance <= nearestDistance) {
                 nearestDistance = distance;
@@ -641,18 +677,24 @@ void TickVolumePreview(EditorContext& ctx, State& state)
     state.volumePending = false;
     state.volumeSwitchPending = false;
     state.volumeStale = false;
-    if (!state.document.IsOpen()) return;
-    /// @note 描く前にここで決めておくと、3D で焼くレシピは開いた 1 コマ目から 3D の絵が出る。
+    if (!state.document.IsOpen()) {
+        return;
+    }
+    // 描く前にここで決めておくと、3D で焼くレシピは開いた 1 コマ目から 3D の絵が出る。
     if (!state.viewModeChosen) {
         state.viewMode = state.document.Recipe().bake.mode == fluid::FluidBakeMode::Volume3D
             ? ViewportMode::Volume3D
             : ViewportMode::Flat2D;
         state.viewModeChosen = true;
     }
-    if (state.viewMode != ViewportMode::Volume3D) return;
+    if (state.viewMode != ViewportMode::Volume3D) {
+        return;
+    }
     const asset::VolumeFlipbookBakeSettings settings = VolumePreviewSettings(state);
     InitializeVolumeOrbit(state, settings);
-    if (ctx.fluidBake == nullptr || ctx.renderer == nullptr || ctx.resources == nullptr) return;
+    if (ctx.fluidBake == nullptr || ctx.renderer == nullptr || ctx.resources == nullptr) {
+        return;
+    }
 
     FluidBakeService& service = *ctx.fluidBake;
     if (!service.IsVolumeBakerFree()) {
@@ -660,29 +702,32 @@ void TickVolumePreview(EditorContext& ctx, State& state)
         return;
     }
 
-    /// @note hide / solo は文書の Revision を進めない。2D と同じく表示の通番を混ぜた鍵で解き直しを決める。
-    /// @note       +1 は «まだ組んでいない» の 0 と、版数 0・通番 0 の初回を分けるため。
+    // hide / solo は文書の Revision を進めない。2D と同じく表示の通番を混ぜた鍵で解き直しを決める。
+    // +1 は «まだ組んでいない» の 0 と、版数 0・通番 0 の初回を分けるため。
     const std::uint64_t key = state.document.Revision() * 1000003ull + state.visibilityGeneration + 1ull;
     if (key != state.volumeRecipeKey) {
         state.volumeRecipe = state.document.PreviewRecipe();
         state.volumeRecipeKey = key;
     }
 
-    /// @note ソルバーが入れ替わると絵の中身も入れ替わる。再生の途中でそれをやると «同じ一続きの動き» が
-    /// @note       途中で別物にすり替わるので、折り返し (playhead が戻るフレーム) まで前のソルバーで通す。
-    /// @note       止まっているときは待つ理由が無い ── その場で切り替える。
+    // ソルバーが入れ替わると絵の中身も入れ替わる。再生の途中でそれをやると «同じ一続きの動き» が
+    // 途中で別物にすり替わるので、折り返し (playhead が戻るフレーム) まで前のソルバーで通す。
+    // 止まっているときは待つ理由が無い ── その場で切り替える。
     const bool wrapped = state.playhead < state.volumeSwitchPlayhead;
-    /// @note 期限を切るのは、loop = false のレシピは折り返しが永遠に来ないため (テンプレートの半分がそれ)。
-    /// @note       «折り返しまで待つ» だけだと再生中の切り替えでゲートが開かず絵が出ないままになる。
-    /// @note       待つのは続きの動きを守るためなので、少し待って来なければ諦めて当てる。
-    if (service.VolumePreviewSwitchPending())
+    // 期限を切るのは、loop = false のレシピは折り返しが永遠に来ないため (テンプレートの半分がそれ)。
+    // «折り返しまで待つ» だけだと再生中の切り替えでゲートが開かず絵が出ないままになる。
+    // 待つのは続きの動きを守るためなので、少し待って来なければ諦めて当てる。
+    if (service.VolumePreviewSwitchPending()) {
         state.volumeSwitchWait += ImGui::GetIO().DeltaTime;
-    else
+    } else {
         state.volumeSwitchWait = 0.0f;
+    }
     constexpr float kSwitchWaitLimit = 0.5f;
     const bool waitedEnough = state.volumeSwitchWait >= kSwitchWaitLimit;
     service.AllowVolumePreviewSwitch(!state.playing || wrapped || waitedEnough);
-    if (wrapped || waitedEnough) state.volumeSwitchWait = 0.0f;
+    if (wrapped || waitedEnough) {
+        state.volumeSwitchWait = 0.0f;
+    }
     state.volumeSwitchPlayhead = state.playhead;
 
     asset::VolumePreviewOptions options;
@@ -721,83 +766,100 @@ void DrawViewport3D(EditorContext& ctx, State& state)
         const bool pressed = ImGui::SmallButton(label);
         ImGui::PopStyleColor();
         ImGui::EndDisabled();
-        if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled)) ImGui::SetTooltip("%s", tip);
+        if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled)) {
+            ImGui::SetTooltip("%s", tip);
+        }
         ImGui::SameLine();
         return pressed;
     };
     if (gizmoButton("Move##fe3d_move", GizmoOp::Translate, true,
-                    "Move: 部品の中心または選択中のキーを動かす"))
+                    "Move: 部品の中心または選択中のキーを動かす")) {
         state.gizmoOp = GizmoOp::Translate;
+    }
     if (gizmoButton("Rot##fe3d_rotate", GizmoOp::Rotate, rotateSupported,
-                    rotateSupported ? "Rotate: 対応形状の向きを変える" : "この形状または選択中のキーでは回転できません"))
+                    rotateSupported ? "Rotate: 対応形状の向きを変える" : "この形状または選択中のキーでは回転できません")) {
         state.gizmoOp = GizmoOp::Rotate;
+    }
     if (gizmoButton("Scale##fe3d_scale", GizmoOp::Scale, scaleSupported,
-                    scaleSupported ? "Scale: 対応形状の大きさを変える" : "この形状または選択中のキーでは拡縮できません"))
+                    scaleSupported ? "Scale: 対応形状の大きさを変える" : "この形状または選択中のキーでは拡縮できません")) {
         state.gizmoOp = GizmoOp::Scale;
+    }
 
     const bool worldSpace = ctx.gizmoSpace == EditorContext::GizmoSpace::World;
     ImGui::PushStyleColor(ImGuiCol_Button, ImGui::GetStyleColorVec4(ImGuiCol_Button));
     if (ImGui::SmallButton(worldSpace ? "World##fe3d_space" : "Local##fe3d_space"))
         ctx.gizmoSpace = worldSpace ? EditorContext::GizmoSpace::Local : EditorContext::GizmoSpace::World;
     ImGui::PopStyleColor();
-    if (ImGui::IsItemHovered()) ImGui::SetTooltip("ギズモ空間: %s (Q で切替)", worldSpace ? "World" : "Local");
+    if (ImGui::IsItemHovered()) {
+        ImGui::SetTooltip("ギズモ空間: %s (Q で切替)", worldSpace ? "World" : "Local");
+    }
     ImGui::SameLine();
 
     ImGui::BeginDisabled();
     ImGui::SmallButton(ctx.gizmoPivot == EditorContext::GizmoPivot::Pivot ? "Pivot##fe3d_pivot"
                                                                          : "Center##fe3d_pivot");
     ImGui::EndDisabled();
-    if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled))
+    if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled)) {
         ImGui::SetTooltip("Fluid は 1 部品ずつ操作するため、Pivot と Center は同じ位置です");
+    }
     ImGui::SameLine();
 
     ImGui::PushStyleColor(ImGuiCol_Button, ctx.snapEnabled ? ImGui::GetStyleColorVec4(ImGuiCol_ButtonActive)
                                                            : ImGui::GetStyleColorVec4(ImGuiCol_Button));
-    if (ImGui::SmallButton("Snap##fe3d_snap")) ctx.snapEnabled = !ctx.snapEnabled;
+    if (ImGui::SmallButton("Snap##fe3d_snap")) {
+        ctx.snapEnabled = !ctx.snapEnabled;
+    }
     ImGui::PopStyleColor();
-    if (ImGui::IsItemHovered())
+    if (ImGui::IsItemHovered()) {
         ImGui::SetTooltip("ギズモのスナップを切替 (Ctrl で一時有効)。位置は Fluid の正規化単位、回転は度です");
+    }
     ImGui::SameLine();
-    if (ImGui::SmallButton("Reset View##fe3d_reset_view"))
+    if (ImGui::SmallButton("Reset View##fe3d_reset_view")) {
         StartVolumeOrbitSnap(state.volumeOrbit, settings.cameraYawDegrees, 0.0f);
-    if (ImGui::IsItemHovered()) ImGui::SetTooltip("編集視点を Bake Camera Yaw へ戻す。Fit はパンとズームだけを戻します");
+    }
+    if (ImGui::IsItemHovered()) {
+        ImGui::SetTooltip("編集視点を Bake Camera Yaw へ戻す。Fit はパンとズームだけを戻します");
+    }
     ImGui::SameLine();
 
-    if (state.volumeBusy)
+    if (state.volumeBusy) {
         ImGui::TextColored(ImGui::ColorConvertU32ToFloat4(kBusy3DText), "焼いています (3D の Baker が空くまで 2D を出します)");
-    else if (state.volumeSwitchPending)
+    } else if (state.volumeSwitchPending) {
         ImGui::TextColored(ImGui::ColorConvertU32ToFloat4(kBusy3DText), "ソルバーを切り替えています (次のループで適用)");
-    else if (state.volumeStale)
+    } else if (state.volumeStale) {
         ImGui::TextColored(ImGui::ColorConvertU32ToFloat4(kHint3DText), "前のソルバーの絵を出しています");
-    else if (state.volumePending)
+    } else if (state.volumePending) {
         ImGui::TextColored(ImGui::ColorConvertU32ToFloat4(kBusy3DText), "解いています...");
-    else if (activeKey >= 0)
+    } else if (activeKey >= 0) {
         ImGui::TextDisabled("Key %d を掴んでいます (タイムラインで選び直せます)", activeKey + 1);
-    else
+    } else
         ImGui::TextDisabled("t %.3f s | yaw %.0f° pitch %.0f° | 部品の丸をクリックで選ぶ",
                             state.playhead, state.volumeOrbit.yawDegrees, state.volumeOrbit.pitchDegrees);
 
     ImGui::Checkbox("Center plane##fe3d_center_plane", &state.showVolumeCenterPlane);
-    if (ImGui::IsItemHovered())
+    if (ImGui::IsItemHovered()) {
         ImGui::SetTooltip("体積を切らず、中心を通る参照グリッドを重ねます");
+    }
     ImGui::SameLine();
     int centerPlane = static_cast<int>(state.volumeCenterPlane);
     static constexpr const char* kCenterPlaneLabels[] = { "XY (Z=0)", "XZ (Y=0)", "YZ (X=0)" };
     ImGui::BeginDisabled(!state.showVolumeCenterPlane);
     ImGui::SetNextItemWidth(100.0f);
-    if (ImGui::Combo("##fe3d_center_plane_axis", &centerPlane, kCenterPlaneLabels, 3))
+    if (ImGui::Combo("##fe3d_center_plane_axis", &centerPlane, kCenterPlaneLabels, 3)) {
         state.volumeCenterPlane = static_cast<VolumeCenterPlane>(std::clamp(centerPlane, 0, 2));
+    }
     ImGui::EndDisabled();
-    if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled))
+    if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled)) {
         ImGui::SetTooltip("現在の 3D 視点に追従する参照面: %s", VolumeCenterPlaneLabel(state.volumeCenterPlane));
+    }
 
     const ImVec2 canvasMin = ImGui::GetCursorScreenPos();
     const ImVec2 avail = ImGui::GetContentRegionAvail();
     const ImVec2 canvasSize{ (std::max)(avail.x, 32.0f), (std::max)(avail.y, 32.0f) };
     const ImVec2 canvasMax{ canvasMin.x + canvasSize.x, canvasMin.y + canvasSize.y };
-    /// @note InvisibleButton にしないのは、ImGuizmo は «どの ImGui 項目にも乗っていない» ときしか掴めない
-    /// @note       (CanActivate が IsAnyItemHovered を見る) ため。当たり判定を持たない Dummy で場所だけ取り、
-    /// @note       視点操作は矩形との当たりで自前に見る。
+    // InvisibleButton にしないのは、ImGuizmo は «どの ImGui 項目にも乗っていない» ときしか掴めない
+    // (CanActivate が IsAnyItemHovered を見る) ため。当たり判定を持たない Dummy で場所だけ取り、
+    // 視点操作は矩形との当たりで自前に見る。
     ImGui::Dummy(canvasSize);
     const bool hovered = ImGui::IsWindowHovered() && ImGui::IsMouseHoveringRect(canvasMin, canvasMax);
     const asset::VolumeFlipbookCamera previewBasis =
@@ -812,7 +874,7 @@ void DrawViewport3D(EditorContext& ctx, State& state)
 
     const ImVec2 canvasCenter{ canvasMin.x + canvasSize.x * 0.5f, canvasMin.y + canvasSize.y * 0.5f };
     const float side = (std::max)((std::min)(canvasSize.x, canvasSize.y) * 0.96f * state.zoom, 8.0f);
-    /// @note 次のフレームのプレビュー解像度はこの大きさで決まる (PreviewTileSize)。
+    // 次のフレームのプレビュー解像度はこの大きさで決まる (PreviewTileSize)。
     state.volumeViewSide = side;
     const ImVec2 squareMin{ canvasCenter.x + state.pan.x - side * 0.5f, canvasCenter.y + state.pan.y - side * 0.5f };
     const ImVec2 squareMax{ squareMin.x + side, squareMin.y + side };
@@ -820,22 +882,24 @@ void DrawViewport3D(EditorContext& ctx, State& state)
     void* rawId = nullptr;
     if (ctx.fluidBake != nullptr && ctx.imguiRenderer != nullptr && ctx.resources != nullptr && !state.volumeBusy) {
         const auto target = ctx.fluidBake->VolumeBaker().PreviewTarget();
-        if (target.IsValid()) rawId = ctx.imguiRenderer->GetImTextureID(target, *ctx.resources, 0);
+        if (target.IsValid()) {
+            rawId = ctx.imguiRenderer->GetImTextureID(target, *ctx.resources, 0);
+        }
     }
     if (rawId != nullptr) {
         drawList->AddImage(widgets::ToImTextureID(rawId), squareMin, squareMax, { 0.0f, 0.0f },
                            { kColorTileU1, 1.0f });
         drawList->AddRect(squareMin, squareMax, IM_COL32(255, 255, 255, 48));
     } else {
-        /// @note 3D をまだ出せない (焼きに取られている・レンダラーが無い・切り替えを待っている)。
-        /// @note       ビューポートを空にはしない。
+        // 3D をまだ出せない (焼きに取られている・レンダラーが無い・切り替えを待っている)。
+        // ビューポートを空にはしない。
         DrawFluidPreviewSquare(drawList, state, squareMin, side,
                                state.volumeSwitchPending ? "ソルバーを切り替えています (次のループで適用)"
                                                          : "3D を待っています...");
     }
 
-    /// @note 切り替えに失敗すると «黙って前の絵のまま» になる。理由は共有 Baker しか知らないので、
-    /// @note       Volume Flipbook Baker パネルを開いていなくてもここで読めるようにする。
+    // 切り替えに失敗すると «黙って前の絵のまま» になる。理由は共有 Baker しか知らないので、
+    // Volume Flipbook Baker パネルを開いていなくてもここで読めるようにする。
     if (!state.volumeBusy && ctx.fluidBake != nullptr) {
         const std::string& note = ctx.fluidBake->VolumePreviewNote();
         if (!note.empty()) {
@@ -847,8 +911,9 @@ void DrawViewport3D(EditorContext& ctx, State& state)
     FluidSelection pickTarget;
     drawList->PushClipRect(squareMin, squareMax, true);
     DrawVolumeSpatialGuides(drawList, camera, squareMin, side);
-    if (state.showVolumeCenterPlane)
+    if (state.showVolumeCenterPlane) {
         DrawVolumeCenterPlaneGuide(drawList, camera, squareMin, side, state.volumeCenterPlane);
+    }
     const bool mouseInImage = io.MousePos.x >= squareMin.x && io.MousePos.x <= squareMax.x
                            && io.MousePos.y >= squareMin.y && io.MousePos.y <= squareMax.y;
     if (state.showOverlays)
@@ -859,7 +924,7 @@ void DrawViewport3D(EditorContext& ctx, State& state)
     DrawVolumeOrientationGizmo(drawList, state, camera, canvasMin, canvasSize);
     drawList->PopClipRect();
 
-    /// @name ギズモ
+    // ギズモ
     bool overGizmo = false;
     bool usingGizmo = false;
     const GizmoOp op = state.gizmoOp;
@@ -869,15 +934,18 @@ void DrawViewport3D(EditorContext& ctx, State& state)
     const bool allowPartGizmo = !orientationOwnsInput || state.gizmoActive;
     if (state.showOverlays && opUsable && allowPartGizmo) {
         math::Matrix4 worldRow = math::Matrix4::Translate(pose.position);
-        if (op == GizmoOp::Rotate || (ctx.gizmoSpace == EditorContext::GizmoSpace::Local && pose.canRotate))
+        if (op == GizmoOp::Rotate || (ctx.gizmoSpace == EditorContext::GizmoSpace::Local && pose.canRotate)) {
             worldRow = worldRow * GizmoBasisFromDirection(pose.direction);
-        if (op == GizmoOp::Scale) worldRow = worldRow * math::Matrix4::Scale(pose.size);
+        }
+        if (op == GizmoOp::Scale) {
+            worldRow = worldRow * math::Matrix4::Scale(pose.size);
+        }
 
         math::Matrix4 viewCol = math::Matrix4::Transpose(camera.viewRow);
         math::Matrix4 projCol = math::Matrix4::Transpose(camera.projRow);
         math::Matrix4 worldCol = math::Matrix4::Transpose(worldRow);
 
-        /// @note ID を積むと «同じフレームに 2 つ目のギズモ» (Scene View) と掴んでいる状態を取り違えない。
+        // ID を積むと «同じフレームに 2 つ目のギズモ» (Scene View) と掴んでいる状態を取り違えない。
         ImGuizmo::PushID("fluid_editor_3d");
         ImGuizmo::SetDrawlist();
         ImGuizmo::Enable(true);
@@ -903,9 +971,9 @@ void DrawViewport3D(EditorContext& ctx, State& state)
         if (usingGizmo && !state.gizmoActive) {
             state.gizmoActive = true;
             state.gizmoUndoLabel = GizmoUndoLabel(op);
-            /// @note 再生を止めないのは、動いている絵を見ながら位置を詰めたいため。掴んだ瞬間に止まると
-            /// @note       «その一瞬の姿» でしか合わせられない。再生を止めるのは «時間そのものを操る操作»
-            /// @note       (スクラブ・コマ送り・先頭へ) だけにしてある。
+            // 再生を止めないのは、動いている絵を見ながら位置を詰めたいため。掴んだ瞬間に止まると
+            // «その一瞬の姿» でしか合わせられない。再生を止めるのは «時間そのものを操る操作»
+            // (スクラブ・コマ送り・先頭へ) だけにしてある。
             document.BeginInteractiveEdit();
         }
         if (manipulated && state.gizmoActive && document.InInteractiveEdit()) {
@@ -913,11 +981,13 @@ void DrawViewport3D(EditorContext& ctx, State& state)
             ApplyGizmoEdit(working, document.selection, activeKey, op, math::Matrix4::Transpose(worldCol), solverTime);
             document.ApplyInteractive(working);
         }
-        /// @note 通常は EndStaleDrags が閉じる。ここは «掴んだまま何も動かさずに離した» の保険。
+        // 通常は EndStaleDrags が閉じる。ここは «掴んだまま何も動かさずに離した» の保険。
         if (!usingGizmo && state.gizmoActive) {
             const char* label = state.gizmoUndoLabel;
             state.gizmoActive = false;
-            if (document.InInteractiveEdit()) document.EndInteractiveEdit(ctx, label);
+            if (document.InInteractiveEdit()) {
+                document.EndInteractiveEdit(ctx, label);
+            }
         }
     } else if (state.showOverlays && pose.valid && op != GizmoOp::Translate) {
         const char* reason = activeKey >= 0 ? "キーを選んでいる間は Move だけです"
@@ -926,15 +996,17 @@ void DrawViewport3D(EditorContext& ctx, State& state)
         drawList->AddText({ canvasCenter.x - textSize.x * 0.5f, squareMax.y - textSize.y - 6.0f }, kHint3DText, reason);
     }
 
-    /// @name 選ぶ
+    // 選ぶ
     if (hovered && !orientationOwnsInput && !overGizmo && !usingGizmo && !state.gizmoActive
         && ImGui::IsMouseClicked(ImGuiMouseButton_Left) && pickTarget.kind != FluidSelectionKind::None) {
         document.selection = pickTarget;
         state.selectedKey = -1;
     }
 
-    /// @name 視点 (Fit はパンとズームを戻す。方位は独立 Orbit で、Reset View が Bake Yaw へ戻す)
-    if (hovered && !orientationOwnsInput && ImGui::IsMouseClicked(ImGuiMouseButton_Middle)) state.panning = true;
+    // 視点 (Fit はパンとズームを戻す。方位は独立 Orbit で、Reset View が Bake Yaw へ戻す)
+    if (hovered && !orientationOwnsInput && ImGui::IsMouseClicked(ImGuiMouseButton_Middle)) {
+        state.panning = true;
+    }
     if (state.panning) {
         if (ImGui::IsMouseDown(ImGuiMouseButton_Middle)) {
             state.pan.x += io.MouseDelta.x;

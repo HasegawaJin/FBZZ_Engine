@@ -180,7 +180,7 @@ protected:
         std::string diagnostic;
         auto result = scene::SceneSerializer::CapturePassiveClone(*AttachedScene(), diagnostic);
         EXPECT_FALSE(result.empty()) << diagnostic;
-        /// @note Baking registers the manifest's .meta. Serialization can then emit a GUID for an unchanged live path.
+        // ベイクでマニフェストの .meta が登録されるので、同じパスを保存し直すと GUID を出力できる。
         if (auto* owner = AttachedScene()->FindByGuid(m_partition)) {
             if (const auto* partition = owner->GetComponent<scene::WorldPartitionComponent>()) {
                 const std::string field = "\n    manifestPath = ";
@@ -232,12 +232,16 @@ protected:
             auto prepared = scene::SceneSerializer::LoadPassiveDataFromText(Read(path),
                 util::FileSystem::PathToUtf8(ProjectRoot() / util::FileSystem::PathFromUtf8(path)));
             EXPECT_NE(prepared, nullptr);
-            if (!prepared) continue;
+            if (!prepared) {
+                continue;
+            }
             for (const auto id : prepared->GetEntities<scene::InstancedMeshComponent>()) {
                 const auto* component = prepared->GetComponent<scene::InstancedMeshComponent>(id);
                 const auto* definition = asset::ResolveMeshInstanceDefinition(component->m_instanceSetRef.path);
                 EXPECT_NE(definition, nullptr);
-                if (!definition) continue;
+                if (!definition) {
+                    continue;
+                }
                 const auto snapshot = component->Snapshot(*definition);
                 EXPECT_NE(snapshot, nullptr);
                 if (snapshot) result += snapshot->placements.size();

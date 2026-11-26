@@ -32,8 +32,8 @@ private:
     /// 間引いて更新する。キーは EntityID::index。
     void RefreshStaleCache(EditorContext& ctx);
 
-    std::unordered_map<uint32_t, uint64_t> m_sourceHashes;
-    double m_lastHashTime = -1.0;
+    std::unordered_map<uint32_t, uint64_t> m_sourceHashes; ///< NavMesh のベイク入力が変わったか確認するために保持する対象ごとのハッシュ。
+    double m_lastHashTime = -1.0; ///< 前回 NavMesh のベイク入力ハッシュを更新した時刻 [s]。
 };
 
 } // namespace fbzz::editor

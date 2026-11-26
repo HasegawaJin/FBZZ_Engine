@@ -64,4 +64,4 @@ struct SpatialDebugVisualization {
     }
 };
 
-} /// @note namespace fbzz::editor
+} // namespace fbzz::editor

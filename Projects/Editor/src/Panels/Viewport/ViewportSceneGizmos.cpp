@@ -107,13 +107,16 @@ void CancelGizmoEdit(EditorContext& ctx, int& lastOp, int& lastMode,
             scene::GameObject* target = ctx.activeScene->GetGameObject(edit.entityIds[i]);
             if (!target || target->instanceId != edit.instanceIds[i]
                 || ctx.activeScene->FindByGuid(edit.instanceIds[i]) != target
-                || !TransformAuthoringValuesEqual(target->transform, edit.lastApplied[i]))
+                || !TransformAuthoringValuesEqual(target->transform, edit.lastApplied[i])) {
                 continue;
+            }
             target->transform = edit.before[i];
             restored = true;
         }
     }
-    if (restored && ctx.markSceneDirty) ctx.markSceneDirty();
+    if (restored && ctx.markSceneDirty) {
+        ctx.markSceneDirty();
+    }
     edit = {};
     prevOver = false;
     prevUsing = false;
@@ -138,9 +141,21 @@ void ApplyWorldRowToTransform(scene::GameObject& go, const math::Matrix4& worldR
     const float sz = std::sqrt(localRow.m[0][2]*localRow.m[0][2] + localRow.m[1][2]*localRow.m[1][2] + localRow.m[2][2]*localRow.m[2][2]);
 
     math::Matrix4 rotMat = math::Matrix4::Identity();
-    if (!math::NearlyZero(sx)) { rotMat.m[0][0] = localRow.m[0][0]/sx; rotMat.m[1][0] = localRow.m[1][0]/sx; rotMat.m[2][0] = localRow.m[2][0]/sx; }
-    if (!math::NearlyZero(sy)) { rotMat.m[0][1] = localRow.m[0][1]/sy; rotMat.m[1][1] = localRow.m[1][1]/sy; rotMat.m[2][1] = localRow.m[2][1]/sy; }
-    if (!math::NearlyZero(sz)) { rotMat.m[0][2] = localRow.m[0][2]/sz; rotMat.m[1][2] = localRow.m[1][2]/sz; rotMat.m[2][2] = localRow.m[2][2]/sz; }
+    if (!math::NearlyZero(sx)) {
+        rotMat.m[0][0] = localRow.m[0][0]/sx;
+        rotMat.m[1][0] = localRow.m[1][0]/sx;
+        rotMat.m[2][0] = localRow.m[2][0]/sx;
+    }
+    if (!math::NearlyZero(sy)) {
+        rotMat.m[0][1] = localRow.m[0][1]/sy;
+        rotMat.m[1][1] = localRow.m[1][1]/sy;
+        rotMat.m[2][1] = localRow.m[2][1]/sy;
+    }
+    if (!math::NearlyZero(sz)) {
+        rotMat.m[0][2] = localRow.m[0][2]/sz;
+        rotMat.m[1][2] = localRow.m[1][2]/sz;
+        rotMat.m[2][2] = localRow.m[2][2]/sz;
+    }
 
     go.transform.position = { localRow.m[0][3], localRow.m[1][3], localRow.m[2][3] };
     go.transform.scale    = { sx, sy, sz };
@@ -153,8 +168,9 @@ bool ApplySingleTargetPointRotation(scene::GameObject& go, const math::Matrix4& 
                                     const math::Vector3& signedWorldScale)
 {
     if (std::abs(signedWorldScale.x) < 1e-6f || std::abs(signedWorldScale.y) < 1e-6f
-        || std::abs(signedWorldScale.z) < 1e-6f)
+        || std::abs(signedWorldScale.z) < 1e-6f) {
         return false;
+    }
     math::Matrix4 rotation = math::Matrix4::Identity();
     rotation.m[0][0] = worldRow.m[0][0] / signedWorldScale.x;
     rotation.m[1][0] = worldRow.m[1][0] / signedWorldScale.x;
@@ -182,7 +198,9 @@ void ApplySingleTargetPointScale(scene::GameObject& go, const math::Matrix4& wor
     const math::Vector3 parentScale = parent ? parent->transform.worldScale : math::Vector3::ONE;
     const auto scaledAxis = [](float x, float y, float z, float parentAxis, float originalLocal) {
         const float parentMagnitude = std::abs(parentAxis);
-        if (parentMagnitude < 1e-6f) return 0.0f;
+        if (parentMagnitude < 1e-6f) {
+            return 0.0f;
+        }
         const float sign = std::signbit(originalLocal) ? -1.0f : 1.0f;
         return sign * std::sqrt(x * x + y * y + z * z) / parentMagnitude;
     };
@@ -196,14 +214,16 @@ void ApplySingleTargetPointScale(scene::GameObject& go, const math::Matrix4& wor
     scene::FlushWorldTransforms(go);
 }
 
-} /// @note namespace
+} // namespace
 
 bool WorldToScreen(const math::Vector3& world,
                    const EditorContext& ctx,
                    const ImVec2& vpMin, const ImVec2& vpSize,
                    ImVec2& out)
 {
-    if (!ctx.editorCamera) return false;
+    if (!ctx.editorCamera) {
+        return false;
+    }
     const math::Matrix4 vp = ctx.editorCamera->GetProjectionMatrix()
                            * ctx.editorCamera->GetViewMatrix();
     return WorldToScreen(world, vp, vpMin, vpSize, out);
@@ -215,7 +235,9 @@ bool WorldToScreen(const math::Vector3& world,
                    ImVec2& out)
 {
     const math::Vector4 clip = viewProjection * math::Vector4{ world.x, world.y, world.z, 1.0f };
-    if (clip.w <= 0.001f) return false;
+    if (clip.w <= 0.001f) {
+        return false;
+    }
     const float ndcX =  clip.x / clip.w;
     const float ndcY = -clip.y / clip.w;
     out = {
@@ -228,7 +250,7 @@ bool WorldToScreen(const math::Vector3& world,
 namespace {
 
 /// @brief ワールド空間の矢印を描く。
-/// @param direction ワールド方向。正規化は内部で行う。
+/// @param[in] direction ワールド方向。正規化は内部で行う。
 void DrawDirectionLine(EditorContext& ctx,
                        ImDrawList* dl,
                        const math::Vector3& start,
@@ -240,15 +262,21 @@ void DrawDirectionLine(EditorContext& ctx,
 {
     ImVec2 a;
     ImVec2 b;
-    if (!WorldToScreen(start, ctx, vpMin, vpSize, a)) return;
-    if (!WorldToScreen(start + direction.Normalized() * length, ctx, vpMin, vpSize, b)) return;
+    if (!WorldToScreen(start, ctx, vpMin, vpSize, a)) {
+        return;
+    }
+    if (!WorldToScreen(start + direction.Normalized() * length, ctx, vpMin, vpSize, b)) {
+        return;
+    }
 
     dl->AddLine(a, b, color, 2.0f);
 
     const float dx = b.x - a.x;
     const float dy = b.y - a.y;
     const float len = std::sqrt(dx * dx + dy * dy);
-    if (len <= 0.001f) return;
+    if (len <= 0.001f) {
+        return;
+    }
 
     const float ux = dx / len;
     const float uy = dy / len;
@@ -262,7 +290,9 @@ void DrawWorldPolyline(EditorContext& ctx, ImDrawList* dl,
                        std::span<const math::Vector3> points, bool closed,
                        const ImVec2& vpMin, const ImVec2& vpSize, ImU32 color, float thickness)
 {
-    if (points.size() < 2 || !ctx.editorCamera) return;
+    if (points.size() < 2 || !ctx.editorCamera) {
+        return;
+    }
     const math::Matrix4 viewProjection = ctx.editorCamera->GetProjectionMatrix()
                                        * ctx.editorCamera->GetViewMatrix();
     ImVec2 first{};
@@ -272,17 +302,23 @@ void DrawWorldPolyline(EditorContext& ctx, ImDrawList* dl,
     for (size_t i = 0; i < points.size(); ++i) {
         ImVec2 cur;
         const bool ok = WorldToScreen(points[i], viewProjection, vpMin, vpSize, cur);
-        if (ok && prevOk) dl->AddLine(prev, cur, color, thickness);
-        if (i == 0) { first = cur; firstOk = ok; }
+        if (ok && prevOk) {
+            dl->AddLine(prev, cur, color, thickness);
+        }
+        if (i == 0) {
+            first = cur;
+            firstOk = ok;
+        }
         prev = cur;
         prevOk = ok;
     }
-    if (closed && points.size() > 2 && prevOk && firstOk)
+    if (closed && points.size() > 2 && prevOk && firstOk) {
         dl->AddLine(prev, first, color, thickness);
+    }
 }
 
 /// @brief center を中心に axisU / axisV が張る面の円を描く。
-/// @param axisU 正規直交であること。
+/// @param[in] axisU 正規直交であること。
 void DrawWorldCircle(EditorContext& ctx, ImDrawList* dl,
                      const math::Vector3& center, const math::Vector3& axisU, const math::Vector3& axisV,
                      float radius, const ImVec2& vpMin, const ImVec2& vpSize, ImU32 color, float thickness)
@@ -308,7 +344,9 @@ ImU32 ScaleAlpha(ImU32 color, float alpha)
 void DrawWireSphere(EditorContext& ctx, ImDrawList* dl, const math::Vector3& center, float radius,
                     const ImVec2& vpMin, const ImVec2& vpSize, ImU32 color)
 {
-    if (radius <= 1.0e-4f || !ctx.editorCamera) return;
+    if (radius <= 1.0e-4f || !ctx.editorCamera) {
+        return;
+    }
     const ImU32 axisColor = ScaleAlpha(color, 0.45f);
     DrawWorldCircle(ctx, dl, center, math::Vector3::RIGHT, math::Vector3::FORWARD, radius, vpMin, vpSize, color, 1.5f);
     DrawWorldCircle(ctx, dl, center, math::Vector3::RIGHT, math::Vector3::UP,      radius, vpMin, vpSize, axisColor, 1.0f);
@@ -318,10 +356,14 @@ void DrawWireSphere(EditorContext& ctx, ImDrawList* dl, const math::Vector3& cen
     math::Vector3 toCamera = ortho ? ctx.editorCamera->GetForward() * -1.0f
                                    : ctx.editorCamera->m_position - center;
     const float d = toCamera.Length();
-    if (d <= radius + 1.0e-3f) return;
+    if (d <= radius + 1.0e-3f) {
+        return;
+    }
     const math::Vector3 n = toCamera * (1.0f / d);
     math::Vector3 u = math::Vector3::Cross(n, math::Vector3::UP);
-    if (u.LengthSq() < 1.0e-6f) u = math::Vector3::Cross(n, math::Vector3::RIGHT);
+    if (u.LengthSq() < 1.0e-6f) {
+        u = math::Vector3::Cross(n, math::Vector3::RIGHT);
+    }
     u = u.Normalized();
     const math::Vector3 v = math::Vector3::Cross(n, u).Normalized();
     const math::Vector3 rimCenter = ortho ? center : center + n * (radius * radius / d);
@@ -330,7 +372,7 @@ void DrawWireSphere(EditorContext& ctx, ImDrawList* dl, const math::Vector3& cen
 }
 
 /// @brief ワールド軸に沿った箱。
-/// @param halfExtents 各軸の半径 [m]。
+/// @param[in] halfExtents 各軸の半径 [m]。
 void DrawWireAabb(EditorContext& ctx, ImDrawList* dl, const math::Vector3& center, const math::Vector3& halfExtents,
                   const ImVec2& vpMin, const ImVec2& vpSize, ImU32 color)
 {
@@ -361,17 +403,23 @@ void DrawPcgFootprint(EditorContext& ctx, ImDrawList* draw, math::Vector3 low, m
     float y, const ImVec2& origin, const ImVec2& size, ImU32 color, const char* label)
 {
     low.y = high.y = y;
-    if (!ValidDebugBounds(low, high) || low.x == high.x || low.z == high.z) return;
+    if (!ValidDebugBounds(low, high) || low.x == high.x || low.z == high.z) {
+        return;
+    }
     const math::Vector3 corners[]{low, {high.x,y,low.z}, high, {low.x,y,high.z}};
     DrawWorldPolyline(ctx, draw, corners, true, origin, size, color, 2.0f);
     ImVec2 screen;
-    if (WorldToScreen(low * 0.5f + high * 0.5f, ctx, origin, size, screen)) draw->AddText(screen, color, label);
+    if (WorldToScreen(low * 0.5f + high * 0.5f, ctx, origin, size, screen)) {
+        draw->AddText(screen, color, label);
+    }
 }
 
 void DrawBiomeBounds(EditorContext& ctx, ImDrawList* draw, const scene::GameObject& owner,
     const scene::WorldBiomeVolumeComponent& biome, const ImVec2& origin, const ImVec2& size)
 {
-    if (!ValidDebugBounds(biome.boundsMin, biome.boundsMax)) return;
+    if (!ValidDebugBounds(biome.boundsMin, biome.boundsMax)) {
+        return;
+    }
     const bool enabled = biome.enabled && owner.activeInHierarchy();
     const auto color = enabled ? IM_COL32(105, 231, 158, 220) : IM_COL32(160, 166, 175, 130);
     const auto center = biome.boundsMin * 0.5f + biome.boundsMax * 0.5f;
@@ -390,8 +438,12 @@ void DrawBiomeBounds(EditorContext& ctx, ImDrawList* draw, const scene::GameObje
 math::Vector3 EvaluateSplineLocal(const scene::SplineComponent& spline, float normalized)
 {
     const int count = static_cast<int>(spline.points.size());
-    if (count == 0) return math::Vector3::ZERO;
-    if (count == 1) return spline.points.front();
+    if (count == 0) {
+        return math::Vector3::ZERO;
+    }
+    if (count == 1) {
+        return spline.points.front();
+    }
     const int segmentCount = spline.closed ? count : count - 1;
     const float scaled = math::Clamp(normalized, 0.0f, 1.0f) * static_cast<float>(segmentCount);
     const int segment = (std::min)(static_cast<int>(scaled), segmentCount - 1);
@@ -471,16 +523,19 @@ void DrawCameraFrustum(EditorContext& ctx,
         farVisible[i] = WorldToScreen(farCorners[i], ctx, vpMin, vpSize, farScreen[i]);
     }
 
-    /// @note 打ち切った遠平面は薄く描き、実際の farZ ではないことを見分けられるようにする。
+    // 打ち切った遠平面は薄く描き、実際の farZ ではないことを見分けられるようにする。
     const ImU32 farColor = farClipped ? ScaleAlpha(color, 0.35f) : color;
     for (int i = 0; i < 4; ++i) {
         const int next = (i + 1) % 4;
-        if (nearVisible[i] && nearVisible[next])
+        if (nearVisible[i] && nearVisible[next]) {
             dl->AddLine(nearScreen[i], nearScreen[next], color, 1.5f);
-        if (farVisible[i] && farVisible[next])
+        }
+        if (farVisible[i] && farVisible[next]) {
             dl->AddLine(farScreen[i], farScreen[next], farColor, 1.5f);
-        if (nearVisible[i] && farVisible[i])
+        }
+        if (nearVisible[i] && farVisible[i]) {
             dl->AddLine(nearScreen[i], farScreen[i], color, 1.5f);
+        }
     }
 }
 
@@ -492,17 +547,23 @@ bool ProjectIcon(const math::Vector3& world,
                  ImVec2& out)
 {
     const math::Vector4 clip = viewProjection * math::Vector4{ world.x, world.y, world.z, 1.0f };
-    if (clip.w <= 0.001f) return false;
+    if (clip.w <= 0.001f) {
+        return false;
+    }
 
     const float ndcX =  clip.x / clip.w;
     const float ndcY = -clip.y / clip.w;
     const float ndcZ =  clip.z / clip.w;
-    if (ndcZ < 0.0f || ndcZ > 1.0f) return false;
+    if (ndcZ < 0.0f || ndcZ > 1.0f) {
+        return false;
+    }
     constexpr float kMargin = 24.0f;
     const float sx = vpMin.x + (ndcX * 0.5f + 0.5f) * vpSize.x;
     const float sy = vpMin.y + (ndcY * 0.5f + 0.5f) * vpSize.y;
     if (sx < vpMin.x - kMargin || sx > vpMin.x + vpSize.x + kMargin ||
-        sy < vpMin.y - kMargin || sy > vpMin.y + vpSize.y + kMargin) return false;
+        sy < vpMin.y - kMargin || sy > vpMin.y + vpSize.y + kMargin) {
+        return false;
+    }
 
     out = { sx, sy };
     return true;
@@ -575,8 +636,9 @@ void DrawBadgeIcon(ImDrawList* dl, const SceneIconInstance& icon, const char* gl
 
     dl->AddRectFilled(a, b, color, 4.0f * icon.scale);
     dl->AddRect(a, b, IM_COL32(0, 0, 0, static_cast<int>(140 * icon.alpha)), 4.0f * icon.scale, 0, 1.5f);
-    if (selected)
+    if (selected) {
         dl->AddRect({ a.x - 3.0f, a.y - 3.0f }, { b.x + 3.0f, b.y + 3.0f }, kSelectedColor, 6.0f, 0, 2.0f);
+    }
 
     dl->AddText(ImGui::GetFont(), fontSize,
                 { icon.screenPos.x - textSize.x * 0.5f, icon.screenPos.y - textSize.y * 0.5f },
@@ -638,17 +700,26 @@ void DrawWaterGizmo(EditorContext& ctx, ImDrawList* dl, const scene::GameObject&
             }
             std::vector<math::Vector3> outline;
             outline.reserve(geometry->outlineIndices.size());
-            for (const auto index : geometry->outlineIndices) outline.push_back(vertices[index].worldPosition);
-            if (!outline.empty())
+            for (const auto index : geometry->outlineIndices) {
+                outline.push_back(vertices[index].worldPosition);
+            }
+            if (!outline.empty()) {
                 DrawWorldPolyline(ctx, dl, outline, true, vpMin, vpSize, IM_COL32(80, 200, 255, 200), 1.5f);
+            }
         }
         for (const auto& point : water.splinePoints) {
             const auto position = TransformPoint(world, point.localPosition);
             ImVec2 screen;
-            if (WorldToScreen(position, ctx, vpMin, vpSize, screen)) dl->AddCircleFilled(screen, 4.0f, IM_COL32(255, 215, 100, 230));
-            if (!geometry) continue;
+            if (WorldToScreen(position, ctx, vpMin, vpSize, screen)) {
+                dl->AddCircleFilled(screen, 4.0f, IM_COL32(255, 215, 100, 230));
+            }
+            if (!geometry) {
+                continue;
+            }
             scene::WaterSplineSample sample;
-            if (!scene::TrySampleWaterSpline(*geometry, position.x, position.z, sample)) continue;
+            if (!scene::TrySampleWaterSpline(*geometry, position.x, position.z, sample)) {
+                continue;
+            }
             const float speed = sample.worldVelocity.Length();
             if (speed > 1.0e-3f)
                 DrawDirectionLine(ctx, dl, position, sample.worldVelocity / speed,
@@ -686,8 +757,9 @@ void DrawSelectedVolumes(EditorContext& ctx, ImDrawList* dl, scene::GameObject& 
 {
     const math::Vector3 pos = go.transform.worldPosition;
 
-    if (const auto* biome = go.GetComponent<scene::WorldBiomeVolumeComponent>())
+    if (const auto* biome = go.GetComponent<scene::WorldBiomeVolumeComponent>()) {
         DrawBiomeBounds(ctx, dl, go, *biome, vpMin, vpSize);
+    }
     if (const auto* pcg = go.GetComponent<scene::WorldPcgVolumeComponent>(); pcg && pcg->overrideBounds) {
         const auto color = pcg->enabled && go.activeInHierarchy() ? IM_COL32(96, 211, 255, 230) : IM_COL32(160, 166, 175, 130);
         DrawPcgFootprint(ctx, dl, pcg->boundsMin, pcg->boundsMax, pos.y, vpMin, vpSize, color, "PCG volume");
@@ -695,16 +767,19 @@ void DrawSelectedVolumes(EditorContext& ctx, ImDrawList* dl, scene::GameObject& 
 
     if (const auto* probe = go.GetComponent<scene::ReflectionProbeComponent>()) {
         const ImU32 col = IM_COL32(190, 190, 240, 220);
-        /// @note ReflectionProbeCapturePass は箱をワールド軸・回転無視・スケール無視で判定する。
-        if (probe->boxInfluence) DrawWireAabb(ctx, dl, pos, probe->boxExtents, vpMin, vpSize, col);
-        else                     DrawWireSphere(ctx, dl, pos, probe->influenceRadius, vpMin, vpSize, col);
+        // ReflectionProbeCapturePass は箱をワールド軸・回転無視・スケール無視で判定する。
+        if (probe->boxInfluence) {
+            DrawWireAabb(ctx, dl, pos, probe->boxExtents, vpMin, vpSize, col);
+        } else {
+            DrawWireSphere(ctx, dl, pos, probe->influenceRadius, vpMin, vpSize, col);
+        }
     }
 
     if (const auto* volume = go.GetComponent<scene::LightProbeVolumeComponent>()) {
         const ImU32 col = IM_COL32(240, 210, 120, 220);
-        /// @note LightProbeBakePass と同じく、箱はワールド軸・回転無視・スケール無視。
+        // LightProbeBakePass と同じく、箱はワールド軸・回転無視・スケール無視。
         DrawWireAabb(ctx, dl, pos, volume->boxExtents, vpMin, vpSize, col);
-        /// @note プローブは箱を格子に割った各セルの中心にある (LightProbeBakePass と同じ)。点が多すぎると絵を塞ぐので間引く。
+        // プローブは箱を格子に割った各セルの中心にある (LightProbeBakePass と同じ)。点が多すぎると絵を塞ぐので間引く。
         const auto grid = volume->ClampedGrid();
         const math::Vector3 boxMin = pos - volume->boxExtents;
         const math::Vector3 boxSize = volume->boxExtents * 2.0f;
@@ -716,13 +791,14 @@ void DrawSelectedVolumes(EditorContext& ctx, ImDrawList* dl, scene::GameObject& 
                     const math::Vector3 p{ boxMin.x + boxSize.x * t(x, grid[0]), boxMin.y + boxSize.y * t(y, grid[1]),
                                            boxMin.z + boxSize.z * t(z, grid[2]) };
                     ImVec2 sp;
-                    if (WorldToScreen(p, ctx, vpMin, vpSize, sp))
+                    if (WorldToScreen(p, ctx, vpMin, vpSize, sp)) {
                         dl->AddCircleFilled(sp, 2.5f, col);
+                    }
                 }
     }
 
     if (const auto* audio = go.GetComponent<scene::AudioSourceComponent>()) {
-        /// @note spatialBlend=0 (完全 2D) では距離が効かないので薄く描く。
+        // spatialBlend=0 (完全 2D) では距離が効かないので薄く描く。
         const float a = audio->spatialBlend > 0.0f ? 1.0f : 0.35f;
         DrawWireSphere(ctx, dl, pos, audio->minDistance, vpMin, vpSize, ScaleAlpha(IM_COL32(140, 220, 150, 230), a));
         DrawWireSphere(ctx, dl, pos, audio->maxDistance, vpMin, vpSize, ScaleAlpha(IM_COL32(140, 220, 150, 150), a));
@@ -737,12 +813,13 @@ void DrawSelectedVolumes(EditorContext& ctx, ImDrawList* dl, scene::GameObject& 
         const ImU32 col = IM_COL32(220, 140, 180, 220);
         DrawWireSphere(ctx, dl, pos, volume->influenceRadius, vpMin, vpSize, col);
         const float inner = volume->influenceRadius - volume->blendDistance;
-        if (volume->blendDistance > 0.0f && inner > 0.0f)
+        if (volume->blendDistance > 0.0f && inner > 0.0f) {
             DrawWireSphere(ctx, dl, pos, inner, vpMin, vpSize, ScaleAlpha(col, 0.5f));
+        }
     }
 
     if (const auto* agent = go.GetComponent<scene::NavMeshAgentComponent>()) {
-        /// @note Agent は高さを持たない (NavMeshSurface 側のベイク設定) ので足元の半径だけ描く。
+        // Agent は高さを持たない (NavMeshSurface 側のベイク設定) ので足元の半径だけ描く。
         DrawWorldCircle(ctx, dl, pos, math::Vector3::RIGHT, math::Vector3::FORWARD, agent->radius,
                         vpMin, vpSize, IM_COL32(120, 190, 120, 230), 2.0f);
     }
@@ -772,26 +849,35 @@ void DrawSelectedVolumes(EditorContext& ctx, ImDrawList* dl, scene::GameObject& 
         }
     }
 
-    if (const auto* water = go.GetComponent<scene::WaterComponent>())
+    if (const auto* water = go.GetComponent<scene::WaterComponent>()) {
         DrawWaterGizmo(ctx, dl, go, *water, vpMin, vpSize);
+    }
 }
 
-} /// @note namespace
+} // namespace
 
 void WorldAuthoringPanel::DrawSceneDebug(EditorContext& ctx, const ImVec2& origin, const ImVec2& size) const
 {
     if (!visible || !ctx.activeScene || !ctx.editorCamera || m_project != ctx.projectRoot
-        || m_sceneGeneration != ctx.activeScene->GetRenderSceneGeneration()) return;
+        || m_sceneGeneration != ctx.activeScene->GetRenderSceneGeneration()) {
+        return;
+    }
     auto* draw = ImGui::GetWindowDrawList();
     draw->PushClipRect(origin, {origin.x + size.x, origin.y + size.y}, true);
     if (m_showBiomeBounds) {
         std::size_t count = 0;
         for (const auto id : ctx.activeScene->GetEntities<scene::WorldBiomeVolumeComponent>()) {
-            if (count >= 128) break;
-            if (std::find(ctx.selectedEntities.begin(), ctx.selectedEntities.end(), id) != ctx.selectedEntities.end()) continue;
+            if (count >= 128) {
+                break;
+            }
+            if (std::find(ctx.selectedEntities.begin(), ctx.selectedEntities.end(), id) != ctx.selectedEntities.end()) {
+                continue;
+            }
             const auto* owner = ctx.activeScene->GetGameObject(id);
             const auto* biome = ctx.activeScene->GetComponent<scene::WorldBiomeVolumeComponent>(id);
-            if (!owner || !biome || owner->IsRuntimeGenerated()) continue;
+            if (!owner || !biome || owner->IsRuntimeGenerated()) {
+                continue;
+            }
             DrawBiomeBounds(ctx, draw, *owner, *biome, origin, size);
             ++count;
         }
@@ -812,14 +898,20 @@ void WorldAuthoringPanel::DrawSceneDebug(EditorContext& ctx, const ImVec2& origi
         const bool selectedOverride = volume && volume->overrideBounds
             && std::find(ctx.selectedEntities.begin(), ctx.selectedEntities.end(), owner->GetID()) != ctx.selectedEntities.end();
         if (current && minimum && maximum && !m_partialUpdate && (!selectedOverride || draftPreview)) {
-            const auto color = draftPreview ? IM_COL32(255, 205, 105, 240)
-                : volume->enabled && owner->activeInHierarchy() ? IM_COL32(96, 211, 255, 230) : IM_COL32(160, 166, 175, 130);
+            auto color = IM_COL32(255, 205, 105, 240);
+            if (!draftPreview) {
+                const bool activeVolume = volume->enabled && owner->activeInHierarchy();
+                color = activeVolume ? IM_COL32(96, 211, 255, 230) : IM_COL32(160, 166, 175, 130);
+            }
             DrawPcgFootprint(ctx, draw, minimum->AsVec3(), maximum->AsVec3(), y, origin, size, color,
                 draftPreview ? "Draft PCG bounds" : "PCG volume");
         }
-        if (m_partialUpdate || (!draftPreview && m_volumeDraft && m_overrideBounds && (!volume || !volume->overrideBounds
+        // 更新範囲を優先する。範囲を編集したドラフトは、既存のプレビューに現れない変更だけ別枠で描く。
+        const bool inspectDraftBounds = !m_partialUpdate && !draftPreview && m_volumeDraft && m_overrideBounds;
+        const bool showDraftBounds = inspectDraftBounds && (!volume || !volume->overrideBounds
             || volume->boundsMin.x != m_boundsMin[0] || volume->boundsMin.z != m_boundsMin[2]
-            || volume->boundsMax.x != m_boundsMax[0] || volume->boundsMax.z != m_boundsMax[2]))) {
+            || volume->boundsMax.x != m_boundsMax[0] || volume->boundsMax.z != m_boundsMax[2]);
+        if (m_partialUpdate || showDraftBounds) {
             const auto& low = m_partialUpdate ? m_updateBoundsMin : m_boundsMin;
             const auto& high = m_partialUpdate ? m_updateBoundsMax : m_boundsMax;
             DrawPcgFootprint(ctx, draw, {low[0],y,low[2]}, {high[0],y,high[2]},
@@ -842,22 +934,30 @@ void WorldAuthoringPanel::DrawSceneDebug(EditorContext& ctx, const ImVec2& origi
     const auto projection = ctx.editorCamera->GetViewProjection();
     const auto drawSites = [&](const char* key, bool rejected) {
         const auto* points = m_previewData.Find(key);
-        if (!points || !points->IsArray()) return;
+        if (!points || !points->IsArray()) {
+            return;
+        }
         constexpr ImU32 colors[]{IM_COL32(105,225,145,240), IM_COL32(95,203,255,240), IM_COL32(248,219,108,240),
             IM_COL32(196,148,255,240), IM_COL32(247,151,104,240), IM_COL32(109,238,219,240)};
         for (const auto& point : points->AsArray()) {
             const auto& rule = point.Find("rule")->AsString();
             const auto* reason = point.Find("reason");
             if ((!m_debugRule.empty() && rule != m_debugRule)
-                || (rejected && !m_debugReason.empty() && reason->AsString() != m_debugReason)) continue;
+                || (rejected && !m_debugReason.empty() && reason->AsString() != m_debugReason)) {
+                continue;
+            }
             ImVec2 screen;
-            if (!WorldToScreen(point.Find("position")->AsVec3(), projection, origin, size, screen)) continue;
+            if (!WorldToScreen(point.Find("position")->AsVec3(), projection, origin, size, screen)) {
+                continue;
+            }
             const auto& tint = rejected ? reason->AsString() : rule;
             const ImU32 color = colors[ImHashStr(tint.c_str()) % std::size(colors)];
             if (rejected) {
                 draw->AddLine({screen.x - 3,screen.y - 3}, {screen.x + 3,screen.y + 3}, color, 1.5f);
                 draw->AddLine({screen.x + 3,screen.y - 3}, {screen.x - 3,screen.y + 3}, color, 1.5f);
-            } else draw->AddCircleFilled(screen, 3.0f, color, 8);
+            } else {
+                draw->AddCircleFilled(screen, 3.0f, color, 8);
+            }
             if (hover) {
                 const float dx = mouse.x - screen.x, dy = mouse.y - screen.y;
                 if (const float distance = dx * dx + dy * dy; distance < nearest) {
@@ -868,8 +968,12 @@ void WorldAuthoringPanel::DrawSceneDebug(EditorContext& ctx, const ImVec2& origi
         }
     };
     if (current && (volume->enabled || draftPreview) && owner->activeInHierarchy()) {
-        if (m_showRejected) drawSites("rejectedPoints", true);
-        if (m_showAccepted) drawSites("points", false);
+        if (m_showRejected) {
+            drawSites("rejectedPoints", true);
+        }
+        if (m_showAccepted) {
+            drawSites("points", false);
+        }
     }
     if (hovered) {
         const auto* reason = hovered->Find("reason");
@@ -901,12 +1005,17 @@ bool IsSceneIconTypeVisible(const EditorContext& ctx, int type)
 
 void SetSceneIconTypeVisible(EditorContext& ctx, int type, bool visible)
 {
-    if (type < 0 || type >= kSceneIconCount) return;
+    if (type < 0 || type >= kSceneIconCount) {
+        return;
+    }
     const std::string_view key = SceneIconTypeKey(type);
     auto& hidden = ctx.hiddenSceneIcons;
     const auto it = std::find(hidden.begin(), hidden.end(), key);
-    if (visible && it != hidden.end()) hidden.erase(it);
-    else if (!visible && it == hidden.end()) hidden.emplace_back(key);
+    if (visible && it != hidden.end()) {
+        hidden.erase(it);
+    } else if (!visible && it == hidden.end()) {
+        hidden.emplace_back(key);
+    }
 }
 
 float SceneIconHitRadius(const SceneIconInstance& icon)
@@ -918,7 +1027,9 @@ void CollectSceneIcons(const EditorContext& ctx, const ImVec2& vpMin, const ImVe
                        std::vector<SceneIconInstance>& out)
 {
     out.clear();
-    if (!ctx.showSceneIcons || !ctx.activeScene || !ctx.editorCamera) return;
+    if (!ctx.showSceneIcons || !ctx.activeScene || !ctx.editorCamera) {
+        return;
+    }
     FBZZ_PROFILE_SCOPE("EditorViewport::CollectSceneIcons");
     const math::Matrix4 viewProjection = ctx.editorCamera->GetProjectionMatrix()
                                        * ctx.editorCamera->GetViewMatrix();
@@ -928,40 +1039,53 @@ void CollectSceneIcons(const EditorContext& ctx, const ImVec2& vpMin, const ImVe
     std::unordered_set<const scene::GameObject*> selection;
     selection.reserve(ctx.selectedEntities.size());
     for (const auto id : ctx.selectedEntities)
-        if (const auto* object = ctx.activeScene->GetGameObject(id)) selection.insert(object);
+        if (const auto* object = ctx.activeScene->GetGameObject(id)) {
+            selection.insert(object);
+        }
 
     std::unordered_map<uint64_t, int> stacked;
     for (int type = 0; type < kSceneIconCount; ++type) {
-        if (!IsSceneIconTypeVisible(ctx, type)) continue;
-        /// @note GetEntities<T>() で持ち主だけを引く。VFX Graph は 1 エフェクトでノード数ぶんの GO を作るので全 GO 走査は桁で重い。
+        if (!IsSceneIconTypeVisible(ctx, type)) {
+            continue;
+        }
+        // GetEntities<T>() で持ち主だけを引く。VFX Graph は 1 エフェクトでノード数ぶんの GO を作るので全 GO 走査は桁で重い。
         for (const scene::EntityID id : kSceneIcons[type].entities(*ctx.activeScene)) {
             const scene::GameObject* go = ctx.activeScene->GetGameObject(id);
-            if (!go) continue;
+            if (!go) {
+                continue;
+            }
 
             const math::Vector3& world = go->transform.worldPosition;
             const bool selected = selection.contains(go);
             float scale = 1.0f;
             float alpha = 1.0f;
-            /// @note 正投影は距離で見かけの大きさが変わらないので、縮小もフェードもしない。
+            // 正投影は距離で見かけの大きさが変わらないので、縮小もフェードもしない。
             if (!ortho && !selected) {
                 const float dist = (world - cameraPos).Length();
-                if (dist > kIconMaxDistance) continue;
+                if (dist > kIconMaxDistance) {
+                    continue;
+                }
                 scale = math::Clamp(kIconFullSizeDistance / (std::max)(dist, 1.0e-3f), kIconMinScale, 1.0f);
                 const float fadeStart = kIconMaxDistance * kIconFadeStart;
-                if (dist > fadeStart)
+                if (dist > fadeStart) {
                     alpha = 1.0f - (dist - fadeStart) / (kIconMaxDistance - fadeStart);
+                }
             }
 
             ImVec2 sp;
-            if (!ProjectIcon(world, viewProjection, vpMin, vpSize, sp)) continue;
+            if (!ProjectIcon(world, viewProjection, vpMin, vpSize, sp)) {
+                continue;
+            }
 
             int& order = stacked[(static_cast<uint64_t>(id.index) << 32) | id.generation];
             sp.x += static_cast<float>(order) * kIconStackOffset * scale;
             ++order;
 
-            /// @note 非アクティブを隠すとビューポートから選び直せなくなるので、薄くして残す。
+            // 非アクティブを隠すとビューポートから選び直せなくなるので、薄くして残す。
             const bool active = go->activeInHierarchy();
-            if (!active) alpha *= 0.35f;
+            if (!active) {
+                alpha *= 0.35f;
+            }
 
             SceneIconInstance icon;
             icon.id        = id;
@@ -978,7 +1102,9 @@ void CollectSceneIcons(const EditorContext& ctx, const ImVec2& vpMin, const ImVe
 
 void DrawSceneIcons(EditorContext& ctx, const ImVec2& vpMin, const ImVec2& vpSize)
 {
-    if (!ctx.activeScene || !ctx.editorCamera) return;
+    if (!ctx.activeScene || !ctx.editorCamera) {
+        return;
+    }
 
     ImDrawList* dl = ImGui::GetWindowDrawList();
 
@@ -987,7 +1113,9 @@ void DrawSceneIcons(EditorContext& ctx, const ImVec2& vpMin, const ImVec2& vpSiz
 
     for (const SceneIconInstance& icon : icons) {
         scene::GameObject* go = ctx.activeScene->GetGameObject(icon.id);
-        if (!go) continue;
+        if (!go) {
+            continue;
+        }
         const SceneIconDef& def = kSceneIcons[icon.type];
         const bool selected = icon.selected;
         const ImU32 color = ScaleAlpha(def.color, icon.alpha);
@@ -995,10 +1123,12 @@ void DrawSceneIcons(EditorContext& ctx, const ImVec2& vpMin, const ImVec2& vpSiz
         switch (def.shape) {
         case IconShape::Light: {
             const auto* light = go->GetComponent<scene::LightComponent>();
-            if (!light) break;
+            if (!light) {
+                break;
+            }
             const ImU32 col = selected ? kSelectedColor : color;
             DrawLightIcon(dl, icon, col);
-            /// @note 範囲・形状のワイヤーは Overlay の "Light Range" (LightRangeDebugPass) が描く。ここでも描くと二重線になる。
+            // 範囲・形状のワイヤーは Overlay の "Light Range" (LightRangeDebugPass) が描く。ここでも描くと二重線になる。
             if (icon.active && light->enabled && light->type == scene::LightComponent::Type::Directional)
                 DrawDirectionLine(ctx, dl, go->transform.worldPosition, go->transform.forward,
                                   2.5f, vpMin, vpSize, col);
@@ -1006,13 +1136,16 @@ void DrawSceneIcons(EditorContext& ctx, const ImVec2& vpMin, const ImVec2& vpSiz
         }
         case IconShape::Camera: {
             const auto* camera = go->GetComponent<scene::CameraComponent>();
-            if (!camera) break;
+            if (!camera) {
+                break;
+            }
             const ImU32 col = selected ? kSelectedColor : color;
             DrawCameraIcon(dl, icon, col);
             DrawDirectionLine(ctx, dl, go->transform.worldPosition, go->transform.forward,
                               2.0f, vpMin, vpSize, col);
-            if (icon.active && camera->enabled)
+            if (icon.active && camera->enabled) {
                 DrawCameraFrustum(ctx, dl, go->transform, *camera, vpMin, vpSize, col);
+            }
             break;
         }
         case IconShape::Badge:
@@ -1021,10 +1154,11 @@ void DrawSceneIcons(EditorContext& ctx, const ImVec2& vpMin, const ImVec2& vpSiz
         }
     }
 
-    /// @note 範囲ワイヤーは選択中だけ。水面や音の最大距離は広く、常時出すと編集中ずっと視界を横切る。
+    // 範囲ワイヤーは選択中だけ。水面や音の最大距離は広く、常時出すと編集中ずっと視界を横切る。
     for (const scene::EntityID id : ctx.selectedEntities) {
-        if (scene::GameObject* go = ctx.activeScene->GetGameObject(id))
+        if (scene::GameObject* go = ctx.activeScene->GetGameObject(id)) {
             DrawSelectedVolumes(ctx, dl, *go, vpMin, vpSize);
+        }
     }
 }
 
@@ -1033,9 +1167,14 @@ bool DrawWaterHeadingEditor(EditorContext& ctx, WaterHeadingDrag& drag, const Im
 {
     auto* object = ctx.selectedEntities.size() == 1 ? ctx.GetSelectedGO() : nullptr;
     const auto* water = object ? object->GetComponent<scene::WaterComponent>() : nullptr;
-    if (!water || !water->enableGerstnerWaves || !ctx.editorCamera || !ctx.activeScene
-        || ctx.IsLocked(object->GetID()) || object->IsRuntimeGenerated()
-        || (water->waveAuthoring.preset == scene::WaterSeaPreset::AUTHORED && water->wavesAssetRef.path.empty())) {
+    // 選択中の水面を編集できる場合だけ、Gerstner 波の向きの操作を続ける。
+    const bool canEditWater = water && water->enableGerstnerWaves && ctx.editorCamera && ctx.activeScene
+        && !ctx.IsLocked(object->GetID()) && !object->IsRuntimeGenerated();
+    if (!canEditWater) {
+        drag = {};
+        return false;
+    }
+    if (water->waveAuthoring.preset == scene::WaterSeaPreset::AUTHORED && water->wavesAssetRef.path.empty()) {
         drag = {};
         return false;
     }
@@ -1044,7 +1183,9 @@ bool DrawWaterHeadingEditor(EditorContext& ctx, WaterHeadingDrag& drag, const Im
     const auto generation = ctx.activeScene->GetRenderSceneGeneration();
     const auto lifetime = ctx.activeScene->GetComponentLifetime<scene::WaterComponent>(owner);
     if (drag.owner != owner || drag.generation != generation || drag.lifetime != lifetime
-        || ImGui::IsKeyPressed(ImGuiKey_Escape) || ImGui::GetIO().KeyAlt) drag = {};
+        || ImGui::IsKeyPressed(ImGuiKey_Escape) || ImGui::GetIO().KeyAlt) {
+        drag = {};
+    }
     const bool active = drag.owner.IsValid();
     math::Vector3 origin = object->transform.worldPosition;
     ImVec2 screen;
@@ -1053,8 +1194,9 @@ bool DrawWaterHeadingEditor(EditorContext& ctx, WaterHeadingDrag& drag, const Im
         || screen.y < vpMin.y + 40.0f || screen.y > vpMin.y + vpSize.y - 40.0f)) {
         const math::Ray centerRay{ctx.editorCamera->m_position, ctx.editorCamera->GetForward()};
         float distance = 0.0f;
-        if (centerRay.IntersectPlane(math::Plane::FromNormalAndPoint(math::Vector3::UP, origin), distance))
+        if (centerRay.IntersectPlane(math::Plane::FromNormalAndPoint(math::Vector3::UP, origin), distance)) {
             origin = centerRay.At(distance);
+        }
     }
     const math::Plane plane = math::Plane::FromNormalAndPoint(math::Vector3::UP, origin);
     if (active && ImGui::IsMouseDragging(ImGuiMouseButton_Left)) {
@@ -1102,8 +1244,9 @@ bool DrawWaterHeadingEditor(EditorContext& ctx, WaterHeadingDrag& drag, const Im
         if (hovered) {
             ImGui::SetMouseCursor(ImGuiMouseCursor_Hand);
             ImGui::SetTooltip("Main Swell %.1f deg\nDrag to set the travel direction", heading);
-            if (!active && ImGui::IsMouseClicked(ImGuiMouseButton_Left))
+            if (!active && ImGui::IsMouseClicked(ImGuiMouseButton_Left)) {
                 drag = {owner, generation, lifetime, heading, false};
+            }
         }
     }
     if (active && !ImGui::IsMouseDown(ImGuiMouseButton_Left)) {
@@ -1204,11 +1347,13 @@ void NavApplyYawPitch(EditorContext& ctx, float yaw, float pitch)
 float NavShortestAngle(float from, float to)
 {
     float d = std::fmod(to - from + 540.0f, 360.0f);
-    if (d < 0.0f) d += 360.0f;
+    if (d < 0.0f) {
+        d += 360.0f;
+    }
     return d - 180.0f;
 }
 
-} /// @note namespace
+} // namespace
 
 bool IsOrientationGizmoHovered() { return g_navGizmo.hovered; }
 bool IsOrientationGizmoActive()  { return g_navGizmo.pressed || g_navGizmo.animActive; }
@@ -1226,7 +1371,7 @@ void DrawOrientationGizmo(EditorContext& ctx, const ImVec2& viewportMin, const I
     const float  radius  = kNavSize * 0.5f;
     const float  axisLen = radius - kNavBallNearR - 1.0f;
 
-    /// @note view 行列の 3x3 は R^T なので、ワールド軸 e_i のビュー空間表現はその i 列目。ビュー空間は左手系で z がそのまま奥行き。
+    // view 行列の 3x3 は R^T なので、ワールド軸 e_i のビュー空間表現はその i 列目。ビュー空間は左手系で z がそのまま奥行き。
     const math::Matrix4 view = ctx.editorCamera->GetViewMatrix();
 
     struct NavBall {
@@ -1257,7 +1402,7 @@ void DrawOrientationGizmo(EditorContext& ctx, const ImVec2& viewportMin, const I
     const bool   inRegion = ImGui::IsWindowHovered()
                          && (mdx * mdx + mdy * mdy) <= radius * radius;
 
-    /// @note 重なったボールは手前を優先する (order の後ろほど手前)。
+    // 重なったボールは手前を優先する (order の後ろほど手前)。
     int hoverAxis = -1;
     if (inRegion && !s.pressed) {
         constexpr float kHitR = kNavBallNearR + 2.0f;
@@ -1265,13 +1410,16 @@ void DrawOrientationGizmo(EditorContext& ctx, const ImVec2& viewportMin, const I
             const NavBall& b  = balls[order[k]];
             const float    hx = mouse.x - b.pos.x;
             const float    hy = mouse.y - b.pos.y;
-            if (hx * hx + hy * hy <= kHitR * kHitR) { hoverAxis = b.axis; break; }
+            if (hx * hx + hy * hy <= kHitR * kHitR) {
+                hoverAxis = b.axis;
+                break;
+            }
         }
     }
     s.hovered     = inRegion;
     s.hoveredAxis = s.dragging ? -1 : (s.pressed ? s.pressedAxis : hoverAxis);
 
-    /// @note Alt+左ドラッグは DebugCamera のオービットに割り当て済み。ここでも掴むと回転量が二重になる。
+    // Alt+左ドラッグは DebugCamera のオービットに割り当て済み。ここでも掴むと回転量が二重になる。
     if (inRegion && !ImGui::GetIO().KeyAlt && ImGui::IsMouseClicked(ImGuiMouseButton_Left)) {
         s.pressed     = true;
         s.dragging    = false;
@@ -1285,8 +1433,9 @@ void DrawOrientationGizmo(EditorContext& ctx, const ImVec2& viewportMin, const I
         if (ImGui::IsMouseDown(ImGuiMouseButton_Left)) {
             const float mx = mouse.x - s.pressPos.x;
             const float my = mouse.y - s.pressPos.y;
-            if (!s.dragging && (mx * mx + my * my) > kNavDragSlop * kNavDragSlop)
+            if (!s.dragging && (mx * mx + my * my) > kNavDragSlop * kNavDragSlop) {
                 s.dragging = true;
+            }
             if (s.dragging) {
                 const ImVec2 delta = ImGui::GetIO().MouseDelta;
                 s.orbitYaw   += delta.x * kNavOrbitSens;
@@ -1300,8 +1449,10 @@ void DrawOrientationGizmo(EditorContext& ctx, const ImVec2& viewportMin, const I
                 float toYaw = 0.0f, toPitch = 0.0f;
                 NavForwardToYawPitch(targetFwd, toYaw, toPitch);
                 NavForwardToYawPitch(ctx.editorCamera->GetForward(), s.fromYaw, s.fromPitch);
-                /// @note 真上・真下は yaw が定まらないので今の向きを保つ。
-                if (kNavAxes[s.pressedAxis].dir.y != 0.0f) toYaw = s.fromYaw;
+                // 真上・真下は yaw が定まらないので今の向きを保つ。
+                if (kNavAxes[s.pressedAxis].dir.y != 0.0f) {
+                    toYaw = s.fromYaw;
+                }
                 s.toYaw      = s.fromYaw + NavShortestAngle(s.fromYaw, toYaw);
                 s.toPitch    = math::Clamp(toPitch, -89.9f, 89.9f);
                 s.animT      = 0.0f;
@@ -1319,10 +1470,12 @@ void DrawOrientationGizmo(EditorContext& ctx, const ImVec2& viewportMin, const I
         NavApplyYawPitch(ctx,
                          s.fromYaw   + (s.toYaw   - s.fromYaw)   * e,
                          s.fromPitch + (s.toPitch - s.fromPitch) * e);
-        if (t >= 1.0f) s.animActive = false;
+        if (t >= 1.0f) {
+            s.animActive = false;
+        }
     }
 
-    /// @note 背景円は描かない (シーンの見通しを塞ぐ)。代わりにボールと軸線に暗い縁取りを持たせる。
+    // 背景円は描かない (シーンの見通しを塞ぐ)。代わりにボールと軸線に暗い縁取りを持たせる。
     ImDrawList* dl = ImGui::GetWindowDrawList();
 
     for (int k = 0; k < 6; ++k) {
@@ -1350,15 +1503,16 @@ void DrawOrientationGizmo(EditorContext& ctx, const ImVec2& viewportMin, const I
             dl->AddCircle(b.pos, ballR, NavShade(base, 1.0f, 0.90f * fade), 20, 1.8f);
         }
 
-        /// @note 奥に回って縮んだボールは文字が潰れるのでラベルを出さない。
+        // 奥に回って縮んだボールは文字が潰れるのでラベルを出さない。
         if ((ax.positive || hot) && ballR >= 9.0f) {
             const ImVec2 ts = ImGui::CalcTextSize(ax.label);
             dl->AddText({ b.pos.x - ts.x * 0.5f, b.pos.y - ts.y * 0.5f },
                         NavShade(IM_COL32(18, 18, 20, 255), 1.0f, 0.92f * fade), ax.label);
         }
 
-        if (hot)
+        if (hot) {
             dl->AddCircle(b.pos, ballR + 3.0f, IM_COL32(255, 255, 255, 210), 24, 1.6f);
+        }
     }
 }
 
@@ -1375,20 +1529,24 @@ void DrawGizmo(EditorContext& ctx,
     scene::EntityID selected = ctx.PrimarySelected();
     if (!selected.IsValid() || !ctx.activeScene || !ctx.editorCamera
         || (temporary && !ctx.playMode->CanEditTemporaryScene(ctx.activeScene))) {
-        if (edit.active || prevOver || prevUsing)
+        if (edit.active || prevOver || prevUsing) {
             CancelGizmoEdit(ctx, lastOp, lastMode, prevOver, prevUsing);
+        }
         return;
     }
 
     scene::GameObject* go = ctx.activeScene->GetGameObject(selected);
     if (!go || (temporary && ctx.IsLocked(selected))) {
-        if (edit.active || prevOver || prevUsing)
+        if (edit.active || prevOver || prevUsing) {
             CancelGizmoEdit(ctx, lastOp, lastMode, prevOver, prevUsing);
+        }
         return;
     }
     const bool targetPointSelection = HasTargetPointSelection(ctx);
     if (targetPointSelection && !temporary && !IsControlPointAuthoringAllowed(ctx)) {
-        if (edit.active) CancelGizmoEdit(ctx, lastOp, lastMode, prevOver, prevUsing);
+        if (edit.active) {
+            CancelGizmoEdit(ctx, lastOp, lastMode, prevOver, prevUsing);
+        }
         return;
     }
     if (targetPointSelection) {
@@ -1400,8 +1558,9 @@ void DrawGizmo(EditorContext& ctx,
                 return !marker || (!ctx.IsLocked(id) && IsFiniteTargetPointPose(selectedObject->transform));
             });
         if (!validPose) {
-            if (edit.active || prevOver || prevUsing)
+            if (edit.active || prevOver || prevUsing) {
                 CancelGizmoEdit(ctx, lastOp, lastMode, prevOver, prevUsing);
+            }
             return;
         }
     }
@@ -1409,8 +1568,8 @@ void DrawGizmo(EditorContext& ctx,
     const math::Matrix4 view = ctx.editorCamera->GetViewMatrix();
     const math::Matrix4 projection = ctx.editorCamera->GetProjectionMatrix();
 
-    /// @note Pivot はプライマリのワールド行列をそのまま使う。Center は選択バウンズ中心に置き、回転は Local のときだけプライマリのワールド回転を借りる。
-    /// @note Center ではギズモ行列がどの Transform とも一致しないので、«ギズモの移動量» を全対象へ相対適用する経路に一本化する。
+    // Pivot はプライマリのワールド行列をそのまま使う。Center は選択バウンズ中心に置き、回転は Local のときだけプライマリのワールド回転を借りる。
+    // Center ではギズモ行列がどの Transform とも一致しないので、«ギズモの移動量» を全対象へ相対適用する経路に一本化する。
     const bool centerPivot = (ctx.gizmoPivot == EditorContext::GizmoPivot::Center);
     math::Matrix4 gizmoWorldRow = go->transform.GetWorldMatrix();
     if (centerPivot) {
@@ -1418,19 +1577,20 @@ void DrawGizmo(EditorContext& ctx,
         float         radius = 0.0f;
         if (ComputeSelectionBounds(ctx, center, radius)) {
             math::Matrix4 basis = math::Matrix4::Identity();
-            if (ctx.gizmoSpace == EditorContext::GizmoSpace::Local)
+            if (ctx.gizmoSpace == EditorContext::GizmoSpace::Local) {
                 basis = math::Matrix4::Rotate(go->transform.worldRotation);
+            }
             basis.m[0][3] = center.x;
             basis.m[1][3] = center.y;
             basis.m[2][3] = center.z;
             gizmoWorldRow = basis;
         }
     }
-    /// @note Simulated objects can move between frames. Keep ImGuizmo's drag basis under the cursor.
+    // Simulated objects can move between frames. Keep ImGuizmo's drag basis under the cursor.
     math::Matrix4 worldCol = ToColumnMajor(temporary && edit.active ? edit.playGizmoWorld : gizmoWorldRow);
     const bool orthographic = ctx.editorCamera->m_projection == renderer::ProjectionMode::Orthographic;
     if (temporary && !edit.active && !orthographic) {
-        /// @note ImGuizmo exits without popping its clip rect when a moving target passes behind the camera.
+        // ImGuizmo exits without popping its clip rect when a moving target passes behind the camera.
         const math::Vector4 origin{worldCol.m[3][0], worldCol.m[3][1], worldCol.m[3][2], 1.0f};
         if ((projection * (view * origin)).z < 0.001f) {
             prevOver = false;
@@ -1447,13 +1607,17 @@ void DrawGizmo(EditorContext& ctx,
 
     ImGuizmo::SetDrawlist();
     ImGuizmo::Enable(true);
-    /// @note ImGuizmo はハンドルの大きさを射影から逆算するので、ここを間違えると正投影でハンドルが伸び縮みして掴めない。
+    // ImGuizmo はハンドルの大きさを射影から逆算するので、ここを間違えると正投影でハンドルが伸び縮みして掴めない。
     ImGuizmo::SetOrthographic(orthographic);
     ImGuizmo::SetRect(viewportMin.x, viewportMin.y, viewportSize.x, viewportSize.y);
 
     ImGuizmo::OPERATION op = ImGuizmo::TRANSLATE;
-    if (ctx.gizmoMode == EditorContext::GizmoMode::Rotate) op = ImGuizmo::ROTATE;
-    if (ctx.gizmoMode == EditorContext::GizmoMode::Scale) op = ImGuizmo::SCALE;
+    if (ctx.gizmoMode == EditorContext::GizmoMode::Rotate) {
+        op = ImGuizmo::ROTATE;
+    }
+    if (ctx.gizmoMode == EditorContext::GizmoMode::Scale) {
+        op = ImGuizmo::SCALE;
+    }
 
     ImGuizmo::MODE mode = (ctx.gizmoSpace == EditorContext::GizmoSpace::World)
         ? ImGuizmo::WORLD
@@ -1470,7 +1634,7 @@ void DrawGizmo(EditorContext& ctx,
         lastMode = modeInt;
     }
 
-    /// @note Unity と同じく Ctrl 押下中はモーメンタリスナップ。設定でスナップ ON なら常時。
+    // Unity と同じく Ctrl 押下中はモーメンタリスナップ。設定でスナップ ON なら常時。
     const bool snapActive = ctx.snapEnabled || ImGui::GetIO().KeyCtrl;
 
     if (edit.active) {
@@ -1514,7 +1678,7 @@ void DrawGizmo(EditorContext& ctx,
     const bool gizmoUsing = ImGuizmo::IsUsing();
     const bool wasUsing = prevUsing;
     if (temporary && wasUsing && gizmoUsing && !ImGui::IsMouseDown(ImGuiMouseButton_Left)) {
-        /// @note Scale and Rotate can retain ImGuizmo's drag state when released outside the window.
+        // Scale and Rotate can retain ImGuizmo's drag state when released outside the window.
         CancelGizmoEdit(ctx, lastOp, lastMode, prevOver, prevUsing);
         return;
     }
@@ -1531,14 +1695,17 @@ void DrawGizmo(EditorContext& ctx,
         edit.startWorld.clear();
         edit.applyDelta.clear();
 
-        /// @note 子は親に追従するので、選択済みの祖先を持つ対象へ delta を掛けると二重に動く (Unity と同じ規則)。
+        // 子は親に追従するので、選択済みの祖先を持つ対象へ delta を掛けると二重に動く (Unity と同じ規則)。
         std::unordered_set<const scene::GameObject*> roots;
-        for (const auto id : CollectHierarchyRoots(*ctx.activeScene, ctx.selectedEntities))
+        for (const auto id : CollectHierarchyRoots(*ctx.activeScene, ctx.selectedEntities)) {
             roots.insert(ctx.activeScene->GetGameObject(id));
+        }
         std::unordered_set<const scene::GameObject*> locked;
         locked.reserve(ctx.lockedEntities.size());
         for (const auto id : ctx.lockedEntities)
-            if (const auto* object = ctx.activeScene->GetGameObject(id)) locked.insert(object);
+            if (const auto* object = ctx.activeScene->GetGameObject(id)) {
+                locked.insert(object);
+            }
 
         edit.entityIds.push_back(go->GetID());
         edit.instanceIds.push_back(go->instanceId);
@@ -1549,9 +1716,13 @@ void DrawGizmo(EditorContext& ctx,
         edit.applyDelta.push_back(centerPivot && roots.contains(go));
 
         for (scene::EntityID id : ctx.selectedEntities) {
-            if (id == selected) continue;
+            if (id == selected) {
+                continue;
+            }
             scene::GameObject* sel = ctx.activeScene->GetGameObject(id);
-            if (!sel || locked.contains(sel)) continue;
+            if (!sel || locked.contains(sel)) {
+                continue;
+            }
             edit.entityIds.push_back(sel->GetID());
             edit.instanceIds.push_back(sel->instanceId);
             edit.before.push_back(sel->transform);
@@ -1577,14 +1748,18 @@ void DrawGizmo(EditorContext& ctx,
 
     const math::Matrix4 worldRow = math::Matrix4::Transpose(worldCol);
     if (temporary) {
-        if (!edit.active) return;
+        if (!edit.active) {
+            return;
+        }
         edit.playGizmoWorld = worldRow;
         edit.playPoseChanged |= manipulated;
         edit.active = gizmoUsing;
-        if (!edit.playPoseChanged) return;
+        if (!edit.playPoseChanged) {
+            return;
+        }
     } else if (!gizmoUsing) {
         if (wasUsing && edit.active) {
-            /// @note 全対象の before/after を 1 コマンドにまとめる。分けるとマルチ選択の移動を選択数だけ Ctrl+Z する羽目になる。
+            // 全対象の before/after を 1 コマンドにまとめる。分けるとマルチ選択の移動を選択数だけ Ctrl+Z する羽目になる。
             scene::Scene* scene = ctx.activeScene;
             const std::vector<std::string> ids = edit.instanceIds;
             const std::vector<scene::Transform> before = edit.before;
@@ -1594,8 +1769,9 @@ void DrawGizmo(EditorContext& ctx,
             for (std::size_t i = 0; i < ids.size(); ++i) {
                 scene::GameObject* obj = scene->FindByGuid(ids[i]);
                 after.push_back(obj ? obj->transform : before[i]);
-                if (obj && !TransformAuthoringValuesEqual(before[i], after[i]))
+                if (obj && !TransformAuthoringValuesEqual(before[i], after[i])) {
                     anyChanged = true;
+                }
             }
             const auto markDirty = ctx.markSceneDirty;
             const char* description =
@@ -1605,23 +1781,27 @@ void DrawGizmo(EditorContext& ctx,
             if (ctx.undoStack && anyChanged) {
                 auto applyAll = [scene, ids, markDirty](const std::vector<scene::Transform>& values) {
                     for (std::size_t i = 0; i < ids.size(); ++i)
-                        if (auto* target = scene->FindByGuid(ids[i]))
+                        if (auto* target = scene->FindByGuid(ids[i])) {
                             target->transform = values[i];
-                    if (markDirty) markDirty();
+                        }
+                    if (markDirty) {
+                        markDirty();
+                    }
                 };
                 ctx.undoStack->Push(std::make_unique<LambdaCommand>(
                     description,
                     [applyAll, after]() { applyAll(after); },
                     [applyAll, before]() { applyAll(before); }));
             }
-            if (anyChanged && ctx.markSceneDirty)
+            if (anyChanged && ctx.markSceneDirty) {
                 ctx.markSceneDirty();
+            }
             edit.active = false;
         }
         return;
     }
 
-    /// @note 添字 0 (プライマリ) より先に他へ適用する。選択中の親が動いた後にプライマリのワールド行列を書けば、プライマリはギズモ位置へ一致する。
+    // 添字 0 (プライマリ) より先に他へ適用する。選択中の親が動いた後にプライマリのワールド行列を書けば、プライマリはギズモ位置へ一致する。
     auto applySelectionTransform = [&ctx, &edit, temporary](scene::GameObject& target,
                                                           const math::Matrix4& transform,
                                                           std::size_t index) {
@@ -1635,28 +1815,34 @@ void DrawGizmo(EditorContext& ctx,
             ApplyWorldRowToTransform(target, transform);
         }
         if (temporary) {
-            /// @note PhysicsSystem consumes explicit Transform poses on the next fixed step.
+            // PhysicsSystem consumes explicit Transform poses on the next fixed step.
             scene::FlushWorldTransforms(target);
             auto* body = target.GetComponent<scene::RigidBodyComponent>();
-            if (body && body->enabled && body->rigidBody && !body->rigidBody->IsStatic())
+            if (body && body->enabled && body->rigidBody && !body->rigidBody->IsStatic()) {
                 body->rigidBody->WakeUp();
+            }
         }
     };
     const math::Matrix4 delta = worldRow * edit.gizmoStartWorldInv;
     for (std::size_t i = edit.instanceIds.size(); i-- > 0; ) {
-        if (!edit.applyDelta[i]) continue;
-        if (auto* other = ctx.activeScene->FindByGuid(edit.instanceIds[i]))
+        if (!edit.applyDelta[i]) {
+            continue;
+        }
+        if (auto* other = ctx.activeScene->FindByGuid(edit.instanceIds[i])) {
             applySelectionTransform(*other, delta * edit.startWorld[i], i);
+        }
     }
 
-    /// @note Pivot のギズモ行列はプライマリ自身のワールド行列なので直接書き戻す。
-    if (!centerPivot)
+    // Pivot のギズモ行列はプライマリ自身のワールド行列なので直接書き戻す。
+    if (!centerPivot) {
         applySelectionTransform(*go, worldRow, 0);
+    }
 
     for (std::size_t i = 0; i < edit.entityIds.size(); ++i) {
-        if (auto* target = ctx.activeScene->GetGameObject(edit.entityIds[i]))
+        if (auto* target = ctx.activeScene->GetGameObject(edit.entityIds[i])) {
             edit.lastApplied[i] = target->transform;
+        }
     }
 }
 
-} /// @note namespace fbzz::editor
+} // namespace fbzz::editor

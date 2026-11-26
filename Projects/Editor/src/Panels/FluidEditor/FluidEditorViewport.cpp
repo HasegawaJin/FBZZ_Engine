@@ -32,7 +32,9 @@ namespace fbzz::editor::fluideditor {
 int FluidViewportLiveFrameCount(const State& state, const fluid::FluidRecipe& recipe)
 {
     const int fromPreview = state.preview.FrameCount();
-    if (fromPreview > 0) return fromPreview;
+    if (fromPreview > 0) {
+        return fromPreview;
+    }
     return (std::max)(recipe.output.columns * recipe.output.rows, 1);
 }
 
@@ -68,7 +70,9 @@ void DrawChecker(ImDrawList* drawList, ImVec2 min, float side)
     for (int y = 0; y < cells; ++y) {
         for (int x = 0; x < cells; ++x) {
             const ImU32 background = FluidPreviewBackgroundPixel(x * 8, y * 8, true);
-            if (background == FluidPreviewBackgroundPixel(0, 0, true)) continue;
+            if (background == FluidPreviewBackgroundPixel(0, 0, true)) {
+                continue;
+            }
             const ImVec2 a{ min.x + static_cast<float>(x) * kCheckerCellPixels,
                             min.y + static_cast<float>(y) * kCheckerCellPixels };
             const ImVec2 b{ (std::min)(a.x + kCheckerCellPixels, min.x + side),
@@ -82,7 +86,9 @@ void DrawFrameFallback(ImDrawList* drawList, const asset::FluidFrameImage& frame
                        bool checkerBackground, ImVec2 min, float side)
 {
     const int size = frame.size;
-    if (size <= 0 || frame.rgba.size() < static_cast<std::size_t>(size) * static_cast<std::size_t>(size) * 4u) return;
+    if (size <= 0 || frame.rgba.size() < static_cast<std::size_t>(size) * static_cast<std::size_t>(size) * 4u) {
+        return;
+    }
     const int cells = (std::min)(size, kFallbackCells);
     const float cell = side / static_cast<float>(cells);
     for (int cy = 0; cy < cells; ++cy) {
@@ -119,8 +125,9 @@ float HandleDepth(const fluid::FluidRecipe& recipe, const FluidPartHandle& handl
     VisitPart(recipe, handle.list, handle.index, [&](const auto& part) {
         depth = part.center.z;
         if (handle.kind == FluidHandleKind::MotionKey) {
-            if (handle.keyIndex >= 0 && handle.keyIndex < static_cast<int>(part.motion.keys.size()))
+            if (handle.keyIndex >= 0 && handle.keyIndex < static_cast<int>(part.motion.keys.size())) {
                 depth += part.motion.keys[static_cast<std::size_t>(handle.keyIndex)].offset.z;
+            }
         } else {
             depth += MotionOffsetAt(part.motion, solverTime).z;
         }
@@ -160,7 +167,9 @@ void FluidViewportCenteredHint(ImDrawList* drawList, ImVec2 min, float side, con
     const int lines = hint != nullptr ? 2 : 1;
     float y = center.y - lineHeight * static_cast<float>(lines) * 0.5f;
     const auto line = [&](const char* text, ImU32 color) {
-        if (text == nullptr) return;
+        if (text == nullptr) {
+            return;
+        }
         const ImVec2 size = ImGui::CalcTextSize(text);
         drawList->AddText({ center.x - size.x * 0.5f, y }, color, text);
         y += lineHeight;
@@ -185,20 +194,27 @@ enum class FluidComparePlacement : std::uint8_t { Single, SideBySide, Stacked };
 /// @note それも無理なら単独表示へ戻す。
 FluidComparePlacement FluidViewportResolveComparePlacement(bool wanted, ImVec2 region)
 {
-    if (!wanted) return FluidComparePlacement::Single;
+    if (!wanted) {
+        return FluidComparePlacement::Single;
+    }
     const ImVec2 spacing = ImGui::GetStyle().ItemSpacing;
-    if ((region.x - spacing.x) * 0.5f >= kFluidComparePaneMin) return FluidComparePlacement::SideBySide;
-    /// @note 縦に積むと枠ごとの見出しが 1 行ずつ要る。
+    if ((region.x - spacing.x) * 0.5f >= kFluidComparePaneMin) {
+        return FluidComparePlacement::SideBySide;
+    }
+    // 縦に積むと枠ごとの見出しが 1 行ずつ要る。
     const float header = ImGui::GetTextLineHeightWithSpacing();
-    if ((region.y - spacing.y) * 0.5f - header >= kFluidComparePaneMin)
+    if ((region.y - spacing.y) * 0.5f - header >= kFluidComparePaneMin) {
         return FluidComparePlacement::Stacked;
+    }
     return FluidComparePlacement::Single;
 }
 
 /// @note 液体は Liquid でしか描けず、気体に Liquid を指定しても描けない (FluidPreviewCache と同じ丸め)。
 fluid::FluidShading FluidViewportEffectiveShading(const fluid::FluidRecipe& recipe)
 {
-    if (recipe.kind == fluid::FluidKind::Liquid) return fluid::FluidShading::Liquid;
+    if (recipe.kind == fluid::FluidKind::Liquid) {
+        return fluid::FluidShading::Liquid;
+    }
     return recipe.render.shading == fluid::FluidShading::Liquid ? fluid::FluidShading::Smoke
                                                                 : recipe.render.shading;
 }
@@ -244,7 +260,9 @@ void FluidViewportScanBakedAtlas(State& state, FluidViewportBakedAtlas& baked)
     const std::string fluidPath = state.document.Path();
     baked = FluidViewportBakedAtlas{};
     baked.fluidPath = fluidPath;
-    if (fluidPath.empty()) return;
+    if (fluidPath.empty()) {
+        return;
+    }
 
     const std::string stem =
         util::FileSystem::PathToUtf8(util::FileSystem::PathFromUtf8(fluidPath).replace_extension());
@@ -253,29 +271,33 @@ void FluidViewportScanBakedAtlas(State& state, FluidViewportBakedAtlas& baked)
         std::string path;
         bool volume;
     };
-    /// @note 名前は Baked タブと同じ規則 (3D は `<stem>`.png、2D は `<stem>`_Flipbook.png)。PNG が原本なので先に見る。
+    // 名前は Baked タブと同じ規則 (3D は `<stem>`.png、2D は `<stem>`_Flipbook.png)。PNG が原本なので先に見る。
     std::vector<Candidate> candidates;
     if (state.document.Recipe().bake.mode == fluid::FluidBakeMode::Volume3D) {
         candidates.push_back({ stem + ".png", true });
         candidates.push_back({ stem + ".dds", true });
     }
-    /// @note _Flipbook は焼き以外が付けない名前なので、モードを問わず見る (3D へ変えただけで «焼いていない»
-    /// @note       顔をしないように)。逆に `<stem>`.png は隣に置かれた別の絵かもしれないので 3D のときしか見ない。
+    // _Flipbook は焼き以外が付けない名前なので、モードを問わず見る (3D へ変えただけで «焼いていない»
+    // 顔をしないように)。逆に `<stem>`.png は隣に置かれた別の絵かもしれないので 3D のときしか見ない。
     candidates.push_back({ stem + "_Flipbook.png", false });
     candidates.push_back({ stem + "_Flipbook.dds", false });
     for (const Candidate& candidate : candidates) {
-        if (!util::FileSystem::Exists(candidate.path)) continue;
+        if (!util::FileSystem::Exists(candidate.path)) {
+            continue;
+        }
         baked.atlasPath = candidate.path;
         baked.volume = candidate.volume;
         baked.found = true;
         break;
     }
-    if (!baked.found) return;
+    if (!baked.found) {
+        return;
+    }
     baked.atlasAssetPath = NormalizeAssetPath(baked.atlasPath);
     baked.stamp = util::FileSystem::LastWriteTime(util::FileSystem::PathFromUtf8(baked.atlasPath));
 
-    /// @note 焼いたときの値はディスクの .fluid から読む。編集中のレシピは «焼いた後に変えたぶん» だけずれており、
-    /// @note       そのずれこそ並置で見たいもの。
+    // 焼いたときの値はディスクの .fluid から読む。編集中のレシピは «焼いた後に変えたぶん» だけずれており、
+    // そのずれこそ並置で見たいもの。
     fluid::FluidRecipe onDisk;
     const fluid::FluidRecipe& source =
         asset::LoadFluidRecipe(fluidPath, onDisk) ? onDisk : state.document.Recipe();
@@ -287,12 +309,13 @@ void FluidViewportScanBakedAtlas(State& state, FluidViewportBakedAtlas& baked)
     baked.premultiplied =
         baked.volume || asset::FluidShadingIsPremultiplied(FluidViewportEffectiveShading(source));
 
-    /// @note 隣の .mat は «焼いた結果そのもの» を持っている (Baked タブと同じ読み方)。
+    // 隣の .mat は «焼いた結果そのもの» を持っている (Baked タブと同じ読み方)。
     const std::string materialPath = SiblingMaterialPath(fluidPath);
     asset::MaterialAssetAuthoring material;
     if (materialPath.empty() || !util::FileSystem::Exists(materialPath)
-        || !asset::LoadMaterialAssetFromFile(materialPath, material))
+        || !asset::LoadMaterialAssetFromFile(materialPath, material)) {
         return;
+    }
     const asset::ParticleFlipbookSettings& flipbook = material.particle.flipbook;
     if (flipbook.FrameCount() > 1) {
         baked.columns = (std::max)(flipbook.spriteColumns, 1);
@@ -315,21 +338,26 @@ FluidViewportBakedAtlas& FluidViewportRefreshBakedAtlas(EditorContext& ctx, Stat
         baked.pollTimer += ImGui::GetIO().DeltaTime;
         if (baked.pollTimer >= kFluidCompareRescanInterval) {
             baked.pollTimer = 0.0f;
-            /// @note まだ焼かれていない間も見直す。焼けた瞬間に並びたい。
+            // まだ焼かれていない間も見直す。焼けた瞬間に並びたい。
             rescan = !baked.found || !util::FileSystem::Exists(baked.atlasPath)
                   || util::FileSystem::LastWriteTime(util::FileSystem::PathFromUtf8(baked.atlasPath))
                          != baked.stamp;
         }
     }
-    if (!rescan) return baked;
+    if (!rescan) {
+        return baked;
+    }
 
     const std::string previous = baked.atlasAssetPath;
     FluidViewportScanBakedAtlas(state, baked);
-    if (ctx.resources == nullptr) return baked;
+    if (ctx.resources == nullptr) {
+        return baked;
+    }
     baked.resetVersion = ctx.resources->GetResetVersion();
-    /// @note 同じ名前へ焼き直したときは、パスキャッシュが前の絵を返し続ける。
-    if (baked.found && !previous.empty() && baked.atlasAssetPath == previous)
+    // 同じ名前へ焼き直したときは、パスキャッシュが前の絵を返し続ける。
+    if (baked.found && !previous.empty() && baked.atlasAssetPath == previous) {
         baked.texture = ctx.resources->ReloadTexture(baked.atlasAssetPath);
+    }
     return baked;
 }
 
@@ -339,32 +367,40 @@ ImTextureID FluidViewportBakedTexture(EditorContext& ctx, FluidViewportBakedAtla
 {
     outWidth = 0;
     outHeight = 0;
-    if (!baked.found || ctx.resources == nullptr || ctx.imguiRenderer == nullptr) return ImTextureID{};
+    if (!baked.found || ctx.resources == nullptr || ctx.imguiRenderer == nullptr) {
+        return ImTextureID{};
+    }
 
     if (const std::uint64_t resetVersion = ctx.resources->GetResetVersion();
         resetVersion != baked.resetVersion) {
-        /// @note デバイスリセットで前のハンドルは無効。1 回だけ引き直す。
+        // デバイスリセットで前のハンドルは無効。1 回だけ引き直す。
         baked.resetVersion = resetVersion;
         baked.texture = {};
         baked.textureTried = false;
     }
     if (baked.texture.IsValid() && ctx.resources->Get(baked.texture) == nullptr) {
-        /// @note 誰かがキャッシュから外した (ホットリロード・削除)。引き直しは 1 回だけ許す。
+        // 誰かがキャッシュから外した (ホットリロード・削除)。引き直しは 1 回だけ許す。
         baked.texture = {};
         baked.textureTried = false;
     }
     if (!baked.texture.IsValid()) {
-        if (baked.textureTried) return ImTextureID{};
+        if (baked.textureTried) {
+            return ImTextureID{};
+        }
         baked.textureTried = true;
         baked.texture = ctx.resources->LoadTexture(baked.atlasAssetPath);
     }
     renderer::ITexture* gpu = ctx.resources->Get(baked.texture);
-    if (gpu == nullptr) return ImTextureID{};
+    if (gpu == nullptr) {
+        return ImTextureID{};
+    }
     outWidth = gpu->GetWidth();
     outHeight = gpu->GetHeight();
-    /// @note ID を覚え込まない。DX12 は «画素として読む» 状態への移行をここで積む。
+    // ID を覚え込まない。DX12 は «画素として読む» 状態への移行をここで積む。
     void* rawId = ctx.imguiRenderer->GetImTextureID(baked.texture, *ctx.resources);
-    if (rawId == nullptr) return ImTextureID{};
+    if (rawId == nullptr) {
+        return ImTextureID{};
+    }
     return widgets::ToImTextureID(rawId);
 }
 
@@ -387,7 +423,9 @@ FluidViewportAtlasGrid FluidViewportResolveAtlasGrid(const FluidViewportBakedAtl
     grid.frameCount = (std::max)(baked.frameCount, 1);
 
     const auto fits = [width, height](int columns, int rows) {
-        if (columns <= 0 || rows <= 0 || width == 0 || height == 0) return false;
+        if (columns <= 0 || rows <= 0 || width == 0 || height == 0) {
+            return false;
+        }
         const auto c = static_cast<std::uint32_t>(columns);
         const auto r = static_cast<std::uint32_t>(rows);
         return width % c == 0 && height % r == 0 && width / c == height / r;
@@ -395,13 +433,14 @@ FluidViewportAtlasGrid FluidViewportResolveAtlasGrid(const FluidViewportBakedAtl
     const auto tile = baked.frameSize > 0 ? static_cast<std::uint32_t>(baked.frameSize) : 0u;
     const bool divides = fits(grid.columns, grid.rows);
 
-    /// @note .mat のコマ割りは «焼きが書いた値» なので、割り切れればそれが正しい。.fluid の今の値はそうではない:
-    /// @note       コマ割りだけ変えて保存すると、たまたま割り切れて (2048² を 8x8 ではなく 4x4 と読む) 黙って別の
-    /// @note       コマを切り出す。1 コマの大きさで検算してから採る。
+    // .mat のコマ割りは «焼きが書いた値» なので、割り切れればそれが正しい。.fluid の今の値はそうではない:
+    // コマ割りだけ変えて保存すると、たまたま割り切れて (2048² を 8x8 ではなく 4x4 と読む) 黙って別の
+    // コマを切り出す。1 コマの大きさで検算してから採る。
     if (divides
         && (baked.gridFromMaterial || tile == 0u
-            || width / static_cast<std::uint32_t>(grid.columns) == tile))
+            || width / static_cast<std::uint32_t>(grid.columns) == tile)) {
         return grid;
+    }
 
     if (tile != 0u) {
         const int columns = static_cast<int>(width / tile);
@@ -415,7 +454,7 @@ FluidViewportAtlasGrid FluidViewportResolveAtlasGrid(const FluidViewportBakedAtl
         }
     }
     if (divides) {
-        /// @note 割り切れはする。«焼いたときの値» とは言い切れないので怪しいと出す。
+        // 割り切れはする。«焼いたときの値» とは言い切れないので怪しいと出す。
         grid.guessed = true;
         return grid;
     }
@@ -444,7 +483,9 @@ FluidViewportFrameMatch FluidViewportMatchFrame(const State& state, const fluid:
         return match;
     }
     match.ratio = true;
-    if (match.liveFrames <= 1) return match;
+    if (match.liveFrames <= 1) {
+        return match;
+    }
     const float ratio = static_cast<float>(liveFrame) / static_cast<float>(match.liveFrames - 1);
     match.frame = (std::min)(static_cast<int>(ratio * static_cast<float>(match.bakedFrames - 1) + 0.5f),
                              match.bakedFrames - 1);
@@ -469,8 +510,8 @@ void FluidViewportDrawBakedPane(EditorContext& ctx, State& state)
     const bool mismatched =
         hasImage && (match.ratio || durationDiffers || grid.guessed || !grid.fitsAtlas);
 
-    /// @name 見出し
-    /// @note 食い違いはここで言う。絵だけ見て «別のコマを並べている» とは気付けない。
+    // 見出し
+    // 食い違いはここで言う。絵だけ見て «別のコマを並べている» とは気付けない。
     if (hasImage) {
         ImGui::TextDisabled("Baked  frame %d / %d", match.frame + 1, match.bakedFrames);
         if (baked.premultiplied)
@@ -486,8 +527,9 @@ void FluidViewportDrawBakedPane(EditorContext& ctx, State& state)
             if (match.ratio)
                 ImGui::Text("Baked %d frames, editing %d: the playhead is matched by ratio.",
                             match.bakedFrames, match.liveFrames);
-            if (durationDiffers)
+            if (durationDiffers) {
                 ImGui::Text("Baked %.2f s, editing %.2f s.", baked.duration, liveDuration);
+            }
             if (grid.guessed)
                 ImGui::Text("The %d x %d frame grid was worked out from the atlas: no baked .mat to read it"
                             " from, and the .fluid was edited since.", grid.columns, grid.rows);
@@ -500,11 +542,13 @@ void FluidViewportDrawBakedPane(EditorContext& ctx, State& state)
         }
         ImGui::SameLine();
     }
-    if (ImGui::SmallButton("Reload##fe_cmp_reload")) FluidViewportRefreshBakedAtlas(ctx, state, true);
+    if (ImGui::SmallButton("Reload##fe_cmp_reload")) {
+        FluidViewportRefreshBakedAtlas(ctx, state, true);
+    }
     ImGui::SetItemTooltip("%s", baked.found ? baked.atlasAssetPath.c_str()
                                             : ".fluid の隣の焼き上がりをもう一度探す");
 
-    /// @name 絵
+    // 絵
     const ImVec2 canvasMin = ImGui::GetCursorScreenPos();
     const ImVec2 avail = ImGui::GetContentRegionAvail();
     const ImVec2 canvasSize{ (std::max)(avail.x, 32.0f), (std::max)(avail.y, 32.0f) };
@@ -515,14 +559,17 @@ void FluidViewportDrawBakedPane(EditorContext& ctx, State& state)
 
     const FluidViewportSquare square = FluidViewportSquareFor(state, canvasMin, canvasSize);
     const ImVec2 squareMax{ square.min.x + square.side, square.min.y + square.side };
-    if (state.checkerBackground) DrawChecker(drawList, square.min, square.side);
-    else drawList->AddRectFilled(square.min, squareMax, FluidPreviewBackgroundPixel(0, 0, false));
+    if (state.checkerBackground) {
+        DrawChecker(drawList, square.min, square.side);
+    } else {
+        drawList->AddRectFilled(square.min, squareMax, FluidPreviewBackgroundPixel(0, 0, false));
+    }
 
     if (hasImage) {
         ImVec2 uv0{ 0.0f, 0.0f };
         ImVec2 uv1{ 1.0f, 1.0f };
         if (grid.fitsAtlas) {
-            /// @note Atlas は左上から行優先 (FlipbookGrid の規約)。
+            // Atlas は左上から行優先 (FlipbookGrid の規約)。
             const int column = match.frame % grid.columns;
             const int row = match.frame / grid.columns;
             uv0 = { static_cast<float>(column) / static_cast<float>(grid.columns),
@@ -564,7 +611,7 @@ void FluidViewportDrawEditCanvas2D(State& state)
     drawList->AddRectFilled(canvasMin, canvasMax, kCanvasColor);
 
     const FluidViewportSquare square = FluidViewportSquareFor(state, canvasMin, canvasSize);
-    /// @note 画像の細かさはこの一辺に合わせる (解いて描くのは裏のスレッドなので、効くのは次のコマから)。
+    // 画像の細かさはこの一辺に合わせる (解いて描くのは裏のスレッドなので、効くのは次のコマから)。
     state.previewViewSide = square.side;
     FluidViewMapping mapping;
     mapping.origin = square.min;
@@ -576,18 +623,21 @@ void FluidViewportDrawEditCanvas2D(State& state)
     const FluidPartVisibility visible = [&document](FluidSelectionKind list, int index) {
         return PartShownInPreview(document, list, index);
     };
-    if (state.showOverlays)
+    if (state.showOverlays) {
         DrawFluidPartOverlays(drawList, mapping, recipe, state.playhead, document.selection, visible);
+    }
     drawList->PopClipRect();
 
     const ImVec2 mouse = io.MousePos;
 
-    /// @name つかむ
+    // つかむ
     if (state.showOverlays && !state.viewDrag.active) {
         const std::vector<FluidPartHandle> handles =
             CollectFluidPartHandles(mapping, recipe, state.playhead, document.selection, visible);
         const FluidPartHandle* over = hovered ? PickFluidPartHandle(handles, mouse) : nullptr;
-        if (over != nullptr) ImGui::SetMouseCursor(CursorFor(over->kind));
+        if (over != nullptr) {
+            ImGui::SetMouseCursor(CursorFor(over->kind));
+        }
 
         if (hovered && ImGui::IsMouseClicked(ImGuiMouseButton_Left)) {
             if (over != nullptr) {
@@ -601,16 +651,18 @@ void FluidViewportDrawEditCanvas2D(State& state)
                 drag.grabOffset = { mouse.x - over->screen.x, mouse.y - over->screen.y };
                 drag.undoLabel = UndoLabelFor(over->kind);
                 state.viewDrag = drag;
-                /// @note 掴んだだけで再生は止めない (止めるのはスクラブ・コマ送りだけ)。
+                // 掴んだだけで再生は止めない (止めるのはスクラブ・コマ送りだけ)。
                 document.BeginInteractiveEdit();
             } else {
                 const FluidSelection picked = PickFluidPart(mapping, recipe, state.playhead, mouse, visible);
-                if (picked.kind != FluidSelectionKind::None) document.selection = picked;
+                if (picked.kind != FluidSelectionKind::None) {
+                    document.selection = picked;
+                }
             }
         }
     }
 
-    /// @name 動かす (離したときの Undo は EndStaleDrags が積む)
+    // 動かす (離したときの Undo は EndStaleDrags が積む)
     if (state.viewDrag.active && ImGui::IsMouseDown(ImGuiMouseButton_Left) && document.InInteractiveEdit()) {
         ViewportDrag& drag = state.viewDrag;
         ImGui::SetMouseCursor(CursorFor(drag.handle.kind));
@@ -620,12 +672,13 @@ void FluidViewportDrawEditCanvas2D(State& state)
         const bool pastThreshold = drag.moved || std::fabs(delta.x) + std::fabs(delta.y) >= 1.0f;
         if (pastThreshold && (mouseMoved || shiftChanged || !drag.moved)) {
             ImVec2 target{ mouse.x - drag.grabOffset.x, mouse.y - drag.grabOffset.y };
-            /// @note Shift は押した位置から見て大きく動いた軸だけを残す。
+            // Shift は押した位置から見て大きく動いた軸だけを残す。
             if (io.KeyShift) {
-                if (std::fabs(delta.x) >= std::fabs(delta.y))
+                if (std::fabs(delta.x) >= std::fabs(delta.y)) {
                     target.y = drag.handle.screen.y;
-                else
+                } else {
                     target.x = drag.handle.screen.x;
+                }
             }
             math::Vector3 domain = mapping.ToDomain(target);
             domain.z = HandleDepth(recipe, drag.handle, state.playhead);
@@ -638,8 +691,10 @@ void FluidViewportDrawEditCanvas2D(State& state)
         }
     }
 
-    /// @name 視点
-    if (hovered && ImGui::IsMouseClicked(ImGuiMouseButton_Middle)) state.panning = true;
+    // 視点
+    if (hovered && ImGui::IsMouseClicked(ImGuiMouseButton_Middle)) {
+        state.panning = true;
+    }
     if (state.panning) {
         if (ImGui::IsMouseDown(ImGuiMouseButton_Middle)) {
             state.pan.x += io.MouseDelta.x;
@@ -652,7 +707,7 @@ void FluidViewportDrawEditCanvas2D(State& state)
     if (hovered && io.MouseWheel != 0.0f && !state.viewDrag.active) {
         const float before = state.zoom;
         state.zoom = ClampF(state.zoom * std::pow(1.15f, io.MouseWheel), 0.25f, 8.0f);
-        /// @note カーソルの下の点を動かさずに拡大する。
+        // カーソルの下の点を動かさずに拡大する。
         const float ratio = state.zoom / before;
         const ImVec2 squareCenter{ square.center.x + state.pan.x, square.center.y + state.pan.y };
         state.pan.x = mouse.x - (mouse.x - squareCenter.x) * ratio - square.center.x;
@@ -677,10 +732,11 @@ void DrawFluidPreviewSquare(ImDrawList* drawList, State& state, ImVec2 min, floa
     state.preview.SetPreviewSide(state.previewViewSide);
     state.preview.SetCheckerBackground(state.checkerBackground);
     const ImVec2 max{ min.x + side, min.y + side };
-    if (state.checkerBackground)
+    if (state.checkerBackground) {
         DrawChecker(drawList, min, side);
-    else
+    } else {
         drawList->AddRectFilled(min, max, FluidPreviewBackgroundPixel(0, 0, false));
+    }
 
     const ImTextureID texture = state.preview.TextureAt(state.playhead);
     fluid::FluidShading shading = fluid::FluidShading::Smoke;
@@ -700,13 +756,13 @@ void DrawViewport(EditorContext& ctx, State& state)
 {
     const fluid::FluidRecipe& recipe = state.document.Recipe();
 
-    /// @note 並べ方は道具の並びを描く «前» に決める。狭くて並べられないことをツールバーで言うため。
+    // 並べ方は道具の並びを描く «前» に決める。狭くて並べられないことをツールバーで言うため。
     ImVec2 region = ImGui::GetContentRegionAvail();
     region.y -= ImGui::GetFrameHeightWithSpacing();
     const FluidComparePlacement placement =
         FluidViewportResolveComparePlacement(state.compareBaked, region);
 
-    /// @note 開いた直後は «そのレシピが焼かれる形» を映す。人が切り替えたらもう戻さない。
+    // 開いた直後は «そのレシピが焼かれる形» を映す。人が切り替えたらもう戻さない。
     if (!state.viewModeChosen) {
         state.viewMode = recipe.bake.mode == fluid::FluidBakeMode::Volume3D ? ViewportMode::Volume3D
                                                                            : ViewportMode::Flat2D;
@@ -714,15 +770,17 @@ void DrawViewport(EditorContext& ctx, State& state)
     }
     ImGui::TextDisabled("Preview:");
     ImGui::SameLine();
-    if (ImGui::RadioButton("2D##fe_view2d", state.viewMode == ViewportMode::Flat2D))
+    if (ImGui::RadioButton("2D##fe_view2d", state.viewMode == ViewportMode::Flat2D)) {
         state.viewMode = ViewportMode::Flat2D;
+    }
     ImGui::SetItemTooltip("2D の平面シミュレーションをプレビューします。書き出し形式は Bake Mode で決まります。");
     ImGui::SameLine();
-    if (ImGui::RadioButton("3D##fe_view3d", state.viewMode == ViewportMode::Volume3D))
+    if (ImGui::RadioButton("3D##fe_view3d", state.viewMode == ViewportMode::Volume3D)) {
         state.viewMode = ViewportMode::Volume3D;
+    }
     ImGui::SetItemTooltip("3D 体積のライブレイマーチです。視点を回せるのは編集プレビューだけです。");
 
-    /// @note 2D と 3D は «同じものの別の見せ方» ではない。解く次元もレンダラーも別なので絵は必ず違う。
+    // 2D と 3D は «同じものの別の見せ方» ではない。解く次元もレンダラーも別なので絵は必ず違う。
     const bool bakes3D = recipe.bake.mode == fluid::FluidBakeMode::Volume3D;
     const bool viewing3D = state.viewMode == ViewportMode::Volume3D;
     ImGui::TextDisabled("Bake output: %s", bakes3D ? "3D single-view billboard flipbook" : "2D flipbook");
@@ -773,7 +831,7 @@ void DrawViewport(EditorContext& ctx, State& state)
 
     const ImVec2 avail = ImGui::GetContentRegionAvail();
     const ImVec2 spacing = ImGui::GetStyle().ItemSpacing;
-    /// @note 両方に同じ大きさを渡す。片方を «残り全部» にすると丸めで 1 画素ずれ、絵の大きさが揃わない。
+    // 両方に同じ大きさを渡す。片方を «残り全部» にすると丸めで 1 画素ずれ、絵の大きさが揃わない。
     const ImVec2 paneSize = placement == FluidComparePlacement::SideBySide
         ? ImVec2{ (std::max)((avail.x - spacing.x) * 0.5f, 32.0f), (std::max)(avail.y, 32.0f) }
         : ImVec2{ (std::max)(avail.x, 32.0f), (std::max)((avail.y - spacing.y) * 0.5f, 32.0f) };
@@ -786,9 +844,12 @@ void DrawViewport(EditorContext& ctx, State& state)
         FluidViewportDrawEditPane(ctx, state);
     }
     ImGui::EndChild();
-    if (placement == FluidComparePlacement::SideBySide) ImGui::SameLine();
-    if (ImGui::BeginChild("##fe_pane_baked", paneSize, ImGuiChildFlags_None, paneFlags))
+    if (placement == FluidComparePlacement::SideBySide) {
+        ImGui::SameLine();
+    }
+    if (ImGui::BeginChild("##fe_pane_baked", paneSize, ImGuiChildFlags_None, paneFlags)) {
         FluidViewportDrawBakedPane(ctx, state);
+    }
     ImGui::EndChild();
 }
 

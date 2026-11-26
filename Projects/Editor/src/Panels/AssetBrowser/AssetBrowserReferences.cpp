@@ -14,36 +14,44 @@ namespace {
 
 void DrawImportMetadata(const assetrefs::ImportMetadata& metadata)
 {
-    if (!metadata.sourceDcc.empty())
+    if (!metadata.sourceDcc.empty()) {
         ImGui::TextDisabled("Recorded import setting: model.source_dcc = %s", metadata.sourceDcc.c_str());
-    if (!metadata.importer.empty())
+    }
+    if (!metadata.importer.empty()) {
         ImGui::TextDisabled("Recorded importer: %s", metadata.importer.c_str());
-    if (metadata.importerVersion >= 0)
+    }
+    if (metadata.importerVersion >= 0) {
         ImGui::TextDisabled("Recorded importer version: %lld", static_cast<long long>(metadata.importerVersion));
-    if (metadata.unreadable)
+    }
+    if (metadata.unreadable) {
         ImGui::TextDisabled("Import metadata unavailable: missing access, changed, malformed or over 64 KiB.");
+    }
 }
 
-} /// @note namespace
+} // namespace
 
 void AssetBrowserPanel::StartFindReferences(EditorContext& ctx, const std::string& path)
 {
     AssetSearch::SetProjectRoot(ctx.projectRoot);
     m_findRefs.targetPath = path;
-    if (!m_findRefs.scan) m_findRefs.scan = std::make_shared<assetrefs::Scan>();
+    if (!m_findRefs.scan) {
+        m_findRefs.scan = std::make_shared<assetrefs::Scan>();
+    }
     m_findRefs.scan->Begin({ctx.projectRoot, path, AssetSearch::Revision(),
         asset::AssetDatabase::Revision(), AssetSearch::Entries()});
 }
 
 void AssetBrowserPanel::DrawFindRefsPopup(EditorContext& ctx)
 {
-    /// @note エントリの ID・表示方式・clipper に依存させず、パネルで一度だけ描く。
+    // エントリの ID・表示方式・clipper に依存させず、パネルで一度だけ描く。
     if (m_findRefs.open) {
         ImGui::OpenPopup("##find_refs");
         m_findRefs.open = false;
     }
     ImGui::SetNextWindowSize({720.0f, 620.0f}, ImGuiCond_Appearing);
-    if (!ImGui::BeginPopupModal("##find_refs", nullptr, ImGuiWindowFlags_NoTitleBar)) return;
+    if (!ImGui::BeginPopupModal("##find_refs", nullptr, ImGuiWindowFlags_NoTitleBar)) {
+        return;
+    }
 
     ImGui::TextUnformatted("Find References - saved reference evidence");
     ImGui::TextWrapped("%s", m_findRefs.targetPath.c_str());
@@ -53,7 +61,9 @@ void AssetBrowserPanel::DrawFindRefsPopup(EditorContext& ctx)
     } else if (!util::FileSystem::SamePathText(ctx.projectRoot, m_findRefs.scan->Result().projectRoot)) {
         ImGui::TextWrapped("The project changed. Close this window and request references for the current project.");
     } else {
-        if (ImGui::Button("Refresh saved references")) StartFindReferences(ctx, m_findRefs.targetPath);
+        if (ImGui::Button("Refresh saved references")) {
+            StartFindReferences(ctx, m_findRefs.targetPath);
+        }
         m_findRefs.scan->Advance();
         const auto& report = m_findRefs.scan->Result();
         const bool sameIndex = m_findRefs.scan->MatchesSnapshot(ctx.projectRoot,
@@ -65,8 +75,9 @@ void AssetBrowserPanel::DrawFindRefsPopup(EditorContext& ctx)
             static_cast<unsigned long long>(report.generation),
             static_cast<unsigned long long>(report.searchRevision),
             static_cast<unsigned long long>(report.databaseRevision));
-        if (!sameIndex)
+        if (!sameIndex) {
             ImGui::TextWrapped("The asset/GUID index changed. This snapshot is stale; refresh to capture it again.");
+        }
         ImGui::TextWrapped("On-demand saved-file snapshot. Content edits can occur without an index change; refresh after saving.");
         ImGui::TextDisabled("Added source / provenance: Unknown (not recorded by existing metadata).");
         ImGui::TextDisabled("Verification / sample / production role: Unknown (not recorded).");
@@ -77,17 +88,20 @@ void AssetBrowserPanel::DrawFindRefsPopup(EditorContext& ctx)
         ImGui::TextWrapped("Scripts/dynamic loading, binary/other formats, sidecar contents, external/shared owners, generated dependencies, transitive use and unsaved scenes are outside this scan. A serialized value alone does not prove runtime use.");
         ImGui::TextDisabled("Parsed %zu | unsupported indexed files %zu | unreadable/changed %zu | over limit %zu | invalid TOML %zu",
             report.parsed, report.unsupported, report.unreadable, report.oversized, report.malformed);
-        if (report.limited)
+        if (report.limited) {
             ImGui::TextWrapped("Partial result: the candidate, byte, depth, node or evidence limit was reached.");
-        if (report.unresolvedHints)
+        }
+        if (report.unresolvedHints) {
             ImGui::TextWrapped("Unresolved GUID hints are unverified candidates, shown separately from GUID/path matches.");
+        }
         ImGui::TextWrapped("No detected reference does not establish safe deletion.");
         ImGui::Separator();
         ImGui::TextDisabled("%zu owner file(s) with serialized evidence%s", report.owners.size(),
             report.finished ? "" : " (partial while reading)");
         ImGui::BeginChild("##refs_list", {0.0f, (std::max)(80.0f, ImGui::GetContentRegionAvail().y - 38.0f)}, true);
-        if (report.owners.empty())
+        if (report.owners.empty()) {
             ImGui::TextDisabled("%s", report.finished ? "No references detected in the scanned scope." : "No references detected so far.");
+        }
         for (const auto& owner : report.owners) {
             ImGui::PushID(owner.path.c_str());
             const auto relative = util::FileSystem::PathFromUtf8(owner.path).lexically_relative(
@@ -95,15 +109,18 @@ void AssetBrowserPanel::DrawFindRefsPopup(EditorContext& ctx)
             const std::string label = relative.empty() ? owner.path : util::FileSystem::PathToUtf8(relative);
             ImGui::TextDisabled("%s", owner.kind.c_str());
             if (ImGui::Selectable(label.c_str())) {
-                /// @note 既存 reveal 経路でフォルダ移動・選択・ping を行い、scene 自体は開かない。
+                // 既存 reveal 経路でフォルダ移動・選択・ping を行い、scene 自体は開かない。
                 ctx.requestRevealAssetPath = owner.path;
                 ctx.requestRevealAssetSelect = true;
                 ctx.selectedAssetPath = owner.path;
                 ImGui::CloseCurrentPopup();
             }
-            if (ImGui::IsItemHovered()) ImGui::SetTooltip("Show owner in Asset Browser\n%s", owner.path.c_str());
-            for (const auto& evidence : owner.evidence)
+            if (ImGui::IsItemHovered()) {
+                ImGui::SetTooltip("Show owner in Asset Browser\n%s", owner.path.c_str());
+            }
+            for (const auto& evidence : owner.evidence) {
                 ImGui::TextWrapped("  %s | line %u | %s", evidence.kind.c_str(), evidence.line, evidence.field.c_str());
+            }
             ImGui::TextDisabled("  Added source: Unknown | Verification role: Unknown");
             DrawImportMetadata(owner.metadata);
             ImGui::Separator();
@@ -111,8 +128,10 @@ void AssetBrowserPanel::DrawFindRefsPopup(EditorContext& ctx)
         }
         ImGui::EndChild();
     }
-    if (ImGui::Button("Close")) ImGui::CloseCurrentPopup();
+    if (ImGui::Button("Close")) {
+        ImGui::CloseCurrentPopup();
+    }
     ImGui::EndPopup();
 }
 
-} /// @note namespace fbzz::editor
+} // namespace fbzz::editor

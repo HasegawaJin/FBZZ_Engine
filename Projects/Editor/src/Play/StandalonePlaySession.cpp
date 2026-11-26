@@ -24,10 +24,15 @@ std::wstring QuoteArgument(const std::wstring& value)
     std::wstring result = L"\"";
     size_t backslashes = 0;
     for (const wchar_t character : value) {
-        if (character == L'\\') { ++backslashes; continue; }
+        if (character == L'\\') {
+            ++backslashes;
+            continue;
+        }
         result.append(backslashes * (character == L'"' ? 2 : 1), L'\\');
         backslashes = 0;
-        if (character == L'"') result.push_back(L'\\');
+        if (character == L'"') {
+            result.push_back(L'\\');
+        }
         result.push_back(character);
     }
     result.append(backslashes * 2, L'\\');
@@ -48,11 +53,16 @@ public:
     {
         Close();
         m_job = CreateJobObjectW(nullptr, nullptr);
-        if (!m_job) { diagnostic = Win32Error("CreateJobObject"); return false; }
+        if (!m_job) {
+            diagnostic = Win32Error("CreateJobObject");
+            return false;
+        }
         JOBOBJECT_EXTENDED_LIMIT_INFORMATION limits{};
         limits.BasicLimitInformation.LimitFlags = JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE;
         if (!SetInformationJobObject(m_job, JobObjectExtendedLimitInformation, &limits, sizeof(limits))) {
-            diagnostic = Win32Error("SetInformationJobObject"); Close(); return false;
+            diagnostic = Win32Error("SetInformationJobObject");
+            Close();
+            return false;
         }
         STARTUPINFOW startup{};
         startup.cb = sizeof(startup);
@@ -62,10 +72,12 @@ public:
         }
         PROCESS_INFORMATION process{};
         std::wstring command = StandalonePlaySession::CommandLine(request);
-        /// @note Suspend until job assignment so launch failure and Editor death cannot orphan a running game.
+        // Suspend until job assignment so launch failure and Editor death cannot orphan a running game.
         if (!CreateProcessW(request.executable.c_str(), command.data(), nullptr, nullptr, FALSE,
                             CREATE_SUSPENDED, nullptr, request.project.c_str(), &startup, &process)) {
-            diagnostic = Win32Error("CreateProcess"); Close(); return false;
+            diagnostic = Win32Error("CreateProcess");
+            Close();
+            return false;
         }
         m_process = process.hProcess;
         m_pid = process.dwProcessId;
@@ -82,12 +94,23 @@ public:
 
     PollResult Poll(uint32_t& exitCode, std::string& diagnostic) override
     {
-        if (!m_process) { diagnostic = "Standalone Play has no owned process handle."; return PollResult::FAILED; }
+        if (!m_process) {
+            diagnostic = "Standalone Play has no owned process handle.";
+            return PollResult::FAILED;
+        }
         const DWORD wait = WaitForSingleObject(m_process, 0);
-        if (wait == WAIT_TIMEOUT) return PollResult::RUNNING;
-        if (wait != WAIT_OBJECT_0) { diagnostic = Win32Error("Poll Standalone Play"); return PollResult::FAILED; }
+        if (wait == WAIT_TIMEOUT) {
+            return PollResult::RUNNING;
+        }
+        if (wait != WAIT_OBJECT_0) {
+            diagnostic = Win32Error("Poll Standalone Play");
+            return PollResult::FAILED;
+        }
         DWORD code = 0;
-        if (!GetExitCodeProcess(m_process, &code)) { diagnostic = Win32Error("Read Standalone exit code"); return PollResult::FAILED; }
+        if (!GetExitCodeProcess(m_process, &code)) {
+            diagnostic = Win32Error("Read Standalone exit code");
+            return PollResult::FAILED;
+        }
         exitCode = code;
         Close();
         return PollResult::EXITED;
@@ -95,13 +118,18 @@ public:
 
     bool RequestStop(std::string& diagnostic) override
     {
-        if (!m_process) { diagnostic = "Standalone Play has no owned process handle."; return false; }
+        if (!m_process) {
+            diagnostic = "Standalone Play has no owned process handle.";
+            return false;
+        }
         s_closingStandalonePid = m_pid;
         EnumWindows([](HWND window, LPARAM parameter) -> BOOL {
             (void)parameter;
             DWORD pid = 0;
             GetWindowThreadProcessId(window, &pid);
-            if (pid == s_closingStandalonePid) PostMessageW(window, WM_CLOSE, 0, 0);
+            if (pid == s_closingStandalonePid) {
+                PostMessageW(window, WM_CLOSE, 0, 0);
+            }
             return TRUE;
         }, 0);
         s_closingStandalonePid = 0;
@@ -110,8 +138,12 @@ public:
 
     bool Terminate(std::string& diagnostic) override
     {
-        if (!m_process || WaitForSingleObject(m_process, 0) == WAIT_OBJECT_0) return true;
-        if (TerminateProcess(m_process, 1)) return true;
+        if (!m_process || WaitForSingleObject(m_process, 0) == WAIT_OBJECT_0) {
+            return true;
+        }
+        if (TerminateProcess(m_process, 1)) {
+            return true;
+        }
         diagnostic = Win32Error("Terminate owned Standalone Play");
         return false;
     }
@@ -119,9 +151,15 @@ public:
 private:
     void Close()
     {
-        /// @note Closing this private job stops only this launch and its descendants, including on Editor crash.
-        if (m_job) { CloseHandle(m_job); m_job = nullptr; }
-        if (m_process) { CloseHandle(m_process); m_process = nullptr; }
+        // Closing this private job stops only this launch and its descendants, including on Editor crash.
+        if (m_job) {
+            CloseHandle(m_job);
+            m_job = nullptr;
+        }
+        if (m_process) {
+            CloseHandle(m_process);
+            m_process = nullptr;
+        }
         m_pid = 0;
     }
     HANDLE m_job = nullptr;
@@ -129,7 +167,7 @@ private:
     DWORD m_pid = 0;
 };
 
-} /// @note namespace
+} // namespace
 
 StandalonePlaySession::StandalonePlaySession() : StandalonePlaySession(std::make_unique<OwnedStandaloneProcess>()) {}
 StandalonePlaySession::StandalonePlaySession(std::unique_ptr<IStandalonePlayProcess> process) : m_process(std::move(process)) {}
@@ -166,32 +204,47 @@ std::wstring StandalonePlaySession::CommandLine(const StandalonePlayRequest& req
     std::wstring command = QuoteArgument(request.executable.wstring()) + L" --standalone --editor-play --project "
         + QuoteArgument(request.project.wstring()) + L" --play-scene " + QuoteArgument(request.scene.wstring())
         + L" --play-log " + QuoteArgument(request.log.wstring());
-    if (!request.allowPhysicalInput) command += L" --play-no-physical-input";
+    if (!request.allowPhysicalInput) {
+        command += L" --play-no-physical-input";
+    }
     return command;
 }
 
 bool StandalonePlaySession::Start(const StandalonePlayRequest& request)
 {
-    if (m_active) { m_diagnostic = "Standalone Play is already running; stop it before starting another session."; return false; }
+    if (m_active) {
+        m_diagnostic = "Standalone Play is already running; stop it before starting another session.";
+        return false;
+    }
     m_failed = false;
     m_exitCode = 0;
     m_log = request.log;
     m_diagnostic.clear();
     std::error_code error;
     const auto isFile = [&error](const std::filesystem::path& path) {
-        error.clear(); return std::filesystem::is_regular_file(path, error) && !error;
+        error.clear();
+        return std::filesystem::is_regular_file(path, error) && !error;
     };
-    if (!request.executable.is_absolute() || !request.project.is_absolute() || !request.scene.is_absolute()
-        || !request.log.is_absolute() || !isFile(request.executable) || !isFile(request.project / L".fbzz_proj")
-        || !isFile(request.scene)) {
+    // 子プロセスの作業ディレクトリに影響されないパスだけで、起動に必要なファイルを確認する。
+    const bool hasAbsolutePaths = request.executable.is_absolute() && request.project.is_absolute()
+        && request.scene.is_absolute() && request.log.is_absolute();
+    if (!hasAbsolutePaths || !isFile(request.executable) || !isFile(request.project / L".fbzz_proj") || !isFile(request.scene)) {
         m_diagnostic = "Standalone Play requires an existing executable, project and saved scene, with absolute paths.";
-        m_failed = true; return false;
+        m_failed = true;
+        return false;
     }
     std::filesystem::create_directories(request.log.parent_path(), error);
-    if (error) { m_diagnostic = "Could not create the Standalone Play log directory: " + error.message(); m_failed = true; return false; }
+    if (error) {
+        m_diagnostic = "Could not create the Standalone Play log directory: " + error.message();
+        m_failed = true;
+        return false;
+    }
     if (!m_process || !m_process->Start(request, m_diagnostic)) {
-        if (m_diagnostic.empty()) m_diagnostic = "Could not start Standalone Play.";
-        m_failed = true; return false;
+        if (m_diagnostic.empty()) {
+            m_diagnostic = "Could not start Standalone Play.";
+        }
+        m_failed = true;
+        return false;
     }
     m_active = true;
     m_stopRequested = false;
@@ -203,16 +256,22 @@ bool StandalonePlaySession::Start(const StandalonePlayRequest& request)
 
 void StandalonePlaySession::Stop()
 {
-    if (!m_active || m_stopRequested) return;
+    if (!m_active || m_stopRequested) {
+        return;
+    }
     m_stopRequested = true;
     m_stopSeconds = 0.0f;
     m_diagnostic = "Stopping owned Standalone Play...";
-    if (!m_process->RequestStop(m_diagnostic)) m_failed = true;
+    if (!m_process->RequestStop(m_diagnostic)) {
+        m_failed = true;
+    }
 }
 
 bool StandalonePlaySession::Tick(float elapsedSeconds)
 {
-    if (!m_active) return false;
+    if (!m_active) {
+        return false;
+    }
     std::string diagnostic;
     const auto result = m_process->Poll(m_exitCode, diagnostic);
     if (result == IStandalonePlayProcess::PollResult::EXITED) {
@@ -227,21 +286,31 @@ bool StandalonePlaySession::Tick(float elapsedSeconds)
         m_stopSeconds += (std::max)(0.0f, elapsedSeconds);
         if (m_stopSeconds >= 2.0f) {
             m_terminationRequested = m_process->Terminate(diagnostic);
-            if (!m_terminationRequested) m_failed = true;
+            if (!m_terminationRequested) {
+                m_failed = true;
+            }
         }
     }
     if (!diagnostic.empty() && diagnostic != m_diagnostic) {
-        m_diagnostic = std::move(diagnostic); m_failed = true; return true;
+        m_diagnostic = std::move(diagnostic);
+        m_failed = true;
+        return true;
     }
     return false;
 }
 
 void StandalonePlaySession::Shutdown()
 {
-    if (!m_active) return;
+    if (!m_active) {
+        return;
+    }
     std::string diagnostic;
-    if (!m_process->Terminate(diagnostic)) { m_failed = true; m_diagnostic = std::move(diagnostic); return; }
+    if (!m_process->Terminate(diagnostic)) {
+        m_failed = true;
+        m_diagnostic = std::move(diagnostic);
+        return;
+    }
     m_active = false;
 }
 
-} /// @note namespace fbzz::editor
+} // namespace fbzz::editor

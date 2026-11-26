@@ -22,10 +22,10 @@ struct PostProcessInspectorResult {
 };
 
 /// プロファイルのオーバーライドリストを編集する。
-/// @param reflector 各オーバーライドの描画に使う。projectRoot 等は呼び出し側で配線済み。
+/// @param[in,out] reflector 各オーバーライドの描画に使い、表示した項目の変更フラグを更新する。projectRoot 等は配線済みであること。
 /// @note パラメーター UI は ImGuiReflector に任せる。効果ごとに専用関数を書くと Engine/Editor
 ///       の 2 か所を触ることになるため、Reflect() のレンジ・カラーヒントを唯一の情報源にする。
-/// @param renderSettings 現在のレンダー設定。渡すと非対応オーバーライドにその旨を出す。null なら警告なし。
+/// @param[in] renderSettings 現在のレンダー設定。渡すと非対応オーバーライドにその旨を出す。null なら警告なし。
 /// @note null を許すのは、.fzdata 編集 UI としてレンダー設定を持たない文脈 (単体プレビュー等) からも呼べるため。
 PostProcessInspectorResult DrawVolumeOverrideListInspector(
     asset::PostProcessProfile& profile, ImGuiReflector& reflector,

@@ -26,7 +26,9 @@ bool IsScriptRequirementReviewCurrent(const EditorContext& ctx)
 
 void RefreshScriptRequirementReview(EditorContext& ctx)
 {
-    if (!CanReviewScriptRequirements(ctx)) return;
+    if (!CanReviewScriptRequirements(ctx)) {
+        return;
+    }
     auto& review = ctx.scriptRequirementReview;
     review.rows.clear();
     review.focus = {};
@@ -40,14 +42,20 @@ void RefreshScriptRequirementReview(EditorContext& ctx)
     for (const auto id : ctx.activeScene->GetEntities<scene::ScriptComponent>()) {
         auto* go = ctx.activeScene->GetGameObject(id);
         auto* component = ctx.activeScene->GetComponent<scene::ScriptComponent>(id);
-        if (!go || !component) continue;
+        if (!go || !component) {
+            continue;
+        }
         for (const auto& entry : component->scripts) {
-            if (!entry.script) { ++review.unavailableScripts; continue; }
+            if (!entry.script) {
+                ++review.unavailableScripts;
+                continue;
+            }
             ++review.scriptsChecked;
             std::vector<scene::ScriptRequirementIssue> issues;
             scene::CollectScriptRequirementIssues(*go, *entry.script, issues, false, true);
-            for (auto& issue : issues)
+            for (auto& issue : issues) {
                 review.rows.push_back({std::move(issue), entry.script->InspectionId()});
+            }
         }
     }
 }
@@ -109,20 +117,24 @@ void RegisterScriptRequirementOperators(OperatorRegistry& registry)
         auto& review = c.ctx.scriptRequirementReview;
         const int index = args.GetInt("index", -1);
         if (!IsScriptRequirementReviewCurrent(c.ctx) ||
-            args.GetInt("revision") != review.revision)
+            args.GetInt("revision") != review.revision) {
             return OpResult::Err("STALE_REVIEW", "検証結果が古いため、再検証してください。");
-        if (index < 0 || static_cast<std::size_t>(index) >= review.rows.size())
+        }
+        if (index < 0 || static_cast<std::size_t>(index) >= review.rows.size()) {
             return OpResult::Err("BAD_INDEX", "検証結果の行が見つかりません。");
+        }
         const auto& row = review.rows[static_cast<std::size_t>(index)];
         auto* go = c.ctx.activeScene->FindByGuid(row.issue.instanceId);
         auto* component = go ? go->GetComponent<scene::ScriptComponent>() : nullptr;
         scene::Script* script = nullptr;
         if (component)
             for (const auto& entry : component->scripts)
-                if (entry.script && entry.script->InspectionId() == row.scriptId)
+                if (entry.script && entry.script->InspectionId() == row.scriptId) {
                     script = entry.script.get();
-        if (!script)
+                }
+        if (!script) {
             return OpResult::Err("STALE_TARGET", "対象が削除・再読み込みされています。再検証してください。");
+        }
         SelectEntity(c.ctx, go->GetID(), SelectionReveal::Show);
         review.focus = {row.issue.instanceId, row.scriptId,
             row.issue.kind == scene::ScriptRequirementKind::Asset ||
@@ -135,4 +147,4 @@ void RegisterScriptRequirementOperators(OperatorRegistry& registry)
     };
     registry.Register(std::move(reveal));
 }
-} /// @note namespace fbzz::editor
+} // namespace fbzz::editor

@@ -34,8 +34,8 @@ constexpr const char* kParticleMaterialDir = "Assets/Materials/Particles";
 
 bool IsTextureAssetPath(const std::string& path)
 {
-    /// @note 判定もエンジン側の 1 つに寄せる。ここに写しを置くと «Editor は受けるのに
-    ///       エンジンは救わない» 拡張子が生まれる。
+    // 判定もエンジン側の 1 つに寄せる。ここに写しを置くと «Editor は受けるのに
+    // エンジンは救わない» 拡張子が生まれる。
     return asset::IsParticleTexturePath(path);
 }
 
@@ -45,40 +45,52 @@ std::string EnsureParticleMaterial(const std::string& projectRoot,
                                    std::string* outError)
 {
     const auto fail = [outError](const char* message) -> std::string {
-        if (outError != nullptr) *outError = message;
+        if (outError != nullptr) {
+            *outError = message;
+        }
         return {};
     };
 
-    if (texturePath.empty()) return fail("テクスチャが指定されていません");
-    if (!IsTextureAssetPath(texturePath))
+    if (texturePath.empty()) {
+        return fail("テクスチャが指定されていません");
+    }
+    if (!IsTextureAssetPath(texturePath)) {
         return fail("テクスチャではありません (.png/.tga/.dds/.jpg)");
+    }
 
     const std::string assetTexture = NormalizeAssetPath(texturePath);
     const std::string textureDisk = ToProjectAssetDiskPath(projectRoot, assetTexture);
-    if (!util::FileSystem::Exists(textureDisk))
+    if (!util::FileSystem::Exists(textureDisk)) {
         return fail("テクスチャが見つかりません");
+    }
 
-    /// @note 命名規則はエンジン側 (ParticleMaterialSettings) が正本。ここで組み立て直すと、
-    ///       «作る先» と «ParticlePass が探す先» が食い違って移行が空振りする。
+    // 命名規則はエンジン側 (ParticleMaterialSettings) が正本。ここで組み立て直すと、
+    // «作る先» と «ParticlePass が探す先» が食い違って移行が空振りする。
     const std::string assetMaterial =
         asset::ParticleMaterialPathForTexture(assetTexture, blend);
-    if (assetMaterial.empty()) return fail("素材名を作れませんでした");
+    if (assetMaterial.empty()) {
+        return fail("素材名を作れませんでした");
+    }
     const std::string materialDisk = ToProjectAssetDiskPath(projectRoot, assetMaterial);
 
-    /// @note 既存ならそのまま使う。上書きすると担当者が手で調整した .mat を壊す。
-    if (util::FileSystem::Exists(materialDisk)) return assetMaterial;
+    // 既存ならそのまま使う。上書きすると担当者が手で調整した .mat を壊す。
+    if (util::FileSystem::Exists(materialDisk)) {
+        return assetMaterial;
+    }
 
     if (!util::FileSystem::EnsureDirectory(
-            ToProjectAssetDiskPath(projectRoot, kParticleMaterialDir)))
+            ToProjectAssetDiskPath(projectRoot, kParticleMaterialDir))) {
         return fail("Assets/Materials/Particles を作成できません");
+    }
 
-    /// @note テクスチャ参照は guid で書く。パスで書くと、素材を別フォルダーへ移した瞬間に
-    ///       .mat 側だけが取り残されて「移動しただけで白くなる」ことになる。
+    // テクスチャ参照は guid で書く。パスで書くと、素材を別フォルダーへ移した瞬間に
+    // .mat 側だけが取り残されて「移動しただけで白くなる」ことになる。
     std::string textureRef = assetTexture;
-    if (const std::string guid = asset::AssetDatabase::GuidFromPath(textureDisk); !guid.empty())
+    if (const std::string guid = asset::AssetDatabase::GuidFromPath(textureDisk); !guid.empty()) {
         textureRef = std::string(asset::AssetDatabase::kGuidPrefix) + guid;
+    }
 
-    /// @note 見出しは «素材名» だけを出す。パスは下の「素材:」行と重複する。
+    // 見出しは «素材名» だけを出す。パスは下の「素材:」行と重複する。
     const std::string materialName =
         assetMaterial.substr(assetMaterial.find_last_of('/') + 1);
 
@@ -104,13 +116,14 @@ std::string EnsureParticleMaterial(const std::string& projectRoot,
     body += "\n[params]\n";
     body += "albedo = [1.0, 1.0, 1.0, 1.0]\n";
 
-    if (!util::FileSystem::WriteText(materialDisk, body))
+    if (!util::FileSystem::WriteText(materialDisk, body)) {
         return fail("マテリアルを書き出せません");
+    }
 
-    /// @note 生成直後に .meta を確定させる。索引に載る前に他所から guid 参照されると
-    ///       「作ったのに壊れた参照」になるため、ここで自己修復を 1 回走らせておく。
+    // 生成直後に .meta を確定させる。索引に載る前に他所から guid 参照されると
+    // 「作ったのに壊れた参照」になるため、ここで自己修復を 1 回走らせておく。
     (void)asset::AssetDatabase::GuidFromPath(materialDisk);
-    /// @note 実体が生まれる前に一度でも参照されていると、失敗結果がキャッシュへ焼き付いている。
+    // 実体が生まれる前に一度でも参照されていると、失敗結果がキャッシュへ焼き付いている。
     asset::AssetManager::FlushFailed();
 
     return assetMaterial;
@@ -119,7 +132,9 @@ std::string EnsureParticleMaterial(const std::string& projectRoot,
 std::shared_ptr<const asset::ParticleMaterialSettings> ResolveParticleMaterialSettings(
     const std::string& materialPath)
 {
-    if (materialPath.empty()) return nullptr;
+    if (materialPath.empty()) {
+        return nullptr;
+    }
     const auto handle = asset::AssetManager::Load<asset::MaterialAsset>(materialPath);
     const auto material = asset::ReadMaterialAuthoring(handle);
     return material ? std::shared_ptr<const asset::ParticleMaterialSettings>(material, &material->Data().particle) : nullptr;
@@ -129,20 +144,24 @@ bool ParticleMaterialField(const char* label, std::string& materialPath,
                            const std::string& projectRoot,
                            scene::ParticleBlendMode blendForNewMaterial)
 {
-    /// @note 手入力・ピッカー・D&D のすべてでテクスチャを許す。ここを .mat だけに絞ると
-    ///       「Asset Browser から .png を掴んでも受け付けない」状態へ戻る。
+    // 手入力・ピッカー・D&D のすべてでテクスチャを許す。ここを .mat だけに絞ると
+    // 「Asset Browser から .png を掴んでも受け付けない」状態へ戻る。
     constexpr const char* kFilter = ".mat,.png,.tga,.dds,.jpg,.jpeg";
-    if (!widgets::AssetPathField(label, materialPath, kFilter, projectRoot)) return false;
+    if (!widgets::AssetPathField(label, materialPath, kFilter, projectRoot)) {
+        return false;
+    }
 
-    if (!IsTextureAssetPath(materialPath)) return true;
+    if (!IsTextureAssetPath(materialPath)) {
+        return true;
+    }
 
     const std::string texture = materialPath;
     std::string error;
     const std::string material =
         EnsureParticleMaterial(projectRoot, texture, blendForNewMaterial, &error);
     if (material.empty()) {
-        /// @note 変換できないテクスチャを materialPath に残すと 1x1 白で描かれ、
-        ///       「貼ったのに何も出ない」に戻ってしまう。入れる前に捨てる。
+        // 変換できないテクスチャを materialPath に残すと 1x1 白で描かれ、
+        // 「貼ったのに何も出ない」に戻ってしまう。入れる前に捨てる。
         materialPath.clear();
         Toast::Error("Material を作れませんでした: " + error);
         return true;

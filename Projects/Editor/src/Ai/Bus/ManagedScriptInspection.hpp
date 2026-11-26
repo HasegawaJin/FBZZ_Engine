@@ -24,4 +24,4 @@ bool InspectManagedPage(scene::ManagedScriptAdapter& adapter, const JsonValue& o
 /// @note 生成済み catalog 個体の既定値を同じ field codec で読む。constructor・callback・getter を再実行しない。
 void CatalogManagedFields(scene::ManagedScriptAdapter& adapter, JsonValue& result);
 
-} /// @note namespace fbzz::editor::ai::bus
+} // namespace fbzz::editor::ai::bus

@@ -60,9 +60,9 @@ export function RegisterAssetQueryTools(server, bus) {
             structuredContent: { path: thumbnail.path },
         };
     }));
-    /// @note ── Sprite ──
-    /// @note Sprite はファイルではないので asset_list には出ない。切り出したコマへ
-    /// @note 参照を張るには、この 2 つで「一覧を見る → 絵を見る」しかない。
+    // テクスチャ内のコマを照会する操作を公開する。
+    // Sprite はファイルではないので asset_list には出ない。切り出したコマへ
+    // 参照を張るには、この 2 つで「一覧を見る → 絵を見る」しかない。
     server.registerTool('sprite_list', {
         description: 'Sprite Texture が持つコマの一覧 (ID・名前・矩形・pivot) を返します。'
             + 'reference はそのまま component_set の texturePath / spritePath / .mat の albedo '
@@ -116,7 +116,7 @@ export function RegisterAssetCommandTools(server, bus, permission) {
         ...(rowSequences === undefined ? {} : { rowSequences }),
         ...(materialPath === undefined ? {} : { materialPath }),
     }));
-    /// @note ── Sprite ──
+    // コマの名前変更と切り直しを別々の操作として登録する。
     server.registerTool('sprite_rename', {
         description: 'Sprite の名前を変更します。ID は変わらないので、保存済みの参照は切れません。'
             + '名前は参照キーを兼ねるため、テクスチャ内で一意である必要があります。'

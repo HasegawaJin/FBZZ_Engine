@@ -80,4 +80,4 @@ const PassiveFrameElapsedReport* GetPassiveFrameElapsedReference();
 [[nodiscard]] bool ArePassiveFrameElapsedComparable(const PassiveFrameElapsedReport& reference,
     const PassiveFrameElapsedReport& candidate);
 
-} /// @note namespace fbzz::editor
+} // namespace fbzz::editor

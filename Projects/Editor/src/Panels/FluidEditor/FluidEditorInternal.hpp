@@ -165,7 +165,9 @@ template <typename Recipe, typename Fn>
 bool VisitPart(Recipe& recipe, FluidSelectionKind list, int index, Fn&& fn)
 {
     const auto visit = [&](auto& parts) {
-        if (index < 0 || index >= static_cast<int>(parts.size())) return false;
+        if (index < 0 || index >= static_cast<int>(parts.size())) {
+            return false;
+        }
         fn(parts[static_cast<std::size_t>(index)]);
         return true;
     };
