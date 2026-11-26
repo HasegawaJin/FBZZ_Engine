@@ -43,4 +43,4 @@ FBZZ_GRAPHICS_API void ApplyVolumeSettings(const VolumeSettings& volume, RenderS
 [[nodiscard]] FBZZ_GRAPHICS_API float PostProcessVolumeDistanceWeight(
     float distance, float radius, float blendDistance);
 
-} /// @note namespace fbzz::renderer
+} // namespace fbzz::renderer

@@ -31,10 +31,10 @@ enum class RenderPlanReason : uint8_t {
 /// @note 効果に届く形状・opacity・必要な BSDF / 光源の対応を呼び出し側で証明する。
 /// @note path は profile の対応範囲と、GAME で許可した近似を解決した結果。
 struct SceneRayCoverage {
-    bool shadow = false;
-    bool reflection = false;
-    bool diffuseGi = false;
-    bool path = false;
+    bool shadow = false; ///< 影を落とすシーン要素をレイ追跡で扱えるか。
+    bool reflection = false; ///< 反射に必要な形状とマテリアルをレイ追跡で扱えるか。
+    bool diffuseGi = false; ///< 間接拡散光に必要な形状とマテリアルをレイ追跡で扱えるか。
+    bool path = false; ///< 要求したプロファイルでシーンをパストレースできるか。
 };
 
 /// @note 当該ビュー・Scene / device 世代・寸法の準備結果。ハンドルの存在だけで true にしない。
@@ -42,38 +42,38 @@ struct SceneRayCoverage {
 struct RenderAvailability {
     /// @note ホストのセッション方針。false なら保存された RT 要求を保持したまま Raster へ戻す。
     bool experimentalRayTracingEnabled = false;
-    bool outputsReady = false;
-    bool rasterPipelineReady = false;
-    OpaqueRenderAvailability opaque;
-    bool clusteredLightingReady = false;
-    bool raySceneReady = false;
-    bool shadowPipelineReady = false;
-    bool reflectionPipelineReady = false;
-    bool diffuseGiPipelineReady = false;
-    bool pathPipelineReady = false;
-    bool rasterSurfaceReady = false;
+    bool outputsReady = false; ///< このビューが要求する出力面の準備ができているか。
+    bool rasterPipelineReady = false; ///< フォールバック先にも使うラスタ描画経路が準備できているか。
+    OpaqueRenderAvailability opaque; ///< 不透明物の描画方式ごとの利用可否。
+    bool clusteredLightingReady = false; ///< クラスター照明の計算と参照に必要な資源を使えるか。
+    bool raySceneReady = false; ///< 現在のシーンに対応するレイ追跡資源を使えるか。
+    bool shadowPipelineReady = false; ///< レイ追跡による影を記録できるか。
+    bool reflectionPipelineReady = false; ///< レイ追跡による反射を記録できるか。
+    bool diffuseGiPipelineReady = false; ///< レイ追跡による間接拡散光を記録できるか。
+    bool pathPipelineReady = false; ///< パストレーシングのパスを記録できるか。
+    bool rasterSurfaceReady = false; ///< レイ描画の入力になるラスタ描画面が揃っているか。
 };
 
 struct RayEffectPlan {
-    bool enabled = false;
-    RenderPlanReason fallbackReason = RenderPlanReason::NONE;
+    bool enabled = false; ///< この効果で実際にレイ追跡を使うか。
+    RenderPlanReason fallbackReason = RenderPlanReason::NONE; ///< 効果を要求した方式で実行できなかった理由。
     bool operator==(const RayEffectPlan&) const = default;
 };
 
 struct ResolvedRenderPlan {
-    RenderMode requestedMode = RenderMode::RASTER;
-    RenderMode effectiveMode = RenderMode::RASTER;
-    PathTracingProfile pathProfile = PathTracingProfile::REFERENCE;
-    PrimaryVisibility primaryVisibility = PrimaryVisibility::RASTER;
-    RayExecution rayExecution = RayExecution::NONE;
-    OpaqueRenderPlan rasterPlan;
+    RenderMode requestedMode = RenderMode::RASTER; ///< 描画設定から要求されたモード。
+    RenderMode effectiveMode = RenderMode::RASTER; ///< デバイス能力と資源の状態を反映して実行する描画モード。
+    PathTracingProfile pathProfile = PathTracingProfile::REFERENCE; ///< パストレーシングで採用する対応範囲と品質のプロファイル。
+    PrimaryVisibility primaryVisibility = PrimaryVisibility::RASTER; ///< 最初に見える面を決める描画方式。
+    RayExecution rayExecution = RayExecution::NONE; ///< このビューで実際に記録するレイ追跡の実行方式。
+    OpaqueRenderPlan rasterPlan; ///< 不透明物をどのラスタ経路で描くかを決めた結果。
     /// @note Raster の受け手向け。Path のヒット照明は RayLightTable を使う。
     bool clusteredLighting = false;
-    RayEffectPlan shadow;
-    RayEffectPlan reflection;
-    RayEffectPlan diffuseGi;
-    RenderPlanReason fallbackReason = RenderPlanReason::NONE;
-    RenderPlanReason failureReason = RenderPlanReason::REQUIRED_OUTPUT_UNAVAILABLE;
+    RayEffectPlan shadow; ///< 影のレイ追跡を実行できるかと、代替経路を使う理由。
+    RayEffectPlan reflection; ///< 反射のレイ追跡を実行できるかと、代替経路を使う理由。
+    RayEffectPlan diffuseGi; ///< 間接拡散光のレイ追跡を実行できるかと、代替経路を使う理由。
+    RenderPlanReason fallbackReason = RenderPlanReason::NONE; ///< 要求した方式から別の描画方式に切り替えた理由。
+    RenderPlanReason failureReason = RenderPlanReason::REQUIRED_OUTPUT_UNAVAILABLE; ///< 代替を含めて描画計画を実行できない理由。NONE なら実行可能。
     bool operator==(const ResolvedRenderPlan&) const = default;
 
     [[nodiscard]] bool IsValid() const { return failureReason == RenderPlanReason::NONE; }

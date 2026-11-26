@@ -111,7 +111,9 @@ private:
     std::unique_ptr<r::IConstantBuffer> CreateNativeConstantBuffer(size_t size) override
     {
         ++m_trace.attempted;
-        if (m_trace.failCreation) return {};
+        if (m_trace.failCreation) {
+            return {};
+        }
         return std::make_unique<GBufferTraceConstants>(size, m_trace);
     }
     std::unique_ptr<r::IBuffer> CreateNativeVertexBuffer(const void*, size_t size, uint32_t stride) override
@@ -651,7 +653,7 @@ TEST_F(GraphicsQualityShaderTest, MovingCutoutVelocityPreservesTextureAndMateria
     handles.frameCB = m_frame; handles.advancedGraphicsCB = m_advanced;
     handles.objectCB = m_resources->CreateConstantBuffer(sizeof(r::PerObjectCB));
     handles.velocityShader = m_resources->LoadShader("Assets/Shaders/Motion/Velocity.hlsl");
-    /// @note 検出力の確認だけは旧シェーダーを注入し、本番アセットを書き換えない。
+    // 検出力の確認だけは旧シェーダーを注入し、本番アセットを書き換えない。
     if (const char* mutation = std::getenv("FBZZ_GRAPHICS_QUALITY_MUTATION");
         mutation && std::string_view(mutation) == "velocity-alpha")
         m_resources->Rendering().Shared().velocityAlphaShader = handles.velocityShader;
@@ -702,7 +704,7 @@ TEST_F(GraphicsQualityShaderTest, MotionBlurRemovesRasterJitterAndPreservesCamer
     r::RenderPassHandles handles;
     handles.frameCB = m_frame; handles.advancedGraphicsCB = m_advanced;
     handles.motionBlurShader = m_resources->LoadShader("Assets/Shaders/PostProcess/Motion/MotionBlur.cs.hlsl");
-    /// @note ジッター補正を除いた一時コピーで、静止画の回帰検出を確認できるようにする。
+    // ジッター補正を除いた一時コピーで、静止画の回帰検出を確認できるようにする。
     if (const char* mutation = std::getenv("FBZZ_GRAPHICS_QUALITY_MUTATION");
         mutation && std::string_view(mutation) == "motion-jitter") {
         std::ifstream input(std::filesystem::path(FBZZ_GRAPHICS_SHADER_ROOT) / "PostProcess/Motion/MotionBlur.cs.hlsl");
@@ -912,7 +914,9 @@ TEST_F(GraphicsQualityShaderTest, ViewGraphDeclaresWaterResourcesForTheFirstWate
     const auto buildFrame = [&]() {
         r::ViewPipelineOptions options;
         options.renderPlan = r::PrepareViewRenderPlan(*m_resources, *m_bundle.renderer, settings, view, shared, handles);
-        if (!options.renderPlan.IsValid()) return false;
+        if (!options.renderPlan.IsValid()) {
+            return false;
+        }
         r::BuildViewPipeline(view.pipeline, context, view, shared, options);
         return true;
     };
@@ -1023,7 +1027,7 @@ TEST_F(GraphicsQualityShaderTest, BrdfBakeAndCustomBlendRemainValidAcrossManager
         r::RenderPassContext context{{}, *m_bundle.renderer, resources, m_camera, settings, target, ~0u, handles};
         context.width = context.height = 8; context.renderScene = scene; context.resourceRegistry.BindTarget("HDR", target);
         resources.AdvanceFrame(); m_bundle.renderer->BeginFrame(); m_open = true;
-        /// @note 未記録のベイクは必ず黒として検出し、未初期化 GPU メモリの値へ依存しない。
+        // 未記録のベイクは必ず黒として検出し、未初期化 GPU メモリの値へ依存しない。
         const r::PostProcCB clearConstants{};
         resources.Update(handles.postprocCB, &clearConstants, sizeof(clearConstants));
         r::ComputeCall clear; clear.shader = clearShader; clear.constantBuffers[5] = handles.postprocCB;
@@ -1040,7 +1044,7 @@ TEST_F(GraphicsQualityShaderTest, BrdfBakeAndCustomBlendRemainValidAcrossManager
         scene->customPost[0].textures[0] = texture;
         resources.AdvanceFrame(); m_bundle.renderer->BeginFrame(); m_open = true;
         m_bundle.renderer->SetRenderTarget(target, resources); m_bundle.renderer->Clear({0.1f,0.1f,0.1f,1});
-        /// @note CopyColor の入力 t5 は材質 t0 と別枠なので、HDR 合成用シェーダーへ渡す。
+        // CopyColor の入力 t5 は材質 t0 と別枠なので、HDR 合成用シェーダーへ渡す。
         scene->customPost[0].shader = resources.LoadShader((m_temp.File("Shaders") / "GraphicsQualityProbe.hlsl").generic_string());
         const QualityConstants constants{0};
         scene->customPost[0].paramsBuffer = resources.CreateConstantBuffer(sizeof(constants));
@@ -1066,7 +1070,7 @@ TEST_F(GraphicsQualityShaderTest, ClearKeepsItsBoundOwnerAndRecoversAfterThatMan
     m_bundle.renderer->SetRenderTarget(otherTarget, *other);
     m_bundle.renderer->Clear({0.6f,0.6f,0.6f,1});
     other.reset();
-    /// @note 終了した所有者へ触らず、同じ数値ハンドルの別 RT もクリアしない。
+    // 終了した所有者へ触らず、同じ数値ハンドルの別 RT もクリアしない。
     m_bundle.renderer->Clear({0.9f,0.9f,0.9f,1});
     m_bundle.renderer->SetRenderTarget(m_output, *m_resources);
     End();

@@ -6,8 +6,8 @@
 #include "Common/Fullscreen.hlsli"
 #include "Common/BindlessIndices.hlsli"
 
-FBZZ_TEX2D(pathRadiance, TEX_GBUFFER0_SLOT);
-FBZZ_TEX2D(pathSurface, TEX_GBUFFER1_SLOT);
+FBZZ_TEX2D(pathRadiance, SRV_RAY_RESOLVE_RADIANCE_SLOT);
+FBZZ_TEX2D(pathSurface, SRV_RAY_RESOLVE_SURFACE_SLOT);
 
 FBZZFullscreenVertex VSMain(uint id : SV_VertexID)
 {

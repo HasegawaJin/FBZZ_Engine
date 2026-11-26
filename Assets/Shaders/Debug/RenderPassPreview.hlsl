@@ -1,12 +1,15 @@
-// パス終了時の HDR・深度・チャンネルを表示用 RGB へ変換する。
+/// @file    RenderPassPreview.hlsl
+/// @brief   パス終了時の HDR・深度・チャンネルを表示用 RGB へ変換する。
+/// @author  Hasegawa Jin
+/// @date    2026-09-15
 #include "Common/Binding.hlsli"
 #include "Common/Fullscreen.hlsli"
 #include "Common/BindlessIndices.hlsli"
 
-FBZZ_TEX2D_T(float4, sourceImage, TEX_GBUFFER0_SLOT);
+FBZZ_TEX2D_T(float4, sourceImage, SRV_POST_COLOR_SLOT);
 SamplerState pointClamp : register(SAMPLER_POINT_CLAMP);
 
-cbuffer PreviewConstants : register(b5)
+cbuffer PreviewConstants : register(FBZZ_REGISTER(b, CB_PREVIEW_SLOT))
 {
     float displayMode;
     float exposure;
@@ -49,6 +52,6 @@ float4 PSMain(FBZZFullscreenVertex p) : SV_Target0
     color = saturate((color * exposure - rangeMin) / max(rangeMax - rangeMin, 0.000001));
     if (applyGamma > 0.5)
         color = pow(color, 1.0 / 2.2);
-    // G-Buffer の alpha は roughness / metallic。プレビュー自身の透過には使わない。
+    /// @note G-Buffer の alpha は roughness / metallic。プレビュー自身の透過には使わない。
     return float4(color, 1);
 }

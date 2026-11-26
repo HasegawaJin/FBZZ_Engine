@@ -23,12 +23,12 @@ struct IblBakeInput {
 
     /// @name 出力品質設定
     /// @{
-    uint32_t envCubemapSize      = 2048; ///< @note Environment Cubemap の 1 辺 (px)
-    uint32_t irradianceSize      = 32;   ///< @note Irradiance Cubemap の 1 辺 (px) — 32 で十分
-    uint32_t prefilteredSize     = 512;  ///< @note Prefiltered Cubemap mip0 の 1 辺 (px)
-    uint32_t prefilteredMipCount = 5;    ///< @note Prefiltered mip 数 (roughness 0→1 を均等分割)
-    uint32_t sampleCount         = 1024; ///< @note PrefilteredEnvMap.cs の GGX IS サンプル数
-    uint32_t brdfLutSize         = 256;  ///< @note BRDF LUT の 1 辺 (px)
+    uint32_t envCubemapSize      = 2048; ///< Environment Cubemap の 1 辺 (px)
+    uint32_t irradianceSize      = 32;   ///< Irradiance Cubemap の 1 辺 (px) — 32 で十分
+    uint32_t prefilteredSize     = 512;  ///< Prefiltered Cubemap mip0 の 1 辺 (px)
+    uint32_t prefilteredMipCount = 5;    ///< Prefiltered mip 数 (roughness 0→1 を均等分割)
+    uint32_t sampleCount         = 1024; ///< PrefilteredEnvMap.cs の GGX IS サンプル数
+    uint32_t brdfLutSize         = 256;  ///< BRDF LUT の 1 辺 (px)
     /// @}
 
     /// @brief コンパイル済みシェーダー (.cso) ディレクトリの絶対パス。
@@ -41,10 +41,10 @@ struct IblBakeInput {
 
 /// @brief ベイク結果。生成された DDS ファイルの絶対パス。
 struct IblBakeOutput {
-    std::string envCubemapPath;     ///< @note *_env.dds
-    std::string irradiancePath;     ///< @note *_irr.dds
-    std::string prefilteredPath;    ///< @note *_prefilter.dds
-    std::string brdfLutPath;        ///< @note *_brdf.dds
+    std::string envCubemapPath;     ///< *_env.dds
+    std::string irradiancePath;     ///< *_irr.dds
+    std::string prefilteredPath;    ///< *_prefilter.dds
+    std::string brdfLutPath;        ///< *_brdf.dds
     uint32_t    prefilteredMipCount = 0;
 };
 
@@ -54,8 +54,8 @@ public:
     virtual ~IIblBaker() = default;
 
     /// @brief HDRI → DDS × 4 のベイク処理。
-    /// @param outputDir DDS ファイルを書き出すディレクトリ (存在しない場合は生成する)。
-    /// @param baseName  ファイル名の共通プレフィックス (例: "sky" → sky_env.dds 等)。
+    /// @param[in] outputDir DDS ファイルを書き出すディレクトリ (存在しない場合は生成する)。
+    /// @param[in] baseName ファイル名の共通プレフィックス (例: "sky" → sky_env.dds 等)。
     /// @return 失敗時は false。例外は投げない。
     /// @note 1 インスタンスをワーカースレッドに移して実行できる。並行して同じインスタンスを呼ばない。
     [[nodiscard]] virtual bool Bake(
@@ -65,4 +65,4 @@ public:
         IblBakeOutput&      output) = 0;
 };
 
-} /// @note namespace fbzz::renderer
+} // namespace fbzz::renderer

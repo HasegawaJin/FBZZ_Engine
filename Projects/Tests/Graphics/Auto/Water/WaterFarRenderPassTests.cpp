@@ -12,6 +12,7 @@
 #include <Graphics/Passes/Geometry/RenderSceneDraw.hpp>
 #include <Graphics/Passes/PostProcess/PostProcessPasses.hpp>
 #include <Graphics/Renderer/Commands/DrawCall.hpp>
+#include <Graphics/Renderer/Commands/ShaderBindingSlots.hpp>
 #include <Graphics/Renderer/Resources/AssetPathService.hpp>
 #include <Graphics/Renderer/Resources/Buffers/IBuffer.hpp>
 #include <Graphics/Renderer/Resources/Buffers/IConstantBuffer.hpp>
@@ -75,11 +76,17 @@ public:
             std::memcpy(&postproc, data, size);
             hasPostproc = true;
         }
+        if (data && size == sizeof(renderer::AtmosphereCB)) {
+            std::memcpy(&atmosphere, data, size);
+            hasAtmosphere = true;
+        }
     }
     size_t GetSize() const override { return m_size; }
     renderer::WaterCB water{};
     renderer::PostProcCB postproc{};
     bool hasPostproc = false;
+    renderer::AtmosphereCB atmosphere{}; ///< 大気定数の最終更新値。
+    bool hasAtmosphere = false; ///< 大気定数を更新したかどうか。
 private:
     size_t m_size;
 };
@@ -130,6 +137,8 @@ struct FarPassDrawSnapshot {
     std::string shaderPath;
     renderer::PostProcCB postproc{};
     bool hasPostproc = false;
+    renderer::AtmosphereCB atmosphere{}; ///< 描画時点に束縛されていた大気定数。
+    bool hasAtmosphere = false; ///< 束縛された大気定数が初期化済みかどうか。
     renderer::ResourceHandle<renderer::TextureTag> texture5;
     renderer::ResourceHandle<renderer::TextureTag> texture21;
     renderer::ResourceHandle<renderer::StructuredBufferTag> instanceBuffer;
@@ -193,6 +202,13 @@ public:
             if (found != constants.end() && found->second->hasPostproc) {
                 snapshot.postproc = found->second->postproc;
                 snapshot.hasPostproc = true;
+            }
+        }
+        if (const auto* buffer = resources.Get(draw.constantBuffers[renderer::cb::ATMOSPHERE])) {
+            const auto found = constants.find(buffer);
+            if (found != constants.end() && found->second->hasAtmosphere) {
+                snapshot.atmosphere = found->second->atmosphere;
+                snapshot.hasAtmosphere = true;
             }
         }
         snapshot.texture5 = draw.textures[5];
@@ -391,7 +407,9 @@ TEST_F(ForwardScratchPassTest, NestedExecutionPreservesOuterGroupsQueueDistanceA
         {true, false, 1, 2000}, {false, true, 3, 3000}});
     bool nested = false;
     m_backend.afterSubmit = [&] {
-        if (nested) return;
+        if (nested) {
+            return;
+        }
         nested = true;
         Draw(inner);
     };
@@ -532,7 +550,7 @@ TEST_F(WaterFarRenderPassTest, RejectsUnprovenOccludersBeforeResolvingNativeMesh
     warmup.occlusionCuller = warmupCuller.get();
     warmup.occlusionCullingEnabled = true;
     renderer::PrepareViewOcclusion(warmup, passes);
-    /// @note Producer-side buffer resolution must expose its native-frame wait, while all input resources are already live.
+    // Producer-side buffer resolution must expose its native-frame wait, while all input resources are already live.
     backend.renderThread = false;
     const std::array<const char*, 16> cases{{"opaque", "no-interior", "wind", "skinned", "alpha-cutout",
         "alpha-texture", "unknown-vertex", "unknown-opacity", "invalid-material", "lod-fade", "depth-bias",
@@ -603,7 +621,7 @@ TEST_F(WaterFarRenderPassTest, RejectsUnprovenOccludersBeforeResolvingNativeMesh
             EXPECT_TRUE(culler->TestAndRaster({0,0,20}, 0.05f));
         }
     }
-    /// @note The inline fake has no worker to marshal shutdown resource operations to.
+    // The inline fake has no worker to marshal shutdown resource operations to.
     backend.renderThread = true;
 }
 
@@ -667,7 +685,9 @@ TEST_F(WaterFarRenderPassTest, RejectsSameVersionCullerReplacementDuringNativePr
         bool replaced = false;
         backend.renderThread = false;
         backend.afterCpuFrameWait = [&] {
-            if (replaced) return;
+            if (replaced) {
+                return;
+            }
             replaced = true;
             EXPECT_EQ(original->GetResetVersion(), replacement->GetResetVersion());
             context.occlusionCuller = replacement.get();
@@ -726,7 +746,7 @@ TEST_F(WaterFarRenderPassTest, ForwardGroupsKeepPerObjectBindingsAndRefreshShare
     renderer::RenderPassContext context{{}, backend, resources, camera, settings, output, ~0u, handles};
     context.renderScene = input; context.frustumCullingEnabled = false;
     context.resourceRegistry.BindTarget("HDR", output);
-    /// @note Reuse the same context address and resource frame across views, then remove bindings to expose stale pass-local state.
+    // Reuse the same context address and resource frame across views, then remove bindings to expose stale pass-local state.
     for (uint32_t view = 0; view < 3; ++view) {
         SCOPED_TRACE(view);
         const auto shadow = resources.CreateRenderTarget(8, 8, renderer::CameraDepthTargetDesc(1));
@@ -897,7 +917,7 @@ TEST_F(WaterFarRenderPassTest, PersistentHorizonPlanKeepsFreshTimeAndSurvivesSam
     water.constants.surfaceParams = {0.85f, 0.5f, 0.02f, 5};
     water.constants.timeParams = {1, 1, 1, 2};
     water.adaptivePatchLod = water.farOceanEnabled = true;
-    /// @note Seven leaves force mixed stitch groups so the first Submit runs during traversal.
+    // Seven leaves force mixed stitch groups so the first Submit runs during traversal.
     water.patchLod.cellsPerPatch = 4; water.patchLod.maxDepth = 2; water.patchLod.maxPatches = 7;
     std::array<renderer::WaterVertex, 25> vertices{};
     for (uint32_t z = 0; z <= 4; ++z)
@@ -954,7 +974,9 @@ TEST_F(WaterFarRenderPassTest, PersistentHorizonPlanKeepsFreshTimeAndSurvivesSam
     bool evicted = false;
     const std::weak_ptr<const renderer::RenderScene> replacedScene = scene;
     backend.afterSubmit = [&] {
-        if (evicted || backend.submittedCalls.back().vertexBuffer != water.patchVertexBuffer) return;
+        if (evicted || backend.submittedCalls.back().vertexBuffer != water.patchVertexBuffer) {
+            return;
+        }
         evicted = true;
         context.surfacePatchSelectionCache.Clear();
         renderer::SurfacePatchSelectionCache nested;
@@ -1057,7 +1079,9 @@ TEST_F(WaterFarRenderPassTest, AuxiliaryPassesPinTheirWaterInputsAcrossSnapshotR
         const std::weak_ptr<const renderer::RenderScene> retired = scene;
         bool replaced = false;
         backend.afterSubmit = [&] {
-            if (replaced || backend.submittedCalls.back().vertexBuffer != water.patchVertexBuffer) return;
+            if (replaced || backend.submittedCalls.back().vertexBuffer != water.patchVertexBuffer) {
+                return;
+            }
             replaced = true;
             context.renderScene = std::make_shared<renderer::RenderScene>();
             scene.reset();
@@ -1141,8 +1165,26 @@ TEST_F(WaterFarRenderPassTest, ContinuousHeightFieldColumnsCullAcrossTilesWithou
     }
     culler.Reset(camera); renderer::RasterTerrainOccluders(context);
     EXPECT_TRUE(culler.TestAndRaster({-1,3,20},0.05f));
+    // 視点を平地に置き、遠景の二本の遮蔽列の間から見える配置を確認する。
+    auto distantScene = std::make_shared<renderer::RenderScene>();
+    for (int tile = -6; tile < 0; ++tile) {
+        auto flat = foreground.first;
+        flat.constants.worldMatrix.m[2][3] = static_cast<float>(tile * 8);
+        distantScene->terrains.push_back(std::move(flat));
+    }
+    auto distantHill = makeTile(true);
+    distantHill.second->columns = {{{0, 4, 2, 8}, 4}, {{6, 4, 8, 8}, 4}};
+    distantScene->terrains.push_back(std::move(distantHill.first));
+    context.renderScene = distantScene;
+    camera.m_position = {0, 2, -40};
+    camera.m_fovY = 18;
+    camera.m_aspect = 1;
+    camera.LookAt({0, 2, 10});
+    culler.Reset(camera);
+    renderer::RasterTerrainOccluders(context);
+    EXPECT_FALSE(culler.TestAndRaster({-3.9f, 2, 20}, 0.02f));
+    EXPECT_TRUE(culler.TestAndRaster({0, 2, 20}, 0.02f));
 }
-
 /// @brief Reuses immutable height field proof across view masks and LOD choices.
 TEST_F(WaterFarRenderPassTest, ReusesImmutableHeightFieldProofAcrossViewMasksAndLodChoices)
 {
@@ -1221,7 +1263,7 @@ TEST_F(WaterFarRenderPassTest, ReusesImmutableHeightFieldProofAcrossViewMasksAnd
     ASSERT_FALSE(culler.TestAndRaster({-1,3,20}, 0.05f));
     EXPECT_EQ(capture(0, 8), (std::array<size_t, 6>{0, 0, 0, 0, 0, 0}));
     EXPECT_TRUE(culler.TestAndRaster({-1,3,20}, 0.05f));
-    /// @note Layer zero remains included; only unused mask bits and the viewing LOD threshold change across these frames.
+    // Layer zero remains included; only unused mask bits and the viewing LOD threshold change across these frames.
     constexpr std::array<std::pair<uint32_t, float>, 6> VIEWS{{
         {1u,8.0f}, {UINT32_MAX,8.0f}, {UINT32_MAX,1.0f}, {UINT32_MAX,8.0f}, {1u,1.0f}, {UINT32_MAX,8.0f}}};
     for (const auto& [mask, chunkSize] : VIEWS) {
@@ -1244,7 +1286,7 @@ TEST_F(WaterFarRenderPassTest, ReusesImmutableHeightFieldProofAcrossViewMasksAnd
     mountain.occlusion = std::move(changed);
     EXPECT_EQ(capture(UINT32_MAX, 8), (std::array<size_t, 6>{1, 1, 0, 1, 0, 0}));
     EXPECT_EQ(capture(UINT32_MAX, 8), (std::array<size_t, 6>{0, 0, 0, 0, 0, 0}));
-    /// @note A new proof request also rejects the crack while its two patch owners stay unchanged.
+    // A new proof request also rejects the crack while its two patch owners stay unchanged.
     mountain.aabbMax.y += 0.25f;
     EXPECT_EQ(capture(UINT32_MAX, 8), (std::array<size_t, 6>{1, 0, 0, 1, 0, 0}));
     mountain.aabbMax.y -= 0.25f;
@@ -1344,7 +1386,7 @@ TEST_F(WaterFarRenderPassTest, HeightFieldBoxFacesPreserveTheSixFaceDepthReferen
                 float& coordinate = plane < 2 ? camera.m_position.x : plane < 4 ? camera.m_position.z : camera.m_position.y;
                 if (side) coordinate = std::nextafter(coordinate, side < 0 ? -POSITIVE_INFINITY : POSITIVE_INFINITY);
                 camera.LookAt(center);
-                /// @note Every eye stays inside the continuous tile footprint and above its near-plane surface, so no outside-camera column clipping is needed.
+                // Every eye stays inside the continuous tile footprint and above its near-plane surface, so no outside-camera column clipping is needed.
                 const auto hidden = camera.m_position + (center - camera.m_position) * 3.0f;
                 for (size_t jitter = 0; jitter < JITTERS.size(); ++jitter) {
                     SCOPED_TRACE("jitter=" + std::to_string(jitter));
@@ -1352,13 +1394,13 @@ TEST_F(WaterFarRenderPassTest, HeightFieldBoxFacesPreserveTheSixFaceDepthReferen
                     renderer::PrepareViewOcclusion(context);
                     ASSERT_TRUE(renderer::IsViewOcclusionCurrent(context));
                     reference->Reset(camera, context.taaJitterNdcX, context.taaJitterNdcY);
-                    /// @note The independent reference submits all six fixed box faces and deliberately performs no facing optimization.
+                    // The independent reference submits all six fixed box faces and deliberately performs no facing optimization.
                     for (const auto& face : BOX_FACES)
                         reference->RasterQuad(vertices[face[0]], vertices[face[1]], vertices[face[2]], vertices[face[3]]);
                     ASSERT_FALSE(reference->TestAndRaster(hidden, 0.01f));
                     EXPECT_FALSE(actual->TestAndRaster(hidden, 0.01f));
                     actual->CopyGpuRows(actualRows); reference->CopyGpuRows(referenceRows);
-                    /// @note Compare the GPU payload bitwise so even one altered depth cell fails the reference contract.
+                    // Compare the GPU payload bitwise so even one altered depth cell fails the reference contract.
                     const auto mismatch = std::mismatch(actualRows.begin() + 9, actualRows.end(), referenceRows.begin() + 9,
                         [](const math::Vector4& current, const math::Vector4& expected) {
                             return std::memcmp(&current, &expected, sizeof(current)) == 0;
@@ -1432,7 +1474,7 @@ TEST_F(WaterFarRenderPassTest, OverlappingHeightFieldColumnsPreserveTheSixFaceDe
         context.renderScene = snapshot; context.occlusionCuller = actual.get();
         context.occlusionCullingEnabled = true; context.frustumCullingEnabled = false;
         context.width = context.height = 128;
-        /// @note Four columns fit in one unsplit BVH leaf; both rear columns stay below the sloped surface and behind the first column.
+        // Four columns fit in one unsplit BVH leaf; both rear columns stay below the sloped surface and behind the first column.
         for (float eyeShift : {-0.25f,0.0f,0.25f}) {
             SCOPED_TRACE("eye shift=" + std::to_string(eyeShift));
             camera.m_position = {offset + eyeShift,2 + eyeShift,offset - 4};
@@ -1452,7 +1494,7 @@ TEST_F(WaterFarRenderPassTest, OverlappingHeightFieldColumnsPreserveTheSixFaceDe
                     const std::array<math::Vector3,8> vertices{{{low.x,low.y,low.z}, {high.x,low.y,low.z},
                         {high.x,high.y,low.z}, {low.x,high.y,low.z}, {low.x,low.y,high.z},
                         {high.x,low.y,high.z}, {high.x,high.y,high.z}, {low.x,high.y,high.z}}};
-                    /// @note The reference always submits all faces, including boxes whose visibility query already rejects them.
+                    // The reference always submits all faces, including boxes whose visibility query already rejects them.
                     for (const auto& face : BOX_FACES)
                         reference->RasterQuad(vertices[face[0]],vertices[face[1]],vertices[face[2]],vertices[face[3]]);
                 }
@@ -1528,7 +1570,7 @@ TEST_F(WaterFarRenderPassTest, HeightFieldCacheRejectsInternalChunkCracksAndReco
     ASSERT_FALSE(visible());
     EXPECT_FALSE(visible());
 
-    /// @note Both outer endpoints stay identical; only the shared chunk edge's inner samples jump above the horizontal sightline.
+    // Both outer endpoints stay identical; only the shared chunk edge's inner samples jump above the horizontal sightline.
     auto cracked = std::make_shared<renderer::TerrainOcclusionGeometry>(*geometries[1]);
     auto changedVertices = vertices[1];
     for (uint32_t z = 1; z < 4; ++z) {
@@ -1603,7 +1645,7 @@ TEST_F(WaterFarRenderPassTest, HeightFieldColumnsRespectSelectedLodDrawCountsAnd
         return culler.TestAndRaster({-1,3,20}, 0.05f);
     };
     ASSERT_FALSE(visible());
-    /// @note Changing only the LOD threshold must not reuse a proof for a level whose actual draw count is zero.
+    // Changing only the LOD threshold must not reuse a proof for a level whose actual draw count is zero.
     snapshot->terrains[1].chunkWorldSize = 1;
     EXPECT_TRUE(visible());
     mountain.second->indices[2] = originalIndices;
@@ -1637,7 +1679,7 @@ TEST_F(WaterFarRenderPassTest, HeightFieldColumnsRespectSelectedLodDrawCountsAnd
     auto& patch = terrain.patches[0];
     terrain.chunkWorldSize = 8;
     ASSERT_FALSE(visible());
-    /// @note Keep the stale handle and CPU geometry unchanged so only a view-selected live-resource check can reject the expired LOD.
+    // Keep the stale handle and CPU geometry unchanged so only a view-selected live-resource check can reject the expired LOD.
     const auto retiredLod = patch.indexBufferLOD[2];
     resources.Release(retiredLod);
     EXPECT_EQ(patch.indexBufferLOD[2],retiredLod);
@@ -1711,7 +1753,7 @@ TEST_F(WaterFarRenderPassTest, OrthographicParallelRaysDoNotUsePerspectiveHeight
     culler.Reset(camera);
     renderer::RasterTerrainOccluders(context);
 
-    /// @note This parallel ray enters the terrain at (2,0.9,0), below the plateau; it crosses no front-facing terrain before the target.
+    // This parallel ray enters the terrain at (2,0.9,0), below the plateau; it crosses no front-facing terrain before the target.
     EXPECT_TRUE(culler.TestAndRaster(visible, 0.01f));
 }
 
@@ -2216,12 +2258,12 @@ TEST_F(WaterFarRenderPassTest, AVisibleFarOceanIsSubmittedWhenTheFiniteWaterBody
         EXPECT_GT(draw.horizonPatchDomain.y + draw.horizonPatchDomain.w, camera.m_position.z);
         EXPECT_GT(draw.horizonPatchDomain.z, water.aabbMax.x - water.aabbMin.x);
     }
-    /// @note Statistics include instances; shared source-path shaders may batch several patches into one draw.
+    // Statistics include instances; shared source-path shaders may batch several patches into one draw.
     size_t farTriangles = 0;
     for (const auto& draw : backend.drawSnapshots)
         farTriangles += static_cast<size_t>(draw.indexCount) * draw.instanceCount / 3u;
     EXPECT_EQ(context.statsTriangleCount, farTriangles);
-    /// @note Four equal-LOD patches share one batch and each view retains its own instance buffer.
+    // Four equal-LOD patches share one batch and each view retains its own instance buffer.
     scene->water.front().shader = {};
     scene->water.front().patchLod.maxDepth = 1;
     scene->water.front().patchLod.maxPatches = 4;
@@ -2247,12 +2289,15 @@ TEST_F(WaterFarRenderPassTest, AVisibleFarOceanIsSubmittedWhenTheFiniteWaterBody
     pass.Execute(passResources, context);
     size_t secondViewBatches = 0;
     for (const auto& draw : backend.drawSnapshots) {
-        if (!draw.instanceBuffer.IsValid()) continue;
+        if (!draw.instanceBuffer.IsValid()) {
+            continue;
+        }
         ++secondViewBatches;
-        EXPECT_EQ(std::find(firstViewBuffers.begin(), firstViewBuffers.end(), draw.instanceBuffer), firstViewBuffers.end());
+        EXPECT_TRUE(std::none_of(firstViewBuffers.begin(), firstViewBuffers.end(),
+            [&](const auto buffer) { return buffer == draw.instanceBuffer; }));
     }
     EXPECT_EQ(secondViewBatches, firstViewBuffers.size());
-    /// @note A project appearance retains its own shader/b2/texture in every mode; geometry eligibility comes from the host declaration.
+    // A project appearance retains its own shader/b2/texture in every mode; geometry eligibility comes from the host declaration.
     const auto projectShader = resources.LoadShader("Assets/Shaders/Arbitrary/ProjectAppearance.hlsl");
     ASSERT_TRUE(resources.GetShaderCapabilities(projectShader).SupportsWaterGeometry());
     const auto projectParameters = resources.CreateConstantBuffer(128);
@@ -2261,7 +2306,7 @@ TEST_F(WaterFarRenderPassTest, AVisibleFarOceanIsSubmittedWhenTheFiniteWaterBody
     scene->water.front().shader = projectShader;
     scene->water.front().appearanceParameters = projectParameters;
     scene->water.front().appearanceTextures[0] = projectTexture;
-    /// @note An unsupported backend must retain the Horizon draw in indexed fallback mode.
+    // An unsupported backend must retain the Horizon draw in indexed fallback mode.
     for (const auto mode : {renderer::GeometryDrawMode::CPU, renderer::GeometryDrawMode::GPU_INDIRECT, renderer::GeometryDrawMode::MESH_SHADER}) {
         settings.geometryDrawMode = mode;
         backend.draws.clear();
@@ -2271,7 +2316,9 @@ TEST_F(WaterFarRenderPassTest, AVisibleFarOceanIsSubmittedWhenTheFiniteWaterBody
         ASSERT_EQ(backend.draws.size(), 1u);
         size_t projectDraws = 0;
         for (const auto& draw : backend.drawSnapshots) {
-            if (draw.indexCount == 0) continue;
+            if (draw.indexCount == 0) {
+                continue;
+            }
             ++projectDraws;
             EXPECT_EQ(draw.shaderPath, "Assets/Shaders/Arbitrary/ProjectAppearance.hlsl");
             EXPECT_EQ(draw.appearance, projectParameters);
@@ -2286,7 +2333,7 @@ TEST_F(WaterFarRenderPassTest, AVisibleFarOceanIsSubmittedWhenTheFiniteWaterBody
             EXPECT_EQ(draw.meshGroupCountX, 0u);
         }
     }
-    /// @note Missing or incompatible declarations must never execute a different surface from the CPU query/selection geometry.
+    // Missing or incompatible declarations must never execute a different surface from the CPU query/selection geometry.
     for (const char* path : {"Assets/Shaders/Arbitrary/UnsharedWater.hlsl",
                             "Assets/Shaders/Arbitrary/WrongVertexWater.hlsl",
                             "Assets/Shaders/Arbitrary/WrongSurfaceWater.hlsl"}) {
@@ -2301,7 +2348,9 @@ TEST_F(WaterFarRenderPassTest, AVisibleFarOceanIsSubmittedWhenTheFiniteWaterBody
         ASSERT_EQ(backend.draws.size(), 1u);
         size_t fallbackDraws = 0;
         for (const auto& draw : backend.drawSnapshots) {
-            if (draw.indexCount == 0) continue;
+            if (draw.indexCount == 0) {
+                continue;
+            }
             ++fallbackDraws;
             EXPECT_NE(draw.shaderPath.find("Water/Water.hlsl"), std::string::npos);
             EXPECT_TRUE(draw.appearance.IsValid());
@@ -2398,8 +2447,67 @@ TEST_F(WaterFarRenderPassTest, SplineClustersReduceDistantTrianglesAndMatchTheSe
     for (const auto& draw : backend.submittedCalls)
         if (draw.indexBuffer == water.surfaceClusterIndices) selection.emplace_back(draw.startIndex, draw.indexCount);
     EXPECT_EQ(selection, distant);
+    // スプラインに用意した LOD は通常のインデックス描画でも同じ範囲を選ぶ。
+    settings.geometryDrawMode = renderer::GeometryDrawMode{};
+    EXPECT_EQ(colorRanges(), distant);
     colorCopy.Release(resources);
     depthCopy.Release(resources);
+}
+
+/// @brief Composite は空の描画に依存せず、当該ビューの大気フォグ定数を束縛する。
+TEST_F(WaterFarRenderPassTest, CompositeInitializesAtmosphereOnlyForAtmosphericFog)
+{
+    FarPassRenderer backend;
+    renderer::ResourceManager resources(backend);
+    renderer::Camera camera;
+    renderer::RenderSettings settings;
+    renderer::RenderPassHandles handles;
+    renderer::RenderPassContext context{{}, backend, resources, camera, settings, {}, UINT32_MAX, handles};
+    handles.postprocCB = resources.CreateConstantBuffer(sizeof(renderer::PostProcCB));
+    handles.atmosphereCB = resources.CreateConstantBuffer(sizeof(renderer::AtmosphereCB));
+    handles.compositeShader = resources.LoadShader("Assets/Shaders/PostProcess/Color/Composite.hlsl");
+    context.width = context.height = 64;
+    context.resourceRegistry.BindTarget("HDR",
+        resources.CreateRenderTarget(64, 64, renderer::CameraDepthTargetDesc(1)));
+
+    // 固定色の霧では、用意された定数バッファを更新せず、描画にも渡さない。
+    settings.postProcess.fog.enabled = true;
+    ExecuteUnderwaterComposite(resources, context);
+    ASSERT_EQ(backend.submittedCalls.size(), 1u);
+    EXPECT_FALSE(backend.submittedCalls.back().constantBuffers[renderer::cb::ATMOSPHERE].IsValid());
+    EXPECT_FALSE(backend.constants.at(resources.Get(handles.atmosphereCB))->hasAtmosphere);
+
+    // SkyPass を実行できないビューでも、解決済みの空の係数が Composite に届く。
+    settings.postProcess.fog.source = 1;
+    context.environment.sky = renderer::RenderSkyInput{{0.1f, 0.2f, 0.3f}, 0.4f, 900.0f, 1000.0f, 2.0f, 0.6f};
+    ExecuteUnderwaterComposite(resources, context);
+    ASSERT_EQ(backend.drawSnapshots.size(), 2u);
+    const auto& active = backend.drawSnapshots.back();
+    ASSERT_TRUE(active.hasAtmosphere);
+    const auto& atmosphere = active.atmosphere;
+    EXPECT_FLOAT_EQ(atmosphere.rayleighScattering[0], 0.1f);
+    EXPECT_FLOAT_EQ(atmosphere.rayleighScattering[1], 0.2f);
+    EXPECT_FLOAT_EQ(atmosphere.rayleighScattering[2], 0.3f);
+    EXPECT_FLOAT_EQ(atmosphere.mieScattering, 0.4f);
+    EXPECT_FLOAT_EQ(atmosphere.sunIntensity, 2.0f);
+    EXPECT_FLOAT_EQ(atmosphere.mieG, 0.6f);
+
+    // 同じバッファを次のビューで使っても、空がなければ前の散乱係数を引き継がない。
+    context.environment.sky.reset();
+    ExecuteUnderwaterComposite(resources, context);
+    ASSERT_EQ(backend.drawSnapshots.size(), 3u);
+    const auto& empty = backend.drawSnapshots.back();
+    ASSERT_TRUE(empty.hasAtmosphere);
+    EXPECT_FLOAT_EQ(empty.atmosphere.rayleighScattering[0], 0.0f);
+    EXPECT_FLOAT_EQ(empty.atmosphere.rayleighScattering[1], 0.0f);
+    EXPECT_FLOAT_EQ(empty.atmosphere.rayleighScattering[2], 0.0f);
+    EXPECT_FLOAT_EQ(empty.atmosphere.mieScattering, 0.0f);
+    EXPECT_FLOAT_EQ(empty.atmosphere.sunIntensity, 0.0f);
+
+    settings.postProcess.fog.enabled = false;
+    ExecuteUnderwaterComposite(resources, context);
+    ASSERT_EQ(backend.submittedCalls.size(), 4u);
+    EXPECT_FALSE(backend.submittedCalls.back().constantBuffers[renderer::cb::ATMOSPHERE].IsValid());
 }
 
 /// @brief Underwater volume is recorded before composite and bound only after success.

@@ -30,10 +30,13 @@ struct GeometryMaterialInput {
 [[nodiscard]] constexpr GeometryRoute ResolveGeometryRoute(
     const GeometryMaterialInput& material, bool gbufferPipeline)
 {
-    if (material.blend != BlendMode::OPAQUE_BLEND) return GeometryRoute::ForwardTransparent;
-    if (!gbufferPipeline || !material.gbufferEquivalentShader || material.advancedLobe)
+    if (material.blend != BlendMode::OPAQUE_BLEND) {
+        return GeometryRoute::ForwardTransparent;
+    }
+    if (!gbufferPipeline || !material.gbufferEquivalentShader || material.advancedLobe) {
         return GeometryRoute::ForwardOpaque;
+    }
     return GeometryRoute::GBuffer;
 }
 
-} /// @note namespace fbzz::renderer
+} // namespace fbzz::renderer

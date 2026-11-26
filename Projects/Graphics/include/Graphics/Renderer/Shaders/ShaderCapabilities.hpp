@@ -66,4 +66,4 @@ struct ShaderCapabilities {
     }
 };
 
-} /// @note namespace fbzz::renderer
+} // namespace fbzz::renderer

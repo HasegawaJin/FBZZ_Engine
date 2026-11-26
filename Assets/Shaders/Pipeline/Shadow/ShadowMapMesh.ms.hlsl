@@ -4,6 +4,7 @@
 /// @date    2026-10-10
 /// @see https://microsoft.github.io/DirectX-Specs/d3d/MeshShader.html - mesh output limits and SetMeshOutputCounts.
 
+#include "Common/Binding.hlsli"
 #ifdef FBZZ_MASKED_SHADOW_MESH
 #include "Pipeline/Shadow/AlphaShadow.hlsl"
 #define FBZZ_SHADOW_MESH_OUTPUT ShadowOutput
@@ -32,7 +33,7 @@ void MSMain(uint3 groupThreadId : SV_GroupThreadID, uint3 groupId : SV_GroupID,
         g_meshletId = pair.x;
         g_instanceId = pair.y;
         g_meshletVisible = pair.x < g_meshletCount && groupId.z == 0u
-            && (FbzzVertexSlot(3u) != 0xffffffffu
+            && (FbzzVertexSlot(VS_SB_MESHLET_SELECTION_SLOT) != 0xffffffffu
                 || (groupId.y == 0u && IsClusterMeshletVisible(ReadClusterMeshlet(pair.x), world)));
     }
     GroupMemoryBarrierWithGroupSync();

@@ -26,9 +26,9 @@ FBZZ_TEX2D_T(float, texShadow, TEX_SHADOW_SLOT);
 FBZZ_TEX2D(texSSAO, TEX_SSAO_SLOT);
 FBZZ_TEX2D_T(float, texContactShadow, TEX_CONTACT_SHADOW_SLOT); ///< @note t24: 接触影マスク (1=非遮蔽, 0=遮蔽)
 /// @note t20 alpha is typed: 1=weighted opaque specular, 2=full dielectric radiance, 0=invalid.
-FBZZ_TEX2D_T(float4, texRayReflection, 20);
+FBZZ_TEX2D_T(float4, texRayReflection, SRV_RAY_REFLECTION_SLOT);
 /// @note t23 は Hybrid resolve 専用。RGB は受け側 Fresnel 適用済み、alpha は反射率と独立した信頼度。
-FBZZ_TEX2D_T(float4, texScreenReflection, 23);
+FBZZ_TEX2D_T(float4, texScreenReflection, SRV_SCREEN_REFLECTION_SLOT);
 SamplerState           sampDefault  : register(SAMPLER_DEFAULT);
 SamplerComparisonState sampShadow   : register(SAMPLER_SHADOW);
 SamplerState           sampGBuffer  : register(SAMPLER_POINT_CLAMP);

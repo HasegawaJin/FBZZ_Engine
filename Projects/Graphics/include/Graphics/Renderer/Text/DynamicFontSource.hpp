@@ -34,7 +34,7 @@ public:
     DynamicFontSource& operator=(const DynamicFontSource&) = delete;
 
     /// @brief フォントファイルを読み込み、メトリクスを確定する。
-    /// @param pixelHeight アトラスへ焼く際のラスタライズ解像度 (行高さではなく em 相当の px)。
+    /// @param[in] pixelHeight アトラスへ焼く際のラスタライズ解像度 (行高さではなく em 相当の px)。
     /// @note テクスチャは最初のグリフ追加時に遅延生成されるため、ここでは GPU に触らない。
     FBZZ_GRAPHICS_API bool Load(const std::string& fontPath, float pixelHeight);
 
@@ -69,4 +69,4 @@ private:
     std::unique_ptr<Impl> m_impl;
 };
 
-} /// @note namespace fbzz::renderer
+} // namespace fbzz::renderer

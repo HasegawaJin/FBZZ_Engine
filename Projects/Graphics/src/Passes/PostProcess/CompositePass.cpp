@@ -2,9 +2,11 @@
 /// @brief   最終画面の合成パス。
 /// @author  Hasegawa Jin
 /// @date    2026-06-18
+#include <Graphics/Renderer/Commands/ShaderBindingSlots.hpp>
 #include <Graphics/Passes/PostProcess/PostProcessPasses.hpp>
 #include <Graphics/Pipeline/Passes/RenderPassContext.hpp>
 #include <Graphics/Renderer/Commands/DrawCall.hpp>
+#include "../SkyAtmosphereConstants.hpp"
 #include "UnderwaterPassHelpers.hpp"
 #include <algorithm>
 #include <cmath>
@@ -18,14 +20,20 @@ namespace {
 /// @see Docs/design/water-gameplay-visuals.md
 bool CanUseWaterRectangleComposite(const RenderPassContext& ctx)
 {
-    if (!ctx.renderScene) return false;
+    if (!ctx.renderScene) {
+        return false;
+    }
     for (const auto& receipt : ctx.handles.waterMediumBodies) {
-        if (receipt.waterInputIndex >= ctx.renderScene->water.size()) continue;
+        if (receipt.waterInputIndex >= ctx.renderScene->water.size()) {
+            continue;
+        }
         const auto& input = ctx.renderScene->water[receipt.waterInputIndex];
         const auto& medium = input.medium;
         if (!medium.opticalEnabled || !medium.analyticRectangle
             || (input.constants.terrainInfoParams.x > 0.5f && !medium.depthIsUniform)
-            || !medium.plumes.empty()) continue;
+            || !medium.plumes.empty()) {
+            continue;
+        }
         const auto& world = input.constants.worldMatrix;
         float minimum = (std::numeric_limits<float>::max)();
         float maximum = (std::numeric_limits<float>::lowest)();
@@ -34,14 +42,18 @@ bool CanUseWaterRectangleComposite(const RenderPassContext& ctx)
             const float y = (corner & 2u) != 0u ? input.aabbMax.y : input.aabbMin.y;
             const float z = (corner & 4u) != 0u ? input.aabbMax.z : input.aabbMin.z;
             const float height = world.m[1][0] * x + world.m[1][1] * y + world.m[1][2] * z + world.m[1][3];
-            if (!std::isfinite(height)) return false;
+            if (!std::isfinite(height)) {
+                return false;
+            }
             minimum = (std::min)(minimum, height);
             maximum = (std::max)(maximum, height);
         }
         const float verticalMargin = input.margin.vertical * (std::max)(1.0f, std::abs(world.m[1][1]))
             + input.margin.horizontal * (std::abs(world.m[1][0]) + std::abs(world.m[1][2])) + 0.001f;
         const float displacement = (std::max)(std::abs(minimum - medium.surfaceY), std::abs(maximum - medium.surfaceY)) + verticalMargin;
-        if (!std::isfinite(displacement)) continue;
+        if (!std::isfinite(displacement)) {
+            continue;
+        }
         return true;
     }
     return false;
@@ -57,7 +69,7 @@ void ExecuteCompositePass(RenderPassContext& ctx)
     const auto& rs = ctx.settings;
 
     const auto& pp = rs.postProcess;
-    /// @note 書き先はパイプラインを組んだ側が決める (理由は ctx.compositeOutputRT を参照)。
+    // 書き先はパイプラインを組んだ側が決める (理由は ctx.compositeOutputRT を参照)。
     r.SetRenderTarget(ctx.compositeOutputRT, resources);
 
     PostProcCB postData{};
@@ -71,7 +83,7 @@ void ExecuteCompositePass(RenderPassContext& ctx)
     postData.screenSize[1] = static_cast<float>(ctx.height);
     postData.exposure = pp.exposure;
     postData.time = ctx.time;
-    /// @note ユーザー設定の発光量はボリューム合成の影響を受けない rs から掛ける。
+    // ユーザー設定の発光量はボリューム合成の影響を受けない rs から掛ける。
     postData.bloomIntensity =
         (pp.bloom.enabled ? pp.bloom.intensity : 0.0f) * (std::max)(rs.userBloomScale, 0.0f);
     postData.fogDensity = pp.fog.enabled ? pp.fog.density : 0.0f;
@@ -79,10 +91,10 @@ void ExecuteCompositePass(RenderPassContext& ctx)
     postData.fogColor[0] = pp.fog.color[0];
     postData.fogColor[1] = pp.fog.color[1];
     postData.fogColor[2] = pp.fog.color[2];
-    /// @note フォグ色の出どころ (0=Exponential, 1=Atmosphere)。Atmosphere は b3/b6 から大気散乱を計算する。
+    // フォグ色の出どころ (0=Exponential, 1=Atmosphere)。Atmosphere は b3/b6 から大気散乱を計算する。
     postData.fogSource = static_cast<float>(pp.fog.source);
     postData.radialBlur = std::clamp(pp.lens.radialBlur, 0.0f, 1.0f);
-    /// @note 衝撃波リング。幅 0 は «輪が無い» ではなく 0 除算なので、下限で止める。
+    // 衝撃波リング。幅 0 は «輪が無い» ではなく 0 除算なので、下限で止める。
     postData.shockRingAmplitude = std::clamp(pp.lens.shockRingAmplitude, 0.0f, 1.0f);
     postData.shockRingRadius    = (std::max)(pp.lens.shockRingRadius, 0.0f);
     postData.shockRingWidth     = (std::max)(pp.lens.shockRingWidth, 0.001f);
@@ -122,7 +134,7 @@ void ExecuteCompositePass(RenderPassContext& ctx)
     postData.colorFilter[0] = pp.imageQuality.colorFilter[0];
     postData.colorFilter[1] = pp.imageQuality.colorFilter[1];
     postData.colorFilter[2] = pp.imageQuality.colorFilter[2];
-    /// @note ユーザー設定の明るさ。ボリューム合成の影響を受けない rs から直に読む。
+    // ユーザー設定の明るさ。ボリューム合成の影響を受けない rs から直に読む。
     postData.userBrightness     = rs.userBrightness;
     postData.screenFadeAlpha    = pp.screenFadeAlpha;
     postData.screenFadeColor[0] = pp.screenFadeColor[0];
@@ -143,26 +155,31 @@ void ExecuteCompositePass(RenderPassContext& ctx)
         waterInterfaceTexture = resources.GetColorTexture(ctx.Res().Target("WaterInterface"), 0);
         sharedWaterOptics = mediumAtlasTexture.IsValid() && waterInterfaceTexture.IsValid();
     }
-    if (!ctx.rayPathViewActive && !sceneHasOpticalWater)
+    if (!ctx.rayPathViewActive && !sceneHasOpticalWater) {
         FillUnderwaterConstants(postData, underwater);
+    }
     if (sharedWaterOptics) {
         postData.underwaterOpticalMode = 2.0f;
         postData.underwaterStrength = 1.0f;
-        /// @note 共有合成は陸上でも実行する。大気フォグを抑えるかは解決済みのカメラ深度で決める。
+        // 共有合成は陸上でも実行する。大気フォグを抑えるかは解決済みのカメラ深度で決める。
         postData.underwaterDepth = UsesOpticalUnderwater(underwater) ? underwater.depth : 0.0f;
         postData.underwaterMaxDistance = 0.0f;
         postData.underwaterLightSteps = 16.0f;
         for (const auto& packedBody : h.waterMediumBodies) {
-            if (packedBody.waterInputIndex >= ctx.renderScene->water.size()) continue;
+            if (packedBody.waterInputIndex >= ctx.renderScene->water.size()) {
+                continue;
+            }
             const auto& body = ctx.renderScene->water[packedBody.waterInputIndex];
-            if (!body.medium.opticalEnabled) continue;
+            if (!body.medium.opticalEnabled) {
+                continue;
+            }
             postData.underwaterMaxDistance = (std::max)(postData.underwaterMaxDistance,
                                                          body.medium.maxDistance);
             postData.underwaterLightSteps = (std::max)(postData.underwaterLightSteps,
                                                         static_cast<float>(body.medium.lightSteps));
         }
     }
-    /// @note 共有水域の準備失敗は縮退させるが、従来の解決済み水中入力の当該フレームの光は保持する。
+    // 共有水域の準備失敗は縮退させるが、従来の解決済み水中入力の当該フレームの光は保持する。
     const bool legacyWaterOptics = !ctx.rayPathViewActive && !sceneHasOpticalWater
         && UsesOpticalUnderwater(underwater);
     const bool underwaterLightWritten = rs.IsVolumetricLightActive()
@@ -172,7 +189,7 @@ void ExecuteCompositePass(RenderPassContext& ctx)
     if (sharedWaterOptics && !underwaterLightWritten
         && std::any_of(ctx.waterOpticalDryTiles.begin(), ctx.waterOpticalDryTiles.end(),
                        [](uint32_t tiles) { return tiles != 0u; })) {
-        /// @note モード 2.25 は単一パス合成用のタイルマスクを選ぶ。モード 3 は分割描画の範囲を維持する。
+        // モード 2.25 は単一パス合成用のタイルマスクを選ぶ。モード 3 は分割描画の範囲を維持する。
         postData.underwaterOpticalMode = 2.25f;
         postData.waterOpticalDryTiles = ctx.waterOpticalDryTiles;
     }
@@ -182,74 +199,86 @@ void ExecuteCompositePass(RenderPassContext& ctx)
     compositeDC.shader = h.compositeShader;
     if (sharedWaterOptics && CanUseWaterRectangleComposite(ctx)) {
         const auto specialized = resources.LoadShader("Assets/Shaders/PostProcess/Color/CompositeWaterRectangle.hlsl");
-        if (specialized.IsValid()) compositeDC.shader = specialized;
+        if (specialized.IsValid()) {
+            compositeDC.shader = specialized;
+        }
     }
     compositeDC.pipelineState = h.postprocPSO;
     compositeDC.vertexCount = 3;
-    compositeDC.constantBuffers[0] = h.frameCB;
-    /// @note b3 (太陽方向/色) と b6 (大気散乱パラメータ) は fogSource=Atmosphere のエアリアルフォグ計算で参照する。
-    /// @note SkyPass が b6 を、ForwardPasses が b3 を Composite より前に更新済み。
-    compositeDC.constantBuffers[3] = h.lightCB;
-    compositeDC.constantBuffers[5] = h.postprocCB;
-    compositeDC.constantBuffers[6] = h.atmosphereCB;
-    /// @note b8: ssrIntensity, volLightIntensity, lutBlend 等
-    compositeDC.constantBuffers[8] = h.advancedGraphicsCB;
-    /// @note t29: 自動露出が求めた順応済み平均輝度 (1 要素)。有効なときだけ束縛するのは、
-    /// @note Composite.hlsl が autoExposureKey <= 0 で読みに行かず、未束縛のまま読むと 0 が
-    /// @note 返って露出が発散するため。
-    if (rs.autoExposure.enabled && h.exposureResult.IsValid())
-        compositeDC.psBuffers[0] = h.exposureResult;
-    /// @note b13 + t23: フロクセル霧。無効でも b13 は常に束縛する。有効/無効は CB の
-    /// @note froxelGridZ が持ち、FroxelFogPass が切ると 0 を書き戻すため常に最新を渡せば良い。
-    /// @note 束縛を止めると DX11 では前フレームの値が残り、切った瞬間に画面が黒く落ちる。
+    compositeDC.constantBuffers[cb::CAMERA] = h.frameCB;
+    compositeDC.constantBuffers[cb::LIGHT] = h.lightCB;
+    compositeDC.constantBuffers[cb::POSTPROC] = h.postprocCB;
+
+    // シェーダーが大気フォグを評価する設定なら、空の描画有無にかかわらず当該ビューの b6 を用意する。
+    const bool usesAtmosphericFog = postData.fogDensity > 0.0f && postData.fogSource > 0.5f;
+    if (usesAtmosphericFog) {
+        const auto atmosphere = MakeSkyAtmosphereConstants(ctx.environment.sky ? &*ctx.environment.sky : nullptr);
+        resources.Update(h.atmosphereCB, &atmosphere, sizeof(atmosphere));
+        compositeDC.constantBuffers[cb::ATMOSPHERE] = h.atmosphereCB;
+    }
+
+    // b8: ssrIntensity, volLightIntensity, lutBlend 等
+    compositeDC.constantBuffers[cb::ADVANCED_GRAPHICS] = h.advancedGraphicsCB;
+    // t29: 自動露出が求めた順応済み平均輝度 (1 要素)。有効なときだけ束縛するのは、
+    // Composite.hlsl が autoExposureKey <= 0 で読みに行かず、未束縛のまま読むと 0 が
+    // 返って露出が発散するため。
+    if (rs.autoExposure.enabled && h.exposureResult.IsValid()) {
+        compositeDC.psBuffers[PixelBufferIndex(srv::EXPOSURE_RESULT)] = h.exposureResult;
+    }
+    // b13 + t23: フロクセル霧。無効でも b13 は常に束縛する。有効/無効は CB の
+    // froxelGridZ が持ち、FroxelFogPass が切ると 0 を書き戻すため常に最新を渡せば良い。
+    // 束縛を止めると DX11 では前フレームの値が残り、切った瞬間に画面が黒く落ちる。
     if (h.froxelFogCB.IsValid()) {
-        /// @note Reference Path は FroxelFogPass を登録しないので、以前の Raster の有効 CB を明示的に無効化する。
+        // Reference Path は FroxelFogPass を登録しないので、以前の Raster の有効 CB を明示的に無効化する。
         if (ctx.rayPathViewActive) {
             const FroxelFogCB disabled{};
             resources.Update(h.froxelFogCB, &disabled, sizeof(disabled));
         }
-        compositeDC.constantBuffers[13] = h.froxelFogCB;
-        if (!ctx.rayPathViewActive && h.froxelIntegrated.IsValid())
-            compositeDC.textures[23] = h.froxelIntegrated;
+        compositeDC.constantBuffers[cb::FROXEL_FOG] = h.froxelFogCB;
+        if (!ctx.rayPathViewActive && h.froxelIntegrated.IsValid()) {
+            compositeDC.textures[srv::FROXEL_FOG] = h.froxelIntegrated;
+        }
     }
-    /// @note MotionBlur が有効なら CS が生成した blurred HDR を hdrRT の代わりに t5 へ束縛する。
-    /// @note MotionBlurPass が motionBlurResult に完全なブラー済み HDR を書くため、Composite
-    /// @note はそれを HDR ソースとして読むだけで良く、Composite.hlsl の変更は不要。
-    /// @note 条件は ExecuteMotionBlurPass の早期 return と同じにする。シェーダーが読めずパスが走らなかった
-    /// @note フレームに結果テクスチャを読むと、前のフレーム (または未初期化) の絵が出る。
+    // MotionBlur が有効なら CS が生成した blurred HDR を hdrRT の代わりに t5 へ束縛する。
+    // MotionBlurPass が motionBlurResult に完全なブラー済み HDR を書くため、Composite
+    // はそれを HDR ソースとして読むだけで良く、Composite.hlsl の変更は不要。
+    // 条件は ExecuteMotionBlurPass の早期 return と同じにする。シェーダーが読めずパスが走らなかった
+    // フレームに結果テクスチャを読むと、前のフレーム (または未初期化) の絵が出る。
     const bool motionBlurWritten = !ctx.rayPathViewActive && rs.motionBlur.enabled
         && h.motionBlurShader.IsValid() && h.motionBlurResult.IsValid();
-    compositeDC.textures[5] = motionBlurWritten
+    compositeDC.textures[srv::POST_COLOR] = motionBlurWritten
         ? h.motionBlurResult
         : resources.GetColorTexture(ctx.Res().Target("HDR"), 0);
-    compositeDC.textures[7] = resources.GetDepthTexture(ctx.Res().Target("HDR"));
-    /// @note t10 / t19 / t20 は RenderGraph の外にある永続テクスチャなので、書き手のパスが
-    /// @note 走らなかったフレームは前の中身が残る。«設定が有効» ではなく «今フレーム書かれた» で
-    /// @note 束縛を決める。未束縛の SRV は 0 を返すので、シェーダー側は分岐なしで素通しになる。
+    compositeDC.textures[srv::DEPTH] = resources.GetDepthTexture(ctx.Res().Target("HDR"));
+    // t10 / t19 / t20 は RenderGraph の外にある永続テクスチャなので、書き手のパスが
+    // 走らなかったフレームは前の中身が残る。«設定が有効» ではなく «今フレーム書かれた» で
+    // 束縛を決める。未束縛の SRV は 0 を返すので、シェーダー側は分岐なしで素通しになる。
     const bool bloomWritten = pp.bloom.enabled
         && h.bloomDownShader.IsValid() && h.bloomUpShader.IsValid();
-    compositeDC.textures[10] = bloomWritten ? ctx.Res().Texture("Bloom") : renderer::ResourceHandle<renderer::TextureTag>{};
-    /// @note 空気の体積光はHDRへ加算済み。水中の散乱だけ透過後の背景へ一度合成する。
-    if (underwaterLightWritten)
-        compositeDC.textures[21] = ctx.Res().Texture("VolumetricResult");
-    if (sharedWaterOptics) {
-        compositeDC.auxiliaryPsBuffers[0] = h.waterMediumTable;
-        compositeDC.textures[13] = waterInterfaceTexture;
-        compositeDC.textures[15] = mediumAtlasTexture;
+    compositeDC.textures[srv::BLOOM] = bloomWritten ? ctx.Res().Texture("Bloom") : renderer::ResourceHandle<renderer::TextureTag>{};
+    // 空気の体積光はHDRへ加算済み。水中の散乱だけ透過後の背景へ一度合成する。
+    if (underwaterLightWritten) {
+        compositeDC.textures[srv::UNDERWATER_VOLUME] = ctx.Res().Texture("VolumetricResult");
     }
-    /// @note Procedural LUT (t22) — Renderer互換の32^3 Texture3DをRenderSystemがCPU生成する。
-    if (rs.lutColorGrading.enabled && h.proceduralColorLut.IsValid())
-        compositeDC.textures[22] = h.proceduralColorLut;
+    if (sharedWaterOptics) {
+        compositeDC.auxiliaryPsBuffers[AuxiliaryPixelBufferIndex(srv::WATER_MEDIUM_TABLE)] = h.waterMediumTable;
+        compositeDC.textures[srv::WATER_INTERFACE] = waterInterfaceTexture;
+        compositeDC.textures[srv::WATER_MEDIUM_ATLAS] = mediumAtlasTexture;
+    }
+    // Procedural LUT (t22) — Renderer互換の32^3 Texture3DをRenderSystemがCPU生成する。
+    if (rs.lutColorGrading.enabled && h.proceduralColorLut.IsValid()) {
+        compositeDC.textures[srv::LUT_COLOR_GRADE] = h.proceduralColorLut;
+    }
     r.Submit(compositeDC, resources);
     if (compositeDC.shader != h.compositeShader) {
-        /// @note モード 3 は高速シェーダーが書いた画素だけを除外する。更新と描画のコマンド順を保ち、元の HDR 入力を両方で使う。
+        // モード 3 は高速シェーダーが書いた画素だけを除外する。更新と描画のコマンド順を保ち、元の HDR 入力を両方で使う。
         postData.underwaterOpticalMode = 3.0f;
         resources.Update(h.postprocCB, &postData, sizeof(postData));
         compositeDC.shader = h.compositeShader;
         r.Submit(compositeDC, resources);
     }
 
-    /// @note 後段へ渡すのは今回の出力。終端へ直書きする構成では LDR を申告も更新もしない。
+    // 後段へ渡すのは今回の出力。終端へ直書きする構成では LDR を申告も更新もしない。
     h.postProcessInput = resources.GetColorTexture(ctx.compositeOutputRT, 0);
     h.fxaaInput = h.postProcessInput;
 }

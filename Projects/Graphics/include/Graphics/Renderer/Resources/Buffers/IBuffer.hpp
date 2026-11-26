@@ -46,4 +46,4 @@ namespace fbzz::renderer
         virtual bool CopyData(size_t, size_t, void*) const { return false; }
     };
 
-} /// @note namespace fbzz::renderer
+} // namespace fbzz::renderer

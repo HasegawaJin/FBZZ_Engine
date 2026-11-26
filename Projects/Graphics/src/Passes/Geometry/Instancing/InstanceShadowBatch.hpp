@@ -55,4 +55,4 @@ private:
 void SubmitInstanceShadowBatchView(RenderPassContext& context,const PreparedInstanceShadowBatch& batch,
     size_t viewIndex,std::span<const uint8_t> receipts,ResourceHandle<ConstantBufferTag> lightFrame);
 
-} /// @note namespace fbzz::renderer
+} // namespace fbzz::renderer

@@ -25,8 +25,8 @@ FrustumSliceSphere ComputeFrustumSliceSphere(const renderer::Camera& camera,
     nearZ = (std::max)(nearZ, 0.01f);
     farZ  = (std::max)(farZ, nearZ + 0.01f);
 
-    /// @note 平行投影は錐台ではなく直方体なので、対角の傾きという概念が無い。
-    /// @note スライスの外接球は「中央 + 半対角」でそのまま求まる。
+    // 平行投影は錐台ではなく直方体なので、対角の傾きという概念が無い。
+    // スライスの外接球は「中央 + 半対角」でそのまま求まる。
     if (camera.m_projection == renderer::ProjectionMode::Orthographic) {
         const float halfH = (std::max)(camera.m_orthoHeight, 0.01f) * 0.5f;
         const float halfW = halfH * camera.m_aspect;
@@ -37,14 +37,14 @@ FrustumSliceSphere ComputeFrustumSliceSphere(const renderer::Camera& camera,
         return box;
     }
 
-    /// @note 視錐台の対角方向の傾き。k = |(±aspect*t, ±t, 1)| の xy 成分の長さ。
+    // 視錐台の対角方向の傾き。k = |(±aspect*t, ±t, 1)| の xy 成分の長さ。
     const float tanHalfFov = std::tan(camera.m_fovY * 0.5f * DEG_TO_RAD);
     const float k  = tanHalfFov * std::sqrt(1.0f + camera.m_aspect * camera.m_aspect);
     const float k2 = k * k;
 
     FrustumSliceSphere sphere;
-    /// @note near 面が far 面より広いほど中心は手前へ寄る。k² が十分大きいときは
-    /// @note far 面の外接円がスライス全体を包むので、中心は far 面上に載る。
+    // near 面が far 面より広いほど中心は手前へ寄る。k² が十分大きいときは
+    // far 面の外接円がスライス全体を包むので、中心は far 面上に載る。
     if (k2 >= (farZ - nearZ) / (farZ + nearZ)) {
         sphere.centerDistance = farZ;
         sphere.radius         = farZ * k;
@@ -75,7 +75,7 @@ void ComputeCascadeSplits(float nearZ, float shadowDistance, int cascadeCount,
         const float uniformSplit = nearZ + range * ratio;
         outSplits[i] = clampedLambda * logSplit + (1.0f - clampedLambda) * uniformSplit;
     }
-    /// @note 丸め誤差で最遠が shadowDistance を下回ると、影の到達距離が設定より短くなる。
+    // 丸め誤差で最遠が shadowDistance を下回ると、影の到達距離が設定より短くなる。
     outSplits[cascadeCount - 1] = shadowDistance;
 }
 }
@@ -91,23 +91,23 @@ PreparedShadows PrepareShadows(const Camera& camera, const RenderSettings& rs,
     float dirShadowDistance, float dirShadowBias, bool padCachedCascades)
 {
     PreparedShadows result;
-    /// @name カスケードシャドウ (CSM) のフィッティング
-    /// @note 精細さを決めるのは解像度ではなく「1 テクセルが覆うワールド距離」。単一マップでは
-    /// @note 到達距離を伸ばすと分母が伸びるだけで、近距離の精細さと両立しない。
-    /// @note 視錐台を距離で区切り、手前ほど狭い範囲へ 1 タイルを割り当てて足元の密度だけ上げる。
-    /// @note shadowBounds (シーン全体) は「これ以上大きくしない」上限としてだけ使う。
+    // カスケードシャドウ (CSM) のフィッティング
+    // 精細さを決めるのは解像度ではなく「1 テクセルが覆うワールド距離」。単一マップでは
+    // 到達距離を伸ばすと分母が伸びるだけで、近距離の精細さと両立しない。
+    // 視錐台を距離で区切り、手前ほど狭い範囲へ 1 タイルを割り当てて足元の密度だけ上げる。
+    // shadowBounds (シーン全体) は「これ以上大きくしない」上限としてだけ使う。
     auto& cascadeCount = result.count;
     cascadeCount =
         std::clamp(rs.shadow.cascadeCount, 1, fbzz::renderer::kMaxShadowCascades);
 
-    /// @note アトラス配置: 1 分割なら全面、2 分割以上なら 2x2 タイル。
-    /// @note 1 枚に収めれば影を読む 20 以上のシェーダーがバインドもサンプラーも変えずに済む。
-    /// @note 解像度とメモリは分割数によらず一定で、変わるのは面積の配分だけ。
+    // アトラス配置: 1 分割なら全面、2 分割以上なら 2x2 タイル。
+    // 1 枚に収めれば影を読む 20 以上のシェーダーがバインドもサンプラーも変えずに済む。
+    // 解像度とメモリは分割数によらず一定で、変わるのは面積の配分だけ。
     const uint32_t atlasResolution = (std::max)(rs.shadow.mapResolution, 1u);
     const uint32_t tilesPerSide    = (cascadeCount > 1) ? 2u : 1u;
     const uint32_t tileSize        = (std::max)(atlasResolution / tilesPerSide, 1u);
 
-    /// @note 影の最大到達距離。LightComponent::shadowDistance > 0 は従来どおり手動指定を優先する。
+    // 影の最大到達距離。LightComponent::shadowDistance > 0 は従来どおり手動指定を優先する。
     const float shadowDistance = (dirShadowDistance > 0.0f)
         ? (std::max)(dirShadowDistance, 1.0f)
         : (std::max)(rs.shadow.autoFitDistance, 1.0f);
@@ -119,7 +119,7 @@ PreparedShadows PrepareShadows(const Camera& camera, const RenderSettings& rs,
     const math::Vector3 up = (std::abs(lightDir.y) > 0.99f)
                              ? math::Vector3{ 1.0f, 0.0f, 0.0f }
                              : math::Vector3{ 0.0f, 1.0f, 0.0f };
-    /// @note 位置を持たない回転だけのライト空間。テクセルスナップの量子化格子として使う。
+    // 位置を持たない回転だけのライト空間。テクセルスナップの量子化格子として使う。
     const math::Matrix4 snapView     = math::Matrix4::LookAt(math::Vector3::ZERO, lightDir, up);
     const math::Matrix4 snapViewInv  = math::Matrix4::Inverse(snapView);
 
@@ -129,30 +129,32 @@ PreparedShadows PrepareShadows(const Camera& camera, const RenderSettings& rs,
     for (int i = 0; i < cascadeCount; ++i) {
         const float sliceFar = cascadeSplits[i];
 
-        /// @note このカスケードが担当する視錐台スライスの外接球 (向きに依存しないので回転で脈動しない)。
+        // このカスケードが担当する視錐台スライスの外接球 (向きに依存しないので回転で脈動しない)。
         const FrustumSliceSphere slice =
             ComputeFrustumSliceSphere(camera, cascadeSliceNear, sliceFar);
 
-        /// @note シーン全体より大きい影ボリュームを作っても無駄なテクセルが増えるだけ。
+        // シーン全体より大きい影ボリュームを作っても無駄なテクセルが増えるだけ。
         float radius = (std::max)((std::min)(slice.radius, shadowBounds.radius), 1.0f);
 
         math::Vector3 center = camera.m_position + camera.GetForward() * slice.centerDistance;
         if (radius < shadowBounds.radius) {
-            /// @note シーン球からはみ出さないよう、中心をシーン球内へ引き戻す。
+            // シーン球からはみ出さないよう、中心をシーン球内へ引き戻す。
             const math::Vector3 offset   = center - shadowBounds.center;
             const float         distance = offset.Length();
             const float         limit    = (std::max)(shadowBounds.radius - radius, 0.0f);
-            if (distance > limit && distance > 0.0001f)
+            if (distance > limit && distance > 0.0001f) {
                 center = shadowBounds.center + offset * (limit / distance);
+            }
         } else {
             center = shadowBounds.center;
         }
 
-        if (padCachedCascades && i >= std::min(2, cascadeCount - 1))
+        if (padCachedCascades && i >= std::min(2, cascadeCount - 1)) {
             radius *= 1.0f + CACHED_SHADOW_PADDING;
+        }
 
-        /// @note テクセルスナップ。中心がカメラに追従するとサブテクセルのずれで輪郭が波打つ
-        /// @note (shadow swimming)。ライト空間で 1 テクセル単位へ量子化すると標本位置が固定される。
+        // テクセルスナップ。中心がカメラに追従するとサブテクセルのずれで輪郭が波打つ
+        // (shadow swimming)。ライト空間で 1 テクセル単位へ量子化すると標本位置が固定される。
         const float texelWorldSize = (radius * 2.0f) / static_cast<float>(tileSize);
         {
             math::Vector4 lightSpace =
@@ -163,8 +165,8 @@ PreparedShadows PrepareShadows(const Camera& camera, const RenderSettings& rs,
             center = { snapped.x, snapped.y, snapped.z };
         }
 
-        /// @note 深度レンジ。ボリュームの外にいる背の高い caster も影を落とせるよう、
-        /// @note ライト方向の引きはシーン全体の広がりから取る (near/far を広げても塗る面積は増えない)。
+        // 深度レンジ。ボリュームの外にいる背の高い caster も影を落とせるよう、
+        // ライト方向の引きはシーン全体の広がりから取る (near/far を広げても塗る面積は増えない)。
         const float pullback   = (std::max)(shadowBounds.radius, radius) + 20.0f;
         const float depthRange = pullback + radius + 20.0f;
 
@@ -181,11 +183,11 @@ PreparedShadows PrepareShadows(const Camera& camera, const RenderSettings& rs,
         cascade.frustum        = math::Frustum::FromViewProjection(cascade.viewProjection);
         cascade.texelWorldSize = texelWorldSize;
         cascade.splitFar       = sliceFar;
-        /// @note ワールド空間で約 5mm 相当の一定バイアスになるよう深度レンジで正規化する。
-        /// @note カスケードごとにレンジが違うので、値もカスケードごとに持つ。
+        // ワールド空間で約 5mm 相当の一定バイアスになるよう深度レンジで正規化する。
+        // カスケードごとにレンジが違うので、値もカスケードごとに持つ。
         cascade.biasNDC = (0.005f * dirShadowBias) / (std::max)(depthRange - 1.0f, 1.0f);
 
-        /// @note アトラス内のタイル位置 (2x2 を左上から Z 字順に埋める)。
+        // アトラス内のタイル位置 (2x2 を左上から Z 字順に埋める)。
         const uint32_t tileX = static_cast<uint32_t>(i) % tilesPerSide;
         const uint32_t tileY = static_cast<uint32_t>(i) / tilesPerSide;
         cascade.viewportX    = tileX * tileSize;
@@ -202,9 +204,9 @@ PreparedShadows PrepareShadows(const Camera& camera, const RenderSettings& rs,
         cascadeSliceNear = sliceFar;
     }
 
-    /// @note 単一のライト行列で足りるパス (パーティクル自己影など) 向けの代表値。
-    /// @note 到達範囲を最も広く覆う最遠カスケードを渡す。ビルボードの正対に view の内訳が要るので、
-    /// @note view と viewProjection は必ず同じカスケードから対で渡す。
+    // 単一のライト行列で足りるパス (パーティクル自己影など) 向けの代表値。
+    // 到達範囲を最も広く覆う最遠カスケードを渡す。ビルボードの正対に view の内訳が要るので、
+    // view と viewProjection は必ず同じカスケードから対で渡す。
     const ShadowCascade& widestCascade = cascades[cascadeCount - 1];
     result.lightVP = widestCascade.viewProjection;
     result.lightView = widestCascade.view;
@@ -218,7 +220,9 @@ bool PrepareShadowCascadeCache(ShadowCascadeCache& cache, PreparedShadows& shado
 {
     constexpr float MIN_CAMERA_FORWARD_DOT = 0.966f;
     constexpr float MIN_LIGHT_DIRECTION_DOT = 0.9999905f;
-    if (index <= 0 || index >= shadows.count) return false;
+    if (index <= 0 || index >= shadows.count) {
+        return false;
+    }
     const bool farthest = index == shadows.count - 1;
     const uint64_t interval = farthest ? 8u : 4u;
     const uint64_t phase = farthest ? 0u : 2u;
@@ -226,7 +230,7 @@ bool PrepareShadowCascadeCache(ShadowCascadeCache& cache, PreparedShadows& shado
     const float precedingSplit = shadows.cascades[index - 1].splitFar;
     const auto cameraForward = camera.GetForward();
     const float radius = cache.cascade.texelWorldSize * static_cast<float>(cache.cascade.viewportSize) * 0.5f;
-    /// @note 投影の余白を一部残し、テクセル丸めとライトの微小回転でも受光範囲が端から外れないようにする。
+    // 投影の余白を一部残し、テクセル丸めとライトの微小回転でも受光範囲が端から外れないようにする。
     const float translationLimit = radius * CACHED_SHADOW_PADDING * 0.5f;
     const bool reuse = cache.valid && cache.key == key && frame == cache.previousFrame + 1
         && frame % interval != phase && frame - cache.updateFrame < interval && cache.precedingSplit == precedingSplit
@@ -262,7 +266,7 @@ bool PrepareShadowCascadeCache(ShadowCascadeCache& cache, PreparedShadows& shado
 void PrepareAdvancedConstants(RenderPassContext& passCtx, RenderViewResources& viewTargets,
     const AdvancedViewInput& input, const std::function<void(AdvancedGraphicsCB&)>& prepareProbes)
 {
-    /// @note 対応判定は定数バッファの到着前から固定し、ビュー間で共有する Probe の bake 完了と Reference を切り離す。
+    // 対応判定は定数バッファの到着前から固定し、ビュー間で共有する Probe の bake 完了と Reference を切り離す。
     passCtx.rayPathLightingSupported = input.weatherWetness == 0.0f && input.weatherPuddle == 0.0f;
     passCtx.rayHitLightingSupported = passCtx.rayPathLightingSupported && !input.reflectionProbeSelected;
     const auto& rs = passCtx.settings;
@@ -272,13 +276,13 @@ void PrepareAdvancedConstants(RenderPassContext& passCtx, RenderViewResources& v
     const auto sHdrW = viewTargets.width;
     const auto sHdrH = viewTargets.height;
     constexpr float kHalfResScale = 0.5f;
-    /// @name AdvancedGraphicsCB (b8) を毎フレーム更新
-    /// @note 照明定数をここで揃え、TAA feedback だけは実際の provider が確定した実行直前に更新する。
+    // AdvancedGraphicsCB (b8) を毎フレーム更新
+    // 照明定数をここで揃え、TAA feedback だけは実際の provider が確定した実行直前に更新する。
     if (viewTargets.advancedGraphicsCB.IsValid()) {
         AdvancedGraphicsCB agData{};
-        /// @note 未バインド SRV をサンプルさせず、確実に ambient へフォールバックさせるための判定。
-        /// @note 動的 IBL は .dds を持たないので input.dynamicIblReady を別経路として許可する。
-        /// @note Unlit は白の ambientColor を使う。キューブを有効にすると PBR の IBL 分岐がその白を置き換える。
+        // 未バインド SRV をサンプルさせず、確実に ambient へフォールバックさせるための判定。
+        // 動的 IBL は .dds を持たないので input.dynamicIblReady を別経路として許可する。
+        // Unlit は白の ambientColor を使う。キューブを有効にすると PBR の IBL 分岐がその白を置き換える。
         /// @see Assets/Shaders/Pipeline/Deferred/DeferredLighting.hlsl PSMain の IBL 分岐。
         const bool iblResourcesReady = !rs.IsUnlit() &&
             (input.dynamicIblReady || (rs.ibl.enabled && rs.HasValidIblAssets())) &&
@@ -286,7 +290,7 @@ void PrepareAdvancedConstants(RenderPassContext& passCtx, RenderViewResources& v
         agData.iblIntensity          = iblResourcesReady ? rs.ibl.intensity * input.reflectionProbeIntensity : 0.0f;
         agData.iblDiffuseScale       = rs.ibl.diffuseScale;
         agData.iblSpecularScale      = rs.ibl.specularScale;
-        /// @note 動的 IBL は SkyLightBake が焼いた prefilter mip 数に合わせる (maxMip = mip 数 - 1)。
+        // 動的 IBL は SkyLightBake が焼いた prefilter mip 数に合わせる (maxMip = mip 数 - 1)。
         agData.iblMaxMipLevel        = input.dynamicIblReady
             ? input.dynamicIblMipCount - 1
             : rs.ibl.maxMipLevel;
@@ -307,17 +311,17 @@ void PrepareAdvancedConstants(RenderPassContext& passCtx, RenderViewResources& v
         agData.volTintB              = rs.volumetricLight.tint[2];
         agData.volEdgeFade           = rs.volumetricLight.edgeFade;
 
-    /// @note 前方描画のマテリアルが画面空間 AO / 接触影をどれだけ受けるか。
-    /// @note 値そのものは上の「前方描画のマテリアルへ渡す画面空間の遮蔽」ブロックで決めてある。
+    // 前方描画のマテリアルが画面空間 AO / 接触影をどれだけ受けるか。
+    // 値そのものは上の「前方描画のマテリアルへ渡す画面空間の遮蔽」ブロックで決めてある。
     agData.screenAoStrength            = input.screenAoStrength;
     agData.screenContactShadowStrength = input.screenContactShadowStrength;
     agData.screenAoScale               = kHalfResScale;
     agData.screenContactShadowScale    = kHalfResScale;
 
-    /// @note 自動露出。key <= 0 が「無効」の印なので、切ってあるときは 0 のまま渡す。
-    /// @note 0.18 は反射率 18% のグレーカード = 写真の露出計が基準にしている明るさ。
-    /// @note 結果バッファが無いと Composite は t29 を束縛しない。key を立てたままだと 0 を平均輝度として読み、
-    /// @note 露出が上限へ張り付いて白飛びするので、同じ条件で無効にする (CompositePass の束縛条件と対)。
+    // 自動露出。key <= 0 が「無効」の印なので、切ってあるときは 0 のまま渡す。
+    // 0.18 は反射率 18% のグレーカード = 写真の露出計が基準にしている明るさ。
+    // 結果バッファが無いと Composite は t29 を束縛しない。key を立てたままだと 0 を平均輝度として読み、
+    // 露出が上限へ張り付いて白飛びするので、同じ条件で無効にする (CompositePass の束縛条件と対)。
     agData.autoExposureKey          = (rs.autoExposure.enabled && viewTargets.exposureResult.IsValid()) ? 0.18f : 0.0f;
     agData.autoExposureCompensation = rs.autoExposure.compensation;
     agData.autoExposureMinEV        = rs.autoExposure.minExposureEV;
@@ -349,24 +353,26 @@ void PrepareAdvancedConstants(RenderPassContext& passCtx, RenderViewResources& v
         agData.weatherWetness = input.weatherWetness;
         agData.weatherDarkening = input.weatherDarkening;
         agData.weatherPuddle = input.weatherPuddle;
-        /// @note 前フレームの VP 行列 — TAA / Motion Blur が深度再投影で使う。ビュー別に持つ。
+        // 前フレームの VP 行列 — TAA / Motion Blur が深度再投影で使う。ビュー別に持つ。
         agData.prevViewProjection    = viewTargets.prevViewProjection;
         agData.invPrevViewProjection = viewTargets.invPrevViewProjection;
         agData.taaPreviousNearZ = viewTargets.previousNearZ;
         agData.taaPreviousFarZ = viewTargets.previousFarZ;
         agData.taaPreviousOrthographic = viewTargets.previousOrthographic ? 1.0f : 0.0f;
-        /// @note Light Probe Volume: 焼きを進め、焼き上がったボリュームの拡散 GI を IBL キューブに差し替える。
-        /// @note 拡散 GI は IBL の拡散項の置き換えなので、IBL が引けないフレームでは効かせない (マテリアルが IBL 分岐に入らない)。
-        if (iblResourcesReady && prepareProbes) prepareProbes(agData);
+        // Light Probe Volume: 焼きを進め、焼き上がったボリュームの拡散 GI を IBL キューブに差し替える。
+        // 拡散 GI は IBL の拡散項の置き換えなので、IBL が引けないフレームでは効かせない (マテリアルが IBL 分岐に入らない)。
+        if (iblResourcesReady && prepareProbes) {
+            prepareProbes(agData);
+        }
         passCtx.rayHitLightingSupported = passCtx.rayHitLightingSupported
             && agData.probeVolumes[0].intensity <= 0.0f && agData.probeVolumes[1].intensity <= 0.0f;
         resources.Update(viewTargets.advancedGraphicsCB, &agData, sizeof(AdvancedGraphicsCB));
         viewTargets.advancedGraphicsSnapshot = agData;
         viewTargets.advancedGraphicsSnapshotValid = true;
-        /// @note ここはジッターを載せない。両方に載せるとジッター差分がそのまま「動き」として
-        /// @note 現れ、履歴が毎フレームずれて収束しない。履歴はピクセル中心で収束した絵なので、
-        /// @note 引く座標もピクセル中心でなければならない。
-        /// @note シェーダーが今フレームの深度 (Reversed-Z) と並べて使うので GPU 用の行列で持つ。
+        // ここはジッターを載せない。両方に載せるとジッター差分がそのまま「動き」として
+        // 現れ、履歴が毎フレームずれて収束しない。履歴はピクセル中心で収束した絵なので、
+        // 引く座標もピクセル中心でなければならない。
+        // シェーダーが今フレームの深度 (Reversed-Z) と並べて使うので GPU 用の行列で持つ。
         viewTargets.prevViewProjection    = camera.GetGpuViewProjection();
         viewTargets.invPrevViewProjection = math::Matrix4::Inverse(viewTargets.prevViewProjection);
         viewTargets.previousNearZ = camera.m_near;

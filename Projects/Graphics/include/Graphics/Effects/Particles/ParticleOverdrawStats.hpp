@@ -37,4 +37,4 @@ struct ParticleOverdrawStats {
 /// @note 計測結果を書き込む。Particle Overdraw パスだけが呼ぶ (エンジン内部用)。
 FBZZ_GRAPHICS_API void SetLastParticleOverdrawStats(const ParticleOverdrawStats& stats);
 
-} /// @note namespace fbzz::renderer
+} // namespace fbzz::renderer

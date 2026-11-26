@@ -85,7 +85,9 @@ protected:
         renderer::RaySurfaceRecord result;
         result.supported = 1;
         for (uint32_t i = 0; i < textures.size(); ++i) {
-            if (!textures[i]) continue;
+            if (!textures[i]) {
+                continue;
+            }
             result.textureMask |= 1u << i;
             result.textureSrv[i] = m_resources->Get(textures[i])->GetBindlessIndex();
         }
@@ -311,7 +313,7 @@ TEST_F(RayTextureTest, RejectsStaleIndirectTexturesBeforeWriting)
     auto before = Read({Surface({valid})}, {valid});
     const auto oldSurface = Surface({stale});
     m_resources->Release(stale);
-    /// @note Expected stale dependency diagnostic must reject the dispatch before the freed descriptor can be read.
+    // Expected stale dependency diagnostic must reject the dispatch before the freed descriptor can be read.
     auto after = Read({oldSurface}, {stale});
     ASSERT_EQ(before.size(), after.size());
     for (size_t i = 0; i < before.size(); ++i) EXPECT_FLOAT_EQ(before[i], after[i]);

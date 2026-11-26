@@ -34,11 +34,17 @@ double TransformDeterminant(const math::Matrix4& transform)
 
 bool ValidTransform(const math::Matrix4& transform)
 {
-    for (const auto& row : transform.m)
-        for (float value : row)
-            if (!std::isfinite(value)) return false;
+    for (const auto& row : transform.m) {
+        for (float value : row) {
+            if (!std::isfinite(value)) {
+                return false;
+            }
+        }
+    }
     if (transform.m[3][0] != 0 || transform.m[3][1] != 0
-        || transform.m[3][2] != 0 || transform.m[3][3] != 1) return false;
+        || transform.m[3][2] != 0 || transform.m[3][3] != 1) {
+        return false;
+    }
     const double determinant = TransformDeterminant(transform);
     return std::isfinite(determinant) && determinant != 0;
 }
@@ -95,17 +101,22 @@ std::vector<uint32_t> ContentKey(const RayScene& scene, const RayPathScene& path
     Append(key, scene.sceneGeneration);
     key.push_back(scene.layerMask);
     Append(key, static_cast<uint64_t>(scene.geometries.size()));
-    for (const auto& geometry : scene.geometries) Append(key, geometry.key);
+    for (const auto& geometry : scene.geometries) {
+        Append(key, geometry.key);
+    }
     Append(key, static_cast<uint64_t>(scene.instances.size()));
     for (const auto& instance : scene.instances) {
         Append(key, instance.objectId);
         key.push_back(instance.geometryIndex); key.push_back(instance.denseInstanceId);
         key.push_back(instance.sourceSubmesh); key.push_back(instance.materialSlot);
-        /// @note Reference の全 transport query は PRIMARY だけを消費し、Hybrid 用 opt-out では蓄積を捨てない。
+        // Reference の全 transport query は PRIMARY だけを消費し、Hybrid 用 opt-out では蓄積を捨てない。
         key.push_back(respectArtistShadows ? instance.mask : instance.mask & RAY_PRIMARY_MASK);
         key.push_back(instance.doubleSided);
-        for (const auto& row : instance.world.m)
-            for (float value : row) Append(key, value);
+        for (const auto& row : instance.world.m) {
+            for (float value : row) {
+                Append(key, value);
+            }
+        }
         const auto& surface = instance.surface;
         Append(key, surface.baseColor.x); Append(key, surface.baseColor.y);
         Append(key, surface.baseColor.z); Append(key, surface.baseColor.w);
@@ -118,8 +129,12 @@ std::vector<uint32_t> ContentKey(const RayScene& scene, const RayPathScene& path
             key.push_back(texture.texture.id); key.push_back(texture.texture.gen);
             Append(key, texture.contentVersion);
         }
-        for (float value : surface.uvTiling) Append(key, value);
-        for (float value : surface.uvOffset) Append(key, value);
+        for (float value : surface.uvTiling) {
+            Append(key, value);
+        }
+        for (float value : surface.uvOffset) {
+            Append(key, value);
+        }
         Append(key, surface.normalStrength); Append(key, surface.occlusionStrength);
         Append(key, surface.alphaCutoff); Append(key, surface.explicitTextureLod);
         key.push_back(surface.textureMask);
@@ -130,9 +145,11 @@ std::vector<uint32_t> ContentKey(const RayScene& scene, const RayPathScene& path
         Append(key, static_cast<uint64_t>(std::count_if(path.lighting.lights.begin(), path.lighting.lights.end(),
             [&](const RayLightInput& light) { return (light.layerMask & scene.layerMask) != 0
                 || (light.unsupportedFlags & RAY_LIGHT_INVALID_LAYER) != 0; })));
-        for (const auto& light : path.lighting.lights)
-            if ((light.layerMask & scene.layerMask) != 0 || (light.unsupportedFlags & RAY_LIGHT_INVALID_LAYER) != 0)
+        for (const auto& light : path.lighting.lights) {
+            if ((light.layerMask & scene.layerMask) != 0 || (light.unsupportedFlags & RAY_LIGHT_INVALID_LAYER) != 0) {
                 Append(key, light, respectArtistShadows);
+            }
+        }
     } else {
         Append(key, path.lighting.direction); Append(key, path.lighting.directionalRadiance);
     }
@@ -189,20 +206,28 @@ bool MakeEmitter(const std::array<math::Vector3, 3>& local, const RaySceneInstan
     for (size_t i = 0; i < world.size(); ++i) {
         const auto value = instance.world * math::Vector4{local[i].x, local[i].y, local[i].z, 1};
         world[i] = {value.x, value.y, value.z};
-        if (!Finite(world[i])) return false;
+        if (!Finite(world[i])) {
+            return false;
+        }
     }
     const math::Vector3 edge1 = world[1] - world[0];
     const math::Vector3 edge2 = world[2] - world[0];
-    if (!Finite(edge1) || !Finite(edge2)) return false;
+    if (!Finite(edge1) || !Finite(edge2)) {
+        return false;
+    }
     const std::array<double, 3> cross{
         static_cast<double>(edge1.y) * edge2.z - static_cast<double>(edge1.z) * edge2.y,
         static_cast<double>(edge1.z) * edge2.x - static_cast<double>(edge1.x) * edge2.z,
         static_cast<double>(edge1.x) * edge2.y - static_cast<double>(edge1.y) * edge2.x};
     const double length = std::sqrt(cross[0] * cross[0] + cross[1] * cross[1] + cross[2] * cross[2]);
     const double doubleArea = 0.5 * length;
-    if (!std::isfinite(doubleArea) || doubleArea > std::numeric_limits<float>::max()) return false;
+    if (!std::isfinite(doubleArea) || doubleArea > std::numeric_limits<float>::max()) {
+        return false;
+    }
     const float area = static_cast<float>(doubleArea);
-    if (!std::isfinite(area) || area <= 0) return false;
+    if (!std::isfinite(area) || area <= 0) {
+        return false;
+    }
     record.v0 = {world[0].x, world[0].y, world[0].z};
     record.area = area;
     record.edge1 = {edge1.x, edge1.y, edge1.z};
@@ -212,7 +237,7 @@ bool MakeEmitter(const std::array<math::Vector3, 3>& local, const RaySceneInstan
     record.emission = {instance.surface.emission.x, instance.surface.emission.y, instance.surface.emission.z};
     record.objectIndex = instance.objectId.index;
     record.objectGeneration = instance.objectId.generation;
-    /// @note DXR の front 面は instance transform で反転しない。cross(M e1, M e2) の determinant 符号を取り除く。
+    // DXR の front 面は instance transform で反転しない。cross(M e1, M e2) の determinant 符号を取り除く。
     /// @see https://learn.microsoft.com/en-us/windows/win32/api/d3d12/ne-d3d12-d3d12_raytracing_instance_flags DXR instance winding
     const double winding = TransformDeterminant(instance.world) < 0 ? -1.0 : 1.0;
     record.geometricNormal = {static_cast<float>(winding * cross[0] / length),
@@ -230,30 +255,42 @@ double EmissionSides(const RayPathShapeRecord&) { return 1.0; }
 template<class Record>
 bool NormalizeSelection(std::vector<Record>& emitters)
 {
-    if (emitters.empty()) return true;
+    if (emitters.empty()) {
+        return true;
+    }
     std::vector<double> weights;
     double total = 0;
     for (const auto& emitter : emitters) {
-        /// @note 同一 radiance の発光面は面積比例。RGB の重みは線形 Rec.709 luminance。
+        // 同一 radiance の発光面は面積比例。RGB の重みは線形 Rec.709 luminance。
         /// @see https://pbr-book.org/4ed/Light_Sources/Light_Sampling PBRT, power light sampler
         const double luminance = 0.2126 * emitter.emission[0] + 0.7152 * emitter.emission[1] + 0.0722 * emitter.emission[2];
         const double weight = static_cast<double>(emitter.area) * luminance * EmissionSides(emitter);
-        if (!std::isfinite(weight) || weight < 0) return false;
+        if (!std::isfinite(weight) || weight < 0) {
+            return false;
+        }
         weights.push_back(weight);
         total += weight;
     }
-    if (!std::isfinite(total)) return false;
-    if (total == 0) return true;
+    if (!std::isfinite(total)) {
+        return false;
+    }
+    if (total == 0) {
+        return true;
+    }
     size_t lastPositive = weights.size() - 1;
-    while (weights[lastPositive] == 0) --lastPositive;
+    while (weights[lastPositive] == 0) {
+        --lastPositive;
+    }
     double cumulative = 0;
     float previous = 0;
     for (size_t i = 0; i < emitters.size(); ++i) {
         cumulative += weights[i];
         const float cdf = i >= lastPositive ? 1.0f : static_cast<float>(cumulative / total);
         const float pdf = cdf - previous;
-        /// @note float CDF の実際の区間を PDF として保存し、MIS の逆引きと選択分布を一致させる。
-        if (!std::isfinite(pdf) || pdf < 0 || (weights[i] > 0 && pdf == 0) || cdf > 1) return false;
+        // float CDF の実際の区間を PDF として保存し、MIS の逆引きと選択分布を一致させる。
+        if (!std::isfinite(pdf) || pdf < 0 || (weights[i] > 0 && pdf == 0) || cdf > 1) {
+            return false;
+        }
         emitters[i].selectionPdf = pdf;
         emitters[i].selectionCdf = cdf;
         previous = cdf;
@@ -273,10 +310,14 @@ math::Vector3 Vector(const std::array<float, 3>& value)
 
 bool Normalize(const math::Vector3& input, math::Vector3& output)
 {
-    if (!Finite(input)) return false;
+    if (!Finite(input)) {
+        return false;
+    }
     const double length = std::sqrt(static_cast<double>(input.x) * input.x
         + static_cast<double>(input.y) * input.y + static_cast<double>(input.z) * input.z);
-    if (!std::isfinite(length) || length == 0) return false;
+    if (!std::isfinite(length) || length == 0) {
+        return false;
+    }
     output = {static_cast<float>(input.x / length), static_cast<float>(input.y / length),
         static_cast<float>(input.z / length)};
     return Finite(output);
@@ -284,36 +325,59 @@ bool Normalize(const math::Vector3& input, math::Vector3& output)
 
 bool Radiance(const RayLightInput& light, math::Vector3& radiance)
 {
-    if (!Nonnegative(light.color) || !std::isfinite(light.intensity) || light.intensity < 0) return false;
+    if (!Nonnegative(light.color) || !std::isfinite(light.intensity) || light.intensity < 0) {
+        return false;
+    }
     const double scale = static_cast<double>(light.intensity)
         * (light.type == RayLightType::AREA ? 1.0 : 3.14159265358979323846);
     const std::array<double, 3> value{light.color.x * scale, light.color.y * scale, light.color.z * scale};
-    for (double channel : value)
-        if (!std::isfinite(channel) || channel > std::numeric_limits<float>::max()) return false;
+    for (double channel : value) {
+        if (!std::isfinite(channel) || channel > std::numeric_limits<float>::max()) {
+            return false;
+        }
+    }
     radiance = {static_cast<float>(value[0]), static_cast<float>(value[1]), static_cast<float>(value[2])};
     return true;
 }
 
 bool ValidLight(RayLightInput& light, math::Vector3& radiance)
 {
-    if (!std::isfinite(light.shadowStrength)) return false;
-    if (!std::isfinite(light.range) || light.range < 0) return false;
-    if (light.type == RayLightType::SPHERE || light.type == RayLightType::TUBE)
+    if (!std::isfinite(light.shadowStrength)) {
+        return false;
+    }
+    if (!std::isfinite(light.range) || light.range < 0) {
+        return false;
+    }
+    if (light.type == RayLightType::SPHERE || light.type == RayLightType::TUBE) {
         return Nonnegative(light.color) && std::isfinite(light.intensity) && light.intensity >= 0
             && Finite(light.position) && std::isfinite(light.sourceRadius) && light.sourceRadius > 0
             && (light.type == RayLightType::SPHERE || (std::isfinite(light.sourceLength)
                 && light.sourceLength >= 0 && Normalize(light.tangent, light.tangent)));
-    if (!Radiance(light, radiance)) return false;
-    if (light.type == RayLightType::DIRECTIONAL) return Normalize(light.direction, light.direction);
-    if (!Finite(light.position)) return false;
-    if (light.type == RayLightType::POINT) return true;
-    if (!Normalize(light.direction, light.direction)) return false;
-    if (light.type == RayLightType::SPOT)
+    }
+    if (!Radiance(light, radiance)) {
+        return false;
+    }
+    if (light.type == RayLightType::DIRECTIONAL) {
+        return Normalize(light.direction, light.direction);
+    }
+    if (!Finite(light.position)) {
+        return false;
+    }
+    if (light.type == RayLightType::POINT) {
+        return true;
+    }
+    if (!Normalize(light.direction, light.direction)) {
+        return false;
+    }
+    if (light.type == RayLightType::SPOT) {
         return std::isfinite(light.innerCone) && std::isfinite(light.outerCone)
             && light.innerCone >= 0 && light.innerCone <= light.outerCone && light.outerCone < 90;
+    }
     if (light.type != RayLightType::AREA || !std::isfinite(light.areaWidth) || light.areaWidth <= 0
         || !std::isfinite(light.areaHeight) || light.areaHeight <= 0
-        || !Normalize(light.tangent, light.tangent) || !Normalize(light.bitangent, light.bitangent)) return false;
+        || !Normalize(light.tangent, light.tangent) || !Normalize(light.bitangent, light.bitangent)) {
+        return false;
+    }
     return std::abs(math::Vector3::Dot(light.direction, light.tangent)) < 1e-5f
         && std::abs(math::Vector3::Dot(light.direction, light.bitangent)) < 1e-5f
         && std::abs(math::Vector3::Dot(light.tangent, light.bitangent)) < 1e-5f;
@@ -325,13 +389,20 @@ bool MakeShape(const RayLightInput& light, RayPathShapeRecord& record)
     const double radius = light.sourceRadius;
     const double length = light.type == RayLightType::TUBE ? light.sourceLength : 0.0;
     const double area = 4 * pi * radius * radius + 2 * pi * radius * length;
-    if (!std::isfinite(area) || area <= 0 || area > std::numeric_limits<float>::max()) return false;
+    if (!std::isfinite(area) || area <= 0 || area > std::numeric_limits<float>::max()) {
+        return false;
+    }
     record.area = static_cast<float>(area);
-    if (record.area == 0) return false;
+    if (record.area == 0) {
+        return false;
+    }
     const double scale = 4 * pi * light.intensity / area;
     const std::array<double, 3> emission{light.color.x * scale, light.color.y * scale, light.color.z * scale};
-    for (double channel : emission)
-        if (!std::isfinite(channel) || channel > std::numeric_limits<float>::max()) return false;
+    for (double channel : emission) {
+        if (!std::isfinite(channel) || channel > std::numeric_limits<float>::max()) {
+            return false;
+        }
+    }
     record.position = Values(light.position);
     record.radius = light.sourceRadius;
     record.axis = Values(light.type == RayLightType::TUBE ? light.tangent : math::Vector3{0, 1, 0});
@@ -361,18 +432,26 @@ double Projection(const math::Vector3& point, const math::Vector3& origin, const
 bool BindAreaMesh(const RayLightInput& light, const math::Vector3& radiance,
     std::vector<RayPathEmitterRecord>& emitters)
 {
-    /// @note 薄い立体の裏面遮蔽を無視して両面発光にはできない。両面 proxy は全所有 geometry の証明まで未対応。
-    if (light.twoSided) return false;
+    // 薄い立体の裏面遮蔽を無視して両面発光にはできない。両面 proxy は全所有 geometry の証明まで未対応。
+    if (light.twoSided) {
+        return false;
+    }
     std::vector<size_t> selected;
-    for (size_t i = 0; i < emitters.size(); ++i)
+    for (size_t i = 0; i < emitters.size(); ++i) {
         if (SameOwner(emitters[i], light)
-            && math::Vector3::Dot(Vector(emitters[i].geometricNormal), light.direction) > 1 - 1e-5f)
+            && math::Vector3::Dot(Vector(emitters[i].geometricNormal), light.direction) > 1 - 1e-5f) {
             selected.push_back(i);
-    if (selected.size() != 2) return false;
-    /// @note 絶対 floor は小光源の寸法と薄さを誤認する。保存された float 頂点の差と投影を double で検証する。
+        }
+    }
+    if (selected.size() != 2) {
+        return false;
+    }
+    // 絶対 floor は小光源の寸法と薄さを誤認する。保存された float 頂点の差と投影を double で検証する。
     const double minimumDimension = (std::min)(light.areaWidth, light.areaHeight);
     const double tolerance = minimumDimension * 1e-4;
-    if (!std::isfinite(tolerance) || tolerance <= 0) return false;
+    if (!std::isfinite(tolerance) || tolerance <= 0) {
+        return false;
+    }
     std::array<std::array<uint32_t, 4>, 4> edges{};
     std::array<uint32_t, 4> corners{};
     double plane = 0;
@@ -383,44 +462,68 @@ bool BindAreaMesh(const RayLightInput& light, const math::Vector3& radiance,
         const std::array<math::Vector3, 3> vertices{v0, v0 + Vector(emitter.edge1), v0 + Vector(emitter.edge2)};
         std::array<uint32_t, 3> ids{};
         for (size_t i = 0; i < vertices.size(); ++i) {
-            if (!Finite(vertices[i])) return false;
+            if (!Finite(vertices[i])) {
+                return false;
+            }
             const double x = Projection(vertices[i], light.position, light.tangent);
             const double y = Projection(vertices[i], light.position, light.bitangent);
             const double z = Projection(vertices[i], light.position, light.direction);
             if (!std::isfinite(x) || !std::isfinite(y) || !std::isfinite(z)
                 || std::abs(std::abs(x) - static_cast<double>(light.areaWidth) * 0.5) > tolerance
-                || std::abs(std::abs(y) - static_cast<double>(light.areaHeight) * 0.5) > tolerance) return false;
+                || std::abs(std::abs(y) - static_cast<double>(light.areaHeight) * 0.5) > tolerance) {
+                return false;
+            }
             if (first) { plane = z; first = false; }
-            if (std::abs(z - plane) > tolerance) return false;
+            if (std::abs(z - plane) > tolerance) {
+                return false;
+            }
             ids[i] = (x > 0 ? 1u : 0u) | (y > 0 ? 2u : 0u);
             ++corners[ids[i]];
         }
-        if (ids[0] == ids[1] || ids[1] == ids[2] || ids[2] == ids[0]) return false;
+        if (ids[0] == ids[1] || ids[1] == ids[2] || ids[2] == ids[0]) {
+            return false;
+        }
         for (size_t i = 0; i < ids.size(); ++i) {
             const uint32_t a = (std::min)(ids[i], ids[(i + 1) % ids.size()]);
             const uint32_t b = (std::max)(ids[i], ids[(i + 1) % ids.size()]);
             ++edges[a][b];
         }
     }
-    /// @note 薄板の forward 境界を実発光面にする。中心より裏や厚みが短辺の 10% を超える形状は曖昧とする。
-    if (plane < -tolerance || plane > minimumDimension * 0.05 + tolerance) return false;
-    for (uint32_t count : corners) if (count == 0) return false;
+    // 薄板の forward 境界を実発光面にする。中心より裏や厚みが短辺の 10% を超える形状は曖昧とする。
+    if (plane < -tolerance || plane > minimumDimension * 0.05 + tolerance) {
+        return false;
+    }
+    for (uint32_t count : corners) {
+        if (count == 0) {
+            return false;
+        }
+    }
     if (edges[0][1] != 1 || edges[0][2] != 1 || edges[1][3] != 1 || edges[2][3] != 1
-        || !((edges[0][3] == 2 && edges[1][2] == 0) || (edges[0][3] == 0 && edges[1][2] == 2))) return false;
+        || !((edges[0][3] == 2 && edges[1][2] == 0) || (edges[0][3] == 0 && edges[1][2] == 2))) {
+        return false;
+    }
     for (const auto& emitter : emitters) {
-        if (!SameOwner(emitter, light)) continue;
+        if (!SameOwner(emitter, light)) {
+            continue;
+        }
         const auto v0 = Vector(emitter.v0);
         for (const auto& vertex : std::array<math::Vector3, 3>{v0, v0 + Vector(emitter.edge1), v0 + Vector(emitter.edge2)}) {
-            if (!Finite(vertex)) return false;
+            if (!Finite(vertex)) {
+                return false;
+            }
             const double projection = Projection(vertex, light.position, light.direction);
-            if (!std::isfinite(projection) || projection > plane + tolerance) return false;
+            if (!std::isfinite(projection) || projection > plane + tolerance) {
+                return false;
+            }
         }
     }
     std::vector<RayPathEmitterRecord> retained;
     retained.reserve(emitters.size());
     for (size_t i = 0; i < emitters.size(); ++i) {
         if (!SameOwner(emitters[i], light)) { retained.push_back(emitters[i]); continue; }
-        if (std::find(selected.begin(), selected.end(), i) == selected.end()) continue;
+        if (std::find(selected.begin(), selected.end(), i) == selected.end()) {
+            continue;
+        }
         auto emitter = emitters[i];
         emitter.emission = Values(radiance);
         emitter.range = light.range;
@@ -439,7 +542,9 @@ bool MakeVirtualArea(const RayLightInput& light, const math::Vector3& radiance,
     const auto b = light.bitangent * (light.areaHeight * 0.5f);
     std::array<math::Vector3, 4> vertices{light.position - t - b, light.position + t - b,
         light.position + t + b, light.position - t + b};
-    if (math::Vector3::Dot(math::Vector3::Cross(t, b), light.direction) < 0) std::swap(vertices[1], vertices[3]);
+    if (math::Vector3::Dot(math::Vector3::Cross(t, b), light.direction) < 0) {
+        std::swap(vertices[1], vertices[3]);
+    }
     RaySceneInstance instance;
     instance.objectId = light.objectId;
     instance.denseInstanceId = UINT32_MAX;
@@ -447,7 +552,9 @@ bool MakeVirtualArea(const RayLightInput& light, const math::Vector3& radiance,
     for (uint32_t i = 0; i < 2; ++i) {
         RayPathEmitterRecord emitter;
         if (!MakeEmitter({vertices[0], vertices[i + 1], vertices[i + 2]}, instance, primitiveId, emitter)
-            || primitiveId == UINT32_MAX) return false;
+            || primitiveId == UINT32_MAX) {
+            return false;
+        }
         ++primitiveId;
         emitter.range = light.range;
         emitter.flags = RAY_PATH_EMITTER_VIRTUAL | (light.twoSided ? RAY_PATH_EMITTER_TWO_SIDED : 0u);
@@ -457,24 +564,45 @@ bool MakeVirtualArea(const RayLightInput& light, const math::Vector3& radiance,
     return true;
 }
 
-} /// @note namespace
+} // namespace
 
 bool RayPathSceneBuilder::ReadGeometry(const RayGeometryKey& key, const RayPathBufferLookup& lookup,
     std::vector<LocalTriangle>& triangles, RayPathSceneIssue& issue) const
 {
     issue = RayPathSceneIssue::INVALID_EMITTER_GEOMETRY;
-    if (!ValidBufferVersions(key, lookup, issue)) return false;
+    if (!ValidBufferVersions(key, lookup, issue)) {
+        return false;
+    }
     const auto* vertices = lookup(key.vertices);
     const auto* indices = key.indices.IsValid() ? lookup(key.indices) : nullptr;
-    if (!key.vertices.IsValid() || key.vertexStride < 12 || key.vertexStride % 4 != 0
-        || key.positionOffset % 4 != 0 || key.positionOffset > key.vertexStride - 12
-        || vertices->GetStride() != key.vertexStride || key.vertexCount == 0
-        || (indices ? key.indexCount == 0 || key.indexCount % 3 != 0
-                    : key.indexCount != 0 || key.vertexCount % 3 != 0)) return false;
+    // 各頂点レコード内の位置は float 3 個で、float 境界から読み取れる必要がある。
+    constexpr uint32_t POSITION_BYTES = sizeof(float) * 3;
+    if (!key.vertices.IsValid() || key.vertexStride < POSITION_BYTES || key.vertexStride % sizeof(float) != 0) {
+        return false;
+    }
+    const bool validPositionOffset = key.positionOffset % sizeof(float) == 0
+        && key.positionOffset <= key.vertexStride - POSITION_BYTES;
+    if (!validPositionOffset || vertices->GetStride() != key.vertexStride || key.vertexCount == 0) {
+        return false;
+    }
+
+    // インデックスの有無に応じて、三角形を構成する要素の数を確認する。
+    if (indices) {
+        if (key.indexCount == 0 || key.indexCount % 3 != 0) {
+            return false;
+        }
+    } else if (key.indexCount != 0 || key.vertexCount % 3 != 0) {
+        return false;
+    }
+
     const uint64_t endVertex = static_cast<uint64_t>(key.firstVertex) + key.vertexCount;
-    if (endVertex > std::numeric_limits<uint64_t>::max() / key.vertexStride) return false;
+    if (endVertex > std::numeric_limits<uint64_t>::max() / key.vertexStride) {
+        return false;
+    }
     const uint64_t vertexEnd = endVertex * key.vertexStride;
-    if (vertexEnd > vertices->GetSize() || vertexEnd > std::numeric_limits<size_t>::max()) return false;
+    if (vertexEnd > vertices->GetSize() || vertexEnd > std::numeric_limits<size_t>::max()) {
+        return false;
+    }
     uint8_t lastByte = 0;
     if (!vertices->CopyData(static_cast<size_t>(vertexEnd - 1), 1, &lastByte)) {
         issue = RayPathSceneIssue::BUFFER_READER_UNSUPPORTED;
@@ -489,21 +617,28 @@ bool RayPathSceneBuilder::ReadGeometry(const RayGeometryKey& key, const RayPathB
             return false;
         }
         positions[i] = {position[0], position[1], position[2]};
-        if (!Finite(positions[i])) return false;
+        if (!Finite(positions[i])) {
+            return false;
+        }
     }
     std::vector<uint32_t> indexValues;
     if (indices) {
         const uint64_t indexOffset = static_cast<uint64_t>(key.firstIndex) * sizeof(uint32_t);
         const uint64_t indexSize = static_cast<uint64_t>(key.indexCount) * sizeof(uint32_t);
         if (indexOffset > indices->GetSize() || indexSize > indices->GetSize() - indexOffset
-            || indexSize > std::numeric_limits<size_t>::max()) return false;
+            || indexSize > std::numeric_limits<size_t>::max()) {
+            return false;
+        }
         indexValues.resize(key.indexCount);
         if (!indices->CopyData(static_cast<size_t>(indexOffset), static_cast<size_t>(indexSize), indexValues.data())) {
             issue = RayPathSceneIssue::BUFFER_READER_UNSUPPORTED;
             return false;
         }
-        for (uint32_t index : indexValues)
-            if (index >= key.vertexCount) return false;
+        for (uint32_t index : indexValues) {
+            if (index >= key.vertexCount) {
+                return false;
+            }
+        }
     }
     const uint32_t count = (indices ? key.indexCount : key.vertexCount) / 3;
     triangles.reserve(count);
@@ -534,20 +669,28 @@ RayPathScene RayPathSceneBuilder::Build(const RayScene& scene, const RayPathBuff
     const auto diagnose = [&](uint32_t instanceId, RayPathSceneIssue issue, RayObjectId owner = {}) {
         result.diagnostics.push_back({instanceId, issue, owner});
     };
-    if (scene.sceneGeneration == 0 || !scene.diagnostics.empty())
+    if (scene.sceneGeneration == 0 || !scene.diagnostics.empty()) {
         diagnose(UINT32_MAX, RayPathSceneIssue::RAY_SCENE_COVERAGE_INCOMPLETE);
-    if (!scene.surfaceDiagnostics.empty()) diagnose(UINT32_MAX, RayPathSceneIssue::SURFACE_UNSUPPORTED);
-    if (!lighting.supported) diagnose(UINT32_MAX, RayPathSceneIssue::LIGHTING_UNSUPPORTED);
+    }
+    if (!scene.surfaceDiagnostics.empty()) {
+        diagnose(UINT32_MAX, RayPathSceneIssue::SURFACE_UNSUPPORTED);
+    }
+    if (!lighting.supported) {
+        diagnose(UINT32_MAX, RayPathSceneIssue::LIGHTING_UNSUPPORTED);
+    }
     const double directionLength = static_cast<double>(lighting.direction.x) * lighting.direction.x
         + static_cast<double>(lighting.direction.y) * lighting.direction.y
         + static_cast<double>(lighting.direction.z) * lighting.direction.z;
     const bool directionalEnabled = lighting.directionalRadiance.x > 0 || lighting.directionalRadiance.y > 0
         || lighting.directionalRadiance.z > 0;
     if ((!lighting.useSceneLights && (!Finite(lighting.direction) || (directionalEnabled && directionLength == 0)
-        || !Nonnegative(lighting.directionalRadiance))) || !Nonnegative(lighting.environmentRadiance))
+        || !Nonnegative(lighting.directionalRadiance))) || !Nonnegative(lighting.environmentRadiance)) {
         diagnose(UINT32_MAX, RayPathSceneIssue::INVALID_LIGHTING);
+    }
     if (!std::isfinite(lighting.environmentRotation) || !std::isfinite(lighting.environmentIntensity)
-        || lighting.environmentIntensity < 0) diagnose(UINT32_MAX, RayPathSceneIssue::INVALID_LIGHTING);
+        || lighting.environmentIntensity < 0) {
+        diagnose(UINT32_MAX, RayPathSceneIssue::INVALID_LIGHTING);
+    }
     std::vector<RayLightInput> areaLights;
     std::vector<RayObjectId> lightOwners;
     if (lighting.useSceneLights) {
@@ -557,7 +700,9 @@ RayPathScene RayPathSceneBuilder::Build(const RayScene& scene, const RayPathBuff
                 diagnose(UINT32_MAX, RayPathSceneIssue::INVALID_LIGHT_SOURCE, light.objectId);
                 continue;
             }
-            if ((light.layerMask & scene.layerMask) == 0) continue;
+            if ((light.layerMask & scene.layerMask) == 0) {
+                continue;
+            }
             if (light.objectId.sceneGeneration != scene.sceneGeneration
                 || std::find(lightOwners.begin(), lightOwners.end(), light.objectId) != lightOwners.end()) {
                 diagnose(UINT32_MAX, RayPathSceneIssue::INVALID_LIGHT_SOURCE, light.objectId);
@@ -578,9 +723,15 @@ RayPathScene RayPathSceneBuilder::Build(const RayScene& scene, const RayPathBuff
                 RayPathShapeRecord shape;
                 const bool hasMesh = std::any_of(scene.instances.begin(), scene.instances.end(),
                     [&](const RaySceneInstance& instance) { return instance.objectId == light.objectId; });
-                if (hasMesh) diagnose(UINT32_MAX, RayPathSceneIssue::SHAPE_MESH_BINDING_UNSUPPORTED, light.objectId);
-                else if (!MakeShape(light, shape)) diagnose(UINT32_MAX, RayPathSceneIssue::INVALID_LIGHT_SOURCE, light.objectId);
-                else result.shapes.push_back(shape);
+                if (hasMesh) {
+                    diagnose(UINT32_MAX, RayPathSceneIssue::SHAPE_MESH_BINDING_UNSUPPORTED, light.objectId);
+                }
+                else if (!MakeShape(light, shape)) {
+                    diagnose(UINT32_MAX, RayPathSceneIssue::INVALID_LIGHT_SOURCE, light.objectId);
+                }
+                else {
+                    result.shapes.push_back(shape);
+                }
                 continue;
             }
             RayPathDeltaRecord record;
@@ -621,7 +772,9 @@ RayPathScene RayPathSceneBuilder::Build(const RayScene& scene, const RayPathBuff
         const bool areaProxy = std::any_of(areaLights.begin(), areaLights.end(),
             [&](const RayLightInput& light) { return light.objectId == instance.objectId; });
         if (instance.surface.emission.x == 0 && instance.surface.emission.y == 0 && instance.surface.emission.z == 0
-            && !areaProxy) continue;
+            && !areaProxy) {
+            continue;
+        }
         if (areaProxy && (!instance.surface.standardSurfaceSupported || (instance.surface.textureMask & 8u) != 0)) {
             diagnose(instance.denseInstanceId, RayPathSceneIssue::AREA_MESH_BINDING_UNSUPPORTED, instance.objectId);
             continue;
@@ -649,7 +802,9 @@ RayPathScene RayPathSceneBuilder::Build(const RayScene& scene, const RayPathBuff
         if (active == activeGeometry.end()) {
             const auto cached = std::find_if(m_geometries.begin(), m_geometries.end(),
                 [&](const CachedGeometry& old) { return old.key == geometry.key; });
-            if (cached != m_geometries.end()) activeGeometry.push_back(*cached);
+            if (cached != m_geometries.end()) {
+                activeGeometry.push_back(*cached);
+            }
             else {
                 CachedGeometry local{geometry.key, {}};
                 if (!ReadGeometry(geometry.key, lookup, local.triangles, issue)) {
@@ -677,12 +832,17 @@ RayPathScene RayPathSceneBuilder::Build(const RayScene& scene, const RayPathBuff
         const bool hasMesh = std::any_of(result.emitters.begin(), result.emitters.end(),
             [&](const RayPathEmitterRecord& emitter) { return SameOwner(emitter, light); });
         if (!validRadiance || (hasMesh ? !BindAreaMesh(light, radiance, result.emitters)
-            : !MakeVirtualArea(light, radiance, result.emitters, virtualPrimitiveId)))
+            : !MakeVirtualArea(light, radiance, result.emitters, virtualPrimitiveId))) {
             diagnose(UINT32_MAX, hasMesh ? RayPathSceneIssue::AREA_MESH_BINDING_UNSUPPORTED
                 : RayPathSceneIssue::INVALID_LIGHT_SOURCE, light.objectId);
+        }
     }
-    if (!NormalizeSelection(result.emitters)) diagnose(UINT32_MAX, RayPathSceneIssue::UNREPRESENTABLE_SELECTION_PDF);
-    if (!NormalizeSelection(result.shapes)) diagnose(UINT32_MAX, RayPathSceneIssue::UNREPRESENTABLE_SELECTION_PDF);
+    if (!NormalizeSelection(result.emitters)) {
+        diagnose(UINT32_MAX, RayPathSceneIssue::UNREPRESENTABLE_SELECTION_PDF);
+    }
+    if (!NormalizeSelection(result.shapes)) {
+        diagnose(UINT32_MAX, RayPathSceneIssue::UNREPRESENTABLE_SELECTION_PDF);
+    }
     result.coverageComplete = result.diagnostics.empty();
     auto key = ContentKey(scene, result, respectArtistShadows);
     if (m_contentRevision == 0 || key != m_contentKey) {
@@ -723,4 +883,4 @@ const char* DescribeRayPathSceneIssue(RayPathSceneIssue issue)
     return "Unknown Path scene issue";
 }
 
-} /// @note namespace fbzz::renderer
+} // namespace fbzz::renderer

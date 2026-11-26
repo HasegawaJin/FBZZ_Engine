@@ -29,9 +29,9 @@ struct InertSetting {
 [[nodiscard]] FBZZ_GRAPHICS_API std::vector<InertSetting> CollectInertSettings(const RenderSettings& settings);
 
 /// @note VolumeOverride 1 件が現在のパイプラインで効くかを名前で判定する。
-/// @param typeName VolumeOverride::GetTypeName() の値 ("SSR" / "GTAO" など)
+/// @param[in] typeName VolumeOverride::GetTypeName() の値 ("SSR" / "GTAO" など)
 /// @return 効くなら nullptr。効かないなら理由の文字列 (表示用・静的寿命)。
 [[nodiscard]] FBZZ_GRAPHICS_API const char* DescribeInertOverride(
     const RenderSettings& settings, std::string_view typeName);
 
-} /// @note namespace fbzz::renderer
+} // namespace fbzz::renderer

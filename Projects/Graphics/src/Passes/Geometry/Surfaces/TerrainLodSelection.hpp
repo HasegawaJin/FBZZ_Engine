@@ -28,8 +28,12 @@ inline std::array<math::Vector3, 2> TerrainWorldBounds(const math::Matrix4& worl
 inline bool PreserveFiberTerrainDetail(const RenderTerrainInput& input, const RenderTerrainPatch& patch,
     const math::Vector3& cameraPosition)
 {
-    if (!input.fiberSurface) return false;
-    if (!input.fiberDistanceLod) return true;
+    if (!input.fiberSurface) {
+        return false;
+    }
+    if (!input.fiberDistanceLod) {
+        return true;
+    }
     const auto bounds = TerrainWorldBounds(input.constants.worldMatrix,patch.aabbMin,patch.aabbMax);
     const math::Vector3 nearest{std::clamp(cameraPosition.x,bounds[0].x,bounds[1].x),
         std::clamp(cameraPosition.y,bounds[0].y,bounds[1].y),std::clamp(cameraPosition.z,bounds[0].z,bounds[1].z)};
@@ -46,9 +50,13 @@ inline float TerrainLODDistanceSquared(const RenderTerrainInput& input, const Re
 
 inline bool UseFarTerrainLOD(const RenderTerrainInput& input, const RenderTerrainPatch& patch, float distanceSquared)
 {
-    if (input.farLodDistance <= 0.0f || !patch.indexBufferLOD[TERRAIN_FAR_LOD_INDEX].IsValid()) return false;
-    /// @note 穴を含む粗い格子は細分化して保持するため、三角形が減らない場合もある。
-    if (patch.indexCountLOD[TERRAIN_FAR_LOD_INDEX] >= patch.indexCountLOD[TERRAIN_FAR_LOD_INDEX - 1]) return false;
+    if (input.farLodDistance <= 0.0f || !patch.indexBufferLOD[TERRAIN_FAR_LOD_INDEX].IsValid()) {
+        return false;
+    }
+    // 穴を含む粗い格子は細分化して保持するため、三角形が減らない場合もある。
+    if (patch.indexCountLOD[TERRAIN_FAR_LOD_INDEX] >= patch.indexCountLOD[TERRAIN_FAR_LOD_INDEX - 1]) {
+        return false;
+    }
     const float farDistance = std::max(input.farLodDistance, input.chunkWorldSize * 6.0f);
     return distanceSquared >= farDistance * farDistance;
 }
@@ -58,13 +66,17 @@ inline bool UseFarTerrainLOD(const RenderTerrainInput& input, const RenderTerrai
 inline int SelectTerrainLOD(const RenderTerrainInput& input, const RenderTerrainPatch& chunk,
                             const math::Vector3& cameraPosition)
 {
-    if (PreserveFiberTerrainDetail(input,chunk,cameraPosition)) return 0;
+    if (PreserveFiberTerrainDetail(input,chunk,cameraPosition)) {
+        return 0;
+    }
     const float distanceSquared = TerrainLODDistanceSquared(input, chunk, cameraPosition);
-    if (UseFarTerrainLOD(input, chunk, distanceSquared)) return static_cast<int>(TERRAIN_FAR_LOD_INDEX);
+    if (UseFarTerrainLOD(input, chunk, distanceSquared)) {
+        return static_cast<int>(TERRAIN_FAR_LOD_INDEX);
+    }
     const float nearDistance = input.chunkWorldSize * 2.0f;
     const float midDistance = input.chunkWorldSize * 6.0f;
     return distanceSquared < nearDistance * nearDistance ? 0
          : distanceSquared < midDistance * midDistance ? 1 : 2;
 }
 
-} /// @note namespace fbzz::renderer::terrain_lod_detail
+} // namespace fbzz::renderer::terrain_lod_detail

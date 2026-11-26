@@ -37,9 +37,9 @@ public:
     /// @brief 視野錐 (SightCone)。AI が "見える" 扇形領域をワイヤーフレームで可視化する。
     /// @note forward 方向を中心に fovDegrees の半角で広がる弧 + 両端から原点への辺を描く。弧は
     /// @note       水平面 (forward と world-up で張る平面) に描かれ、上下の視角は考慮しない。
-    /// @param forward 正規化済みの注視方向。
-    /// @param fovDegrees 視野角の合計 (例: 90 → 左右各 45°)。
-    /// @param range 最大検知距離。
+    /// @param[in] forward 正規化済みの注視方向。
+    /// @param[in] fovDegrees 視野角の合計 (例: 90 → 左右各 45°)。
+    /// @param[in] range 最大検知距離。
     FBZZ_GRAPHICS_API static void SightCone(IRenderer& r,
                            const math::Vector3& position,
                            const math::Vector3& forward,
@@ -72,4 +72,4 @@ public:
     /// @}
 };
 
-} /// @note namespace fbzz::renderer
+} // namespace fbzz::renderer

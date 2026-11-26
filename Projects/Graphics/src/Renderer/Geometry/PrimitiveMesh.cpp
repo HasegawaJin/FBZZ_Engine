@@ -31,68 +31,72 @@ struct PrimitiveMeshCache {
         entry.reset=resources.GetResetVersion();return entry.mesh;
     }
 };
-} /// @note namespace
+} // namespace
 
 
 Mesh* PrimitiveMesh::Cube(ResourceManager& resources)
 {
     static PrimitiveMeshCache s_cache;
     auto& s_mesh=s_cache.For(resources);
-    if (s_mesh) return s_mesh.get();
-    /// @note 6面 × 4頂点 = 24頂点。面ごとに法線が異なるため頂点共有なし
-    /// @note       tangent は面の U 軸方向 (法線マップ対応。現在は旧シェーダーで未使用)
+    if (s_mesh) {
+        return s_mesh.get();
+    }
+    // 6面 × 4頂点 = 24頂点。面ごとに法線が異なるため頂点共有なし
+    // tangent は面の U 軸方向 (法線マップ対応。現在は旧シェーダーで未使用)
     const Vertex verts[] = {
-        /// @note +Y (top)  tangent = +X
+        // +Y (top)  tangent = +X
         { .position={ -0.5f,  0.5f, -0.5f }, .normal={ 0, 1, 0 }, .tangent={ 1,0,0 }, .uv={ 0, 0 }},
         { .position={  0.5f,  0.5f, -0.5f }, .normal={ 0, 1, 0 }, .tangent={ 1,0,0 }, .uv={ 1, 0 }},
         { .position={  0.5f,  0.5f,  0.5f }, .normal={ 0, 1, 0 }, .tangent={ 1,0,0 }, .uv={ 1, 1 }},
         { .position={ -0.5f,  0.5f,  0.5f }, .normal={ 0, 1, 0 }, .tangent={ 1,0,0 }, .uv={ 0, 1 }},
-        /// @note -Y (bottom)  tangent = +X
+        // -Y (bottom)  tangent = +X
         { .position={ -0.5f, -0.5f,  0.5f }, .normal={ 0,-1, 0 }, .tangent={ 1,0,0 }, .uv={ 0, 0 }},
         { .position={  0.5f, -0.5f,  0.5f }, .normal={ 0,-1, 0 }, .tangent={ 1,0,0 }, .uv={ 1, 0 }},
         { .position={  0.5f, -0.5f, -0.5f }, .normal={ 0,-1, 0 }, .tangent={ 1,0,0 }, .uv={ 1, 1 }},
         { .position={ -0.5f, -0.5f, -0.5f }, .normal={ 0,-1, 0 }, .tangent={ 1,0,0 }, .uv={ 0, 1 }},
-        /// @note +Z (front)  tangent = +X
+        // +Z (front)  tangent = +X
         { .position={ -0.5f, -0.5f,  0.5f }, .normal={ 0, 0, 1 }, .tangent={ 1,0,0 }, .uv={ 0, 1 }},
         { .position={  0.5f, -0.5f,  0.5f }, .normal={ 0, 0, 1 }, .tangent={ 1,0,0 }, .uv={ 1, 1 }},
         { .position={  0.5f,  0.5f,  0.5f }, .normal={ 0, 0, 1 }, .tangent={ 1,0,0 }, .uv={ 1, 0 }},
         { .position={ -0.5f,  0.5f,  0.5f }, .normal={ 0, 0, 1 }, .tangent={ 1,0,0 }, .uv={ 0, 0 }},
-        /// @note -Z (back)  tangent = -X
+        // -Z (back)  tangent = -X
         { .position={  0.5f, -0.5f, -0.5f }, .normal={ 0, 0,-1 }, .tangent={-1,0,0 }, .uv={ 0, 1 }},
         { .position={ -0.5f, -0.5f, -0.5f }, .normal={ 0, 0,-1 }, .tangent={-1,0,0 }, .uv={ 1, 1 }},
         { .position={ -0.5f,  0.5f, -0.5f }, .normal={ 0, 0,-1 }, .tangent={-1,0,0 }, .uv={ 1, 0 }},
         { .position={  0.5f,  0.5f, -0.5f }, .normal={ 0, 0,-1 }, .tangent={-1,0,0 }, .uv={ 0, 0 }},
-        /// @note +X (right)  tangent = -Z
+        // +X (right)  tangent = -Z
         { .position={  0.5f, -0.5f,  0.5f }, .normal={ 1, 0, 0 }, .tangent={ 0,0,-1 }, .uv={ 0, 1 }},
         { .position={  0.5f, -0.5f, -0.5f }, .normal={ 1, 0, 0 }, .tangent={ 0,0,-1 }, .uv={ 1, 1 }},
         { .position={  0.5f,  0.5f, -0.5f }, .normal={ 1, 0, 0 }, .tangent={ 0,0,-1 }, .uv={ 1, 0 }},
         { .position={  0.5f,  0.5f,  0.5f }, .normal={ 1, 0, 0 }, .tangent={ 0,0,-1 }, .uv={ 0, 0 }},
-        /// @note -X (left)  tangent = +Z
+        // -X (left)  tangent = +Z
         { .position={ -0.5f, -0.5f, -0.5f }, .normal={-1, 0, 0 }, .tangent={ 0,0, 1 }, .uv={ 0, 1 }},
         { .position={ -0.5f, -0.5f,  0.5f }, .normal={-1, 0, 0 }, .tangent={ 0,0, 1 }, .uv={ 1, 1 }},
         { .position={ -0.5f,  0.5f,  0.5f }, .normal={-1, 0, 0 }, .tangent={ 0,0, 1 }, .uv={ 1, 0 }},
         { .position={ -0.5f,  0.5f, -0.5f }, .normal={-1, 0, 0 }, .tangent={ 0,0, 1 }, .uv={ 0, 0 }},
     };
 
-    /// @note 面ごとに 2 三角形 (DX11: CW = 表面, FrontCounterClockwise=FALSE)
-    /// @note       +Y/-Y は RHR が逆になるため巻き順を反転する
+    // 面ごとに 2 三角形 (DX11: CW = 表面, FrontCounterClockwise=FALSE)
+    // +Y/-Y は RHR が逆になるため巻き順を反転する
     const uint32_t idx[] = {
-         /// @note +Y (RHR=(0,+1,0) ✓)
+         // +Y (RHR=(0,+1,0) ✓)
          0,  3,  2,   0,  2,  1,
-         /// @note -Y (RHR=(0,-1,0) ✓)
+         // -Y (RHR=(0,-1,0) ✓)
          4,  7,  6,   4,  6,  5,
-         /// @note +Z
+         // +Z
          8,  9, 10,   8, 10, 11,
-        /// @note -Z
+        // -Z
         12, 13, 14,  12, 14, 15,
-        /// @note +X
+        // +X
         16, 17, 18,  16, 18, 19,
-        /// @note -X
+        // -X
         20, 21, 22,  20, 22, 23,
     };
 
     s_mesh = core::MakeUnique<Mesh>();
-    if (!s_mesh) return nullptr;
+    if (!s_mesh) {
+        return nullptr;
+    }
     s_mesh->vertexBuffer = resources.CreateVertexBuffer(verts, sizeof(verts), sizeof(Vertex));
     s_mesh->indexBuffer  = resources.CreateIndexBuffer(idx, 36);
     s_mesh->vertexCount  = 24;
@@ -114,22 +118,22 @@ Mesh* PrimitiveMesh::Sphere(ResourceManager& resources, int segments)
     int rings = segments / 2;
 
     for (int r = 0; r <= rings; ++r) {
-        /// @note 0 → π
+        // 0 → π
         float phi    = math::PI * r / rings;
         float sinPhi = std::sin(phi);
         float cosPhi = std::cos(phi);
 
         for (int s = 0; s <= segments; ++s) {
-            /// @note 0 → 2π
-            /// @note UV seam は u=1 を残して角度だけ 0 に戻し、同じ境界位置を bit-exact に閉じる。
+            // 0 → 2π
+            // UV seam は u=1 を残して角度だけ 0 に戻し、同じ境界位置を bit-exact に閉じる。
             float theta    = s == segments ? 0.0f : math::TWO_PI * s / segments;
             float sinTheta = std::sin(theta);
             float cosTheta = std::cos(theta);
 
-            /// @note sin(float PI) の非ゼロ値や signed zero で極の頂点を分離しない。
+            // sin(float PI) の非ゼロ値や signed zero で極の頂点を分離しない。
             math::Vector3 n = (r == 0 || r == rings) ? math::Vector3{0, r == 0 ? 1.0f : -1.0f, 0}
                 : math::Vector3{sinPhi * cosTheta, cosPhi, sinPhi * sinTheta};
-            /// @note tangent = dPos/dTheta 方向 (正規化)
+            // tangent = dPos/dTheta 方向 (正規化)
             math::Vector3 t = { -sinTheta, 0.0f, cosTheta };
             verts.push_back({
                 .position = { n.x * 0.5f, n.y * 0.5f, n.z * 0.5f },
@@ -150,7 +154,9 @@ Mesh* PrimitiveMesh::Sphere(ResourceManager& resources, int segments)
     }
 
     auto mesh = core::MakeUnique<Mesh>();
-    if (!mesh) return nullptr;
+    if (!mesh) {
+        return nullptr;
+    }
     mesh->vertexBuffer = resources.CreateVertexBuffer(
         verts.data(), verts.size() * sizeof(Vertex), sizeof(Vertex));
     mesh->indexBuffer  = resources.CreateIndexBuffer(idx.data(), static_cast<uint32_t>(idx.size()));
@@ -168,7 +174,9 @@ Mesh* PrimitiveMesh::Plane(ResourceManager& resources)
 {
     static PrimitiveMeshCache s_cache;
     auto& s_mesh=s_cache.For(resources);
-    if (s_mesh) return s_mesh.get();
+    if (s_mesh) {
+        return s_mesh.get();
+    }
 
     const Vertex verts[] = {
         { .position={ -0.5f, 0.0f,  0.5f }, .normal={ 0,1,0 }, .tangent={ 1,0,0 }, .uv={ 0, 0 }},
@@ -179,7 +187,9 @@ Mesh* PrimitiveMesh::Plane(ResourceManager& resources)
     const uint32_t idx[] = { 0, 1, 2,  0, 2, 3 };
 
     s_mesh = core::MakeUnique<Mesh>();
-    if (!s_mesh) return nullptr;
+    if (!s_mesh) {
+        return nullptr;
+    }
     s_mesh->vertexBuffer = resources.CreateVertexBuffer(verts, sizeof(verts), sizeof(Vertex));
     s_mesh->indexBuffer  = resources.CreateIndexBuffer(idx, 6);
     s_mesh->vertexCount  = 4;
@@ -194,7 +204,9 @@ Mesh* PrimitiveMesh::Quad(ResourceManager& resources)
 {
     static PrimitiveMeshCache s_cache;
     auto& s_mesh=s_cache.For(resources);
-    if (s_mesh) return s_mesh.get();
+    if (s_mesh) {
+        return s_mesh.get();
+    }
 
     const Vertex verts[] = {
         { .position={ -0.5f,  0.5f, 0.0f }, .normal={ 0,0,1 }, .tangent={ 1,0,0 }, .uv={ 0, 0 }},
@@ -205,7 +217,9 @@ Mesh* PrimitiveMesh::Quad(ResourceManager& resources)
     const uint32_t idx[] = { 0, 1, 2,  0, 2, 3 };
 
     s_mesh = core::MakeUnique<Mesh>();
-    if (!s_mesh) return nullptr;
+    if (!s_mesh) {
+        return nullptr;
+    }
     s_mesh->vertexBuffer = resources.CreateVertexBuffer(verts, sizeof(verts), sizeof(Vertex));
     s_mesh->indexBuffer  = resources.CreateIndexBuffer(idx, 6);
     s_mesh->vertexCount  = 4;
@@ -227,8 +241,8 @@ Mesh* PrimitiveMesh::Cylinder(ResourceManager& resources, int segments)
 
     constexpr float r = 0.5f;
 
-    /// @note Top cap (normal (0,1,0))
-    /// @note       winding: (center, ring[s+1], ring[s]) → cross = (0,+1,0) ✓
+    // Top cap (normal (0,1,0))
+    // winding: (center, ring[s+1], ring[s]) → cross = (0,+1,0) ✓
     uint32_t topCenter = (uint32_t)verts.size();
     verts.push_back({ .position={ 0.0f, 0.5f, 0.0f }, .normal={ 0,1,0 }, .uv={ 0.5f, 0.5f }});
     uint32_t topRing = (uint32_t)verts.size();
@@ -243,8 +257,8 @@ Mesh* PrimitiveMesh::Cylinder(ResourceManager& resources, int segments)
         idx.push_back(topRing + s);
     }
 
-    /// @note Bottom cap (normal (0,-1,0))
-    /// @note       winding: (center, ring[s], ring[s+1]) → cross = (0,-1,0) ✓
+    // Bottom cap (normal (0,-1,0))
+    // winding: (center, ring[s], ring[s+1]) → cross = (0,-1,0) ✓
     uint32_t botCenter = (uint32_t)verts.size();
     verts.push_back({ .position={ 0.0f, -0.5f, 0.0f }, .normal={ 0,-1,0 }, .uv={ 0.5f, 0.5f }});
     uint32_t botRing = (uint32_t)verts.size();
@@ -259,8 +273,8 @@ Mesh* PrimitiveMesh::Cylinder(ResourceManager& resources, int segments)
         idx.push_back(botRing + (s + 1) % segments);
     }
 
-    /// @note Side (outward normal (cos t, 0, sin t), tangent = theta direction)
-    /// @note       winding: (T_s, B_{s+1}, B_s) and (T_s, T_{s+1}, B_{s+1}) → cross = outward ✓
+    // Side (outward normal (cos t, 0, sin t), tangent = theta direction)
+    // winding: (T_s, B_{s+1}, B_s) and (T_s, T_{s+1}, B_{s+1}) → cross = outward ✓
     uint32_t sideTop = (uint32_t)verts.size();
     for (int s = 0; s <= segments; ++s) {
         float t = math::TWO_PI * s / segments;
@@ -283,7 +297,9 @@ Mesh* PrimitiveMesh::Cylinder(ResourceManager& resources, int segments)
     }
 
     auto mesh = core::MakeUnique<Mesh>();
-    if (!mesh) return nullptr;
+    if (!mesh) {
+        return nullptr;
+    }
     mesh->vertexBuffer = resources.CreateVertexBuffer(
         verts.data(), verts.size() * sizeof(Vertex), sizeof(Vertex));
     mesh->indexBuffer  = resources.CreateIndexBuffer(idx.data(), (uint32_t)idx.size());
@@ -307,13 +323,13 @@ Mesh* PrimitiveMesh::Cone(ResourceManager& resources, int segments)
     std::vector<uint32_t> idx;
 
     constexpr float r = 0.5f;
-    /// @note Slope normal at angle t: normalize(cos(t)*h, r, sin(t)*h) with h=1.0
-    /// @note       |N| = sqrt(1 + rﾂｲ) = sqrt(1.25)
-    /// @note 1/sqrt(1.25)
+    // Slope normal at angle t: normalize(cos(t)*h, r, sin(t)*h) with h=1.0
+    // |N| = sqrt(1 + rﾂｲ) = sqrt(1.25)
+    // 1/sqrt(1.25)
     constexpr float invSlopeLen = 1.0f / 1.118033989f;
 
-    /// @note Side: per-segment triangle (apex, ring[s+1], ring[s])
-    /// @note       winding: cross = outward ✓ (verified for θ_s=0, θ_{s+1}=π/2)
+    // Side: per-segment triangle (apex, ring[s+1], ring[s])
+    // winding: cross = outward ✓ (verified for θ_s=0, θ_{s+1}=π/2)
     for (int s = 0; s < segments; ++s) {
         float t0 = math::TWO_PI * s       / segments;
         float t1 = math::TWO_PI * (s + 1) / segments;
@@ -334,7 +350,7 @@ Mesh* PrimitiveMesh::Cone(ResourceManager& resources, int segments)
         idx.push_back(base); idx.push_back(base + 2); idx.push_back(base + 1);
     }
 
-    /// @note Bottom cap (normal (0,-1,0))
+    // Bottom cap (normal (0,-1,0))
     uint32_t botCenter = (uint32_t)verts.size();
     verts.push_back({ .position={ 0.0f, -0.5f, 0.0f }, .normal={ 0,-1,0 }, .uv={ 0.5f, 0.5f }});
     uint32_t botRing = (uint32_t)verts.size();
@@ -350,7 +366,9 @@ Mesh* PrimitiveMesh::Cone(ResourceManager& resources, int segments)
     }
 
     auto mesh = core::MakeUnique<Mesh>();
-    if (!mesh) return nullptr;
+    if (!mesh) {
+        return nullptr;
+    }
     mesh->vertexBuffer = resources.CreateVertexBuffer(
         verts.data(), verts.size() * sizeof(Vertex), sizeof(Vertex));
     mesh->indexBuffer  = resources.CreateIndexBuffer(idx.data(), (uint32_t)idx.size());
@@ -373,13 +391,13 @@ Mesh* PrimitiveMesh::Torus(ResourceManager& resources, int segments)
     std::vector<Vertex>   verts;
     std::vector<uint32_t> idx;
 
-    /// @note major segments (around the big circle)
+    // major segments (around the big circle)
     int N = segments;
-    /// @note minor segments (around the tube)
+    // minor segments (around the tube)
     int M = segments / 2;
-    /// @note major radius
+    // major radius
     constexpr float R = 0.35f;
-    /// @note tube radius  (R+r = 0.5 fits unit box)
+    // tube radius  (R+r = 0.5 fits unit box)
     constexpr float r = 0.15f;
 
     for (int n = 0; n <= N; ++n) {
@@ -390,7 +408,7 @@ Mesh* PrimitiveMesh::Torus(ResourceManager& resources, int segments)
             float theta    = math::TWO_PI * m / M;
             float cosTheta = std::cos(theta), sinTheta = std::sin(theta);
 
-            /// @note tangent along the phi (major) direction
+            // tangent along the phi (major) direction
             math::Vector3 t = { -sinPhi, 0.0f, cosPhi };
             verts.push_back({
                 .position = { (R + r * cosTheta) * cosPhi,  r * sinTheta,  (R + r * cosTheta) * sinPhi },
@@ -401,7 +419,7 @@ Mesh* PrimitiveMesh::Torus(ResourceManager& resources, int segments)
         }
     }
 
-    /// @note winding: (a, a+1, b) and (b, a+1, b+1) → cross = outward ✓
+    // winding: (a, a+1, b) and (b, a+1, b+1) → cross = outward ✓
     for (int n = 0; n < N; ++n) {
         for (int m = 0; m < M; ++m) {
             uint32_t a  =  n      * (M + 1) + m;
@@ -412,7 +430,9 @@ Mesh* PrimitiveMesh::Torus(ResourceManager& resources, int segments)
     }
 
     auto mesh = core::MakeUnique<Mesh>();
-    if (!mesh) return nullptr;
+    if (!mesh) {
+        return nullptr;
+    }
     mesh->vertexBuffer = resources.CreateVertexBuffer(
         verts.data(), verts.size() * sizeof(Vertex), sizeof(Vertex));
     mesh->indexBuffer  = resources.CreateIndexBuffer(idx.data(), (uint32_t)idx.size());
@@ -435,23 +455,25 @@ Mesh* PrimitiveMesh::Capsule(ResourceManager& resources, int segments)
     std::vector<Vertex>   verts;
     std::vector<uint32_t> idx;
 
-    if (segments < 6) segments = 6;
-    /// @note around
+    if (segments < 6) {
+        segments = 6;
+    }
+    // around
     int N = segments;
     int rings = std::max(2, segments / 2);
-    /// @note hemisphere rings
+    // hemisphere rings
     int M = std::max(1, rings / 2);
 
-    /// @note 人間大 (全高 2m = 半球 0.5 + 円柱 1.0 + 半球 0.5)。Unity の Capsule と同寸。
-    /// @note radius
+    // 人間大 (全高 2m = 半球 0.5 + 円柱 1.0 + 半球 0.5)。Unity の Capsule と同寸。
+    // radius
     constexpr float rcap = 0.5f;
-    /// @note half cylinder length
+    // half cylinder length
     constexpr float h = 0.5f;
 
-    /// @note Top hemisphere (from pole to equator)
+    // Top hemisphere (from pole to equator)
     uint32_t topHStart = (uint32_t)verts.size();
     for (int r = 0; r <= M; ++r) {
-        /// @note 0 -> pi/2
+        // 0 -> pi/2
         float phi = (math::PI * 0.5f) * r / M;
         float sinPhi = std::sin(phi);
         float cosPhi = std::cos(phi);
@@ -468,7 +490,7 @@ Mesh* PrimitiveMesh::Capsule(ResourceManager& resources, int segments)
         }
     }
 
-    /// @note Cylinder rings (top and bottom)
+    // Cylinder rings (top and bottom)
     uint32_t cylTopStart = (uint32_t)verts.size();
     for (int s = 0; s <= N; ++s) {
         float t = math::TWO_PI * s / N;
@@ -484,10 +506,10 @@ Mesh* PrimitiveMesh::Capsule(ResourceManager& resources, int segments)
                           .tangent={ -si, 0, c }, .uv={ (float)s / N, 0.5f + 0.5f } });
     }
 
-    /// @note Bottom hemisphere (from equator to pole)
+    // Bottom hemisphere (from equator to pole)
     uint32_t botHStart = (uint32_t)verts.size();
     for (int r = 0; r <= M; ++r) {
-        /// @note 0 -> pi/2
+        // 0 -> pi/2
         float phi = (math::PI * 0.5f) * r / M;
         float sinPhi = std::sin(phi);
         float cosPhi = std::cos(phi);
@@ -504,7 +526,7 @@ Mesh* PrimitiveMesh::Capsule(ResourceManager& resources, int segments)
         }
     }
 
-    /// @note Indices: top hemisphere
+    // Indices: top hemisphere
     for (int r = 0; r < M; ++r) {
         for (int s = 0; s < N; ++s) {
             uint32_t a = topHStart + r * (N + 1) + s;
@@ -514,20 +536,20 @@ Mesh* PrimitiveMesh::Capsule(ResourceManager& resources, int segments)
         }
     }
 
-    /// @note Indices: bottom hemisphere (pole -> equator)
-    /// @note       For the bottom hemisphere the outward normal points downward, so we must
-    /// @note       invert the winding compared to the top hemisphere to keep CW front faces.
+    // Indices: bottom hemisphere (pole -> equator)
+    // For the bottom hemisphere the outward normal points downward, so we must
+    // invert the winding compared to the top hemisphere to keep CW front faces.
     for (int r = 0; r < M; ++r) {
         for (int s = 0; s < N; ++s) {
             uint32_t a = botHStart + r * (N + 1) + s;
             uint32_t b = botHStart + (r + 1) * (N + 1) + s;
-            /// @note reversed order
+            // reversed order
             idx.push_back(b); idx.push_back(a + 1); idx.push_back(a);
             idx.push_back(b + 1); idx.push_back(a + 1); idx.push_back(b);
         }
     }
 
-    /// @note connect top hemisphere equator to cylinder top
+    // connect top hemisphere equator to cylinder top
     uint32_t topEquator = topHStart + M * (N + 1);
     for (int s = 0; s < N; ++s) {
         uint32_t a = topEquator + s;
@@ -536,7 +558,7 @@ Mesh* PrimitiveMesh::Capsule(ResourceManager& resources, int segments)
         idx.push_back(b); idx.push_back(a + 1); idx.push_back(b + 1);
     }
 
-    /// @note cylinder sides
+    // cylinder sides
     for (int s = 0; s < N; ++s) {
         uint32_t T0 = cylTopStart + s, T1 = cylTopStart + s + 1;
         uint32_t B0 = cylBotStart + s, B1 = cylBotStart + s + 1;
@@ -544,18 +566,20 @@ Mesh* PrimitiveMesh::Capsule(ResourceManager& resources, int segments)
         idx.push_back(T0); idx.push_back(T1); idx.push_back(B1);
     }
 
-    /// @note connect cylinder bottom to bottom hemisphere equator
+    // connect cylinder bottom to bottom hemisphere equator
     uint32_t botEquator = botHStart + M * (N + 1);
     for (int s = 0; s < N; ++s) {
         uint32_t a = cylBotStart + s;
         uint32_t b = botEquator + s;
-        /// @note match winding with bottom hemisphere (reverse)
+        // match winding with bottom hemisphere (reverse)
         idx.push_back(b + 1); idx.push_back(a + 1); idx.push_back(a);
         idx.push_back(b);     idx.push_back(b + 1); idx.push_back(a);
     }
 
     auto mesh = core::MakeUnique<Mesh>();
-    if (!mesh) return nullptr;
+    if (!mesh) {
+        return nullptr;
+    }
     mesh->vertexBuffer = resources.CreateVertexBuffer(
         verts.data(), verts.size() * sizeof(Vertex), sizeof(Vertex));
     mesh->indexBuffer  = resources.CreateIndexBuffer(idx.data(), (uint32_t)idx.size());
@@ -569,4 +593,4 @@ Mesh* PrimitiveMesh::Capsule(ResourceManager& resources, int segments)
     return result;
 }
 
-} /// @note namespace fbzz::renderer
+} // namespace fbzz::renderer

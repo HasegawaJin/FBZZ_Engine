@@ -25,4 +25,4 @@ inline constexpr bool kBuiltIn =
 /// @note 既定は「立てない」。Debug でも明示的に 1 を渡したときだけ動く。
 [[nodiscard]] FBZZ_GRAPHICS_API bool IsEnabled();
 
-} /// @note namespace fbzz::renderer::bindingguard
+} // namespace fbzz::renderer::bindingguard

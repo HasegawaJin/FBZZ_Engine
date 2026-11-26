@@ -11,26 +11,33 @@ namespace {
 RenderPlanReason ResolveRayPrerequisite(
     const GraphicsCapabilities& capabilities, const RenderAvailability& availability)
 {
-    if (!capabilities.inlineRayQuery)
+    if (!capabilities.inlineRayQuery) {
         return RenderPlanReason::INLINE_RAY_QUERY_UNAVAILABLE;
-    if (!capabilities.bindless)
+    }
+    if (!capabilities.bindless) {
         return RenderPlanReason::BINDLESS_UNAVAILABLE;
-    if (!availability.raySceneReady)
+    }
+    if (!availability.raySceneReady) {
         return RenderPlanReason::RAY_SCENE_UNAVAILABLE;
+    }
     return RenderPlanReason::NONE;
 }
 
 RayEffectPlan ResolveRayEffect(bool requested, bool covered, bool pipelineReady,
                                RenderPlanReason prerequisite)
 {
-    if (!requested)
+    if (!requested) {
         return {};
-    if (prerequisite != RenderPlanReason::NONE)
+    }
+    if (prerequisite != RenderPlanReason::NONE) {
         return { false, prerequisite };
-    if (!covered)
+    }
+    if (!covered) {
         return { false, RenderPlanReason::RAY_COVERAGE_INCOMPLETE };
-    if (!pipelineReady)
+    }
+    if (!pipelineReady) {
         return { false, RenderPlanReason::RAY_PIPELINE_UNAVAILABLE };
+    }
     return { true, RenderPlanReason::NONE };
 }
 
@@ -45,18 +52,24 @@ void ResolveRasterFallback(ResolvedRenderPlan& plan, const RenderAvailability& a
 RenderPlanReason ResolveHybridEffects(ResolvedRenderPlan& plan, const RenderModeRequest& request,
     const SceneRayCoverage& coverage, const RenderAvailability& availability, RenderPlanReason prerequisite)
 {
-    if (!request.rayShadow && !request.rayReflection && !request.rayDiffuseGi)
+    if (!request.rayShadow && !request.rayReflection && !request.rayDiffuseGi) {
         return RenderPlanReason::NO_RAY_EFFECT_REQUESTED;
+    }
 
     plan.shadow = ResolveRayEffect(request.rayShadow, coverage.shadow, availability.shadowPipelineReady, prerequisite);
     plan.reflection = ResolveRayEffect(request.rayReflection, coverage.reflection, availability.reflectionPipelineReady, prerequisite);
     plan.diffuseGi = ResolveRayEffect(request.rayDiffuseGi, coverage.diffuseGi, availability.diffuseGiPipelineReady, prerequisite);
-    if (plan.shadow.enabled || plan.reflection.enabled || plan.diffuseGi.enabled)
+    if (plan.shadow.enabled || plan.reflection.enabled || plan.diffuseGi.enabled) {
         return RenderPlanReason::NONE;
+    }
 
-    /// @note ビュー全体の復帰理由は、要求した効果のうちシャドウ、反射、拡散 GI の順で選ぶ。
-    if (request.rayShadow) return plan.shadow.fallbackReason;
-    if (request.rayReflection) return plan.reflection.fallbackReason;
+    // ビュー全体の復帰理由は、要求した効果のうちシャドウ、反射、拡散 GI の順で選ぶ。
+    if (request.rayShadow) {
+        return plan.shadow.fallbackReason;
+    }
+    if (request.rayReflection) {
+        return plan.reflection.fallbackReason;
+    }
     return plan.diffuseGi.fallbackReason;
 }
 
@@ -64,20 +77,28 @@ RenderPlanReason ResolvePathVisibility(ResolvedRenderPlan& plan, const SceneRayC
     const RenderAvailability& availability, RenderPlanReason prerequisite)
 {
     const bool gamePath = plan.pathProfile == PathTracingProfile::GAME;
-    if (!gamePath && plan.pathProfile != PathTracingProfile::REFERENCE) return RenderPlanReason::INVALID_REQUEST;
+    if (!gamePath && plan.pathProfile != PathTracingProfile::REFERENCE) {
+        return RenderPlanReason::INVALID_REQUEST;
+    }
 
     const auto effect = ResolveRayEffect(true, coverage.path, availability.pathPipelineReady, prerequisite);
-    if (!effect.enabled) return effect.fallbackReason;
-    if (gamePath && !availability.rasterSurfaceReady) return RenderPlanReason::RASTER_SURFACE_UNAVAILABLE;
+    if (!effect.enabled) {
+        return effect.fallbackReason;
+    }
+    if (gamePath && !availability.rasterSurfaceReady) {
+        return RenderPlanReason::RASTER_SURFACE_UNAVAILABLE;
+    }
 
-    if (gamePath)
+    if (gamePath) {
         plan.rasterPlan.path = OpaqueRenderPath::DEFERRED;
-    else
+    }
+    else {
         plan.primaryVisibility = PrimaryVisibility::CAMERA_RAY;
+    }
     return RenderPlanReason::NONE;
 }
 
-} /// @note namespace
+} // namespace
 
 const char* DescribeRenderPlanReason(RenderPlanReason reason)
 {
@@ -108,8 +129,9 @@ ResolvedRenderPlan ResolveRenderPlan(
     plan.pathProfile = request.pathProfile;
     plan.rasterPlan = ResolveOpaqueRenderPlan(settings, availability.opaque);
     plan.clusteredLighting = settings.UsesClusteredLighting() && availability.clusteredLightingReady;
-    if (!availability.outputsReady)
+    if (!availability.outputsReady) {
         return plan;
+    }
 
     const bool hybrid = request.mode == RenderMode::HYBRID;
     if (!hybrid && request.mode != RenderMode::PATH_TRACING) {
@@ -121,9 +143,15 @@ ResolvedRenderPlan ResolveRenderPlan(
     if (!availability.experimentalRayTracingEnabled) {
         const RayEffectPlan disabled{ false, RenderPlanReason::DEVELOPER_MODE_REQUIRED };
         if (hybrid) {
-            if (request.rayShadow) plan.shadow = disabled;
-            if (request.rayReflection) plan.reflection = disabled;
-            if (request.rayDiffuseGi) plan.diffuseGi = disabled;
+            if (request.rayShadow) {
+                plan.shadow = disabled;
+            }
+            if (request.rayReflection) {
+                plan.reflection = disabled;
+            }
+            if (request.rayDiffuseGi) {
+                plan.diffuseGi = disabled;
+            }
         }
         ResolveRasterFallback(plan, availability, RenderPlanReason::DEVELOPER_MODE_REQUIRED);
         return plan;
@@ -147,4 +175,4 @@ ResolvedRenderPlan ResolveRenderPlan(
     return plan;
 }
 
-} /// @note namespace fbzz::renderer
+} // namespace fbzz::renderer

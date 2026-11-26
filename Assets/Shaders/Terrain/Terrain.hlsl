@@ -44,7 +44,7 @@ cbuffer LightConstants : register(CB_LIGHT)
 #include "Rendering/Wetness.hlsli"
 #include "Rendering/SpecularAA.hlsli"
 
-FBZZ_TEX2D_T(float, g_shadowMap, 13);
+FBZZ_TEX2D_T(float, g_shadowMap, SRV_TERRAIN_SHADOW_SLOT);
 SamplerComparisonState g_shadowSampler : register(SAMPLER_SHADOW);
 /// @note Light Probe Volume の Texture3D を引く Linear clamp。
 SamplerState g_linearClampSampler : register(SAMPLER_LINEAR_CLAMP);

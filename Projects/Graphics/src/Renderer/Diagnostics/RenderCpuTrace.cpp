@@ -90,13 +90,17 @@ thread_local WaitScope* s_wait = nullptr;
 void Drop(Capture& capture)
 {
     capture.incomplete = true;
-    if (capture.dropped != std::numeric_limits<uint64_t>::max()) ++capture.dropped;
+    if (capture.dropped != std::numeric_limits<uint64_t>::max()) {
+        ++capture.dropped;
+    }
 }
 
 void Add(Capture& capture, uint64_t& value, uint64_t amount)
 {
     if (amount > std::numeric_limits<uint64_t>::max() - value) { value = std::numeric_limits<uint64_t>::max(); Drop(capture); }
-    else value += amount;
+    else {
+        value += amount;
+    }
 }
 
 uint64_t WallNow()
@@ -124,7 +128,9 @@ Stamp ReadStamp()
     state.cpuQueries.fetch_add(1, std::memory_order_relaxed);
     state.cycleQueries.fetch_add(1, std::memory_order_relaxed);
     const auto mode = state.capture->cpuMode;
-    if (mode == TestCpuMode::UNAVAILABLE) return stamp;
+    if (mode == TestCpuMode::UNAVAILABLE) {
+        return stamp;
+    }
     if (mode == TestCpuMode::REGRESSING) {
         stamp.kernel = state.fakeCpuTicks.fetch_sub(1, std::memory_order_relaxed);
         stamp.user = stamp.kernel;
@@ -140,7 +146,7 @@ Stamp ReadStamp()
         stamp.user = (static_cast<uint64_t>(user.dwHighDateTime) << 32) | user.dwLowDateTime;
         stamp.cpuAvailable = true;
     }
-    /// @note Query only at the existing coarse boundaries. Cycles are independent of GetThreadTimes' quantization.
+    // Query only at the existing coarse boundaries. Cycles are independent of GetThreadTimes' quantization.
     /// @see https://learn.microsoft.com/en-us/windows/win32/api/realtimeapiset/nf-realtimeapiset-querythreadcycletime
     ULONG64 cycles = 0;
     if (QueryThreadCycleTime(GetCurrentThread(), &cycles)) {
@@ -160,21 +166,31 @@ Interval Difference(const Stamp& before, const Stamp& after)
     if (result.cpu) { result.kernel = after.kernel - before.kernel; result.user = after.user - before.user; }
     result.cyclesAvailable = before.cyclesAvailable && after.cyclesAvailable && before.thread == after.thread
         && after.cycles >= before.cycles;
-    if (result.cyclesAvailable) result.cycles = after.cycles - before.cycles;
+    if (result.cyclesAvailable) {
+        result.cycles = after.cycles - before.cycles;
+    }
     return result;
 }
 
 ThreadEntry* FindThread(Capture& capture, const void* address)
 {
-    for (auto& entry : capture.threads) if (entry.address == address) return &entry;
+    for (auto& entry : capture.threads) {
+        if (entry.address == address) {
+            return &entry;
+        }
+    }
     return nullptr;
 }
 
 ThreadEntry* Register(Capture& capture, const void* address)
 {
-    if (auto* entry = FindThread(capture, address)) return entry;
+    if (auto* entry = FindThread(capture, address)) {
+        return entry;
+    }
     for (auto& entry : capture.threads) {
-        if (entry.address) continue;
+        if (entry.address) {
+            continue;
+        }
         entry = {};
         entry.address = address;
         entry.id = State().lifetimeId.fetch_add(1, std::memory_order_relaxed) + 1;
@@ -186,12 +202,19 @@ ThreadEntry* Register(Capture& capture, const void* address)
 
 uint16_t InternApi(Capture& capture, const char* api)
 {
-    if (!api) return s_context.api;
+    if (!api) {
+        return s_context.api;
+    }
     size_t size = 0;
-    while (size < MAX_API_ORIGIN_BYTES && api[size]) ++size;
+    while (size < MAX_API_ORIGIN_BYTES && api[size]) {
+        ++size;
+    }
     if (size == MAX_API_ORIGIN_BYTES) { Drop(capture); return 0; }
-    for (uint32_t i = 1; i < capture.apiCount; ++i)
-        if (std::strcmp(capture.apis[i].data(), api) == 0) return static_cast<uint16_t>(i);
+    for (uint32_t i = 1; i < capture.apiCount; ++i) {
+        if (std::strcmp(capture.apis[i].data(), api) == 0) {
+            return static_cast<uint16_t>(i);
+        }
+    }
     if (capture.apiCount == MAX_API_ORIGINS) { Drop(capture); return 0; }
     const auto index = capture.apiCount++;
     std::memcpy(capture.apis[index].data(), api, size + 1);
@@ -212,8 +235,12 @@ uint32_t Domain(Capture& capture, const Context& context)
         context.api), static_cast<uint8_t>(context.waitKind)), context.worker);
     for (uint32_t probe = 0; probe < DOMAIN_TABLE_SIZE; ++probe) {
         auto& slot = capture.domainTable[(hash + probe) % DOMAIN_TABLE_SIZE];
-        if (slot && SameDomain(capture.domains[slot - 1].context, context)) return slot - 1;
-        if (slot) continue;
+        if (slot && SameDomain(capture.domains[slot - 1].context, context)) {
+            return slot - 1;
+        }
+        if (slot) {
+            continue;
+        }
         if (capture.domainCount == MAX_DOMAINS) { Drop(capture); return INVALID_ROW; }
         const auto row = capture.domainCount++;
         capture.domains[row].context = context;
@@ -242,7 +269,9 @@ uint32_t NewPhase(Capture& capture, Phase phase)
 
 void EndPhase(uint32_t row, const Stamp& start, const Stamp& end)
 {
-    if (row == INVALID_ROW) return;
+    if (row == INVALID_ROW) {
+        return;
+    }
     auto& state = State();
     std::lock_guard lock(state.mutex);
     auto& phase = state.capture->phases[row];
@@ -256,7 +285,9 @@ std::string Environment(const char* name)
 #if defined(_MSC_VER)
     char* value = nullptr;
     size_t size = 0;
-    if (_dupenv_s(&value, &size, name) != 0 || !value) return {};
+    if (_dupenv_s(&value, &size, name) != 0 || !value) {
+        return {};
+    }
     std::string result(value);
     std::free(value);
     return result;
@@ -269,12 +300,18 @@ std::string Environment(const char* name)
 uint32_t BoundedSetting(const char* name, uint32_t fallback, uint32_t minimum, uint32_t maximum)
 {
     const auto value = Environment(name);
-    if (value.empty()) return fallback;
+    if (value.empty()) {
+        return fallback;
+    }
     uint64_t parsed = 0;
     for (const auto character : value) {
-        if (character < '0' || character > '9') return fallback;
+        if (character < '0' || character > '9') {
+            return fallback;
+        }
         parsed = parsed * 10 + static_cast<uint32_t>(character - '0');
-        if (parsed > maximum) return fallback;
+        if (parsed > maximum) {
+            return fallback;
+        }
     }
     return parsed >= minimum ? static_cast<uint32_t>(parsed) : fallback;
 }
@@ -332,7 +369,7 @@ void IntervalRows(std::ostringstream& output, const Capture& capture, const char
         complete && elapsedAvailable && interval.cyclesAvailable, serial, commands, accepted, complete);
 }
 
-} /// @note namespace
+} // namespace
 
 bool IsEnabled() { return State().enabled.load(std::memory_order_acquire); }
 bool HasSelectedFrame() { return IsEnabled() && s_context.token != 0; }
@@ -341,10 +378,14 @@ void InitializeFromEnvironment()
 {
     auto& state = State();
     std::lock_guard lock(state.mutex);
-    if (state.environmentInitialized) return;
+    if (state.environmentInitialized) {
+        return;
+    }
     state.environmentInitialized = true;
     const auto output = Environment("FBZZ_RENDER_CPU_TRACE_OUTPUT");
-    if (output.empty()) return;
+    if (output.empty()) {
+        return;
+    }
     state.capture = std::make_unique<Capture>();
     auto& capture = *state.capture;
     capture.output = output;
@@ -357,43 +398,63 @@ void InitializeFromEnvironment()
 
 void RegisterThread(const void* thread)
 {
-    if (!IsEnabled()) return;
+    if (!IsEnabled()) {
+        return;
+    }
     auto& state = State();
     std::lock_guard lock(state.mutex);
-    if (!state.capture->exported && !state.capture->exporting) (void)Register(*state.capture, thread);
+    if (!state.capture->exported && !state.capture->exporting) {
+        (void)Register(*state.capture, thread);
+    }
 }
 
 void UnregisterThread(const void* thread)
 {
-    if (!IsEnabled()) return;
+    if (!IsEnabled()) {
+        return;
+    }
     auto& state = State();
     std::lock_guard lock(state.mutex);
     if (auto* entry = FindThread(*state.capture, thread)) {
-        if (!entry->stopped) Drop(*state.capture);
+        if (!entry->stopped) {
+            Drop(*state.capture);
+        }
         *entry = {};
     }
 }
 
 void ThreadStopped(const void* thread)
 {
-    if (!IsEnabled()) return;
+    if (!IsEnabled()) {
+        return;
+    }
     auto& state = State();
     std::lock_guard lock(state.mutex);
-    if (auto* entry = FindThread(*state.capture, thread)) entry->stopped = true;
+    if (auto* entry = FindThread(*state.capture, thread)) {
+        entry->stopped = true;
+    }
 }
 
 void BeginFrame(const void* thread, uint64_t applicationFrame)
 {
-    if (!IsEnabled()) return;
+    if (!IsEnabled()) {
+        return;
+    }
     auto& state = State();
     std::lock_guard lock(state.mutex);
     auto& capture = *state.capture;
     s_context = {};
-    if (capture.exported || capture.exporting) return;
+    if (capture.exported || capture.exporting) {
+        return;
+    }
     auto* entry = Register(capture, thread);
-    if (!entry) return;
+    if (!entry) {
+        return;
+    }
     const auto ordinal = entry->framesSeen++;
-    if (ordinal < capture.warmup || (ordinal - capture.warmup) % capture.stride || capture.frames >= capture.samples) return;
+    if (ordinal < capture.warmup || (ordinal - capture.warmup) % capture.stride || capture.frames >= capture.samples) {
+        return;
+    }
     s_context.threadId = entry->id;
     s_context.applicationFrame = applicationFrame;
     s_context.token = ++capture.frames;
@@ -401,20 +462,28 @@ void BeginFrame(const void* thread, uint64_t applicationFrame)
 
 void Count(Counter counter, uint64_t amount)
 {
-    if (!HasSelectedFrame()) return;
+    if (!HasSelectedFrame()) {
+        return;
+    }
     auto& state = State();
     std::lock_guard lock(state.mutex);
     const auto row = Domain(*state.capture, s_context);
-    if (row != INVALID_ROW) Add(*state.capture, state.capture->domains[row].counters[static_cast<size_t>(counter)], amount);
+    if (row != INVALID_ROW) {
+        Add(*state.capture, state.capture->domains[row].counters[static_cast<size_t>(counter)], amount);
+    }
 }
 
 SourceScope::SourceScope(Source source, const char* api, bool preserveSource)
 {
-    if (!HasSelectedFrame()) return;
+    if (!HasSelectedFrame()) {
+        return;
+    }
     m_active = true;
     m_previousSource = s_context.source;
     m_previousApi = s_context.api;
-    if (!preserveSource || s_context.source == Source::UNKNOWN) s_context.source = source;
+    if (!preserveSource || s_context.source == Source::UNKNOWN) {
+        s_context.source = source;
+    }
     if (api) {
         auto& state = State();
         std::lock_guard lock(state.mutex);
@@ -425,11 +494,15 @@ SourceScope::SourceScope(Source source, const char* api, bool preserveSource)
         std::lock_guard lock(state.mutex);
         ++state.capture->activeScopes;
     }
-    if (!preserveSource) Count(Counter::SOURCE_OPERATIONS);
+    if (!preserveSource) {
+        Count(Counter::SOURCE_OPERATIONS);
+    }
 }
 SourceScope::~SourceScope()
 {
-    if (!m_active) return;
+    if (!m_active) {
+        return;
+    }
     s_context.source = m_previousSource;
     s_context.api = m_previousApi;
     auto& state = State();
@@ -438,7 +511,9 @@ SourceScope::~SourceScope()
 }
 WaitKindScope::WaitKindScope(WaitKind kind)
 {
-    if (!HasSelectedFrame()) return;
+    if (!HasSelectedFrame()) {
+        return;
+    }
     m_active = true;
     m_previous = s_context.waitKind;
     s_context.waitKind = kind;
@@ -448,7 +523,9 @@ WaitKindScope::WaitKindScope(WaitKind kind)
 }
 WaitKindScope::~WaitKindScope()
 {
-    if (!m_active) return;
+    if (!m_active) {
+        return;
+    }
     s_context.waitKind = m_previous;
     auto& state = State();
     std::lock_guard lock(state.mutex);
@@ -458,7 +535,9 @@ WaitKindScope::~WaitKindScope()
 ViewScope::ViewScope(uint64_t resourceInstance, uint64_t resourceEpoch, uint64_t resourceFrame,
     uint64_t sceneGeneration, uint32_t outputId, uint32_t outputGeneration)
 {
-    if (!HasSelectedFrame()) return;
+    if (!HasSelectedFrame()) {
+        return;
+    }
     auto& state = State();
     {
         std::lock_guard lock(state.mutex);
@@ -486,7 +565,9 @@ ViewScope::ViewScope(uint64_t resourceInstance, uint64_t resourceEpoch, uint64_t
 void ViewScope::SetViewId(uint32_t viewId) { if (m_active) s_context.viewId = viewId; }
 void ViewScope::SetPhase(Phase phase)
 {
-    if (!m_active || s_context.phase == phase) return;
+    if (!m_active || s_context.phase == phase) {
+        return;
+    }
     const auto end = ReadStamp();
     EndPhase(m_phaseRow, m_phaseStart, end);
     auto& state = State();
@@ -498,7 +579,9 @@ void ViewScope::SetPhase(Phase phase)
 
 ViewScope::~ViewScope()
 {
-    if (!m_active) return;
+    if (!m_active) {
+        return;
+    }
     const auto end = ReadStamp();
     EndPhase(m_phaseRow, m_phaseStart, end);
     EndPhase(m_viewRow, m_viewStart, end);
@@ -510,25 +593,37 @@ ViewScope::~ViewScope()
 
 WaitScope::WaitScope(bool initiallyNotReady)
 {
-    if (!HasSelectedFrame()) return;
+    if (!HasSelectedFrame()) {
+        return;
+    }
     m_cell = CurrentDomain();
     auto& state = State();
     {
         std::lock_guard lock(state.mutex);
-        if (m_cell == INVALID_ROW) return;
+        if (m_cell == INVALID_ROW) {
+            return;
+        }
         auto& capture = *state.capture;
         auto& row = capture.domains[m_cell];
         Add(capture, row.calls, 1);
-        if (!initiallyNotReady) return;
+        if (!initiallyNotReady) {
+            return;
+        }
         Add(capture, row.notReady, 1);
         m_parent = s_wait;
         m_depth = m_parent ? m_parent->m_depth + 1 : 1;
-        if (m_depth > row.maxWaitDepth) row.maxWaitDepth = m_depth;
-        if (m_parent) Add(capture, row.reentrantWaits, 1);
+        if (m_depth > row.maxWaitDepth) {
+            row.maxWaitDepth = m_depth;
+        }
+        if (m_parent) {
+            Add(capture, row.reentrantWaits, 1);
+        }
         if (m_depth > MAX_REENTRY) {
             Drop(capture);
             row.leafAvailable = false;
-            for (auto* parent = m_parent; parent; parent = parent->m_parent) parent->m_leafAvailable = false;
+            for (auto* parent = m_parent; parent; parent = parent->m_parent) {
+                parent->m_leafAvailable = false;
+            }
             return;
         }
         ++capture.activeScopes;
@@ -540,7 +635,9 @@ WaitScope::WaitScope(bool initiallyNotReady)
 
 WaitScope::~WaitScope()
 {
-    if (!m_timed) return;
+    if (!m_timed) {
+        return;
+    }
     const auto end = WallNow();
     const auto elapsed = end >= m_start ? end - m_start : 0;
     s_wait = m_parent;
@@ -551,21 +648,31 @@ WaitScope::~WaitScope()
     Add(capture, row.inclusive, elapsed);
     m_leafAvailable = m_leafAvailable && elapsed >= m_children;
     row.leafAvailable = row.leafAvailable && m_leafAvailable;
-    if (m_leafAvailable) Add(capture, row.leaf, elapsed - m_children);
-    else Drop(capture);
-    if (m_parent) Add(capture, m_parent->m_children, elapsed);
+    if (m_leafAvailable) {
+        Add(capture, row.leaf, elapsed - m_children);
+    }
+    else {
+        Drop(capture);
+    }
+    if (m_parent) {
+        Add(capture, m_parent->m_children, elapsed);
+    }
     --capture.activeScopes;
 }
 
 PumpScope::PumpScope()
 {
-    if (!s_wait) return;
+    if (!s_wait) {
+        return;
+    }
     m_cell = s_wait->m_cell;
     m_start = WallNow();
 }
 PumpScope::~PumpScope()
 {
-    if (m_cell == INVALID_ROW) return;
+    if (m_cell == INVALID_ROW) {
+        return;
+    }
     const auto elapsed = WallNow() - m_start;
     auto& state = State();
     std::lock_guard lock(state.mutex);
@@ -576,10 +683,14 @@ PumpScope::~PumpScope()
 
 AcquireScope::AcquireScope(AcquireKind kind) : m_kind(kind)
 {
-    if (!HasSelectedFrame()) return;
+    if (!HasSelectedFrame()) {
+        return;
+    }
     auto& state = State();
     std::lock_guard lock(state.mutex);
-    if (!state.capture->timeMutex) return;
+    if (!state.capture->timeMutex) {
+        return;
+    }
     m_cell = Domain(*state.capture, s_context);
     if (m_cell != INVALID_ROW) {
         ++state.capture->activeScopes;
@@ -589,7 +700,9 @@ AcquireScope::AcquireScope(AcquireKind kind) : m_kind(kind)
 AcquireScope::~AcquireScope() { Acquired(); }
 void AcquireScope::Acquired()
 {
-    if (m_cell == INVALID_ROW) return;
+    if (m_cell == INVALID_ROW) {
+        return;
+    }
     const auto elapsed = WallNow() - m_start;
     auto& state = State();
     std::lock_guard lock(state.mutex);
@@ -601,7 +714,9 @@ void AcquireScope::Acquired()
 
 void BindPacket(const void* thread, uint64_t serial, uint64_t commands)
 {
-    if (!HasSelectedFrame()) return;
+    if (!HasSelectedFrame()) {
+        return;
+    }
     auto& state = State();
     std::lock_guard lock(state.mutex);
     auto& capture = *state.capture;
@@ -611,7 +726,9 @@ void BindPacket(const void* thread, uint64_t serial, uint64_t commands)
         Add(capture, capture.domains[domain].counters[static_cast<size_t>(Counter::COMMANDS)], commands);
     }
     auto* entry = Register(capture, thread);
-    if (!entry) return;
+    if (!entry) {
+        return;
+    }
     if (capture.packetCount == capture.packetLimit) { Drop(capture); entry->pendingPacket = INVALID_ROW; return; }
     if (entry->pendingPacket != INVALID_ROW && !capture.packets[entry->pendingPacket].complete) { Drop(capture); return; }
     const auto row = capture.packetCount++;
@@ -626,12 +743,16 @@ void BindPacket(const void* thread, uint64_t serial, uint64_t commands)
 
 void PacketAccepted(const void* thread, uint64_t serial, bool accepted)
 {
-    if (!IsEnabled()) return;
+    if (!IsEnabled()) {
+        return;
+    }
     auto& state = State();
     std::lock_guard lock(state.mutex);
     auto& capture = *state.capture;
     auto* entry = FindThread(capture, thread);
-    if (!entry || entry->serial != serial || entry->pendingPacket == INVALID_ROW) return;
+    if (!entry || entry->serial != serial || entry->pendingPacket == INVALID_ROW) {
+        return;
+    }
     auto& packet = capture.packets[entry->pendingPacket];
     packet.accepted = accepted;
     if (!accepted) { packet.complete = true; entry->pendingPacket = INVALID_ROW; }
@@ -639,13 +760,17 @@ void PacketAccepted(const void* thread, uint64_t serial, bool accepted)
 
 PacketScope::PacketScope(const void* thread, uint64_t serial)
 {
-    if (!IsEnabled()) return;
+    if (!IsEnabled()) {
+        return;
+    }
     auto& state = State();
     {
         std::lock_guard lock(state.mutex);
         auto& capture = *state.capture;
         auto* entry = FindThread(capture, thread);
-        if (!entry || entry->serial != serial || entry->pendingPacket == INVALID_ROW) return;
+        if (!entry || entry->serial != serial || entry->pendingPacket == INVALID_ROW) {
+            return;
+        }
         m_row = entry->pendingPacket;
         m_previous = s_context;
         s_context = capture.packets[m_row].context;
@@ -658,7 +783,9 @@ PacketScope::PacketScope(const void* thread, uint64_t serial)
 
 void PacketScope::BeginDestruction()
 {
-    if (m_row == INVALID_ROW) return;
+    if (m_row == INVALID_ROW) {
+        return;
+    }
     const auto end = ReadStamp();
     auto& state = State();
     std::lock_guard lock(state.mutex);
@@ -669,7 +796,9 @@ void PacketScope::BeginDestruction()
 }
 void PacketScope::FinishedDestruction()
 {
-    if (m_row == INVALID_ROW) return;
+    if (m_row == INVALID_ROW) {
+        return;
+    }
     const auto end = ReadStamp();
     auto& state = State();
     std::lock_guard lock(state.mutex);
@@ -678,14 +807,18 @@ void PacketScope::FinishedDestruction()
     row.destroy = Difference(m_start, end);
     row.complete = m_destroying;
     row.destroyFinished = m_destroying;
-    if (!m_destroying) Drop(capture);
+    if (!m_destroying) {
+        Drop(capture);
+    }
     --capture.activeWorkers;
     s_context = m_previous;
     m_finished = true;
 }
 PacketScope::~PacketScope()
 {
-    if (m_row == INVALID_ROW || m_finished) return;
+    if (m_row == INVALID_ROW || m_finished) {
+        return;
+    }
     auto& state = State();
     std::lock_guard lock(state.mutex);
     Drop(*state.capture);
@@ -698,7 +831,9 @@ Summary SnapshotSummary()
     Summary summary;
     auto& state = State();
     std::lock_guard lock(state.mutex);
-    if (!state.capture) return summary;
+    if (!state.capture) {
+        return summary;
+    }
     const auto& capture = *state.capture;
     summary.selectedFrames = capture.frames;
     summary.views = capture.views;
@@ -720,8 +855,12 @@ Summary SnapshotSummary()
         summary.bufferProducer += row.counters[static_cast<size_t>(Counter::BUFFER_PRODUCER)];
         summary.bufferWorker += row.counters[static_cast<size_t>(Counter::BUFFER_WORKER)];
         summary.emptySubmits += row.counters[static_cast<size_t>(Counter::EMPTY_SUBMIT)];
-        if (row.context.source == Source::BATCH_STATIC) summary.sourceStaticCalls += row.counters[static_cast<size_t>(Counter::SOURCE_OPERATIONS)];
-        if (row.context.source == Source::BATCH_DEFORMED) summary.sourceDeformedCalls += row.counters[static_cast<size_t>(Counter::SOURCE_OPERATIONS)];
+        if (row.context.source == Source::BATCH_STATIC) {
+            summary.sourceStaticCalls += row.counters[static_cast<size_t>(Counter::SOURCE_OPERATIONS)];
+        }
+        if (row.context.source == Source::BATCH_DEFORMED) {
+            summary.sourceDeformedCalls += row.counters[static_cast<size_t>(Counter::SOURCE_OPERATIONS)];
+        }
     }
     for (uint32_t i = 0; i < capture.phaseCount; ++i) {
         summary.complete &= capture.phases[i].complete;
@@ -730,7 +869,9 @@ Summary SnapshotSummary()
     }
     for (uint32_t i = 0; i < capture.packetCount; ++i) {
         const auto& row = capture.packets[i];
-        if (row.accepted && row.complete) ++summary.completedPackets;
+        if (row.accepted && row.complete) {
+            ++summary.completedPackets;
+        }
         summary.complete &= row.complete;
         if (row.started) {
             summary.cpuAvailable &= row.execute.cpu && row.destroy.cpu;
@@ -744,7 +885,9 @@ PacketInfo SnapshotPacket(uint32_t index)
 {
     auto& state = State();
     std::lock_guard lock(state.mutex);
-    if (!state.capture || index >= state.capture->packetCount) return {};
+    if (!state.capture || index >= state.capture->packetCount) {
+        return {};
+    }
     const auto& packet = state.capture->packets[index];
     return {packet.context.threadId, packet.context.applicationFrame, packet.context.resourceFrame, packet.serial,
         packet.context.token, packet.context.viewOrdinal, packet.context.viewId, packet.accepted, packet.complete};
@@ -752,16 +895,30 @@ PacketInfo SnapshotPacket(uint32_t index)
 
 bool WriteCsvAfterStop()
 {
-    if (!IsEnabled()) return false;
+    if (!IsEnabled()) {
+        return false;
+    }
     auto& state = State();
     std::string outputPath, contents;
     {
         std::lock_guard lock(state.mutex);
         auto& capture = *state.capture;
-        if (capture.exported || capture.exporting || capture.output.empty() || capture.activeScopes || capture.activeWorkers) return false;
-        for (const auto& entry : capture.threads) if (entry.address && !entry.stopped) return false;
-        if (capture.frames != capture.samples) capture.incomplete = true;
-        for (uint32_t i = 0; i < capture.packetCount; ++i) if (!capture.packets[i].complete) capture.incomplete = true;
+        if (capture.exported || capture.exporting || capture.output.empty() || capture.activeScopes || capture.activeWorkers) {
+            return false;
+        }
+        for (const auto& entry : capture.threads) {
+            if (entry.address && !entry.stopped) {
+                return false;
+            }
+        }
+        if (capture.frames != capture.samples) {
+            capture.incomplete = true;
+        }
+        for (uint32_t i = 0; i < capture.packetCount; ++i) {
+            if (!capture.packets[i].complete) {
+                capture.incomplete = true;
+            }
+        }
         std::ostringstream output;
         output << "rowType,threadLifetimeId,applicationFrame,resourceFrame,token,viewOrdinal,parentViewOrdinal,viewId,resourceInstance,resourceEpoch,sceneGeneration,outputId,outputGeneration,role,depth,phase,source,api,waitKind,metric,value,auxiliary,available,packetSerial,commandCount,accepted,rowComplete,captureIncomplete,dropped\n";
         const Context meta{};
@@ -774,8 +931,9 @@ bool WriteCsvAfterStop()
         Metric(output, capture, "meta", meta, "os-cpu-time-coarse", 1);
         Metric(output, capture, "meta", meta, "cycle-counter-raw", 1);
         Metric(output, capture, "meta", meta, "mutex-timing", capture.timeMutex);
-        for (uint32_t i = 0; i < capture.phaseCount; ++i)
+        for (uint32_t i = 0; i < capture.phaseCount; ++i) {
             IntervalRows(output, capture, "phase", capture.phases[i].context, capture.phases[i].interval, capture.phases[i].complete);
+        }
         constexpr std::array counterNames{"sync-calls", "cpu-frame-wait-calls", "buffer-producer", "buffer-worker", "buffer-invalid",
             "buffer-detached", "empty-submit", "packets", "commands", "source-operations"};
         for (uint32_t i = 0; i < capture.domainCount; ++i) {
@@ -787,8 +945,11 @@ bool WriteCsvAfterStop()
             Metric(output, capture, "wait", row.context, "max-wait-depth", row.maxWaitDepth, row.reentrantWaits);
             Metric(output, capture, "acquire", row.context, "execution-mutex-ns", row.executionAcquire, 0, capture.timeMutex);
             Metric(output, capture, "acquire", row.context, "thread-mutex-ns", row.threadAcquire, 0, capture.timeMutex);
-            for (size_t counter = 0; counter < COUNTER_COUNT; ++counter)
-                if (row.counters[counter]) Metric(output, capture, "counter", row.context, counterNames[counter], row.counters[counter]);
+            for (size_t counter = 0; counter < COUNTER_COUNT; ++counter) {
+                if (row.counters[counter]) {
+                    Metric(output, capture, "counter", row.context, counterNames[counter], row.counters[counter]);
+                }
+            }
         }
         for (uint32_t i = 0; i < capture.packetCount; ++i) {
             const auto& row = capture.packets[i];
@@ -806,9 +967,13 @@ bool WriteCsvAfterStop()
         std::lock_guard lock(state.mutex);
         state.capture->exporting = false;
         state.capture->exported = written;
-        if (written) state.enabled.store(false, std::memory_order_release);
+        if (written) {
+            state.enabled.store(false, std::memory_order_release);
+        }
     }
-    if (!written) std::fprintf(stderr, "FBZZ render CPU trace CSV write failed: %s\n", outputPath.c_str());
+    if (!written) {
+        std::fprintf(stderr, "FBZZ render CPU trace CSV write failed: %s\n", outputPath.c_str());
+    }
     return written;
 }
 
@@ -817,8 +982,12 @@ bool ConfigureForTesting(uint32_t warmup, uint32_t stride, uint32_t samples, uin
 {
     auto& state = State();
     std::lock_guard lock(state.mutex);
-    if (state.capture && (state.capture->activeScopes || state.capture->activeWorkers || state.capture->exporting)) return false;
-    if (!stride || !samples || samples > MAX_SELECTED_FRAMES || !packetLimit || packetLimit > MAX_PACKETS) return false;
+    if (state.capture && (state.capture->activeScopes || state.capture->activeWorkers || state.capture->exporting)) {
+        return false;
+    }
+    if (!stride || !samples || samples > MAX_SELECTED_FRAMES || !packetLimit || packetLimit > MAX_PACKETS) {
+        return false;
+    }
     state.enabled.store(false, std::memory_order_release);
     state.capture = std::make_unique<Capture>();
     state.capture->warmup = warmup;
@@ -826,7 +995,9 @@ bool ConfigureForTesting(uint32_t warmup, uint32_t stride, uint32_t samples, uin
     state.capture->samples = samples;
     state.capture->packetLimit = packetLimit;
     state.capture->cpuMode = cpuMode;
-    if (outputPath) state.capture->output = outputPath;
+    if (outputPath) {
+        state.capture->output = outputPath;
+    }
     state.environmentInitialized = true;
     state.cpuQueries.store(0, std::memory_order_relaxed);
     state.wallQueries.store(0, std::memory_order_relaxed);
@@ -842,7 +1013,9 @@ bool DisableForTesting()
 {
     auto& state = State();
     std::lock_guard lock(state.mutex);
-    if (state.capture && (state.capture->activeScopes || state.capture->activeWorkers || state.capture->exporting)) return false;
+    if (state.capture && (state.capture->activeScopes || state.capture->activeWorkers || state.capture->exporting)) {
+        return false;
+    }
     state.enabled.store(false, std::memory_order_release);
     state.capture.reset();
     s_context = {};
@@ -850,4 +1023,4 @@ bool DisableForTesting()
     return true;
 }
 
-} /// @note namespace fbzz::renderer::cpu_trace
+} // namespace fbzz::renderer::cpu_trace

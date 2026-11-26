@@ -14,4 +14,4 @@ bool UseSkinningWaitOptimization()
     const char* value = std::getenv("FBZZ_SKINNING_WAIT_OPTIMIZATION");
     return !value || std::strcmp(value, "0") != 0;
 }
-} /// @note namespace fbzz::renderer
+} // namespace fbzz::renderer

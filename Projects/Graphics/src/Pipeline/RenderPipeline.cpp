@@ -29,11 +29,11 @@ const char* InternRenderPassProfileName(std::string_view name)
     return it->c_str();
 }
 
-} /// @note namespace
+} // namespace
 
 void RenderPipeline::BeginBuild()
 {
-    /// @note パス本体と raw pass のラムダは RenderPassContext を参照するため毎フレーム破棄する。Plan 結果は別の永続状態として残し、構成不変フレームでは依存解析を省略できる。
+    // パス本体と raw pass のラムダは RenderPassContext を参照するため毎フレーム破棄する。Plan 結果は別の永続状態として残し、構成不変フレームでは依存解析を省略できる。
     m_entries.clear();
     m_resources.clear();
     m_outputs.clear();
@@ -49,10 +49,12 @@ std::vector<renderer::RenderGraph::ResourceAccess> RenderPipeline::MakeAccesses(
     using RA = renderer::RenderGraph::ResourceAccess;
     std::vector<RA> accesses;
     accesses.reserve(reads.size() + writes.size());
-    for (std::string_view r : reads)
+    for (std::string_view r : reads) {
         accesses.push_back(RA{ std::string(r), U::Read });
-    for (std::string_view w : writes)
+    }
+    for (std::string_view w : writes) {
         accesses.push_back(RA{ std::string(w), U::Write });
+    }
     return accesses;
 }
 
@@ -60,8 +62,8 @@ void RenderPipeline::DeclareTarget(std::string_view name,
                                     renderer::ResourceHandle<renderer::RenderTargetTag> handle,
                                     renderer::RenderGraph::ResourceDesc desc)
 {
-    /// @note 確保はしない。実体は呼び出し側 (ViewRenderTargets) が持ち、ここは «その名前が
-    /// @note どれを指すか» を申告と一緒に預かるだけ。記述の変更検出は Execute() の指紋が行う。
+    // 確保はしない。実体は呼び出し側 (ViewRenderTargets) が持ち、ここは «その名前が
+    // どれを指すか» を申告と一緒に預かるだけ。記述の変更検出は Execute() の指紋が行う。
     m_resources.push_back({ std::string(name), desc, handle, {} });
 }
 
@@ -106,27 +108,33 @@ void RenderPipeline::DeclareAccelerationStructure(std::string_view name,
 
 void RenderPipeline::BindDeclaredResources(RenderPassContext& ctx) const
 {
-    /// @note 登録簿はこのフレームの宣言から «導かれる» もの。別に持ち回らない。
+    // 登録簿はこのフレームの宣言から «導かれる» もの。別に持ち回らない。
     ctx.resourceRegistry.Clear();
     for (const auto& resource : m_resources) {
-        if (resource.target.IsValid())
+        if (resource.target.IsValid()) {
             ctx.resourceRegistry.BindTarget(resource.name, resource.target);
-        if (resource.texture.IsValid())
+        }
+        if (resource.texture.IsValid()) {
             ctx.resourceRegistry.BindTexture(resource.name, resource.texture);
-        if (resource.buffer.IsValid())
+        }
+        if (resource.buffer.IsValid()) {
             ctx.resourceRegistry.BindBuffer(resource.name, resource.buffer);
-        if (resource.structuredBuffer.IsValid())
+        }
+        if (resource.structuredBuffer.IsValid()) {
             ctx.resourceRegistry.BindStructuredBuffer(resource.name, resource.structuredBuffer);
-        if (resource.accelerationStructure.IsValid())
+        }
+        if (resource.accelerationStructure.IsValid()) {
             ctx.resourceRegistry.BindAccelerationStructure(resource.name, resource.accelerationStructure);
+        }
     }
 }
 
 void RenderPipeline::SetOutputs(std::initializer_list<std::string_view> outputs)
 {
     m_outputs.clear();
-    for (std::string_view o : outputs)
+    for (std::string_view o : outputs) {
         m_outputs.emplace_back(o);
+    }
 }
 
 void RenderPipeline::SetPassOverrides(std::vector<renderer::RenderPassOverride> overrides)
@@ -140,15 +148,16 @@ void RenderPipeline::ApplyOverride(const renderer::RenderPassOverride& over,
 {
     allowCulling = allowCulling && over.allowCulling;
 
-    /// @note 追加の Read は «このパスはこれを待つ» という申告。順序を直に書かせない
-    /// @note 代わりに依存を足させるので、実行順が動いても理由がグラフに残る。
+    // 追加の Read は «このパスはこれを待つ» という申告。順序を直に書かせない
+    // 代わりに依存を足させるので、実行順が動いても理由がグラフに残る。
     for (const std::string& read : over.extraReads) {
         const bool declared = std::any_of(accesses.begin(), accesses.end(),
             [&read](const renderer::RenderGraph::ResourceAccess& access) {
                 return access.name == read;
             });
-        if (!declared)
+        if (!declared) {
             accesses.push_back({ read, renderer::RenderGraph::ResourceUsage::Read });
+        }
     }
 }
 
@@ -168,50 +177,61 @@ void RenderPipeline::SetGpuProfilerHooks(std::function<void(std::string_view)> b
 
 void RenderPipeline::ReleaseViewResources(renderer::ResourceManager& resources)
 {
-    /// @note 毒用の RT は呼び出し元 (ReleaseViewRenderTargets) がこの直後に RenderPipeline ごと
-    /// @note 作り直すので、ここで返さないとハンドルを握ったまま消える。
+    // 毒用の RT は呼び出し元 (ReleaseViewRenderTargets) がこの直後に RenderPipeline ごと
+    // 作り直すので、ここで返さないとハンドルを握ったまま消える。
     m_bindingPoisonRT.Release(resources);
 }
 
 std::vector<size_t> RenderPipeline::CollectEnabledSetups(RenderPassContext& ctx)
 {
+    // GPU 遮蔽には、遮蔽深度ターゲットとパス列の両方が必要になる。
     const auto registeredAndEnabled = [&](std::string_view name) {
         const auto* override = FindOverride(name);
-        return (!override || override->enabled) && std::any_of(m_entries.begin(), m_entries.end(),
+        if (override && !override->enabled) {
+            return false;
+        }
+        return std::any_of(m_entries.begin(), m_entries.end(),
             [name](const auto& pass) { return pass && pass->Name() == name; });
     };
-    ctx.gpuOcclusionEnabled = ctx.resourceRegistry.Target(OCCLUDER_DEPTH).IsValid() && SupportsViewGpuOcclusion(ctx)
+    const auto opaquePassName = ctx.isDeferred ? "DeferredGBuffer" : "ForwardOpaque";
+    ctx.gpuOcclusionEnabled = ctx.resourceRegistry.Target(OCCLUDER_DEPTH).IsValid()
+        && SupportsViewGpuOcclusion(ctx)
         && registeredAndEnabled(DEPTH_PREPASS) && registeredAndEnabled(BUILD_OCCLUSION_HIZ)
         && registeredAndEnabled(CULL_OCCLUDED_MESHES)
-        && registeredAndEnabled(ctx.isDeferred ? "DeferredGBuffer" : "ForwardOpaque");
+        && registeredAndEnabled(opaquePassName);
+
+    // ビューごとのパス判定を先に終え、有効なパスだけに資源の申告を求める。
     std::vector<size_t> enabled;
     enabled.reserve(m_entries.size());
-    for (size_t i = 0; i < m_entries.size(); ++i) {
-        if (!m_entries[i] || !m_entries[i]->IsEnabled(ctx))
+    for (size_t entryIndex = 0; entryIndex < m_entries.size(); ++entryIndex) {
+        if (!m_entries[entryIndex] || !m_entries[entryIndex]->IsEnabled(ctx)) {
             continue;
-        const auto* over = FindOverride(m_entries[i]->Name());
-        if (over && !over->enabled)
+        }
+        const auto* override = FindOverride(m_entries[entryIndex]->Name());
+        if (override && !override->enabled) {
             continue;
-        enabled.push_back(i);
+        }
+        enabled.push_back(entryIndex);
     }
 
-    /// @note 申告はこのフレームで 1 回だけ引く。Setup は Execute からも参照するので、グラフへ渡した後も生き続ける場所へ置く (ラムダは参照で掴む)。
-    /// @note 要素ごと作り直さない。assign すると全パスぶんの vector / string を毎フレーム確保し直すことになるため、中身だけ空にして容量は残す。
+    // 申告はこのフレームで 1 回だけ引く。Setup は Execute からも参照するので、グラフへ渡した後も生き続ける場所へ置く (ラムダは参照で掴む)。
+    // 要素ごと作り直さない。assign すると全パスぶんの vector / string を毎フレーム確保し直すことになるため、中身だけ空にして容量は残す。
     m_setups.resize(m_entries.size());
     for (auto& setup : m_setups) {
         setup.accesses.clear();
         setup.autoTarget.clear();
         setup.allowCulling = true;
     }
-    for (const size_t i : enabled) {
-        PassBuilder builder(std::move(m_setups[i].accesses), std::move(m_setups[i].autoTarget));
-        m_entries[i]->Setup(builder, ctx);
-        PassSetup& setup = m_setups[i];
+    for (const size_t entryIndex : enabled) {
+        PassBuilder builder(std::move(m_setups[entryIndex].accesses), std::move(m_setups[entryIndex].autoTarget));
+        m_entries[entryIndex]->Setup(builder, ctx);
+        PassSetup& setup = m_setups[entryIndex];
         builder.MoveOut(setup.accesses, setup.autoTarget);
-        setup.allowCulling = m_entries[i]->AllowCulling();
+        setup.allowCulling = m_entries[entryIndex]->AllowCulling();
 
-        if (const auto* over = FindOverride(m_entries[i]->Name()))
-            ApplyOverride(*over, setup.accesses, setup.allowCulling);
+        if (const auto* override = FindOverride(m_entries[entryIndex]->Name())) {
+            ApplyOverride(*override, setup.accesses, setup.allowCulling);
+        }
     }
     return enabled;
 }
@@ -221,7 +241,7 @@ void RenderPipeline::GraphFingerprint::MixBytes(const void* data, size_t size)
     const auto* bytes = static_cast<const unsigned char*>(data);
     for (size_t i = 0; i < size; ++i) {
         m_value ^= bytes[i];
-        /// @note FNV-1a prime
+        // FNV-1a prime
         m_value *= 1099511628211ull;
     }
 }
@@ -271,17 +291,20 @@ void RenderPipeline::GraphFingerprint::MixPass(
 uint64_t RenderPipeline::ComputeGraphFingerprint(const std::vector<size_t>& enabled) const
 {
     GraphFingerprint fingerprint;
-    /// @note 実行順の決め方そのものも鍵に含める。方針が変われば同じ申告でも別の順序になる。
+    // 実行順の決め方そのものも鍵に含める。方針が変われば同じ申告でも別の順序になる。
     fingerprint.MixOutput(m_policy == renderer::RenderGraphSchedulePolicy::MinimizeLifetimes
                           ? "policy:MinimizeLifetimes" : "policy:RegistrationOrder");
-    /// @note 寸法も混ぜる。パス依存が同じでも Viewport リサイズ後は旧寸法の
-    /// @note 物理 RT を再利用できないため。
-    for (const auto& resource : m_resources)
+    // 寸法も混ぜる。パス依存が同じでも Viewport リサイズ後は旧寸法の
+    // 物理 RT を再利用できないため。
+    for (const auto& resource : m_resources) {
         fingerprint.MixResource(resource.name, resource.desc);
-    for (const auto& output : m_outputs)
+    }
+    for (const auto& output : m_outputs) {
         fingerprint.MixOutput(output);
-    for (const size_t i : enabled)
+    }
+    for (const size_t i : enabled) {
         fingerprint.MixPass(m_entries[i]->Name(), m_setups[i].allowCulling, m_setups[i].accesses);
+    }
     return fingerprint.Value();
 }
 
@@ -291,22 +314,25 @@ void RenderPipeline::BuildGraph(renderer::RenderGraph& graph,
 {
     FBZZ_PROFILE_SCOPE("RenderPipeline::BuildGraph");
 
-    /// @note 束縛毒 (RenderBindingGuard)。立っているときだけ 1x1 の RT を用意し、
-    /// @note 各パスの実行直前に束縛して «前のパスが残した RT» を当てにできなくする。
+    // 束縛毒 (RenderBindingGuard)。立っているときだけ 1x1 の RT を用意し、
+    // 各パスの実行直前に束縛して «前のパスが残した RT» を当てにできなくする。
     const bool poisonBindings = renderer::bindingguard::IsEnabled();
-    if (poisonBindings)
+    if (poisonBindings) {
         m_bindingPoisonRT.Ensure(ctx.resources, 1, 1, 1);
+    }
     const auto poison = m_bindingPoisonRT.Handle();
 
     graph.SetSchedulePolicy(m_policy == renderer::RenderGraphSchedulePolicy::MinimizeLifetimes
         ? renderer::RenderGraph::SchedulePolicy::MinimizeLifetimes
         : renderer::RenderGraph::SchedulePolicy::RegistrationOrder);
 
-    for (const auto& resource : m_resources)
+    for (const auto& resource : m_resources) {
         graph.DeclareResource(resource.name, resource.desc);
+    }
 
-    for (const auto& o : m_outputs)
+    for (const auto& o : m_outputs) {
         graph.AddOutput(o);
+    }
 
     for (const size_t i : enabled) {
         IRenderPass* pass  = m_entries[i].get();
@@ -315,17 +341,19 @@ void RenderPipeline::BuildGraph(renderer::RenderGraph& graph,
             pass->Name(),
             s.accesses,
             [pass, &s, &ctx, poisonBindings, poison] {
-                if (poisonBindings)
+                if (poisonBindings) {
                     ctx.renderer.SetRenderTarget(poison, ctx.resources);
-                /// @note 申告した書き先を自動束縛する (SetAutoTarget を呼んだパスだけ)。
+                }
+                // 申告した書き先を自動束縛する (SetAutoTarget を呼んだパスだけ)。
                 if (!s.autoTarget.empty()) {
                     const auto target = ctx.resourceRegistry.Target(s.autoTarget);
-                    if (target.IsValid())
+                    if (target.IsValid()) {
                         ctx.renderer.SetRenderTarget(target, ctx.resources);
+                    }
                 }
                 PassResources resources(ctx.resourceRegistry, s.accesses, pass->Name());
-                /// @note 自由関数へ散ったパス本体からも ctx.Res() で引けるようにする。
-                /// @note パスは順に実行されるので、実行中の 1 本だけが差さっている。
+                // 自由関数へ散ったパス本体からも ctx.Res() で引けるようにする。
+                // パスは順に実行されるので、実行中の 1 本だけが差さっている。
                 ctx.passResources = &resources;
                 pass->Execute(resources, ctx);
                 ctx.passResources = nullptr;
@@ -340,11 +368,12 @@ bool RenderPipeline::Execute(RenderPassContext& ctx, RenderPassCapture* capture,
 {
     FBZZ_PROFILE_SCOPE("RenderPipeline::Execute");
     m_lastGpuProfilerView = {};
-    if (capture)
+    if (capture) {
         capture->Invalidate();
+    }
 
+    // このフレームの資源とパスを確定し、前回の実行計画を再利用できるか調べる。
     BindDeclaredResources(ctx);
-
     const std::vector<size_t> enabledNow = CollectEnabledSetups(ctx);
     const uint64_t fingerprint = ComputeGraphFingerprint(enabledNow);
     const bool topologyChanged = !m_planValid
@@ -354,7 +383,7 @@ bool RenderPipeline::Execute(RenderPassContext& ctx, RenderPassCapture* capture,
     renderer::RenderGraph graph;
     BuildGraph(graph, ctx, enabledNow);
 
-    /// @note 各 RenderGraph パスをCPU Profilerにも流し、ドライバー待機が発生したパスを特定する。
+    // 各 RenderGraph パスをCPU Profilerにも流し、ドライバー待機が発生したパスを特定する。
     graph.SetProfilerHooks(
         [](std::string_view name) {
             profiler::Profiler::BeginSample(
@@ -363,15 +392,14 @@ bool RenderPipeline::Execute(RenderPassContext& ctx, RenderPassCapture* capture,
         [](std::string_view) { profiler::Profiler::EndSample(); });
     graph.SetDebugLogHook([](const char* msg) { FBZZ_LOG_ERROR("%s", msg); });
 
-    /// @note Phase 1: Plan — トポロジが変わった場合のみ依存解決・カリング・ライフタイム解析を実行する。
-    /// @note トポロジ不変フレームでは前フレームの結果を注入して Plan() をスキップする。
+    // 構成が変わったときだけ、依存関係と資源の寿命を解析して実行計画を作る。
     {
         FBZZ_PROFILE_SCOPE("RenderPipeline::Plan");
         if (topologyChanged) {
             if (!graph.Plan()) {
                 m_planValid = false;
                 m_lastReport = graph.TakeLastReport();
-                /// @note どのパスが有効か・カリングされたかを出力して依存関係の問題を特定する
+                // どのパスが有効か・カリングされたかを出力して依存関係の問題を特定する
                 FBZZ_LOG_ERROR("RenderGraph::Plan() failed — dependency cycle or missing resource writer.");
                 for (size_t i : enabledNow) {
                     const std::string_view name = m_entries[i]->Name();
@@ -381,11 +409,11 @@ bool RenderPipeline::Execute(RenderPassContext& ctx, RenderPassCapture* capture,
                 return false;
             }
             m_planValid = true;
-            /// @note 構成が変わったときだけ作る。毎フレーム作ると文字列連結が乗るうえ、
-            /// @note 差分を見たいのは «変わった瞬間» だけ。
+            // 構成が変わったときだけ作る。毎フレーム作ると文字列連結が乗るうえ、
+            // 差分を見たいのは «変わった瞬間» だけ。
             m_lastPlanDescription = graph.DescribeLastPlan();
 
-            /// @note 鍵はここで控える。控え忘れると «前フレームと同じ» が永久に成立せず、構成不変フレームでも Plan と構成テキスト生成が毎フレーム走る (InjectPlan が一度も通らない)。
+            // 次のフレームが同じ構成か判定するため、計画を作った有効パスと資源のハッシュを保持する。
             m_lastEnabledEntryIndices = enabledNow;
             m_lastGraphFingerprint    = fingerprint;
         } else {
@@ -393,12 +421,12 @@ bool RenderPipeline::Execute(RenderPassContext& ctx, RenderPassCapture* capture,
         }
     }
 
+    // 遮蔽データはこのフレームの実行順から再構築し、除外されたパスの結果を使わない。
     ctx.gpuOcclusionTerrain = false;
     ctx.gpuOccluderDepthReady = false;
     ctx.gpuOcclusionArguments.clear();
     ctx.gpuOccluderItems.clear();
     ctx.gpuOcclusionCounted.clear();
-    /// @note 無効化・グラフ除外された描画元を遮蔽物にしない。CPU 準備自体はグラフの外で行う。
     OcclusionPasses occlusionPasses{false, false, false, false};
     if (ctx.occlusionCullingEnabled && ctx.occlusionCuller) {
         bool deferredDepth = false;
@@ -406,21 +434,34 @@ bool RenderPipeline::Execute(RenderPassContext& ctx, RenderPassCapture* capture,
         const auto& passes = graph.GetPasses();
         for (const size_t index : graph.GetLastReport().executionOrder) {
             const auto& name = passes[index].name;
-            if (name == "DeferredGBuffer") occlusionPasses.meshGBuffer = true;
-            if (name == "ForwardOpaque" || name == "DeferredSkinnedForward") occlusionPasses.meshForward = true;
-            if (name == "TerrainGBuffer") occlusionPasses.terrainGBuffer = true;
-            if (name == "TerrainForward") occlusionPasses.terrainForward = true;
-            if (name == "DeferredDepthCopy") deferredDepth = true;
-            if (name == DEPTH_PREPASS) depthPrepass = true;
+            if (name == "DeferredGBuffer") {
+                occlusionPasses.meshGBuffer = true;
+            }
+            if (name == "ForwardOpaque" || name == "DeferredSkinnedForward") {
+                occlusionPasses.meshForward = true;
+            }
+            if (name == "TerrainGBuffer") {
+                occlusionPasses.terrainGBuffer = true;
+            }
+            if (name == "TerrainForward") {
+                occlusionPasses.terrainForward = true;
+            }
+            if (name == "DeferredDepthCopy") {
+                deferredDepth = true;
+            }
+            if (name == DEPTH_PREPASS) {
+                depthPrepass = true;
+            }
         }
         occlusionPasses.meshGBuffer = occlusionPasses.meshGBuffer && deferredDepth;
         occlusionPasses.terrainGBuffer = occlusionPasses.terrainGBuffer && deferredDepth;
-        /// @note GPU の深度はメッシュ選別に使う。地形・水面は同じビューの CPU 地形深度を参照する。
+        // GPU の深度はメッシュ選別に使う。地形・水面は同じビューの CPU 地形深度を参照する。
         ctx.gpuOcclusionTerrain = depthPrepass
             && (ctx.isDeferred ? occlusionPasses.terrainGBuffer : occlusionPasses.terrainForward);
     }
     PrepareViewOcclusion(ctx, occlusionPasses);
 
+    // GPU 計測の世代は実行計画とビュー構成に対応させ、後から対象の描画条件を追えるようにする。
     bool gpuViewAccepted = false;
     if (gpuView && gpuPlan) {
         if (topologyChanged || !m_gpuProfileRenderPlanValid || m_gpuProfileRenderPlan != *gpuPlan) {
@@ -432,25 +473,28 @@ bool RenderPipeline::Execute(RenderPassContext& ctx, RenderPassCapture* capture,
         m_lastGpuProfilerView.planGeneration = m_gpuProfilePlanGeneration;
         gpuViewAccepted = ctx.renderer.GpuProfRecordView(m_lastGpuProfilerView);
     }
-    /// @note 受付後の native 開始失敗は executor がパス計測だけを抑止し、他ビューへの混入を防ぐ。
-    if (!gpuView || gpuViewAccepted)
+    // 受付後の native 開始失敗は executor がパス計測だけを抑止し、他ビューへの混入を防ぐ。
+    if (!gpuView || gpuViewAccepted) {
         graph.SetGpuProfilerHooks(m_gpuBegin, m_gpuEnd);
+    }
 
     if (capture) {
         capture->Begin(graph.GetPasses(), graph.GetLastReport());
         graph.SetPassCompletedHook([capture, &ctx](size_t index) { capture->Capture(index, ctx); });
     }
 
+    // グラフに描画を記録し、このビューの GPU 計測を閉じて実行結果を保持する。
     bool ok = false;
     {
         FBZZ_PROFILE_SCOPE("RenderPipeline::GraphExecute");
         ok = graph.Execute();
     }
-    if (gpuViewAccepted)
+    if (gpuViewAccepted) {
         ctx.renderer.GpuProfEndRecordedView();
+    }
     m_lastReport = graph.TakeLastReport();
 
     return ok;
 }
 
-} /// @note namespace fbzz::renderer
+} // namespace fbzz::renderer

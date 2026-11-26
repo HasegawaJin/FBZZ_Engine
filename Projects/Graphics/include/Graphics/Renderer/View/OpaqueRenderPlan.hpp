@@ -45,4 +45,4 @@ struct OpaqueRenderPlan {
 [[nodiscard]] FBZZ_GRAPHICS_API OpaqueRenderPlan ResolveOpaqueRenderPlan(
     const RenderSettings& settings, const OpaqueRenderAvailability& availability);
 
-} /// @note namespace fbzz::renderer
+} // namespace fbzz::renderer

@@ -18,7 +18,7 @@ struct RenderLightingInput {
     math::Matrix4               lightView;
     math::Vector3               lightEyePos;
     float                       shadowBiasNDC  = 0.0f;
-    float                       shadowStrength = 1.0f;  ///< @note LightComponent から流れてくる影の濃さ
+    float                       shadowStrength = 1.0f;  ///< LightComponent から流れてくる影の濃さ
     ShadowCascade               shadowCascades[renderer::kMaxShadowCascades];
     /// @note 有効なのは先頭 shadowCascadeCount 本。1 のときは従来の単一シャドウマップと等価
     /// @note (カスケード 0 がアトラス全面を占める) なので、パス側に分岐は要らない。
@@ -40,13 +40,13 @@ struct RenderLightingInput {
     PunctualLightGPU            legacyShapedLights[kMaxLegacyShapedLights];
     int                         legacyShapedLightCount = 0;
     float                       legacySourceRadius[kMaxLegacyPunctualLights] = {};
-    float                       cloudShadowStrength = 0.0f; ///< @note 0=無効
+    float                       cloudShadowStrength = 0.0f; ///< 0=無効
     float                       cloudShadowCoverage = 0.5f;
     float                       cloudShadowScale    = 0.02f;
     float                       cloudShadowSpeed    = 1.0f;
     float                       cloudShadowWindX    = 1.0f;
     float                       cloudShadowWindZ    = 0.3f;
-    float                       cloudShadowTime     = 0.0f; ///< @note RenderSystem が Time::time を設定
+    float                       cloudShadowTime     = 0.0f; ///< RenderSystem が Time::time を設定
     /// @note Raster の上限と atlas 準備状態に依存しない全光源。false は供給の完全性を証明できない。
     std::vector<RayLightInput> rayLights;
     bool rayLightsComplete = false;

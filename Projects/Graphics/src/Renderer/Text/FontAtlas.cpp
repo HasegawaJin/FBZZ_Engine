@@ -34,9 +34,13 @@ bool IsSpace(char c)
 /// @note 行頭の空白を読み飛ばしつつ、次のトークン (空白まで) を返す。
 std::string_view NextToken(std::string_view line, std::size_t& offset)
 {
-    while (offset < line.size() && IsSpace(line[offset])) ++offset;
+    while (offset < line.size() && IsSpace(line[offset])) {
+        ++offset;
+    }
     const std::size_t start = offset;
-    while (offset < line.size() && !IsSpace(line[offset])) ++offset;
+    while (offset < line.size() && !IsSpace(line[offset])) {
+        ++offset;
+    }
     return line.substr(start, offset - start);
 }
 
@@ -48,32 +52,44 @@ bool NextAttribute(std::string_view line,
                    std::string_view& key,
                    std::string_view& value)
 {
-    while (offset < line.size() && IsSpace(line[offset])) ++offset;
-    if (offset >= line.size()) return false;
+    while (offset < line.size() && IsSpace(line[offset])) {
+        ++offset;
+    }
+    if (offset >= line.size()) {
+        return false;
+    }
 
     const std::size_t keyStart = offset;
-    while (offset < line.size() && line[offset] != '=' && !IsSpace(line[offset])) ++offset;
+    while (offset < line.size() && line[offset] != '=' && !IsSpace(line[offset])) {
+        ++offset;
+    }
     key = line.substr(keyStart, offset - keyStart);
 
-    /// @note '=' が無い単独トークンは属性ではない (値なしフラグ)。空の値で返す。
+    // '=' が無い単独トークンは属性ではない (値なしフラグ)。空の値で返す。
     if (offset >= line.size() || line[offset] != '=') {
         value = {};
         return !key.empty();
     }
-    /// @note '=' を消費
+    // '=' を消費
     ++offset;
 
     if (offset < line.size() && line[offset] == '"') {
-        /// @note 開きクォートを消費
+        // 開きクォートを消費
         ++offset;
         const std::size_t valueStart = offset;
-        while (offset < line.size() && line[offset] != '"') ++offset;
+        while (offset < line.size() && line[offset] != '"') {
+            ++offset;
+        }
         value = line.substr(valueStart, offset - valueStart);
-        /// @note 閉じクォートを消費
-        if (offset < line.size()) ++offset;
+        // 閉じクォートを消費
+        if (offset < line.size()) {
+            ++offset;
+        }
     } else {
         const std::size_t valueStart = offset;
-        while (offset < line.size() && !IsSpace(line[offset])) ++offset;
+        while (offset < line.size() && !IsSpace(line[offset])) {
+            ++offset;
+        }
         value = line.substr(valueStart, offset - valueStart);
     }
     return !key.empty();
@@ -99,7 +115,9 @@ float ToFloat(std::string_view s)
 std::string DirectoryOf(const std::string& path)
 {
     const std::size_t slash = path.find_last_of("/\\");
-    if (slash == std::string::npos) return {};
+    if (slash == std::string::npos) {
+        return {};
+    }
     return path.substr(0, slash);
 }
 
@@ -109,11 +127,15 @@ bool LooksLikeBMFont(const std::string& fntText)
     std::istringstream stream(fntText);
     std::string        line;
     while (std::getline(stream, line)) {
-        if (line.empty() || line[0] == '#') continue;
+        if (line.empty() || line[0] == '#') {
+            continue;
+        }
 
         std::size_t            offset = 0;
         const std::string_view tag    = NextToken(line, offset);
-        if (tag.empty()) continue;
+        if (tag.empty()) {
+            continue;
+        }
 
         return tag == "info" || tag == "common" || tag == "page"
             || tag == "chars" || tag == "char";
@@ -131,17 +153,19 @@ constexpr float RASTER_PIXEL_HEIGHT_STEPS[] = {
     24.0f, 32.0f, 48.0f, 64.0f, 96.0f, 128.0f, 192.0f, 256.0f
 };
 
-} /// @note namespace
+} // namespace
 
 namespace {
 void ReleaseAtlasPages(std::vector<ResourceHandle<TextureTag>>& pages)
 {
     for (const auto page : pages) {
-        if (auto* owner = ResourceManager::FindOwner(page.owner)) owner->Release(page);
+        if (auto* owner = ResourceManager::FindOwner(page.owner)) {
+            owner->Release(page);
+        }
     }
     pages.clear();
 }
-} /// @note namespace
+} // namespace
 
 FontAtlas::FontAtlas()                                  = default;
 FontAtlas::FontAtlas(FontAtlas&&) noexcept              = default;
@@ -155,9 +179,11 @@ FontAtlas::~FontAtlas()
 /// @note       上書きされる側のページを先に返す必要があるため)。
 FontAtlas& FontAtlas::operator=(FontAtlas&& other) noexcept
 {
-    if (this == &other) return *this;
-    /// @note 上書きされる側のページを先に返す。ムーブ代入で «元のページを捨てる» のは
-    /// @note       フォントを焼き直したときに通る (同じキーへ新しいアトラスを入れ直す)。
+    if (this == &other) {
+        return *this;
+    }
+    // 上書きされる側のページを先に返す。ムーブ代入で «元のページを捨てる» のは
+    // フォントを焼き直したときに通る (同じキーへ新しいアトラスを入れ直す)。
     ReleaseAtlasPages(m_pages);
 
     m_pages           = std::move(other.m_pages);
@@ -179,11 +205,14 @@ void FontAtlas::ReleaseGpuResources(ResourceManager&)
 bool FontAtlas::IsDynamicFontPath(const std::string& path)
 {
     const std::size_t dot = path.find_last_of('.');
-    if (dot == std::string::npos) return false;
+    if (dot == std::string::npos) {
+        return false;
+    }
 
     std::string ext = path.substr(dot);
-    for (char& c : ext)
+    for (char& c : ext) {
         c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+    }
     return ext == ".ttf" || ext == ".ttc" || ext == ".otf";
 }
 
@@ -192,7 +221,9 @@ float FontAtlas::ResolveRasterPixelHeight(float desiredPixelHeight)
     float largest = RASTER_PIXEL_HEIGHT_STEPS[0];
     for (const float step : RASTER_PIXEL_HEIGHT_STEPS) {
         largest = step;
-        if (desiredPixelHeight <= step) return step;
+        if (desiredPixelHeight <= step) {
+            return step;
+        }
     }
     return largest;
 }
@@ -209,11 +240,15 @@ bool FontAtlas::LoadMetrics(const std::string& path, float rasterPixelHeight)
 
 void FontAtlas::PrepareTextMetrics(std::string_view text)
 {
-    if (!m_dynamic) return;
+    if (!m_dynamic) {
+        return;
+    }
     std::size_t offset = 0;
     while (offset < text.size()) {
         const char32_t code = util::Utf8::Decode(text, offset);
-        if (code == 0 || code == U'\n' || m_glyphs.contains(code)) continue;
+        if (code == 0 || code == U'\n' || m_glyphs.contains(code)) {
+            continue;
+        }
         FontGlyph glyph{};
         glyph.advance = m_dynamic->GetAdvance(code);
         m_glyphs.emplace(code, glyph);
@@ -222,16 +257,17 @@ void FontAtlas::PrepareTextMetrics(std::string_view text)
 
 bool FontAtlas::LoadImpl(const std::string& path, ResourceManager* resources, float rasterPixelHeight)
 {
-    /// @note TTF/TTC/OTF を直接指定された場合は動的モード。日本語フォントは字種が多く
-    /// @note       静的アトラスに載せきれないため、`.ttf` を fontPath に書けばそのまま出る導線を用意する。
-    if (IsDynamicFontPath(path))
+    // TTF/TTC/OTF を直接指定された場合は動的モード。日本語フォントは字種が多く
+    // 静的アトラスに載せきれないため、`.ttf` を fontPath に書けばそのまま出る導線を用意する。
+    if (IsDynamicFontPath(path)) {
         return LoadDynamic(path, rasterPixelHeight);
+    }
 
     const std::string basePath = path;
     const std::string fntPath  = basePath + ".fnt";
 
-    /// @note 旧実装から順序を変更: BMFont はページ PNG のファイル名を .fnt 内の
-    /// @note       `page ... file="..."` で宣言するため、テクスチャより先にメタデータを読む必要がある。
+    // 旧実装から順序を変更: BMFont はページ PNG のファイル名を .fnt 内の
+    // `page ... file="..."` で宣言するため、テクスチャより先にメタデータを読む必要がある。
     std::string fntText;
     if (!util::FileSystem::ReadText(fntPath, fntText)) {
         FBZZ_LOG_ERROR("FontAtlas: failed to load FNT file: %s", fntPath.c_str());
@@ -242,7 +278,9 @@ bool FontAtlas::LoadImpl(const std::string& path, ResourceManager* resources, fl
         ? ParseBMFont(fntText, fntPath, resources)
         : ParseLegacy(fntText, basePath, resources);
 
-    if (!parsed) return false;
+    if (!parsed) {
+        return false;
+    }
 
     if (m_lineHeight <= 0.0f) {
         FBZZ_LOG_ERROR("FontAtlas: lineHeight is missing or zero: %s", fntPath.c_str());
@@ -261,41 +299,58 @@ bool FontAtlas::ParseBMFont(const std::string& fntText,
 {
     const std::string directory = DirectoryOf(fntPath);
 
-    /// @note scaleW / scaleH はアトラス寸法。char の x/y/width/height を UV へ正規化するのに使う。
+    // scaleW / scaleH はアトラス寸法。char の x/y/width/height を UV へ正規化するのに使う。
     float scaleW = 0.0f;
     float scaleH = 0.0f;
 
-    /// @note ページ番号は宣言順とは限らないため、id をインデックスとして疎に埋める。
+    // ページ番号は宣言順とは限らないため、id をインデックスとして疎に埋める。
     std::vector<std::string> pageFiles;
 
     std::istringstream stream(fntText);
     std::string        line;
     while (std::getline(stream, line)) {
-        if (line.empty() || line[0] == '#') continue;
+        if (line.empty() || line[0] == '#') {
+            continue;
+        }
 
         std::size_t            offset = 0;
         const std::string_view tag    = NextToken(line, offset);
-        if (tag.empty()) continue;
+        if (tag.empty()) {
+            continue;
+        }
 
         if (tag == "common") {
             std::string_view key, value;
             while (NextAttribute(line, offset, key, value)) {
-                if      (key == "lineHeight") m_lineHeight = ToFloat(value);
-                else if (key == "base")       m_base       = ToFloat(value);
-                else if (key == "scaleW")     scaleW       = ToFloat(value);
-                else if (key == "scaleH")     scaleH       = ToFloat(value);
+                if      (key == "lineHeight") {
+                    m_lineHeight = ToFloat(value);
+                }
+                else if (key == "base") {
+                    m_base       = ToFloat(value);
+                }
+                else if (key == "scaleW") {
+                    scaleW       = ToFloat(value);
+                }
+                else if (key == "scaleH") {
+                    scaleH       = ToFloat(value);
+                }
             }
         } else if (tag == "page") {
             int         id   = 0;
             std::string file;
             std::string_view key, value;
             while (NextAttribute(line, offset, key, value)) {
-                if      (key == "id")   id   = static_cast<int>(ToLong(value));
-                else if (key == "file") file = std::string(value);
+                if      (key == "id") {
+                    id   = static_cast<int>(ToLong(value));
+                }
+                else if (key == "file") {
+                    file = std::string(value);
+                }
             }
             if (id >= 0 && !file.empty()) {
-                if (static_cast<std::size_t>(id) >= pageFiles.size())
+                if (static_cast<std::size_t>(id) >= pageFiles.size()) {
                     pageFiles.resize(static_cast<std::size_t>(id) + 1);
+                }
                 pageFiles[static_cast<std::size_t>(id)] = file;
             }
         } else if (tag == "char") {
@@ -305,18 +360,36 @@ bool FontAtlas::ParseBMFont(const std::string& fntText,
 
             std::string_view key, value;
             while (NextAttribute(line, offset, key, value)) {
-                if      (key == "id")       code          = static_cast<char32_t>(ToLong(value));
-                else if (key == "x")        x             = ToFloat(value);
-                else if (key == "y")        y             = ToFloat(value);
-                else if (key == "width")    glyph.width   = ToFloat(value);
-                else if (key == "height")   glyph.height  = ToFloat(value);
-                else if (key == "xoffset")  glyph.xOffset = ToFloat(value);
-                else if (key == "yoffset")  glyph.yOffset = ToFloat(value);
-                else if (key == "xadvance") glyph.advance = ToFloat(value);
-                else if (key == "page")     glyph.page    = static_cast<int>(ToLong(value));
+                if      (key == "id") {
+                    code          = static_cast<char32_t>(ToLong(value));
+                }
+                else if (key == "x") {
+                    x             = ToFloat(value);
+                }
+                else if (key == "y") {
+                    y             = ToFloat(value);
+                }
+                else if (key == "width") {
+                    glyph.width   = ToFloat(value);
+                }
+                else if (key == "height") {
+                    glyph.height  = ToFloat(value);
+                }
+                else if (key == "xoffset") {
+                    glyph.xOffset = ToFloat(value);
+                }
+                else if (key == "yoffset") {
+                    glyph.yOffset = ToFloat(value);
+                }
+                else if (key == "xadvance") {
+                    glyph.advance = ToFloat(value);
+                }
+                else if (key == "page") {
+                    glyph.page    = static_cast<int>(ToLong(value));
+                }
             }
 
-            /// @note UV は char の画素矩形をアトラス寸法で割って求める。
+            // UV は char の画素矩形をアトラス寸法で割って求める。
             if (scaleW > 0.0f && scaleH > 0.0f) {
                 glyph.u0 = x / scaleW;
                 glyph.v0 = y / scaleH;
@@ -329,12 +402,19 @@ bool FontAtlas::ParseBMFont(const std::string& fntText,
             float    amount = 0.0f;
             std::string_view key, value;
             while (NextAttribute(line, offset, key, value)) {
-                if      (key == "first")  first  = static_cast<char32_t>(ToLong(value));
-                else if (key == "second") second = static_cast<char32_t>(ToLong(value));
-                else if (key == "amount") amount = ToFloat(value);
+                if      (key == "first") {
+                    first  = static_cast<char32_t>(ToLong(value));
+                }
+                else if (key == "second") {
+                    second = static_cast<char32_t>(ToLong(value));
+                }
+                else if (key == "amount") {
+                    amount = ToFloat(value);
+                }
             }
-            if (amount != 0.0f)
+            if (amount != 0.0f) {
                 m_kernings[MakeKerningKey(first, second)] = amount;
+            }
         }
     }
 
@@ -347,7 +427,7 @@ bool FontAtlas::ParseBMFont(const std::string& fntText,
         return false;
     }
 
-    /// @note ページ PNG は .fnt からの相対パスで書かれているので、.fnt のディレクトリを前置する。
+    // ページ PNG は .fnt からの相対パスで書かれているので、.fnt のディレクトリを前置する。
     m_pages.reserve(pageFiles.size());
     for (const std::string& file : pageFiles) {
         if (file.empty()) {
@@ -356,16 +436,19 @@ bool FontAtlas::ParseBMFont(const std::string& fntText,
         }
         const std::string pngPath = directory.empty() ? file : directory + "/" + file;
         ResourceHandle<TextureTag> texture = resources ? resources->LoadTexture(pngPath) : ResourceHandle<TextureTag>{};
-        if (resources && !texture.IsValid())
+        if (resources && !texture.IsValid()) {
             FBZZ_LOG_ERROR("FontAtlas: failed to load page texture: %s", pngPath.c_str());
+        }
         m_pages.push_back(texture);
     }
 
-    /// @note 未登録グリフの送り幅は半角スペースを基準にする。無ければ行高さの 1/4。
-    if (const FontGlyph* space = GetGlyph(U' '); space && space->advance > 0.0f)
+    // 未登録グリフの送り幅は半角スペースを基準にする。無ければ行高さの 1/4。
+    if (const FontGlyph* space = GetGlyph(U' '); space && space->advance > 0.0f) {
         m_fallbackAdvance = space->advance;
-    else
+    }
+    else {
         m_fallbackAdvance = m_lineHeight * 0.25f;
+    }
 
     return true;
 }
@@ -374,7 +457,7 @@ bool FontAtlas::ParseLegacy(const std::string& fntText,
                             const std::string& basePath,
                             ResourceManager*   resources)
 {
-    /// @note 旧形式は単一ページ固定で、テクスチャ名は basePath + ".png"。
+    // 旧形式は単一ページ固定で、テクスチャ名は basePath + ".png"。
     const std::string pngPath = basePath + ".png";
     ResourceHandle<TextureTag> texture = resources ? resources->LoadTexture(pngPath) : ResourceHandle<TextureTag>{};
     if (resources && !texture.IsValid()) {
@@ -383,8 +466,8 @@ bool FontAtlas::ParseLegacy(const std::string& fntText,
     }
     m_pages.push_back(texture);
 
-    /// @note 旧形式は全グリフが同じセルを占めるため、cell_w / line_height を
-    /// @note       そのまま各グリフの width / height として展開する。
+    // 旧形式は全グリフが同じセルを占めるため、cell_w / line_height を
+    // そのまま各グリフの width / height として展開する。
     float cellW = 0.0f;
 
     struct LegacyGlyph { char32_t code; FontGlyph glyph; };
@@ -393,7 +476,9 @@ bool FontAtlas::ParseLegacy(const std::string& fntText,
     std::istringstream stream(fntText);
     std::string        line;
     while (std::getline(stream, line)) {
-        if (line.empty() || line[0] == '#') continue;
+        if (line.empty() || line[0] == '#') {
+            continue;
+        }
 
         std::istringstream lineStream(line);
         std::string        token;
@@ -417,13 +502,13 @@ bool FontAtlas::ParseLegacy(const std::string& fntText,
             glyph.v1      = v1;
             glyph.advance = advance;
             glyph.page    = 0;
-            /// @note width / height は cell_w / line_height を読み終えてから埋める
+            // width / height は cell_w / line_height を読み終えてから埋める
             pending.push_back({ static_cast<char32_t>(code), glyph });
         }
     }
 
-    /// @note cell_w/line_height が glyph 行より後ろに現れても正しく展開できるよう、
-    /// @note       グリフ矩形の確定は全行読み終えた後に回している。
+    // cell_w/line_height が glyph 行より後ろに現れても正しく展開できるよう、
+    // グリフ矩形の確定は全行読み終えた後に回している。
     for (LegacyGlyph& entry : pending) {
         entry.glyph.width   = cellW;
         entry.glyph.height  = m_lineHeight;
@@ -432,7 +517,7 @@ bool FontAtlas::ParseLegacy(const std::string& fntText,
         m_glyphs[entry.code] = entry.glyph;
     }
 
-    /// @note 旧 UISystem は未登録グリフに cellW * 0.5 を送っていた。その挙動を保つ。
+    // 旧 UISystem は未登録グリフに cellW * 0.5 を送っていた。その挙動を保つ。
     m_fallbackAdvance = cellW * 0.5f;
     return true;
 }
@@ -450,26 +535,33 @@ bool FontAtlas::LoadDynamic(const std::string& fontPath, float rasterPixelHeight
     m_fallbackAdvance = source->GetFallbackAdvance();
     m_dynamic         = std::move(source);
 
-    /// @note この時点ではまだグリフもテクスチャも無い。最初の PrepareText で作られる。
+    // この時点ではまだグリフもテクスチャも無い。最初の PrepareText で作られる。
     return true;
 }
 
 void FontAtlas::PrepareText(std::string_view utf8Text, ResourceManager& resources)
 {
-    if (!m_dynamic || utf8Text.empty()) return;
+    if (!m_dynamic || utf8Text.empty()) {
+        return;
+    }
 
-    /// @note 未登録のコードポイントだけを集める。
+    // 未登録のコードポイントだけを集める。
     std::vector<char32_t> missing;
     std::size_t offset = 0;
     while (offset < utf8Text.size()) {
         const char32_t code = util::Utf8::Decode(utf8Text, offset);
-        if (code == 0 || code == U'\n') continue;
-        if (m_glyphs.find(code) == m_glyphs.end())
+        if (code == 0 || code == U'\n') {
+            continue;
+        }
+        if (m_glyphs.find(code) == m_glyphs.end()) {
             missing.push_back(code);
+        }
     }
-    if (missing.empty()) return;
+    if (missing.empty()) {
+        return;
+    }
 
-    /// @note 同じ文字が何度も出るテキストで重複ラスタライズしないよう畳む。
+    // 同じ文字が何度も出るテキストで重複ラスタライズしないよう畳む。
     std::sort(missing.begin(), missing.end());
     missing.erase(std::unique(missing.begin(), missing.end()), missing.end());
 
@@ -478,12 +570,17 @@ void FontAtlas::PrepareText(std::string_view utf8Text, ResourceManager& resource
 
 bool FontAtlas::IsValid() const
 {
-    /// @note 動的モードは最初の PrepareText までページを持たないため、
-    /// @note       ソースが開けている時点で有効とみなす (そうしないと初回の描画がまるごと落ちる)。
-    if (m_dynamic) return m_dynamic->IsValid();
+    // 動的モードは最初の PrepareText までページを持たないため、
+    // ソースが開けている時点で有効とみなす (そうしないと初回の描画がまるごと落ちる)。
+    if (m_dynamic) {
+        return m_dynamic->IsValid();
+    }
 
-    for (const ResourceHandle<TextureTag>& page : m_pages)
-        if (page.IsValid()) return true;
+    for (const ResourceHandle<TextureTag>& page : m_pages) {
+        if (page.IsValid()) {
+            return true;
+        }
+    }
     return false;
 }
 
@@ -495,19 +592,24 @@ const FontGlyph* FontAtlas::GetGlyph(char32_t codePoint) const
 
 float FontAtlas::GetKerning(char32_t previous, char32_t next) const
 {
-    /// @note 動的モードはフォントの kern テーブルを直接引く (.fnt のカーニング表を持たない)。
-    if (m_dynamic) return m_dynamic->GetKerning(previous, next);
+    // 動的モードはフォントの kern テーブルを直接引く (.fnt のカーニング表を持たない)。
+    if (m_dynamic) {
+        return m_dynamic->GetKerning(previous, next);
+    }
 
-    if (m_kernings.empty()) return 0.0f;
+    if (m_kernings.empty()) {
+        return 0.0f;
+    }
     const auto it = m_kernings.find(MakeKerningKey(previous, next));
     return it == m_kernings.end() ? 0.0f : it->second;
 }
 
 ResourceHandle<TextureTag> FontAtlas::GetTexture(int page) const
 {
-    if (page < 0 || static_cast<std::size_t>(page) >= m_pages.size())
+    if (page < 0 || static_cast<std::size_t>(page) >= m_pages.size()) {
         return ResourceHandle<TextureTag>::Null();
+    }
     return m_pages[static_cast<std::size_t>(page)];
 }
 
-} /// @note namespace fbzz::renderer
+} // namespace fbzz::renderer

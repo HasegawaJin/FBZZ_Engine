@@ -12,7 +12,7 @@
 #include "Platform/Backend.hlsli"
 #include "Common/BindlessIndices.hlsli"
 
-FBZZ_TEX2D(texSource, TEX_GBUFFER0_SLOT);
+FBZZ_TEX2D(texSource, SRV_POST_COLOR_SLOT);
 SamplerState sampLinear : register(SAMPLER_LINEAR_CLAMP);
 
 /// @brief 片軸のタップ数の上限。各タップは双線形なので 4 タップで 8 画素幅まで覆える。

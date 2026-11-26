@@ -5,7 +5,7 @@
 #include "Common/Fullscreen.hlsli"
 #include "Common/BindlessIndices.hlsli"
 
-FBZZ_TEX2D(g_packedBakeDepth, 0);
+FBZZ_TEX2D(g_packedBakeDepth, SRV_BAKED_DEPTH_PACKED_SLOT);
 
 cbuffer BakedDepthRestoreConstants : register(CB_OBJECT)
 {

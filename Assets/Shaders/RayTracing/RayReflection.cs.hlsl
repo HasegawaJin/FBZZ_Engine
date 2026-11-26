@@ -7,8 +7,8 @@
 #include "Common/BindlessIndices.hlsli"
 #include "Common/AdvancedGraphicsConstants.hlsli"
 #include "Rendering/BRDF.hlsli"
-#define FBZZ_LIGHT_PROBE_SH_SLOT 11
-#define FBZZ_LIGHT_PROBE_SH_OUTER_SLOT 12
+#define FBZZ_LIGHT_PROBE_SH_SLOT SRV_RAY_REFLECTION_PROBE_SLOT
+#define FBZZ_LIGHT_PROBE_SH_OUTER_SLOT SRV_RAY_REFLECTION_PROBE_OUTER_SLOT
 #include "Rendering/IBL.hlsli"
 #include "Rendering/ReflectionPolicy.hlsli"
 #include "Rendering/HybridGlassPolicy.hlsli"
@@ -16,11 +16,11 @@
 #include "RayTracing/RayDielectricInterface.hlsli"
 #include "RayTracing/RayShape.hlsli"
 #include "RayTracing/RayLight.hlsli"
-#define FBZZ_RAY_ENV_TEXTURE_SLOT 8
-#define FBZZ_RAY_ENV_TABLE_SLOT 9
+#define FBZZ_RAY_ENV_TEXTURE_SLOT SRV_RAY_REFLECTION_ENVIRONMENT_SLOT
+#define FBZZ_RAY_ENV_TABLE_SLOT SRV_RAY_REFLECTION_ENV_TABLE_SLOT
 #include "RayTracing/RayEnvironment.hlsli"
 
-cbuffer RayReflectionConstants : register(b0)
+cbuffer RayReflectionConstants : register(FBZZ_REGISTER(b, CB_RAY_REFLECTION_SLOT))
 {
     float4 cameraPosition;
     float4 cameraRight;
@@ -88,7 +88,7 @@ struct SurfaceHit
 
 #include "RayTracing/RayReflectionMotion.hlsli"
 
-SamplerState linearClamp : register(s2);
+SamplerState linearClamp : register(SAMPLER_LINEAR_CLAMP);
 static const float kFloatEpsilon = 1.1920928955078125e-7f;
 /// @see https://pbr-book.org/4ed/Shapes/Managing_Rounding_Error Floating-point forward error gamma(n).
 float RoundoffGamma(float operations) { return operations * kFloatEpsilon / (1 - operations * kFloatEpsilon); }
@@ -154,8 +154,8 @@ bool AcceptReflectionCandidate(uint instance, uint primitive, float2 bary, out b
 {
     valid = false;
     if (instance >= instanceCount) return false;
-    StructuredBuffer<RayHitRecord> records = ResourceDescriptorHeap[FbzzPixelSlot(1)];
-    StructuredBuffer<RaySurfaceRecord> surfaces = ResourceDescriptorHeap[FbzzPixelSlot(2)];
+    StructuredBuffer<RayHitRecord> records = ResourceDescriptorHeap[FbzzPixelSlot(SRV_RAY_HIT_RECORDS_SLOT)];
+    StructuredBuffer<RaySurfaceRecord> surfaces = ResourceDescriptorHeap[FbzzPixelSlot(SRV_RAY_MATERIALS_SLOT)];
     RayHitRecord record = records[instance];
     uint3 indices;
     if (!ReflectionIndices(record, primitive, indices)) return false;
@@ -173,7 +173,7 @@ uint TraceMeshSurface(RayDesc ray, uint mask, out SurfaceHit hit, uint extraFlag
 {
     hit = (SurfaceHit)0;
     if (!instanceCount) return 0u;
-    RaytracingAccelerationStructure scene = ResourceDescriptorHeap[FbzzPixelSlot(0)];
+    RaytracingAccelerationStructure scene = ResourceDescriptorHeap[FbzzPixelSlot(SRV_RAY_SCENE_SLOT)];
     RayQuery<RAY_FLAG_SKIP_PROCEDURAL_PRIMITIVES> query;
     /// @note Certified Hybrid AS keeps glass nonopaque/two-sided and ordinary surfaces one-sided; owner and two-sided queries still inspect every candidate.
     /// @see https://microsoft.github.io/DirectX-Specs/d3d/Raytracing.html#ray-flags Instance cull disable and opaque candidate processing
@@ -187,14 +187,14 @@ uint TraceMeshSurface(RayDesc ray, uint mask, out SurfaceHit hit, uint extraFlag
         if (requiredObjectIndex != 0xFFFFFFFFu) {
             uint candidate = query.CandidateInstanceID();
             if (candidate >= instanceCount) return 2u;
-            StructuredBuffer<RayHitRecord> candidateRecords = ResourceDescriptorHeap[FbzzPixelSlot(1)];
+            StructuredBuffer<RayHitRecord> candidateRecords = ResourceDescriptorHeap[FbzzPixelSlot(SRV_RAY_HIT_RECORDS_SLOT)];
             RayHitRecord candidateRecord = candidateRecords[candidate];
             if (candidateRecord.objectIndex != requiredObjectIndex || candidateRecord.objectGeneration != requiredObjectGeneration) continue;
         }
         if (glassEnabled && mask != 2u && !includeOpaqueBackfaces && !query.CandidateTriangleFrontFace()) {
             uint candidate = query.CandidateInstanceID();
             if (candidate >= instanceCount) return 2u;
-            StructuredBuffer<RaySurfaceRecord> candidateSurfaces = ResourceDescriptorHeap[FbzzPixelSlot(2)];
+            StructuredBuffer<RaySurfaceRecord> candidateSurfaces = ResourceDescriptorHeap[FbzzPixelSlot(SRV_RAY_MATERIALS_SLOT)];
             if (candidateSurfaces[candidate].supported != 2u) continue;
         }
         bool valid;
@@ -208,8 +208,8 @@ uint TraceMeshSurface(RayDesc ray, uint mask, out SurfaceHit hit, uint extraFlag
     if (!glassEnabled && !query.CommittedTriangleFrontFace()) return 2u;
     uint instance = query.CommittedInstanceID();
     if (instance >= instanceCount) return 2u;
-    StructuredBuffer<RayHitRecord> records = ResourceDescriptorHeap[FbzzPixelSlot(1)];
-    StructuredBuffer<RaySurfaceRecord> surfaces = ResourceDescriptorHeap[FbzzPixelSlot(2)];
+    StructuredBuffer<RayHitRecord> records = ResourceDescriptorHeap[FbzzPixelSlot(SRV_RAY_HIT_RECORDS_SLOT)];
+    StructuredBuffer<RaySurfaceRecord> surfaces = ResourceDescriptorHeap[FbzzPixelSlot(SRV_RAY_MATERIALS_SLOT)];
     RayHitRecord record = records[instance];
     hit.surface = surfaces[instance];
     /// @note 初期表面は Mesh.hpp の standard Vertex のみ。normal=12、stride=60 bytes。
@@ -304,7 +304,7 @@ uint TraceVirtualLights(RayDesc ray, out SurfaceHit hit)
     hit = (SurfaceHit)0;
     bool found = false;
     if (emitterCount) {
-        StructuredBuffer<RayPathEmitterRecord> emitters = ResourceDescriptorHeap[FbzzPixelSlot(3)];
+        StructuredBuffer<RayPathEmitterRecord> emitters = ResourceDescriptorHeap[FbzzPixelSlot(SRV_RAY_EMITTERS_SLOT)];
         for (uint i = 0; i < emitterCount; ++i) {
             RayPathEmitterRecord emitter = emitters[i];
             if ((emitter.flags & 1u) == 0u) continue;
@@ -340,7 +340,7 @@ uint TraceVirtualLights(RayDesc ray, out SurfaceHit hit)
         }
     }
     if (shapeCount) {
-        StructuredBuffer<RayPathShapeRecord> shapes = ResourceDescriptorHeap[FbzzPixelSlot(10)];
+        StructuredBuffer<RayPathShapeRecord> shapes = ResourceDescriptorHeap[FbzzPixelSlot(SRV_RAY_REFLECTION_SHAPES_SLOT)];
         for (uint i = 0; i < shapeCount; ++i) {
             float distance; float3 normal;
             uint status = IntersectRayShape(shapes[i], ray, distance, normal);
@@ -383,7 +383,7 @@ float DirectionalVisibility(SurfaceHit hit, float3 direction)
     ray.TMin = 0;
     /// @note 方向光の遮蔽物はカメラ far の外にもある。反射 budget と遮蔽範囲を共有しない。
     ray.TMax = 3.402823466e38f;
-    RaytracingAccelerationStructure scene = ResourceDescriptorHeap[FbzzPixelSlot(0)];
+    RaytracingAccelerationStructure scene = ResourceDescriptorHeap[FbzzPixelSlot(SRV_RAY_SCENE_SLOT)];
     RayQuery<RAY_FLAG_CULL_BACK_FACING_TRIANGLES | RAY_FLAG_SKIP_PROCEDURAL_PRIMITIVES | RAY_FLAG_ACCEPT_FIRST_HIT_AND_END_SEARCH> query;
     query.TraceRayInline(scene, RAY_FLAG_NONE, 2u, ray);
     while (query.Proceed()) {
@@ -404,9 +404,9 @@ float3 EnvironmentRadiance(SurfaceHit hit, float3 view)
     float metallic = saturate(hit.surface.metallic);
     float roughness = clamp(hit.surface.roughness, 0.045f, 1.0f);
     if (!iblReady || iblIntensity <= 0) return diffuseIndirectEnabled ? 0 : ambientRadiance.rgb * albedo;
-    TextureCube irradianceMap = ResourceDescriptorHeap[FbzzPixelSlot(16)];
-    TextureCube prefilterMap = ResourceDescriptorHeap[FbzzPixelSlot(17)];
-    Texture2D<float4> brdfLut = ResourceDescriptorHeap[FbzzPixelSlot(18)];
+    TextureCube irradianceMap = ResourceDescriptorHeap[FbzzPixelSlot(TEX_IBL_IRRADIANCE_SLOT)];
+    TextureCube prefilterMap = ResourceDescriptorHeap[FbzzPixelSlot(TEX_IBL_PREFILTER_SLOT)];
+    Texture2D<float4> brdfLut = ResourceDescriptorHeap[FbzzPixelSlot(TEX_IBL_BRDF_LUT_SLOT)];
     float3 irradiance = irradianceMap.SampleLevel(linearClamp, hit.normal, 0).rgb;
     irradiance = lerp(irradiance, dot(irradiance, float3(0.2126f, 0.7152f, 0.0722f)).xxx, 0.35f);
     float nDotV = saturate(dot(hit.normal, view));
@@ -427,7 +427,7 @@ float3 EnvironmentRadiance(SurfaceHit hit, float3 view)
 float3 SharedDiffuseIndirect(SurfaceHit hit, float3 view)
 {
     if (!diffuseIndirectEnabled || hit.inMedium) return 0;
-    TextureCube irradianceMap = ResourceDescriptorHeap[FbzzPixelSlot(16)];
+    TextureCube irradianceMap = ResourceDescriptorHeap[FbzzPixelSlot(TEX_IBL_IRRADIANCE_SLOT)];
     float3 sky = irradianceMap.SampleLevel(linearClamp, hit.normal, 0).rgb;
     DiffuseGI gi = FBZZ_DiffuseIrradianceFromSky(hit.position, hit.normal, sky, linearClamp);
     float3 albedo = saturate(hit.surface.baseColor.rgb);
@@ -511,7 +511,7 @@ bool EmitterEndpoint(uint instance, uint primitive, float distance, uint targetI
 {
     if (instance == targetInstance && primitive == targetPrimitive) return true;
     if (error <= 0 || abs(distance - targetDistance) > error) return false;
-    StructuredBuffer<RayPathEmitterRecord> emitters = ResourceDescriptorHeap[FbzzPixelSlot(3)];
+    StructuredBuffer<RayPathEmitterRecord> emitters = ResourceDescriptorHeap[FbzzPixelSlot(SRV_RAY_EMITTERS_SLOT)];
     RayPathEmitterRecord target = (RayPathEmitterRecord)0, candidate = (RayPathEmitterRecord)0;
     bool foundTarget = false, foundCandidate = false;
     for (uint i = 0; i < emitterCount; ++i) {
@@ -574,7 +574,7 @@ float ShadowVisibility(float3 origin, float3 direction, float distance, uint mas
         ray.TMax = min(ray.TMax, lightHit.distance);
     }
     if (!instanceCount) return 1;
-    RaytracingAccelerationStructure scene = ResourceDescriptorHeap[FbzzPixelSlot(0)];
+    RaytracingAccelerationStructure scene = ResourceDescriptorHeap[FbzzPixelSlot(SRV_RAY_SCENE_SLOT)];
     RayQuery<RAY_FLAG_SKIP_PROCEDURAL_PRIMITIVES> query;
     query.TraceRayInline(scene, mask == 4u ? RAY_FLAG_CULL_BACK_FACING_TRIANGLES : RAY_FLAG_NONE, mask, ray);
     while (query.Proceed()) {
@@ -593,14 +593,14 @@ float HybridShadow(float visibility, float strength) { return 1 - saturate(stren
 float3 HitEmission(SurfaceHit hit)
 {
     if (hit.virtualShape) {
-        StructuredBuffer<RayPathShapeRecord> shapes = ResourceDescriptorHeap[FbzzPixelSlot(10)];
+        StructuredBuffer<RayPathShapeRecord> shapes = ResourceDescriptorHeap[FbzzPixelSlot(SRV_RAY_REFLECTION_SHAPES_SLOT)];
         RayPathShapeRecord shape = shapes[hit.shapeIndex];
         return hit.frontFace ? shape.emission * DistanceRangeWindow(hit.distance, shape.range) : 0;
     }
     bool proxyOwner = false;
     float3 emission = 0;
     if (emitterCount) {
-        StructuredBuffer<RayPathEmitterRecord> emitters = ResourceDescriptorHeap[FbzzPixelSlot(3)];
+        StructuredBuffer<RayPathEmitterRecord> emitters = ResourceDescriptorHeap[FbzzPixelSlot(SRV_RAY_EMITTERS_SLOT)];
         for (uint i = 0; i < emitterCount; ++i) {
             RayPathEmitterRecord emitter = emitters[i];
             bool proxy = (emitter.flags & 4u) != 0;
@@ -624,7 +624,7 @@ float3 SurfaceBrdfCosine(SurfaceHit hit, float3 view, float3 direction, bool spe
 bool DeltaLighting(SurfaceHit hit, float3 view, out precise float3 result)
 {
     result = 0;
-    StructuredBuffer<RayPathDeltaRecord> lights = ResourceDescriptorHeap[FbzzPixelSlot(4)];
+    StructuredBuffer<RayPathDeltaRecord> lights = ResourceDescriptorHeap[FbzzPixelSlot(SRV_RAY_REFLECTION_LIGHTS_SLOT)];
     for (uint i = 0; i < deltaLightCount; ++i) {
         RayPathDeltaRecord light = lights[i];
         float3 direction;
@@ -662,7 +662,7 @@ bool DeltaLighting(SurfaceHit hit, float3 view, out precise float3 result)
 float3 AreaLighting(SurfaceHit hit, float3 view, inout uint rng)
 {
     if (!emitterCount) return 0;
-    StructuredBuffer<RayPathEmitterRecord> emitters = ResourceDescriptorHeap[FbzzPixelSlot(3)];
+    StructuredBuffer<RayPathEmitterRecord> emitters = ResourceDescriptorHeap[FbzzPixelSlot(SRV_RAY_EMITTERS_SLOT)];
     float selection = Random(rng);
     uint index = 0xFFFFFFFFu;
     for (uint i = 0; i < emitterCount; ++i) {
@@ -678,8 +678,8 @@ float3 AreaLighting(SurfaceHit hit, float3 view, inout uint rng)
     float3 emitted = emitter.emission;
     if ((emitter.flags & 5u) == 0u) {
         if (emitter.instanceId >= instanceCount) return asfloat(0x7FC00000u);
-        StructuredBuffer<RayHitRecord> records = ResourceDescriptorHeap[FbzzPixelSlot(1)];
-        StructuredBuffer<RaySurfaceRecord> surfaces = ResourceDescriptorHeap[FbzzPixelSlot(2)];
+        StructuredBuffer<RayHitRecord> records = ResourceDescriptorHeap[FbzzPixelSlot(SRV_RAY_HIT_RECORDS_SLOT)];
+        StructuredBuffer<RaySurfaceRecord> surfaces = ResourceDescriptorHeap[FbzzPixelSlot(SRV_RAY_MATERIALS_SLOT)];
         RayHitRecord record = records[emitter.instanceId];
         uint3 indices;
         if (!ReflectionIndices(record, emitter.primitiveId, indices)) return asfloat(0x7FC00000u);
@@ -718,7 +718,7 @@ float3 AreaLighting(SurfaceHit hit, float3 view, inout uint rng)
 float3 ShapeLighting(SurfaceHit hit, float3 view, inout uint rng)
 {
     if (!shapeCount) return 0;
-    StructuredBuffer<RayPathShapeRecord> shapes = ResourceDescriptorHeap[FbzzPixelSlot(10)];
+    StructuredBuffer<RayPathShapeRecord> shapes = ResourceDescriptorHeap[FbzzPixelSlot(SRV_RAY_REFLECTION_SHAPES_SLOT)];
     float selection = Random(rng);
     uint index = 0xFFFFFFFFu;
     for (uint i = 0; i < shapeCount; ++i) {
@@ -841,9 +841,9 @@ bool HalfReflectionEnabled()
 /// @note One missing Scene SSR observation keeps the representative transport active; confidence never scales its radiance.
 bool HalfCellScreenCovered(uint2 origin)
 {
-    Texture2D<float4> screenReflection = ResourceDescriptorHeap[FbzzPixelSlot(23)];
-    Texture2D<float4> gbuffer0 = ResourceDescriptorHeap[FbzzPixelSlot(5)];
-    Texture2D<float4> gbuffer1 = ResourceDescriptorHeap[FbzzPixelSlot(6)];
+    Texture2D<float4> screenReflection = ResourceDescriptorHeap[FbzzPixelSlot(SRV_SCREEN_REFLECTION_SLOT)];
+    Texture2D<float4> gbuffer0 = ResourceDescriptorHeap[FbzzPixelSlot(TEX_GBUFFER0_SLOT)];
+    Texture2D<float4> gbuffer1 = ResourceDescriptorHeap[FbzzPixelSlot(TEX_GBUFFER1_SLOT)];
     uint screenWidth, screenHeight;
     screenReflection.GetDimensions(screenWidth, screenHeight);
     if (screenWidth != width || screenHeight != height) return false;
@@ -855,7 +855,7 @@ bool HalfCellScreenCovered(uint2 origin)
         if (!all(isfinite(screen)) || !all(isfinite(first)) || !all(isfinite(second))
             || saturate(screen.a * ssrIntensity) < 0.999f || HybridReflectionPrefersRay(second.a, first.a)) return false;
         if (glassEnabled) {
-            Texture2D<float4> emission = ResourceDescriptorHeap[FbzzPixelSlot(22)];
+            Texture2D<float4> emission = ResourceDescriptorHeap[FbzzPixelSlot(SRV_GBUFFER_EMISSION_SLOT)];
             float marker = emission.Load(int3(member, 0)).a;
             if (!isfinite(marker) || HybridGlassReceiver(marker)) return false;
         }
@@ -867,32 +867,32 @@ bool HalfCellScreenCovered(uint2 origin)
 void CSMain(uint3 pixel : SV_DispatchThreadID)
 {
     if (pixel.x >= width || pixel.y >= height) return;
-    RWTexture2D<float4> output = ResourceDescriptorHeap[FbzzUavSlot(0)];
+    RWTexture2D<float4> output = ResourceDescriptorHeap[FbzzUavSlot(UAV_RAY_RESULT_SLOT)];
     output[pixel.xy] = 0;
     bool halfResolution = HalfReflectionEnabled();
     bool representative = all((pixel.xy & 1u) == 0u);
     if (halfResolution && representative) {
-        RWTexture2D<float4> halfOutput = ResourceDescriptorHeap[FbzzUavSlot(1)];
+        RWTexture2D<float4> halfOutput = ResourceDescriptorHeap[FbzzUavSlot(UAV_RAY_REFLECTION_HALF_SLOT)];
         halfOutput[pixel.xy / 2u] = 0;
     }
     if (writeMetadata) {
-        RWStructuredBuffer<RayReflectionSurface> metadata = ResourceDescriptorHeap[FbzzUavSlot(2)];
+        RWStructuredBuffer<RayReflectionSurface> metadata = ResourceDescriptorHeap[FbzzUavSlot(UAV_RAY_REFLECTION_METADATA_SLOT)];
         metadata[pixel.y * width + pixel.x] = (RayReflectionSurface)0;
     }
     if (!instanceCount || incomplete || !sampleCount) return;
-    Texture2D<float4> gbuffer0 = ResourceDescriptorHeap[FbzzPixelSlot(5)];
-    Texture2D<float4> gbuffer1 = ResourceDescriptorHeap[FbzzPixelSlot(6)];
+    Texture2D<float4> gbuffer0 = ResourceDescriptorHeap[FbzzPixelSlot(TEX_GBUFFER0_SLOT)];
+    Texture2D<float4> gbuffer1 = ResourceDescriptorHeap[FbzzPixelSlot(TEX_GBUFFER1_SLOT)];
     float4 primary0 = gbuffer0.Load(int3(pixel.xy, 0));
     float4 primary1 = gbuffer1.Load(int3(pixel.xy, 0));
     float3 normal = primary1.xyz * 2.0f - 1.0f;
     if (!all(isfinite(primary0)) || !all(isfinite(primary1)) || dot(normal, normal) <= 0) return;
     float glassMarker = 0;
     if (glassEnabled) {
-        Texture2D<float4> gbufferEmission = ResourceDescriptorHeap[FbzzPixelSlot(22)];
+        Texture2D<float4> gbufferEmission = ResourceDescriptorHeap[FbzzPixelSlot(SRV_GBUFFER_EMISSION_SLOT)];
         glassMarker = GBufferSurfaceMarker(gbufferEmission.Load(int3(pixel.xy, 0)).a);
         if (!isfinite(glassMarker) || (HybridGlassReceiver(glassMarker) && glassMarker != HYBRID_GLASS_SUPPORTED)) return;
     }
-    Texture2D<float> depthTexture = ResourceDescriptorHeap[FbzzPixelSlot(7)];
+    Texture2D<float> depthTexture = ResourceDescriptorHeap[FbzzPixelSlot(TEX_DEPTH_SLOT)];
     float depth = depthTexture.Load(int3(pixel.xy, 0));
     if (depth <= 0 || !isfinite(depth)) return;
     normal = normalize(normal);
@@ -923,7 +923,7 @@ void CSMain(uint3 pixel : SV_DispatchThreadID)
     /// @note A screen-space opaque response cannot replace camera-to-surface transport through a proven initial medium.
     if (reflectionResolveEnabled == HYBRID_REFLECTION_RESOLVE_FINAL && reflectionSsrEnabled && isfinite(ssrIntensity) && ssrIntensity > 0
         && !cameraInMedium && !HybridGlassReceiver(glassMarker) && !HybridReflectionPrefersRay(primary1.a, primary0.a)) {
-        Texture2D<float4> screenReflection = ResourceDescriptorHeap[FbzzPixelSlot(23)];
+        Texture2D<float4> screenReflection = ResourceDescriptorHeap[FbzzPixelSlot(SRV_SCREEN_REFLECTION_SLOT)];
         uint screenWidth, screenHeight;
         screenReflection.GetDimensions(screenWidth, screenHeight);
         if (screenWidth == width && screenHeight == height) {
@@ -1000,7 +1000,7 @@ void CSMain(uint3 pixel : SV_DispatchThreadID)
         if (!all(isfinite(glassRadiance)) || any(glassRadiance < 0) || any(glassRadiance > 65504.0f)) return;
         output[pixel.xy] = float4(glassRadiance, HYBRID_REFLECTION_DIELECTRIC_FULL);
         if (writeMetadata) {
-            RWStructuredBuffer<RayReflectionSurface> metadata = ResourceDescriptorHeap[FbzzUavSlot(2)];
+            RWStructuredBuffer<RayReflectionSurface> metadata = ResourceDescriptorHeap[FbzzUavSlot(UAV_RAY_REFLECTION_METADATA_SLOT)];
             RayReflectionSurface surface = (RayReflectionSurface)0;
             surface.positionDepth = float4(primaryHit.position, dot(primaryHit.position - cameraPosition.xyz, cameraForward.xyz));
             surface.normalRoughness = float4(primaryHit.normal, primaryHit.surface.roughness);
@@ -1025,7 +1025,7 @@ void CSMain(uint3 pixel : SV_DispatchThreadID)
     float3 tangentView = float3(dot(view, tangent), dot(view, bitangent), nDotV);
     float roughness = clamp(primary0.a, 0.045f, 1.0f);
     if (coarsePrimary) {
-        RWStructuredBuffer<RayReflectionSurface> metadata = ResourceDescriptorHeap[FbzzUavSlot(2)];
+        RWStructuredBuffer<RayReflectionSurface> metadata = ResourceDescriptorHeap[FbzzUavSlot(UAV_RAY_REFLECTION_METADATA_SLOT)];
         RayReflectionSurface surface = (RayReflectionSurface)0;
         surface.positionDepth = float4(primaryHit.position, dot(primaryHit.position - cameraPosition.xyz, cameraForward.xyz));
         surface.normalRoughness = float4(normal, roughness);
@@ -1096,11 +1096,11 @@ void CSMain(uint3 pixel : SV_DispatchThreadID)
     /// @note 出力は RGBA16F。有限 FP32 が half store で Inf になる場合も fallback にする。
     if (all(isfinite(radiance)) && all(radiance <= 65504.0f)) {
         if (coarsePrimary) {
-            RWTexture2D<float4> halfOutput = ResourceDescriptorHeap[FbzzUavSlot(1)];
+            RWTexture2D<float4> halfOutput = ResourceDescriptorHeap[FbzzUavSlot(UAV_RAY_REFLECTION_HALF_SLOT)];
             halfOutput[pixel.xy / 2u] = float4(max(radiance, 0), 1);
         } else output[pixel.xy] = float4(max(radiance, 0), 1);
         if (writeMetadata) {
-            RWStructuredBuffer<RayReflectionSurface> metadata = ResourceDescriptorHeap[FbzzUavSlot(2)];
+            RWStructuredBuffer<RayReflectionSurface> metadata = ResourceDescriptorHeap[FbzzUavSlot(UAV_RAY_REFLECTION_METADATA_SLOT)];
             RayReflectionSurface surface = (RayReflectionSurface)0;
             surface.positionDepth = float4(primaryHit.position, dot(primaryHit.position - cameraPosition.xyz, cameraForward.xyz));
             surface.normalRoughness = float4(normal, roughness);

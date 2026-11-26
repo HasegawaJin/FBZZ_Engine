@@ -11,7 +11,7 @@
 namespace fbzz::renderer {
 namespace {
 ParticleOverdrawStats g_lastStats;
-} /// @note namespace
+} // namespace
 
 const ParticleOverdrawStats& GetLastParticleOverdrawStats()
 {
@@ -23,4 +23,4 @@ void SetLastParticleOverdrawStats(const ParticleOverdrawStats& stats)
     g_lastStats = stats;
 }
 
-} /// @note namespace fbzz::renderer
+} // namespace fbzz::renderer

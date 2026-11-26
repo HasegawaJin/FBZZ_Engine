@@ -8,15 +8,15 @@
 #include "Common/BindlessIndices.hlsli"
 
 #if defined(FBZZ_CLUSTER_COMPUTE)
-FBZZ_BYTEBUFFER(g_meshletRawData, 14);
+FBZZ_BYTEBUFFER(g_meshletRawData, SRV_MESHLET_RAW_DATA_CS_SLOT);
 #elif BINDLESS_SUPPORTED
 static ByteAddressBuffer g_meshletRawVertices = ResourceDescriptorHeap[
     NonUniformResourceIndex(FbzzVertexSlot(VS_SB_BUFFER0_SLOT))];
 static ByteAddressBuffer g_meshletRawData = ResourceDescriptorHeap[
     NonUniformResourceIndex(FbzzVertexSlot(VS_SB_BUFFER1_SLOT))];
 #else
-ByteAddressBuffer g_meshletRawVertices : register(t14);
-ByteAddressBuffer g_meshletRawData : register(t15);
+ByteAddressBuffer g_meshletRawVertices : register(FBZZ_REGISTER(t, SRV_MESHLET_RAW_VERTICES_SLOT));
+ByteAddressBuffer g_meshletRawData : register(FBZZ_REGISTER(t, SRV_MESHLET_RAW_DATA_SLOT));
 #endif
 
 /// @brief 48-byte meshlet descriptor in the blob's descriptor table.
@@ -33,7 +33,7 @@ struct FbzzMeshletDescriptor
 
 /// @brief Per-dispatch culling and raw-vertex metadata.
 /// @note The 112-byte prefix is shared. Terrain and static cluster draws append different data.
-cbuffer MeshletGeometryConstants : register(b13)
+cbuffer MeshletGeometryConstants : register(FBZZ_REGISTER(b, CB_MESHLET_GEOMETRY_SLOT))
 {
     float4 g_meshletFrustumPlanes[6];
     uint g_meshletCount;
@@ -67,12 +67,12 @@ static const uint kFbzzMeshletMaximumPrimitives = 126u;
 
 #ifdef FBZZ_STATIC_CLUSTER_LOD
 #ifdef FBZZ_CLUSTER_COMPUTE
-FBZZ_SBUFFER_T(uint, g_clusterPageTable, 15);
+FBZZ_SBUFFER_T(uint, g_clusterPageTable, SRV_MESHLET_PAGE_TABLE_CS_SLOT);
 #else
-FBZZ_SBUFFER_T(uint, g_clusterPageTable, 14);
+FBZZ_SBUFFER_T(uint, g_clusterPageTable, SRV_MESHLET_PAGE_TABLE_SLOT);
 #endif
 #ifndef FBZZ_CLUSTER_COMPUTE
-FBZZ_VS_SBUFFER(uint, g_clusterSelection, 3);
+FBZZ_VS_SBUFFER(uint, g_clusterSelection, VS_SB_MESHLET_SELECTION_SLOT);
 #endif
 
 /// @note Bounds the difference of two homogeneous projections over the whole source AABB and error ball.

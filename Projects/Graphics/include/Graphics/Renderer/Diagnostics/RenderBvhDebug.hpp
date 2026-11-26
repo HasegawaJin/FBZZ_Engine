@@ -74,4 +74,4 @@ public:
     FBZZ_GRAPHICS_API static void Invalidate();
 };
 
-} /// @note namespace fbzz::renderer
+} // namespace fbzz::renderer

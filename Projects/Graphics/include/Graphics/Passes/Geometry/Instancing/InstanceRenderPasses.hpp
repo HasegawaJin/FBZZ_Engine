@@ -22,4 +22,4 @@ FBZZ_GRAPHICS_API void ExecuteInstanceCapture(RenderPassContext& context,const C
     uint32_t excludedIndex,uint32_t excludedGeneration);
 FBZZ_GRAPHICS_API void SubmitInstanceShadows(RenderPassContext& context,const math::Frustum& frustum,
     ResourceHandle<ConstantBufferTag> frameConstants);
-} /// @note namespace fbzz::renderer
+} // namespace fbzz::renderer

@@ -22,7 +22,7 @@
 #include "Rendering/ParticleNoise.hlsli"
 #include "Common/BindlessIndices.hlsli"
 
-cbuffer VolumeRaymarchConstants : register(b0)
+cbuffer VolumeRaymarchConstants : register(FBZZ_REGISTER(b, CB_VOLUME_RAYMARCH_SLOT))
 {
     float3 gCamRight;   float gHalfExtent;
     float3 gCamUp;      uint  gTileSize;
@@ -84,9 +84,9 @@ cbuffer VolumeRaymarchConstants : register(b0)
 };
 
 /// @note R 密度 / G 温度 / B colorKey / A 液体の割合
-FBZZ_TEX3D_T(float4, gMedium, 0);
-FBZZ_TEX3D_T(float4, gVelocity, 1);
-SamplerState      gLinearClamp : register(s2);
+FBZZ_TEX3D_T(float4, gMedium, SRV_VOLUME_MEDIUM_SLOT);
+FBZZ_TEX3D_T(float4, gVelocity, SRV_VOLUME_VELOCITY_SLOT);
+SamplerState      gLinearClamp : register(SAMPLER_LINEAR_CLAMP);
 
 /// @note 背景は «表示の色» (sRGB) で決め、合成のためにリニアへ戻す。
 float3 PreviewBackground(float2 local)

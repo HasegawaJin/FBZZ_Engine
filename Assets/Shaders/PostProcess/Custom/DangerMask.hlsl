@@ -10,22 +10,22 @@
 #include "Common/BindlessIndices.hlsli"
 #include "Common/MaterialTextures.hlsli"
 
-FBZZ_TEX2D(texInput, TEX_GBUFFER0_SLOT);
+FBZZ_TEX2D(texInput, SRV_POST_COLOR_SLOT);
 SamplerState sampLinear : register(SAMPLER_LINEAR_CLAMP);
 
-cbuffer MaterialConstants : register(b2)
+cbuffer MaterialConstants : register(CB_MATERIAL)
 {
     float tilePixels;
     float maskSoftness;
     float bleedGain;
     float edgeDarken;
 
-    // bindless のテクスチャ添字。Material::Upload が毎フレーム書き込む。
+    /// @note bindless のテクスチャ添字。Material::Upload が毎フレーム書き込む。
     uint texAlbedoIndex;
 };
 
-// WHY cbuffer の後ろへ置くか: 添字フィールドを参照して初期化するため、
-//     宣言はフィールドより後ろでなければならない。
+/// @note cbuffer の後ろへ置くか: 添字フィールドを参照して初期化するため、
+/// @note 宣言はフィールドより後ろでなければならない。
 FBZZ_MATERIAL_TEX(texMask, texAlbedoIndex);
 
 FBZZFullscreenVertex VSMain(uint id : SV_VertexID)
@@ -48,7 +48,7 @@ float4 PSMain(FBZZFullscreenVertex p) : SV_Target0
     const float reach = clamp(customParameters.x, 0.02f, 0.3f)
         * (0.65f + 0.35f * strength + 0.16f * pulse);
     const float edgeDistance = min(min(p.uv.x, 1.0f - p.uv.x), min(p.uv.y, 1.0f - p.uv.y));
-    // 中央の視界は完全に素通しし、にじみも周辺に閉じる。
+    /// @note 中央の視界は完全に素通しし、にじみも周辺に閉じる。
     const float edge = 1.0f - smoothstep(0.0f, reach, edgeDistance);
     const float tile = max(tilePixels, 12.0f) * max(screenSize.y / 1080.0f, 0.25f);
     const float2 uv = p.uv * screenSize.xy / tile

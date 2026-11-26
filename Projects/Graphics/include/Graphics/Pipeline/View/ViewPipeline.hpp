@@ -11,22 +11,22 @@
 
 namespace fbzz::renderer {
 struct ViewPipelineOptions {
-    ResolvedRenderPlan renderPlan;
-    std::vector<uint32_t> customAfterOpaqueIndices;
-    std::vector<uint32_t> customSceneHdrIndices;
-    std::vector<uint32_t> customPostProcessIndices;
+    ResolvedRenderPlan renderPlan; ///< このビューの設定と利用可能な資源から決定した描画計画。
+    std::vector<uint32_t> customAfterOpaqueIndices; ///< 不透明描画の後に挿入するカスタム効果の添字列。
+    std::vector<uint32_t> customSceneHdrIndices; ///< シーンの HDR 色に適用するカスタム効果の添字列。
+    std::vector<uint32_t> customPostProcessIndices; ///< ポストプロセス段階に挿入するカスタム効果の添字列。
 };
 /// @note 登録中だけ同期的に呼ぶ。ホストは Scene の参照を自身のパスに閉じ込める。
 /// @note AfterOpaque は不透明合成後・半透明と水の前、AfterTransparent は VFX の合成後。
 struct ViewPipelineExtensions {
-    std::function<void()> begin;
-    std::function<void()> setup;
-    std::function<void(UserRenderPassInjectionPoint)> userPasses;
-    std::function<void()> depthDebug;
-    std::function<void()> selectionMask;
-    std::function<void(PassResources&)> selectionOutline;
-    std::function<void(const char*)> overlayDebug;
-    std::function<void()> ui;
+    std::function<void()> begin; ///< ビューの描画パスの登録を開始するときに呼ぶフック。
+    std::function<void()> setup; ///< 描画パス構築時にホスト側の設定を登録するフック。
+    std::function<void(UserRenderPassInjectionPoint)> userPasses; ///< 指定した挿入位置にユーザーパスを登録するフック。
+    std::function<void()> depthDebug; ///< 深度診断表示のパスを登録するフック。
+    std::function<void()> selectionMask; ///< 選択された物体のマスク描画を登録するフック。
+    std::function<void(PassResources&)> selectionOutline; ///< 選択マスクから輪郭線を合成する処理のフック。
+    std::function<void(const char*)> overlayDebug; ///< 指定した描画段階に重ねる診断表示のフック。
+    std::function<void()> ui; ///< ビューに重ねる UI の描画を登録するフック。
 };
 /// @pre context とビューは登録されたパスの実行終了まで生存すること。
 /// @note options/extensions は保持しない。実行後は BeginBuild でホストのコールバックを破棄する。

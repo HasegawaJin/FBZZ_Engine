@@ -22,4 +22,4 @@ namespace fbzz::renderer
         virtual bool IsMeshShader() const { return false; }
     };
 
-} /// @note namespace fbzz::renderer
+} // namespace fbzz::renderer

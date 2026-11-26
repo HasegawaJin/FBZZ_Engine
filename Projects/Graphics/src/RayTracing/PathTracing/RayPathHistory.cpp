@@ -42,7 +42,9 @@ RayPathHistoryKey MakeRayPathHistoryKey(const RayPathScene& scene, const Camera&
 
 bool RayPathHistory::Prepare(const RayPathHistoryKey& key)
 {
-    if (m_prepared && m_key == key) return false;
+    if (m_prepared && m_key == key) {
+        return false;
+    }
     m_key = key;
     m_sampleCount = 0;
     m_prepared = true;
@@ -52,7 +54,9 @@ bool RayPathHistory::Prepare(const RayPathHistoryKey& key)
 bool RayPathHistory::Commit(uint32_t sampleCount)
 {
     if (!m_prepared || sampleCount == 0
-        || sampleCount > std::numeric_limits<uint32_t>::max() - 1 - m_sampleCount) return false;
+        || sampleCount > std::numeric_limits<uint32_t>::max() - 1 - m_sampleCount) {
+        return false;
+    }
     m_sampleCount += sampleCount;
     return true;
 }
@@ -64,4 +68,4 @@ void RayPathHistory::Reset()
     m_prepared = false;
 }
 
-} /// @note namespace fbzz::renderer
+} // namespace fbzz::renderer

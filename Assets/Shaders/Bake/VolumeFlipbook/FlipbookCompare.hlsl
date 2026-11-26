@@ -6,7 +6,7 @@
 #include "Common/Fullscreen.hlsli"
 #include "Common/BindlessIndices.hlsli"
 
-cbuffer FlipbookCompareConstants : register(b0)
+cbuffer FlipbookCompareConstants : register(FBZZ_REGISTER(b, CB_FLIPBOOK_COMPARE_SLOT))
 {
     float4 gCurrentRect;  /// @note xy は Atlas UV、zw はタイルの大きさ。
     float4 gNextRect;
@@ -16,9 +16,9 @@ cbuffer FlipbookCompareConstants : register(b0)
     uint   gBackground;   /// @note 0 は暗、1 は明、2 はチェッカー。
 };
 
-FBZZ_TEX2D_T(float4, gColorAtlas, 0); /// @note 事前乗算、RGB は sRGB で符号化。
-FBZZ_TEX2D_T(float4, gMotionAtlas, 1);
-SamplerState      gLinearClamp : register(s2);
+FBZZ_TEX2D_T(float4, gColorAtlas, SRV_FLIPBOOK_COLOR_SLOT); /// @note 事前乗算、RGB は sRGB で符号化。
+FBZZ_TEX2D_T(float4, gMotionAtlas, SRV_FLIPBOOK_MOTION_SLOT);
+SamplerState      gLinearClamp : register(SAMPLER_LINEAR_CLAMP);
 
 FBZZFullscreenVertex VSMain(uint id : SV_VertexID)
 {

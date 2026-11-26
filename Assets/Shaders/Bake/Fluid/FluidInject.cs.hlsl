@@ -5,26 +5,26 @@
 #include "Bake/Fluid/FluidGpuCommon.hlsli"
 #include "Common/BindlessIndices.hlsli"
 
-FBZZ_TEX3D_T(float4, gScalarsIn, 0); // x 密度 / y 温度 / z 燃料 / w 色の質量
-FBZZ_TEX3D_T(float4, gVelocityIn, 1);
-FBZZ_TEX3D_T(float4, gSolidIn, 2); // xyz 固体の速度 / w 1 = 固体
-// Texture 発生源のマスク。4×4 タイル (1 タイル 256²) のアトラスで値は R。Texture 発生源が無ければ 1×1 の白。
-// WHY 共通ヘッダーに置かないか: 引くのは Inject だけ。他のカーネルに宣言だけ残すと未束縛の SRV を抱える。
-FBZZ_TEX2D_T(float4, gSourceMasks, 3);
-FBZZ_TEX3D_T(float4, gFuelColorIn, 4); // z 燃料の色の質量 (= 燃料 × 色の鍵)
-FBZZ_RWTEX3D_T(float4, gScalarsOut, 0);
-FBZZ_RWTEX3D_T(float4, gVelocityOut, 1);
-// x 燃焼の膨張 (圧力解法への湧き出し)。この刻みの Divergence が読んだら用済み。
-// WHY スカラーの w に同居させないか: w は色の質量として刻みを跨いで運ぶので、刻み限りの値を置けない。
-FBZZ_RWTEX3D_T(float4, gExpansionOut, 2);
-FBZZ_RWTEX3D_T(float4, gFuelColorOut, 3);
+FBZZ_TEX3D_T(float4, gScalarsIn, SRV_FLUID_INJECT_SCALARS_IN_SLOT); /// @note x 密度 / y 温度 / z 燃料 / w 色の質量
+FBZZ_TEX3D_T(float4, gVelocityIn, SRV_FLUID_INJECT_VELOCITY_IN_SLOT);
+FBZZ_TEX3D_T(float4, gSolidIn, SRV_FLUID_INJECT_SOLID_IN_SLOT); /// @note xyz 固体の速度 / w 1 = 固体
+/// @note Texture 発生源のマスク。4×4 タイル (1 タイル 256²) のアトラスで値は R。Texture 発生源が無ければ 1×1 の白。
+/// @note 共通ヘッダーに置かないか: 引くのは Inject だけ。他のカーネルに宣言だけ残すと未束縛の SRV を抱える。
+FBZZ_TEX2D_T(float4, gSourceMasks, SRV_FLUID_INJECT_SOURCE_MASKS_SLOT);
+FBZZ_TEX3D_T(float4, gFuelColorIn, SRV_FLUID_INJECT_FUEL_COLOR_IN_SLOT); /// @note z 燃料の色の質量 (= 燃料 × 色の鍵)
+FBZZ_RWTEX3D_T(float4, gScalarsOut, UAV_FLUID_INJECT_SCALARS_OUT_SLOT);
+FBZZ_RWTEX3D_T(float4, gVelocityOut, UAV_FLUID_INJECT_VELOCITY_OUT_SLOT);
+/// @note x 燃焼の膨張 (圧力解法への湧き出し)。この刻みの Divergence が読んだら用済み。
+/// @note スカラーの w に同居させないか: w は色の質量として刻みを跨いで運ぶので、刻み限りの値を置けない。
+FBZZ_RWTEX3D_T(float4, gExpansionOut, UAV_FLUID_INJECT_EXPANSION_OUT_SLOT);
+FBZZ_RWTEX3D_T(float4, gFuelColorOut, UAV_FLUID_INJECT_FUEL_COLOR_OUT_SLOT);
 
-static const uint  kMaskColumns = 4u;        // kFluidSourceMaskAtlasColumns
-static const float kMaskTileTexels = 256.0f; // kFluidSourceMaskSize
+static const uint  kMaskColumns = 4u;        /// @note kFluidSourceMaskAtlasColumns
+static const float kMaskTileTexels = 256.0f; /// @note kFluidSourceMaskSize
 
 float SourceMask(float tile, float2 uv)
 {
-    // 双線形が隣のタイルを拾わないよう半テクセル内側で止める (SampleFluidSourceMask の «範囲外は縁の値»)。
+    /// @note 双線形が隣のタイルを拾わないよう半テクセル内側で止める (SampleFluidSourceMask の «範囲外は縁の値»)。
     const float inset = 0.5f / kMaskTileTexels;
     const float2 local = clamp(uv, inset, 1.0f - inset);
     const uint index = uint(max(tile, 0.0f) + 0.5f);
@@ -32,11 +32,11 @@ float SourceMask(float tile, float2 uv)
     return gSourceMasks.SampleLevel(gFluidLinearClamp, (cell + local) / float(kMaskColumns), 0.0f).x;
 }
 
-// FluidTextureSourceWeight / FluidSourceWeight の写し。Texture だけマスクを掛ける。
+/// @note FluidTextureSourceWeight / FluidSourceWeight の写し。Texture だけマスクを掛ける。
 float InjectWeight(FluidGpuSource source, float3 p)
 {
     float weight = 0.0f;
-    // Texture は 4 番だけ。5 以降 (カプセル・円柱) をここへ落とすと板として測ってしまう。
+    /// @note Texture は 4 番だけ。5 以降 (カプセル・円柱) をここへ落とすと板として測ってしまう。
     if (source.centerShape.w > 3.5f && source.centerShape.w < 4.5f)
     {
         const float3 plate = FluidTexturePlate(source, p, gCellSize);
@@ -53,7 +53,7 @@ float InjectWeight(FluidGpuSource source, float3 p)
 void CSMain(uint3 id : SV_DispatchThreadID)
 {
     if (FluidOutside(id)) return;
-    // 固体の中には何も注がない。流速は障害物の動きに合わせる (動く障害物が周りを押しのける)。
+    /// @note 固体の中には何も注がない。流速は障害物の動きに合わせる (動く障害物が周りを押しのける)。
     const float4 solid = gSolidIn[id];
     if (solid.w > 0.5f)
     {
@@ -85,19 +85,19 @@ void CSMain(uint3 id : SV_DispatchThreadID)
         s.y = min(s.y + source.amounts.y * weight * gDt, kFluidMaxAmount);
         s.z = max(0.0f, s.z + source.amounts.z * weight * gDt);
         s.w = min(s.w + source.amounts.x * weight * gDt * source.extra.x, kFluidMaxAmount);
-        // 色は燃料にも積む。密度 0 / 燃料だけの発生源 (Fire) でも、燃えて出る煤に色が付くようにする。
+        /// @note 色は燃料にも積む。密度 0 / 燃料だけの発生源 (Fire) でも、燃えて出る煤に色が付くようにする。
         fuelColor = max(0.0f, fuelColor + source.amounts.z * weight * gDt * source.extra.x);
         if (source.velocity.w > 0.5f)
             v += (source.velocity.xyz - v) * saturate(weight * 10.0f * gDt);
     }
 
-    // 燃焼。燃えた分だけガスが膨らみ、圧力解法へ «湧き出し» として渡ると外向きの爆風になる。
+    /// @note 燃焼。燃えた分だけガスが膨らみ、圧力解法へ «湧き出し» として渡ると外向きの爆風になる。
     float expansion = 0.0f;
     if (gBurnFraction > 0.0f && s.z > 1.0e-5f && s.y >= gIgnitionTemperature)
     {
         const float burned = s.z * gBurnFraction;
-        // 燃えて出た煤は «燃えた燃料が持っていた鍵» を継ぐ (鍵は燃料を減らす前に測る)。
-        // 元からその場に居た煙の色はそのまま残るので、セル全体の鍵は質量で混ざった値になる。
+        /// @note 燃えて出た煤は «燃えた燃料が持っていた鍵» を継ぐ (鍵は燃料を減らす前に測る)。
+        /// @note 元からその場に居た煙の色はそのまま残るので、セル全体の鍵は質量で混ざった値になる。
         const float key = FluidFuelColorKey(fuelColor, s.z);
         s.z -= burned;
         fuelColor = max(0.0f, fuelColor - burned * key);

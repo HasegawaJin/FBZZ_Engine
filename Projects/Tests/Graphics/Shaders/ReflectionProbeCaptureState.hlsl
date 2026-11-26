@@ -39,6 +39,8 @@ float4 PSMain(float4 position : SV_Position) : SV_Target
         const bool noScreen = FbzzPixelSlot(23) == 0xFFFFFFFFu && FbzzPixelSlot(24) == 0xFFFFFFFFu;
         return float4(noAtlas ? 1 : 0, noScreen ? 1 : 0, FbzzPixelSlot(29) != 0xFFFFFFFFu ? 1 : 0, 1);
     }
-    if (mode == 4u) return 1.0f;
+    if (mode == 4u) {
+        return 1.0f;
+    }
     return float4(0, 0, 0, 1);
 }

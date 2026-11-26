@@ -2,13 +2,14 @@
 /// @brief   Default water pixel appearance, reusable by a project without duplicating shared surface geometry.
 /// @author  Hasegawa Jin
 /// @date    2026-10-21
+#include "Common/Binding.hlsli"
 #ifndef FBZZ_WATER_STANDARD_APPEARANCE_HLSLI
 #define FBZZ_WATER_STANDARD_APPEARANCE_HLSLI
 #include "Common/Space.hlsli"
 /// @note ユーザー定義エフェクトパラメータ。MaterialComponent.paramData にマップされ、
 /// @note Script から mc->SetParam<float>("rimGlowStrength", val) で動的に書き換えられる。
 /// @warning HLSL cbuffer のパッキング規則に従い 16B 境界を揃えること (48 bytes = float4 x3)。
-cbuffer MaterialConstants : register(b2)
+cbuffer MaterialConstants : register(CB_MATERIAL)
 {
     float  rimGlowStrength;    ///< @brief Row0: 浅い角度で水の層が明るむ量 (光を受ける) default 0.40
     float  minShallowAlpha;    ///< @brief 水深 0 でも残る濁り [0,1] (opacity と積) default 0.65
@@ -28,7 +29,7 @@ SamplerState g_waterPointSampler : register(SAMPLER_POINT_CLAMP);
 
 #include "Water/WaterAppearanceOptics.hlsli"
 
-cbuffer WaterZoneAppearanceConstants : register(b11)
+cbuffer WaterZoneAppearanceConstants : register(FBZZ_REGISTER(b, CB_WATER_ZONE_APPEARANCE_SLOT))
 {
     WaterMaterialBlendTarget g_zoneMaterials[32];
 }

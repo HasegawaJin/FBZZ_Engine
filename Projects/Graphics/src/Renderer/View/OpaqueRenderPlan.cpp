@@ -10,19 +10,22 @@ namespace fbzz::renderer {
 OpaqueRenderPlan ResolveOpaqueRenderPlan(
     const RenderSettings& settings, const OpaqueRenderAvailability& availability)
 {
-    /// @note ワイヤーは面の深度やアルファで線を隠さない Forward の診断経路を使う。
-    if (settings.IsWireframe())
+    // ワイヤーは面の深度やアルファで線を隠さない Forward の診断経路を使う。
+    if (settings.IsWireframe()) {
         return { OpaqueRenderPath::FORWARD };
+    }
     if (settings.UsesGBuffer() && availability.depthNormal
-        && availability.deferredLighting && availability.depthCopy)
+        && availability.deferredLighting && availability.depthCopy) {
         return { OpaqueRenderPath::DEFERRED };
+    }
 
     const bool needsScreenSpaceInputs = settings.postProcess.ambientOcclusion.enabled
         || settings.IsGtaoActive() || settings.contactShadow.enabled || settings.ssr.enabled;
-    if (availability.depthNormal && needsScreenSpaceInputs && !settings.IsUnlit())
+    if (availability.depthNormal && needsScreenSpaceInputs && !settings.IsUnlit()) {
         return { OpaqueRenderPath::FORWARD_DEPTH_NORMAL };
+    }
 
     return { OpaqueRenderPath::FORWARD };
 }
 
-} /// @note namespace fbzz::renderer
+} // namespace fbzz::renderer

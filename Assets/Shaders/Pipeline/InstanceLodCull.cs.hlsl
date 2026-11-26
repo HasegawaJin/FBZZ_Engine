@@ -17,14 +17,14 @@ struct View {
     uint4 shadowViewport;
 };
 struct Args { uint offset; uint indexCount; uint instanceCount; uint startIndex; int baseVertex; uint startInstance; };
-FBZZ_SBUFFER_T(Record,g_records,SB_SKIN_SRC_VERTICES_SLOT);
-FBZZ_SBUFFER_T(View,g_view,SB_SKIN_BONES_SLOT);
-FBZZ_SBUFFER_T(uint,g_partLods,SB_PARTICLE_FORCES_SLOT);
-static const uint VEGETATION_SLOTS = 27u;
+FBZZ_SBUFFER_T(Record,g_records,SRV_CULL_CANDIDATES_SLOT);
+FBZZ_SBUFFER_T(View,g_view,SRV_CULL_VIEW_SLOT);
+FBZZ_SBUFFER_T(uint,g_partLods,SRV_INSTANCE_PART_LODS_SLOT);
+static const uint VEGETATION_SLOTS = SRV_VEGETATION_SLOTS_SLOT;
 FBZZ_SBUFFER_T(uint,g_vegetationSlots,VEGETATION_SLOTS);
-FBZZ_RWSBUFFER_T(uint,g_ids,UAV_CLUSTER_LIGHTS_SLOT);
-FBZZ_RWSBUFFER_T(Args,g_args,UAV_GPU_SORT_SLOT);
-static const uint TERRAIN_HIZ_SLOT = 28u;
+FBZZ_RWSBUFFER_T(uint,g_ids,UAV_CULL_VISIBLE_SLOT);
+FBZZ_RWSBUFFER_T(Args,g_args,UAV_CULL_ARGUMENTS_SLOT);
+static const uint TERRAIN_HIZ_SLOT = SRV_TERRAIN_HIZ_SLOT;
 FBZZ_SBUFFER_T(float,g_terrainHiZ,TERRAIN_HIZ_SLOT);
 
 bool OccludedByShadowHiZ(const View light, float3 center, float radius)
@@ -35,7 +35,7 @@ bool OccludedByShadowHiZ(const View light, float3 center, float radius)
 }
 
 #if !defined(FBZZ_INSTANCE_CASCADE_CULL)
-FBZZ_SBUFFER_T(float4,g_occlusion,SB_CLUSTER_INDICES_SLOT);
+FBZZ_SBUFFER_T(float4,g_occlusion,SRV_INSTANCE_OCCLUSION_SLOT);
 /// @note Current-view conservative CPU depth, without previous-frame queries or CPU visibility readback.
 /// @see https://learn.microsoft.com/en-us/windows/win32/direct3d11/conservative-rasterization Fully covered cells only.
 bool Occluded(float3 center, float radius)

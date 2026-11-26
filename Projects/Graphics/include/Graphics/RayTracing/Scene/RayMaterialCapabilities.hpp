@@ -18,8 +18,8 @@ enum class RayOpacity : uint8_t {
 
 /// @note 未知の頂点変形や clip を標準 PBR として扱わない。surface / BSDF の対応は別契約。
 struct RayMaterialCapabilities {
-    bool staticGeometry = false;
-    RayOpacity opacity = RayOpacity::UNSUPPORTED;
+    bool staticGeometry = false; ///< 対応済みの静的頂点形式として三角形を収集できるか。
+    RayOpacity opacity = RayOpacity::UNSUPPORTED; ///< レイ候補に対して使う被覆判定の分類。
 };
 
 /// @note ALPHA_TEST requires nonopaque BLAS geometry and the same UV/LOD/cutoff at every RayQuery candidate, including shadows.
@@ -27,4 +27,4 @@ struct RayMaterialCapabilities {
 [[nodiscard]] FBZZ_GRAPHICS_API RayMaterialCapabilities ResolveStaticRayMaterialCapabilities(
     bool standardGeometry, BlendMode blend, float alpha, float cutoff, bool alphaTexture);
 
-} /// @note namespace fbzz::renderer
+} // namespace fbzz::renderer

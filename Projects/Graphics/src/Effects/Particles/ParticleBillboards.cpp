@@ -50,14 +50,16 @@ int BuildParticleBillboardsInSpace(ParticleDrawRange particles, const ParticleTr
     for (std::size_t particleIndex = 0; particleIndex < particles.Size() && quadCount < kMaxParticleDraw; ++particleIndex) {
         const auto& particle = particles[particleIndex];
         auto velocity = particle.velocity;
-        /// @note ストレッチ用の速度は向きだけを変え、エミッターの拡縮を掛けない。
-        if constexpr (LOCAL_SPACE) velocity = localToWorld->rotation * velocity;
+        // ストレッチ用の速度は向きだけを変え、エミッターの拡縮を掛けない。
+        if constexpr (LOCAL_SPACE) {
+            velocity = localToWorld->rotation * velocity;
+        }
         AppendParticleQuad(vertices, transformPoint(particle.position), velocity, particle.size, particle.color, particle);
         ++quadCount;
 
         const int usedTrail = (std::min)(static_cast<int>(particle.trailCount), trailPoints);
         for (int index = 0; index < usedTrail && quadCount < kMaxParticleDraw; ++index) {
-            /// @note 履歴がまだ満杯でなくても、幅と不透明度は設定した全点数を基準に減衰させる。
+            // 履歴がまだ満杯でなくても、幅と不透明度は設定した全点数を基準に減衰させる。
             const float fade = 1.0f - static_cast<float>(index + 1) / static_cast<float>(trailPoints + 1);
             const float width = trail.trailWidthScale + (1.0f - trail.trailWidthScale) * fade;
             const float alpha = trail.trailAlphaScale + (1.0f - trail.trailAlphaScale) * fade;
@@ -78,11 +80,12 @@ int BuildParticleBillboardsImpl(ParticleDrawRange particles, const ParticleTrail
 {
     vertices.clear();
     vertices.reserve((std::min)(particles.Size(), static_cast<std::size_t>(kMaxParticleDraw)) * 4);
-    /// @note リボンの尾は描画パスの別処理に任せ、履歴をビルボードにも出さない。
+    // リボンの尾は描画パスの別処理に任せ、履歴をビルボードにも出さない。
     const int trailPoints = trail.trailEnabled && !trail.trailRibbon
         ? std::clamp(trail.trailPointCount, 1, kMaxParticleTrailPoints) : 0;
-    if (localToWorld)
+    if (localToWorld) {
         return BuildParticleBillboardsInSpace<true>(particles, trail, trailTint, trailPoints, vertices, localToWorld);
+    }
     return BuildParticleBillboardsInSpace<false>(particles, trail, trailTint, trailPoints, vertices, nullptr);
 }
 

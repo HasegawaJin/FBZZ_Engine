@@ -22,4 +22,4 @@ private:
     ResourceHandle<ShaderTag> m_shader;
 };
 
-} /// @note namespace fbzz::renderer
+} // namespace fbzz::renderer

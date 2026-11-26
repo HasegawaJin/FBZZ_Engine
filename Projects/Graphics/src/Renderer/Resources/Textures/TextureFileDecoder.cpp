@@ -26,16 +26,20 @@ namespace {
 bool EndsWithCI(const std::string& text, const char* suffix)
 {
     const std::size_t length = std::strlen(suffix);
-    if (text.size() < length) return false;
+    if (text.size() < length) {
+        return false;
+    }
     return _stricmp(text.c_str() + text.size() - length, suffix) == 0;
 }
 
 void SetError(std::string* outError, const char* message, const std::string& path)
 {
-    if (outError) *outError = std::string(message) + ": " + path;
+    if (outError) {
+        *outError = std::string(message) + ": " + path;
+    }
 }
 
-} /// @note namespace
+} // namespace
 
 bool SupportsAutomaticTextureMips(const std::string& path)
 {
@@ -45,12 +49,16 @@ bool SupportsAutomaticTextureMips(const std::string& path)
 bool PrepareTextureMipmaps(const std::string& path, DecodedTextureRGBA8& texture,
                           const TextureMipSettings& settings, std::string* outError)
 {
-    if (!settings.enabled || !SupportsAutomaticTextureMips(path)) return true;
+    if (!settings.enabled || !SupportsAutomaticTextureMips(path)) {
+        return true;
+    }
     if (texture.mips.empty()) {
         SetError(outError, "ミップ生成元の画像がありません", path);
         return false;
     }
-    if (texture.mips.size() > 1) return true;
+    if (texture.mips.size() > 1) {
+        return true;
+    }
     auto& base = texture.mips[0];
     const std::size_t rowBytes = static_cast<std::size_t>(base.width) * 4u;
     if (base.width == 0 || base.height == 0 || rowBytes / 4u != base.width
@@ -59,7 +67,9 @@ bool PrepareTextureMipmaps(const std::string& path, DecodedTextureRGBA8& texture
         SetError(outError, "ミップ生成元の画素数が不正です", path);
         return false;
     }
-    if (base.width == 1 && base.height == 1) return true;
+    if (base.width == 1 && base.height == 1) {
+        return true;
+    }
 
     DirectX::Image image{};
     image.width = base.width;
@@ -68,7 +78,7 @@ bool PrepareTextureMipmaps(const std::string& path, DecodedTextureRGBA8& texture
     image.rowPitch = rowBytes;
     image.slicePitch = base.rgba.size();
     image.pixels = base.rgba.data();
-    /// @note 非 WIC の既定フィルターは 2 冪寸法に Box、それ以外に Linear を使い、sRGB とアルファを独立に扱う。
+    // 非 WIC の既定フィルターは 2 冪寸法に Box、それ以外に Linear を使い、sRGB とアルファを独立に扱う。
     /// @see https://github.com/microsoft/DirectXTex/wiki/Filter-Flags Color space / WIC usage / Algorithm
     const auto filter = static_cast<DirectX::TEX_FILTER_FLAGS>(DirectX::TEX_FILTER_FORCE_NON_WIC
         | (settings.srgb ? DirectX::TEX_FILTER_SRGB : DirectX::TEX_FILTER_DEFAULT));
@@ -92,8 +102,9 @@ bool PrepareTextureMipmaps(const std::string& path, DecodedTextureRGBA8& texture
         mip.height = static_cast<std::uint32_t>(source->height);
         const std::size_t pitch = source->width * 4u;
         mip.rgba.resize(pitch * source->height);
-        for (std::size_t row = 0; row < source->height; ++row)
+        for (std::size_t row = 0; row < source->height; ++row) {
             std::memcpy(mip.rgba.data() + row * pitch, source->pixels + row * source->rowPitch, pitch);
+        }
     }
     texture.mips = std::move(levels);
     return true;
@@ -102,16 +113,22 @@ bool PrepareTextureMipmaps(const std::string& path, DecodedTextureRGBA8& texture
 std::size_t DecodedTextureRGBA8::ByteSize() const
 {
     std::size_t bytes = 0;
-    for (const Mip& mip : mips) bytes += mip.rgba.size();
+    for (const Mip& mip : mips) {
+        bytes += mip.rgba.size();
+    }
     return bytes;
 }
 
 bool RequiresNativeTextureUpload(const std::string& path)
 {
-    if (!EndsWithCI(path, ".dds")) return false;
+    if (!EndsWithCI(path, ".dds")) {
+        return false;
+    }
     DirectX::TexMetadata metadata{};
     if (FAILED(DirectX::GetMetadataFromDDSFile(util::StringUtils::ToWide(path).c_str(),
-               DirectX::DDS_FLAGS_NONE, metadata))) return false;
+               DirectX::DDS_FLAGS_NONE, metadata))) {
+        return false;
+    }
     return metadata.IsCubemap() || metadata.arraySize != 1 || metadata.dimension != DirectX::TEX_DIMENSION_TEXTURE2D
         || metadata.format == DXGI_FORMAT_R16G16B16A16_FLOAT || metadata.format == DXGI_FORMAT_R32G32B32A32_FLOAT
         || metadata.format == DXGI_FORMAT_BC6H_UF16 || metadata.format == DXGI_FORMAT_BC6H_SF16;
@@ -120,10 +137,14 @@ bool RequiresNativeTextureUpload(const std::string& path)
 bool DecodedTextureRGBA8::ToMipData(std::vector<TextureMipData>& out) const
 {
     out.clear();
-    if (mips.empty()) return false;
+    if (mips.empty()) {
+        return false;
+    }
     out.reserve(mips.size());
     for (const Mip& mip : mips) {
-        if (mip.width == 0 || mip.height == 0 || mip.rgba.empty()) return false;
+        if (mip.width == 0 || mip.height == 0 || mip.rgba.empty()) {
+            return false;
+        }
         out.push_back({ mip.rgba.data(), mip.width, mip.height });
     }
     return true;
@@ -140,12 +161,15 @@ bool DecodeTextureFileRGBA8(const std::string& path, DecodedTextureRGBA8& out, s
     DirectX::ScratchImage source;
     const std::wstring widePath = util::StringUtils::ToWide(path);
     HRESULT result = E_FAIL;
-    if (EndsWithCI(path, ".dds"))
+    if (EndsWithCI(path, ".dds")) {
         result = DirectX::LoadFromDDSFile(widePath.c_str(), DirectX::DDS_FLAGS_NONE, nullptr, source);
-    else if (EndsWithCI(path, ".tga"))
+    }
+    else if (EndsWithCI(path, ".tga")) {
         result = DirectX::LoadFromTGAFile(widePath.c_str(), nullptr, source);
-    else
+    }
+    else {
         result = DirectX::LoadFromWICFile(widePath.c_str(), DirectX::WIC_FLAGS_NONE, nullptr, source);
+    }
     if (FAILED(result) || source.GetImageCount() == 0) {
         SetError(outError, "画像を読み込めません", path);
         return false;
@@ -154,17 +178,19 @@ bool DecodeTextureFileRGBA8(const std::string& path, DecodedTextureRGBA8& out, s
     out.sourceWidth  = static_cast<std::uint32_t>(source.GetMetadata().width);
     out.sourceHeight = static_cast<std::uint32_t>(source.GetMetadata().height);
 
-    /// @note DDS に入っているミップは全段展開する。フリップブックの «コマを跨がないミップ» は
-    /// @note       焼く側でしか作れないので、ここで 0 段目だけにすると遠くの粒子がちらつく。
+    // DDS に入っているミップは全段展開する。フリップブックの «コマを跨がないミップ» は
+    // 焼く側でしか作れないので、ここで 0 段目だけにすると遠くの粒子がちらつく。
     const std::size_t mipCount = (std::max)(source.GetMetadata().mipLevels, std::size_t{ 1 });
-    /// @note 品質段: ミップを持つ画像は上位の段を捨てるだけで済む。1 段だけの画像は展開後に縮小する。
+    // 品質段: ミップを持つ画像は上位の段を捨てるだけで済む。1 段だけの画像は展開後に縮小する。
     const std::size_t firstLevel = mipCount > 1
         ? (std::min)(static_cast<std::size_t>(dropTopLevels), mipCount - 1) : 0;
 
     out.mips.reserve(mipCount - firstLevel);
     for (std::size_t level = firstLevel; level < mipCount; ++level) {
         const DirectX::Image* image = source.GetImage(level, 0, 0);
-        if (image == nullptr) break;
+        if (image == nullptr) {
+            break;
+        }
 
         DirectX::ScratchImage converted;
         if (image->format != DXGI_FORMAT_R8G8B8A8_UNORM) {
@@ -185,24 +211,28 @@ bool DecodeTextureFileRGBA8(const std::string& path, DecodedTextureRGBA8& out, s
         mip.height = static_cast<std::uint32_t>(image->height);
         const std::size_t rowBytes = static_cast<std::size_t>(mip.width) * 4u;
         mip.rgba.resize(rowBytes * mip.height);
-        for (std::uint32_t row = 0; row < mip.height; ++row)
+        for (std::uint32_t row = 0; row < mip.height; ++row) {
             std::memcpy(mip.rgba.data() + row * rowBytes, image->pixels + row * image->rowPitch, rowBytes);
+        }
     }
     if (out.mips.empty()) {
         SetError(outError, "画像に 0 段目がありません", path);
         return false;
     }
-    if (mipCount == 1)
-        for (std::uint32_t i = 0; i < dropTopLevels && (out.mips[0].width > 1 || out.mips[0].height > 1); ++i)
+    if (mipCount == 1) {
+        for (std::uint32_t i = 0; i < dropTopLevels && (out.mips[0].width > 1 || out.mips[0].height > 1); ++i) {
             out.mips[0] = DownsampleRGBA8Box2x(out.mips[0]);
+        }
+    }
     return true;
 }
 
 void FlipTextureGreen(DecodedTextureRGBA8& texture)
 {
     for (DecodedTextureRGBA8::Mip& mip : texture.mips) {
-        for (std::size_t pixel = 1; pixel < mip.rgba.size(); pixel += 4)
+        for (std::size_t pixel = 1; pixel < mip.rgba.size(); pixel += 4) {
             mip.rgba[pixel] = static_cast<std::uint8_t>(255u - mip.rgba[pixel]);
+        }
     }
 }
 
@@ -220,7 +250,7 @@ DecodedTextureRGBA8::Mip DownsampleRGBA8Box2x(const DecodedTextureRGBA8::Mip& so
     for (std::uint32_t y = 0; y < result.height; ++y) {
         for (std::uint32_t x = 0; x < result.width; ++x) {
             for (std::uint32_t c = 0; c < 4; ++c) {
-                /// @note 2x2 の平均を四捨五入する。奇数幅の端は最後の列を重ねて使う。
+                // 2x2 の平均を四捨五入する。奇数幅の端は最後の列を重ねて使う。
                 const std::uint32_t sum = texel(x * 2, y * 2, c) + texel(x * 2 + 1, y * 2, c)
                                         + texel(x * 2, y * 2 + 1, c) + texel(x * 2 + 1, y * 2 + 1, c);
                 result.rgba[(static_cast<std::size_t>(y) * result.width + x) * 4u + c] =
@@ -231,4 +261,4 @@ DecodedTextureRGBA8::Mip DownsampleRGBA8Box2x(const DecodedTextureRGBA8::Mip& so
     return result;
 }
 
-} /// @note namespace fbzz::renderer
+} // namespace fbzz::renderer

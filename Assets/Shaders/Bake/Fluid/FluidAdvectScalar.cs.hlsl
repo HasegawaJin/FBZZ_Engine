@@ -5,9 +5,9 @@
 #include "Bake/Fluid/FluidGpuCommon.hlsli"
 #include "Common/BindlessIndices.hlsli"
 
-FBZZ_TEX3D_T(float4, gFieldIn, 0);
-FBZZ_TEX3D_T(float4, gVelocityIn, 1);
-FBZZ_RWTEX3D_T(float4, gFieldOut, 0);
+FBZZ_TEX3D_T(float4, gFieldIn, SRV_FLUID_ADVECT_SCALAR_FIELD_IN_SLOT);
+FBZZ_TEX3D_T(float4, gVelocityIn, SRV_FLUID_ADVECT_SCALAR_VELOCITY_IN_SLOT);
+FBZZ_RWTEX3D_T(float4, gFieldOut, UAV_FLUID_ADVECT_SCALAR_FIELD_OUT_SLOT);
 
 [numthreads(4, 4, 4)]
 void CSMain(uint3 id : SV_DispatchThreadID)

@@ -48,43 +48,49 @@ namespace prepared_skinning_detail { struct TicketFactory; }
 
 class RenderResources;
 
-/// @brief Non-blocking metadata snapshot for a buffer handle.
+/// @brief GPU や描画スレッドを待たずに読めるバッファメタデータのスナップショット。
 struct BufferResourceMetadata {
-    uint32_t generation = 0;
-    size_t sizeBytes = 0;
-    uint32_t stride = 0;
-    /// @note Advances on ResourceManager CPU updates; GPU-writable output buffers are excluded.
-    uint64_t contentVersion = 0;
-    bool cpuReadable = false;
-    bool gpuWritable = false;
-    bool indexBuffer = false;
-    bool live = false;
+    uint32_t generation = 0; ///< 取得対象ハンドルと一致するスロット世代。
+    size_t sizeBytes = 0; ///< バッファのデータ容量 [byte]。
+    uint32_t stride = 0; ///< 頂点または要素間のバイト間隔。
+    uint64_t contentVersion = 0; ///< ResourceManager の CPU 更新で進む内容版。GPU 書き込み用の出力バッファは対象外。
+    bool cpuReadable = false; ///< CPU 側の保持データを読み取れるかどうか。
+    bool gpuWritable = false; ///< GPU が書き込み先として使用できるかどうか。
+    bool indexBuffer = false; ///< インデックスバッファとして登録された資源かどうか。
+    bool live = false; ///< 世代を含めて有効なバッファスロットかどうか。
 };
 
-/// @brief Native buffer values read after queued CPU work has completed.
-/// @note Unlike BufferResourceMetadata, contentVersion includes recorded GPU writes; no resource pointer is retained.
+/// @brief CPU 側の記録キューが処理された後に読み取るバッファ状態。資源へのポインターは保持しない。
 struct BufferResourceState {
-    size_t sizeBytes = 0;
-    uint32_t stride = 0;
-    uint64_t contentVersion = 0;
-    uint32_t bindlessUavIndex = UINT32_MAX;
-    bool live = false;
+    size_t sizeBytes = 0; ///< ネイティブバッファのデータ容量 [byte]。
+    uint32_t stride = 0; ///< ネイティブバッファでの頂点または要素間のバイト間隔。
+    uint64_t contentVersion = 0; ///< 記録済みの GPU 書き込みも反映した内容版。
+    uint32_t bindlessUavIndex = UINT32_MAX; ///< UAV の bindless 記述子添字。UINT32_MAX は UAV なし。
+    bool live = false; ///< 照会時点でバッファのネイティブ実体が有効かどうか。
 };
 
 /// @brief ResourceManager を通る同期テクスチャ読み込みの累積時間と直近の対象。
 struct SynchronousTextureLoadStats {
-    uint64_t attempts = 0;
-    uint64_t successes = 0;
-    uint64_t failures = 0;
-    double totalMilliseconds = 0.0;
-    double lastMilliseconds = 0.0;
-    double maxMilliseconds = 0.0;
-    std::string lastPath;
+    uint64_t attempts = 0; ///< 同期読み込みの試行数。
+    uint64_t successes = 0; ///< 同期読み込みで有効なテクスチャを得た回数。
+    uint64_t failures = 0; ///< 有効なテクスチャを得られなかった試行数。
+    double totalMilliseconds = 0.0; ///< 同期読み込みで呼び出し元を待たせた合計時間 [ms]。
+    double lastMilliseconds = 0.0; ///< 最後の読み込み試行にかかった時間 [ms]。
+    double maxMilliseconds = 0.0; ///< 1 回の読み込み試行にかかった最長時間 [ms]。
+    std::string lastPath; ///< 最後の読み込み試行で指定されたテクスチャパス。
 };
 
-/// @note Byte storage is frozen while any queued renderer consumer owns the batch.
-struct ConstantBufferUpdateEntry { ResourceHandle<ConstantBufferTag> handle; size_t offset = 0, size = 0; };
-struct ConstantBufferUpdateBatch { std::vector<uint8_t> bytes; std::vector<ConstantBufferUpdateEntry> entries; };
+struct ConstantBufferUpdateEntry {
+    ResourceHandle<ConstantBufferTag> handle; ///< 更新先となる非所有の定数バッファハンドル。
+    size_t offset = 0; ///< ConstantBufferUpdateBatch::bytes 内の読み取り開始位置 [byte]。
+    size_t size = 0; ///< 転送元から定数バッファの先頭へ書き込む容量 [byte]。
+};
+
+/// @note 描画スレッドのキューがバッチを所有している間は内容を変更しない。
+struct ConstantBufferUpdateBatch {
+    std::vector<uint8_t> bytes; ///< 複数の定数バッファ更新の転送元をまとめた所有領域。
+    std::vector<ConstantBufferUpdateEntry> entries; ///< 更新先と bytes 内の読み取り区間を対応付ける一覧。
+};
 
 class ResourceManager {
 public:
@@ -136,13 +142,13 @@ public:
     /// @note       持ち込まれるのを防ぐために必要。
     /// @note 既に配られたハンドルは無効になる。参照側は次のフレームで解決し直す前提
     /// @note       (UIImage / MaterialComponent は loadedTexturePath を見て再解決する)。
-    /// @param path Assets/ 起点の相対パス。フォルダを渡すと配下をまとめて外す。
+    /// @param[in] path Assets/ 起点の相対パス。フォルダを渡すと配下をまとめて外す。
     /// @return 外したエントリ数。
     FBZZ_GRAPHICS_API std::size_t EvictTexture(std::string_view path);
     FBZZ_GRAPHICS_API ResourceHandle<TextureTag> CreateTexture(const uint8_t* rgba, uint32_t width, uint32_t height,
                                              Where where = Where::current());
     /// @note CPU で焼いたミップ連鎖 (RGBA8) からテクスチャを作る。
-    /// @param mips 0 段目から順。空、または未対応バックエンドでは無効ハンドルを返す。
+    /// @param[in] mips 0 段目から順。空、または未対応バックエンドでは無効ハンドルを返す。
     /// @note 縮小を CPU 側で決めたいテクスチャ (水面のさざ波勾配タイルなど) 用。
     FBZZ_GRAPHICS_API ResourceHandle<TextureTag> CreateTextureWithMips(const TextureMipData* mips, uint32_t mipCount,
                                                      Where where = Where::current());
@@ -151,7 +157,7 @@ public:
     /// @see Docs/design/asset-streaming.md «GPU 転送と公開»
     /// @{
     /// @brief CreateTextureWithMips の待たない版。返したハンドルはパスキャッシュに載らない。
-    /// @param outUploadToken IsUploadComplete に渡す値。0 は完了済み。
+    /// @param[out] outUploadToken IsUploadComplete に渡す値。0 は完了済み。
     /// @note 完了前のハンドルを描画へ渡さない。公開は完了確認後に PublishTexture で行う。
     /// @note 完了前に Release してよい。GPU 実体の返却はバックエンドのフェンス管理が遅らせる。
     FBZZ_GRAPHICS_API ResourceHandle<TextureTag> BeginTextureUpload(const TextureMipData* mips, uint32_t mipCount,
@@ -267,8 +273,8 @@ public:
                          std::span<BufferResourceState> out);
 
     /// @brief Reads mirrored buffer metadata without resolving a native resource or waiting for the CPU frame.
-    /// @param handle Generation-checked buffer handle.
-    /// @param out Receives the metadata only when the handle is live.
+    /// @param[in] handle 世代を照合するバッファハンドル。
+    /// @param[out] out ハンドルの有効性を確認できたときだけ、バッファのメタデータを書き込む。
     /// @return False for stale or unknown handles; out remains unchanged.
     [[nodiscard]] FBZZ_GRAPHICS_API bool GetBufferMetadata(ResourceHandle<BufferTag> handle,
                                          BufferResourceMetadata& out) const;
@@ -432,7 +438,7 @@ private:
 /// @note ハンドルへ暗黙変換できるので、描画側 (SetRenderTarget / GetDepthTexture) はそのまま渡せる。
 class SizedRenderTarget {
 public:
-    /// @param colorCount 0 = 深度のみ。
+    /// @param[in] colorCount 0 = 深度のみ。
     /// @return 今回作り直したら true (中身は未定義になるので、キャッシュを持つ側は捨てること)。
     /// @note where は既定のまま渡すこと。RT の発生位置が «この Ensure» ではなく
     /// @note       «どのパスが持っている RT か» として記録される (理由は Where を参照)。
@@ -459,4 +465,4 @@ private:
     uint64_t m_resetVersion = 0;
 };
 
-} /// @note namespace fbzz::renderer
+} // namespace fbzz::renderer

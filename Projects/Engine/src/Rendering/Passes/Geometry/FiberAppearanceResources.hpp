@@ -3,6 +3,7 @@
 /// @author  Hasegawa Jin
 /// @date    2026-10-21
 #pragma once
+#include <Graphics/Renderer/Commands/ShaderBindingSlots.hpp>
 #include <Engine/Asset/AssetDatabase.hpp>
 #include <Engine/Asset/AssetManager.hpp>
 #include <Engine/Asset/Material/MaterialParamBinding.hpp>
@@ -38,7 +39,9 @@ struct FiberAppearanceResources {
 
 inline void FiberAppearanceWarning(FiberAppearanceResources& state, const std::string& message)
 {
-    if (state.warning == message) return;
+    if (state.warning == message) {
+        return;
+    }
     state.warning = message;
     FBZZ_LOG_WARN("Fiber appearance: %s; using the compatible built-in family", message.c_str());
 }
@@ -58,12 +61,13 @@ inline void ResolveFiberAppearance(FiberAppearanceResources& state, const asset:
     const auto capability = resources.GetShaderCapabilities(primary);
     if (!IsSharedFiberGeometry(capability.vertex)) {
         state.resolved.reset();
-        /// @note プレビュー専用の旧メタデータを含む既存の Fiber 材質には、従来の固定シェーダー群を使う。
+        // プレビュー専用の旧メタデータを含む既存の Fiber 材質には、従来の固定シェーダー群を使う。
         const bool legacy = capability.preview == renderer::ShaderPreviewKind::FIBER_SHELL
             || capability.preview == renderer::ShaderPreviewKind::FIBER_FIN
             || capability.preview == renderer::ShaderPreviewKind::FIBER_BLADE;
-        if (!legacy && !values.shaderPath.empty())
+        if (!legacy && !values.shaderPath.empty()) {
             FiberAppearanceWarning(state, "shader does not declare fiber_shell_v1, fiber_fin_v1 or fiber_blade_v1");
+        }
         return;
     }
     const std::string path = asset::AssetDatabase::IsGuidRef(values.shaderPath)
@@ -95,7 +99,9 @@ inline void ResolveFiberAppearance(FiberAppearanceResources& state, const asset:
                 const auto* native = resources.Get(shader);
                 if (!native || resources.GetShaderCapabilities(shader).vertex != capability.vertex
                     || !renderer::HasFiberMaterialPrefix(native->GetDescriptor())
-                    || !reference || !renderer::HaveMatchingFiberMaterialLayouts(reference->GetDescriptor(), native->GetDescriptor())) valid = false;
+                    || !reference || !renderer::HaveMatchingFiberMaterialLayouts(reference->GetDescriptor(), native->GetDescriptor())) {
+                    valid = false;
+                }
                 state.shaders[mode * 2 + skin] = shader;
             }
         }
@@ -105,7 +111,7 @@ inline void ResolveFiberAppearance(FiberAppearanceResources& state, const asset:
             state.resolved.reset();
             return;
         }
-        /// @note Shell 材質は同じ材質 ABI の StemFin シェーダー群をすべて提供すると Hybrid を使える。
+        // Shell 材質は同じ材質 ABI の StemFin シェーダー群をすべて提供すると Hybrid を使える。
         std::error_code finError;
         if (capability.vertex == renderer::ShaderVertexContract::FIBER_SHELL
             && std::filesystem::is_regular_file(stem + "Fin.hlsl", finError)) {
@@ -116,11 +122,15 @@ inline void ResolveFiberAppearance(FiberAppearanceResources& state, const asset:
                     const auto* native = resources.Get(shader);
                     if (!native || resources.GetShaderCapabilities(shader).vertex != renderer::ShaderVertexContract::FIBER_FIN
                         || !renderer::HasFiberMaterialPrefix(native->GetDescriptor())
-                        || !renderer::HaveMatchingFiberMaterialLayouts(reference->GetDescriptor(), native->GetDescriptor())) state.finValid = false;
+                        || !renderer::HaveMatchingFiberMaterialLayouts(reference->GetDescriptor(), native->GetDescriptor())) {
+                        state.finValid = false;
+                    }
                     state.finShaders[mode * 2 + skin] = shader;
                 }
             }
-            if (!state.finValid) state.finShaders = {};
+            if (!state.finValid) {
+                state.finShaders = {};
+            }
         }
         state.shaderVersion = resources.GetShaderVersion();
         state.valid = true;
@@ -141,11 +151,12 @@ inline void ResolveFiberAppearance(FiberAppearanceResources& state, const asset:
     std::memcpy(state.material.paramData.data(), &settings, sizeof(settings));
     const auto textures = asset::ResolveMaterialTexturePaths(values);
     state.material.textures.resize(textures.size());
-    for (size_t slot = 0; slot < textures.size(); ++slot)
+    for (size_t slot = 0; slot < textures.size(); ++slot) {
         state.material.textures[slot] = textures[slot].empty() ? renderer::ResourceHandle<renderer::TextureTag>{}
             : asset::StreamedTextureResolver::Engine().ResolveGpu(resources, textures[slot]);
-    /// @note ジオメトリマスクには白テクスチャへのフォールバックを含め、解決済みの tex5 を使う。
-    state.material.textures[5] = mask.IsValid() ? mask : resources.GetWhiteTexture();
+    }
+    // ジオメトリマスクには白テクスチャへのフォールバックを含め、解決済みの tex5 を使う。
+    state.material.textures[renderer::srv::FIBER_MASK] = mask.IsValid() ? mask : resources.GetWhiteTexture();
     state.material.Upload(resources, descriptor);
     if (!state.resolved || state.resolved->params != state.material.paramData
         || state.resolved->shaders != state.shaders || state.resolved->finShaders != state.finShaders
@@ -164,8 +175,12 @@ inline void ResolveFiberAppearance(FiberAppearanceResources& state, const asset:
 inline std::shared_ptr<const renderer::FiberAppearance> FiberAppearanceFor(const FiberAppearanceResources& state,
     renderer::FiberRenderMode mode)
 {
-    if (!state.resolved) return {};
-    if (renderer::MatchesFiberAppearance(state.resolved->geometry, mode, state.resolved->supportsHybrid)) return state.resolved;
+    if (!state.resolved) {
+        return {};
+    }
+    if (renderer::MatchesFiberAppearance(state.resolved->geometry, mode, state.resolved->supportsHybrid)) {
+        return state.resolved;
+    }
     const uint32_t mask = 1u << static_cast<uint32_t>(mode);
     if (!(state.mismatchWarnings & mask)) {
         state.mismatchWarnings |= mask;
@@ -176,5 +191,5 @@ inline std::shared_ptr<const renderer::FiberAppearance> FiberAppearanceFor(const
     return {};
 }
 
-} /// @note namespace fiber_extraction_detail
-} /// @note namespace fbzz::scene
+} // namespace fiber_extraction_detail
+} // namespace fbzz::scene

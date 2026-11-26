@@ -34,4 +34,4 @@ struct StaticClusterBuild {
 [[nodiscard]] bool BuildStaticClusterLod(std::span<const SkinnedVertex> vertices,
     std::span<const uint32_t> indices, StaticClusterBuild& output);
 
-} /// @note namespace fbzz::renderer
+} // namespace fbzz::renderer

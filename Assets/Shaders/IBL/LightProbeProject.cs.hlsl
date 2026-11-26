@@ -11,14 +11,14 @@
 #include "Platform/Backend.hlsli"
 
 /// @note 面 f の色は t(f)、深度は t(6 + f)、表裏は t(20 + f)、環境キューブは t16。C++ の LightProbeBakePass と一致させること。
-#define LIGHT_PROBE_FACE_COLOR_SLOT 0
-#define LIGHT_PROBE_FACE_DEPTH_SLOT 6
-#define LIGHT_PROBE_ENVIRONMENT_SLOT 16
-#define LIGHT_PROBE_FACE_FACING_SLOT 20
+#define LIGHT_PROBE_FACE_COLOR_SLOT SRV_LIGHT_PROBE_FACE_COLOR_SLOT
+#define LIGHT_PROBE_FACE_DEPTH_SLOT SRV_LIGHT_PROBE_FACE_DEPTH_SLOT
+#define LIGHT_PROBE_ENVIRONMENT_SLOT SRV_LIGHT_PROBE_ENVIRONMENT_SLOT
+#define LIGHT_PROBE_FACE_FACING_SLOT SRV_LIGHT_PROBE_FACE_FACING_SLOT
 #define LIGHT_PROBE_THREADS 64
 
 /// @note LAYOUT: LightProbeBakePass.cpp の LightProbeProjectCB と一致させること (448 bytes)。
-cbuffer LightProbeProjectConstants : register(b0)
+cbuffer LightProbeProjectConstants : register(FBZZ_REGISTER(b, CB_LIGHT_PROBE_PROJECT_SLOT))
 {
     float4x4 faceInvViewProj[6];   ///< @note 面ごとの逆 ViewProjection
     float3   probePos;             ///< @note プローブ位置 [world]
@@ -36,8 +36,8 @@ cbuffer LightProbeProjectConstants : register(b0)
 };
 
 FBZZ_TEXCUBE(gEnvironment, LIGHT_PROBE_ENVIRONMENT_SLOT);
-FBZZ_RWTEX3D_T(float4, gProbeSH, UAV_OUTPUT_SLOT);
-FBZZ_RWTEX3D_T(float4, gProbeVisibility, 1);
+FBZZ_RWTEX3D_T(float4, gProbeSH, UAV_LIGHT_PROBE_SH_SLOT);
+FBZZ_RWTEX3D_T(float4, gProbeVisibility, UAV_LIGHT_PROBE_VISIBILITY_SLOT);
 SamplerState sampLinearClamp : register(SAMPLER_LINEAR_CLAMP);
 
 groupshared float3 gsSH[9][LIGHT_PROBE_THREADS];
@@ -177,7 +177,7 @@ void CSMain(uint tid : SV_GroupIndex)
     const float backfaceRatioForVisibility = gsBackface[0] / max(gsWeight[0], 1e-6f);
     const float visibilityValidity = hasFacing != 0u
         ? 1.0f - smoothstep(max(backfaceLimit - 0.1f, 0.0f), backfaceLimit, backfaceRatioForVisibility) : 1.0f;
-    if (IsBindlessValid(FbzzUavSlot(1)) && visibilityFar > 0.0f)
+    if (IsBindlessValid(FbzzUavSlot(UAV_LIGHT_PROBE_VISIBILITY_SLOT)) && visibilityFar > 0.0f)
     {
         const uint2 tile = uint2(tid % 8u, tid / 8u);
         float2 moments = 0.0f;

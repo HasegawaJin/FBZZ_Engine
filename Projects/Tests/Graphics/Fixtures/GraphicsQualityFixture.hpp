@@ -13,6 +13,7 @@
 #include <Graphics/Renderer/Resources/Textures/ITexture.hpp>
 #include <Graphics/Renderer/Commands/DrawCall.hpp>
 #include <Graphics/Renderer/Commands/ComputeCall.hpp>
+#include <Graphics/Renderer/Commands/ShaderBindingSlots.hpp>
 #include <Graphics/Renderer/Geometry/Mesh.hpp>
 #include <Graphics/Scene/RenderScene.hpp>
 #include <Graphics/Passes/Geometry/GeometryPasses.hpp>
@@ -60,7 +61,12 @@ protected:
     {
         r::DrawCall draw; draw.shader = shader; draw.pipelineState = m_opaque; draw.vertexCount = 3;
         draw.constantBuffers[0] = m_frame;
-        draw.constantBuffers[2] = shader == m_taa ? m_taaCycle : m_quality;
+        // b2 の内容はシェーダーごとに異なる。テスト用プローブと TAA にだけ、それぞれの定数を渡す。
+        if (shader == m_probe) {
+            draw.constantBuffers[2] = m_quality;
+        } else if (shader == m_taa) {
+            draw.constantBuffers[r::cb::TAA_CYCLE] = m_taaCycle;
+        }
         draw.constantBuffers[5] = m_post; draw.constantBuffers[8] = m_advanced;
         return draw;
     }

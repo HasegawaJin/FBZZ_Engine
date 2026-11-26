@@ -17,4 +17,4 @@ private:
     bool m_ownsApartment = false;
     bool m_usable = false;
 };
-} /// @note namespace fbzz::renderer::detail
+} // namespace fbzz::renderer::detail

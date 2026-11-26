@@ -53,7 +53,7 @@ TEST_F(RayRenderPlanTest, HybridScreenFirstOverridesKeepCurrentReceiptsAndIndepe
             if (entry.message.find("  [WARNING] (id=") == std::string::npos
                 && entry.message.find("  [ERROR] (id=") == std::string::npos
                 && entry.message.find("  [CORRUPTION] (id=") == std::string::npos) return;
-            /// @note 空のビューのクリアに最適化クリア値がない場合がある。既知の性能警告 id820 だけを除外する。
+            // 空のビューのクリアに最適化クリア値がない場合がある。既知の性能警告 id820 だけを除外する。
             if (entry.message.find("  [WARNING] (id=820) ID3D12CommandList::ClearRenderTargetView: The application did not pass any clear value")
                 != std::string::npos) return;
             ++failures;
@@ -151,7 +151,7 @@ TEST_F(RayRenderPlanTest, HybridScreenFirstOverridesKeepCurrentReceiptsAndIndepe
                 context.chainOutputRT = outputs[viewIndex];
                 context.frameStamp = resources.FrameStamp();
                 context.punctualShadowResolution = 1;
-                /// @note SSR パスが省略された場合、Engine が先に設定した有効フラグを引き継がない。
+                // SSR パスが省略された場合、Engine が先に設定した有効フラグを引き継がない。
                 context.ssrDispatchRecorded = context.hybridReflectionSourcePass = true;
                 renderer::PrepareAdvancedConstants(context, view, {});
                 const auto initial = renderer::PrepareViewRenderPlan(resources, device, currentSettings,
@@ -172,7 +172,7 @@ TEST_F(RayRenderPlanTest, HybridScreenFirstOverridesKeepCurrentReceiptsAndIndepe
                 EXPECT_EQ(context.ssrDispatchRecorded, expectedSsr);
                 EXPECT_FALSE(context.hybridReflectionSourcePass);
                 if (gbufferDisabled) {
-                    /// @note RAW や保存領域が残っていても、停止した生成処理は新しい RT・SSR 結果や履歴を公開しない。
+                    // RAW や保存領域が残っていても、停止した生成処理は新しい RT・SSR 結果や履歴を公開しない。
                     EXPECT_NE(resources.Get(view.rayReflection.output), nullptr);
                     EXPECT_FALSE(context.rayReflectionReconstructionPrepared);
                     EXPECT_FALSE(view.rayReflection.reconstruction.historyValid);
@@ -227,7 +227,7 @@ TEST_F(RayRenderPlanTest, ReferencePathKeepsAccumulatingAfterAnotherViewPrepares
             if (entry.message.find("  [WARNING] (id=") == std::string::npos
                 && entry.message.find("  [ERROR] (id=") == std::string::npos
                 && entry.message.find("  [CORRUPTION] (id=") == std::string::npos) return;
-            /// @note 最適化クリア値なしで PathColor ターゲットをクリアする。警告 id820 は性能に関係し、検証の正しさに影響しない。
+            // 最適化クリア値なしで PathColor ターゲットをクリアする。警告 id820 は性能に関係し、検証の正しさに影響しない。
             if (entry.message.find("  [WARNING] (id=820) ID3D12CommandList::ClearRenderTargetView: The application did not pass any clear value")
                 != std::string::npos) return;
             ++failures;
@@ -309,7 +309,7 @@ TEST_F(RayRenderPlanTest, ReferencePathKeepsAccumulatingAfterAnotherViewPrepares
         renderer::AdvancedViewInput input;
         input.dynamicIblReady = true;
         input.dynamicIblMipCount = 1;
-        /// @note SceneView は共有ラスタプローブを完成し、その後 GameView は独立した次の Path 履歴を準備する。
+        // SceneView は共有ラスタプローブを完成し、その後 GameView は独立した次の Path 履歴を準備する。
         for (uint32_t frame = 0; frame < 4; ++frame) {
             resources.AdvanceFrame();
             device.BeginFrame();
@@ -355,7 +355,7 @@ TEST_F(RayRenderPlanTest, ReferencePathKeepsAccumulatingAfterAnotherViewPrepares
         EXPECT_NEAR(pixels[1], 2, 0.001f);
         EXPECT_NEAR(pixels[2], 3, 0.001f);
 
-        /// @note 反射ヒットの照明は、ラスタプローブから独立して完全な Ray テーブルと明示的な未加工の環境を使う。
+        // 反射ヒットの照明は、ラスタプローブから独立して完全な Ray テーブルと明示的な未加工の環境を使う。
         settings.modeRequest.mode = renderer::RenderMode::HYBRID;
         settings.modeRequest.rayReflection = true;
         input.reflectionProbeSelected = false;
@@ -396,7 +396,7 @@ TEST_F(RayRenderPlanTest, ReferencePathKeepsAccumulatingAfterAnotherViewPrepares
         EXPECT_TRUE(renderer::PrepareRayPathView(context, gameView, shared));
         EXPECT_EQ(gameView.rayPath.history.GetSampleCount(), 0u);
         EXPECT_EQ(gameView.rayPath.constantsData.resetHistory, 1u);
-        /// @note 完全な Ray テーブルが切り詰められたラスタ入力を置き換え、本番グラフ経由で t3 と t5 を転送する。
+        // 完全な Ray テーブルが切り詰められたラスタ入力を置き換え、本番グラフ経由で t3 と t5 を転送する。
         context.rayLightsComplete = true;
         context.lightData.lightIntensity = 99;
         context.lightData.pointLightCount = 8;
@@ -486,7 +486,7 @@ TEST_F(RayRenderPlanTest, RayResourcesAndPathReadbackAreAvailableWithoutEngine)
     auto bundle = renderer::CreateRenderer(renderer::RendererBackend::DX12, window.handle, 64, 64);
     ASSERT_NE(bundle.renderer, nullptr);
     auto& device = *bundle.renderer;
-    /// @note 非表示ウィンドウでは DXGI がオクルージョンを返した後も複数フレームを記録する。
+    // 非表示ウィンドウでは DXGI がオクルージョンを返した後も複数フレームを記録する。
     device.SetRenderWhenOccluded(true);
     const auto capabilities = device.GetCapabilities();
     EXPECT_TRUE(capabilities.bindless);
@@ -546,7 +546,7 @@ TEST_F(RayRenderPlanTest, RayResourcesAndPathReadbackAreAvailableWithoutEngine)
         viewA.rayReflection.gpu.ready = true;
         viewA.rayReflectionCovered = true;
         auto resizeSettings = settings;
-        /// @note 停止時の露出履歴失効を避け、稼働中のビューをリサイズした場合の保持だけを検証する。
+        // 停止時の露出履歴失効を避け、稼働中のビューをリサイズした場合の保持だけを検証する。
         resizeSettings.autoExposure.enabled = true;
         ASSERT_TRUE(rendering.PrepareView(viewA, device, outputB, resizeSettings));
         EXPECT_FALSE(viewA.renderPlan.IsValid());
@@ -615,7 +615,7 @@ TEST_F(RayRenderPlanTest, RayResourcesAndPathReadbackAreAvailableWithoutEngine)
                 EXPECT_EQ(passResources.AccelerationStructure("TLAS"), topLevel);
             }, false);
 
-            /// @note このパスは GPU work を記録せず登録の経路だけを確認する。AS build / trace は RayTracingTests が担う。
+            // このパスは GPU work を記録せず登録の経路だけを確認する。AS build / trace は RayTracingTests が担う。
             resources.AdvanceFrame();
             device.BeginFrame();
             const bool typedPassSucceeded = typedPipeline.Execute(context);
@@ -715,7 +715,7 @@ TEST_F(RayRenderPlanTest, RayResourcesAndPathReadbackAreAvailableWithoutEngine)
                 EXPECT_NE(std::find(pathNames.begin(), pathNames.end(), name), pathNames.end());
             for (const char* name : {"DeferredLighting", "ForwardOpaque", "Shadow", "Sky", "SSR", "TAA", "GTAO"})
                 EXPECT_EQ(std::find(pathNames.begin(), pathNames.end(), name), pathNames.end());
-            /// @note 深度 0 の背景でも Color が cull されず、前フレームの HDR を全画素で置換することを実行で確認する。
+            // 深度 0 の背景でも Color が cull されず、前フレームの HDR を全画素で置換することを実行で確認する。
             resources.AdvanceFrame();
             device.BeginFrame();
             device.SetRenderTarget(viewA.hdr, resources);

@@ -43,7 +43,9 @@ void CSMain(uint3 pixel : SV_DispatchThreadID)
     RayQuery<RAY_FLAG_SKIP_PROCEDURAL_PRIMITIVES> query;
     query.TraceRayInline(scene, mode == 2 ? RAY_FLAG_ACCEPT_FIRST_HIT_AND_END_SEARCH : RAY_FLAG_NONE, 1u, ray);
     while (query.Proceed()) {
-        if (query.CandidateType() != CANDIDATE_NON_OPAQUE_TRIANGLE) continue;
+        if (query.CandidateType() != CANDIDATE_NON_OPAQUE_TRIANGLE) {
+            continue;
+        }
         uint instanceId = query.CandidateInstanceID();
         TestGeometry geometry = geometries[instanceId];
         float2 candidateUv = RayLoadUv(geometry.vertexSrv, geometry.stride, geometry.firstVertex,

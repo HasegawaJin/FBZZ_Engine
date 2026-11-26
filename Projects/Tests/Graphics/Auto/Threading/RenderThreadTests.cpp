@@ -269,7 +269,9 @@ thread_local PostSubmitRecordWaitPumpState* s_postSubmitRecordWaitPumpState = nu
 void ReentrantSyncWaitPump()
 {
     auto* state = s_reentrantWaitPumpState;
-    if (!state || state->invoked) return;
+    if (!state || state->invoked) {
+        return;
+    }
     state->invoked = true;
     *state->resumed = true;
     state->resume->release();
@@ -279,7 +281,9 @@ void ReentrantSyncWaitPump()
 void PostSubmitRecordWaitPump()
 {
     auto* state = s_postSubmitRecordWaitPumpState;
-    if (!state || state->invoked) return;
+    if (!state || state->invoked) {
+        return;
+    }
     state->invoked = true;
     int value = 47;
     state->resources->Update(state->constantBuffer, &value, sizeof(value));
@@ -336,7 +340,9 @@ public:
     void NotifyGpuWrite() override { if (m_result.bufferTracksWrites) ++m_version; }
     bool CopyData(size_t offset, size_t bytes, void* out) const override
     {
-        if (!out || offset > m_data.size() || bytes > m_data.size() - offset) return false;
+        if (!out || offset > m_data.size() || bytes > m_data.size() - offset) {
+            return false;
+        }
         std::memcpy(out, m_data.data() + offset, bytes);
         return true;
     }
@@ -574,7 +580,9 @@ public:
     void ImGuiRenderDrawData() override {}
     void ImGuiPrepareTextures(ImDrawData& data) override
     {
-        if (!data.Textures) return;
+        if (!data.Textures) {
+            return;
+        }
         for (auto* texture : *data.Textures) {
             texture->SetTexID(1);
             texture->SetStatus(ImTextureStatus_OK);
@@ -592,7 +600,9 @@ private:
     static void Capture(const ImDrawData& data)
     {
         auto& result = *static_cast<RhiResult*>(ImGui::GetIO().BackendRendererUserData);
-        if (data.CmdLists.empty() || data.CmdLists[0]->VtxBuffer.empty()) return;
+        if (data.CmdLists.empty() || data.CmdLists[0]->VtxBuffer.empty()) {
+            return;
+        }
         const auto* vertices = data.CmdLists[0]->VtxBuffer.Data;
         result.gui.push_back({data.OwnerViewport->ID, vertices[0].col, vertices, std::this_thread::get_id(),
             data.OwnerViewport->PlatformUserData, data.OwnerViewport->RendererUserData});
@@ -774,7 +784,9 @@ public:
         : m_probe(probe), m_count(count), m_stride(stride) { if (data) Update(data, static_cast<size_t>(count) * stride); }
     void Update(const void* data, size_t bytes) override
     {
-        if (!data || bytes < sizeof(float)) return;
+        if (!data || bytes < sizeof(float)) {
+            return;
+        }
         if (m_stride == sizeof(renderer::SkinnedVertex)) std::memcpy(&m_probe.sourceValue, data, sizeof(float));
         if (m_stride == sizeof(math::Matrix4)) std::memcpy(&m_probe.paletteValue, data, sizeof(float));
     }
@@ -828,7 +840,9 @@ public:
             return accepted;
         }
         ++m_probe.attempts;
-        if (m_probe.rejectAll || (m_probe.rejectGroup && !call.indirectWriteVertexBuffers.empty())) return false;
+        if (m_probe.rejectAll || (m_probe.rejectGroup && !call.indirectWriteVertexBuffers.empty())) {
+            return false;
+        }
         if (auto* output = resources.Get(call.uavVertexBuffer)) output->NotifyGpuWrite();
         for (auto handle : call.indirectWriteVertexBuffers) if (auto* output = resources.Get(handle)) output->NotifyGpuWrite();
         return true;
@@ -1327,7 +1341,7 @@ TEST_F(ThreadedRhiTest, GuiSnapshotsBorrowBackendDataWithoutOwningNativeViewport
     m_bundle.imguiRenderer->ImGuiShutdown();
     EXPECT_EQ(viewport->PlatformUserData, &platformToken);
     EXPECT_EQ(viewport->RendererUserData, &rendererToken);
-    /// @note This fake backend owns the original tokens and releases them before context destruction.
+    // This fake backend owns the original tokens and releases them before context destruction.
     viewport->PlatformUserData = nullptr;
     viewport->RendererUserData = nullptr;
 }
@@ -1340,7 +1354,7 @@ TEST_F(ThreadedRhiTest, AdditionalViewportOwnsItsInputAndDoesNotWaitDuringStable
     m_bundle.renderer->BeginCpuFrame(1);
     m_bundle.renderer->BeginFrame();
     GuiFrame(IM_COL32(255, 0, 0, 255));
-    /// @note 初回 atlas の同期準備を済ませてから worker を止め、通常 viewport フレームの並行実行を検証する。
+    // 初回 atlas の同期準備を済ませてから worker を止め、通常 viewport フレームの並行実行を検証する。
     Draw(31);
     auto* source = ImGui::GetDrawData();
     ImGuiViewport extra = *ImGui::GetMainViewport();
@@ -1460,7 +1474,9 @@ TEST_F(ThreadedRhiTest, CoalescesQueuedCommandsWithSyncAndPreservesReceiptOrder)
     uint32_t acceptanceCount = 0;
     uint32_t completionCount = 0;
     for (const auto& sample : snapshot.samples) {
-        if (sample.parentSampleId != packetSampleId) continue;
+        if (sample.parentSampleId != packetSampleId) {
+            continue;
+        }
         if (sample.sampleKey == acceptanceKey) ++acceptanceCount;
         if (sample.sampleKey == completionKey) ++completionCount;
     }
@@ -2175,7 +2191,9 @@ renderer::RenderThread::SubmissionReservation ReserveIdleSubmission(renderer::Re
 {
     for (uint32_t attempt = 0; attempt < 65536; ++attempt) {
         auto reservation = thread.TryReserveSubmission(serial);
-        if (reservation.IsValid()) return reservation;
+        if (reservation.IsValid()) {
+            return reservation;
+        }
         std::this_thread::yield();
     }
     return {};
@@ -2186,7 +2204,9 @@ renderer::RenderThread::SubmissionReservation ReserveIdleSubmission(renderer::Re
 bool SubmitIdleResourceUpdates(renderer::IRenderer& renderer)
 {
     for (uint32_t attempt = 0; attempt < 65536; ++attempt) {
-        if (renderer::TrySubmitPendingResourceUpdates(renderer)) return true;
+        if (renderer::TrySubmitPendingResourceUpdates(renderer)) {
+            return true;
+        }
         std::this_thread::yield();
     }
     return false;
@@ -2415,11 +2435,15 @@ thread_local EarlySubmitPumpState* s_earlySubmitPump = nullptr;
 void EarlySubmitWaitPump()
 {
     auto* state = s_earlySubmitPump;
-    if (!state || state->invoked) return;
+    if (!state || state->invoked) {
+        return;
+    }
     state->invoked = true;
     *state->resumed = true;
     state->resume->release();
-    if (!state->append) return;
+    if (!state->append) {
+        return;
+    }
     state->renderer->WaitForCpuFrame();
     const int value = 59;
     state->resources->Update(state->constants, &value, sizeof(value));
@@ -2712,7 +2736,9 @@ public:
         : m_result(result), m_state(std::move(state)) {}
     void Update(const void* data, size_t size) override
     {
-        if (!data || size > m_state->bytes.size()) return;
+        if (!data || size > m_state->bytes.size()) {
+            return;
+        }
         std::memcpy(m_state->bytes.data(), data, size);
         std::fill(m_state->bytes.begin() + size, m_state->bytes.end(), 0u);
         m_result.updates.push_back({m_state->owner, data, m_state->bytes});
@@ -2869,7 +2895,7 @@ TEST_F(MaterialTransferPayloadTest, SharesImmutableFinalPayloadWhileKeepingOwner
     ASSERT_EQ(m_result.updates.size(), 2u);
     ASSERT_EQ(m_result.draws.size(), 2u);
     EXPECT_NE(m_result.updates[0].owner, m_result.updates[1].owner);
-    /// @note Both queued closures still own their input when execution observes these addresses.
+    // Both queued closures still own their input when execution observes these addresses.
     EXPECT_EQ(m_result.updates[0].source, m_result.updates[1].source);
     for (size_t i = 0; i < 2; ++i) {
         EXPECT_EQ(m_result.updates[i].bytes, expected);
@@ -3135,7 +3161,7 @@ TEST_F(MaterialTransferPayloadTest, ScopeNeverLendsEligibilityToOtherManagerOrRe
     EXPECT_EQ(customResult.updates[1].bytes[0], 99u);
     EXPECT_EQ(customResult.updates[0].source, customMaterial.paramData.data());
     EXPECT_EQ(customResult.updates[1].source, customMaterial.paramData.data());
-    /// @note These three managers share Active() only as a legacy destructor fallback; release through each real owner.
+    // These three managers share Active() only as a legacy destructor fallback; release through each real owner.
     m_resources->Release(mainMaterial.paramsBuffer);
     foreign.Release(foreignMaterial.paramsBuffer);
     customResources.Release(customMaterial.paramsBuffer);
@@ -3151,7 +3177,9 @@ TEST_F(MaterialTransferPayloadTest, ScopeNeverLendsEligibilityToOtherManagerOrRe
 bool ProbeStoppedIdleThread(renderer::RenderThread& thread)
 {
     for (uint32_t attempt = 0; attempt < 65536; ++attempt) {
-        if (thread.TryIsIdle()) return true;
+        if (thread.TryIsIdle()) {
+            return true;
+        }
         std::this_thread::yield();
     }
     return false;
@@ -3169,7 +3197,9 @@ public:
         : m_thread(thread), m_state(std::move(state)) {}
     ~IdleProbeLifetimeFrame() override
     {
-        if (!m_executed) return;
+        if (!m_executed) {
+            return;
+        }
         m_state->destructionEntered.release();
         m_state->destructionResume.acquire();
         m_state->destroyed.store(true);
@@ -3273,7 +3303,9 @@ public:
     explicit IdleWaitCommandOwner(std::shared_ptr<IdleWaitCommandLifetimeState> state) : m_state(std::move(state)) {}
     ~IdleWaitCommandOwner()
     {
-        if (!m_state->armed.load()) return;
+        if (!m_state->armed.load()) {
+            return;
+        }
         m_state->destructionEntered.release();
         m_state->resume.acquire();
         m_state->destroyed.store(true);
@@ -3292,7 +3324,9 @@ thread_local IdleWaitDestructionPumpState* s_idleWaitDestructionPump = nullptr;
 void IdleWaitDestructionPump()
 {
     auto* state = s_idleWaitDestructionPump;
-    if (!state || state->invoked) return;
+    if (!state || state->invoked) {
+        return;
+    }
     state->invoked = true;
     state->resume->release();
 }

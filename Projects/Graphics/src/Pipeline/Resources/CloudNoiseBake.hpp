@@ -45,15 +45,19 @@ inline float Worley(float px, float py, float pz, int cells)
     int bx = (int)std::floor(px), by = (int)std::floor(py), bz = (int)std::floor(pz);
     float fx = px - bx, fy = py - by, fz = pz - bz;
     float minD = 1e9f;
-    for (int dz = -1; dz <= 1; ++dz)
-    for (int dy = -1; dy <= 1; ++dy)
-    for (int dx = -1; dx <= 1; ++dx)
-    {
-        float ox, oy, oz;
-        HashPoint(bx + dx, by + dy, bz + dz, cells, ox, oy, oz);
-        float rx = dx + ox - fx, ry = dy + oy - fy, rz = dz + oz - fz;
-        float d = rx * rx + ry * ry + rz * rz;
-        if (d < minD) minD = d;
+    for (int dz = -1; dz <= 1; ++dz) {
+        for (int dy = -1; dy <= 1; ++dy) {
+            for (int dx = -1; dx <= 1; ++dx)
+            {
+                float ox, oy, oz;
+                HashPoint(bx + dx, by + dy, bz + dz, cells, ox, oy, oz);
+                float rx = dx + ox - fx, ry = dy + oy - fy, rz = dz + oz - fz;
+                float d = rx * rx + ry * ry + rz * rz;
+                if (d < minD) {
+                    minD = d;
+                }
+            }
+        }
     }
     return 1.0f - (std::min)(std::sqrt(minD), 1.0f);
 }
@@ -112,10 +116,14 @@ inline void ParallelZ(int depth, Fn&& fn)
     int per = (depth + (int)n - 1) / (int)n;
     for (unsigned t = 0; t < n; ++t) {
         int z0 = (int)t * per, z1 = (std::min)(depth, z0 + per);
-        if (z0 >= z1) break;
+        if (z0 >= z1) {
+            break;
+        }
         pool.emplace_back([z0, z1, &fn]{ for (int z = z0; z < z1; ++z) fn(z); });
     }
-    for (auto& th : pool) th.join();
+    for (auto& th : pool) {
+        th.join();
+    }
 }
 
 /// @note Shape ボリューム: R=Perlin-Worley, G/B/A=Worley FBM 帯。
@@ -123,22 +131,23 @@ inline std::vector<uint8_t> BakeShape(int size)
 {
     std::vector<uint8_t> data((size_t)size * size * size * 4u);
     ParallelZ(size, [&](int z) {
-        for (int y = 0; y < size; ++y)
-        for (int x = 0; x < size; ++x)
-        {
-            float u = (x + 0.5f) / size, v = (y + 0.5f) / size, w = (z + 0.5f) / size;
-            float perlin = PerlinFbm(u, v, w, 4, 3);
-            float wlow   = WorleyFbm(u, v, w, 4, 3);
-            /// @note Perlin-Worley: perlin を worley でリマップして雲塊らしい連結感を出す。
-            float pw = std::clamp(Remap(perlin, wlow - 1.0f, 1.0f, 0.0f, 1.0f), 0.0f, 1.0f);
-            float g = WorleyFbm(u, v, w, 8,  3);
-            float b = WorleyFbm(u, v, w, 14, 3);
-            float a = WorleyFbm(u, v, w, 22, 2);
-            size_t idx = ((size_t)z * size * size + (size_t)y * size + x) * 4u;
-            data[idx + 0] = (uint8_t)(std::clamp(pw, 0.0f, 1.0f) * 255.0f);
-            data[idx + 1] = (uint8_t)(std::clamp(g,  0.0f, 1.0f) * 255.0f);
-            data[idx + 2] = (uint8_t)(std::clamp(b,  0.0f, 1.0f) * 255.0f);
-            data[idx + 3] = (uint8_t)(std::clamp(a,  0.0f, 1.0f) * 255.0f);
+        for (int y = 0; y < size; ++y) {
+            for (int x = 0; x < size; ++x)
+            {
+                float u = (x + 0.5f) / size, v = (y + 0.5f) / size, w = (z + 0.5f) / size;
+                float perlin = PerlinFbm(u, v, w, 4, 3);
+                float wlow   = WorleyFbm(u, v, w, 4, 3);
+                // Perlin-Worley: perlin を worley でリマップして雲塊らしい連結感を出す。
+                float pw = std::clamp(Remap(perlin, wlow - 1.0f, 1.0f, 0.0f, 1.0f), 0.0f, 1.0f);
+                float g = WorleyFbm(u, v, w, 8,  3);
+                float b = WorleyFbm(u, v, w, 14, 3);
+                float a = WorleyFbm(u, v, w, 22, 2);
+                size_t idx = ((size_t)z * size * size + (size_t)y * size + x) * 4u;
+                data[idx + 0] = (uint8_t)(std::clamp(pw, 0.0f, 1.0f) * 255.0f);
+                data[idx + 1] = (uint8_t)(std::clamp(g,  0.0f, 1.0f) * 255.0f);
+                data[idx + 2] = (uint8_t)(std::clamp(b,  0.0f, 1.0f) * 255.0f);
+                data[idx + 3] = (uint8_t)(std::clamp(a,  0.0f, 1.0f) * 255.0f);
+            }
         }
     });
     return data;
@@ -149,18 +158,19 @@ inline std::vector<uint8_t> BakeDetail(int size)
 {
     std::vector<uint8_t> data((size_t)size * size * size * 4u);
     ParallelZ(size, [&](int z) {
-        for (int y = 0; y < size; ++y)
-        for (int x = 0; x < size; ++x)
-        {
-            float u = (x + 0.5f) / size, v = (y + 0.5f) / size, w = (z + 0.5f) / size;
-            float r = WorleyFbm(u, v, w, 4,  3);
-            float g = WorleyFbm(u, v, w, 8,  3);
-            float b = WorleyFbm(u, v, w, 16, 2);
-            size_t idx = ((size_t)z * size * size + (size_t)y * size + x) * 4u;
-            data[idx + 0] = (uint8_t)(std::clamp(r, 0.0f, 1.0f) * 255.0f);
-            data[idx + 1] = (uint8_t)(std::clamp(g, 0.0f, 1.0f) * 255.0f);
-            data[idx + 2] = (uint8_t)(std::clamp(b, 0.0f, 1.0f) * 255.0f);
-            data[idx + 3] = 255;
+        for (int y = 0; y < size; ++y) {
+            for (int x = 0; x < size; ++x)
+            {
+                float u = (x + 0.5f) / size, v = (y + 0.5f) / size, w = (z + 0.5f) / size;
+                float r = WorleyFbm(u, v, w, 4,  3);
+                float g = WorleyFbm(u, v, w, 8,  3);
+                float b = WorleyFbm(u, v, w, 16, 2);
+                size_t idx = ((size_t)z * size * size + (size_t)y * size + x) * 4u;
+                data[idx + 0] = (uint8_t)(std::clamp(r, 0.0f, 1.0f) * 255.0f);
+                data[idx + 1] = (uint8_t)(std::clamp(g, 0.0f, 1.0f) * 255.0f);
+                data[idx + 2] = (uint8_t)(std::clamp(b, 0.0f, 1.0f) * 255.0f);
+                data[idx + 3] = 255;
+            }
         }
     });
     return data;

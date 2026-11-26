@@ -31,7 +31,9 @@ std::string EnvironmentValue(const char* name)
 {
     char* value = nullptr;
     size_t length = 0;
-    if (_dupenv_s(&value, &length, name) != 0 || !value) return {};
+    if (_dupenv_s(&value, &length, name) != 0 || !value) {
+        return {};
+    }
     const std::string result(value);
     std::free(value);
     return result;
@@ -42,14 +44,24 @@ const Configuration& Config()
     static const Configuration config = [] {
         Configuration value;
         const auto mode = EnvironmentValue("FBZZ_MESH_SPATIAL_MODE");
-        if (mode == "bvh" || mode == "validate") value.options.mode = QueryMode::BVH;
-        else if (mode == "auto") value.options.mode = QueryMode::AUTO;
+        if (mode == "bvh" || mode == "validate") {
+            value.options.mode = QueryMode::BVH;
+        }
+        else if (mode == "auto") {
+            value.options.mode = QueryMode::AUTO;
+        }
         value.validate = mode == "validate";
         value.options.minimumTreeItems = 64;
         const auto dense = EnvironmentValue("FBZZ_MESH_SPATIAL_DENSE_UPDATE");
-        if (dense == "refit") value.options.denseUpdate = DenseUpdate::REFIT;
-        else if (dense == "linear") value.options.denseUpdate = DenseUpdate::LINEAR;
-        if (EnvironmentValue("FBZZ_MESH_SPATIAL_UPDATE_MODE") == "stable") value.options.updateMode = UpdateMode::STABLE;
+        if (dense == "refit") {
+            value.options.denseUpdate = DenseUpdate::REFIT;
+        }
+        else if (dense == "linear") {
+            value.options.denseUpdate = DenseUpdate::LINEAR;
+        }
+        if (EnvironmentValue("FBZZ_MESH_SPATIAL_UPDATE_MODE") == "stable") {
+            value.options.updateMode = UpdateMode::STABLE;
+        }
         std::fprintf(stderr, "SPATIAL_UPDATE_CONFIG mode=%s\n", value.options.updateMode == UpdateMode::STABLE ? "stable" : "legacy");
         value.tracePath = EnvironmentValue("FBZZ_MESH_SPATIAL_TRACE");
         return value;
@@ -93,7 +105,9 @@ static_assert(std::is_trivially_copyable_v<SpatialTraceRow>);
 
 const char* ModeName(QueryMode mode, bool validate)
 {
-    if (validate) return "validate";
+    if (validate) {
+        return "validate";
+    }
     return mode == QueryMode::BVH ? "bvh" : (mode == QueryMode::AUTO ? "auto" : "linear");
 }
 const char* DenseName(DenseUpdate mode)
@@ -119,8 +133,12 @@ public:
     {
         std::lock_guard lock(m_mutex);
         row.ordinal = m_seen++;
-        if (m_rows.size() < MAX_ROWS) m_rows.push_back(row);
-        else ++m_dropped;
+        if (m_rows.size() < MAX_ROWS) {
+            m_rows.push_back(row);
+        }
+        else {
+            ++m_dropped;
+        }
     }
 
     /// @see https://learn.microsoft.com/en-us/cpp/c-runtime-library/reference/sopen-s-wsopen-s _sopen_s の排他的な出力ファイル作成。
@@ -156,7 +174,9 @@ public:
             m_rows.size(), static_cast<unsigned long long>(m_dropped), static_cast<unsigned long long>(m_seen));
         const bool failed = std::ferror(output) != 0;
         const int closed = std::fclose(output);
-        if (failed || closed != 0) std::fprintf(stderr, "MeshSpatialTrace: output write failed\n");
+        if (failed || closed != 0) {
+            std::fprintf(stderr, "MeshSpatialTrace: output write failed\n");
+        }
     }
 
 private:
@@ -178,7 +198,9 @@ SpatialTraceCapture& TraceCapture()
 
 void RecordTrace(const RenderPassContext& context, int cascades, const CandidateBatch& batch)
 {
-    if (Config().tracePath.empty()) return;
+    if (Config().tracePath.empty()) {
+        return;
+    }
     SpatialTraceRow row;
 #define FBZZ_SPATIAL_TRACE_CAPTURE(name, expression) row.name = static_cast<uint64_t>(expression);
     FBZZ_SPATIAL_TRACE_COLUMNS(FBZZ_SPATIAL_TRACE_CAPTURE)
@@ -191,7 +213,9 @@ void RecordTrace(const RenderPassContext& context, int cascades, const Candidate
 bool MeshSpatialQueriesEnabled()
 {
     const auto& config = Config();
-    if (!config.tracePath.empty()) (void)TraceCapture();
+    if (!config.tracePath.empty()) {
+        (void)TraceCapture();
+    }
     return config.options.mode != QueryMode::LINEAR;
 }
 
@@ -199,15 +223,21 @@ CandidateBatch CollectShadowCandidates(const RenderPassContext& context, uint32_
 {
     CandidateBatch batch;
     batch.snapshot = context.renderScene;
-    if (!MeshSpatialQueriesEnabled() || !batch.snapshot) return batch;
+    if (!MeshSpatialQueriesEnabled() || !batch.snapshot) {
+        return batch;
+    }
     FBZZ_PROFILE_SCOPE("RenderMeshSpatial::ShadowCandidates");
     std::array<const math::Frustum*, kMaxShadowCascades + kMaxPunctualShadows> volumes{};
     size_t count = 0;
-    for (int cascade = 0; cascade < kMaxShadowCascades; ++cascade)
-        if ((updateMask & (1u << cascade)) != 0) volumes[count++] = &context.shadowCascades[cascade].frustum;
+    for (int cascade = 0; cascade < kMaxShadowCascades; ++cascade) {
+        if ((updateMask & (1u << cascade)) != 0) {
+            volumes[count++] = &context.shadowCascades[cascade].frustum;
+        }
+    }
     const int directionalCount = static_cast<int>(count);
-    for (int view = 0; view < std::clamp(context.punctualShadowViewCount, 0, kMaxPunctualShadows); ++view)
+    for (int view = 0; view < std::clamp(context.punctualShadowViewCount, 0, kMaxPunctualShadows); ++view) {
         volumes[count++] = &context.punctualShadowViews[view].frustum;
+    }
     static thread_local RenderSceneSpatialCache cache;
     const auto ticket = DebugPublication().Begin(batch.snapshot->sceneGeneration, context.outputRT.id, context.outputRT.gen);
     std::shared_ptr<RenderBvhDebugSnapshot> debug;
@@ -221,10 +251,13 @@ CandidateBatch CollectShadowCandidates(const RenderPassContext& context, uint32_
     batch = cache.Collect(batch.snapshot, context.cullingBoundsPadding,
         std::span<const math::Frustum* const>(volumes.data(), count), Config().options, Config().validate,
         debug ? &ticket.request : nullptr, debug.get());
-    if (batch.validationMismatch)
+    if (batch.validationMismatch) {
         FBZZ_LOG_ERROR("RenderMeshSpatial BVH union differs from current linear bounds; using full shadow candidate scan");
+    }
     RecordTrace(context, directionalCount, batch);
-    if (debug) DebugPublication().Publish(ticket, std::move(debug));
+    if (debug) {
+        DebugPublication().Publish(ticket, std::move(debug));
+    }
     return batch;
 }
 
@@ -235,9 +268,13 @@ namespace fbzz::renderer {
 void RenderBvhDebug::SetRequest(const RenderBvhDebugRequest& request)
 {
     auto& publication = spatial_detail::DebugPublication();
-    if (!publication.SetRequest(request)) return;
+    if (!publication.SetRequest(request)) {
+        return;
+    }
     const auto ticket = publication.Begin(request.sceneGeneration, request.viewOutputId, request.viewOutputGeneration);
-    if (ticket.revision == 0) return;
+    if (ticket.revision == 0) {
+        return;
+    }
     auto snapshot = std::make_shared<RenderBvhDebugSnapshot>();
     snapshot->requestRevision = ticket.revision;
     snapshot->sceneGeneration = ticket.request.sceneGeneration;

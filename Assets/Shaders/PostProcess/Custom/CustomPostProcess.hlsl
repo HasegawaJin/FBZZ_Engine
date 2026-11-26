@@ -1,6 +1,7 @@
-// FBZZ Engine
-// PostProcess/Custom/CustomPostProcess.hlsl | PostProcess
-// Default user-editable full-screen post-process shader
+/// @file    CustomPostProcess.hlsl
+/// @brief   ユーザーが編集できる全画面ポストプロセス。
+/// @author  Hasegawa Jin
+/// @date    2026-05-28
 
 #include "Common/Constants.hlsli"
 #include "Common/Fullscreen.hlsli"
@@ -8,8 +9,8 @@
 #include "Common/Color.hlsli"
 #include "Common/BindlessIndices.hlsli"
 
-FBZZ_TEX2D(texInput, TEX_GBUFFER0_SLOT);
-// 全画面フェッチなので clamp 必須 (s0 は DX12 では WRAP)。
+FBZZ_TEX2D(texInput, SRV_POST_COLOR_SLOT);
+/// @note 全画面フェッチなので clamp 必須 (s0 は DX12 では WRAP)。
 SamplerState sampLinear : register(SAMPLER_LINEAR_CLAMP);
 
 FBZZFullscreenVertex VSMain(uint id : SV_VertexID)

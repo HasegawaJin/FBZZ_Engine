@@ -3,6 +3,7 @@
 /// @author  Hasegawa Jin
 /// @date    2026-09-21
 #pragma once
+#include <Graphics/Renderer/Commands/ShaderBindingSlots.hpp>
 #include <Graphics/Api.hpp>
 #include <Graphics/Pipeline/Passes/IRenderPass.hpp>
 #include <Graphics/Pipeline/Passes/RenderPassContext.hpp>
@@ -24,7 +25,7 @@ FBZZ_GRAPHICS_API void RasterTerrainOccluders(RenderPassContext& ctx);
 /// @return false after a publication, camera, culling policy, pass override or resource epoch changes; CPU queries and GPU uploads must both fail open.
 [[nodiscard]] FBZZ_GRAPHICS_API bool IsViewOcclusionCurrent(const RenderPassContext& ctx);
 [[nodiscard]] FBZZ_GRAPHICS_API bool IsViewOccluded(const RenderPassContext& ctx, const math::Vector3& center, float radius);
-/// @param worldMargin ワールド空間の変形余白 [m]。ローカル AABB へ二重に加えない。
+/// @param[in] worldMargin ワールド空間の変形余白 [m]。ローカル AABB へ二重に加えない。
 [[nodiscard]] FBZZ_GRAPHICS_API bool IsViewAabbOccluded(const RenderPassContext& ctx, const math::Matrix4& world,
     const math::Vector3& low, const math::Vector3& high, float worldMargin = 0);
 FBZZ_GRAPHICS_API void ExecuteShadowPass(RenderPassContext& ctx);
@@ -56,8 +57,8 @@ public:
 inline void ClearForCamera(renderer::IRenderer& renderer, const renderer::Camera& camera)
 {
     if (camera.m_clearMode == renderer::CameraClearMode::DepthOnly) {
-        /// @note カラーは前に描かれたものを残し、深度だけリセットする。
-        /// @note IRenderer::Clear は色と深度を両方消すため、ここでは使えない。
+        // カラーは前に描かれたものを残し、深度だけリセットする。
+        // IRenderer::Clear は色と深度を両方消すため、ここでは使えない。
         renderer.ClearDepth();
         return;
     }
@@ -78,51 +79,57 @@ inline void BindForwardShadingResources(renderer::DrawCall& drawCall, const Rend
         ? ctx.resources.GetColorTexture(*ctx.handles.waterMediumAtlasRT, 0)
         : renderer::ResourceHandle<renderer::TextureTag>{};
     if (ctx.waterMediumPassActive && ctx.handles.waterMediumTable.IsValid() && mediumAtlas.IsValid()) {
-        drawCall.auxiliaryPsBuffers[0] = ctx.handles.waterMediumTable;
-        drawCall.textures[15] = mediumAtlas;
+        drawCall.auxiliaryPsBuffers[AuxiliaryPixelBufferIndex(srv::WATER_MEDIUM_TABLE)] = ctx.handles.waterMediumTable;
+        drawCall.textures[srv::WATER_MEDIUM_ATLAS] = mediumAtlas;
     } else {
-        drawCall.auxiliaryPsBuffers[0] = {};
-        drawCall.textures[15] = {};
+        drawCall.auxiliaryPsBuffers[AuxiliaryPixelBufferIndex(srv::WATER_MEDIUM_TABLE)] = {};
+        drawCall.textures[srv::WATER_MEDIUM_ATLAS] = {};
     }
 
-    /// @note t23 / t24: 画面空間 AO と接触影。Deferred は DeferredLighting が全画面でまとめて適用できるが Forward には合流点が無いため、各マテリアルが自分の画素で引く。
-    /// @note Deferred の中の Forward 描画 (半透明・エフェクト・スキンド) は DeferredLighting を通らないためここでも同じ遮蔽が要る。DeferredLighting 本体は自前で t9/t24 を宣言し共有ヘッダーをコンパイル時に外しているため二重適用にはならない。
-    if (ctx.screenAoTexture.IsValid())
-        drawCall.textures[23] = ctx.screenAoTexture;
-    if (ctx.screenContactShadowTexture.IsValid())
-        drawCall.textures[24] = ctx.screenContactShadowTexture;
-    /// @note t22 / t21: Light Probe Volume の SH (内側 / 外側)。引くかどうかは b8 の probeVolumes[i].intensity が決める。
-    if (ctx.handles.lightProbeSH[0].IsValid())
-        drawCall.textures[22] = ctx.handles.lightProbeSH[0];
-    if (ctx.handles.lightProbeSH[1].IsValid())
-        drawCall.textures[21] = ctx.handles.lightProbeSH[1];
+    // t23 / t24: 画面空間 AO と接触影。Deferred は DeferredLighting が全画面でまとめて適用できるが Forward には合流点が無いため、各マテリアルが自分の画素で引く。
+    // Deferred の中の Forward 描画 (半透明・エフェクト・スキンド) は DeferredLighting を通らないためここでも同じ遮蔽が要る。DeferredLighting 本体は自前で t9/t24 を宣言し共有ヘッダーをコンパイル時に外しているため二重適用にはならない。
+    if (ctx.screenAoTexture.IsValid()) {
+        drawCall.textures[srv::SCREEN_AO] = ctx.screenAoTexture;
+    }
+    if (ctx.screenContactShadowTexture.IsValid()) {
+        drawCall.textures[srv::CONTACT_SHADOW] = ctx.screenContactShadowTexture;
+    }
+    // t22 / t21: Light Probe Volume の SH (内側 / 外側)。引くかどうかは b8 の probeVolumes[i].intensity が決める。
+    if (ctx.handles.lightProbeSH[0].IsValid()) {
+        drawCall.textures[srv::LIGHT_PROBE_SH] = ctx.handles.lightProbeSH[0];
+    }
+    if (ctx.handles.lightProbeSH[1].IsValid()) {
+        drawCall.textures[srv::LIGHT_PROBE_SH_OUTER] = ctx.handles.lightProbeSH[1];
+    }
     drawCall.indirectReadTextures = { ctx.handles.lightProbeVisibility[0], ctx.handles.lightProbeVisibility[1] };
 
     if (ctx.handles.punctualShadowCB.IsValid()) {
-        /// @note b12
-        drawCall.constantBuffers[12] = ctx.handles.punctualShadowCB;
-        drawCall.textures[28] =
-            /// @note t28
+        // b12
+        drawCall.constantBuffers[cb::PUNCTUAL_SHADOW] = ctx.handles.punctualShadowCB;
+        drawCall.textures[srv::PUNCTUAL_SHADOW] =
+            // t28
             ctx.resources.GetDepthTexture(ctx.Res().Target("PunctualShadowMap"));
-        drawCall.textures[31] =
-            /// @note t31
+        drawCall.textures[srv::LIGHT_COOKIE] =
+            // t31
             ctx.resources.GetColorTexture(ctx.Res().Target("LightCookieAtlas"), 0);
     }
 
-    if (ctx.clusterLightMode == ClusterLightMode::Legacy)
-        return;
-
-    if (forceLinearLights) {
-        drawCall.constantBuffers[9] = ctx.handles.clusterLinearCB;
-        drawCall.psBuffers[0]       = ctx.handles.punctualLightBuffer;
-        /// @note t30 は束縛しない。Linear では読まれない
+    if (ctx.clusterLightMode == ClusterLightMode::Legacy) {
         return;
     }
 
-    drawCall.constantBuffers[9] = ctx.handles.clusterCB;
-    drawCall.psBuffers[0]       = ctx.handles.punctualLightBuffer;
-    if (UsesClusterLightIndices(ctx.clusterLightMode))
-        drawCall.psBuffers[1]   = ctx.handles.clusterIndexBuffer;
+    if (forceLinearLights) {
+        drawCall.constantBuffers[cb::CLUSTER] = ctx.handles.clusterLinearCB;
+        drawCall.psBuffers[PixelBufferIndex(srv::PUNCTUAL_LIGHTS)]       = ctx.handles.punctualLightBuffer;
+        // t30 は束縛しない。Linear では読まれない
+        return;
+    }
+
+    drawCall.constantBuffers[cb::CLUSTER] = ctx.handles.clusterCB;
+    drawCall.psBuffers[PixelBufferIndex(srv::PUNCTUAL_LIGHTS)]       = ctx.handles.punctualLightBuffer;
+    if (UsesClusterLightIndices(ctx.clusterLightMode)) {
+        drawCall.psBuffers[PixelBufferIndex(srv::CLUSTER_INDICES)]   = ctx.handles.clusterIndexBuffer;
+    }
 }
 
 /// @note パーティクル最大描画数。RenderSystem の VB/IB 確保と ParticlePass で共有する。
@@ -149,7 +156,7 @@ inline constexpr std::uint32_t kParticleSortBlock = 256u;
     const math::Vector3& direction, const math::Vector3& cameraPos, const math::Vector3& point);
 
 /// @note ポリラインの各点に「帯の幅方向」を割り当てる。隣り合う線分の法線を平均 (マイター) する。
-/// @param normalOf (正規化済み進行方向, 点) -> 幅方向。Trail ノードは alignment で、
+/// @param[in] normalOf (正規化済み進行方向, 点) -> 幅方向。Trail ノードは alignment で、
 /// @note 粒子リボンはカメラ正対で決めるため、そこだけを呼び出し側に委ねる
 /// @note 長さ 0 の線分は寄与しない。前後とも 0 なら RIGHT を残す
 template<class NormalFn>
@@ -180,7 +187,7 @@ void BuildRibbonMiterNormals(const std::vector<math::Vector3>& points,
         if (hasLeft && hasRight) {
             math::Vector3 miter = left + right;
             miter = miter.LengthSq() > math::EPSILON * math::EPSILON ? miter.Normalized() : right;
-            /// @note 鋭角では 1/cos が発散して帯が破裂する。0.5 (=120度) で頭打ちにする。
+            // 鋭角では 1/cos が発散して帯が破裂する。0.5 (=120度) で頭打ちにする。
             const float cosHalfAngle = (std::max)(math::Vector3::Dot(miter, left), 0.5f);
             outNormals[i] = miter * (1.0f / cosHalfAngle);
         } else if (hasLeft || hasRight) {
@@ -224,9 +231,15 @@ private:
 
 inline void DeclareScreenSpaceOcclusionReads(PassBuilder& builder, const RenderPassContext& ctx)
 {
-    if (ctx.ssaoEnabled)                    builder.Read("SSAO");
-    if (ctx.settings.IsGtaoActive())        builder.Read("GTAOResult");
-    if (ctx.settings.contactShadow.enabled) builder.Read("ContactShadowResult");
+    if (ctx.ssaoEnabled) {
+        builder.Read("SSAO");
+    }
+    if (ctx.settings.IsGtaoActive()) {
+        builder.Read("GTAOResult");
+    }
+    if (ctx.settings.contactShadow.enabled) {
+        builder.Read("ContactShadowResult");
+    }
 }
 
 FBZZ_GRAPHICS_API renderer::ResourceHandle<renderer::PipelineStateTag> GetOrCreateMaterialPSO(
@@ -352,7 +365,9 @@ public:
     /// @note Deferred の旧 ID は保存済み passOverrides との互換性のため維持する。
     std::string_view Name() const override
     {
-        if (m_waterfalls) return "WaterfallSurfaces";
+        if (m_waterfalls) {
+            return "WaterfallSurfaces";
+        }
         return m_deferred ? "DeferredForwardTransparent" : "ForwardTransparent";
     }
     FBZZ_GRAPHICS_API void Setup(PassBuilder& builder, const RenderPassContext& ctx) const override;

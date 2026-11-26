@@ -366,7 +366,7 @@ TEST_F(GraphicsStandaloneTest, SkyCacheCloudConfigurationChangesCaptureWithoutWa
     size_t checkedCount = 0;
     for (size_t vectorIndex = 0; vectorIndex < vectorMembers.size(); ++vectorIndex) {
         for (size_t scalarIndex = 0; scalarIndex < scalarMembers.size(); ++scalarIndex) {
-            /// @note cloudNoise.z はシミュレーション時刻で、即時更新する編集パラメータではない。
+            // cloudNoise.z はシミュレーション時刻で、即時更新する編集パラメータではない。
             if (vectorMembers[vectorIndex] == &renderer::RenderCloudConstants::cloudNoise
                 && scalarMembers[scalarIndex] == &math::Vector4::z) continue;
             SCOPED_TRACE("cloud vector=" + std::to_string(vectorIndex)

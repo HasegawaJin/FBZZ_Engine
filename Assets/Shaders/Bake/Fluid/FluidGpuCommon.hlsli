@@ -42,7 +42,7 @@ struct FluidGpuCollider
 /// @note Fluid/FluidGpuStep.hpp の FluidGpuStepConstants と 1:1。
 /// @note ヘッダー 128 B (最後の行 112〜127 = gForceCount / gColliderCount / gCountPad)
 /// @note + gSources 96 B × 16 (128〜1663) + gForces 48 B × 8 (1664〜2047) + gColliders 64 B × 8 (2048〜2559) = 2560 B。
-cbuffer FluidStepConstants : register(b0)
+cbuffer FluidStepConstants : register(FBZZ_REGISTER(b, CB_FLUID_STEP_SLOT))
 {
     uint  gResolution;         float gCellSize;       float gDt;              float gTime;
     float gBuoyancy;           float gWeight;         float gVorticity;       float gTurbulence;
@@ -57,7 +57,7 @@ cbuffer FluidStepConstants : register(b0)
     FluidGpuCollider gColliders[8];
 };
 
-cbuffer FluidPassConstants : register(b1)
+cbuffer FluidPassConstants : register(FBZZ_REGISTER(b, CB_FLUID_PASS_SLOT))
 {
     float  gAdvectSign;  ///< @note 1 = 前進移流 / -1 = 後退移流 (MacCormack の往復)
     float3 gPassPad;

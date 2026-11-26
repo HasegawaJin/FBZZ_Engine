@@ -55,15 +55,15 @@ struct GpuGeometryIndexedArguments
 };
 
 #if BINDLESS_SUPPORTED
-FBZZ_SBUFFER_T(GpuGeometryCandidate, g_candidates, SB_SKIN_SRC_VERTICES_SLOT);
-FBZZ_SBUFFER_T(GpuGeometrySelectionView, g_view, SB_SKIN_BONES_SLOT);
-FBZZ_RWSBUFFER_T(GpuGeometryDecision, g_decisions, UAV_CLUSTER_LIGHTS_SLOT);
-FBZZ_RWSBUFFER_T(GpuGeometryIndexedArguments, g_indexedArguments, UAV_GPU_SORT_SLOT);
+FBZZ_SBUFFER_T(GpuGeometryCandidate, g_candidates, SRV_CULL_CANDIDATES_SLOT);
+FBZZ_SBUFFER_T(GpuGeometrySelectionView, g_view, SRV_CULL_VIEW_SLOT);
+FBZZ_RWSBUFFER_T(GpuGeometryDecision, g_decisions, UAV_CULL_VISIBLE_SLOT);
+FBZZ_RWSBUFFER_T(GpuGeometryIndexedArguments, g_indexedArguments, UAV_CULL_ARGUMENTS_SLOT);
 #else
-StructuredBuffer<GpuGeometryCandidate> g_candidates : register(t14);
-StructuredBuffer<GpuGeometrySelectionView> g_view : register(t15);
-RWStructuredBuffer<GpuGeometryDecision> g_decisions : register(u2);
-RWStructuredBuffer<GpuGeometryIndexedArguments> g_indexedArguments : register(u3);
+StructuredBuffer<GpuGeometryCandidate> g_candidates : register(FBZZ_REGISTER(t, SRV_CULL_CANDIDATES_SLOT));
+StructuredBuffer<GpuGeometrySelectionView> g_view : register(FBZZ_REGISTER(t, SRV_CULL_VIEW_SLOT));
+RWStructuredBuffer<GpuGeometryDecision> g_decisions : register(FBZZ_REGISTER(u, UAV_CULL_VISIBLE_SLOT));
+RWStructuredBuffer<GpuGeometryIndexedArguments> g_indexedArguments : register(FBZZ_REGISTER(u, UAV_CULL_ARGUMENTS_SLOT));
 #endif
 
 static const uint kGpuGeometryGroupSize = 64;

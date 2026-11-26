@@ -57,7 +57,7 @@ struct DecodedTextureRGBA8 {
 [[nodiscard]] FBZZ_GRAPHICS_API DecodedTextureRGBA8::Mip DownsampleRGBA8Box2x(const DecodedTextureRGBA8::Mip& source);
 
 /// @brief DDS / TGA / WIC 形式の画像を RGBA8 へ展開する。DDS のミップは全段、他は 0 段目のみ。
-/// @param dropTopLevels 上位から落とす段数。ミップ付きは段を捨て、1 段の画像は DownsampleRGBA8Box2x を n 回かける。
+/// @param[in] dropTopLevels 上位から落とす段数。ミップ付きは段を捨て、1 段の画像は DownsampleRGBA8Box2x を n 回かける。
 /// @return 読めない・変換できなければ false (理由は outError、null 可)。out の中身は未定義。
 /// @note スレッドセーフ。COM 未初期化のスレッドでは呼び出しの間だけ MTA で初期化する (WIC のため)。
 /// @note 元画像は索引を持たないので全体を読む。部分 I/O は TextureStreamCache (.fztc) が受け持つ。
@@ -69,4 +69,4 @@ struct DecodedTextureRGBA8 {
 /// @brief 全ミップの緑成分を反転する。元画像とキャッシュは変更しない。
 FBZZ_GRAPHICS_API void FlipTextureGreen(DecodedTextureRGBA8& texture);
 
-} /// @note namespace fbzz::renderer
+} // namespace fbzz::renderer

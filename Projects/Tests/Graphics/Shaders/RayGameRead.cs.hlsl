@@ -25,7 +25,9 @@ struct RayReconstructionHistoryRecord
 [numthreads(4, 1, 1)]
 void CSMain(uint3 pixel : SV_DispatchThreadID)
 {
-    if (pixel.x >= 4) return;
+    if (pixel.x >= 4) {
+        return;
+    }
     RWTexture2D<float4> output = ResourceDescriptorHeap[FbzzUavSlot(0)];
     if (mode == 0) {
         StructuredBuffer<RayReconstructionHistoryRecord> history = ResourceDescriptorHeap[FbzzPixelSlot(14)];

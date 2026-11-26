@@ -44,4 +44,4 @@ inline RendererBackend BackendFromString(std::string_view text)
     return RendererBackend::DX12;
 }
 
-} /// @note namespace fbzz::renderer
+} // namespace fbzz::renderer

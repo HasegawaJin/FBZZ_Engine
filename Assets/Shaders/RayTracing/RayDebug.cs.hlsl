@@ -5,7 +5,7 @@
 #include "Common/BindlessIndices.hlsli"
 
 /// @note LAYOUT: Graphics/Passes/RayTracing/RayDebugPass.hpp; right/up.w store half screen extents.
-cbuffer RayDebugConstants : register(b0)
+cbuffer RayDebugConstants : register(FBZZ_REGISTER(b, CB_RAY_DEBUG_SLOT))
 {
     float4 cameraPosition;
     float4 cameraRight;
@@ -58,7 +58,7 @@ uint HashId(uint value)
 void CSMain(uint3 dispatchId : SV_DispatchThreadID)
 {
     if (dispatchId.x >= width || dispatchId.y >= height) return;
-    RWTexture2D<float4> output = ResourceDescriptorHeap[FbzzUavSlot(0)];
+    RWTexture2D<float4> output = ResourceDescriptorHeap[FbzzUavSlot(UAV_RAY_RESULT_SLOT)];
     float3 color = incomplete ? float3(0.12, 0.025, 0.12) : 0.0;
     if (instanceCount)
     {
@@ -72,14 +72,14 @@ void CSMain(uint3 dispatchId : SV_DispatchThreadID)
         float clipScale = orthographic ? 1.0 : rcp(dot(ray.Direction, cameraForward.xyz));
         ray.TMin = nearDistance * clipScale;
         ray.TMax = farDistance * clipScale;
-        RaytracingAccelerationStructure scene = ResourceDescriptorHeap[FbzzPixelSlot(0)];
+        RaytracingAccelerationStructure scene = ResourceDescriptorHeap[FbzzPixelSlot(SRV_RAY_SCENE_SLOT)];
         RayQuery<RAY_FLAG_CULL_BACK_FACING_TRIANGLES | RAY_FLAG_SKIP_PROCEDURAL_PRIMITIVES> query;
         query.TraceRayInline(scene, RAY_FLAG_NONE, 1u, ray);
         /// @note Only guaranteed opaque triangles enter this scene; nonopaque candidates are not promoted.
         while (query.Proceed()) {}
         if (query.CommittedStatus() == COMMITTED_TRIANGLE_HIT)
         {
-            StructuredBuffer<RayHitRecord> hits = ResourceDescriptorHeap[FbzzPixelSlot(1)];
+            StructuredBuffer<RayHitRecord> hits = ResourceDescriptorHeap[FbzzPixelSlot(SRV_RAY_HIT_RECORDS_SLOT)];
             RayHitRecord hit = hits[query.CommittedInstanceID()];
             if (mode == 0)
             {

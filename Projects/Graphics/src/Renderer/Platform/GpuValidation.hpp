@@ -72,11 +72,11 @@ inline constexpr std::uint64_t kMaxStoredMessages = 1024;
 FBZZ_GRAPHICS_API void DrainStoredMessages(ID3D12InfoQueue& queue, const char* tag);
 
 /// @note デバイスを手放した後に呼ぶ。まだ生きている COM オブジェクトを OutputDebugString へ出す。
-/// @param apiId 集計対象の DXGI デバッグ ID。DXGI_DEBUG_D3D11 / DXGI_DEBUG_D3D12 を渡す。
-/// @param label ログに出す名前 ("D3D11" など)。
+/// @param[in] apiId 集計対象の DXGI デバッグ ID。DXGI_DEBUG_D3D11 / DXGI_DEBUG_D3D12 を渡す。
+/// @param[in] label ログに出す名前 ("D3D11" など)。
 /// @note GUID で受ける理由: DXGI_DEBUG_D3D11/D3D12 は dxgidebug.h でなく d3d11sdklayers.h/
 /// @note       d3d12sdklayers.h が持つため、両方 include すると片方しか使わない TU まで相手側の
 /// @note       SDK ヘッダーを抱える。
 FBZZ_GRAPHICS_API void ReportLiveObjects(const _GUID& apiId, const char* label);
 
-} /// @note namespace fbzz::renderer::gpuvalidation
+} // namespace fbzz::renderer::gpuvalidation

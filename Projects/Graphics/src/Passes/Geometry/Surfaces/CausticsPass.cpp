@@ -2,6 +2,7 @@
 /// @brief   水面越しの投影コースティクスを HDR バッファへ加算合成するポストプロセスパス。
 /// @author  Hasegawa Jin
 /// @date    2026-06-18
+#include <Graphics/Renderer/Commands/ShaderBindingSlots.hpp>
 #include <Graphics/Passes/PostProcess/PostProcessPasses.hpp>
 #include <Graphics/Passes/Geometry/GeometryPasses.hpp>
 #include <Graphics/Pipeline/Passes/RenderPassContext.hpp>
@@ -30,7 +31,7 @@ renderer::ResourceHandle<renderer::TextureTag> CreateProceduralCaustics(renderer
         for (uint32_t x = 0; x < size; ++x) {
             const float u = static_cast<float>(x) / static_cast<float>(size);
             const float v = static_cast<float>(y) / static_cast<float>(size);
-            /// @note A periodic cellular ridge mask concentrates additive light into thin connected lines rather than broad moving bands.
+            // A periodic cellular ridge mask concentrates additive light into thin connected lines rather than broad moving bands.
             /// @see https://developer.nvidia.com/gpugems/gpugems/part-i-natural-effects/chapter-2-rendering-water-caustics GPU Gems, additive projected caustic textures.
             constexpr int CELL_COUNT = 6;
             const float gridX = u * static_cast<float>(CELL_COUNT)
@@ -58,7 +59,9 @@ renderer::ResourceHandle<renderer::TextureTag> CreateProceduralCaustics(renderer
                     const float dy = static_cast<float>(cellY) + jitterY - gridY;
                     const float distance = dx * dx + dy * dy;
                     if (distance < first) { second = first; first = distance; }
-                    else if (distance < second) second = distance;
+                    else if (distance < second) {
+                        second = distance;
+                    }
                 }
             }
             const float edgeDistance = std::sqrt(second) - std::sqrt(first);
@@ -72,23 +75,28 @@ renderer::ResourceHandle<renderer::TextureTag> CreateProceduralCaustics(renderer
         }
     }
 
-    /// @note Minified caustic lines need a complete mip pyramid to avoid moire on distant and oblique receivers.
+    // Minified caustic lines need a complete mip pyramid to avoid moire on distant and oblique receivers.
     /// @see https://www.pbr-book.org/4ed/Textures_and_Materials/Image_Texture PBRT v4, Image Texture Evaluation.
     DecodedTextureRGBA8 texture;
     texture.sourceWidth = texture.sourceHeight = size;
     texture.mips.push_back({size, size, std::move(pixels)});
-    while (texture.mips.back().width > 1u || texture.mips.back().height > 1u)
+    while (texture.mips.back().width > 1u || texture.mips.back().height > 1u) {
         texture.mips.push_back(DownsampleRGBA8Box2x(texture.mips.back()));
+    }
     std::vector<TextureMipData> mips;
-    if (!texture.ToMipData(mips)) return {};
+    if (!texture.ToMipData(mips)) {
+        return {};
+    }
     return resources.CreateTextureWithMips(mips.data(), static_cast<uint32_t>(mips.size()));
 }
 
-} /// @note namespace
+} // namespace
 
 void ExecuteCausticsPass(RenderPassContext& ctx)
 {
-    if (!ctx.handles.causticsShader.IsValid() || !ctx.handles.causticsPSO.IsValid()) return;
+    if (!ctx.handles.causticsShader.IsValid() || !ctx.handles.causticsPSO.IsValid()) {
+        return;
+    }
 
     const auto& source = ctx.environment.caustics;
     bool hasMediumCaustics = false;
@@ -101,14 +109,18 @@ void ExecuteCausticsPass(RenderPassContext& ctx)
             }
         }
     }
-    if (!source.enabled && !hasMediumCaustics) return;
+    if (!source.enabled && !hasMediumCaustics) {
+        return;
+    }
 
     static ResourceHandle<TextureTag> fallbackCaustics;
     static ResourceHandle<ShaderTag> depthCopyShader;
     static uint64_t s_resourceOwner = 0;
     static uint64_t s_resetVersion = 0;
-    /// @note 深度のコピー先はビューが持つ (理由は RenderPassHandles::causticsDepthRT を参照)。
-    if (!ctx.handles.causticsDepthRT) return;
+    // 深度のコピー先はビューが持つ (理由は RenderPassHandles::causticsDepthRT を参照)。
+    if (!ctx.handles.causticsDepthRT) {
+        return;
+    }
     renderer::SizedRenderTarget& s_causticsDepthRT = *ctx.handles.causticsDepthRT;
 
     if (s_resourceOwner != ctx.resources.GetInstanceId() || s_resetVersion != ctx.resources.GetResetVersion()) {
@@ -117,12 +129,16 @@ void ExecuteCausticsPass(RenderPassContext& ctx)
         fallbackCaustics = CreateProceduralCaustics(ctx.resources);
         depthCopyShader = ctx.resources.LoadShader("Assets/Shaders/Pipeline/Deferred/DepthCopy.hlsl");
     }
-    if (!depthCopyShader.IsValid() || (!source.texture.IsValid() && !fallbackCaustics.IsValid())) return;
+    if (!depthCopyShader.IsValid() || (!source.texture.IsValid() && !fallbackCaustics.IsValid())) {
+        return;
+    }
 
     (void)s_causticsDepthRT.Ensure(ctx.resources, ctx.width, ctx.height, renderer::CameraDepthTargetDesc(0));
 
     renderer::ResourceHandle<renderer::TextureTag> causticsTex = fallbackCaustics;
-    if (source.texture.IsValid()) causticsTex = source.texture;
+    if (source.texture.IsValid()) {
+        causticsTex = source.texture;
+    }
 
     PostProcCB postData{};
     postData.customParameters[0] = source.intensity;
@@ -161,7 +177,7 @@ void ExecuteCausticsPass(RenderPassContext& ctx)
     postData.underwaterWaveSpeed = source.waveSpeed;
     ctx.resources.Update(ctx.handles.postprocCB, &postData, sizeof(PostProcCB));
 
-    /// @note HDR の depth を専用 RT へコピーし、PS ではコピー後の SRV(t7) からワールド座標を復元する。hdrRT を RTV/DSV として加算先にしながら同じ depth を SRV で読むと DX11 の read/write 競合になる。
+    // HDR の depth を専用 RT へコピーし、PS ではコピー後の SRV(t7) からワールド座標を復元する。hdrRT を RTV/DSV として加算先にしながら同じ depth を SRV で読むと DX11 の read/write 競合になる。
     ctx.renderer.SetRenderTarget(s_causticsDepthRT, ctx.resources);
     ctx.renderer.ClearDepth();
     if (depthCopyShader.IsValid()) {
@@ -169,7 +185,7 @@ void ExecuteCausticsPass(RenderPassContext& ctx)
         depthDC.shader = depthCopyShader;
         depthDC.pipelineState = ctx.handles.defaultPSO;
         depthDC.vertexCount = 3;
-        depthDC.textures[7] = ctx.resources.GetDepthTexture(ctx.Res().Target("HDR"));
+        depthDC.textures[srv::DEPTH] = ctx.resources.GetDepthTexture(ctx.Res().Target("HDR"));
         ctx.renderer.Submit(depthDC, ctx.resources);
     }
 
@@ -179,22 +195,23 @@ void ExecuteCausticsPass(RenderPassContext& ctx)
     dc.shader = ctx.handles.causticsShader;
     dc.pipelineState = ctx.handles.causticsPSO;
     dc.vertexCount = 3;
-    dc.constantBuffers[0] = ctx.handles.frameCB;
-    dc.constantBuffers[3] = ctx.handles.lightCB;
-    dc.constantBuffers[4] = ctx.handles.shadowCB;
-    dc.constantBuffers[5] = ctx.handles.postprocCB;
-    dc.constantBuffers[8] = ctx.handles.advancedGraphicsCB;
+    dc.constantBuffers[cb::CAMERA] = ctx.handles.frameCB;
+    dc.constantBuffers[cb::LIGHT] = ctx.handles.lightCB;
+    dc.constantBuffers[cb::SHADOW] = ctx.handles.shadowCB;
+    dc.constantBuffers[cb::POSTPROC] = ctx.handles.postprocCB;
+    dc.constantBuffers[cb::ADVANCED_GRAPHICS] = ctx.handles.advancedGraphicsCB;
     if (ctx.waterMediumPassActive && ctx.handles.waterMediumTable.IsValid()
         && ctx.handles.waterMediumAtlasRT && ctx.handles.waterMediumAtlasRT->IsValid()) {
-        dc.auxiliaryPsBuffers[0] = ctx.handles.waterMediumTable;
-        dc.textures[15] = ctx.resources.GetColorTexture(*ctx.handles.waterMediumAtlasRT, 0);
+        dc.auxiliaryPsBuffers[AuxiliaryPixelBufferIndex(srv::WATER_MEDIUM_TABLE)] = ctx.handles.waterMediumTable;
+        dc.textures[srv::WATER_MEDIUM_ATLAS] = ctx.resources.GetColorTexture(*ctx.handles.waterMediumAtlasRT, 0);
     }
     if (ctx.waterInterfacePassActive && ctx.handles.waterInterfaceRT
-        && ctx.handles.waterInterfaceRT->IsValid())
-        dc.textures[13] = ctx.resources.GetColorTexture(*ctx.handles.waterInterfaceRT, 0);
-    dc.textures[0] = causticsTex;
-    dc.textures[7] = ctx.resources.GetDepthTexture(s_causticsDepthRT);
-    dc.textures[8] = ctx.resources.GetDepthTexture(ctx.Res().Target("ShadowMap"));
+        && ctx.handles.waterInterfaceRT->IsValid()) {
+        dc.textures[srv::WATER_INTERFACE] = ctx.resources.GetColorTexture(*ctx.handles.waterInterfaceRT, 0);
+    }
+    dc.textures[srv::CAUSTICS] = causticsTex;
+    dc.textures[srv::DEPTH] = ctx.resources.GetDepthTexture(s_causticsDepthRT);
+    dc.textures[srv::SHADOW] = ctx.resources.GetDepthTexture(ctx.Res().Target("ShadowMap"));
     ctx.renderer.Submit(dc, ctx.resources);
 }
 
@@ -202,14 +219,16 @@ void ExecuteCausticsPass(RenderPassContext& ctx)
 void WaterCausticsPass::Setup(PassBuilder& builder, const RenderPassContext& ctx) const
 {
     builder.ReadWrite("HDR").Read("ShadowMap");
-    if (ctx.waterMediumPassActive)
+    if (ctx.waterMediumPassActive) {
         builder.Read("WaterMediumAtlas");
-    if (ctx.waterInterfacePassActive)
+    }
+    if (ctx.waterInterfacePassActive) {
         builder.Read("WaterInterface");
+    }
 }
 
 void WaterCausticsPass::Execute(PassResources&, RenderPassContext& ctx)
 {
     ExecuteCausticsPass(ctx);
 }
-} /// @note namespace fbzz::renderer
+} // namespace fbzz::renderer

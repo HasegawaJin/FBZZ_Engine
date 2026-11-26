@@ -16,7 +16,7 @@ namespace fbzz::renderer {
 
 #if FBZZ_ENABLE_DX12
 /// @brief DX12 バックエンドと ImGui を同一 DX12Context へ配線して生成する。
-/// @param hwnd Win32 ウィンドウハンドル。境界に Windows.h を持ち込まないため void*。
+/// @param[in] hwnd Win32 ウィンドウハンドル。境界に Windows.h を持ち込まないため void*。
 /// @return 初期化に失敗した場合は両ポインタが nullptr。
 /// @note FBZZ_ENABLE_DX12=OFF の構成では定義ごと存在しない。DX11 撤去後、この構成は
 /// @note       描画バックエンドを 1 つも持たないため、カバレッジ計測など GPU を使わない
@@ -24,4 +24,4 @@ namespace fbzz::renderer {
 FBZZ_GRAPHICS_API RendererBundle CreateDX12Backend(void* hwnd, uint32_t width, uint32_t height);
 #endif
 
-} /// @note namespace fbzz::renderer
+} // namespace fbzz::renderer

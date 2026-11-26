@@ -68,7 +68,7 @@ FBZZ_GRAPHICS_API bool UpdateVolumetricCloudConstants(RenderPassContext& ctx);
 FBZZ_GRAPHICS_API void ExecuteContactShadowsPass(RenderPassContext& ctx);
 
 /// @note TAA — テンポラルアンチエイリアシング。前フレームバッファと現フレームをブレンドする。
-/// @param staticView 前回と同じ非ジッター射影・幾何・被覆がホスト側で証明できる場合だけ true。
+/// @param[in] staticView 前回と同じ非ジッター射影・幾何・被覆がホスト側で証明できる場合だけ true。
 /// @return 色・深度の同じ履歴世代へ描画を提出したら true。必須資源が無ければ false。
 FBZZ_GRAPHICS_API bool ExecuteTAAPass(RenderPassContext& ctx, bool staticView = false);
 
@@ -196,5 +196,5 @@ public:
     FBZZ_GRAPHICS_API void Execute(PassResources& resources, RenderPassContext& ctx) override;
 };
 
-} /// @note namespace fbzz::renderer
+} // namespace fbzz::renderer
 

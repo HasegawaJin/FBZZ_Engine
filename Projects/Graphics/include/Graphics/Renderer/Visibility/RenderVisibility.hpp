@@ -46,4 +46,4 @@ enum class VisibilityResult {
 [[nodiscard]] FBZZ_GRAPHICS_API bool IsWithinDrawDistance(
     const RenderCullingView& view, const RenderCullingItem& item);
 
-} /// @note namespace fbzz::renderer
+} // namespace fbzz::renderer

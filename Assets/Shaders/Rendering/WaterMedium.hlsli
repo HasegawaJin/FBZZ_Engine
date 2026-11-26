@@ -9,11 +9,11 @@
 
 /// @note PS t14/t15 are view-owned water medium data. VS particle t14/t15 and clustered t29/t30 are separate stages.
 #if BINDLESS_SUPPORTED
-FBZZ_SBUFFER_T(float4, g_waterMediumTable, 14);
-FBZZ_TEX2D_T(float4, g_waterMediumAtlas, 15);
+FBZZ_SBUFFER_T(float4, g_waterMediumTable, SRV_WATER_MEDIUM_TABLE_SLOT);
+FBZZ_TEX2D_T(float4, g_waterMediumAtlas, SRV_WATER_MEDIUM_ATLAS_SLOT);
 #else
-StructuredBuffer<float4> g_waterMediumTable : register(t14);
-Texture2D<float4> g_waterMediumAtlas : register(t15);
+StructuredBuffer<float4> g_waterMediumTable : register(FBZZ_REGISTER(t, SRV_WATER_MEDIUM_TABLE_SLOT));
+Texture2D<float4> g_waterMediumAtlas : register(FBZZ_REGISTER(t, SRV_WATER_MEDIUM_ATLAS_SLOT));
 #endif
 
 static const uint FBZZ_WATER_MEDIUM_TABLE_MAGIC = 0x574D;
@@ -54,7 +54,7 @@ struct FBZZWaterMediumSample
 bool FBZZ_WaterMediumBindingsValid()
 {
 #if BINDLESS_SUPPORTED
-    return IsBindlessValid(FbzzPixelSlot(14)) && IsBindlessValid(FbzzPixelSlot(15));
+    return IsBindlessValid(FbzzPixelSlot(SRV_WATER_MEDIUM_TABLE_SLOT)) && IsBindlessValid(FbzzPixelSlot(SRV_WATER_MEDIUM_ATLAS_SLOT));
 #else
     return true;
 #endif

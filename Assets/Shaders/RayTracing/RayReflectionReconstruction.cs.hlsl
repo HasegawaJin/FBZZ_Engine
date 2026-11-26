@@ -9,7 +9,7 @@
 #include "RayTracing/RayDielectricInterface.hlsli"
 #include "RayTracing/RayReflectionMotion.hlsli"
 
-cbuffer RayReflectionReconstructionConstants : register(b0)
+cbuffer RayReflectionReconstructionConstants : register(FBZZ_REGISTER(b, CB_RAY_REFLECTION_RECONSTRUCTION_SLOT))
 {
     float4 cameraPosition, cameraRight, cameraUp, cameraForward;
     uint width, height, resetHistory, stage;
@@ -81,7 +81,7 @@ bool ValidSample(float4 raw, RayReflectionSurface surface)
 /// @note Mirrors, dielectric radiance and initial-medium transport keep their full-resolution RAW; rough cells use point reconstruction, never unconditional bilinear filtering.
 float4 CurrentObservation(uint2 pixel, StructuredBuffer<RayReflectionSurface> surfaces)
 {
-    Texture2D<float4> raw = ResourceDescriptorHeap[FbzzPixelSlot(5)];
+    Texture2D<float4> raw = ResourceDescriptorHeap[FbzzPixelSlot(SRV_REFLECTION_RAW_SLOT)];
     float4 full = raw.Load(int3(pixel, 0));
     if (ValidRadiance(full) || resolutionDivisor != 2u) return full;
     RayReflectionSurface target = surfaces[pixel.y * width + pixel.x];
@@ -90,15 +90,15 @@ float4 CurrentObservation(uint2 pixel, StructuredBuffer<RayReflectionSurface> su
         || traceHeight != (height + 1u) / 2u) return full;
     uint2 cell = pixel / 2u, origin = cell * 2u;
     RayReflectionSurface representative = surfaces[origin.y * width + origin.x];
-    Texture2D<float4> halfRaw = ResourceDescriptorHeap[FbzzPixelSlot(19)];
+    Texture2D<float4> halfRaw = ResourceDescriptorHeap[FbzzPixelSlot(SRV_REFLECTION_RAW_HALF_SLOT)];
     uint halfWidth, halfHeight;
     halfRaw.GetDimensions(halfWidth, halfHeight);
     if (halfWidth != traceWidth || halfHeight != traceHeight) return full;
     float4 observation = halfRaw.Load(int3(cell, 0));
     if (observation.a != 1 || !ValidSample(observation, representative)
         || representative.normalRoughness.w <= 0.25f) return full;
-    Texture2D<float4> albedoRoughness = ResourceDescriptorHeap[FbzzPixelSlot(16)];
-    Texture2D<float4> normalMetallic = ResourceDescriptorHeap[FbzzPixelSlot(17)];
+    Texture2D<float4> albedoRoughness = ResourceDescriptorHeap[FbzzPixelSlot(SRV_REFLECTION_RECON_ALBEDO_SLOT)];
+    Texture2D<float4> normalMetallic = ResourceDescriptorHeap[FbzzPixelSlot(SRV_REFLECTION_RECON_NORMAL_SLOT)];
     float4 representativeAlbedo = albedoRoughness.Load(int3(origin, 0));
     float4 representativeNormal = normalMetallic.Load(int3(origin, 0));
     float3 referenceNormal = representativeNormal.xyz * 2 - 1;
@@ -194,10 +194,10 @@ bool ThinSignal(float4 raw, RayReflectionSurface surface, out float3 signal, out
 void Temporal(uint2 pixel)
 {
     uint index = pixel.y * width + pixel.x;
-    StructuredBuffer<RayReflectionSurface> surfaces = ResourceDescriptorHeap[FbzzPixelSlot(14)];
-    StructuredBuffer<RayReflectionSurface> previousSurfaces = ResourceDescriptorHeap[FbzzPixelSlot(15)];
-    StructuredBuffer<RayReflectionHistoryRecord> previousHistory = ResourceDescriptorHeap[FbzzPixelSlot(18)];
-    RWStructuredBuffer<RayReflectionHistoryRecord> history = ResourceDescriptorHeap[FbzzUavSlot(2)];
+    StructuredBuffer<RayReflectionSurface> surfaces = ResourceDescriptorHeap[FbzzPixelSlot(SRV_REFLECTION_RECON_SURFACE_SLOT)];
+    StructuredBuffer<RayReflectionSurface> previousSurfaces = ResourceDescriptorHeap[FbzzPixelSlot(SRV_REFLECTION_RECON_PREVIOUS_SURFACE_SLOT)];
+    StructuredBuffer<RayReflectionHistoryRecord> previousHistory = ResourceDescriptorHeap[FbzzPixelSlot(SRV_REFLECTION_RECON_HISTORY_SLOT)];
+    RWStructuredBuffer<RayReflectionHistoryRecord> history = ResourceDescriptorHeap[FbzzUavSlot(UAV_REFLECTION_RECON_HISTORY_SLOT)];
     RayReflectionHistoryRecord result = (RayReflectionHistoryRecord)0;
     RayReflectionSurface surface = surfaces[index];
     float4 current = CurrentObservation(pixel, surfaces);
@@ -241,9 +241,9 @@ void Temporal(uint2 pixel)
 void Spatial(uint2 pixel)
 {
     uint index = pixel.y * width + pixel.x;
-    StructuredBuffer<RayReflectionHistoryRecord> history = ResourceDescriptorHeap[FbzzPixelSlot(14)];
-    StructuredBuffer<RayReflectionSurface> surfaces = ResourceDescriptorHeap[FbzzPixelSlot(15)];
-    RWTexture2D<float4> output = ResourceDescriptorHeap[FbzzUavSlot(0)];
+    StructuredBuffer<RayReflectionHistoryRecord> history = ResourceDescriptorHeap[FbzzPixelSlot(SRV_REFLECTION_SPATIAL_HISTORY_SLOT)];
+    StructuredBuffer<RayReflectionSurface> surfaces = ResourceDescriptorHeap[FbzzPixelSlot(SRV_REFLECTION_SPATIAL_SURFACE_SLOT)];
+    RWTexture2D<float4> output = ResourceDescriptorHeap[FbzzUavSlot(UAV_RAY_RESULT_SLOT)];
     float4 current = CurrentObservation(pixel, surfaces);
     RayReflectionSurface center = surfaces[index];
     RayReflectionHistoryRecord accumulated = history[index];
@@ -270,8 +270,8 @@ void Spatial(uint2 pixel)
         if (neighbour.radianceCount.w < 1
             || !all(isfinite(neighbour.radianceCount)) || !SameSurface(center, surfaces[neighbourIndex], false)) continue;
         if (hasGBuffer) {
-            Texture2D<float4> albedoRoughness = ResourceDescriptorHeap[FbzzPixelSlot(16)];
-            Texture2D<float4> normalMetallic = ResourceDescriptorHeap[FbzzPixelSlot(17)];
+            Texture2D<float4> albedoRoughness = ResourceDescriptorHeap[FbzzPixelSlot(SRV_REFLECTION_RECON_ALBEDO_SLOT)];
+            Texture2D<float4> normalMetallic = ResourceDescriptorHeap[FbzzPixelSlot(SRV_REFLECTION_RECON_NORMAL_SLOT)];
             if (any(abs(albedoRoughness.Load(int3(pixel, 0)) - albedoRoughness.Load(int3(neighbourPixel, 0))) > 0.02f)
                 || abs(normalMetallic.Load(int3(pixel, 0)).a - normalMetallic.Load(int3(neighbourPixel, 0)).a) > 0.02f) continue;
         }

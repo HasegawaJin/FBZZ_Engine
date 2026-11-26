@@ -56,4 +56,4 @@ private:
     struct State;
     std::unique_ptr<State> m_state;
 };
-} /// @note namespace fbzz::renderer
+} // namespace fbzz::renderer

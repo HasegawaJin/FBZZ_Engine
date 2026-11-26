@@ -7,4 +7,4 @@
 namespace fbzz::renderer::buffer_state_detail {
 /// @note 未登録・実行中・入れ子の producer は再利用可能な境界を持たない。
 [[nodiscard]] FBZZ_GRAPHICS_API bool TryObserveIdleReadBoundary(IRenderer& renderer, uint64_t& submission, uint64_t& revision);
-} /// @note namespace fbzz::renderer::buffer_state_detail
+} // namespace fbzz::renderer::buffer_state_detail

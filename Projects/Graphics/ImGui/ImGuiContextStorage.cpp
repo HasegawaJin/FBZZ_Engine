@@ -10,4 +10,4 @@ ImGuiContext*& ImGuiContextForThread()
     static thread_local ImGuiContext* context = nullptr;
     return context;
 }
-} /// @note namespace fbzz::renderer
+} // namespace fbzz::renderer

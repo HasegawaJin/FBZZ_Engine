@@ -5,8 +5,8 @@
 #include "Bake/Fluid/LiquidNeighbors.hlsli"
 #include "Common/BindlessIndices.hlsli"
 
-FBZZ_SBUFFER_T(float4, gPredicted, 14);
-FBZZ_RWSBUFFER_T(float, gLambdaOut, 2);
+FBZZ_SBUFFER_T(float4, gPredicted, SRV_LIQUID_PARTICLES_SLOT);
+FBZZ_RWSBUFFER_T(float, gLambdaOut, UAV_LIQUID_LAMBDA_SLOT);
 
 [numthreads(64, 1, 1)]
 void CSMain(uint3 id : SV_DispatchThreadID)
@@ -42,7 +42,7 @@ void CSMain(uint3 id : SV_DispatchThreadID)
         }
     }
     float constraint = density * gInverseRest - 1.0f;
-    // 負 (まばら) の側は «引き寄せ» になる。cohesion で効きを絞る (CPU と同じ)。
+    /// @note 負 (まばら) の側は «引き寄せ» になる。cohesion で効きを絞る (CPU と同じ)。
     if (constraint < 0.0f) constraint *= gCohesion;
     gLambdaOut[i] = -constraint / (dot(gradient, gradient) + gradientSquared + gRelaxation);
 }

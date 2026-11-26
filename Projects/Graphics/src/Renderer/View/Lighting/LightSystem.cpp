@@ -48,17 +48,19 @@ void LightSystem::Upload(IConstantBuffer& cb) const
 
     int pCount = static_cast<int>(
         std::min(m_pointLights.size(), static_cast<size_t>(8)));
-    for (int i = 0; i < pCount; ++i)
+    for (int i = 0; i < pCount; ++i) {
         data.pointLights[i] = m_pointLights[i];
+    }
     data.pointLightCount = pCount;
 
     int sCount = static_cast<int>(
         std::min(m_spotLights.size(), static_cast<size_t>(4)));
-    for (int i = 0; i < sCount; ++i)
+    for (int i = 0; i < sCount; ++i) {
         data.spotLights[i] = m_spotLights[i];
+    }
     data.spotLightCount = sCount;
 
     cb.Update(&data, sizeof(LightConstantsCB));
 }
 
-} /// @note namespace fbzz::renderer
+} // namespace fbzz::renderer

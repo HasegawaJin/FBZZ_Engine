@@ -5,13 +5,13 @@
 #include "Bake/Fluid/FluidGpuCommon.hlsli"
 #include "Common/BindlessIndices.hlsli"
 
-FBZZ_TEX3D_T(float4, gPressureIn, 0);
-FBZZ_TEX3D_T(float4, gDivergenceIn, 1);
-FBZZ_TEX3D_T(float4, gSolidIn, 2); // w 1 = 固体
-FBZZ_RWTEX3D_T(float4, gPressureOut, 0);
+FBZZ_TEX3D_T(float4, gPressureIn, SRV_FLUID_JACOBI_PRESSURE_IN_SLOT);
+FBZZ_TEX3D_T(float4, gDivergenceIn, SRV_FLUID_JACOBI_DIVERGENCE_IN_SLOT);
+FBZZ_TEX3D_T(float4, gSolidIn, SRV_FLUID_JACOBI_SOLID_IN_SLOT); /// @note w 1 = 固体
+FBZZ_RWTEX3D_T(float4, gPressureOut, UAV_FLUID_JACOBI_PRESSURE_OUT_SLOT);
 
-// 境界: 開いた縁は p = 0 (流れが自由に出ていく)、床と障害物は ∂p/∂n = 0 (通り抜けない)。
-// ∂p/∂n = 0 は «隣を自分と同じ圧力とみなす» こと。和にも数にも入れなければ同じ解になり、収束も速い。
+/// @note 境界: 開いた縁は p = 0 (流れが自由に出ていく)、床と障害物は ∂p/∂n = 0 (通り抜けない)。
+/// @note ∂p/∂n = 0 は «隣を自分と同じ圧力とみなす» こと。和にも数にも入れなければ同じ解になり、収束も速い。
 void Neighbor(int3 cell, bool solid, inout float sum, inout float count)
 {
     if (FluidInside(cell))

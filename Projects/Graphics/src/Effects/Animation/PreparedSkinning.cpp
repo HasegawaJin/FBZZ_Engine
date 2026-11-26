@@ -20,7 +20,7 @@ struct BackendRegistry { std::mutex mutex; std::array<BackendEntry, 16> entries;
 BackendRegistry& Backends() { static BackendRegistry registry; return registry; }
 struct OwnerRegistry { std::mutex mutex; std::array<std::weak_ptr<ResourceOwner>, 64> entries; };
 OwnerRegistry& Owners() { static OwnerRegistry registry; return registry; }
-} /// @note namespace
+} // namespace
 
 std::shared_ptr<ResourceOwner> AcquireResourceOwner(const ResourceManager& resources)
 {
@@ -30,10 +30,16 @@ std::shared_ptr<ResourceOwner> AcquireResourceOwner(const ResourceManager& resou
     for (auto& entry : registry.entries) {
         auto owner = entry.lock();
         if (owner && owner->instance == resources.GetInstanceId() && owner->epoch == resources.GetResetVersion()
-            && owner->alive.load(std::memory_order_acquire)) return owner;
-        if ((!owner || !owner->alive.load(std::memory_order_acquire)) && !empty) empty = &entry;
+            && owner->alive.load(std::memory_order_acquire)) {
+            return owner;
+        }
+        if ((!owner || !owner->alive.load(std::memory_order_acquire)) && !empty) {
+            empty = &entry;
+        }
     }
-    if (!empty) return {};
+    if (!empty) {
+        return {};
+    }
     auto owner = std::make_shared<ResourceOwner>();
     owner->instance = resources.GetInstanceId(); owner->epoch = resources.GetResetVersion();
     *empty = owner;
@@ -44,31 +50,42 @@ void InvalidateResourceOwner(uint64_t instance)
 {
     auto& registry = Owners();
     std::lock_guard lock(registry.mutex);
-    for (auto& entry : registry.entries)
-        if (auto owner = entry.lock(); owner && owner->instance == instance)
+    for (auto& entry : registry.entries) {
+        if (auto owner = entry.lock(); owner && owner->instance == instance) {
             owner->alive.store(false, std::memory_order_release);
+        }
+    }
 }
 
 void RegisterBackend(IRenderer& native, NativeFactory factory)
 {
     auto& registry = Backends();
     std::lock_guard lock(registry.mutex);
-    for (auto& entry : registry.entries)
+    for (auto& entry : registry.entries) {
         if (entry.native == &native || !entry.native) { entry = {&native, factory}; return; }
+    }
 }
 
 void UnregisterBackend(IRenderer& native)
 {
     auto& registry = Backends();
     std::lock_guard lock(registry.mutex);
-    for (auto& entry : registry.entries) if (entry.native == &native) entry = {};
+    for (auto& entry : registry.entries) {
+        if (entry.native == &native) {
+            entry = {};
+        }
+    }
 }
 
 bool HasRegisteredBackend(const IRenderer& native) noexcept
 {
     auto& registry = Backends();
     std::lock_guard lock(registry.mutex);
-    for (const auto& entry : registry.entries) if (entry.native == &native) return entry.factory != nullptr;
+    for (const auto& entry : registry.entries) {
+        if (entry.native == &native) {
+            return entry.factory != nullptr;
+        }
+    }
     return false;
 }
 
@@ -79,21 +96,25 @@ std::unique_ptr<NativeWork> PrepareExactNative(IRenderer& native, ResourceManage
     {
         auto& registry = Backends();
         std::lock_guard lock(registry.mutex);
-        for (const auto& entry : registry.entries) if (entry.native == &native) { factory = entry.factory; break; }
+        for (const auto& entry : registry.entries) {
+            if (entry.native == &native) { factory = entry.factory; break; }
+        }
     }
     return factory ? factory(native, resources, shader, requests, matrices) : nullptr;
 }
 
 std::shared_ptr<PreparedSkinningTicket> TicketFactory::Make(std::unique_ptr<NativeWork> native)
 {
-    if (!native) return {};
+    if (!native) {
+        return {};
+    }
     return std::make_shared<PreparedSkinningTicket>(PreparedSkinningTicket::ConstructionKey{}, std::move(native));
 }
 bool TicketFactory::MatchesFacade(const ResourceManager& resources, const IRenderer& facade)
 {
     return &resources.m_renderer == &facade && !resources.m_rendererDetached;
 }
-} /// @note namespace prepared_skinning_detail
+} // namespace prepared_skinning_detail
 
 PreparedSkinningTicket::PreparedSkinningTicket(ConstructionKey, std::unique_ptr<prepared_skinning_detail::NativeWork> native)
     : m_native(std::move(native)) {}
@@ -122,11 +143,12 @@ std::shared_ptr<PreparedSkinningTicket> PrepareCapturedSkinning(IRenderer& rende
     ResourceHandle<ShaderTag> shader, std::span<const CapturedSkinningRequest> requests, std::span<const math::Matrix4> matrices)
 {
     if (!GpuSkinningDemandEnabled() || !prepared_skinning_detail::TicketFactory::MatchesFacade(resources, renderer)
-        || requests.empty() || requests.size() > 256 || matrices.empty() || matrices.size() > 65536)
+        || requests.empty() || requests.size() > 256 || matrices.empty() || matrices.size() > 65536) {
         return {};
+    }
     const std::vector<CapturedSkinningRequest> ownedRequests(requests.begin(), requests.end());
     const std::vector<math::Matrix4> ownedMatrices(matrices.begin(), matrices.end());
     auto native = prepared_skinning_detail::PrepareViaFacade(renderer, resources, shader, ownedRequests, ownedMatrices);
     return prepared_skinning_detail::TicketFactory::Make(std::move(native));
 }
-} /// @note namespace fbzz::renderer
+} // namespace fbzz::renderer

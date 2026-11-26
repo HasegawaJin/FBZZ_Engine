@@ -5,6 +5,7 @@
 
 /// @note レイマーチで各ピクセルのカメラ→シーンのパスをシャドウマップで遮蔽判定しつつ Mie 散乱で積分し、
 /// @note HDR バッファへ加算合成する。
+#include <Graphics/Renderer/Commands/ShaderBindingSlots.hpp>
 #include <Graphics/Passes/PostProcess/PostProcessPasses.hpp>
 #include <Graphics/Pipeline/Passes/RenderPassContext.hpp>
 #include <Graphics/Renderer/Commands/ComputeCall.hpp>
@@ -22,7 +23,9 @@ void ExecuteVolumetricLightPass(RenderPassContext& ctx)
     auto& resources   = ctx.resources;
     auto& h           = ctx.handles;
     const auto& vol   = ctx.settings.volumetricLight;
-    if (ctx.rayPathViewActive || !ctx.settings.IsVolumetricLightActive()) return;
+    if (ctx.rayPathViewActive || !ctx.settings.IsVolumetricLightActive()) {
+        return;
+    }
     const auto raw    = ctx.Res().Texture("VolumetricRaw");
     const bool sharedPlanned = ctx.renderScene && HasOpticalWaterMedium(*ctx.renderScene);
     const bool submerged = UsesOpticalUnderwater(ctx.environment.underwater);
@@ -33,8 +36,9 @@ void ExecuteVolumetricLightPass(RenderPassContext& ctx)
                           : submerged && ctx.environment.underwater.lightStrength > 0.0f);
 
     if ((!airLight && !waterLight) || !h.volumetricShader.IsValid() || !h.volumetricResult.IsValid()
-        || !raw.IsValid() || ctx.width == 0u || ctx.height == 0u)
+        || !raw.IsValid() || ctx.width == 0u || ctx.height == 0u) {
         return;
+    }
 
     static uint64_t s_resourceOwner = 0;
     static uint64_t s_resetVersion = 0;
@@ -51,73 +55,83 @@ void ExecuteVolumetricLightPass(RenderPassContext& ctx)
             renderer::DepthMode::DEPTH_OFF
         });
     }
-    if (!upsampleShader.IsValid()) return;
+    if (!upsampleShader.IsValid()) {
+        return;
+    }
 
-    /// @note 雲の切れ間から差す光の線は、シャドウマップに写らない頭上の雲で光芒を遮って作る。雲は画面空間
-    /// @note レイマーチで描くためシャドウマップに入らず、同じ密度場 (CloudVolume.hlsli) を引かないと
-    /// @note 光芒は一様な靄のままで «雲の隙間» の形が出ない。
+    // 雲の切れ間から差す光の線は、シャドウマップに写らない頭上の雲で光芒を遮って作る。雲は画面空間
+    // レイマーチで描くためシャドウマップに入らず、同じ密度場 (CloudVolume.hlsli) を引かないと
+    // 光芒は一様な靄のままで «雲の隙間» の形が出ない。
     const bool cloudActive = UpdateVolumetricCloudConstants(ctx);
 
-    /// @note 深度バッファ(t7)とシャドウマップ(t8)をサンプルしてレイマーチ。Henyey-Greenstein 散乱で
-    /// @note 積分解像度は実リソースから求める。モード切替と奇数寸法でも全画素を記録する。
+    // 深度バッファ(t7)とシャドウマップ(t8)をサンプルしてレイマーチ。Henyey-Greenstein 散乱で
+    // 積分解像度は実リソースから求める。モード切替と奇数寸法でも全画素を記録する。
     renderer::ComputeCall volDC;
     volDC.shader             = h.volumetricShader;
-    /// @note b0: CameraConstants
-    volDC.constantBuffers[0] = h.frameCB;
-    /// @note b2: VolumetricCloudConstants
-    volDC.constantBuffers[2] = h.volumetricCloudCB;
-    /// @note b3: LightConstants (lightDir, lightColor)
-    volDC.constantBuffers[3] = h.lightCB;
-    /// @note b4: ShadowConstants (lightVP, bias)
-    volDC.constantBuffers[4] = h.shadowCB;
-    volDC.constantBuffers[5] = h.postprocCB;
-    /// @note b8: volSteps, volScattering, volMaxDist
-    volDC.constantBuffers[8] = h.advancedGraphicsCB;
-    /// @note Reuse the current view's existing light list and per-sample cluster Z; water volume never builds another Scene light scan.
+    // b0: CameraConstants
+    volDC.constantBuffers[cb::CAMERA] = h.frameCB;
+    // b2: VolumetricCloudConstants
+    volDC.constantBuffers[cb::VOLUMETRIC_CLOUD] = h.volumetricCloudCB;
+    // b3: LightConstants (lightDir, lightColor)
+    volDC.constantBuffers[cb::LIGHT] = h.lightCB;
+    // b4: ShadowConstants (lightVP, bias)
+    volDC.constantBuffers[cb::SHADOW] = h.shadowCB;
+    volDC.constantBuffers[cb::POSTPROC] = h.postprocCB;
+    // b8: volSteps, volScattering, volMaxDist
+    volDC.constantBuffers[cb::ADVANCED_GRAPHICS] = h.advancedGraphicsCB;
+    // Reuse the current view's existing light list and per-sample cluster Z; water volume never builds another Scene light scan.
     if (ctx.clusterLightMode != ClusterLightMode::Legacy) {
-        volDC.constantBuffers[9] = h.clusterCB;
-        volDC.srvBuffers[29] = h.punctualLightBuffer;
-        if (UsesClusterLightIndices(ctx.clusterLightMode))
-            volDC.srvBuffers[30] = h.clusterIndexBuffer;
+        volDC.constantBuffers[cb::CLUSTER] = h.clusterCB;
+        volDC.srvBuffers[srv::PUNCTUAL_LIGHTS] = h.punctualLightBuffer;
+        if (UsesClusterLightIndices(ctx.clusterLightMode)) {
+            volDC.srvBuffers[srv::CLUSTER_INDICES] = h.clusterIndexBuffer;
+        }
     }
     if (h.punctualShadowCB.IsValid()) {
-        volDC.constantBuffers[12] = h.punctualShadowCB;
-        volDC.srvInputs[28] = resources.GetDepthTexture(ctx.Res().Target("PunctualShadowMap"));
-        volDC.srvInputs[31] = resources.GetColorTexture(ctx.Res().Target("LightCookieAtlas"), 0);
+        volDC.constantBuffers[cb::PUNCTUAL_SHADOW] = h.punctualShadowCB;
+        volDC.srvInputs[srv::PUNCTUAL_SHADOW] = resources.GetDepthTexture(ctx.Res().Target("PunctualShadowMap"));
+        volDC.srvInputs[srv::LIGHT_COOKIE] = resources.GetColorTexture(ctx.Res().Target("LightCookieAtlas"), 0);
     }
     if (ctx.waterMediumPassActive && ctx.waterInterfacePassActive) {
-        volDC.srvBuffers[14] = h.waterMediumTable;
-        volDC.srvInputs[15] = resources.GetColorTexture(ctx.Res().Target("WaterMediumAtlas"), 0);
-        volDC.srvInputs[13] = resources.GetColorTexture(ctx.Res().Target("WaterInterface"), 0);
+        volDC.srvBuffers[srv::WATER_MEDIUM_TABLE] = h.waterMediumTable;
+        volDC.srvInputs[srv::WATER_MEDIUM_ATLAS] = resources.GetColorTexture(ctx.Res().Target("WaterMediumAtlas"), 0);
+        volDC.srvInputs[srv::WATER_INTERFACE] = resources.GetColorTexture(ctx.Res().Target("WaterInterface"), 0);
     }
-    /// @note t7: シーン深度。レイ終端に Terrain を含む完全な不透明深度が要る。Terrain は Deferred でも
-    /// @note hdrRT の depth へ描かれ GBuffer depth には無いため、GBuffer を読むとゴッドレイが地形を
-    /// @note 貫通して手前に漏れる (雲と同じ不具合)。常に hdrRT を読む。
-    volDC.srvInputs[7]       = resources.GetDepthTexture(ctx.Res().Target("HDR"));
-    /// @note t8: Shadow map
-    volDC.srvInputs[8]       = resources.GetDepthTexture(ctx.Res().Target("ShadowMap"));
+    // t7: シーン深度。レイ終端に Terrain を含む完全な不透明深度が要る。Terrain は Deferred でも
+    // hdrRT の depth へ描かれ GBuffer depth には無いため、GBuffer を読むとゴッドレイが地形を
+    // 貫通して手前に漏れる (雲と同じ不具合)。常に hdrRT を読む。
+    volDC.srvInputs[srv::DEPTH]       = resources.GetDepthTexture(ctx.Res().Target("HDR"));
+    // t8: Shadow map
+    volDC.srvInputs[srv::SHADOW]       = resources.GetDepthTexture(ctx.Res().Target("ShadowMap"));
     if (cloudActive)
-        /// @note t26: TEX_CLOUD_SHAPE
-        volDC.srvInputs[26]  = h.cloudShapeTex;
-    /// @note u4: UAV_VOLUMETRIC
-    volDC.uavOutputs[4]      = raw;
+        // t26: TEX_CLOUD_SHAPE
+        volDC.srvInputs[srv::CLOUD_SHAPE]  = h.cloudShapeTex;
+    // u4: UAV_VOLUMETRIC
+    volDC.uavOutputs[uav::VOLUMETRIC]      = raw;
     const auto* rawTexture = resources.Get(raw);
-    if (!rawTexture) return;
+    if (!rawTexture) {
+        return;
+    }
     volDC.dispatchX          = (rawTexture->GetWidth() + 7u) / 8u;
     volDC.dispatchY          = (rawTexture->GetHeight() + 7u) / 8u;
     volDC.dispatchZ          = 1;
-    for (const auto slot : {0u, 3u, 4u, 5u, 8u})
-        if (!resources.Get(volDC.constantBuffers[slot])) return;
-    if (!resources.Get(raw) || !resources.Get(h.volumetricResult) || !resources.Get(volDC.srvInputs[7])) return;
-    /// @note HDR の DSV と同じ深度を読むため、再構成は描画先を束縛しない Compute で行う。
-    /// @note 深度差の大きい隣接画素を除き、手前の地形へ奥の光芒がにじむのを抑える。
+    for (const auto slot : {cb::CAMERA, cb::LIGHT, cb::SHADOW, cb::POSTPROC, cb::ADVANCED_GRAPHICS}) {
+        if (!resources.Get(volDC.constantBuffers[slot])) {
+            return;
+        }
+    }
+    if (!resources.Get(raw) || !resources.Get(h.volumetricResult) || !resources.Get(volDC.srvInputs[srv::DEPTH])) {
+        return;
+    }
+    // HDR の DSV と同じ深度を読むため、再構成は描画先を束縛しない Compute で行う。
+    // 深度差の大きい隣接画素を除き、手前の地形へ奥の光芒がにじむのを抑える。
     /// @see https://developer.download.nvidia.com/assets/gameworks/papers/Fast_Flexible_Physically-Based_Volumetric_Light_Scattering.pdf Apply Lighting / Composite Results
     renderer::ComputeCall upsampleDC;
     upsampleDC.shader = upsampleShader;
-    upsampleDC.constantBuffers[0] = h.frameCB;
-    upsampleDC.srvInputs[5] = raw;
-    upsampleDC.srvInputs[7] = resources.GetDepthTexture(ctx.Res().Target("HDR"));
-    upsampleDC.uavOutputs[4] = h.volumetricResult;
+    upsampleDC.constantBuffers[cb::CAMERA] = h.frameCB;
+    upsampleDC.srvInputs[srv::VOLUMETRIC_RAW] = raw;
+    upsampleDC.srvInputs[srv::DEPTH] = resources.GetDepthTexture(ctx.Res().Target("HDR"));
+    upsampleDC.uavOutputs[uav::VOLUMETRIC] = h.volumetricResult;
     upsampleDC.dispatchX = (ctx.width + 7u) / 8u;
     upsampleDC.dispatchY = (ctx.height + 7u) / 8u;
     upsampleDC.dispatchZ = 1;
@@ -128,10 +142,10 @@ void ExecuteVolumetricLightPass(RenderPassContext& ctx)
             r.Dispatch(upsampleDC, resources);
             return true;
         }
-        /// @note 両段の実記録を一回の引渡しで確認する。下段失敗でも初段はrollbackせず、合成へ公開しない。
+        // 両段の実記録を一回の引渡しで確認する。下段失敗でも初段はrollbackせず、合成へ公開しない。
         /// @see https://dev.epicgames.com/documentation/en-us/unreal-engine/threaded-rendering-in-unreal-engine Inter-thread communication.
         bool dispatchesRecorded = false;
-        /// @note Both dispatches share one synchronous render-resource handoff on threaded backends.
+        // Both dispatches share one synchronous render-resource handoff on threaded backends.
         r.ExecuteResourceOperation([&] {
             dispatchesRecorded = r.TryDispatch(volDC, resources)
                 && r.TryDispatch(upsampleDC, resources);
@@ -139,31 +153,35 @@ void ExecuteVolumetricLightPass(RenderPassContext& ctx)
         return dispatchesRecorded;
     };
 
-    if (airLight && copyShader.IsValid() && additivePSO.IsValid() && resources.Get(volDC.srvInputs[8])) {
+    if (airLight && copyShader.IsValid() && additivePSO.IsValid() && resources.Get(volDC.srvInputs[srv::SHADOW])) {
         PostProcCB airData{};
         airData.time = ctx.time;
-        /// @note Negative mode enables the first-water-interface distance cap in the air dispatch.
-        if (sharedPlanned && resources.Get(volDC.srvInputs[13])) airData.underwaterOpticalMode = -1.0f;
+        // Negative mode enables the first-water-interface distance cap in the air dispatch.
+        if (sharedPlanned && resources.Get(volDC.srvInputs[srv::WATER_INTERFACE])) {
+            airData.underwaterOpticalMode = -1.0f;
+        }
         if (dispatchLight(airData)) {
-            /// @note 積分結果を HDR へ加算する。Composite でなくここで足す理由: レイは不透明深度で止まっており、
-            /// @note Composite (半透明描画後) まで待つと «水底までの光芒» が水面の手前に描かれる。ここで足せば
-            /// @note 後続の透明描画が普通に上へ乗り遮蔽が正しくなる。
-            /// @note CS 出力は既に volLightIntensity を掛けてある。ここで再度掛けないこと。
-            /// @note Dispatch は OM の RTV/DSV を外すので、描く前に張り直す。
+            // 積分結果を HDR へ加算する。Composite でなくここで足す理由: レイは不透明深度で止まっており、
+            // Composite (半透明描画後) まで待つと «水底までの光芒» が水面の手前に描かれる。ここで足せば
+            // 後続の透明描画が普通に上へ乗り遮蔽が正しくなる。
+            // CS 出力は既に volLightIntensity を掛けてある。ここで再度掛けないこと。
+            // Dispatch は OM の RTV/DSV を外すので、描く前に張り直す。
             r.SetRenderTarget(ctx.Res().Target("HDR"), resources);
 
             renderer::DrawCall applyDC;
             applyDC.shader        = copyShader;
             applyDC.pipelineState = additivePSO;
             applyDC.vertexCount   = 3;
-            /// @note TEX_GBUFFER0: CopyColor の入力スロット
-            applyDC.textures[5]   = h.volumetricResult;
+            // TEX_GBUFFER0: CopyColor の入力スロット
+            applyDC.textures[srv::POST_COLOR]   = h.volumetricResult;
             r.Submit(applyDC, resources);
         }
     }
 
-    if (!waterLight || !resources.Get(volDC.srvBuffers[14])
-        || !resources.Get(volDC.srvInputs[15]) || !resources.Get(volDC.srvInputs[13])) return;
+    if (!waterLight || !resources.Get(volDC.srvBuffers[srv::WATER_MEDIUM_TABLE])
+        || !resources.Get(volDC.srvInputs[srv::WATER_MEDIUM_ATLAS]) || !resources.Get(volDC.srvInputs[srv::WATER_INTERFACE])) {
+        return;
+    }
 
     PostProcCB waterData{};
     FillUnderwaterConstants(waterData, ctx.environment.underwater);
@@ -173,20 +191,24 @@ void ExecuteVolumetricLightPass(RenderPassContext& ctx)
         waterData.underwaterMaxDistance = 0.0f;
         waterData.underwaterLightSteps = 16.0f;
         for (const auto& visibleBody : h.waterMediumBodies) {
-            if (visibleBody.waterInputIndex >= ctx.renderScene->water.size()) continue;
+            if (visibleBody.waterInputIndex >= ctx.renderScene->water.size()) {
+                continue;
+            }
             const auto& body = ctx.renderScene->water[visibleBody.waterInputIndex];
-            if (!body.medium.opticalEnabled) continue;
+            if (!body.medium.opticalEnabled) {
+                continue;
+            }
             waterData.underwaterMaxDistance = (std::max)(waterData.underwaterMaxDistance, body.medium.maxDistance);
             waterData.underwaterLightSteps = (std::max)(waterData.underwaterLightSteps, static_cast<float>(body.medium.lightSteps));
         }
     }
-    /// @note 材質の光学距離・ステップは媒体側の上限。PostProcess の品質予算と強度を迂回しない。
+    // 材質の光学距離・ステップは媒体側の上限。PostProcess の品質予算と強度を迂回しない。
     waterData.underwaterMaxDistance = (std::min)(waterData.underwaterMaxDistance, vol.maxDist);
     waterData.underwaterLightSteps = (std::min)(waterData.underwaterLightSteps,
         static_cast<float>(std::clamp(vol.steps, 16, 64)));
     waterData.underwaterLightStrength *= vol.intensity;
     waterData.time = ctx.time;
-    /// @note Composite consumes the water result after applying Beer transmittance to the background.
+    // Composite consumes the water result after applying Beer transmittance to the background.
     ctx.underwaterLightPassActive = dispatchLight(waterData);
 }
 
@@ -194,23 +216,33 @@ void ExecuteVolumetricLightPass(RenderPassContext& ctx)
 void VolumetricLightPass::Setup(PassBuilder& builder, const RenderPassContext& ctx) const
 {
     builder.Read("ShadowMap").Write("VolumetricRaw").Write("VolumetricResult");
-    if (ctx.resourceRegistry.Target("PunctualShadowMap").IsValid())
+    if (ctx.resourceRegistry.Target("PunctualShadowMap").IsValid()) {
         builder.Read("PunctualShadowMap");
-    if (ctx.resourceRegistry.Target("LightCookieAtlas").IsValid())
+    }
+    if (ctx.resourceRegistry.Target("LightCookieAtlas").IsValid()) {
         builder.Read("LightCookieAtlas");
-    if (ctx.resourceRegistry.Target("WaterMediumAtlas").IsValid())
+    }
+    if (ctx.resourceRegistry.Target("WaterMediumAtlas").IsValid()) {
         builder.Read("WaterMediumAtlas");
-    if (ctx.resourceRegistry.Target("WaterInterface").IsValid())
+    }
+    if (ctx.resourceRegistry.Target("WaterInterface").IsValid()) {
         builder.Read("WaterInterface");
+    }
     builder.ReadWrite("HDR");
 }
 
 bool VolumetricLightPass::IsEnabled(const RenderPassContext& ctx) const
 {
-    if (ctx.rayPathViewActive || !ctx.settings.IsVolumetricLightActive()) return false;
+    if (ctx.rayPathViewActive || !ctx.settings.IsVolumetricLightActive()) {
+        return false;
+    }
     const auto& water = ctx.environment.underwater;
-    if (!UsesOpticalUnderwater(water)) return true;
-    if (ctx.renderScene && HasOpticalWaterMedium(*ctx.renderScene)) return HasOpticalWaterMedium(*ctx.renderScene, true);
+    if (!UsesOpticalUnderwater(water)) {
+        return true;
+    }
+    if (ctx.renderScene && HasOpticalWaterMedium(*ctx.renderScene)) {
+        return HasOpticalWaterMedium(*ctx.renderScene, true);
+    }
     return water.lightStrength > 0.0f;
 }
 
@@ -218,4 +250,4 @@ void VolumetricLightPass::Execute(PassResources&, RenderPassContext& ctx)
 {
     ExecuteVolumetricLightPass(ctx);
 }
-} /// @note namespace fbzz::renderer
+} // namespace fbzz::renderer

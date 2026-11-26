@@ -359,7 +359,7 @@ TEST_F(GraphicsQualityShaderTest, EditorDepthGridSharesModelJitterWhileOverlayRe
         std::array<r::DebugDrawVertex, 4> vertices{};
         for (size_t corner = 0; corner < CORNERS.size(); ++corner) {
             const auto xz = CORNERS[corner];
-            /// @note 線と三角形の被覆規則の差より十分離し、サブピクセルの接触ではなく遮蔽を検証する。
+            // 線と三角形の被覆規則の差より十分離し、サブピクセルの接触ではなく遮蔽を検証する。
             /// @see https://learn.microsoft.com/en-gb/windows/win32/direct3d11/d3d10-graphics-programming-guide-rasterizer-stage-rules Rasterization rules for triangles and lines.
             vertices[corner] = {{xz.x, 0.5f + (model == 0u ? 0.0f : 0.15f * xz.x), xz.y}, {0,0,0,1}};
         }

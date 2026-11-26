@@ -32,9 +32,13 @@ inline std::filesystem::path FindShaderRoot(const std::filesystem::path& sourceP
         std::string name = current.filename().string();
         std::transform(name.begin(), name.end(), name.begin(),
             [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
-        if (name == "shaders") return current;
+        if (name == "shaders") {
+            return current;
+        }
         const std::filesystem::path parent = current.parent_path();
-        if (parent.empty() || parent == current) break;
+        if (parent.empty() || parent == current) {
+            break;
+        }
         current = parent;
     }
     return sourcePath.parent_path();
@@ -52,25 +56,35 @@ inline Condition Negate(Condition value)
 
 inline Condition Both(Condition first, Condition second)
 {
-    if (first == Condition::FALSE_VALUE || second == Condition::FALSE_VALUE) return Condition::FALSE_VALUE;
+    if (first == Condition::FALSE_VALUE || second == Condition::FALSE_VALUE) {
+        return Condition::FALSE_VALUE;
+    }
     return first == Condition::TRUE_VALUE && second == Condition::TRUE_VALUE
         ? Condition::TRUE_VALUE : Condition::UNKNOWN;
 }
 
 inline std::string_view Trim(std::string_view value)
 {
-    while (!value.empty() && std::isspace(static_cast<unsigned char>(value.front()))) value.remove_prefix(1);
-    while (!value.empty() && std::isspace(static_cast<unsigned char>(value.back()))) value.remove_suffix(1);
+    while (!value.empty() && std::isspace(static_cast<unsigned char>(value.front()))) {
+        value.remove_prefix(1);
+    }
+    while (!value.empty() && std::isspace(static_cast<unsigned char>(value.back()))) {
+        value.remove_suffix(1);
+    }
     return value;
 }
 
 inline std::string_view TakeIdentifier(std::string_view& value)
 {
     value = Trim(value);
-    if (value.empty() || !(std::isalpha(static_cast<unsigned char>(value.front())) || value.front() == '_')) return {};
+    if (value.empty() || !(std::isalpha(static_cast<unsigned char>(value.front())) || value.front() == '_')) {
+        return {};
+    }
     size_t length = 1;
     while (length < value.size()
-        && (std::isalnum(static_cast<unsigned char>(value[length])) || value[length] == '_')) ++length;
+        && (std::isalnum(static_cast<unsigned char>(value[length])) || value[length] == '_')) {
+        ++length;
+    }
     const auto name = value.substr(0, length);
     value.remove_prefix(length);
     return name;
@@ -93,21 +107,32 @@ inline bool ResolveInclude(std::string_view expression, const ScanState& state,
     std::unordered_set<std::string>& expanding, std::vector<std::filesystem::path>& names)
 {
     expression = Trim(expression);
-    if (expression.empty()) return false;
+    if (expression.empty()) {
+        return false;
+    }
     if (expression.front() == '"' || expression.front() == '<') {
         const size_t end = expression.find(expression.front() == '<' ? '>' : '"', 1);
-        if (end == std::string_view::npos || end == 1) return false;
+        if (end == std::string_view::npos || end == 1) {
+            return false;
+        }
         names.emplace_back(std::string(expression.substr(1, end - 1)));
         return true;
     }
     const std::string name(TakeIdentifier(expression));
     expression = Trim(expression);
-    if (name.empty() || (!expression.empty() && !expression.starts_with("//"))) return false;
+    if (name.empty() || (!expression.empty() && !expression.starts_with("//"))) {
+        return false;
+    }
     const auto found = state.macros.find(name);
-    if (found == state.macros.end() || !expanding.insert(name).second) return false;
+    if (found == state.macros.end() || !expanding.insert(name).second) {
+        return false;
+    }
     bool resolved = !found->second.values.empty();
-    for (const auto& value : found->second.values)
-        if (!ResolveInclude(value, state, expanding, names)) resolved = false;
+    for (const auto& value : found->second.values) {
+        if (!ResolveInclude(value, state, expanding, names)) {
+            resolved = false;
+        }
+    }
     expanding.erase(name);
     return resolved;
 }
@@ -119,14 +144,22 @@ inline bool HasNewerDependency(const std::filesystem::path& sourcePath,
     std::error_code error;
     const auto normalized = std::filesystem::weakly_canonical(sourcePath, error);
     const std::string key = (error ? sourcePath.lexically_normal() : normalized).generic_string();
-    if (state.active.contains(key)) return false;
-    /// @note A second include may expand differently after a macro changes; only identical contexts are reusable.
-    if (!visited.insert(key + "|" + std::to_string(state.revision)).second) return false;
+    if (state.active.contains(key)) {
+        return false;
+    }
+    // A second include may expand differently after a macro changes; only identical contexts are reusable.
+    if (!visited.insert(key + "|" + std::to_string(state.revision)).second) {
+        return false;
+    }
     error.clear();
     const auto sourceTime = std::filesystem::last_write_time(sourcePath, error);
-    if (error || sourceTime > binaryTime) return true;
+    if (error || sourceTime > binaryTime) {
+        return true;
+    }
     std::ifstream source(sourcePath);
-    if (!source.is_open()) return true;
+    if (!source.is_open()) {
+        return true;
+    }
     state.active.insert(key);
     struct Conditional { Condition parent, previous; };
     std::vector<Conditional> conditions;
@@ -134,7 +167,9 @@ inline bool HasNewerDependency(const std::filesystem::path& sourcePath,
     std::string line;
     while (std::getline(source, line)) {
         std::string_view text = Trim(line);
-        if (text.empty() || text.front() != '#') continue;
+        if (text.empty() || text.front() != '#') {
+            continue;
+        }
         text.remove_prefix(1);
         const auto directive = TakeIdentifier(text);
         text = Trim(text);
@@ -145,38 +180,61 @@ inline bool HasNewerDependency(const std::filesystem::path& sourcePath,
                 const auto found = state.macros.find(name);
                 condition = found == state.macros.end() ? Condition::FALSE_VALUE
                     : found->second.mayBeUndefined ? Condition::UNKNOWN : Condition::TRUE_VALUE;
-                if (directive == "ifndef") condition = Negate(condition);
-            } else if (text == "0") condition = Condition::FALSE_VALUE;
-            else if (text == "1") condition = Condition::TRUE_VALUE;
+                if (directive == "ifndef") {
+                    condition = Negate(condition);
+                }
+            } else if (text == "0") {
+                condition = Condition::FALSE_VALUE;
+            }
+            else if (text == "1") {
+                condition = Condition::TRUE_VALUE;
+            }
             conditions.push_back({active, condition});
             active = Both(active, condition);
             continue;
         }
         if (directive == "else" || directive == "elif") {
-            if (conditions.empty()) return true;
+            if (conditions.empty()) {
+                return true;
+            }
             auto& current = conditions.back();
-            const Condition condition = directive == "else" ? Condition::TRUE_VALUE
-                : text == "0" ? Condition::FALSE_VALUE : text == "1" ? Condition::TRUE_VALUE : Condition::UNKNOWN;
+            // 定数として扱えない式は不明のまま残し、依存候補から除外しない。
+            Condition condition = Condition::UNKNOWN;
+            if (directive == "else") {
+                condition = Condition::TRUE_VALUE;
+            } else if (text == "0") {
+                condition = Condition::FALSE_VALUE;
+            } else if (text == "1") {
+                condition = Condition::TRUE_VALUE;
+            }
             active = Both(current.parent, Both(Negate(current.previous), condition));
             current.previous = Negate(Both(Negate(current.previous), Negate(condition)));
             continue;
         }
         if (directive == "endif") {
-            if (conditions.empty()) return true;
+            if (conditions.empty()) {
+                return true;
+            }
             active = conditions.back().parent;
             conditions.pop_back();
             continue;
         }
-        /// @note Compiler-provided defines are not known here; literal includes retain the previous conservative dependency coverage.
-        /// @note Inactive macro includes/definitions stay skipped so absent optional project hooks remain cacheable.
+        // Compiler-provided defines are not known here; literal includes retain the previous conservative dependency coverage.
+        // Inactive macro includes/definitions stay skipped so absent optional project hooks remain cacheable.
         if (active == Condition::FALSE_VALUE && (directive != "include" || text.empty()
-            || (text.front() != '"' && text.front() != '<'))) continue;
+            || (text.front() != '"' && text.front() != '<'))) {
+            continue;
+        }
         if (directive == "define" || directive == "undef") {
             const std::string name(TakeIdentifier(text));
-            if (name.empty()) continue;
+            if (name.empty()) {
+                continue;
+            }
             auto found = state.macros.find(name);
             if (directive == "undef") {
-                if (found == state.macros.end()) continue;
+                if (found == state.macros.end()) {
+                    continue;
+                }
                 if (active == Condition::TRUE_VALUE) { state.macros.erase(found); ++state.revision; }
                 else if (!found->second.mayBeUndefined) { found->second.mayBeUndefined = true; ++state.revision; }
                 continue;
@@ -200,30 +258,39 @@ inline bool HasNewerDependency(const std::filesystem::path& sourcePath,
             }
             continue;
         }
-        if (directive != "include") continue;
+        if (directive != "include") {
+            continue;
+        }
         std::unordered_set<std::string> expanding;
         std::vector<std::filesystem::path> names;
-        if (!ResolveInclude(text, state, expanding, names)) return true;
+        if (!ResolveInclude(text, state, expanding, names)) {
+            return true;
+        }
         for (const auto& includeName : names) {
             auto dependency = sourcePath.parent_path() / includeName;
             error.clear();
-            if (!std::filesystem::is_regular_file(dependency, error)) dependency = shaderRoot / includeName;
+            if (!std::filesystem::is_regular_file(dependency, error)) {
+                dependency = shaderRoot / includeName;
+            }
             error.clear();
-            if (!std::filesystem::is_regular_file(dependency, error))
+            if (!std::filesystem::is_regular_file(dependency, error)) {
                 dependency = ResolveShaderFilePath(std::filesystem::path("Assets/Shaders") / includeName);
+            }
             error.clear();
             if (!std::filesystem::is_regular_file(dependency, error)
-                || HasNewerDependency(dependency, shaderRoot, binaryTime, visited, state)) return true;
+                || HasNewerDependency(dependency, shaderRoot, binaryTime, visited, state)) {
+                return true;
+            }
         }
     }
     state.active.erase(key);
     return !conditions.empty();
 }
 
-} /// @note namespace detail
+} // namespace detail
 
-/// @brief Checks literal and source-defined object-macro includes across one translation unit.
-/// @note Undefined hooks guarded by #ifdef remain cacheable; unsupported include expressions conservatively rebuild.
+/// @brief 1 翻訳単位内のリテラルおよびオブジェクト形式マクロによる include の更新を調べる。
+/// @note `#ifdef` で囲んだ未定義のフックはキャッシュを再利用できる。未対応の include 式があれば安全のため再構築する。
 inline bool HasNewerDependency(
     const std::filesystem::path& sourcePath,
     const std::filesystem::path& shaderRoot,
@@ -241,15 +308,21 @@ inline bool IsBinaryStale(const std::filesystem::path& source,
     const std::filesystem::path sourcePath = ResolveExistingPath(source);
     const std::filesystem::path binaryPath = ResolveExistingPath(binary);
     std::error_code error;
-    if (!std::filesystem::is_regular_file(sourcePath, error)) return true;
+    if (!std::filesystem::is_regular_file(sourcePath, error)) {
+        return true;
+    }
     error.clear();
-    if (!std::filesystem::is_regular_file(binaryPath, error)) return true;
+    if (!std::filesystem::is_regular_file(binaryPath, error)) {
+        return true;
+    }
     error.clear();
     const auto binaryTime = std::filesystem::last_write_time(binaryPath, error);
-    if (error) return true;
+    if (error) {
+        return true;
+    }
 
     std::unordered_set<std::string> visited;
     return HasNewerDependency(sourcePath, FindShaderRoot(sourcePath), binaryTime, visited);
 }
 
-} /// @note namespace fbzz::renderer::shader_dependency
+} // namespace fbzz::renderer::shader_dependency

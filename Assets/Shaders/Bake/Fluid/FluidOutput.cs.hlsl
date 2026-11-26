@@ -5,10 +5,10 @@
 #include "Bake/Fluid/FluidGpuCommon.hlsli"
 #include "Common/BindlessIndices.hlsli"
 
-FBZZ_TEX3D_T(float4, gScalarsIn, 0);
-FBZZ_TEX3D_T(float4, gVelocityIn, 1);
-FBZZ_RWTEX3D_T(float4, gMediumOut, 0); // R 密度 / G 温度 / B colorKey / A 液体の割合 (VolumeFill と同じ)
-FBZZ_RWTEX3D_T(float4, gVelocityOut, 1);
+FBZZ_TEX3D_T(float4, gScalarsIn, SRV_FLUID_OUTPUT_SCALARS_IN_SLOT);
+FBZZ_TEX3D_T(float4, gVelocityIn, SRV_FLUID_OUTPUT_VELOCITY_IN_SLOT);
+FBZZ_RWTEX3D_T(float4, gMediumOut, UAV_FLUID_OUTPUT_MEDIUM_OUT_SLOT); /// @note R 密度 / G 温度 / B colorKey / A 液体の割合 (VolumeFill と同じ)
+FBZZ_RWTEX3D_T(float4, gVelocityOut, UAV_FLUID_OUTPUT_VELOCITY_OUT_SLOT);
 
 [numthreads(4, 4, 4)]
 void CSMain(uint3 id : SV_DispatchThreadID)

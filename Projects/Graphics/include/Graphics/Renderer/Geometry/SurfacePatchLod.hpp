@@ -26,70 +26,58 @@ enum class SurfacePatchEdge : uint8_t {
 };
 
 struct SurfacePatchLodSettings {
-    uint32_t cellsPerPatch = 16;
-    uint32_t maxDepth = 8;
-    uint32_t maxPatches = 4096;
-    /// @note morphEnabled はパッチ境界と同じ高さ場を保つ画面密度ベースのモーフを有効にする。
-    bool morphEnabled = false;
-    /// @note 親レベルの投影要求が 1 を越えてから詳細へ戻るまでの正規化幅。
-    float morphTransitionWidth = 0.25f;
-    /// @note 投影されたセルの幅 [pixel]。高さ関数の幾何誤差の上限ではない。
-    float targetCellPixels = 24.0f;
-    float nearDistance = 64.0f;
-    float nearCellSize = 2.0f;
+    uint32_t cellsPerPatch = 16; ///< パッチの各辺に並ぶ共有格子のセル数。2〜256 の二の冪。
+    uint32_t maxDepth = 8; ///< 基準矩形を 0 とした四分木の分割深度上限。0〜10。
+    uint32_t maxPatches = 4096; ///< 視錐台外も含む葉パッチの予算。1〜16384。
+    bool morphEnabled = false; ///< パッチ境界と同じ高さ場を保つ画面密度ベースの遷移を有効にする。
+    float morphTransitionWidth = 0.25f; ///< 親レベルの投影要求が 1 を越えてから詳細へ戻るまでの正規化幅。
+    float targetCellPixels = 24.0f; ///< 分割の基準とする画面への投影セル幅 [px]。
+    float nearDistance = 64.0f; ///< 近景の追加分割を効かせるカメラからの距離 [m]。0 で無効。
+    float nearCellSize = 2.0f; ///< 近景で目標とするワールド空間のセル幅 [m]。
 };
 
 struct SurfacePatchSurface {
-    /// @note localMin / localMax は基準矩形のローカル XZ。波による水平変位は含めない。
-    math::Vector2 localMin = { -50.0f, -50.0f };
-    math::Vector2 localMax = { 50.0f, 50.0f };
-    math::Matrix4 worldMatrix = math::Matrix4::Identity();
-    /// @note minHeight / maxHeight と horizontalDisplacement は全変位を包むローカル単位の上限。
-    float minHeight = 0.0f;
-    float maxHeight = 0.0f;
-    float horizontalDisplacement = 0.0f;
+    math::Vector2 localMin = { -50.0f, -50.0f }; ///< 水平変位を含まない基準矩形のローカル XZ 最小点。
+    math::Vector2 localMax = { 50.0f, 50.0f }; ///< 水平変位を含まない基準矩形のローカル XZ 最大点。
+    math::Matrix4 worldMatrix = math::Matrix4::Identity(); ///< 基準矩形のローカル座標からワールド座標へのアフィン変換。
+    float minHeight = 0.0f; ///< 変位の全範囲を含むローカル Y の下限。
+    float maxHeight = 0.0f; ///< 変位の全範囲を含むローカル Y の上限。
+    float horizontalDisplacement = 0.0f; ///< 水平変位を覆うローカル XZ 方向の距離上限。
 };
 
 struct SurfacePatchView {
-    math::Vector3 cameraPosition = math::Vector3::ZERO;
-    math::Vector3 cameraForward = { 0.0f, 0.0f, 1.0f };
-    /// @note 透視では viewportHeight / (2*tan(verticalFov/2))、平行投影では pixel / world m。
-    float projectionScalePixels = 540.0f;
-    /// @note 選択 cache のビュー識別に使う。分割計算自体は投影スケールを使う。
-    uint32_t viewportHeight = 0;
-    float minProjectionDistance = 0.1f;
-    bool orthographic = false;
-    /// @note この呼び出し中だけ参照する。nullptr はカリングなし。
-    const math::Frustum* frustum = nullptr;
-    /// @note 可視判定を分割には使ったまま、skirt や外周生成用に不可視 leaf も出力する。
-    bool includeCulledPatches = false;
+    math::Vector3 cameraPosition = math::Vector3::ZERO; ///< カメラのワールド位置 [m]。
+    math::Vector3 cameraForward = { 0.0f, 0.0f, 1.0f }; ///< 視線方向の距離を測るワールド空間のカメラ前方向。
+    float projectionScalePixels = 540.0f; ///< 透視では viewportHeight / (2*tan(verticalFov/2)) [px]、平行投影では画素密度 [px/m]。
+    uint32_t viewportHeight = 0; ///< 選択キャッシュで照合する描画領域の高さ [px]。
+    float minProjectionDistance = 0.1f; ///< 透視の投影セル幅を求める際に使う深度の下限 [m]。
+    bool orthographic = false; ///< 画面上のセル幅を平行投影で計算するかどうか。
+    const math::Frustum* frustum = nullptr; ///< 選択中だけ借用するワールド視錐台。nullptr ならカリングを省く。
+    bool includeCulledPatches = false; ///< 視錐台外の葉も境界接続や外周を組むために出力するかどうか。
 };
 
 struct SurfacePatch {
-    /// @note depth / x / z は基準矩形を四分木で分けた安定キー。ビュー間で共有しない。
-    uint32_t depth = 0;
-    uint32_t x = 0;
-    uint32_t z = 0;
-    math::Vector2 localMin, localMax;
-    math::Vector2 uvMin, uvMax;
-    /// @note aabb は水平・垂直変位を含むローカル境界。localMin / localMax は基準面の区画。
-    math::Vector3 aabbMin, aabbMax;
-    /// @note セル幅は各軸のワールド m。境界の帯域制限に使う。
-    math::Vector2 cellSize;
-    /// @note パッチ固有の幾何セル幅。境界の波帯域や far strip の共有帯域とは独立する。
-    math::Vector2 morphCellSize;
-    uint8_t coarseEdgeMask = 0;
-    /// @note MIN_X / MAX_X / MIN_Z / MAX_Z の順。辺を共有する最も粗いパッチのセル幅。
-    std::array<math::Vector2, 4> edgeCellSize{};
+    uint32_t depth = 0; ///< 基準矩形を 0 とした、このパッチの四分木深度。
+    uint32_t x = 0; ///< 深度 depth の格子内での X 方向パッチ番号。
+    uint32_t z = 0; ///< 深度 depth の格子内での Z 方向パッチ番号。
+    math::Vector2 localMin; ///< 基準面でパッチが占めるローカル XZ の最小点。
+    math::Vector2 localMax; ///< 基準面でパッチが占めるローカル XZ の最大点。
+    math::Vector2 uvMin; ///< 基準矩形全体を [0, 1] としたパッチ UV の最小点。
+    math::Vector2 uvMax; ///< 基準矩形全体を [0, 1] としたパッチ UV の最大点。
+    math::Vector3 aabbMin; ///< 水平・垂直変位を含むローカル境界の最小点。
+    math::Vector3 aabbMax; ///< 水平・垂直変位を含むローカル境界の最大点。
+    math::Vector2 cellSize; ///< 波・高さの帯域制限に使う各軸のセル幅 [m]。
+    math::Vector2 morphCellSize; ///< LOD 遷移で使うパッチ固有の幾何セル幅 [m]。隣接辺の共有帯域とは独立。
+    uint8_t coarseEdgeMask = 0; ///< 粗いパッチと接する辺を示す SurfacePatchEdge のビット集合。
+    std::array<math::Vector2, 4> edgeCellSize{}; ///< MIN_X / MAX_X / MIN_Z / MAX_Z の順。共有辺に接する最も粗いセル幅 [m]。
     /// @note MIN_X_MIN_Z / MAX_X_MIN_Z / MIN_X_MAX_Z / MAX_X_MAX_Z の順。
     /// @note 視錐台外も含め、同じ点に接する全パッチの最大セル幅を持つ。
-    std::array<math::Vector2, 4> cornerCellSize{};
+    std::array<math::Vector2, 4> cornerCellSize{}; ///< 同じ角に接するパッチの最大セル幅 [m]。
 };
 
 struct SurfacePatchSelection {
-    std::vector<SurfacePatch> patches;
-    /// @note true は要求密度が maxDepth または maxPatches で制限されたことを示す。
-    bool qualityLimited = false;
+    std::vector<SurfacePatch> patches; ///< 当該ビューと分割設定で選んだ葉パッチ。
+    bool qualityLimited = false; ///< 最大深度またはパッチ予算によって要求密度まで分割できなかったかどうか。
 };
 
 /// @brief 同じ入力値と浮動小数点制御状態のパッチ選択を再利用する有界 cache。
@@ -123,15 +111,15 @@ public:
 
 private:
     struct Entry {
-        std::array<uint32_t, 80> signature{};
-        uint32_t signatureSize = 0;
-        std::shared_ptr<const SurfacePatchSelection> selection;
-        uint64_t lastUse = 0;
+        std::array<uint32_t, 80> signature{}; ///< 形状、ビュー、分割設定、浮動小数点制御状態を比較するキーの記憶領域。
+        uint32_t signatureSize = 0; ///< signature 内の有効な uint32 要素数。
+        std::shared_ptr<const SurfacePatchSelection> selection; ///< キャッシュ退役後も呼び出し中に保持できる不変の選択結果。
+        uint64_t lastUse = 0; ///< 退役候補の順番を決める、この項目の最終参照番号。
     };
 
-    std::vector<Entry> m_entries;
-    std::size_t m_cachedPatchCapacity = 0;
-    uint64_t m_useClock = 0;
+    std::vector<Entry> m_entries; ///< このキャッシュが保持するキーと選択結果の組。
+    std::size_t m_cachedPatchCapacity = 0; ///< 保持したパッチ配列の予約要素数の合計。
+    uint64_t m_useClock = 0; ///< 利用順を付ける単調増加の内部番号。
 };
 
 /// @brief Keeps pure geometry for at most two independent render views between invocations.
@@ -142,16 +130,22 @@ public:
     SurfacePatchSelectionCacheOwner(const SurfacePatchSelectionCacheOwner&) = delete;
     SurfacePatchSelectionCacheOwner& operator=(const SurfacePatchSelectionCacheOwner&) = delete;
     struct ViewKey {
-        uint64_t resourceOwner = 0, resourceEpoch = 0, sceneGeneration = 0;
-        uint32_t view = 0, outputId = 0, outputGeneration = 0;
+        uint64_t resourceOwner = 0; ///< ビュー資源の所有元を照合する ResourceManager の識別番号。
+        uint64_t resourceEpoch = 0; ///< 資源のリセット前後を区別する世代。
+        uint64_t sceneGeneration = 0; ///< シーン切り替え前後を区別する世代。
+        uint32_t view = 0; ///< 同じ資源管理元で独立したビューを区別する番号。
+        uint32_t outputId = 0; ///< ビューの出力ターゲットのスロット添字。
+        uint32_t outputGeneration = 0; ///< ビューの出力ターゲットのスロット世代。
         bool operator==(const ViewKey&) const = default;
     };
 private:
     struct Slot {
-        ViewKey key;
-        SurfacePatchSelectionCache cache;
-        uint64_t lastUse = 0;
-        bool occupied = false, inUse = false, discardOnReturn = false;
+        ViewKey key; ///< 保持中のパッチ選択を作ったビューの識別情報。
+        SurfacePatchSelectionCache cache; ///< 呼び出し間で保持するビューのパッチ選択。
+        uint64_t lastUse = 0; ///< ビューが最後に借りたときの内部番号。
+        bool occupied = false; ///< スロットがビューに割り当てられているかどうか。
+        bool inUse = false; ///< 実行中の呼び出しが対応するキャッシュを借りているかどうか。
+        bool discardOnReturn = false; ///< Clear 後に、借り出し中のキャッシュを返却時に破棄するかどうか。
     };
 public:
     class Lease {
@@ -163,8 +157,8 @@ public:
         friend class SurfacePatchSelectionCacheOwner;
         FBZZ_GRAPHICS_API Lease(SurfacePatchSelectionCacheOwner& owner, const ViewKey& key,
             SurfacePatchSelectionCache& execution);
-        Slot* m_slot = nullptr;
-        SurfacePatchSelectionCache* m_execution = nullptr;
+        Slot* m_slot = nullptr; ///< 借りている所有元スロット。ローカルキャッシュ使用時は null。
+        SurfacePatchSelectionCache* m_execution = nullptr; ///< キャッシュを交換した呼び出し側の実行用領域。
     };
 
     /// @brief Borrows one view's cache and restores the caller's prior cache at invocation exit.
@@ -173,11 +167,15 @@ public:
     /// @brief Clears idle views and discards active view storage when its lease returns.
     FBZZ_GRAPHICS_API void Clear();
 private:
-    std::array<Slot, 2> m_slots;
-    uint64_t m_useClock = 0;
+    std::array<Slot, 2> m_slots; ///< 呼び出し間で保持する、独立した 2 ビューのキャッシュ枠。
+    uint64_t m_useClock = 0; ///< ビュー枠の再利用候補を比べるための単調増加の番号。
 };
 
 /// @brief 有限矩形を距離と投影セル幅で分割し、辺の隣接深度差を 1 以下へ保つ。
+/// @param[in] surface 分割する基準矩形、変位の範囲、ワールド変換。
+/// @param[in] settings 共通格子の解像度、分割予算と分割条件。
+/// @param[in] view カメラ、投影条件と視錐台。
+/// @param[out] out 選択した葉パッチと分割予算による品質制限の有無。
 /// @return 無効な入力または float に収まらない導出幾何なら false。out は未変更。
 /// @note cellsPerPatch は 2..256 の二の冪、maxDepth は 0..10、maxPatches は 1..16384。
 /// @note world 行列は affine、各軸の長さの二乗は正の有限値。用途固有の scale 下限は持たない。
@@ -189,9 +187,9 @@ private:
     SurfacePatchSelection& out);
 
 /// @brief パッチの変位込み境界がビュー視錐台と交差するか調べる。
-/// @param surface パッチ選択に使った変位境界と world 行列。
-/// @param patch 成功した選択から得たパッチ。
-/// @param view 視錐台。nullptr なら可視として扱う。
+/// @param[in] surface パッチ選択に使った変位境界と world 行列。
+/// @param[in] patch 成功した選択から得たパッチ。
+/// @param[in] view 視錐台。nullptr なら可視として扱う。
 /// @return 視錐台と交差する、または視錐台なしなら true。
 /// @pre patch は surface と同じ入力の成功した選択から得る。
 [[nodiscard]] FBZZ_GRAPHICS_API bool IsSurfacePatchVisible(const SurfacePatchSurface& surface,
@@ -225,4 +223,4 @@ private:
 [[nodiscard]] FBZZ_GRAPHICS_API math::Vector2 ResolveSurfacePatchCellSize(const SurfacePatch& patch,
     math::Vector2 unitUv);
 
-}
+} // namespace fbzz::renderer

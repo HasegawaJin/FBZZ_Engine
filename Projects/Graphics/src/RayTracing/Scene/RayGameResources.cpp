@@ -17,7 +17,7 @@ float Dot3(const math::Vector4& first, const math::Vector4& second)
 {
     return first.x * second.x + first.y * second.y + first.z * second.z;
 }
-} /// @note namespace
+} // namespace
 
 bool IsRayGameCameraCut(const Camera& previous, const Camera& current)
 {
@@ -37,7 +37,9 @@ bool IsRayReconstructionHistoryCompatible(const RayReconstructionSurface& curren
         || current.previousPositionValid.w == 0 || current.sceneFlags != previous.sceneFlags
         || current.objectMaterialValid != previous.objectMaterialValid
         || Dot3(current.normalRoughness, previous.normalRoughness) < 0.95f
-        || std::abs(current.normalRoughness.w - previous.normalRoughness.w) > 0.03f) return false;
+        || std::abs(current.normalRoughness.w - previous.normalRoughness.w) > 0.03f) {
+        return false;
+    }
     const auto& expected = current.previousPositionValid;
     const auto& actual = previous.positionDepth;
     const float distanceSquared = (expected.x - actual.x) * (expected.x - actual.x)
@@ -52,4 +54,4 @@ bool IsRayReconstructionHistoryCompatible(const RayReconstructionSurface& curren
         && std::abs(current.albedoMetallic.w - previous.albedoMetallic.w) <= 0.02f;
 }
 
-} /// @note namespace fbzz::renderer
+} // namespace fbzz::renderer

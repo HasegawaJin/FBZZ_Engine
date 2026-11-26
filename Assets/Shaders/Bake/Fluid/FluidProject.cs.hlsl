@@ -5,13 +5,13 @@
 #include "Bake/Fluid/FluidGpuCommon.hlsli"
 #include "Common/BindlessIndices.hlsli"
 
-FBZZ_TEX3D_T(float4, gVelocityIn, 0);
-FBZZ_TEX3D_T(float4, gPressureIn, 1);
-FBZZ_TEX3D_T(float4, gSolidIn, 2); // xyz 固体の速度 / w 1 = 固体
-FBZZ_RWTEX3D_T(float4, gVelocityOut, 0);
+FBZZ_TEX3D_T(float4, gVelocityIn, SRV_FLUID_PROJECT_VELOCITY_IN_SLOT);
+FBZZ_TEX3D_T(float4, gPressureIn, SRV_FLUID_PROJECT_PRESSURE_IN_SLOT);
+FBZZ_TEX3D_T(float4, gSolidIn, SRV_FLUID_PROJECT_SOLID_IN_SLOT); /// @note xyz 固体の速度 / w 1 = 固体
+FBZZ_RWTEX3D_T(float4, gVelocityOut, UAV_FLUID_PROJECT_VELOCITY_OUT_SLOT);
 
-// NOTE: 出口を 1 つにしてある。早期 return は FXC が X4000 で咎める。
-// 障害物のセルは Jacobi と同じく ∂p/∂n = 0 (自分の圧力を映す)。
+/// @note NOTE: 出口を 1 つにしてある。早期 return は FXC が X4000 で咎める。
+/// @note 障害物のセルは Jacobi と同じく ∂p/∂n = 0 (自分の圧力を映す)。
 float PressureAt(int3 cell, float self, bool solid)
 {
     float pressure = solid ? self : 0.0f;

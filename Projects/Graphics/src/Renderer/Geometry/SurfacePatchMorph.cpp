@@ -35,8 +35,12 @@ float Cross(math::Vector2 a, math::Vector2 b)
 
 float SmoothStep(float minimum, float maximum, float value)
 {
-    if (value <= minimum) return 0.0f;
-    if (value >= maximum) return 1.0f;
+    if (value <= minimum) {
+        return 0.0f;
+    }
+    if (value >= maximum) {
+        return 1.0f;
+    }
     const float t = (value - minimum) / (maximum - minimum);
     return t * t * (3.0f - 2.0f * t);
 }
@@ -70,22 +74,27 @@ math::Vector2 CollapseVertex(int64_t x, int64_t z, uint8_t axisMask)
     const int64_t halfZ = FloorHalf(z);
     if (axisMask == SURFACE_MORPH_AXIS_BOTH) {
         if (IsOdd(x) && IsOdd(z)) {
-            if (PositiveParity(halfX + halfZ) == 0)
+            if (PositiveParity(halfX + halfZ) == 0) {
                 return {static_cast<float>(2 * halfX), static_cast<float>(2 * halfZ)};
+            }
             return {static_cast<float>(2 * halfX + 2), static_cast<float>(2 * halfZ)};
         }
         return {static_cast<float>(IsOdd(x) ? 2 * halfX : x),
                 static_cast<float>(IsOdd(z) ? 2 * halfZ : z)};
     }
     if (axisMask == SURFACE_MORPH_AXIS_X) {
-        if (!IsOdd(x)) return {static_cast<float>(x), static_cast<float>(z)};
+        if (!IsOdd(x)) {
+            return {static_cast<float>(x), static_cast<float>(z)};
+        }
         const int64_t targetX = IsOdd(z)
             ? (PositiveParity(halfX) == 0 ? 2 * halfX + 2 : 2 * halfX)
             : 2 * halfX;
         return {static_cast<float>(targetX), static_cast<float>(z)};
     }
     if (axisMask == SURFACE_MORPH_AXIS_Z) {
-        if (!IsOdd(z)) return {static_cast<float>(x), static_cast<float>(z)};
+        if (!IsOdd(z)) {
+            return {static_cast<float>(x), static_cast<float>(z)};
+        }
         const int64_t targetZ = IsOdd(x)
             ? (PositiveParity(halfZ) == 0 ? 2 * halfZ + 2 : 2 * halfZ)
             : 2 * halfZ;
@@ -114,10 +123,12 @@ bool EvaluateFanTriangle(math::Vector2 gridCoordinate, uint8_t axisMask, FanTria
     }};
     const bool dominantX = std::abs(relative.x) >= std::abs(relative.y);
     size_t sector = 0;
-    if (relative.x < 0.0f)
+    if (relative.x < 0.0f) {
         sector = relative.y < 0.0f ? (dominantX ? 0u : 7u) : (dominantX ? 1u : 2u);
-    else
+    }
+    else {
         sector = relative.y > 0.0f ? (dominantX ? 4u : 3u) : (dominantX ? 5u : 6u);
+    }
     const auto& pointA = PERIMETER[sector];
     const auto& pointB = PERIMETER[(sector + 1u) % PERIMETER.size()];
     const math::Vector2 a{static_cast<float>(pointA[0]) - 1.0f,
@@ -125,7 +136,9 @@ bool EvaluateFanTriangle(math::Vector2 gridCoordinate, uint8_t axisMask, FanTria
     const math::Vector2 b{static_cast<float>(pointB[0]) - 1.0f,
                           static_cast<float>(pointB[1]) - 1.0f};
     const float denominator = Cross(a, b);
-    if (std::abs(denominator) <= 1.0e-8f) return false;
+    if (std::abs(denominator) <= 1.0e-8f) {
+        return false;
+    }
     const float weightA = Cross(relative, b) / denominator;
     const float weightB = Cross(a, relative) / denominator;
     const float weightCenter = 1.0f - weightA - weightB;
@@ -169,11 +182,19 @@ bool ValidSettings(const SurfacePatchLodSettings& settings)
 
 bool ValidView(const SurfacePatchView& view, math::Vector3& normalizedForward)
 {
-    if (!Finite(view.cameraPosition) || !Finite(view.cameraForward)
-        || !std::isfinite(view.cameraForward.LengthSq()) || view.cameraForward.LengthSq() <= 1.0e-8f
-        || !std::isfinite(view.projectionScalePixels) || view.projectionScalePixels <= 0.0f
-        || !std::isfinite(view.minProjectionDistance) || view.minProjectionDistance <= 0.0f)
+    if (!Finite(view.cameraPosition) || !Finite(view.cameraForward)) {
         return false;
+    }
+    const float forwardLengthSquared = view.cameraForward.LengthSq();
+    if (!std::isfinite(forwardLengthSquared) || forwardLengthSquared <= 1.0e-8f) {
+        return false;
+    }
+    const bool validProjection = std::isfinite(view.projectionScalePixels) && view.projectionScalePixels > 0.0f
+        && std::isfinite(view.minProjectionDistance) && view.minProjectionDistance > 0.0f;
+    if (!validProjection) {
+        return false;
+    }
+
     normalizedForward = view.cameraForward.Normalized();
     return Finite(normalizedForward);
 }
@@ -186,11 +207,14 @@ bool EvaluateSurfacePatchParentMap(math::Vector2 gridCoordinate, uint8_t axisMas
                                    math::Vector2& out)
 {
     if (!Finite(gridCoordinate) || std::abs(gridCoordinate.x) > MAX_GRID_COORDINATE
-        || std::abs(gridCoordinate.y) > MAX_GRID_COORDINATE || !ValidAxisMask(axisMask))
+        || std::abs(gridCoordinate.y) > MAX_GRID_COORDINATE || !ValidAxisMask(axisMask)) {
         return false;
+    }
     if (axisMask == 0) { out = gridCoordinate; return true; }
     FanTriangle triangle;
-    if (!EvaluateFanTriangle(gridCoordinate, axisMask, triangle)) return false;
+    if (!EvaluateFanTriangle(gridCoordinate, axisMask, triangle)) {
+        return false;
+    }
     out = {};
     for (size_t index = 0; index < triangle.target.size(); ++index) {
         out.x += triangle.target[index].x * triangle.weight[index];
@@ -206,8 +230,9 @@ bool ComputeSurfacePatchMorphAlpha(math::Vector3 worldPosition, math::Vector2 pa
     math::Vector3 forward;
     if (!Finite(worldPosition) || !Finite(parentCellSize)
         || !ValidSettings(settings) || !ValidView(view, forward)
-        || parentCellSize.x <= 0.0f || parentCellSize.y <= 0.0f)
+        || parentCellSize.x <= 0.0f || parentCellSize.y <= 0.0f) {
         return false;
+    }
     if (!settings.morphEnabled) { outAlpha = 0.0f; return true; }
 
     const float cell = (std::max)(parentCellSize.x, parentCellSize.y);
@@ -219,11 +244,14 @@ bool ComputeSurfacePatchMorphAlpha(math::Vector3 worldPosition, math::Vector2 pa
         / (static_cast<double>(projectedDepth) * settings.targetCellPixels);
     const float distance = delta.Length();
     float nearWeight = 0.0f;
-    if (settings.nearDistance > 0.0f)
+    if (settings.nearDistance > 0.0f) {
         nearWeight = 1.0f - SmoothStep(settings.nearDistance, settings.nearDistance * 2.0f, distance);
+    }
     const double nearMetric = static_cast<double>(cell) / settings.nearCellSize * nearWeight;
     const double score = (std::max)(projected, nearMetric);
-    if (!std::isfinite(score)) return false;
+    if (!std::isfinite(score)) {
+        return false;
+    }
     const double alpha = (1.0 + static_cast<double>(settings.morphTransitionWidth) - score)
         / settings.morphTransitionWidth;
     outAlpha = static_cast<float>((std::clamp)(alpha, 0.0, 1.0));
@@ -235,21 +263,29 @@ bool MorphSurfacePatchGridCoordinate(math::Vector2 gridCoordinate, std::span<con
 {
     if (!Finite(gridCoordinate) || std::abs(gridCoordinate.x) > MAX_GRID_COORDINATE
         || std::abs(gridCoordinate.y) > MAX_GRID_COORDINATE || !ValidAxisMask(axisMask)
-        || alpha.size() > 10)
+        || alpha.size() > 10) {
         return false;
-    for (float value : alpha)
-        if (!std::isfinite(value) || value < 0.0f || value > 1.0f) return false;
+    }
+    for (float value : alpha) {
+        if (!std::isfinite(value) || value < 0.0f || value > 1.0f) {
+            return false;
+        }
+    }
     math::Vector2 result = gridCoordinate;
     for (size_t level = 0; level < alpha.size(); ++level) {
         const float scale = std::ldexp(1.0f, static_cast<int>(level));
         const math::Vector2 coarseInput{result.x / scale, result.y / scale};
         math::Vector2 parent;
-        if (!EvaluateSurfacePatchParentMap(coarseInput, axisMask, parent)) return false;
+        if (!EvaluateSurfacePatchParentMap(coarseInput, axisMask, parent)) {
+            return false;
+        }
         const math::Vector2 target = parent * scale;
         const float weight = alpha[level];
         result = {result.x + (target.x - result.x) * weight,
                   result.y + (target.y - result.y) * weight};
-        if (!Finite(result)) return false;
+        if (!Finite(result)) {
+            return false;
+        }
     }
     out = result;
     return true;
@@ -263,16 +299,33 @@ bool MorphSurfacePatchGridCoordinateDensity(math::Vector2 gridCoordinate,
     uint8_t axisMask, math::Vector2& outGridCoordinate, math::Vector2& outRootUv,
     math::Vector2& outCellSize)
 {
-    if (!Finite(gridCoordinate) || std::abs(gridCoordinate.x) > MAX_GRID_COORDINATE
-        || std::abs(gridCoordinate.y) > MAX_GRID_COORDINATE || !Finite(rootUv)
-        || !Finite(rootUvPerGridX) || !Finite(rootUvPerGridZ) || !Finite(originalWorldPosition)
-        || !Finite(worldRootUAxis) || !Finite(worldRootVAxis) || !Finite(nativeCellSize)
-        || !Finite(sharedBand) || nativeCellSize.x <= 0.0f || nativeCellSize.y <= 0.0f
-        || sharedBand.x < 0.0f || sharedBand.y < 0.0f || levels > settings.maxDepth
-        || levels > 10u || !ValidSettings(settings) || !ValidAxisMask(axisMask))
+    // 親格子を検索できる範囲の頂点を受け付け、UV とワールド座標の変換に使う値を確認する。
+    const bool validGridCoordinate = Finite(gridCoordinate) && std::abs(gridCoordinate.x) <= MAX_GRID_COORDINATE
+        && std::abs(gridCoordinate.y) <= MAX_GRID_COORDINATE;
+    if (!validGridCoordinate) {
         return false;
+    }
+    if (!Finite(rootUv) || !Finite(rootUvPerGridX) || !Finite(rootUvPerGridZ)) {
+        return false;
+    }
+    if (!Finite(originalWorldPosition) || !Finite(worldRootUAxis) || !Finite(worldRootVAxis)) {
+        return false;
+    }
+
+    // 帯域の遷移に使うセル幅と、評価する親レベルの範囲を確かめる。
+    const bool validSamplingBand = Finite(nativeCellSize) && Finite(sharedBand)
+        && nativeCellSize.x > 0.0f && nativeCellSize.y > 0.0f && sharedBand.x >= 0.0f && sharedBand.y >= 0.0f;
+    if (!validSamplingBand) {
+        return false;
+    }
+    if (levels > settings.maxDepth || levels > 10u || !ValidSettings(settings) || !ValidAxisMask(axisMask)) {
+        return false;
+    }
+
     math::Vector3 normalizedForward;
-    if (!ValidView(view, normalizedForward) || !Finite(normalizedForward)) return false;
+    if (!ValidView(view, normalizedForward)) {
+        return false;
+    }
     if (!settings.morphEnabled) {
         outGridCoordinate = gridCoordinate;
         outRootUv = rootUv;
@@ -280,6 +333,7 @@ bool MorphSurfacePatchGridCoordinateDensity(math::Vector2 gridCoordinate,
         return true;
     }
 
+    // 細かい格子から親へ順にたどり、頂点を各レベルの投影密度に合わせて移動する。
     math::Vector2 current = gridCoordinate;
     for (uint32_t level = 0; level < levels && axisMask != 0; ++level) {
         const float scale = std::ldexp(1.0f, static_cast<int>(level));
@@ -289,11 +343,15 @@ bool MorphSurfacePatchGridCoordinateDensity(math::Vector2 gridCoordinate,
         };
         const math::Vector2 levelCoordinate{current.x / levelScale.x, current.y / levelScale.y};
         FanTriangle triangle;
-        if (!EvaluateFanTriangle(levelCoordinate, axisMask, triangle)) return false;
+        if (!EvaluateFanTriangle(levelCoordinate, axisMask, triangle)) {
+            return false;
+        }
         const math::Vector2 currentUv = RootUvAtOffset(rootUv, rootUvPerGridX, rootUvPerGridZ,
             {current.x - gridCoordinate.x, current.y - gridCoordinate.y});
         const math::Vector2 parentCellSize = nativeCellSize * std::ldexp(1.0f, static_cast<int>(level + 1u));
-        if (!Finite(parentCellSize)) return false;
+        if (!Finite(parentCellSize)) {
+            return false;
+        }
         math::Vector2 mapped{};
         for (size_t vertex = 0; vertex < triangle.source.size(); ++vertex) {
             const math::Vector2 source{
@@ -310,11 +368,15 @@ bool MorphSurfacePatchGridCoordinateDensity(math::Vector2 gridCoordinate,
                 AddScaled(originalWorldPosition, worldRootUAxis, vertexUv.x - rootUv.x),
                 worldRootVAxis, vertexUv.y - rootUv.y);
             float alpha = 0.0f;
-            if (!ComputeSurfacePatchMorphAlpha(world, parentCellSize, settings, view, alpha)) return false;
+            if (!ComputeSurfacePatchMorphAlpha(world, parentCellSize, settings, view, alpha)) {
+                return false;
+            }
             mapped.x += (source.x + (target.x - source.x) * alpha) * triangle.weight[vertex];
             mapped.y += (source.y + (target.y - source.y) * alpha) * triangle.weight[vertex];
         }
-        if (!Finite(mapped)) return false;
+        if (!Finite(mapped)) {
+            return false;
+        }
         current = mapped;
     }
 
@@ -323,7 +385,9 @@ bool MorphSurfacePatchGridCoordinateDensity(math::Vector2 gridCoordinate,
     const math::Vector3 finalWorld = AddScaled(
         AddScaled(originalWorldPosition, worldRootUAxis, finalUv.x - rootUv.x),
         worldRootVAxis, finalUv.y - rootUv.y);
-    if (!Finite(finalUv) || !Finite(finalWorld)) return false;
+    if (!Finite(finalUv) || !Finite(finalWorld)) {
+        return false;
+    }
     math::Vector2 cellSize{
         (std::max)(nativeCellSize.x, sharedBand.x),
         (std::max)(nativeCellSize.y, sharedBand.y)
@@ -333,14 +397,19 @@ bool MorphSurfacePatchGridCoordinateDensity(math::Vector2 gridCoordinate,
         const math::Vector2 parentCellSize = nativeCellSize * scale;
         float alpha = 0.0f;
         if (!Finite(parentCellSize)
-            || !ComputeSurfacePatchMorphAlpha(finalWorld, parentCellSize, settings, view, alpha))
+            || !ComputeSurfacePatchMorphAlpha(finalWorld, parentCellSize, settings, view, alpha)) {
             return false;
-        if (parentCellSize.x > cellSize.x)
+        }
+        if (parentCellSize.x > cellSize.x) {
             cellSize.x += (parentCellSize.x - cellSize.x) * alpha;
-        if (parentCellSize.y > cellSize.y)
+        }
+        if (parentCellSize.y > cellSize.y) {
             cellSize.y += (parentCellSize.y - cellSize.y) * alpha;
+        }
     }
-    if (!Finite(cellSize)) return false;
+    if (!Finite(cellSize)) {
+        return false;
+    }
     outGridCoordinate = current;
     outRootUv = finalUv;
     outCellSize = cellSize;
@@ -352,23 +421,32 @@ bool ResolveSurfacePatchMorphCellSize(math::Vector2 nativeCellSize, math::Vector
 {
     if (!Finite(nativeCellSize) || !Finite(sharedBand)
         || alpha.size() > 10 || nativeCellSize.x < 0.0f || nativeCellSize.y < 0.0f
-        || sharedBand.x < 0.0f || sharedBand.y < 0.0f)
+        || sharedBand.x < 0.0f || sharedBand.y < 0.0f) {
         return false;
+    }
     math::Vector2 morphed = {
         (std::max)(nativeCellSize.x, sharedBand.x),
         (std::max)(nativeCellSize.y, sharedBand.y)
     };
     for (size_t level = 0; level < alpha.size(); ++level) {
         const float value = alpha[level];
-        if (!std::isfinite(value) || value < 0.0f || value > 1.0f) return false;
+        if (!std::isfinite(value) || value < 0.0f || value > 1.0f) {
+            return false;
+        }
         const float scale = std::ldexp(1.0f, static_cast<int>(level + 1u));
         const math::Vector2 parentCellSize = nativeCellSize * scale;
-        if (!Finite(parentCellSize)) return false;
-        if (parentCellSize.x > morphed.x)
+        if (!Finite(parentCellSize)) {
+            return false;
+        }
+        if (parentCellSize.x > morphed.x) {
             morphed.x += (parentCellSize.x - morphed.x) * value;
-        if (parentCellSize.y > morphed.y)
+        }
+        if (parentCellSize.y > morphed.y) {
             morphed.y += (parentCellSize.y - morphed.y) * value;
-        if (!Finite(morphed)) return false;
+        }
+        if (!Finite(morphed)) {
+            return false;
+        }
     }
     out = morphed;
     return true;

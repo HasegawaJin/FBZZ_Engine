@@ -2,6 +2,7 @@
 /// @brief   Execute independent skeletal outputs with shared palette uploads and mesh dispatches.
 /// @author  Hasegawa Jin
 /// @date    2026-09-21
+#include <Graphics/Renderer/Commands/ShaderBindingSlots.hpp>
 #include <Graphics/Passes/Geometry/GeometryPasses.hpp>
 #include "SkinningWorkTrace.hpp"
 #include "OwnedSkinningBatch.hpp"
@@ -40,27 +41,45 @@ struct SkinningRowBufferFactory {
 };
 DynamicBufferPool<StructuredBufferTag,SkinningRowBufferFactory> s_rowPool;
 
-bool ValidRequest(const RenderSkinningInput& input, const RenderPassContext& ctx)
+/// @brief スキニング要求の頂点範囲とボーンパレットを実行直前に検証する。
+/// @param[in] input スキニングに使う頂点・出力バッファとパレットの範囲。
+/// @param[in,out] resources バッファの照会と、必要なら出力 UAV の取得に使う資源管理元。
+/// @param[in] matrices GPU パレットを直接使わない要求のための CPU 側行列。
+/// @return 入力を読み取れ、出力へ指定の頂点数を書き込める場合は true。
+bool ValidRequest(const RenderSkinningInput& input, ResourceManager& resources,
+    std::span<const math::Matrix4> matrices)
 {
-    const auto* source = ctx.resources.Get(input.sourceVertices);
-    const auto* output = ctx.resources.Get(input.outputVertices);
-    if (!source || !output || !input.vertexCount
-        || source->GetStride() != sizeof(SkinnedVertex)
-        || source->GetElementCount() < input.vertexCount
-        || source->GetSize() / sizeof(SkinnedVertex) < input.vertexCount
-        || output->GetStride() != sizeof(Vertex)
-        || output->GetSize() / sizeof(Vertex) < input.vertexCount
-        || output->GetBindlessUavIndex() == INVALID_BINDLESS_INDEX) return false;
+    const auto* source = resources.Get(input.sourceVertices);
+    const auto* output = resources.Get(input.outputVertices);
+    if (!source || !output || !input.vertexCount) {
+        return false;
+    }
+
+    // 入力と出力の頂点形式は異なるため、各形式で要求頂点数が収まることを確認する。
+    const bool validSource = source->GetStride() == sizeof(SkinnedVertex)
+        && source->GetElementCount() >= input.vertexCount
+        && source->GetSize() / sizeof(SkinnedVertex) >= input.vertexCount;
+    if (!validSource) {
+        return false;
+    }
+    const bool validOutput = output->GetStride() == sizeof(Vertex)
+        && output->GetSize() / sizeof(Vertex) >= input.vertexCount;
+    if (!validOutput || output->GetBindlessUavIndex() == INVALID_BINDLESS_INDEX) {
+        return false;
+    }
+
+    // GPU パレットを直接指す場合と、CPU 行列配列を転送する場合で参照範囲を確認する。
     if (input.gpuBonePalette) {
-        const auto* palette = ctx.resources.Get(input.bonePalette);
+        const auto* palette = resources.Get(input.bonePalette);
         return palette && input.boneCount && palette->GetStride() == sizeof(math::Matrix4)
             && input.boneOffset <= palette->GetElementCount()
             && input.boneCount <= palette->GetElementCount() - input.boneOffset
             && palette->GetSize() / sizeof(math::Matrix4) >= palette->GetElementCount();
     }
-    if (input.boneCount) return input.boneOffset <= ctx.skinningMatrices.size()
-        && input.boneCount <= ctx.skinningMatrices.size() - input.boneOffset;
-    const auto* palette = ctx.resources.Get(input.bonePalette);
+    if (input.boneCount) {
+        return input.boneOffset <= matrices.size() && input.boneCount <= matrices.size() - input.boneOffset;
+    }
+    const auto* palette = resources.Get(input.bonePalette);
     return palette && palette->GetStride() == sizeof(math::Matrix4) && palette->GetElementCount()
         && palette->GetSize() / sizeof(math::Matrix4) >= palette->GetElementCount();
 }
@@ -71,7 +90,9 @@ void DispatchOne(const RenderSkinningInput& input, RenderPassContext& ctx)
     auto palette = input.bonePalette;
     if (input.boneCount && !input.gpuBonePalette) {
         palette = s_palettePool.Acquire(ctx.resources, input.boneCount, sizeof(math::Matrix4));
-        if (!palette.IsValid()) return;
+        if (!palette.IsValid()) {
+            return;
+        }
         ctx.resources.Update(palette, ctx.skinningMatrices.data() + input.boneOffset,
             input.boneCount * sizeof(math::Matrix4));
         if(trace){++trace->bonePaletteUploadCalls;trace->bonePaletteUploadBytes+=input.boneCount*sizeof(math::Matrix4);}
@@ -82,9 +103,9 @@ void DispatchOne(const RenderSkinningInput& input, RenderPassContext& ctx)
     ctx.resources.Update(ctx.handles.skinningCB, constants, sizeof(constants));
     ComputeCall call;
     call.shader = ctx.handles.skinningComputeCS;
-    call.constantBuffers[0] = ctx.handles.skinningCB;
-    call.srvBuffers[14] = input.sourceVertices;
-    call.srvBuffers[15] = palette;
+    call.constantBuffers[cb::SKIN_COMPUTE] = ctx.handles.skinningCB;
+    call.srvBuffers[srv::SKIN_SRC_VERTICES] = input.sourceVertices;
+    call.srvBuffers[srv::SKIN_BONES] = palette;
     call.uavVertexBuffer = input.outputVertices;
     call.dispatchX = (input.vertexCount - 1u) / 64u + 1u;
     if(trace)++trace->backendDispatchAttempts;
@@ -105,7 +126,9 @@ skinning_trace_detail::RequestCounters* skinning_trace_detail::ExchangeRequestCo
 
 ResourceHandle<ShaderTag> ResolveSkinningBatchShader(RenderPassContext& ctx)
 {
-    if (!ctx.renderer.GetCapabilities().bindless) return {};
+    if (!ctx.renderer.GetCapabilities().bindless) {
+        return {};
+    }
     struct Cache { uint64_t owner = 0, epoch = UINT64_MAX; ResourceHandle<ShaderTag> shader; };
     static Cache cache;
     if (cache.owner != ctx.resources.GetInstanceId() || cache.epoch != ctx.resources.GetResetVersion()) {
@@ -117,10 +140,14 @@ ResourceHandle<ShaderTag> ResolveSkinningBatchShader(RenderPassContext& ctx)
 
 static void ExecuteSkinningRequestsControl(RenderPassContext& ctx)
 {
-    if (ctx.skinningExecuted) return;
+    if (ctx.skinningExecuted) {
+        return;
+    }
     ctx.skinningExecuted = true;
     if (!ctx.resources.Get(ctx.handles.skinningComputeCS) || !ctx.resources.Get(ctx.handles.skinningCB)
-        || ctx.skinningRequests.empty()) return;
+        || ctx.skinningRequests.empty()) {
+        return;
+    }
     auto* trace=s_skinningWorkTrace;
     const auto shader = ResolveSkinningBatchShader(ctx);
     ResourceHandle<StructuredBufferTag> palette;
@@ -136,7 +163,9 @@ static void ExecuteSkinningRequestsControl(RenderPassContext& ctx)
     std::map<std::tuple<uint32_t,uint32_t,uint32_t,uint32_t,uint32_t>,std::vector<const RenderSkinningInput*>> groups;
     ctx.renderer.BeginComputeBatch();
     for (const auto& input : ctx.skinningRequests) {
-        if (!ValidRequest(input, ctx)) continue;
+        if (!ValidRequest(input, ctx.resources, ctx.skinningMatrices)) {
+            continue;
+        }
         const auto inputPalette = input.gpuBonePalette ? input.bonePalette : palette;
         if (!shader.IsValid() || !inputPalette.IsValid() || !input.boneCount || input.vertexCount > 65535u * 64u) {
             DispatchOne(input, ctx); continue;
@@ -144,7 +173,7 @@ static void ExecuteSkinningRequestsControl(RenderPassContext& ctx)
         groups[{input.sourceVertices.id, input.sourceVertices.gen, input.vertexCount, inputPalette.id, inputPalette.gen}].push_back(&input);
     }
     for (const auto& [key, group] : groups) {
-        /// @note Separate chunks respect D3D12's 65535-group limit in Y and preserve individual output ownership.
+        // Separate chunks respect D3D12's 65535-group limit in Y and preserve individual output ownership.
         /// @see https://learn.microsoft.com/en-us/windows/win32/api/d3d12/nf-d3d12-id3d12graphicscommandlist-dispatch
         for (size_t start = 0; start < group.size(); start += 65535u) {
             const size_t count = (std::min)(group.size() - start, size_t{65535});
@@ -152,35 +181,42 @@ static void ExecuteSkinningRequestsControl(RenderPassContext& ctx)
             rows.reserve(count);
             ComputeCall call;
             call.shader = shader;
-            call.constantBuffers[0] = ctx.handles.skinningCB;
-            call.srvBuffers[14] = group[start]->sourceVertices;
-            call.srvBuffers[15] = group[start]->gpuBonePalette ? group[start]->bonePalette : palette;
+            call.constantBuffers[cb::SKIN_COMPUTE] = ctx.handles.skinningCB;
+            call.srvBuffers[srv::SKIN_SRC_VERTICES] = group[start]->sourceVertices;
+            call.srvBuffers[srv::SKIN_BONES] = group[start]->gpuBonePalette ? group[start]->bonePalette : palette;
             for (size_t i = start; i < start + count; ++i) {
                 const auto& input = *group[i];
                 rows.push_back({input.boneOffset, ctx.resources.Get(input.outputVertices)->GetBindlessUavIndex(), input.boneCount, 0});
                 call.indirectWriteVertexBuffers.push_back(input.outputVertices);
             }
             const uint64_t rowCreatesBefore=trace?trace->backendRowPoolCreateAttempts:0;
-            call.srvBuffers[29] = s_rowPool.Acquire(ctx.resources, rows.size(), sizeof(SkinningRow));
-            if(trace && call.srvBuffers[29].IsValid() && trace->backendRowPoolCreateAttempts==rowCreatesBefore)
+            call.srvBuffers[srv::SKIN_ROWS] = s_rowPool.Acquire(ctx.resources, rows.size(), sizeof(SkinningRow));
+            if(trace && call.srvBuffers[srv::SKIN_ROWS].IsValid() && trace->backendRowPoolCreateAttempts==rowCreatesBefore) {
                 ++trace->backendRowPoolReuses;
+            }
             bool dispatched = false;
-            if (call.srvBuffers[29].IsValid()) {
-                ctx.resources.Update(call.srvBuffers[29], rows.data(), rows.size() * sizeof(SkinningRow));
+            if (call.srvBuffers[srv::SKIN_ROWS].IsValid()) {
+                ctx.resources.Update(call.srvBuffers[srv::SKIN_ROWS], rows.data(), rows.size() * sizeof(SkinningRow));
                 const uint32_t constants[4] = {group[start]->vertexCount, static_cast<uint32_t>(count), 0, 0};
                 ctx.resources.Update(ctx.handles.skinningCB, constants, sizeof(constants));
                 call.dispatchX = (group[start]->vertexCount - 1u) / 64u + 1u;
                 call.dispatchY = static_cast<uint32_t>(count);
-                /// @note One synchronization per mesh group confirms PSO/descriptor allocation before selecting the fallback.
+                // One synchronization per mesh group confirms PSO/descriptor allocation before selecting the fallback.
                 if(trace)++trace->backendDispatchAttempts;
                 dispatched = ctx.renderer.TryDispatch(call, ctx.resources);
             }
             if (dispatched) {
                 if(trace){++trace->backendDispatchSuccesses;trace->backendDispatchedVertexCount+=static_cast<uint64_t>(count)*group[start]->vertexCount;}
                 ++ctx.statsSkinningDispatchCount;
-                for (size_t i = start; i < start + count; ++i) ctx.statsSkinningVertexCount += group[i]->vertexCount;
+                for (size_t i = start; i < start + count; ++i) {
+                    ctx.statsSkinningVertexCount += group[i]->vertexCount;
+                }
             }
-            else for (size_t i = start; i < start + count; ++i) DispatchOne(*group[i], ctx);
+            else {
+                for (size_t i = start; i < start + count; ++i) {
+                    DispatchOne(*group[i], ctx);
+                }
+            }
         }
     }
     ctx.renderer.EndComputeBatch();
@@ -205,18 +241,28 @@ std::shared_ptr<OwnedSkinningCache> AcquireOwnedSkinningCache(IRenderer& facade,
     bool differentFacade = false;
     for (auto& entry : s_ownedCacheRegistry) {
         if (entry && entry->owner == resources.GetInstanceId()) {
-            if (entry->epoch == resources.GetResetVersion() && entry->facade == &facade) return entry;
-            if (entry->epoch != resources.GetResetVersion()) entry.reset();
-            else differentFacade = true;
+            if (entry->epoch == resources.GetResetVersion() && entry->facade == &facade) {
+                return entry;
+            }
+            if (entry->epoch != resources.GetResetVersion()) {
+                entry.reset();
+            }
+            else {
+                differentFacade = true;
+            }
         }
-        if (!entry && !empty) empty = &entry;
+        if (!entry && !empty) {
+            empty = &entry;
+        }
     }
     auto cache = std::make_shared<OwnedSkinningCache>();
     cache->facade = &facade;
     cache->owner = resources.GetInstanceId();
     cache->epoch = resources.GetResetVersion();
     cache->transient = differentFacade || empty == nullptr;
-    if (!cache->transient) *empty = cache;
+    if (!cache->transient) {
+        *empty = cache;
+    }
     return cache;
 }
 
@@ -225,16 +271,21 @@ void ReleaseOwnedSkinningCache(ResourceManager& resources)
     std::shared_ptr<OwnedSkinningCache> cache;
     {
         std::lock_guard lock(s_ownedCacheRegistryMutex);
-        for (auto& entry : s_ownedCacheRegistry)
+        for (auto& entry : s_ownedCacheRegistry) {
             if (entry && entry->owner == resources.GetInstanceId()) {
                 cache = std::move(entry);
                 break;
             }
+        }
     }
-    if (!cache || cache->epoch != resources.GetResetVersion()) return;
-    /// @note Never hold the registry mutex across a pump; release executes after every preceding owned task on the same facade.
+    if (!cache || cache->epoch != resources.GetResetVersion()) {
+        return;
+    }
+    // Never hold the registry mutex across a pump; release executes after every preceding owned task on the same facade.
     cache->facade->ExecuteResourceOperation([cache, &resources] {
-        if (cache->owner != resources.GetInstanceId() || cache->epoch != resources.GetResetVersion()) return;
+        if (cache->owner != resources.GetInstanceId() || cache->epoch != resources.GetResetVersion()) {
+            return;
+        }
         cache->palettePool.ReleaseAll(resources);
         cache->rowPool.ReleaseAll(resources);
     });
@@ -253,31 +304,6 @@ struct OwnedSkinningWork {
     skinning_trace_detail::RequestCounters trace;
 };
 
-bool ValidOwnedSkinningRequest(const RenderSkinningInput& input, const OwnedSkinningWork& work, ResourceManager& resources)
-{
-    const auto* source = resources.Get(input.sourceVertices);
-    const auto* output = resources.Get(input.outputVertices);
-    if (!source || !output || !input.vertexCount
-        || source->GetStride() != sizeof(SkinnedVertex)
-        || source->GetElementCount() < input.vertexCount
-        || source->GetSize() / sizeof(SkinnedVertex) < input.vertexCount
-        || output->GetStride() != sizeof(Vertex)
-        || output->GetSize() / sizeof(Vertex) < input.vertexCount
-        || output->GetBindlessUavIndex() == INVALID_BINDLESS_INDEX) return false;
-    if (input.gpuBonePalette) {
-        const auto* palette = resources.Get(input.bonePalette);
-        return palette && input.boneCount && palette->GetStride() == sizeof(math::Matrix4)
-            && input.boneOffset <= palette->GetElementCount()
-            && input.boneCount <= palette->GetElementCount() - input.boneOffset
-            && palette->GetSize() / sizeof(math::Matrix4) >= palette->GetElementCount();
-    }
-    if (input.boneCount) return input.boneOffset <= work.matrices.size()
-        && input.boneCount <= work.matrices.size() - input.boneOffset;
-    const auto* palette = resources.Get(input.bonePalette);
-    return palette && palette->GetStride() == sizeof(math::Matrix4) && palette->GetElementCount()
-        && palette->GetSize() / sizeof(math::Matrix4) >= palette->GetElementCount();
-}
-
 bool ConfirmOwnedSkinningWrite(OwnedSkinningWork& work, size_t index, ResourceManager& resources)
 {
     auto& receipt = work.receipt.writes[index];
@@ -290,8 +316,10 @@ bool ConfirmOwnedSkinningWrite(OwnedSkinningWork& work, size_t index, ResourceMa
 void LogOwnedSkinningSuccess(const OwnedSkinningWork& work)
 {
     static std::atomic<bool> logged{false};
-    /// @note This witness requires a true native dispatch result and a confirmed DIRECT recording-version advance, never GPU fence completion.
-    if (!logged.exchange(true, std::memory_order_relaxed)) FBZZ_LOG_INFO("OwnedSkinningBatch path=owned selected=1 work=1 dispatch=1 resourceFrame=%llu", static_cast<unsigned long long>(work.receipt.resourceFrame));
+    // This witness requires a true native dispatch result and a confirmed DIRECT recording-version advance, never GPU fence completion.
+    if (!logged.exchange(true, std::memory_order_relaxed)) {
+        FBZZ_LOG_INFO("OwnedSkinningBatch path=owned selected=1 work=1 dispatch=1 resourceFrame=%llu", static_cast<unsigned long long>(work.receipt.resourceFrame));
+    }
 }
 
 void DispatchOwnedSkinningOne(size_t index, OwnedSkinningWork& work, IRenderer& facade, ResourceManager& resources)
@@ -300,7 +328,9 @@ void DispatchOwnedSkinningOne(size_t index, OwnedSkinningWork& work, IRenderer& 
     auto palette = input.bonePalette;
     if (input.boneCount && !input.gpuBonePalette) {
         palette = work.cache->palettePool.Acquire(resources, input.boneCount, sizeof(math::Matrix4));
-        if (!palette.IsValid()) return;
+        if (!palette.IsValid()) {
+            return;
+        }
         resources.Update(palette, work.matrices.data() + input.boneOffset, input.boneCount * sizeof(math::Matrix4));
         const uint64_t bytes = input.boneCount * sizeof(math::Matrix4);
         work.paletteBytes += bytes; ++work.paletteUploads;
@@ -310,13 +340,17 @@ void DispatchOwnedSkinningOne(size_t index, OwnedSkinningWork& work, IRenderer& 
     resources.Update(work.constants, constants, sizeof(constants));
     ComputeCall call;
     call.shader = work.computeShader;
-    call.constantBuffers[0] = work.constants;
-    call.srvBuffers[14] = input.sourceVertices;
-    call.srvBuffers[15] = palette;
+    call.constantBuffers[cb::SKIN_COMPUTE] = work.constants;
+    call.srvBuffers[srv::SKIN_SRC_VERTICES] = input.sourceVertices;
+    call.srvBuffers[srv::SKIN_BONES] = palette;
     call.uavVertexBuffer = input.outputVertices;
     call.dispatchX = (input.vertexCount - 1u) / 64u + 1u;
-    if (work.traceEnabled) ++work.trace.backendDispatchAttempts;
-    if (!facade.TryDispatch(call, resources) || !ConfirmOwnedSkinningWrite(work, index, resources)) return;
+    if (work.traceEnabled) {
+        ++work.trace.backendDispatchAttempts;
+    }
+    if (!facade.TryDispatch(call, resources) || !ConfirmOwnedSkinningWrite(work, index, resources)) {
+        return;
+    }
     LogOwnedSkinningSuccess(work);
     ++work.dispatches; work.vertices += input.vertexCount;
     if (work.traceEnabled) { ++work.trace.backendDispatchSuccesses; work.trace.backendDispatchedVertexCount += input.vertexCount; }
@@ -325,13 +359,17 @@ void DispatchOwnedSkinningOne(size_t index, OwnedSkinningWork& work, IRenderer& 
 void RunOwnedSkinningWork(OwnedSkinningWork& work, IRenderer& facade, ResourceManager& resources)
 {
     if (work.receipt.resourceInstance != resources.GetInstanceId() || work.receipt.resourceEpoch != resources.GetResetVersion()
-        || work.receipt.resourceFrame != resources.FrameStamp() || !resources.Get(work.computeShader) || !resources.Get(work.constants)) return;
-    /// @note A full bounded registry uses uncached native work, retiring its pools after the batch closes instead of changing geometry/fallback behavior.
+        || work.receipt.resourceFrame != resources.FrameStamp() || !resources.Get(work.computeShader) || !resources.Get(work.constants)) {
+        return;
+    }
+    // A full bounded registry uses uncached native work, retiring its pools after the batch closes instead of changing geometry/fallback behavior.
     struct TransientPoolScope {
         OwnedSkinningWork& work; ResourceManager& resources;
         ~TransientPoolScope()
         {
-            if (!work.cache->transient || work.cache->epoch != resources.GetResetVersion()) return;
+            if (!work.cache->transient || work.cache->epoch != resources.GetResetVersion()) {
+                return;
+            }
             work.cache->palettePool.ReleaseAll(resources); work.cache->rowPool.ReleaseAll(resources);
         }
     } transientPools{work, resources};
@@ -354,21 +392,23 @@ void RunOwnedSkinningWork(OwnedSkinningWork& work, IRenderer& facade, ResourceMa
     }
     std::map<std::tuple<uint32_t, uint32_t, uint32_t, uint32_t, uint32_t>, std::vector<size_t>> groups;
     facade.BeginComputeBatch();
-    /// @note Close native UAV barriers even when validation/allocation/dispatch rejects every row.
+    // Close native UAV barriers even when validation/allocation/dispatch rejects every row.
     struct EndBatchScope { IRenderer& facade; ~EndBatchScope() { facade.EndComputeBatch(); } } endBatch{facade};
     for (size_t index = 0; index < work.requests.size(); ++index) {
         const auto& input = work.requests[index];
-        if (!ValidOwnedSkinningRequest(input, work, resources)) continue;
+        if (!ValidRequest(input, resources, work.matrices)) {
+            continue;
+        }
         const auto inputPalette = input.gpuBonePalette ? input.bonePalette : palette;
         if (!shader.IsValid() || !inputPalette.IsValid() || !input.boneCount || input.vertexCount > 65535u * 64u) {
             DispatchOwnedSkinningOne(index, work, facade, resources); continue;
         }
         groups[{input.sourceVertices.id, input.sourceVertices.gen, input.vertexCount, inputPalette.id, inputPalette.gen}].push_back(index);
     }
-    /// @note Only owned values survive between groups; clear row and output lists while retaining this operation's capacity.
+    // Only owned values survive between groups; clear row and output lists while retaining this operation's capacity.
     std::vector<SkinningRow> rows;
     ComputeCall call;
-    call.shader = shader; call.constantBuffers[0] = work.constants;
+    call.shader = shader; call.constantBuffers[cb::SKIN_COMPUTE] = work.constants;
     for (const auto& [key, group] : groups) {
         /// @see https://learn.microsoft.com/en-us/windows/win32/api/d3d12/nf-d3d12-id3d12graphicscommandlist-dispatch Dispatch limits.
         for (size_t start = 0; start < group.size(); start += 65535u) {
@@ -378,9 +418,9 @@ void RunOwnedSkinningWork(OwnedSkinningWork& work, IRenderer& facade, ResourceMa
             rows.reserve(count);
             call.indirectWriteVertexBuffers.clear();
             call.indirectWriteVertexBuffers.reserve(count);
-            call.srvBuffers[29] = {};
-            call.srvBuffers[14] = first.sourceVertices;
-            call.srvBuffers[15] = first.gpuBonePalette ? first.bonePalette : palette;
+            call.srvBuffers[srv::SKIN_ROWS] = {};
+            call.srvBuffers[srv::SKIN_SRC_VERTICES] = first.sourceVertices;
+            call.srvBuffers[srv::SKIN_BONES] = first.gpuBonePalette ? first.bonePalette : palette;
             bool rowsReady = true;
             for (size_t offset = start; offset < start + count; ++offset) {
                 const auto& input = work.requests[group[offset]];
@@ -390,26 +430,36 @@ void RunOwnedSkinningWork(OwnedSkinningWork& work, IRenderer& facade, ResourceMa
                 call.indirectWriteVertexBuffers.push_back(input.outputVertices);
             }
             const uint64_t createsBefore = work.trace.backendRowPoolCreateAttempts;
-            if (rowsReady) call.srvBuffers[29] = work.cache->rowPool.Acquire(resources, rows.size(), sizeof(SkinningRow));
-            if (work.traceEnabled && call.srvBuffers[29].IsValid() && work.trace.backendRowPoolCreateAttempts == createsBefore)
+            if (rowsReady) {
+                call.srvBuffers[srv::SKIN_ROWS] = work.cache->rowPool.Acquire(resources, rows.size(), sizeof(SkinningRow));
+            }
+            if (work.traceEnabled && call.srvBuffers[srv::SKIN_ROWS].IsValid() && work.trace.backendRowPoolCreateAttempts == createsBefore) {
                 ++work.trace.backendRowPoolReuses;
+            }
             bool dispatched = false;
-            if (call.srvBuffers[29].IsValid()) {
-                resources.Update(call.srvBuffers[29], rows.data(), rows.size() * sizeof(SkinningRow));
+            if (call.srvBuffers[srv::SKIN_ROWS].IsValid()) {
+                resources.Update(call.srvBuffers[srv::SKIN_ROWS], rows.data(), rows.size() * sizeof(SkinningRow));
                 const uint32_t constants[4] = {first.vertexCount, static_cast<uint32_t>(count), 0, 0};
                 resources.Update(work.constants, constants, sizeof(constants));
                 call.dispatchX = (first.vertexCount - 1u) / 64u + 1u; call.dispatchY = static_cast<uint32_t>(count);
-                if (work.traceEnabled) ++work.trace.backendDispatchAttempts;
+                if (work.traceEnabled) {
+                    ++work.trace.backendDispatchAttempts;
+                }
                 dispatched = facade.TryDispatch(call, resources);
             }
             if (!dispatched) {
-                for (size_t offset = start; offset < start + count; ++offset) DispatchOwnedSkinningOne(group[offset], work, facade, resources);
+                for (size_t offset = start; offset < start + count; ++offset) {
+                    DispatchOwnedSkinningOne(group[offset], work, facade, resources);
+                }
                 continue;
             }
             bool allWritten = true;
-            for (size_t offset = start; offset < start + count; ++offset)
+            for (size_t offset = start; offset < start + count; ++offset) {
                 allWritten &= ConfirmOwnedSkinningWrite(work, group[offset], resources);
-            if (!allWritten) continue;
+            }
+            if (!allWritten) {
+                continue;
+            }
             LogOwnedSkinningSuccess(work);
             const uint64_t vertices = static_cast<uint64_t>(count) * first.vertexCount;
             ++work.dispatches; work.vertices += vertices;
@@ -429,26 +479,32 @@ void AddOwnedSkinningCounters(skinning_trace_detail::RequestCounters& destinatio
     destination.backendDispatchSuccesses += source.backendDispatchSuccesses;
     destination.backendDispatchedVertexCount += source.backendDispatchedVertexCount;
 }
-} /// @note namespace
+} // namespace
 
 void ExecuteSkinningRequests(RenderPassContext& ctx)
 {
     const bool owned = skinning_batch_detail::Enabled();
-    /// @note Explicit comparison runs emit one path witness before warmup; an unset default adds no logging/allocation/clock/queue operation.
+    // Explicit comparison runs emit one path witness before warmup; an unset default adds no logging/allocation/clock/queue operation.
     if (!owned && std::getenv("FBZZ_OWNED_SKINNING_BATCH")) {
         static std::atomic<bool> logged{false};
-        if (!logged.exchange(true, std::memory_order_relaxed)) FBZZ_LOG_INFO("OwnedSkinningBatch path=control selected=0 work=0 resourceFrame=%llu", static_cast<unsigned long long>(ctx.resources.FrameStamp()));
+        if (!logged.exchange(true, std::memory_order_relaxed)) {
+            FBZZ_LOG_INFO("OwnedSkinningBatch path=control selected=0 work=0 resourceFrame=%llu", static_cast<unsigned long long>(ctx.resources.FrameStamp()));
+        }
     }
     if (!owned) { ExecuteSkinningRequestsControl(ctx); return; }
-    if (ctx.skinningExecuted) return;
+    if (ctx.skinningExecuted) {
+        return;
+    }
     ctx.skinningExecuted = true;
     ctx.skinningBatchReceipt = {};
     ctx.skinningBatchReceipt.ownedPath = true;
     ctx.skinningBatchReceipt.resourceInstance = ctx.resources.GetInstanceId();
     ctx.skinningBatchReceipt.resourceEpoch = ctx.resources.GetResetVersion();
     ctx.skinningBatchReceipt.resourceFrame = ctx.resources.FrameStamp();
-    if (!ctx.resources.Get(ctx.handles.skinningComputeCS) || !ctx.resources.Get(ctx.handles.skinningCB) || ctx.skinningRequests.empty()) return;
-    /// @note The shared CPU owner holds every input and result through synchronous packet destruction; it owns no native resource or host reference.
+    if (!ctx.resources.Get(ctx.handles.skinningComputeCS) || !ctx.resources.Get(ctx.handles.skinningCB) || ctx.skinningRequests.empty()) {
+        return;
+    }
+    // The shared CPU owner holds every input and result through synchronous packet destruction; it owns no native resource or host reference.
     auto work = std::make_shared<OwnedSkinningWork>();
     work->requests = ctx.skinningRequests;
     work->matrices = ctx.skinningMatrices;
@@ -456,20 +512,24 @@ void ExecuteSkinningRequests(RenderPassContext& ctx)
     work->constants = ctx.handles.skinningCB;
     work->receipt = ctx.skinningBatchReceipt;
     work->traceEnabled = s_skinningWorkTrace != nullptr;
-    /// @note AssetPathService/load callbacks stay on the producer; the worker receives only resolved typed handles.
+    // AssetPathService/load callbacks stay on the producer; the worker receives only resolved typed handles.
     work->batchShader = ResolveSkinningBatchShader(ctx);
-    if (work->receipt.resourceInstance != ctx.resources.GetInstanceId() || work->receipt.resourceEpoch != ctx.resources.GetResetVersion()) return;
+    if (work->receipt.resourceInstance != ctx.resources.GetInstanceId() || work->receipt.resourceEpoch != ctx.resources.GetResetVersion()) {
+        return;
+    }
     work->cache = AcquireOwnedSkinningCache(ctx.renderer, ctx.resources);
     auto& facade = ctx.renderer;
     auto& resources = ctx.resources;
-    /// @note Host/facade lifetime is borrowed only for this bounded synchronous operation; no ctx, element, matrix span or producer trace pointer is captured.
+    // Host/facade lifetime is borrowed only for this bounded synchronous operation; no ctx, element, matrix span or producer trace pointer is captured.
     facade.ExecuteResourceOperation([work, &facade, &resources] { RunOwnedSkinningWork(*work, facade, resources); });
     ctx.skinningBatchReceipt = std::move(work->receipt);
     ctx.statsSkinningDispatchCount += work->dispatches;
     ctx.statsSkinningVertexCount += work->vertices;
     ctx.statsSkinningPaletteUploads += work->paletteUploads;
     ctx.statsSkinningPaletteUploadBytes += work->paletteBytes;
-    if (work->traceEnabled && s_skinningWorkTrace) AddOwnedSkinningCounters(*s_skinningWorkTrace, work->trace);
+    if (work->traceEnabled && s_skinningWorkTrace) {
+        AddOwnedSkinningCounters(*s_skinningWorkTrace, work->trace);
+    }
 }
 
 void SkinningComputePass::Execute(PassResources&, RenderPassContext& ctx)

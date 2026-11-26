@@ -76,17 +76,28 @@ struct FiberPlacementCache {
 /// @return 失敗時 out は未変更。重複 UV、UV なしを受理する。
 [[nodiscard]] FBZZ_GRAPHICS_API bool CreateFiberPaintData(const Mesh& mesh, float cellSize, float density, FiberPaintData& out);
 [[nodiscard]] FBZZ_GRAPHICS_API bool ValidateFiberPaintData(const FiberPaintData& data);
-/// @note world は有限かつ可逆なアフィン行列。密度はワールド面積 [m²] あたり、幅はワールド [m]。
+/// @brief ペイント値や設定が変わった草のチャンクを再生成する。
+/// @param[in] mesh 配置先の CPU 頂点と三角形を持つメッシュ。
+/// @param[in] paint mesh の三角形に対応する密度と長さのペイント値。
+/// @param[in] options ワールド変換、ワールド面積 [m²] あたりの密度、幅 [m] と生成予算。
+/// @param[in,out] cache 既存の配置を参照し、成功時に再生成したチャンクを反映する。
+/// @note options.world は有限かつ可逆なアフィン行列。
 /// @return 不正入力・トポロジー不一致・総本数超過は false。失敗時 cache は未変更。
 [[nodiscard]] FBZZ_GRAPHICS_API bool UpdateFiberPlacement(const Mesh& mesh, const FiberPaintData& paint,
     const FiberPlacementOptions& options, FiberPlacementCache& cache);
-/// @note ブラシはワールド [m] の線分。density は目標値への max/min 適用で、反復回数に依存しない。
-/// @param visible 指定時はセル中心と元三角形番号で可視性を判定する。空なら可視性制限なし。
-/// @return 失敗時 data は未変更。changed は実際に変化したセル数。
+/// @brief 草のペイント値を線分ブラシで更新する。
+/// @param[in] mesh ペイント先の CPU 頂点と三角形を持つメッシュ。
+/// @param[in] world メッシュのローカル空間からワールド空間への可逆なアフィン変換。
+/// @param[in] stroke ワールド [m] の線分と半径、適用するペイント値とモード。
+/// @param[in,out] data 元のペイント値を参照し、成功時に変更したセルだけを更新する。
+/// @param[out] changed 変更したセルの数。失敗時は 0。
+/// @param[in] visible 指定時はセル中心と元三角形番号で可視性を判定する。空なら可視性制限なし。
+/// @return 入力やセル数が上限を超えるなど更新できない場合は false。data は未変更。
+/// @note 密度は目標値への max/min 適用で、反復回数に依存しない。
 [[nodiscard]] FBZZ_GRAPHICS_API bool PaintFiberSurface(const Mesh& mesh, const math::Matrix4& world,
     const FiberPaintStroke& stroke, FiberPaintData& data, uint32_t& changed,
     const std::function<bool(const math::Vector3&, uint32_t)>& visible = {});
 /// @note ray の方向は正規化済みワールド空間。distance は最も近い正の交差 [m] で更新する。
 [[nodiscard]] FBZZ_GRAPHICS_API bool RaycastFiberSurface(const Mesh& mesh, const math::Matrix4& world,
     const math::Vector3& origin, const math::Vector3& direction, float& distance, uint32_t& triangle);
-} /// @note namespace fbzz::renderer
+} // namespace fbzz::renderer

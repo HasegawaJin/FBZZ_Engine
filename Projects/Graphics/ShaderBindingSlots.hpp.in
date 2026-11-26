@@ -1,0 +1,27 @@
+/// @file    ShaderBindingSlots.hpp
+/// @brief   HLSL と共有する論理レジスタ番号。正本は Assets/Shaders/Common/Binding.hlsli。
+/// @author  Hasegawa Jin
+/// @date    2026-11-24
+#pragma once
+#include <cstdint>
+
+namespace fbzz::renderer {
+namespace bindingCount {
+@COUNT_SLOTS@}
+namespace cb {
+@CB_SLOTS@}
+namespace srv {
+@SRV_SLOTS@}
+namespace uav {
+@UAV_SLOTS@}
+namespace vsSlot {
+@VS_SB_SLOTS@}
+namespace samplerSlot {
+@SAMPLER_SLOTS@}
+
+/// @note DrawCall と ComputeCall の部分配列は、対応するレジスタ範囲の先頭を添字 0 とする。
+constexpr uint32_t StructuredUavIndex(uint32_t slot) { return slot - uav::STRUCTURED_FIRST; }
+constexpr uint32_t VertexBufferIndex(uint32_t slot) { return slot - vsSlot::BUFFER_FIRST; }
+constexpr uint32_t PixelBufferIndex(uint32_t slot) { return slot - srv::PIXEL_BUFFER_FIRST; }
+constexpr uint32_t AuxiliaryPixelBufferIndex(uint32_t slot) { return slot - srv::AUXILIARY_FIRST; }
+}

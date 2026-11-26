@@ -18,7 +18,9 @@ class MediumMemoryBuffer final : public renderer::IBuffer {
 public:
     void Update(const void* data, size_t size) override
     {
-        if (!data || size == 0 || size > bytes.size()) return;
+        if (!data || size == 0 || size > bytes.size()) {
+            return;
+        }
         std::memcpy(bytes.data(), data, size);
         ++version;
     }
@@ -29,7 +31,9 @@ public:
     bool CopyData(size_t offset, size_t size, void* output) const override
     {
         ++copies;
-        if (!readable || !output || offset > bytes.size() || size > bytes.size() - offset) return false;
+        if (!readable || !output || offset > bytes.size() || size > bytes.size() - offset) {
+            return false;
+        }
         std::memcpy(output, bytes.data() + offset, size);
         return true;
     }
@@ -84,8 +88,12 @@ protected:
     bool Air(math::Vector3 origin = {3, 0, 0})
     {
         return m_cache.IsOriginProvenAir(m_scene, [this](renderer::ResourceHandle<renderer::BufferTag> handle) -> const renderer::IBuffer* {
-            if (handle == m_liveVertexHandle) return m_vertexReader;
-            if (handle == m_liveIndexHandle) return &m_indices;
+            if (handle == m_liveVertexHandle) {
+                return m_vertexReader;
+            }
+            if (handle == m_liveIndexHandle) {
+                return &m_indices;
+            }
             return nullptr;
         }, origin);
     }

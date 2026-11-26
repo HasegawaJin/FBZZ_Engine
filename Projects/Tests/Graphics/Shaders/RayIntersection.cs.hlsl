@@ -33,7 +33,9 @@ void CSMain(uint3 id : SV_DispatchThreadID)
 {
     uint rayCount, stride;
     gRays.GetDimensions(rayCount, stride);
-    if (id.x >= rayCount) return;
+    if (id.x >= rayCount) {
+        return;
+    }
     const RayInput input = gRays[id.x];
     RayDesc ray;
     ray.Origin = input.origin;
@@ -54,7 +56,7 @@ void CSMain(uint3 id : SV_DispatchThreadID)
             query.CommittedPrimitiveIndex(), query.CommittedRayT());
         if (input.outputMode == 1)
         {
-            /// @note テストの全三角形が持つ同じ接平面を object-to-world で変換し、負 scale の巻き方向も含めて比較する。
+            // テストの全三角形が持つ同じ接平面を object-to-world で変換し、負のスケールによる巻き方向の反転も含めて比較する。
             const float3x4 transform = query.CommittedObjectToWorld3x4();
             const float3 a = mul(transform, float4(-0.75f, -0.75f, 0, 1));
             const float3 b = mul(transform, float4(0, 0.75f, 0, 1));

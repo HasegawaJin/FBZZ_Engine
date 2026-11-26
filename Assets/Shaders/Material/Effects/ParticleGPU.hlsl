@@ -2,19 +2,19 @@
 /// @brief   GPU パーティクル billboard 描画シェーダー (VS + PS)
 /// @author  Hasegawa Jin
 /// @date    2026-06-14
-//
-// PSO: SOLID_NOCULL + ADDITIVE/ALPHA_BLEND + DEPTH_READ
-//
-// VS: StructuredBuffer<GpuParticle> から SV_VertexID でパーティクルを取り出し、
-//     ビュー行列の右/上ベクトルでビルボードを展開する。
-//     age >= lifetime の粒子は NDC 外へ出して棄却する。
-//
-// 頂点レイアウト: 頂点バッファなし。Draw(6 * maxParticles, 0) で呼ぶ。
-//   SV_VertexID / 6 = パーティクルインデックス
-//   SV_VertexID % 6 = クワッドの三角形頂点インデックス
-//
-// 構造体・定数バッファ・VS は Material/Effects/ParticleMaterial.hlsli が供給する。
-// CPU 経路 (Particle.hlsl) と同じ ParticlePSIn を受け取るため、PS の内容も揃う。
+///
+/// @note PSO: SOLID_NOCULL + ADDITIVE/ALPHA_BLEND + DEPTH_READ
+///
+/// @note VS: StructuredBuffer<GpuParticle> から SV_VertexID でパーティクルを取り出し、
+/// @note ビュー行列の右/上ベクトルでビルボードを展開する。
+/// @note age >= lifetime の粒子は NDC 外へ出して棄却する。
+///
+/// @note 頂点レイアウト: 頂点バッファなし。Draw(6 * maxParticles, 0) で呼ぶ。
+/// @note SV_VertexID / 6 = パーティクルインデックス
+/// @note SV_VertexID % 6 = クワッドの三角形頂点インデックス
+///
+/// @note 構造体・定数バッファ・VS は Material/Effects/ParticleMaterial.hlsli が供給する。
+/// @note CPU 経路 (Particle.hlsl) と同じ ParticlePSIn を受け取るため、PS の内容も揃う。
 
 #define FBZZ_PARTICLE_GPU
 #include "Material/Effects/ParticleMaterial.hlsli"
@@ -25,26 +25,26 @@
 #include "Rendering/ParticleLighting.hlsli"
 #include "Common/BindlessIndices.hlsli"
 
-// 歪みベクトル専用ノーマルマップ (CPU 経路 Particle.hlsl と同じスロット・同じ扱い)。
+/// @note 歪みベクトル専用ノーマルマップ (CPU 経路 Particle.hlsl と同じスロット・同じ扱い)。
 FBZZ_TEX2D(gDistortionTex, TEX_NORMAL_SLOT);
 FBZZ_TEX2D(gSceneDepth, TEX_DEPTH_SLOT);
-FBZZ_TEX2D(gSceneColor, 5);
-FBZZ_TEX2D(gMotionVectors, 6);
-// 自己影の光源側密度 (R=Σα, G=Σα·深度)。CPU 経路と同じ t9 を使う。
+FBZZ_TEX2D(gSceneColor, SRV_PARTICLE_SCENE_COLOR_SLOT);
+FBZZ_TEX2D(gMotionVectors, SRV_PARTICLE_MOTION_SLOT);
+/// @note 自己影の光源側密度 (R=Σα, G=Σα·深度)。CPU 経路と同じ t9 を使う。
 FBZZ_TEX2D(gParticleDensity, TEX_PARTICLE_DENSITY_SLOT);
-// 受け影用。CPU 経路 (Particle.hlsl) と同じスロット・同じ ComputeShadow を使う。
+/// @note 受け影用。CPU 経路 (Particle.hlsl) と同じスロット・同じ ComputeShadow を使う。
 FBZZ_TEX2D_T(float, gShadowMap, TEX_SHADOW_SLOT);
 SamplerComparisonState        gSampShadow: register(SAMPLER_SHADOW);
 
-// ---------- PS ------------------------------------------------------------
+/// @note ---------- PS ------------------------------------------------------------
 
 float4 PSMain(ParticlePSIn p) : SV_Target0
 {
-    // 中心から外側にかけてソフトフェード
+    /// @note 中心から外側にかけてソフトフェード
     float2 d    = p.localUv * 2.0f - 1.0f;
     float  fade = RadialMask(p.localUv);
 
-    // ── ボリュメトリック煙 (CPU 経路 Particle.hlsl と同じ手順・同じ式) ──
+    /// @note ── ボリュメトリック煙 (CPU 経路 Particle.hlsl と同じ手順・同じ式) ──
     if ((gEffectsFlags & FBZZ_PFX_VOLUMETRIC) != 0u)
     {
         float discSq = dot(d, d);
@@ -64,7 +64,7 @@ float4 PSMain(ParticlePSIn p) : SV_Target0
         float stepLength = (2.0f * halfChord) / (float)steps;
         float3 lightDirection = normalize(-lightDir);
         float  phase = HenyeyGreenstein(dot(-viewDir, lightDirection), gVolumetricAnisotropy);
-        // 空の照度 (IBL) を受ける。定数の ambientColor だと、同じ場所の地面と煙で環境光が食い違う。
+        /// @note 空の照度 (IBL) を受ける。定数の ambientColor だと、同じ場所の地面と煙で環境光が食い違う。
         const float3 volumetricAmbient = ParticleAmbientIsotropic();
 
         float3 scattered = 0.0f;
@@ -91,10 +91,10 @@ float4 PSMain(ParticlePSIn p) : SV_Target0
                                           lightDirection, lightDirection);
                 mapShadow = lerp(1.0f, mapShadow, saturate(gShadowStrength));
             }
-            // 雲全体の自己影 (CPU 経路 Particle.hlsl と同じ扱い)。
-            // 粒子 1 個の球内部だけでは出ない「雲を貫く光の筋」がこれで現れる。
-            // NOTE: GPU 経路では密度バッファが用意されない (自己影は CPU 縮退する) ため、
-            //       実際には gSelfShadowStrength が 0 で素通りする。式は CPU と揃えておく。
+            /// @note 雲全体の自己影 (CPU 経路 Particle.hlsl と同じ扱い)。
+            /// @note 粒子 1 個の球内部だけでは出ない「雲を貫く光の筋」がこれで現れる。
+            /// @note NOTE: GPU 経路では密度バッファが用意されない (自己影は CPU 縮退する) ため、
+            /// @note 実際には gSelfShadowStrength が 0 で素通りする。式は CPU と揃えておく。
             mapShadow *= ComputeParticleSelfShadowFromMap(
                 gParticleDensity, gSampler, samplePos, lightViewProjection, gSelfShadowStrength);
 
@@ -116,10 +116,10 @@ float4 PSMain(ParticlePSIn p) : SV_Target0
             float sceneLinear = LinearizeDepth(sceneDepth, nearZ, farZ, isOrthographic);
             volAlpha *= saturate((sceneLinear - particleLinear) / gSoftParticleFadeDistance);
         }
-        // CPU 経路 Particle.hlsl と同じ位置 (割り戻しより前) に掛ける。
+        /// @note CPU 経路 Particle.hlsl と同じ位置 (割り戻しより前) に掛ける。
         volAlpha *= ParticleCameraFade(particleLinear);
-        // Particle.hlsl と同じ扱い: 積分済みの scattered は事前乗算なので、
-        // PREMULTIPLIED 以外では割り戻して非事前乗算へ揃える。
+        /// @note Particle.hlsl と同じ扱い: 積分済みの scattered は事前乗算なので、
+        /// @note PREMULTIPLIED 以外では割り戻して非事前乗算へ揃える。
         float3 volumeRgb = scattered * gEmissiveScale;
         if ((gEffectsFlags & FBZZ_PFX_PREMULTIPLIED) == 0u)
             volumeRgb /= max(volAlpha, 1.0e-4f);
@@ -127,7 +127,7 @@ float4 PSMain(ParticlePSIn p) : SV_Target0
                                  gSceneDepth.Load(int3(int2(p.svPosition.xy), 0)).r);
     }
 
-    // CPU 経路と同じ関数で 2 コマを混ぜる (次のコマと補間率は CS が書いている)。
+    /// @note CPU 経路と同じ関数で 2 コマを混ぜる (次のコマと補間率は CS が書いている)。
     float2 currentUv;
     float4 tex = SampleParticleFlipbook(gParticleTex, gMotionVectors, gSampler,
                                         p.uv, p.nextUv, p.spriteBlend, gEffectsFlags, currentUv);
@@ -138,13 +138,13 @@ float4 PSMain(ParticlePSIn p) : SV_Target0
         float sceneLinear = LinearizeDepth(sceneDepth, nearZ, farZ, isOrthographic);
         fade *= saturate((sceneLinear - particleLinear) / gSoftParticleFadeDistance);
     }
-    // CPU 経路と同じく fade へ掛ける (事前乗算では RGB にも同じ係数が掛かる)。
+    /// @note CPU 経路と同じく fade へ掛ける (事前乗算では RGB にも同じ係数が掛かる)。
     fade *= ParticleCameraFade(particleLinear);
-    // 頂点カラー (グラデーション) は既にリニア。tint は .mat 由来の共有色調整。
+    /// @note 頂点カラー (グラデーション) は既にリニア。tint は .mat 由来の共有色調整。
     float4 result = tex * float4(p.color.rgb * gTintColor.rgb, p.color.a * fade * gTintColor.a);
 
-    // 受け影 (CPU 経路 Particle.hlsl と同じ扱い。ビルボードは法線を持たないため
-    // 法線バイアスは無効化する)。
+    /// @note 受け影 (CPU 経路 Particle.hlsl と同じ扱い。ビルボードは法線を持たないため
+    /// @note 法線バイアスは無効化する)。
     float shadow = 1.0f;
     if ((gEffectsFlags & FBZZ_PFX_RECEIVE_SHADOW) != 0u)
     {
@@ -154,11 +154,11 @@ float4 PSMain(ParticlePSIn p) : SV_Target0
                                lightDirection, lightDirection);
         shadow = lerp(1.0f, shadow, saturate(gShadowStrength));
     }
-    // 自己影 (CPU 経路と同じ密度バッファ・同じ式)。粒子群が自分に落とす影。
+    /// @note 自己影 (CPU 経路と同じ密度バッファ・同じ式)。粒子群が自分に落とす影。
     shadow *= ComputeParticleSelfShadowFromMap(gParticleDensity, gSampler, p.worldPos,
                                                lightViewProjection, gSelfShadowStrength);
 
-    // 陰影は CPU 経路と同じ ParticleLighting.hlsli で付ける。
+    /// @note 陰影は CPU 経路と同じ ParticleLighting.hlsli で付ける。
     float4 sixWayNegative = 0.0f;
     float4 sixWayAlbedoColor = 0.0f;
     float4 sixWayEmissionColor = 0.0f;
@@ -181,7 +181,7 @@ float4 PSMain(ParticlePSIn p) : SV_Target0
     if ((gEffectsFlags & FBZZ_PFX_DISTORTION) != 0u)
     {
         float2 screenUv = p.svPosition.xy / max(float2(gScreenWidth, gScreenHeight), float2(1.0f, 1.0f));
-        // 専用マップがあればそちらを向きに使う (CPU 経路と同じ扱い)。
+        /// @note 専用マップがあればそちらを向きに使う (CPU 経路と同じ扱い)。
         float2 vector2 = (gEffectsFlags & FBZZ_PFX_DISTORTION_MAP) != 0u
             ? gDistortionTex.Sample(gSampler, currentUv).rg
             : tex.rg;
@@ -193,21 +193,21 @@ float4 PSMain(ParticlePSIn p) : SV_Target0
         refracted.b = gSceneColor.Sample(gSampler, saturate(screenUv + offset - dispersion)).b;
         result = float4(refracted, result.a);
     }
-    // 事前乗算アルファは SrcBlend=ONE なので RGB が「そのまま」出力される。
-    // 他のブレンドはブレンド側が src.a を掛けてくれるため RGB は素のままでよいが、
-    // 事前乗算では RGB 自身が alpha 込みの値になっていなければならない。
-    // 掛け落としていた 2 つはどちらも致命的だった:
-    //   RadialMask (fade の初期値) — 矩形の角を消すマスク。RGB に掛からないと角が
-    //     残り、スプライトが「■」として見える。
-    //   p.color.a — グラデーションのアルファ。RGB に掛からないと、寿命の終わりで
-    //     alpha が 0 へ落ちても RGB が残り続け、消えるはずの粒子が四角い光として
-    //     居座る (「途中から■が見え始める」の正体)。
-    // 歪み (distortion) で RGB を差し替えた後にも効かせる必要があるため、
-    // 個々の分岐ではなく PSMain 末尾の 1 か所へ置く。
-    // NOTE: ボリュメトリック経路は scattered を alpha で重み付け済みのまま早期 return
-    //       するので、ここは通らない (二重に掛からない)。
+    /// @note 事前乗算アルファは SrcBlend=ONE なので RGB が「そのまま」出力される。
+    /// @note 他のブレンドはブレンド側が src.a を掛けてくれるため RGB は素のままでよいが、
+    /// @note 事前乗算では RGB 自身が alpha 込みの値になっていなければならない。
+    /// @note 掛け落としていた 2 つはどちらも致命的だった:
+    /// @note RadialMask (fade の初期値) — 矩形の角を消すマスク。RGB に掛からないと角が
+    /// @note 残り、スプライトが「■」として見える。
+    /// @note p.color.a — グラデーションのアルファ。RGB に掛からないと、寿命の終わりで
+    /// @note alpha が 0 へ落ちても RGB が残り続け、消えるはずの粒子が四角い光として
+    /// @note 居座る (「途中から■が見え始める」の正体)。
+    /// @note 歪み (distortion) で RGB を差し替えた後にも効かせる必要があるため、
+    /// @note 個々の分岐ではなく PSMain 末尾の 1 か所へ置く。
+    /// @note NOTE: ボリュメトリック経路は scattered を alpha で重み付け済みのまま早期 return
+    /// @note するので、ここは通らない (二重に掛からない)。
     if ((gEffectsFlags & FBZZ_PFX_PREMULTIPLIED) != 0u) result.rgb *= p.color.a * fade;
-    // 霧は Composite が背景の奥行きで掛ける。粒子の奥行きで効くよう、ここで逆算しておく。
+    /// @note 霧は Composite が背景の奥行きで掛ける。粒子の奥行きで効くよう、ここで逆算しておく。
     return FinishParticleFog(result, p.svPosition.xy, p.svPosition.z,
                              gSceneDepth.Load(int3(int2(p.svPosition.xy), 0)).r);
 }

@@ -17,7 +17,7 @@ AssetPathService& Service()
     return service;
 }
 
-} /// @note namespace
+} // namespace
 
 void SetAssetPathService(const AssetPathService& service)
 {
@@ -64,4 +64,4 @@ std::string NormalizeTextureKey(std::string_view reference)
     return key;
 }
 
-} /// @note namespace fbzz::renderer
+} // namespace fbzz::renderer

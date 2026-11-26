@@ -3,6 +3,7 @@
 /// @author  Hasegawa Jin
 /// @date    2026-09-17
 /// @see https://hhoppe.com/fur.pdf
+#include "Common/Binding.hlsli"
 #include "Fiber/FiberCommon.hlsli"
 #include "Common/Structs.hlsli"
 #include "Common/Space.hlsli"
@@ -15,7 +16,7 @@
 #endif
 #if FIBER_SKINNED && FIBER_PASS == 3
 /// @note b2 は繊維 material が使うため、過去のボーンは b9 へ束縛する。
-cbuffer FiberPreviousSkinning : register(b9) { float4x4 fiberPrevBones[MAX_SKINNING_BONES]; };
+cbuffer FiberPreviousSkinning : register(FBZZ_REGISTER(b, CB_FIBER_PREVIOUS_SKINNING_SLOT)) { float4x4 fiberPrevBones[MAX_SKINNING_BONES]; };
 #endif
 
 #ifdef FBZZ_FIBER_GRASS_CARD
@@ -24,7 +25,7 @@ FBZZ_MATERIAL_TEX(grassCardTexture, texAlbedoIndex);
 
 #if FIBER_PASS == 3
 /// @note FiberMotionCB と一致。b1 は現在の法線変換にも必要なので前フレームは b6 に分ける。
-cbuffer FiberMotionConstants : register(b6)
+cbuffer FiberMotionConstants : register(FBZZ_REGISTER(b, CB_FIBER_MOTION_SLOT))
 {
     float4x4 fiberPrevWorld;
     float4x4 fiberPrevNormal;

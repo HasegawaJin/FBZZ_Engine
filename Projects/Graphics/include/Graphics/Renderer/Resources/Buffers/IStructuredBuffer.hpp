@@ -26,7 +26,9 @@ public:
     /// @return False for unsupported or out-of-range updates; bytes outside the range remain unchanged.
     virtual bool UpdateRegion(const void* data, size_t sizeBytes, size_t offsetBytes)
     {
-        if (offsetBytes!=0 || sizeBytes!=GetSize()) return false;
+        if (offsetBytes!=0 || sizeBytes!=GetSize()) {
+            return false;
+        }
         Update(data,sizeBytes); return true;
     }
 
@@ -39,11 +41,18 @@ public:
     {
         if (!data || rowBytes == 0 || rowCount == 0 || destinationPitch < rowBytes
             || offsetBytes > GetSize() || rowBytes > GetSize() - offsetBytes
-            || rowCount - 1 > (GetSize() - offsetBytes - rowBytes) / destinationPitch) return false;
-        if (rowBytes == destinationPitch) return UpdateRegion(data, rowBytes * rowCount, offsetBytes);
+            || rowCount - 1 > (GetSize() - offsetBytes - rowBytes) / destinationPitch) {
+            return false;
+        }
+        if (rowBytes == destinationPitch) {
+            return UpdateRegion(data, rowBytes * rowCount, offsetBytes);
+        }
         const auto* source = static_cast<const uint8_t*>(data);
-        for (size_t row = 0; row < rowCount; ++row)
-            if (!UpdateRegion(source + row * rowBytes, rowBytes, offsetBytes + row * destinationPitch)) return false;
+        for (size_t row = 0; row < rowCount; ++row) {
+            if (!UpdateRegion(source + row * rowBytes, rowBytes, offsetBytes + row * destinationPitch)) {
+                return false;
+            }
+        }
         return true;
     }
 
@@ -56,4 +65,4 @@ public:
     virtual uint32_t GetBindlessUavIndex() const { return INVALID_BINDLESS_INDEX; }
 };
 
-} /// @note namespace fbzz::renderer
+} // namespace fbzz::renderer

@@ -2,6 +2,7 @@
 /// @brief   気体の格子ソルバーの GPU 版
 /// @author  Hasegawa Jin
 /// @date    2026-09-11
+#include <Graphics/Renderer/Commands/ShaderBindingSlots.hpp>
 #include <Engine/Asset/Fluid/Simulation/FluidGpuSolver.hpp>
 
 #include <Fluid/Stepping/FluidGpuStep.hpp>
@@ -54,7 +55,7 @@ bool FluidGpuSolver::Initialize(renderer::ResourceManager& resources, const flui
         outError = "3D で解けるのは気体 (kind = gas) のレシピだけです";
         return false;
     }
-    /// @note 作成元の変更では旧資源を返却し、Reset 済みの世代では実体へ触れず再構築する。
+    // 作成元の変更では旧資源を返却し、Reset 済みの世代では実体へ触れず再構築する。
     m_ready = false;
     if (m_resourceOwner != resources.GetInstanceId() || m_resetVersion != resources.GetResetVersion()) {
         m_ready = false;
@@ -79,9 +80,10 @@ bool FluidGpuSolver::Initialize(renderer::ResourceManager& resources, const flui
     static_assert(sizeof(kKernelPaths) / sizeof(kKernelPaths[0]) == KernelCount,
                   "kKernelPaths は Kernel の並びと 1:1");
     for (std::size_t i = 0; i < KernelCount; ++i) {
-        if (!m_kernels[i].IsValid())
+        if (!m_kernels[i].IsValid()) {
             m_kernels[i] = resources.LoadShader(
                 util::FileSystem::PathToUtf8(util::ResolveEngineAssetPath(kKernelPaths[i])));
+        }
         if (!m_kernels[i].IsValid()) {
             outError = std::string("流体の Compute シェーダーを読み込めません: ") + kKernelPaths[i];
             m_ready = false;
@@ -98,10 +100,18 @@ bool FluidGpuSolver::Initialize(renderer::ResourceManager& resources, const flui
             return texture.IsValid();
         };
         bool ok = true;
-        for (auto& texture : m_velocity) ok &= create(texture);
-        for (auto& texture : m_scalars) ok &= create(texture);
-        for (auto& texture : m_pressure) ok &= create(texture);
-        for (auto& texture : m_fuelColor) ok &= create(texture);
+        for (auto& texture : m_velocity) {
+            ok &= create(texture);
+        }
+        for (auto& texture : m_scalars) {
+            ok &= create(texture);
+        }
+        for (auto& texture : m_pressure) {
+            ok &= create(texture);
+        }
+        for (auto& texture : m_fuelColor) {
+            ok &= create(texture);
+        }
         ok &= create(m_expansion);
         ok &= create(m_aux);
         ok &= create(m_solid);
@@ -118,7 +128,9 @@ bool FluidGpuSolver::Initialize(renderer::ResourceManager& resources, const flui
     const std::size_t constantCount = static_cast<std::size_t>(kMaxFramesPerTick) * kMaxSubsteps;
     m_stepConstants.resize(constantCount);
     for (auto& constants : m_stepConstants)
-        if (!constants.IsValid()) constants = resources.CreateConstantBuffer(sizeof(fluid::FluidGpuStepConstants));
+        if (!constants.IsValid()) {
+            constants = resources.CreateConstantBuffer(sizeof(fluid::FluidGpuStepConstants));
+        }
     if (!m_forwardConstants.IsValid()) {
         m_forwardConstants = resources.CreateConstantBuffer(sizeof(PassConstants));
         const PassConstants forward{ 1.0f, { 0.0f, 0.0f, 0.0f } };
@@ -129,12 +141,13 @@ bool FluidGpuSolver::Initialize(renderer::ResourceManager& resources, const flui
         const PassConstants backward{ -1.0f, { 0.0f, 0.0f, 0.0f } };
         resources.Update(m_backwardConstants, &backward, sizeof(backward));
     }
-    if (!m_outputConstants.IsValid())
+    if (!m_outputConstants.IsValid()) {
         m_outputConstants = resources.CreateConstantBuffer(sizeof(fluid::FluidGpuStepConstants));
+    }
 
-    /// @note 確保に失敗しても size() は増えるので、ここで確かめないと «半端に成功» のまま
-    /// @note m_ready = true まで進む。無効な定数バッファは束縛が飛ばされ、直前のパスが b0 に残した
-    /// @note 別物の定数でシェーダーが走る (= 解像度すら別の値で読む)。落とすなら開く前に落とす。
+    // 確保に失敗しても size() は増えるので、ここで確かめないと «半端に成功» のまま
+    // m_ready = true まで進む。無効な定数バッファは束縛が飛ばされ、直前のパスが b0 に残した
+    // 別物の定数でシェーダーが走る (= 解像度すら別の値で読む)。落とすなら開く前に落とす。
     const bool constantsReady =
         std::all_of(m_stepConstants.begin(), m_stepConstants.end(),
                     [](const ConstantHandle& handle) { return handle.IsValid(); })
@@ -147,7 +160,7 @@ bool FluidGpuSolver::Initialize(renderer::ResourceManager& resources, const flui
     m_recipe = recipe;
     m_frameDt = (std::max)(frameDt, 1.0e-4f);
     m_substeps = std::clamp(recipe.output.substeps, 1, kMaxSubsteps);
-    /// @note Jacobi は SOR より収束が遅い。CPU と同じ反復回数では圧力が抜けきらず、煙が膨らんで見える。
+    // Jacobi は SOR より収束が遅い。CPU と同じ反復回数では圧力が抜けきらず、煙が膨らんで見える。
     m_pressureIterations = std::clamp(recipe.gas.pressureIterations * 2, 20, 400);
     m_densityScale = (std::max)(densityScale, 0.0f);
     m_temperatureScale = FluidRecipeTemperatureScale(recipe);
@@ -161,10 +174,18 @@ void FluidGpuSolver::ReleaseTextures(renderer::ResourceManager& resources)
 {
     (void)resources;
     const auto release = [](auto& texture) { texture.Reset(); };
-    for (auto& texture : m_velocity) release(texture);
-    for (auto& texture : m_scalars) release(texture);
-    for (auto& texture : m_pressure) release(texture);
-    for (auto& texture : m_fuelColor) release(texture);
+    for (auto& texture : m_velocity) {
+        release(texture);
+    }
+    for (auto& texture : m_scalars) {
+        release(texture);
+    }
+    for (auto& texture : m_pressure) {
+        release(texture);
+    }
+    for (auto& texture : m_fuelColor) {
+        release(texture);
+    }
     release(m_expansion);
     release(m_aux);
     release(m_solid);
@@ -176,12 +197,14 @@ void FluidGpuSolver::BuildMaskAtlas(renderer::ResourceManager& resources, const 
 {
     m_maskAtlas.Reset();
     const std::vector<std::string> paths = fluid::FluidGpuMaskPaths(recipe);
-    if (paths.empty()) return;
+    if (paths.empty()) {
+        return;
+    }
 
     constexpr int kTile = fluid::kFluidSourceMaskSize;
     constexpr int kColumns = fluid::kFluidSourceMaskAtlasColumns;
     constexpr int kAtlasSize = kTile * kColumns;
-    /// @note 読めなかったタイル・使わないタイルは 1 (白)。SampleFluidSourceMask の «無効なら 1» と同じく板の形に湧く。
+    // 読めなかったタイル・使わないタイルは 1 (白)。SampleFluidSourceMask の «無効なら 1» と同じく板の形に湧く。
     std::vector<std::uint8_t> rgba(static_cast<std::size_t>(kAtlasSize) * kAtlasSize * 4u, 255u);
     const std::size_t tileCount = (std::min)(paths.size(), static_cast<std::size_t>(kColumns * kColumns));
     for (std::size_t tile = 0; tile < tileCount; ++tile) {
@@ -235,24 +258,26 @@ void FluidGpuSolver::BeginTick()
 
 int FluidGpuSolver::DispatchesPerFrame() const
 {
-    /// @note 1 刻みの内訳: 固体/注入/力 3 + 渦度 2 + 発散 1 + 圧力 m_pressureIterations + 投影/移流/補正 8。
+    // 1 刻みの内訳: 固体/注入/力 3 + 渦度 2 + 発散 1 + 圧力 m_pressureIterations + 投影/移流/補正 8。
     constexpr int kFixedPerStep = 14;
     return (std::max)(m_substeps, 1) * (kFixedPerStep + (std::max)(m_pressureIterations, 0));
 }
 
 void FluidGpuSolver::Run(renderer::IRenderer& renderer, renderer::ResourceManager& resources,
                          renderer::ResourceHandle<renderer::ShaderTag> shader, ConstantHandle constants,
-                         std::initializer_list<TextureHandle> inputs, std::initializer_list<TextureHandle> outputs,
+                         std::initializer_list<TextureBinding> inputs, std::initializer_list<TextureBinding> outputs,
                          ConstantHandle passConstants)
 {
     renderer::ComputeCall call;
     call.shader = shader;
-    call.constantBuffers[0] = constants;
-    call.constantBuffers[1] = passConstants;
-    std::size_t slot = 0;
-    for (const TextureHandle& texture : inputs) call.srvInputs[slot++] = texture;
-    slot = 0;
-    for (const TextureHandle& texture : outputs) call.uavOutputs[slot++] = texture;
+    call.constantBuffers[renderer::cb::FLUID_STEP] = constants;
+    call.constantBuffers[renderer::cb::FLUID_PASS] = passConstants;
+    for (const auto& input : inputs) {
+        call.srvInputs[input.slot] = input.texture;
+    }
+    for (const auto& output : outputs) {
+        call.uavOutputs[output.slot] = output.texture;
+    }
     call.dispatchX = call.dispatchY = call.dispatchZ = (static_cast<std::uint32_t>(m_resolution) + 3u) / 4u;
     renderer.Dispatch(call, resources);
 }
@@ -260,30 +285,60 @@ void FluidGpuSolver::Run(renderer::IRenderer& renderer, renderer::ResourceManage
 bool FluidGpuSolver::StepFrame(renderer::IRenderer& renderer, renderer::ResourceManager& resources)
 {
     if (m_resourceOwner != resources.GetInstanceId() || m_resetVersion != resources.GetResetVersion()
-        || !m_ready || m_nextStepConstant + static_cast<std::size_t>(m_substeps) > m_stepConstants.size())
+        || !m_ready || m_nextStepConstant + static_cast<std::size_t>(m_substeps) > m_stepConstants.size()) {
         return false;
-    /// @note 1 コマ目は予算を超えても必ず通す (通さないと «永久に追いつかない» になる)。2 コマ目からは
-    /// @note 本数とコマ数の両方で止める。止めても呼び手は次の Tick で続きを解くので、絵が遅れるだけで済む。
+    }
+    // 1 コマ目は予算を超えても必ず通す (通さないと «永久に追いつかない» になる)。2 コマ目からは
+    // 本数とコマ数の両方で止める。止めても呼び手は次の Tick で続きを解くので、絵が遅れるだけで済む。
     if (m_framesThisTick > 0) {
-        if (m_framesThisTick >= kMaxFramesPerTick) return false;
-        if (m_dispatchesThisTick + DispatchesPerFrame() > kDispatchBudgetPerTick) return false;
+        if (m_framesThisTick >= kMaxFramesPerTick) {
+            return false;
+        }
+        if (m_dispatchesThisTick + DispatchesPerFrame() > kDispatchBudgetPerTick) {
+            return false;
+        }
     }
     if (m_needsClear) {
-        /// @note 作ったばかりの 3D テクスチャの中身は未定義。場は 0 から始める。
+        // 作ったばかりの 3D テクスチャの中身は未定義。場は 0 から始める。
         const ConstantHandle constants = m_stepConstants[m_nextStepConstant];
         const fluid::FluidGpuStepConstants cleared =
             fluid::PackFluidGpuStep(m_recipe, m_resolution, 0.0f, 0.0f, m_densityScale, m_temperatureScale);
         resources.Update(constants, &cleared, sizeof(cleared));
-        Run(renderer, resources, m_kernels[Clear], constants, {}, { m_velocity[0], m_velocity[1] });
-        Run(renderer, resources, m_kernels[Clear], constants, {}, { m_scalars[0], m_scalars[1] });
-        Run(renderer, resources, m_kernels[Clear], constants, {}, { m_scalars[2], m_scalars[3] });
-        Run(renderer, resources, m_kernels[Clear], constants, {}, { m_pressure[0], m_pressure[1] });
-        Run(renderer, resources, m_kernels[Clear], constants, {}, { m_fuelColor[0], m_fuelColor[1] });
-        Run(renderer, resources, m_kernels[Clear], constants, {}, { m_aux });
+        Run(renderer, resources, m_kernels[Clear], constants,
+            {}, {
+                { renderer::uav::FLUID_CLEAR_OUT0, m_velocity[0] },
+                { renderer::uav::FLUID_CLEAR_OUT1, m_velocity[1] }
+            });
+        Run(renderer, resources, m_kernels[Clear], constants,
+            {}, {
+                { renderer::uav::FLUID_CLEAR_OUT0, m_scalars[0] },
+                { renderer::uav::FLUID_CLEAR_OUT1, m_scalars[1] }
+            });
+        Run(renderer, resources, m_kernels[Clear], constants,
+            {}, {
+                { renderer::uav::FLUID_CLEAR_OUT0, m_scalars[2] },
+                { renderer::uav::FLUID_CLEAR_OUT1, m_scalars[3] }
+            });
+        Run(renderer, resources, m_kernels[Clear], constants,
+            {}, {
+                { renderer::uav::FLUID_CLEAR_OUT0, m_pressure[0] },
+                { renderer::uav::FLUID_CLEAR_OUT1, m_pressure[1] }
+            });
+        Run(renderer, resources, m_kernels[Clear], constants,
+            {}, {
+                { renderer::uav::FLUID_CLEAR_OUT0, m_fuelColor[0] },
+                { renderer::uav::FLUID_CLEAR_OUT1, m_fuelColor[1] }
+            });
+        Run(renderer, resources, m_kernels[Clear], constants,
+            {}, {
+                { renderer::uav::FLUID_CLEAR_OUT0, m_aux }
+            });
         m_needsClear = false;
     }
     const float stepDt = m_frameDt / static_cast<float>(m_substeps);
-    for (int step = 0; step < m_substeps; ++step) Step(renderer, resources, stepDt);
+    for (int step = 0; step < m_substeps; ++step) {
+        Step(renderer, resources, stepDt);
+    }
     ++m_steppedFrames;
     ++m_framesThisTick;
     m_dispatchesThisTick += DispatchesPerFrame();
@@ -306,57 +361,153 @@ void FluidGpuSolver::Step(renderer::IRenderer& renderer, renderer::ResourceManag
         spare = m_velocity[1 - current];
     };
 
-    /// @note 固体は刻みの頭に 1 回だけ作り、以降の段はすべて同じものを見る (段ごとに作ると動く障害物の位置が段でずれる)。
-    /// @note 障害物が無ければ全セル 0 になり、以降の段は障害物を足す前と同じ結果を出す。
-    Run(renderer, resources, m_kernels[Solid], constants, {}, { m_solid });
-    /// @note Inject の t3 を空のまま Dispatch させない。白ならどのタイルを引いてもマスク 1 = 板の形。
+    // 固体は刻みの頭に 1 回だけ作り、以降の段はすべて同じものを見る (段ごとに作ると動く障害物の位置が段でずれる)。
+    // 障害物が無ければ全セル 0 になり、以降の段は障害物を足す前と同じ結果を出す。
+    Run(renderer, resources, m_kernels[Solid], constants,
+        {}, {
+            { renderer::uav::FLUID_SOLID_SOLID_OUT, m_solid }
+        });
+    // Inject の t3 を空のまま Dispatch させない。白ならどのタイルを引いてもマスク 1 = 板の形。
     const TextureHandle masks = m_maskAtlas.IsValid() ? m_maskAtlas.Get() : resources.GetWhiteTexture();
 
-    /// @note 注入 + 燃焼: 今の場 (scalars[0]) → 注入後 (scalars[1])。速度も発生源の流速へ寄せる。
-    Run(renderer, resources, m_kernels[Inject], constants, { m_scalars[0], velocity, m_solid, masks, m_fuelColor[0] },
-        { m_scalars[1], spare, m_expansion, m_fuelColor[1] });
+    // 注入 + 燃焼: 今の場 (scalars[0]) → 注入後 (scalars[1])。速度も発生源の流速へ寄せる。
+    Run(renderer, resources, m_kernels[Inject], constants,
+        {
+            { renderer::srv::FLUID_INJECT_SCALARS_IN, m_scalars[0] },
+            { renderer::srv::FLUID_INJECT_VELOCITY_IN, velocity },
+            { renderer::srv::FLUID_INJECT_SOLID_IN, m_solid },
+            { renderer::srv::FLUID_INJECT_SOURCE_MASKS, masks },
+            { renderer::srv::FLUID_INJECT_FUEL_COLOR_IN, m_fuelColor[0] }
+        }, {
+            { renderer::uav::FLUID_INJECT_SCALARS_OUT, m_scalars[1] },
+            { renderer::uav::FLUID_INJECT_VELOCITY_OUT, spare },
+            { renderer::uav::FLUID_INJECT_EXPANSION_OUT, m_expansion },
+            { renderer::uav::FLUID_INJECT_FUEL_COLOR_OUT, m_fuelColor[1] }
+        });
     swapVelocity();
-    Run(renderer, resources, m_kernels[Forces], constants, { velocity, m_scalars[1] }, { spare });
+    Run(renderer, resources, m_kernels[Forces], constants,
+        {
+            { renderer::srv::FLUID_FORCES_VELOCITY_IN, velocity },
+            { renderer::srv::FLUID_FORCES_SCALARS_IN, m_scalars[1] }
+        }, {
+            { renderer::uav::FLUID_FORCES_VELOCITY_OUT, spare }
+        });
     swapVelocity();
     if (packed.vorticity > 0.0f) {
-        Run(renderer, resources, m_kernels[Curl], constants, { velocity }, { m_aux });
-        Run(renderer, resources, m_kernels[Confine], constants, { velocity, m_aux }, { spare });
+        Run(renderer, resources, m_kernels[Curl], constants,
+            {
+                { renderer::srv::FLUID_CURL_VELOCITY_IN, velocity }
+            }, {
+                { renderer::uav::FLUID_CURL_CURL_OUT, m_aux }
+            });
+        Run(renderer, resources, m_kernels[Confine], constants,
+            {
+                { renderer::srv::FLUID_CONFINE_VELOCITY_IN, velocity },
+                { renderer::srv::FLUID_CONFINE_CURL_IN, m_aux }
+            }, {
+                { renderer::uav::FLUID_CONFINE_VELOCITY_OUT, spare }
+            });
         swapVelocity();
     }
 
-    /// @note 圧力投影。前の刻みの圧力を初期値に残す (warm start) と、同じ反復回数でも収束が進む。
-    Run(renderer, resources, m_kernels[Divergence], constants, { velocity, m_expansion, m_solid }, { m_aux });
+    // 圧力投影。前の刻みの圧力を初期値に残す (warm start) と、同じ反復回数でも収束が進む。
+    Run(renderer, resources, m_kernels[Divergence], constants,
+        {
+            { renderer::srv::FLUID_DIVERGENCE_VELOCITY_IN, velocity },
+            { renderer::srv::FLUID_DIVERGENCE_EXPANSION_IN, m_expansion },
+            { renderer::srv::FLUID_DIVERGENCE_SOLID_IN, m_solid }
+        }, {
+            { renderer::uav::FLUID_DIVERGENCE_DIVERGENCE_OUT, m_aux }
+        });
     for (int iteration = 0; iteration < m_pressureIterations; ++iteration) {
-        Run(renderer, resources, m_kernels[Jacobi], constants, { m_pressure[m_currentPressure], m_aux, m_solid },
-            { m_pressure[1 - m_currentPressure] });
+        Run(renderer, resources, m_kernels[Jacobi], constants,
+            {
+                { renderer::srv::FLUID_JACOBI_PRESSURE_IN, m_pressure[m_currentPressure] },
+                { renderer::srv::FLUID_JACOBI_DIVERGENCE_IN, m_aux },
+                { renderer::srv::FLUID_JACOBI_SOLID_IN, m_solid }
+            }, {
+                { renderer::uav::FLUID_JACOBI_PRESSURE_OUT, m_pressure[1 - m_currentPressure] }
+            });
         m_currentPressure = 1 - m_currentPressure;
     }
-    Run(renderer, resources, m_kernels[Project], constants, { velocity, m_pressure[m_currentPressure], m_solid },
-        { spare });
+    Run(renderer, resources, m_kernels[Project], constants,
+        {
+            { renderer::srv::FLUID_PROJECT_VELOCITY_IN, velocity },
+            { renderer::srv::FLUID_PROJECT_PRESSURE_IN, m_pressure[m_currentPressure] },
+            { renderer::srv::FLUID_PROJECT_SOLID_IN, m_solid }
+        }, {
+            { renderer::uav::FLUID_PROJECT_VELOCITY_OUT, spare }
+        });
     swapVelocity();
 
-    /// @note 移流は投影後の速度で運ぶ (CPU と同じ)。スカラーは MacCormack で往復させ、補正して今の場へ戻す。
-    Run(renderer, resources, m_kernels[AdvectScalar], constants, { m_scalars[1], velocity }, { m_scalars[2] },
+    // 移流は投影後の速度で運ぶ (CPU と同じ)。スカラーは MacCormack で往復させ、補正して今の場へ戻す。
+    Run(renderer, resources, m_kernels[AdvectScalar], constants,
+        {
+            { renderer::srv::FLUID_ADVECT_SCALAR_FIELD_IN, m_scalars[1] },
+            { renderer::srv::FLUID_ADVECT_SCALAR_VELOCITY_IN, velocity }
+        }, {
+            { renderer::uav::FLUID_ADVECT_SCALAR_FIELD_OUT, m_scalars[2] }
+        },
         m_forwardConstants);
-    if (packed.sharp != 0u)
-        Run(renderer, resources, m_kernels[AdvectScalar], constants, { m_scalars[2], velocity }, { m_scalars[3] },
-            m_backwardConstants);
+    if (packed.sharp != 0u) {
+        Run(renderer, resources, m_kernels[AdvectScalar], constants,
+            {
+                { renderer::srv::FLUID_ADVECT_SCALAR_FIELD_IN, m_scalars[2] },
+                { renderer::srv::FLUID_ADVECT_SCALAR_VELOCITY_IN, velocity }
+            }, {
+                { renderer::uav::FLUID_ADVECT_SCALAR_FIELD_OUT, m_scalars[3] }
+            },
+                m_backwardConstants);
+    }
     Run(renderer, resources, m_kernels[Correct], constants,
-        { m_scalars[1], m_scalars[2], packed.sharp != 0u ? m_scalars[3] : m_scalars[2], velocity, m_solid },
-        { m_scalars[0] });
+        {
+            { renderer::srv::FLUID_CORRECT_ORIGINAL_IN, m_scalars[1] },
+            { renderer::srv::FLUID_CORRECT_FORWARD_IN, m_scalars[2] },
+            { renderer::srv::FLUID_CORRECT_BACKWARD_IN, packed.sharp != 0u ? m_scalars[3] : m_scalars[2] },
+            { renderer::srv::FLUID_CORRECT_VELOCITY_IN, velocity },
+            { renderer::srv::FLUID_CORRECT_SOLID_IN, m_solid }
+        }, {
+            { renderer::uav::FLUID_CORRECT_FIELD_OUT, m_scalars[0] }
+        });
 
-    /// @note 燃料の色も燃料と同じ速度・同じ往復で運ぶ (Correct の z の規則がそのまま燃料の散逸規則になる)。
-    /// @note 作業場は scalars[2]/[3] を借用する。直前の Correct で用済みで、専用に 2 枚増やすと 192³ で 100 MB 余分に要る。
-    Run(renderer, resources, m_kernels[AdvectScalar], constants, { m_fuelColor[1], velocity }, { m_scalars[2] },
+    // 燃料の色も燃料と同じ速度・同じ往復で運ぶ (Correct の z の規則がそのまま燃料の散逸規則になる)。
+    // 作業場は scalars[2]/[3] を借用する。直前の Correct で用済みで、専用に 2 枚増やすと 192³ で 100 MB 余分に要る。
+    Run(renderer, resources, m_kernels[AdvectScalar], constants,
+        {
+            { renderer::srv::FLUID_ADVECT_SCALAR_FIELD_IN, m_fuelColor[1] },
+            { renderer::srv::FLUID_ADVECT_SCALAR_VELOCITY_IN, velocity }
+        }, {
+            { renderer::uav::FLUID_ADVECT_SCALAR_FIELD_OUT, m_scalars[2] }
+        },
         m_forwardConstants);
-    if (packed.sharp != 0u)
-        Run(renderer, resources, m_kernels[AdvectScalar], constants, { m_scalars[2], velocity }, { m_scalars[3] },
-            m_backwardConstants);
+    if (packed.sharp != 0u) {
+        Run(renderer, resources, m_kernels[AdvectScalar], constants,
+            {
+                { renderer::srv::FLUID_ADVECT_SCALAR_FIELD_IN, m_scalars[2] },
+                { renderer::srv::FLUID_ADVECT_SCALAR_VELOCITY_IN, velocity }
+            }, {
+                { renderer::uav::FLUID_ADVECT_SCALAR_FIELD_OUT, m_scalars[3] }
+            },
+                m_backwardConstants);
+    }
     Run(renderer, resources, m_kernels[Correct], constants,
-        { m_fuelColor[1], m_scalars[2], packed.sharp != 0u ? m_scalars[3] : m_scalars[2], velocity, m_solid },
-        { m_fuelColor[0] });
+        {
+            { renderer::srv::FLUID_CORRECT_ORIGINAL_IN, m_fuelColor[1] },
+            { renderer::srv::FLUID_CORRECT_FORWARD_IN, m_scalars[2] },
+            { renderer::srv::FLUID_CORRECT_BACKWARD_IN, packed.sharp != 0u ? m_scalars[3] : m_scalars[2] },
+            { renderer::srv::FLUID_CORRECT_VELOCITY_IN, velocity },
+            { renderer::srv::FLUID_CORRECT_SOLID_IN, m_solid }
+        }, {
+            { renderer::uav::FLUID_CORRECT_FIELD_OUT, m_fuelColor[0] }
+        });
 
-    Run(renderer, resources, m_kernels[AdvectVelocity], constants, { velocity, m_solid }, { spare });
+    Run(renderer, resources, m_kernels[AdvectVelocity], constants,
+        {
+            { renderer::srv::FLUID_ADVECT_VELOCITY_VELOCITY_IN, velocity },
+            { renderer::srv::FLUID_ADVECT_VELOCITY_SOLID_IN, m_solid }
+        }, {
+            { renderer::uav::FLUID_ADVECT_VELOCITY_VELOCITY_OUT, spare }
+        });
     swapVelocity();
 
     m_currentVelocity = current;
@@ -367,12 +518,20 @@ void FluidGpuSolver::WriteVolumes(renderer::IRenderer& renderer, renderer::Resou
                                   TextureHandle medium, TextureHandle velocity)
 {
     if (m_resourceOwner != resources.GetInstanceId() || m_resetVersion != resources.GetResetVersion()
-        || !m_ready || !medium.IsValid() || !velocity.IsValid()) return;
+        || !m_ready || !medium.IsValid() || !velocity.IsValid()) {
+        return;
+    }
     const fluid::FluidGpuStepConstants packed =
         fluid::PackFluidGpuStep(m_recipe, m_resolution, m_time, 0.0f, m_densityScale, m_temperatureScale);
     resources.Update(m_outputConstants, &packed, sizeof(packed));
     Run(renderer, resources, m_kernels[Output], m_outputConstants,
-        { m_scalars[0], m_velocity[m_currentVelocity] }, { medium, velocity });
+        {
+            { renderer::srv::FLUID_OUTPUT_SCALARS_IN, m_scalars[0] },
+            { renderer::srv::FLUID_OUTPUT_VELOCITY_IN, m_velocity[m_currentVelocity] }
+        }, {
+            { renderer::uav::FLUID_OUTPUT_MEDIUM_OUT, medium },
+            { renderer::uav::FLUID_OUTPUT_VELOCITY_OUT, velocity }
+        });
 }
 
 }

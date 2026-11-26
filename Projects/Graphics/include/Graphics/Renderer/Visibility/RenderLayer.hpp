@@ -12,9 +12,9 @@
 namespace fbzz::renderer {
 
     enum class RenderLayer : uint32_t {
-        OPAQUE_LAYER      = 0,  ///< @note 不透明オブジェクト (ソートなし、前から後へ)
-        TRANSPARENT_LAYER = 1,  ///< @note 半透明オブジェクト (デプスソートあり、後から前へ)
-        OVERLAY_LAYER     = 2,  ///< @note デバッグ描画・UI  (デプステストなし、最後に描画)
+        OPAQUE_LAYER      = 0,  ///< 不透明オブジェクト (ソートなし、前から後へ)
+        TRANSPARENT_LAYER = 1,  ///< 半透明オブジェクト (デプスソートあり、後から前へ)
+        OVERLAY_LAYER     = 2,  ///< デバッグ描画・UI  (デプステストなし、最後に描画)
     };
 
     /// @note RenderQueue — MaterialAsset::renderQueue に入れる Unity 風の描画順プリセット。
@@ -32,4 +32,4 @@ namespace fbzz::renderer {
         static constexpr int32_t CUSTOM_MAX   = 3999;
     };
 
-} /// @note namespace fbzz::renderer
+} // namespace fbzz::renderer

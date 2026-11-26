@@ -2,6 +2,7 @@
 /// @brief   Capture shared Water surface height, physical depth and wave Jacobian into the view atlas.
 /// @author  Hasegawa Jin
 /// @date    2026-10-09
+#include "Common/Binding.hlsli"
 #define PSMain WaterLitPSMain
 #define FBZZ_WATER_MEDIUM_CAPTURE 1
 #include "Water/Water.hlsl"
@@ -9,7 +10,7 @@
 #undef PSMain
 
 /// @note x=table owner index plus one; y=maximum physical depth for columns without terrain sampling.
-cbuffer WaterMediumCaptureConstants : register(b10)
+cbuffer WaterMediumCaptureConstants : register(FBZZ_REGISTER(b, CB_WATER_MEDIUM_CAPTURE_SLOT))
 {
     float4 g_waterMediumCapture;
 }

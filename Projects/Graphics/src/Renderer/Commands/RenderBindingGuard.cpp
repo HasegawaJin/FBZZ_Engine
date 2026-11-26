@@ -15,7 +15,7 @@ bool IsEnabled()
     if constexpr (!kBuiltIn) {
         return false;
     } else {
-        /// @note 起動中に変わるものではないので 1 回だけ読む。
+        // 起動中に変わるものではないので 1 回だけ読む。
         static const bool enabled = [] {
             wchar_t     value[8]{};
             const DWORD length = GetEnvironmentVariableW(L"FBZZ_RENDER_BINDING_GUARD", value, 8);
@@ -32,4 +32,4 @@ bool IsEnabled()
     }
 }
 
-} /// @note namespace fbzz::renderer::bindingguard
+} // namespace fbzz::renderer::bindingguard

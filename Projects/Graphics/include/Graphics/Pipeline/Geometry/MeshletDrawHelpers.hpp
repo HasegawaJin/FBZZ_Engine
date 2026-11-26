@@ -24,26 +24,26 @@ enum class MeshletDrawPass : uint8_t {
 
 /// @note The unjittered color-view projection keeps the screen-error decision stable across TAA samples.
 struct MeshletClusterView {
-    math::Matrix4 viewProjection;
-    uint32_t width;
-    uint32_t height;
+    math::Matrix4 viewProjection; ///< ワールド座標をこのビューのクリップ座標に変換する行列。
+    uint32_t width; ///< 投影面積の評価に使うビューポートの幅（画素）。
+    uint32_t height; ///< 投影面積の評価に使うビューポートの高さ（画素）。
     /// @note Negative means the skinning palette cannot provide a conservative bound.
     float skinDisplacement = -1.0f;
 };
 
 /// @note Indexed instance commands provide the visible ID range without GPU readback.
 struct MeshletClusterInstances {
-    ResourceHandle<StructuredBufferTag> rows;
-    ResourceHandle<StructuredBufferTag> ids;
-    ResourceHandle<StructuredBufferTag> indexedArguments;
-    uint32_t argumentIndex = UINT32_MAX;
-    uint32_t capacity = 0;
+    ResourceHandle<StructuredBufferTag> rows; ///< クラスター描画で参照するインスタンス変換のバッファ。
+    ResourceHandle<StructuredBufferTag> ids; ///< インスタンスの選別結果から元の変換を引くための ID 列。
+    ResourceHandle<StructuredBufferTag> indexedArguments; ///< 選別後の描画数が入るインデックス描画用の間接引数バッファ。
+    uint32_t argumentIndex = UINT32_MAX; ///< このバッチが使う間接引数の位置。
+    uint32_t capacity = 0; ///< このバッチに渡せるインスタンス数の上限。
 };
 
 /// @brief Checks whether a static standard-surface item can use the meshlet path.
-/// @param item Resolved mesh and material snapshot.
-/// @param skinned True when the owning render object uses skinning.
-/// @param pass GBuffer keeps the standard 60-byte vertex ABI; shadows read only positions.
+/// @param[in] item 解決済みのメッシュとマテリアルのスナップショット。
+/// @param[in] skinned 描画対象のオブジェクトがスキニングを使う場合は true。
+/// @param[in] pass 描画パスの種類。GBuffer は標準の 60 バイトの頂点形式を使い、影パスは位置だけを読む。
 /// @return False for unsupported, small, deformed, custom, or shadow alpha-cutout inputs.
 [[nodiscard]] FBZZ_GRAPHICS_API bool IsMeshletDrawCandidate(const RenderMeshItem& item, bool skinned,
                                           MeshletDrawPass pass);
@@ -52,9 +52,9 @@ struct MeshletClusterInstances {
 [[nodiscard]] bool CanUseGBufferClusterLod(const RenderObject& object, const RenderMeshItem& item);
 
 /// @brief Prepares a mesh-shader DrawCall while leaving the input unchanged on failure.
-/// @param viewProjection Exact camera or shadow view-projection matrix for this draw.
-/// @param world Local-to-world matrix for the object's aggregate meshlet bounds.
-/// @param forceMesh Keeps the mesh-shader path enabled for explicit comparison even when the whole object is visible.
+/// @param[in] viewProjection 描画先のカメラまたは影ビューに対応するビュー射影行列。
+/// @param[in] world 全メッシュレットのローカル境界をワールド空間へ移す行列。
+/// @param[in] forceMesh 経路を明示的に比較するとき、オブジェクト全体が可視でもメッシュシェーダーを使う。
 /// @return True when inOut is a fully configured direct mesh-shader draw.
 /// @note Flat meshlets require at least 25 percent estimated clipping unless forced. Cluster LOD also handles fully visible geometry.
 /// @note Callers update b1 and submit immediately after success so the shared b13 upload and draw stay ordered.
@@ -76,4 +76,4 @@ FBZZ_GRAPHICS_API void SubmitMeshletDraw(RenderPassContext& ctx, const DrawCall&
     const MeshletClusterView& view, const RenderMeshItem& item, MeshletDrawPass pass,
     const DrawCall& indexedDraw, const MeshletClusterInstances& instances);
 
-} /// @note namespace fbzz::renderer
+} // namespace fbzz::renderer

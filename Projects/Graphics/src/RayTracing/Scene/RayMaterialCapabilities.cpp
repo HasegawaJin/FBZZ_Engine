@@ -12,11 +12,12 @@ RayMaterialCapabilities ResolveStaticRayMaterialCapabilities(
 {
     RayMaterialCapabilities result;
     result.staticGeometry = standardGeometry;
-    if (!standardGeometry || blend != BlendMode::OPAQUE_BLEND || !std::isfinite(alpha) || !std::isfinite(cutoff))
+    if (!standardGeometry || blend != BlendMode::OPAQUE_BLEND || !std::isfinite(alpha) || !std::isfinite(cutoff)) {
         return result;
+    }
     result.opacity = alphaTexture ? RayOpacity::ALPHA_TEST
         : alpha >= cutoff ? RayOpacity::OPAQUE_SURFACE : RayOpacity::EMPTY;
     return result;
 }
 
-} /// @note namespace fbzz::renderer
+} // namespace fbzz::renderer

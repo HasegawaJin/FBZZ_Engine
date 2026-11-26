@@ -49,7 +49,7 @@ FBZZ_SBUFFER_T(SkinSrcVertex, gSrcVertices, SB_SKIN_SRC_VERTICES_SLOT);
 FBZZ_SBUFFER_T(float4x4, gBoneMatrices, SB_SKIN_BONES_SLOT);
 FBZZ_RWSBUFFER_T(SkinnedOutVertex, gOutVertices, UAV_SKINNED_VERTICES_SLOT);
 
-cbuffer SkinningConstants : register(b0)
+cbuffer SkinningConstants : register(FBZZ_REGISTER(b, CB_SKIN_COMPUTE_SLOT))
 {
     uint gVertexCount;
     uint gBoneOffset;

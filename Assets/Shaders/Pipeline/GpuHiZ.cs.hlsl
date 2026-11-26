@@ -5,10 +5,10 @@
 #include "Common/Binding.hlsli"
 #include "Common/BindlessIndices.hlsli"
 
-FBZZ_TEX2D_T(float, g_sourceDepth, 7);
-FBZZ_RWSBUFFER_T(float, g_pyramid, UAV_CLUSTER_LIGHTS_SLOT);
+FBZZ_TEX2D_T(float, g_sourceDepth, TEX_DEPTH_SLOT);
+FBZZ_RWSBUFFER_T(float, g_pyramid, UAV_HIZ_PYRAMID_SLOT);
 
-cbuffer BuildConstants : register(b0)
+cbuffer BuildConstants : register(FBZZ_REGISTER(b, CB_HIZ_BUILD_SLOT))
 {
     uint4 g_sourceRect;
     uint4 g_outputOffsets;

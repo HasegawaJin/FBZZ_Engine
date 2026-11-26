@@ -41,9 +41,12 @@ public:
     /// @note A stale owner or an empty reason is rejected without modifying pending work.
     [[nodiscard]] MarkResult Mark(uint64_t ownerGeneration, const Key& key, ReasonBits reasons)
     {
-        if (ownerGeneration == 0 || ownerGeneration != m_ownerGeneration || reasons == 0)
+        if (ownerGeneration == 0 || ownerGeneration != m_ownerGeneration || reasons == 0) {
             return MarkResult::REJECTED;
-        if (m_slots.empty()) GrowIndex();
+        }
+        if (m_slots.empty()) {
+            GrowIndex();
+        }
         size_t slot = FindSlot(key);
         if (m_slots[slot].epoch == m_epoch) {
             auto& entry = m_pending[m_slots[slot].entry];
@@ -60,7 +63,9 @@ public:
     /// @note Call after finishing the previous output batch; a rejected lifetime leaves both output and pending unchanged.
     [[nodiscard]] bool TakePending(uint64_t ownerGeneration, std::vector<Entry>& output)
     {
-        if (ownerGeneration == 0 || ownerGeneration != m_ownerGeneration) return false;
+        if (ownerGeneration == 0 || ownerGeneration != m_ownerGeneration) {
+            return false;
+        }
         output.clear();
         output.swap(m_pending);
         AdvanceEpoch();
@@ -80,16 +85,21 @@ private:
     size_t FindSlot(const Key& key) const
     {
         size_t slot = m_hash(key) & (m_slots.size() - 1);
-        while (m_slots[slot].epoch == m_epoch && !m_equal(m_pending[m_slots[slot].entry].key, key))
+        while (m_slots[slot].epoch == m_epoch && !m_equal(m_pending[m_slots[slot].entry].key, key)) {
             slot = (slot + 1) & (m_slots.size() - 1);
+        }
         return slot;
     }
 
     /// @note Normal drains/reset do not scan high-water slot capacity; only lifetime-sized epoch wrap clears stamps.
     void AdvanceEpoch()
     {
-        if (++m_epoch != 0) return;
-        for (auto& slot : m_slots) slot.epoch = 0;
+        if (++m_epoch != 0) {
+            return;
+        }
+        for (auto& slot : m_slots) {
+            slot.epoch = 0;
+        }
         m_epoch = 1;
     }
 
@@ -100,7 +110,9 @@ private:
         m_slots.assign(slotCount, {});
         for (size_t index = 0; index < m_pending.size(); ++index) {
             size_t slot = m_hash(m_pending[index].key) & (slotCount - 1);
-            while (m_slots[slot].epoch == m_epoch) slot = (slot + 1) & (slotCount - 1);
+            while (m_slots[slot].epoch == m_epoch) {
+                slot = (slot + 1) & (slotCount - 1);
+            }
             m_slots[slot] = {index, m_epoch};
         }
     }
@@ -113,4 +125,4 @@ private:
     [[no_unique_address]] Equal m_equal;
 };
 
-} /// @note namespace fbzz::renderer::spatial_detail
+} // namespace fbzz::renderer::spatial_detail

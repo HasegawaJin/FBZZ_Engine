@@ -2,6 +2,7 @@
 /// @brief   Shared Point/Spot inputs provide shadowed, attenuated sources for water-volume scattering.
 /// @author  Hasegawa Jin
 /// @date    2026-10-09
+#include "Common/Binding.hlsli"
 #ifndef FBZZ_WATER_LOCAL_LIGHTS_HLSLI
 #define FBZZ_WATER_LOCAL_LIGHTS_HLSLI
 
@@ -32,7 +33,7 @@ float FBZZ_WaterLocalGeometryVisibility(PunctualLight light, float3 worldPositio
 {
     int slot = light.shadowIndex;
     if (slot < 0) return 1.0f;
-    if (punctualShadowCount <= 0 || !FBZZ_WaterShadowResourceAvailable(gPunctualShadowAtlas, 28u)) return 0.0f;
+    if (punctualShadowCount <= 0 || !FBZZ_WaterShadowResourceAvailable(gPunctualShadowAtlas, TEX_PUNCTUAL_SHADOW_SLOT)) return 0.0f;
     if (light.type == FBZZ_LIGHT_TYPE_POINT)
         slot += FBZZ_CubeFaceIndex(worldPosition - light.position);
     if (slot < 0 || slot >= punctualShadowCount) return 0.0f;

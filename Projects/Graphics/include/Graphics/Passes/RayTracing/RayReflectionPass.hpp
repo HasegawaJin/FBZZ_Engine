@@ -31,4 +31,4 @@ private:
     ResourceHandle<TextureTag> m_halfRaw;
 };
 
-} /// @note namespace fbzz::renderer
+} // namespace fbzz::renderer

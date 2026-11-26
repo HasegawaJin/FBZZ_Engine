@@ -1,5 +1,20 @@
 # Bindless (ResourceDescriptorHeap)
 
+## パスからバインド先を追う
+
+スロット番号の正本は `Assets/Shaders/Common/Binding.hlsli` の `*_SLOT` 定義。Graphics の configure で公開 C++ ヘッダー `Graphics/Renderer/Commands/ShaderBindingSlots.hpp` を生成し、SDK にも同梱する。新しい用途を追加するときはここに名前と番号を一度登録し、パスとシェーダーの両方から参照する。
+
+| Contact Shadows の用途 | C++ の添字 | HLSL のスロット |
+|---|---|---|
+| カメラ定数 | `cb::CAMERA` | `CB_CAMERA_SLOT` |
+| ライト定数 | `cb::LIGHT` | `CB_LIGHT_SLOT` |
+| レイマーチ設定 | `cb::ADVANCED_GRAPHICS` | `CB_ADVANCED_GRAPHICS_SLOT` |
+| 深度入力 | `srv::DEPTH` | `TEX_DEPTH_SLOT` |
+| 接触影マスクの書き込み | `uav::CONTACT_SHADOW` | `UAV_CONTACT_SHADOW_SLOT` |
+| Deferred Lighting での読み取り | `srv::CONTACT_SHADOW` | `TEX_CONTACT_SHADOW_SLOT` |
+
+`srvInputs` と `uavOutputs` の添字は論理スロットに一致する。`uavBuffers`、`vsBuffers`、`psBuffers` などの部分配列には、対応する変換関数で先頭スロットからの差を渡す。頂点用の bindless 添字は `vsSlot` で区別する。RenderGraph の `Read` / `Write` はパス間の依存関係を宣言し、各パスの `DrawCall` / `ComputeCall` が実際のリソースをスロットに結び付ける。
+
 - 状態: 実装済み (段 A / B / C 完了)。**ビルドと実機描画の確認は未了**
 
 DirectX 11 撤去 (`dx11-removal.md`) で SM 6.x がエンジンの床になった。その対価を回収する最初の一手。
@@ -297,10 +312,14 @@ DX12のgraphics Submitは、texture、PS StructuredBuffer、auxiliary PS buffer�
 
 ネイティブの記録スレッドが、毎SubmitでINVALIDから添字を構築する。texture、PS、auxiliaryの順でdescriptorを取得し、同じ添字枠への上書きもこの順に行う。全遷移を終えてから描画を記録する。raw SRVの遅延生成は `GetSrvResource` より先の `GetBindlessSrvIndex` で行い、indirect依存には状態遷移を発行する。
 
-texture、PS、auxiliaryの計36枠に対し、従来はSubmitごとに72回照会していた。まとめた経路では、そのうち非空の枠だけを各1回照会する。生成したb14の内容は、そのSubmitで確保したUpload Arenaのスライスにコピーする。
+texture、PS、auxiliaryの計36枠に対し、従来はSubmitごとに72回照会していた。まとめた経路では、そのうち非空の枠だけを各1回照会する。
+
+b14の再利用は、すべての添字を解決した後の176バイトのブロックで判定する。ピクセルSRV 32枠、頂点SRV 4枠、UAV 8枠のすべてが`INVALID_BINDLESS_INDEX`なら、frameの開始時に確保した全枠無効ブロックを束縛する。添字が有効な場合や共用ブロックを確保できなかった場合は、そのSubmitで確保したUpload Arenaのスライスにコピーする。全枠無効ブロックは、frame slotのfence完了後にslotの領域を再利用するまで有効とする。
 
 ## 分離した診断
 
 Profiler capture filterのscopeを`ForwardOpaque`へ明示した実行だけ、可視判定、object upload、draw preparation、Submit呼出しの集約時計を取る。`CullingAggregate`は`Gather`と重複する合計で、連続した子区間ではない。`SubmitCallAggregate`はunthreadedならnative記録、threaded facadeならproducerのqueueingや受理待ちを含み、workerでの実行時間とは別。
 
-`FBZZ_DX12_BINDLESS_INDICES_DIAGNOSTICS=1` はnative側のtexture遷移からb14 uploadまでの`bindingSectionMs`と回数をframe終端に記録する。VS遷移やbarrier flush以降はこの区間に含まない。`observedResourceFrame`は観測したResourceManagerの時計で、全呼出しが同じowner/frameだったかを`resourceCoherent`で示す。physical frameとapplication frameを無条件に同一視しない。診断時のper-draw時計・出力負荷を通常性能比較に混ぜない。無効時はper-draw時計と診断出力を行わない。
+`FBZZ_DX12_BINDLESS_INDICES_DIAGNOSTICS=1` はnative側のtexture遷移からVS添字取得を経てb14を束縛するまでの`bindingSectionMs`と回数をframe終端に記録する。`visits`はb14の処理まで到達した回数で、Submitごとのupload成功（`uploads`）、frameの全枠無効ブロックの再利用（`emptyReuses`）、割り当て失敗（`failures`）に分かれる。`uploads`はSubmit内の割り当てを数える。VS遷移やbarrier flush以降はこの区間に含まない。`observedResourceFrame`は観測したResourceManagerの時計で、全呼出しが同じowner/frameだったかを`resourceCoherent`で示す。physical frameとapplication frameを無条件に同一視しない。診断時のper-draw時計・出力負荷を通常性能比較に混ぜない。無効時はper-draw時計と診断出力を行わない。
+
+`recordedDraws` と `recordedDispatches` は DX12 のコマンドリストに実際に記録した命令数。間接描画は `ExecuteIndirect` 命令を1回と数える。各描画パスの送信要求数と突き合わせるときは、定数・添字・頂点入力の準備で記録を中止した `rejectedDraws`、`rejectedDispatches` と、アリーナで確保できなかったバイト数 `failedRequestBytes` を併せて読む。

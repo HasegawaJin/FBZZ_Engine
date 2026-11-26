@@ -31,7 +31,7 @@ ProbeVertex VSMain(uint vertex : SV_VertexID)
     output.position = float4(float2(vertex & 1u, vertex >> 1u) * 4.0f - 1.0f, g_depth, 1.0f);
     output.value = 0.0f;
     if (g_readPyramid != 0) {
-        /// @note DrawCall::vsBuffers[0] はインスタンス用スロットの次に束縛される。
+        // DrawCall::vsBuffers[0] はインスタンス用スロットの次に束縛される。
         StructuredBuffer<float> pyramid = ResourceDescriptorHeap[g_bindlessVertex.y];
         if (g_readPyramid == 1) {
             output.value = pyramid[g_probeIndex];

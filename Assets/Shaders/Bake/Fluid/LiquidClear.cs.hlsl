@@ -5,7 +5,7 @@
 #include "Bake/Fluid/LiquidCommon.hlsli"
 #include "Common/BindlessIndices.hlsli"
 
-FBZZ_RWSBUFFER_T(float4, gStateOut, 2);
+FBZZ_RWSBUFFER_T(float4, gStateOut, UAV_LIQUID_STATE_SLOT);
 
 [numthreads(64, 1, 1)]
 void CSMain(uint3 id : SV_DispatchThreadID)

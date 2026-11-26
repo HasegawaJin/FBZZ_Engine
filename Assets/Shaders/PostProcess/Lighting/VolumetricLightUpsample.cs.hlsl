@@ -8,9 +8,9 @@
 #include "Common/Space.hlsli"
 #include "Common/BindlessIndices.hlsli"
 
-FBZZ_TEX2D_T(float4, texVolumetricRaw, 5);
-FBZZ_TEX2D_T(float, texDepth, 7);
-FBZZ_RWTEX2D_T(float4, OutputVolumetric, 4);
+FBZZ_TEX2D_T(float4, texVolumetricRaw, SRV_VOLUMETRIC_RAW_SLOT);
+FBZZ_TEX2D_T(float, texDepth, TEX_DEPTH_SLOT);
+FBZZ_RWTEX2D_T(float4, OutputVolumetric, UAV_VOLUMETRIC_SLOT);
 
 /// @brief 奥行きの比で決めるフィルター幅。隣接する同一面を残し、壁と空の間は混ぜない。
 static const float VOLUMETRIC_DEPTH_WIDTH = 0.02f;

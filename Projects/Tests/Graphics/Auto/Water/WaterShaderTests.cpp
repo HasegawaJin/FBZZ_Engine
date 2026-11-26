@@ -85,7 +85,7 @@ protected:
         m_bundle = renderer::CreateRenderer(renderer::RendererBackend::DX12, m_window, EXTENT, EXTENT);
         ASSERT_NE(m_bundle.renderer, nullptr);
         m_bundle.renderer->SetRenderWhenOccluded(true);
-        /// @note 実描画パスの相対 shader path も、起動ディレクトリに依存せず同じ正本へ解決する。
+        // 実描画パスの相対 shader path も、起動ディレクトリに依存せず同じ正本へ解決する。
         renderer::SetShaderPathResolver(ResolveWaterShaderFile);
         m_resources = std::make_unique<renderer::ResourceManager>(*m_bundle.renderer);
         auto& resources = *m_resources;
@@ -230,7 +230,9 @@ protected:
 
     bool SetVisualExtent(uint32_t extent)
     {
-        if (extent < EXTENT || extent > 1024) return false;
+        if (extent < EXTENT || extent > 1024) {
+            return false;
+        }
         m_colorTarget = m_resources->CreateRenderTarget(extent, extent,
             renderer::RenderTargetDesc{1, renderer::Format::RGBA16F, false});
         m_depthTarget = m_resources->CreateRenderTarget(extent, extent, renderer::CameraDepthTargetDesc(0));
@@ -259,13 +261,19 @@ protected:
         }
         m_sharedVertexBuffer = resources.CreateVertexBuffer(vertices.data(), vertices.size() * sizeof(renderer::WaterVertex),
             sizeof(renderer::WaterVertex));
-        if (!m_sharedVertexBuffer) return false;
+        if (!m_sharedVertexBuffer) {
+            return false;
+        }
         for (uint8_t mask = 0; mask < 16; ++mask) {
             std::vector<uint32_t> indices;
-            if (!renderer::BuildSurfacePatchIndices(cells, mask, indices)) return false;
+            if (!renderer::BuildSurfacePatchIndices(cells, mask, indices)) {
+                return false;
+            }
             m_sharedIndexBuffers[mask] = resources.CreateIndexBuffer(indices.data(), static_cast<uint32_t>(indices.size()));
             m_sharedIndexCounts[mask] = static_cast<uint32_t>(indices.size());
-            if (!m_sharedIndexBuffers[mask]) return false;
+            if (!m_sharedIndexBuffers[mask]) {
+                return false;
+            }
         }
         m_sharedCells = cells;
         return true;
@@ -275,16 +283,24 @@ protected:
     {
         auto& resources = *m_resources;
         std::vector<uint32_t> strip;
-        if (!renderer::BuildRegularSurfaceStripIndices(CELLS_X, CELLS_Z, strip)) return false;
+        if (!renderer::BuildRegularSurfaceStripIndices(CELLS_X, CELLS_Z, strip)) {
+            return false;
+        }
         m_regularStrip.count = static_cast<uint32_t>(strip.size());
         m_regularStrip.buffer = resources.CreateIndexBuffer(strip.data(), m_regularStrip.count);
-        if (!m_regularStrip.buffer || !PrepareSharedGrid(cells)) return false;
+        if (!m_regularStrip.buffer || !PrepareSharedGrid(cells)) {
+            return false;
+        }
         for (uint8_t mask = 0; mask < m_sharedStrips.size(); ++mask) {
-            if (!renderer::BuildSurfacePatchStripIndices(cells, mask, strip)) return false;
+            if (!renderer::BuildSurfacePatchStripIndices(cells, mask, strip)) {
+                return false;
+            }
             auto& buffer = m_sharedStrips[mask];
             buffer.count = static_cast<uint32_t>(strip.size());
             buffer.buffer = resources.CreateIndexBuffer(strip.data(), buffer.count);
-            if (!buffer.buffer) return false;
+            if (!buffer.buffer) {
+                return false;
+            }
         }
         return true;
     }
@@ -338,7 +354,7 @@ protected:
         resources.Update(m_advancedCB, &advanced, sizeof(advanced));
         resources.Update(m_objectCB, &object, sizeof(object));
 
-        /// @note 未使用の IBL も正しい Cube SRV を束縛し、宣言次元の異なる null SRV に依存しない。
+        // 未使用の IBL も正しい Cube SRV を束縛し、宣言次元の異なる null SRV に依存しない。
         for (uint32_t face = 0; face < 6; ++face) {
             device.SetRenderTargetFace(m_environment, face, 0, resources);
             static constexpr math::Vector4 SKY_FACES[] = {
@@ -395,7 +411,9 @@ protected:
             renderer::WaterCB base{};
             uint8_t batchMask = 0;
             auto flush = [&] {
-                if (instances.empty()) return;
+                if (instances.empty()) {
+                    return;
+                }
                 base.patchCellSize.z = 2.0f;
                 resources.Update(m_waterCB, &base, sizeof(base));
                 draw.instanceBuffer = resources.CreateStructuredBuffer(instances.data(),
@@ -589,15 +607,27 @@ protected:
         const uint32_t frames = profiling ? WARMUP_FRAMES + MEASURED_FRAMES + DRAIN_FRAMES : 1u;
         uint64_t firstMeasuredSerial = 0, lastMeasuredSerial = 0, lastPhysicalSerial = 0;
         const auto collect = [&] {
-            if (!profiling) return;
+            if (!profiling) {
+                return;
+            }
             device.GpuProfCollect();
             const auto& snapshot = device.GpuProfGetSnapshot();
-            if (!snapshot.available || !snapshot.complete || snapshot.physicalFrameSerial == lastPhysicalSerial) return;
+            if (!snapshot.available || !snapshot.complete || snapshot.physicalFrameSerial == lastPhysicalSerial) {
+                return;
+            }
             lastPhysicalSerial = snapshot.physicalFrameSerial;
             for (const auto& sample : snapshot.passes) {
-                if (!sample.available || sample.name != "WaterRasterTopology" || firstMeasuredSerial == 0
-                    || sample.metadata.applicationFrameSerial < firstMeasuredSerial
-                    || sample.metadata.applicationFrameSerial > lastMeasuredSerial) continue;
+                if (!sample.available || sample.name != "WaterRasterTopology") {
+                    continue;
+                }
+
+                // ウォームアップや計測後に記録した GPU パスは集計しない。
+                const uint64_t frameSerial = sample.metadata.applicationFrameSerial;
+                const bool inMeasurement = firstMeasuredSerial != 0
+                    && frameSerial >= firstMeasuredSerial && frameSerial <= lastMeasuredSerial;
+                if (!inMeasurement) {
+                    continue;
+                }
                 EXPECT_TRUE(std::isfinite(sample.gpuMs));
                 EXPECT_GE(sample.gpuMs, 0.0);
                 measurement->gpuMs.push_back(sample.gpuMs);
@@ -687,15 +717,23 @@ protected:
     {
         std::vector<uint8_t> png;
         uint32_t width = 0, height = 0;
-        if (!m_bundle.renderer->CaptureRenderTargetToPng(m_colorTarget, *m_resources, png, width, height)) return false;
-        if (width != m_captureExtent || height != m_captureExtent) return false;
+        if (!m_bundle.renderer->CaptureRenderTargetToPng(m_colorTarget, *m_resources, png, width, height)) {
+            return false;
+        }
+        if (width != m_captureExtent || height != m_captureExtent) {
+            return false;
+        }
         const auto directory = std::filesystem::path(FBZZ_GRAPHICS_SHADER_ROOT).parent_path().parent_path()
             / "Scratch/WaterWhitecaps";
         std::error_code error;
         std::filesystem::create_directories(directory, error);
-        if (error) return false;
+        if (error) {
+            return false;
+        }
         std::FILE* file = nullptr;
-        if (_wfopen_s(&file, (directory / filename).c_str(), L"wb") != 0 || !file) return false;
+        if (_wfopen_s(&file, (directory / filename).c_str(), L"wb") != 0 || !file) {
+            return false;
+        }
         const bool written = std::fwrite(png.data(), 1, png.size(), file) == png.size();
         return std::fclose(file) == 0 && written;
     }
@@ -704,9 +742,13 @@ protected:
     {
         char requested[16]{};
         const DWORD length = GetEnvironmentVariableA("FBZZ_WATER_VISUAL_STAGE", requested, sizeof(requested));
-        if (length >= sizeof(requested)) return false;
+        if (length >= sizeof(requested)) {
+            return false;
+        }
         const std::string_view stage = length > 0 ? std::string_view{requested} : "current";
-        if (stage != "baseline" && stage != "candidate" && stage != "final" && stage != "current") return false;
+        if (stage != "baseline" && stage != "candidate" && stage != "final" && stage != "current") {
+            return false;
+        }
         auto& resources = *m_resources;
         auto& device = *m_bundle.renderer;
         if (!m_displayTarget.IsValid()) {
@@ -749,7 +791,7 @@ protected:
         display.textures[20] = m_black;
         display.textures[22] = m_velocityField;
         display.textures[23] = m_velocityField;
-        /// @note Display-only capture reuses Composite's exposure=1, ACES and sRGB output; the HDR target and raw numeric readbacks stay unchanged.
+        // 表示用の取得だけに Composite の露出1・ACES・sRGB 出力を適用し、HDR ターゲットと数値読み戻しには元の値を使う。
         /// @see Assets/Shaders/PostProcess/Color/Composite.hlsl FinalOutput call and Rendering/ToneMap.hlsli.
         device.Submit(display, resources);
         device.SetRenderTarget({}, resources);
@@ -761,9 +803,13 @@ protected:
         const auto directory = std::filesystem::path(FBZZ_GRAPHICS_SHADER_ROOT).parent_path().parent_path()
             / "Scratch/WaterVisual" / stage;
         std::error_code error; std::filesystem::create_directories(directory, error);
-        if (error) return false;
+        if (error) {
+            return false;
+        }
         std::FILE* file = nullptr;
-        if (_wfopen_s(&file, (directory / filename).c_str(), L"wb") != 0 || !file) return false;
+        if (_wfopen_s(&file, (directory / filename).c_str(), L"wb") != 0 || !file) {
+            return false;
+        }
         const bool written = std::fwrite(png.data(), 1, png.size(), file) == png.size();
         return std::fclose(file) == 0 && written;
     }
@@ -823,7 +869,9 @@ protected:
 
     VisualWaterGrid CreateVisualWaterGrid(uint32_t cells)
     {
-        if (cells < 2 || cells > 256) return {};
+        if (cells < 2 || cells > 256) {
+            return {};
+        }
         std::vector<renderer::WaterVertex> vertices;
         std::vector<uint32_t> indices;
         vertices.reserve((cells + 1u) * (cells + 1u));
@@ -854,7 +902,7 @@ protected:
         auto& device = *m_bundle.renderer;
         renderer::RenderSettings settings;
         renderer::RenderPassHandles handles{};
-        /// @note 共通の背面カリング状態を渡し、Water が自身の両面 PSO を選ぶ統合契約を検証する。
+        // 共通の背面カリング状態を渡し、Water が自身の両面 PSO を選ぶ統合契約を検証する。
         handles.selectionMaskPSO = resources.CreatePipelineState({renderer::RasterizerMode::SOLID,
             renderer::BlendMode::OPAQUE_BLEND, renderer::DepthMode::DEPTH_ON});
         EXPECT_TRUE(handles.selectionMaskPSO.IsValid());
@@ -1380,7 +1428,7 @@ TEST_F(WaterShaderTest, OrthographicWaterUsesTheDistanceBetweenSurfaceAndBottom)
     camera.m_near = 0.1f;
     camera.m_far = 30;
     auto water = MakeWater();
-    /// @note RGBA8 の中立 B=128 は +1/510m を返すため、基準面で相殺して水面を Y=0 に置く。
+    // RGBA8 の中立 B=128 は +1/510m を返すため、基準面で相殺して水面を Y=0 に置く。
     water.worldMatrix.m[1][3] = -1.0f / 510.0f;
     const float expected = std::exp(-2.0f / water.deepColorDepth.w);
     for (float height : {6.0f, 10.0f}) {
@@ -1389,7 +1437,7 @@ TEST_F(WaterShaderTest, OrthographicWaterUsesTheDistanceBetweenSurfaceAndBottom)
         water.wvpMatrix = camera.GetGpuViewProjection() * water.worldMatrix;
         const auto pixels = RenderWater(camera, water, false, true);
         ASSERT_EQ(pixels.size(), EXTENT * EXTENT * 4u);
-        /// @note カメラ高度を変えても、水面 Y=0 と底 Y=-2 の間だけが吸収距離になる。
+        // カメラ高度を変えても、水面 Y=0 と底 Y=-2 の間だけが吸収距離になる。
         for (uint32_t y = 48; y < 80; ++y) {
             for (uint32_t x = 48; x < 80; ++x) {
                 const size_t offset = (y * EXTENT + x) * 4;
@@ -1444,7 +1492,7 @@ TEST_F(WaterShaderTest, SelectionMaskSharesFocusedGridWavesAndEdgeDiscard)
         EXPECT_EQ(mismatches, 0u);
         EXPECT_GT(visible, 1000u);
         EXPECT_LT(visible, coverage.size() - 1000u);
-        /// @note 静止した矩形同士の一致を合格にせず、波の時間変化でシルエットが動いたことも要求する。
+        // 静止した矩形同士の一致を合格にせず、波の時間変化でシルエットが動いたことも要求する。
         if (!previous.empty()) EXPECT_GT(changed, 64u);
         previous = std::move(coverage);
     }
@@ -1469,7 +1517,9 @@ TEST_F(WaterShaderTest, ProjectAppearanceUsesItsOwnReflectedBufferAndMatchesInde
     const auto write = [&](const char* name, std::initializer_list<float> values) {
         const auto* variable = descriptor.FindVar(name);
         EXPECT_NE(variable, nullptr);
-        if (!variable || variable->ValueCount() != values.size()) return;
+        if (!variable || variable->ValueCount() != values.size()) {
+            return;
+        }
         uint32_t index = 0;
         for (const float value : values) {
             const uint64_t offset = variable->ValueOffset(index++);
@@ -1652,7 +1702,9 @@ TEST_F(ProductionWaterShaderTest, ProductionDeclaredAppearancePreservesItsReflec
     const auto write = [&](const char* name, std::initializer_list<float> values) {
         const auto* variable = descriptor.FindVar(name);
         EXPECT_NE(variable, nullptr);
-        if (!variable || variable->ValueCount() != values.size()) return;
+        if (!variable || variable->ValueCount() != values.size()) {
+            return;
+        }
         uint32_t element = 0;
         for (const float value : values) {
             const uint64_t offset = variable->ValueOffset(element++);
@@ -1735,7 +1787,7 @@ TEST_F(WaterShaderTest, WholeSharedPatchPreservesTheLegacyUniformGridOutput)
         water.patchEdgeCellSize[boundary] = {water.timeParams.x, water.timeParams.y, 0, 0};
         water.patchCornerCellSize[boundary] = water.patchEdgeCellSize[boundary];
     }
-    /// @note 正規化 VB をそのまま描けば水域が [0,1]m へ縮むため、旧 VB の位置を偶然使う実装は一致しない。
+    // 正規化 VB をそのまま描けば水域が [0,1]m へ縮むため、旧 VB の位置を偶然使う実装は一致しない。
     const auto shared = RenderWater(camera, water, false, true, true);
     ASSERT_EQ(shared.size(), uniform.size());
     float maximumDifference = 0;
@@ -1825,7 +1877,7 @@ TEST_F(WaterShaderTest, MixedPatchLodsKeepTheWavySurfaceWatertightAndSelectable)
                 const bool covered = color[offset] > 0.5f;
                 const bool selected = selection[offset] > 0.5f;
                 mismatches += covered != selected;
-                /// @note 外周から 1m 以上内側の ROI は波の水平移動後も水域内で、継ぎ目の背景露出だけを数える。
+                // 外周から 1m 以上内側の ROI は波の水平移動後も水域内で、継ぎ目の背景露出だけを数える。
                 if (x >= 24 && x < 104 && y >= 42 && y < 86) holes += !selected;
             }
         }
@@ -2097,7 +2149,7 @@ TEST_F(WaterShaderTest, SmallWavesWhitenTheirCrestsAndPreserveTheTroughColor)
             independentDifference = (std::max)(independentDifference, std::abs(independent[offset] - after[offset]));
         }
     }
-    /// @note 岸・渦・地形の泡が無い条件では、岸の強度を 0 にしても波頭の白化は変わらない。
+    // 岸・渦・地形の泡が無い条件では、岸の強度を 0 にしても波頭の白化は変わらない。
     EXPECT_LE(independentDifference, 0.001f);
 }
 
@@ -2136,7 +2188,7 @@ TEST_F(WaterShaderTest, PastCrestsLeaveAWeakerMovingTrailAndFoamNeedsLight)
                 - camera.m_orthoHeight * 0.5f;
             const float phase = worldX * waveNumber;
             const size_t offset = (y * EXTENT + x) * 4;
-            /// @note 現在は谷でも 0.6s 前に山だった粒だけを取り、瞬間の白波と履歴を区別する。
+            // 現在は谷でも 0.6s 前に山だった粒だけを取り、瞬間の白波と履歴を区別する。
             const bool pastOnly = std::sin(phase) < -0.5f && std::sin(phase + omega * 0.6f) > 0.7f;
             for (size_t channel = 0; channel < 3; ++channel) {
                 if (pastOnly) {
@@ -2208,7 +2260,7 @@ TEST_F(WaterShaderTest, HorizonBreakerFoamFadesInAtTheCrestCoverageThreshold)
     water.wvpMatrix = camera.GetGpuViewProjection();
     water.crestFoamParams = {0.66f, 0.2f, 0.9f, 0.0f};
 
-    /// @note Hold the displaced crest and its compression fixed while exposing the onset of foam coverage.
+    // Hold the displaced crest and its compression fixed while exposing the onset of foam coverage.
     const auto belowThreshold = RenderWater(camera, water, false, false);
     water.crestFoamParams.x = 0.54f;
     const auto justAboveThreshold = RenderWater(camera, water, false, false);
@@ -2259,7 +2311,7 @@ TEST_F(WaterShaderTest, FarOceanPatchesRemoveTheFiniteEdgeDiscardAndRemainSelect
             const bool shown = farPixels[offset] > 0.5f;
             newlyVisible += shown && finite[offset] <= 0.5f;
             mismatches += shown != (selected[offset] > 0.5f);
-            /// @note ROI は有限水域 X=4m の外で、隣接 far パッチの矩形内にある。
+            // ROI は有限水域 X=4m の外で、隣接 far パッチの矩形内にある。
             if (x >= 60 && x < 90 && y >= 32 && y < 96) outsideVisible += shown;
         }
     }
@@ -2305,7 +2357,7 @@ TEST_F(WaterShaderTest, FarOceanStopsRepeatingTheClampedRippleOutsideTheWaterBod
     for (uint32_t y = 32; y < 96; ++y) {
         for (uint32_t x = 64; x < 96; ++x) {
             const size_t offset = (y * EXTENT + x) * 4;
-            /// @note X>4.3m は 0.15m の減衰帯を越えるため、波紋の頂点高さと白輪が消える。
+            // X>4.3m は 0.15m の減衰帯を越えるため、波紋の頂点高さと白輪が消える。
             for (size_t channel = 0; channel < 3; ++channel) {
                 ASSERT_TRUE(std::isfinite(faded[offset + channel]));
                 maximumDifference = (std::max)(maximumDifference,
@@ -2317,7 +2369,7 @@ TEST_F(WaterShaderTest, FarOceanStopsRepeatingTheClampedRippleOutsideTheWaterBod
         }
     }
     EXPECT_LE(maximumDifference, 0.001f);
-    /// @note 大きい減衰幅では clamp した B=1 の偽の高さが吸収を変え、白輪が残る実装では照明色も変わる。
+    // 大きい減衰幅では clamp した B=1 の偽の高さが吸収を変え、白輪が残る実装では照明色も変わる。
     EXPECT_GT(std::abs(neutralRed / samples - repeatedRed / samples), 0.02);
 }
 
@@ -2343,12 +2395,12 @@ TEST_F(WaterShaderTest, PackedTerrainDepthKeepsByteCarriesSmoothAndRejectsMissin
     water.reflectParams = {0, 0, 0, 0.8f};
     water.timeParams.w = -math::PI * 0.5f / omega;
     water.wvpMatrix = camera.GetGpuViewProjection();
-    /// @note 32767/32768 の境目は G=127,B=255 から G=128,B=0 へ桁上がりする。
+    // 32767/32768 の境目は G=127,B=255 から G=128,B=0 へ桁上がりする。
     const auto carry = TerrainInfoTexture({0, 127, 255, 1, 0, 128, 0, 1});
     const auto missing = TerrainInfoTexture({255, 128, 0, 0, 255, 128, 0, 0});
     const auto dry = TerrainInfoTexture({255, 0, 0, 3, 255, 0, 0, 3});
     ASSERT_TRUE(carry && missing && dry);
-    /// @note SceneDepth は背景のまま。水底情報が無ければ岸の泡を出す可視ジオメトリは無い。
+    // SceneDepth は背景のまま。水底情報が無ければ岸の泡を出す可視ジオメトリは無い。
     const auto withoutInfo = RenderWater(camera, water, false, false, false, nullptr, nullptr, {}, 0, carry);
     water.terrainInfoParams = {1, 100, 2, 1};
     const auto shore = RenderWater(camera, water, false, false, false, nullptr, nullptr, {}, 0, carry);
@@ -2381,7 +2433,7 @@ TEST_F(WaterShaderTest, PackedTerrainDepthKeepsByteCarriesSmoothAndRejectsMissin
         }
     }
     EXPECT_GT(litShore / samples, baseline / samples + 0.4);
-    /// @note 実水深は約0.8mで閾値0.85mの内側。byteを先に補間・丸めると偽の水深差が帯を切る。
+    // 実水深は約0.8mで閾値0.85mの内側。byteを先に補間・丸めると偽の水深差が帯を切る。
     EXPECT_LE(shorelineVariation, 0.002f);
     EXPECT_LE(invalidBottomDifference, 0.001f);
 }
@@ -2606,7 +2658,7 @@ TEST_F(WaterShaderTest, HorizonRefractionRejectsForegroundColorFromAdjacentTexel
     water.wvpMatrix = camera.GetGpuViewProjection();
     const auto dark = MakeDarkLight();
 
-    /// @note The center ray samples depth at rows 74 then 72. Color filtering at its final hit also reaches row 73.
+    // The center ray samples depth at rows 74 then 72. Color filtering at its final hit also reaches row 73.
     constexpr uint32_t FOREGROUND_ROW = 73;
     const float pixelSize = camera.m_orthoHeight / static_cast<float>(EXTENT);
     const auto viewCenter = camera.m_position + camera.GetForward() * 4.0f;
@@ -2750,7 +2802,7 @@ TEST_F(WaterShaderTest, HorizonDeepBottomAndOpenWaterHaveMatchingScatteringAtGra
     sunlight.lightIntensity = 4;
     sunlight.lightDir = {0, -0.5f, -std::sqrt(0.75f)};
 
-    /// @note Keep one half of the opaque depth buffer clear at the edge of an optically deep bottom.
+    // Keep one half of the opaque depth buffer clear at the edge of an optically deep bottom.
     const renderer::Vertex deepBottom[] = {
         {{-600, -35, -600}, {}, {}, {}},
         {{-600, -35, 600}, {}, {}, {}},
@@ -2839,7 +2891,7 @@ TEST_F(WaterShaderTest, HorizonReflectionRetainsLongWavePhaseBeyondTheRippleFilt
     visual.effects = {};
     visual.effects.specularStrength = 0.0f;
     visual.advanced.iblIntensity = 1.0f;
-    /// @note Amplify the reflected signal above the render target's half-float quantization.
+    // Amplify the reflected signal above the render target's half-float quantization.
     visual.advanced.iblSpecularScale = 4.0f;
     visual.environmentGradient = true;
     const auto render = [&] {
@@ -2936,7 +2988,7 @@ TEST_F(WaterShaderTest, OrthographicCoefficientOpticsKeepsEqualDepthAcrossThePla
     sunlight.lightColor = {1, 1, 1};
     sunlight.lightIntensity = 1;
     std::array<std::array<float, 3>, 2> phaseHeights{};
-    /// @note Water shades the upper surface volume; submerged camera transport is owned and tested by Composite plus VolumetricLight.
+    // Water shades the upper surface volume; submerged camera transport is owned and tested by Composite plus VolumetricLight.
     for (size_t heightIndex = 0; heightIndex < phaseHeights.size(); ++heightIndex) {
         camera.m_position.y = heightIndex == 0 ? 6.0f : 10.0f;
         water.wvpMatrix = camera.GetGpuViewProjection();
@@ -2986,7 +3038,7 @@ TEST_F(WaterShaderTest, HenyeyGreensteinScatteringTracksForwardAndBackwardLight)
     const auto backward = RenderOpticalWater(camera, water, sunlight, false, BlackTexture());
     ASSERT_EQ(backward.size(), EXTENT * EXTENT * 4u);
 
-    /// @note The above-water view is opposite the incident sun ray; negative g favors that phase without asking Water to shade a submerged camera path.
+    // The above-water view is opposite the incident sun ray; negative g favors that phase without asking Water to shade a submerged camera path.
     water.opticalParams.y = -0.8f;
     const auto forward = RenderOpticalWater(camera, water, sunlight, false, BlackTexture());
     ASSERT_EQ(forward.size(), backward.size());
@@ -3474,7 +3526,7 @@ TEST_F(WaterShaderTest, SharpSsrHitFadesMonotonicallyToEnvironmentWithRoughness)
     ASSERT_EQ(fallback.size(), EXTENT * EXTENT * 4u);
     const auto fallbackMean = centerMean(fallback);
     for (size_t channel = 0; channel < 3; ++channel) EXPECT_NEAR(means.back()[channel], fallbackMean[channel], 0.001);
-    /// @note The red wall hit keeps the shader's valid edge-confidence fade; the blue environment remains its independent fallback.
+    // The red wall hit keeps the shader's valid edge-confidence fade; the blue environment remains its independent fallback.
     EXPECT_GT(means[0][0], fallbackMean[0] + 0.3);
     EXPECT_LT(means[0][2], fallbackMean[2] - 0.3);
     water.detailParams.w = 1;
@@ -3501,7 +3553,7 @@ TEST_F(WaterShaderTest, DetailNyquistCutoffIsContinuousAndFilteredSlopesStillBro
     auto water = MakeOpticalWater();
     water.surfaceParams.z = 0.02f;
     water.normalParams.w = 1;
-    /// @note Moderate baseline roughness keeps the center-lobe comparison outside the shared BRDF's tiny-denominator floor.
+    // Moderate baseline roughness keeps the center-lobe comparison outside the shared BRDF's tiny-denominator floor.
     water.detailParams = {8, 0, 1, 0.75f};
     VisualOverrides visual;
     visual.effects.rimGlowStrength = 0;
@@ -3585,7 +3637,7 @@ TEST_F(WaterShaderTest, WaveSlopeRemainsContinuousAcrossFineAndCoarsePatchBounda
     std::error_code error;
     std::filesystem::create_directories(copiedRoot, error);
     ASSERT_FALSE(error);
-    /// @note Runtime include discovery requires an asset root; all production includes remain unchanged in the temporary copy.
+    // Runtime include discovery requires an asset root; all production includes remain unchanged in the temporary copy.
     for (const auto* directory : {"Common", "Platform", "Rendering", "Water"}) {
         std::filesystem::copy(sourceRoot / directory, copiedRoot / directory,
             std::filesystem::copy_options::recursive, error);
@@ -3598,7 +3650,7 @@ TEST_F(WaterShaderTest, WaveSlopeRemainsContinuousAcrossFineAndCoarsePatchBounda
     const auto shader = Resources().LoadShader(probe.generic_string());
     ASSERT_TRUE(shader);
 
-    /// @note Check ungrouped and obliquely grouped waves across the coarse Z edge.
+    // Check ungrouped and obliquely grouped waves across the coarse Z edge.
     for (uint32_t waveIndex : {0u, 7u, 15u}) {
         SCOPED_TRACE(waveIndex);
         for (auto& direction : water.waveDir) direction = {};
@@ -3619,7 +3671,9 @@ TEST_F(WaterShaderTest, WaveSlopeRemainsContinuousAcrossFineAndCoarsePatchBounda
         for (uint32_t y = 1; y < EXTENT - 1; ++y) {
             for (uint32_t x = 16; x < EXTENT - 16; ++x) {
                 const size_t pixel = (static_cast<size_t>(y) * EXTENT + x) * 4u;
-                if (pixels[pixel + 3] < 0.5f) continue;
+                if (pixels[pixel + 3] < 0.5f) {
+                    continue;
+                }
                 const float baseX = pixels[pixel + 1];
                 const float baseZ = pixels[pixel + 2];
                 const float phase = waveNumber * baseX;
@@ -3634,7 +3688,7 @@ TEST_F(WaterShaderTest, WaveSlopeRemainsContinuousAcrossFineAndCoarsePatchBounda
             }
         }
         EXPECT_GT(samples, 10000u);
-        /// @note Allow finite-grid normal interpolation and pixel filtering; the prior boundary calculation exceeds 36% of peak slope.
+        // Allow finite-grid normal interpolation and pixel filtering; the prior boundary calculation exceeds 36% of peak slope.
         RecordProperty("maximumRelativeSlopeError", std::to_string(maximumError / (amplitude * waveNumber)));
         EXPECT_LT(maximumError, amplitude * waveNumber * 0.06f);
     }
@@ -3710,7 +3764,7 @@ TEST_F(WaterShaderTest, OceanOpticsComparisonProducesControlledHighResolutionCap
     visual.advanced.iblSpecularScale = 1;
     visual.environmentGradient = true;
     visual.background = {0.18f, 0.30f, 0.48f, 1};
-    /// @note Same candidate shader, geometry, sky, sunlight and fixed time compare the prior legacy optical preset with the coefficient preset.
+    // Same candidate shader, geometry, sky, sunlight and fixed time compare the prior legacy optical preset with the coefficient preset.
     const auto legacy = RenderWater(camera, water, false, false, false, nullptr, nullptr, {}, 0, {},
         &light, {}, nullptr, nullptr, grid.vertices, grid.indices, grid.indexCount, noise.texture, &visual);
     ASSERT_EQ(legacy.size(), visualExtent * visualExtent * 4u);
@@ -3820,7 +3874,7 @@ TEST_F(WaterShaderTest, MixedPatchMorphChangesWaveCoverageAndKeepsColorAndSelect
     constexpr uint32_t cells = 4;
     ASSERT_TRUE(PrepareSharedGrid(cells));
     renderer::Camera camera;
-    /// @note Morph-expanded bounds include the entire interior camera; an exterior corner view exercises dense near and coarse far leaves.
+    // Morph-expanded bounds include the entire interior camera; an exterior corner view exercises dense near and coarse far leaves.
     camera.m_position = {-4.5f, 1.8f, -3.5f};
     camera.LookAt({0, 0, 0});
     camera.m_projection = renderer::ProjectionMode::Orthographic;
@@ -3919,7 +3973,7 @@ TEST_F(WaterShaderTest, SplineTriangleKeepsItsAuthoredFootprintInColorAndSelecti
     water.waveControls = {0, 0, 0, 1};
     water.normalParams = {8, 8, 1, 0};
     water.wvpMatrix = camera.GetGpuViewProjection();
-    /// @note Spline vertices bypass these rectangle-only paths even when their authored settings are enabled.
+    // Spline vertices bypass these rectangle-only paths even when their authored settings are enabled.
     water.gridParams = {1, 0.25f, 8, 8};
     water.patchRect = {0.25f, 0.25f, 0.75f, 0.75f};
     water.patchCellSize = {0.5f, 0.5f, 1, 4};
@@ -4029,8 +4083,9 @@ TEST_F(WaterShaderTest, SplineSunGlintWidensAcrossTheCurrent)
     auto water = MakeOpticalWater();
     water.wvpMatrix = camera.GetGpuViewProjection();
     water.surfaceParams.z = 0.02f;
+    water.normalParams.z = 0.0f;
     water.normalParams.w = 1.0f;
-    /// @note さざ波の粗さ補正を小さくし、反射幅の方向差を単独で測る。
+    // 細波の傾きと高さをゼロにし、筋による粗さの補正を除いた同じ粗さで反射幅を測る。
     water.detailParams = {0.08f, 0, 1, 0.75f};
     auto light = MakeDarkLight();
     light.lightDir = math::Vector3{-0.25f, -0.968246f, 0}.Normalized();
@@ -4040,7 +4095,7 @@ TEST_F(WaterShaderTest, SplineSunGlintWidensAcrossTheCurrent)
     visual.effects.specularStrength = 1;
     const auto render = [&](const auto& mesh) {
         return RenderWater(camera, water, false, false, false, nullptr, nullptr, {}, 0, {}, &light, m_black,
-            nullptr, nullptr, mesh.first, mesh.second, 3, m_neutral, &visual);
+            nullptr, nullptr, mesh.first, mesh.second, 3, m_black, &visual);
     };
     const auto narrow = render(along);
     const auto wide = render(across);
@@ -4052,9 +4107,8 @@ TEST_F(WaterShaderTest, SplineSunGlintWidensAcrossTheCurrent)
     EXPECT_GT(isotropic[center], 1.3f * narrow[center]);
     EXPECT_GT(wide[center], 1.3f * isotropic[center]);
 
-    /// @note 反射の中心では軸を変えてもピークが飛ばない。テクスチャの傾きと粗さ補正を除いて比較する。
+    // 法線方向の反射では流れによる異方性がピークを変えないことを確認する。
     light.lightDir = {0, -1, 0};
-    water.normalParams.z = 0;
     water.detailParams.x = 0.01f;
     water.detailParams.w = 0.96f;
     const auto calmPeak = render(still);
@@ -4141,9 +4195,31 @@ TEST_F(WaterShaderTest, SplineDepthCapsOpticalPathAndAuthoredFlowAdvectsSurfaceD
     Resources().Release(flowMesh.second);
     Resources().Release(detailNoise);
 }
-/// @brief Checks spline detail travels at the authored world velocity before octave rotation.
+/// @brief 流速から求めた世界座標の移動を各オクターブの回転前に適用する。
 TEST_F(WaterShaderTest, SplineDetailTravelsAtTheAuthoredWorldVelocityBeforeOctaveRotation)
 {
+    testkit::TempDir temporary("water_detail_flow");
+    ASSERT_TRUE(temporary.IsValid());
+    const auto sourceRoot = std::filesystem::path(FBZZ_GRAPHICS_SHADER_ROOT);
+    const auto copiedRoot = temporary.File("Assets/Shaders");
+    std::error_code error;
+    std::filesystem::create_directories(copiedRoot, error);
+    ASSERT_FALSE(error) << error.message();
+    for (const auto* directory : {"Common", "Platform", "Rendering", "Water"}) {
+        std::filesystem::copy(sourceRoot / directory, copiedRoot / directory,
+            std::filesystem::copy_options::recursive, error);
+        ASSERT_FALSE(error) << error.message();
+    }
+    const auto probe = copiedRoot / "WaterSurfaceSyncRaster.hlsl";
+    std::filesystem::copy_file(sourceRoot.parent_path().parent_path()
+        / "Projects/Tests/Graphics/Fixtures/WaterSurfaceSyncRaster.hlsl", probe, error);
+    ASSERT_FALSE(error) << error.message();
+    auto& resources = Resources();
+    const auto shader = resources.LoadShader(probe.generic_string());
+    const auto optionsBuffer = resources.CreateConstantBuffer(sizeof(math::Vector4));
+    const auto noise = MakeWaterDetailTexture();
+    ASSERT_TRUE(shader && optionsBuffer && noise);
+
     renderer::Camera camera;
     camera.m_position = {0, 6, 0};
     camera.m_rotation = math::Quaternion::FromAxisAngle(math::Vector3::RIGHT, math::PI * 0.5f);
@@ -4153,45 +4229,76 @@ TEST_F(WaterShaderTest, SplineDetailTravelsAtTheAuthoredWorldVelocityBeforeOctav
     camera.m_near = 0.1f;
     camera.m_far = 30;
     auto water = MakeOpticalWater();
-    water.surfaceParams = {1, 1, 0.04f, 1};
     water.normalParams = {8, 8, 1, 1};
     water.detailParams = {0.5f, 0, 2, 1};
     water.flowParams.z = 2.0f;
-    water.deepColorDepth.w = 10;
-    const auto noise = MakeWaterDetailTexture();
-    ASSERT_TRUE(noise);
-    /// @note 1.6 s 周期の開始直後は切り替え側の重みが 0.002 未満で、比較画像を平行移動で近似できる。
-    constexpr float TIME = 0.02f;
-    for (const auto velocity : std::array<math::Vector2, 2>{{{2.0f, 0.0f}, {0.0f, -2.0f}}}) {
-        const auto mesh = CreateSplineTriangle(5.0f, velocity);
-        ASSERT_TRUE(mesh.first && mesh.second);
-        water.worldMatrix = math::Matrix4::Identity();
-        water.timeParams.w = TIME;
-        water.wvpMatrix = camera.GetGpuViewProjection();
-        const auto moving = RenderSplineTriangle(camera, water, false, true, mesh.first, mesh.second, noise);
+    water.wvpMatrix = camera.GetGpuViewProjection();
 
-        /// @note カメラと形状を同じ逆移動にすると投影・視線・照明を保ったまま、x-vtの模様を直接評価できる。
-        const math::Vector3 offset{-velocity.x * TIME, 0.0f, -velocity.y * TIME};
-        auto referenceCamera = camera;
-        referenceCamera.m_position += offset;
-        water.worldMatrix = math::Matrix4::Translate(offset);
-        water.wvpMatrix = referenceCamera.GetGpuViewProjection() * water.worldMatrix;
+    struct SamplePhase {
+        float time; ///< シェーダーへ渡す経過時間 [s]。
+        float firstTravel; ///< 1 番目の標本位置へ世界流速を掛ける時間差 [s]。
+        float secondTravel; ///< 2 番目の標本位置へ世界流速を掛ける時間差 [s]。
+        float firstWeight; ///< 1 番目の標本の滑らかな混合重み [0,1]。
+    };
+    // 1.6 s 周期から、折り返し前後の非対称な組を選ぶ。時間差と重みは参照側で指定する。
+    constexpr SamplePhase PHASES[]{{0.20f, 0.60f, -0.20f, 0.15625f},
+                                   {1.10f, -0.30f, 0.50f, 0.68359375f}};
+    constexpr float ADVECT = 1.0f;
+    constexpr float NO_ADVECTION = 2.0f;
+    constexpr float TOLERANCE = 0.005f;
+    for (const auto velocity : std::array<math::Vector2, 2>{{{2.0f, 0.0f}, {0.0f, -2.0f}}}) {
+        SCOPED_TRACE(velocity.x);
+        SCOPED_TRACE(velocity.y);
+        const auto mesh = CreateSplineTriangle(5.0f, velocity, {});
+        ASSERT_TRUE(mesh.first && mesh.second);
+        const auto capture = [&](float mode, math::Vector2 offset) {
+            const math::Vector4 options{0, mode, offset.x, offset.y};
+            resources.Update(optionsBuffer, &options, sizeof(options));
+            return RenderWater(camera, water, false, false, false, nullptr, nullptr, {}, 0, {}, nullptr, {},
+                nullptr, nullptr, mesh.first, mesh.second, 3, noise, nullptr, false, shader, false, false, optionsBuffer);
+        };
         water.timeParams.w = 0.0f;
-        const auto reference = RenderSplineTriangle(referenceCamera, water, false, true, mesh.first, mesh.second, noise);
-        ASSERT_EQ(moving.size(), EXTENT * EXTENT * 4u);
-        ASSERT_EQ(reference.size(), moving.size());
-        float maximumDifference = 0.0f;
-        for (uint32_t y = 40; y < 88; ++y) for (uint32_t x = 40; x < 88; ++x) {
-            const size_t offsetIndex = (static_cast<size_t>(y) * EXTENT + x) * 4u;
-            for (size_t channel = 0; channel < 3; ++channel)
-                maximumDifference = (std::max)(maximumDifference,
-                    std::abs(moving[offsetIndex + channel] - reference[offsetIndex + channel]));
+        const auto stationary = capture(NO_ADVECTION, {});
+        ASSERT_EQ(stationary.size(), EXTENT * EXTENT * 4u);
+        for (const auto& phase : PHASES) {
+            SCOPED_TRACE(phase.time);
+            water.timeParams.w = phase.time;
+            const auto moving = capture(ADVECT, {});
+            const auto first = capture(NO_ADVECTION, velocity * phase.firstTravel);
+            const auto second = capture(NO_ADVECTION, velocity * phase.secondTravel);
+            ASSERT_EQ(moving.size(), stationary.size());
+            ASSERT_EQ(first.size(), stationary.size());
+            ASSERT_EQ(second.size(), stationary.size());
+
+            // 二つの移流なしの標本を CPU で合成し、両軸の勾配が移流した位置で一致することを確かめる。
+            float maximumDifference = 0.0f;
+            float maximumMovement = 0.0f;
+            for (uint32_t y = 48; y < 80; ++y) {
+                for (uint32_t x = 48; x < 80; ++x) {
+                    const size_t pixel = (static_cast<size_t>(y) * EXTENT + x) * 4u;
+                    ASSERT_FLOAT_EQ(moving[pixel + 3], 1.0f);
+                    ASSERT_FLOAT_EQ(first[pixel + 3], 1.0f);
+                    ASSERT_FLOAT_EQ(second[pixel + 3], 1.0f);
+                    ASSERT_FLOAT_EQ(stationary[pixel + 3], 1.0f);
+                    for (size_t channel = 0; channel < 2; ++channel) {
+                        const size_t sample = pixel + channel;
+                        const float reference = std::lerp(second[sample], first[sample], phase.firstWeight);
+                        ASSERT_TRUE(std::isfinite(moving[sample]) && std::isfinite(reference)
+                            && std::isfinite(stationary[sample]));
+                        maximumDifference = (std::max)(maximumDifference, std::abs(moving[sample] - reference));
+                        maximumMovement = (std::max)(maximumMovement, std::abs(moving[sample] - stationary[sample]));
+                    }
+                }
+            }
+            EXPECT_LT(maximumDifference, TOLERANCE);
+            EXPECT_GT(maximumMovement, TOLERANCE);
         }
-        EXPECT_LT(maximumDifference, 0.005f);
-        Resources().Release(mesh.first);
-        Resources().Release(mesh.second);
+        resources.Release(mesh.first);
+        resources.Release(mesh.second);
     }
-    Resources().Release(noise);
+    resources.Release(noise);
+    resources.Release(optionsBuffer);
+    resources.Release(shader);
 }
 /// @brief 現地の逆流がスプラインの設定流速を打ち消すと、さざ波の移流が止まる。
 TEST_F(WaterShaderTest, SplineDetailStopsWhenLocalFlowCancelsTheAuthoredCurrent)
@@ -4642,7 +4749,7 @@ TEST_F(WaterShaderTest, SplineExclusionBendsTheCurrentAndAnchorsTheWakeInWorldSp
     };
     const auto wake = render(surfaced, false, m_black, m_white);
     const auto deepBox = render(submerged, false, m_black, m_white);
-    /// @note 79 px 平行移動してボックス全体を画角外へ出し、尾の同じワールド位置を比較する。
+    // 79 px 平行移動してボックス全体を画角外へ出し、尾の同じワールド位置を比較する。
     constexpr uint32_t CAMERA_SHIFT_PIXELS = 79;
     camera.m_position.x = camera.m_orthoHeight * CAMERA_SHIFT_PIXELS / EXTENT;
     const auto shifted = render(surfaced, false, m_black, m_white);
@@ -4803,7 +4910,9 @@ TEST_F(WaterShaderTest, ProductionMediumAtlasTracksSharedWaveDisplacementAndRele
     for (uint32_t y = 0; y < first.tileResolution; ++y) {
         for (uint32_t x = 0; x < first.tileResolution; ++x) {
             const size_t pixel = (static_cast<size_t>(y) * first.width + x) * 4u;
-            if (first.pixels[pixel + 3] < 0.5f || second.pixels[pixel + 3] < 0.5f) continue;
+            if (first.pixels[pixel + 3] < 0.5f || second.pixels[pixel + 3] < 0.5f) {
+                continue;
+            }
             EXPECT_NEAR(first.pixels[pixel + 3], 1, 0.001f);
             EXPECT_NEAR(first.pixels[pixel + 1], 12, 0.001f);
             for (size_t c = 0; c < 4; ++c) ASSERT_TRUE(std::isfinite(first.pixels[pixel + c]));
@@ -4843,8 +4952,10 @@ TEST_F(WaterShaderTest, ProductionMediumAtlasKeepsFlatAndSlopedTerrainBottomFixe
             for (uint32_t y = atlas.tileResolution / 4; y < atlas.tileResolution * 3 / 4; ++y) {
                 for (uint32_t x = atlas.tileResolution / 4; x < atlas.tileResolution * 3 / 4; ++x) {
                     const size_t offset = (static_cast<size_t>(y) * atlas.width + x) * 4;
-                    if (atlas.pixels[offset + 3] < 0.5f) continue;
-                    /// @note The fixture's 9 m bounds gain 0.5 m horizontal margin on each side.
+                    if (atlas.pixels[offset + 3] < 0.5f) {
+                        continue;
+                    }
+                    // The fixture's 9 m bounds gain 0.5 m horizontal margin on each side.
                     const float worldX = -5.0f + (static_cast<float>(x) + 0.5f) / atlas.tileResolution * 10;
                     const float terrainU = slope ? 0.5f + (worldX - 1.25f) / 10.0f : 0.5f + worldX / WATER_X;
                     const float blend = std::clamp(terrainU * 2 - 0.5f, 0.0f, 1.0f);

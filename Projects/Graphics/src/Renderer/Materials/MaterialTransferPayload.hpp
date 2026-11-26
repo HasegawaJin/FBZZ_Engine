@@ -40,5 +40,5 @@ private:
 /// @note Uses only the existing exact-facade registry; unknown/busy/worker callers retain legacy raw updates.
 [[nodiscard]] FBZZ_GRAPHICS_API bool IsRegisteredOwnedTransferProducer(IRenderer& renderer);
 
-} /// @note namespace material_transfer_detail
-} /// @note namespace fbzz::renderer
+} // namespace material_transfer_detail
+} // namespace fbzz::renderer

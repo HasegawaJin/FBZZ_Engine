@@ -39,11 +39,13 @@ public:
     [[nodiscard]] bool IsValid() const { return m_handle.IsValid(); }
     void Reset(ResourceHandle<Tag> replacement = {})
     {
-        if (m_handle == replacement) return;
+        if (m_handle == replacement) {
+            return;
+        }
         ReleaseOwnedResource(m_handle);
         m_handle = replacement;
     }
 private:
     ResourceHandle<Tag> m_handle;
 };
-} /// @note namespace fbzz::renderer
+} // namespace fbzz::renderer

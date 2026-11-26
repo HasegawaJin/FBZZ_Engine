@@ -2,6 +2,7 @@
 /// @brief   Visibility shared by direct mesh draws and GPU candidate compaction.
 /// @author  Hasegawa Jin
 /// @date    2026-11-13
+#include "Common/Binding.hlsli"
 #ifndef FBZZ_CLUSTER_MESHLET_VISIBILITY_HLSLI
 #define FBZZ_CLUSTER_MESHLET_VISIBILITY_HLSLI
 #include "Pipeline/MeshletGeometry.hlsli"
@@ -12,14 +13,14 @@ struct ClusterInstanceRow { float4x4 world, normal, previousWorld; float4 bounds
 static const uint CLUSTER_INSTANCE_DISPATCH_WIDTH = 256u;
 
 #ifdef FBZZ_CLUSTER_COMPUTE
-FBZZ_SBUFFER_T(float, g_clusterHiZ, 29);
-FBZZ_SBUFFER_T(ClusterInstanceRow, g_clusterInstances, 15);
-FBZZ_SBUFFER_T(uint, g_clusterInstanceIds, 29);
+FBZZ_SBUFFER_T(float, g_clusterHiZ, SRV_MESHLET_HIZ_SLOT);
+FBZZ_SBUFFER_T(ClusterInstanceRow, g_clusterInstances, SRV_MESHLET_INSTANCE_ROWS_SLOT);
+FBZZ_SBUFFER_T(uint, g_clusterInstanceIds, SRV_MESHLET_INSTANCE_IDS_SLOT);
 /// @note Matches the 24-byte indexed instance command with the leading ID offset.
 struct ClusterIndexedArguments { uint idOffset, indexCount, instanceCount, startIndex; int baseVertex; uint startInstance; };
-FBZZ_SBUFFER_T(ClusterIndexedArguments, g_clusterIndexedArguments, 30);
+FBZZ_SBUFFER_T(ClusterIndexedArguments, g_clusterIndexedArguments, SRV_MESHLET_INDEXED_ARGUMENTS_SLOT);
 #else
-FBZZ_SBUFFER_T(float, g_clusterHiZ, 15);
+FBZZ_SBUFFER_T(float, g_clusterHiZ, SRV_MESHLET_HIZ_DRAW_SLOT);
 FBZZ_VS_SBUFFER(ClusterInstanceRow, g_clusterInstances, VS_SB_INSTANCE_SLOT);
 
 uint2 ReadClusterMeshGroup(uint3 groupId)
@@ -29,7 +30,7 @@ uint2 ReadClusterMeshGroup(uint3 groupId)
         if (index >= g_clusterSelection[0]) return uint2(0xffffffffu, 0xffffffffu);
         return uint2(g_clusterSelection[index * 2u + 1u], g_clusterSelection[index * 2u + 2u]);
     }
-    [branch] if (FbzzVertexSlot(3u) != 0xffffffffu)
+    [branch] if (FbzzVertexSlot(VS_SB_MESHLET_SELECTION_SLOT) != 0xffffffffu)
         return uint2(g_clusterSelection[groupId.x], 0xffffffffu);
     return uint2(groupId.x, 0xffffffffu);
 }

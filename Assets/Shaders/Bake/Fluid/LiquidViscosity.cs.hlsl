@@ -2,13 +2,13 @@
 /// @brief   GPU 液体: XSPH 粘性 → 年齢 → 領域外の粒を消す (刻みの締め)
 /// @author  Hasegawa Jin
 /// @date    2026-09-12
-//
-// 近傍の «速度更新後の» 値を読むので、読む状態 (t14) と書く状態 (u2) は別のバッファ。生きていない粒もそのまま写す。
+///
+/// @note 近傍の «速度更新後の» 値を読むので、読む状態 (t14) と書く状態 (u2) は別のバッファ。生きていない粒もそのまま写す。
 #include "Bake/Fluid/LiquidNeighbors.hlsli"
 #include "Common/BindlessIndices.hlsli"
 
-FBZZ_SBUFFER_T(float4, gState, 14);
-FBZZ_RWSBUFFER_T(float4, gStateOut, 2);
+FBZZ_SBUFFER_T(float4, gState, SRV_LIQUID_PARTICLES_SLOT);
+FBZZ_RWSBUFFER_T(float4, gStateOut, UAV_LIQUID_STATE_SLOT);
 
 [numthreads(64, 1, 1)]
 void CSMain(uint3 id : SV_DispatchThreadID)
@@ -22,7 +22,7 @@ void CSMain(uint3 id : SV_DispatchThreadID)
     {
         if (gViscosity > 0.0f)
         {
-            // Σ W / ρ0 ≈ 1 なので viscosity はそのまま «近傍の速度へ寄せる割合» になる。
+            /// @note Σ W / ρ0 ≈ 1 なので viscosity はそのまま «近傍の速度へ寄せる割合» になる。
             float3 sum = float3(0.0f, 0.0f, 0.0f);
             [loop]
             for (uint row = 0u; row < LIQUID_NEIGHBOR_ROWS; ++row)

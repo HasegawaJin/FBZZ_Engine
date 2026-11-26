@@ -40,7 +40,9 @@ void ExpectSameOrientedFaceOrder(const std::vector<uint32_t>& list, const std::v
             runLength = 0;
             continue;
         }
-        if (++runLength < 3u) continue;
+        if (++runLength < 3u) {
+            continue;
+        }
         std::array<uint32_t, 3> triangle{strip[index - 2u], strip[index - 1u], strip[index]};
         if (runLength % 2u == 0) std::swap(triangle[0], triangle[1]);
         actual.push_back(CanonicalOrientedTriangle(triangle));
@@ -843,7 +845,9 @@ TEST_F(SurfacePatchLodTest, InvisibleCoarseNeighborsStillControlVisibleFinePatch
     uint32_t boundaries = 0;
     for (const auto& patch : selection.patches) {
         const auto mask = static_cast<uint8_t>(renderer::SurfacePatchEdge::MIN_X);
-        if ((patch.coarseEdgeMask & mask) == 0 || patch.localMin.x >= -1.35f) continue;
+        if ((patch.coarseEdgeMask & mask) == 0 || patch.localMin.x >= -1.35f) {
+            continue;
+        }
         ++boundaries;
         const float width = patch.localMax.x - patch.localMin.x;
         const float height = patch.localMax.y - patch.localMin.y;

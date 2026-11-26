@@ -16,14 +16,14 @@
 #include "Rendering/Underwater.hlsli"
 #include "Rendering/WaterMedium.hlsli"
 
-FBZZ_TEX2D(texHDR, TEX_GBUFFER0_SLOT);        /// @note ライティング結果 HDR バッファ
+FBZZ_TEX2D(texHDR, SRV_POST_COLOR_SLOT);        /// @note ライティング結果 HDR バッファ
 FBZZ_TEX2D(texBloom, TEX_BLOOM_SLOT);
 FBZZ_TEX2D_T(float, texDepth, TEX_DEPTH_SLOT);           /// @note 深度 (フォグ計算用)
 FBZZ_TEX3D(texLUT, TEX_LUT_COLOR_GRADE_SLOT); /// @note 3D カラーグレーディング LUT (32x32x32 推奨)
 /// @note ---- Advanced Graphics ----
 /// @note t21 is reused after TAA for the current-view underwater directional scatter result.
-FBZZ_TEX2D_T(float4, texUnderwaterVolume, 21);
-FBZZ_TEX2D_T(float4, g_waterInterface, 13);
+FBZZ_TEX2D_T(float4, texUnderwaterVolume, SRV_UNDERWATER_VOLUME_SLOT);
+FBZZ_TEX2D_T(float4, g_waterInterface, SRV_WATER_INTERFACE_SLOT);
 SamplerState sampPointClamp : register(SAMPLER_POINT_CLAMP);
 /// @note 全画面フェッチはすべてこれ 1 本で引く。
 /// @note s0 (SAMPLER_DEFAULT) を使わないか: DX12 の静的サンプラーでは s0 が WRAP
@@ -38,7 +38,7 @@ FBZZ_TEX3D_T(float4, texFroxelFog, TEX_FROXEL_FOG_SLOT);
 /// @note ---- 自動露出 ----
 /// @note [0] = 順応済みの平均輝度。ExposureAverage.cs.hlsl が毎フレーム書く。
 /// @note autoExposureKey <= 0 のときは束縛されておらず、b5 の exposure をそのまま使う。
-FBZZ_SBUFFER_T(float, gAdaptedLuminance, SB_PUNCTUAL_LIGHTS_SLOT); /// @note t29
+FBZZ_SBUFFER_T(float, gAdaptedLuminance, SRV_EXPOSURE_RESULT_SLOT); /// @note t29
 
 /// @note ResolveExposure — b5 の手動 exposure と自動露出を 1 か所で合流させる。
 
@@ -191,7 +191,7 @@ float3 ApplySharedWaterOpticsHDR(float3 hdr, float2 uv, float ndcDepth)
     if (underwaterOpticalMode == 2.25f && WaterOpticalTileIsDry(uv)) return hdr;
 #endif
 #if BINDLESS_SUPPORTED
-    if (!IsBindlessValid(FbzzPixelSlot(13))) return hdr;
+    if (!IsBindlessValid(FbzzPixelSlot(SRV_WATER_INTERFACE_SLOT))) return hdr;
 #endif
     FBZZWaterMediumQueryContext context;
     if (!FBZZ_WaterMediumHeader(context)) return hdr;

@@ -173,7 +173,7 @@ protected:
 
     void ExpectColor(const math::Vector4& value, const math::Vector4& expected) const
     {
-        /// @note Inputs and history are linear HDR; only the final RGBA16F readback permits half-storage rounding.
+        // 入力と履歴は線形 HDR を保つ。半精度格納による丸めは最後の RGBA16F 読み戻しだけで許容する。
         EXPECT_NEAR(value.x, expected.x, 0.02f);
         EXPECT_NEAR(value.y, expected.y, 0.02f);
         EXPECT_NEAR(value.z, expected.z, 0.02f);
@@ -560,7 +560,7 @@ TEST_F(RayReflectionReconstructionTest, GlassRejectsInvalidCurrentSamplesKindMis
     ExpectColor(reappeared[kCenter], raw[kCenter]);
     for (uint32_t pixel = 0; pixel < kPixelCount; ++pixel)
         if (pixel != kCenter) ExpectColor(reappeared[pixel], {});
-    /// @note A raw kind1 with kind2 metadata must clear the history, not become a dielectric temporal sample.
+    // A raw kind1 with kind2 metadata must clear the history, not become a dielectric temporal sample.
     Reconstruct(view, Uniform({64, 32, 16, 1}), surfaces);
     const auto matched = Reconstruct(view, Uniform({32, 16, 8, 2}), surfaces);
     for (const auto& pixel : matched) ExpectColor(pixel, {32, 16, 8, 2});
@@ -624,7 +624,7 @@ TEST_F(RayReflectionReconstructionTest, HybridGlassSubsetPreparesTypedGraphAndRe
     EXPECT_TRUE(view.rayReflectionCovered);
     EXPECT_TRUE(context.rayReflectionPassActive);
     EXPECT_TRUE(view.rayReflection.reconstruction.prepared);
-    /// @note The closed-solid authoring precondition belongs to transport; this case isolates resource planning and an intentional no-op receipt.
+    // The closed-solid authoring precondition belongs to transport; this case isolates resource planning and an intentional no-op receipt.
     shared.rayReflectionShader = m_copyShader;
     renderer::RenderPipeline pipeline;
     renderer::RenderGraph::ResourceDesc imported;
@@ -642,7 +642,7 @@ TEST_F(RayReflectionReconstructionTest, HybridGlassSubsetPreparesTypedGraphAndRe
     EXPECT_EQ(m_handles.rayReflectionResult, view.rayReflection.output);
     (void)Finish(view.rayReflection.output, false);
 
-    /// @note A live old GBuffer is not a current surface when its named producer is disabled.
+    // A live old GBuffer is not a current surface when its named producer is disabled.
     view.rayReflection.reconstruction.historyValid = true;
     context.rayReflectionPassActive = true;
     m_handles.rayReflectionResult = view.rayReflection.output;
@@ -692,8 +692,14 @@ TEST_F(RayReflectionReconstructionTest, NormalizedGBufferSnapshotsBelongToTheirV
     const auto firstBuffer = firstHandles.gbufferMaterialCB;
     const auto secondBuffer = secondHandles.gbufferMaterialCB;
     ASSERT_TRUE(firstBuffer && secondBuffer);
-    /// @note ResourceHandle has no Manager identity; a former static draw-CB would incorrectly reuse this equal numeric pair.
-    EXPECT_EQ(firstBuffer, secondBuffer);
+
+    // スロット番号と世代が衝突しても、作成元の ResourceManager が異なれば別のハンドルになる。
+    EXPECT_EQ(firstBuffer.id, secondBuffer.id);
+    EXPECT_EQ(firstBuffer.gen, secondBuffer.gen);
+    EXPECT_EQ(firstBuffer.owner, firstManager.GetInstanceId());
+    EXPECT_EQ(secondBuffer.owner, secondManager.GetInstanceId());
+    EXPECT_NE(firstBuffer.owner, secondBuffer.owner);
+    EXPECT_NE(firstBuffer, secondBuffer);
     EXPECT_NE(firstManager.Get(firstBuffer), secondManager.Get(secondBuffer));
     first.BindPassHandles(firstView, firstHandles);
     EXPECT_EQ(firstHandles.gbufferMaterialCB, firstBuffer);
@@ -725,7 +731,7 @@ TEST_F(RayReflectionReconstructionTest, PingPongHdrHistoryRetainsBoundedEmaAcros
         const float value = static_cast<float>(frame) / 8;
         expected += (value - expected) / static_cast<float>(std::min(frame, 32u));
         const bool capture = frame == 32 || frame == 33 || frame == 256;
-        /// @note Intermediate frames submit normally; readback checkpoints verify HDR arithmetic, not elapsed time.
+        // Intermediate frames submit normally; readback checkpoints verify HDR arithmetic, not elapsed time.
         const auto result = Reconstruct(view, Uniform({value, value / 2, value / 4, 1}), surfaces,
             false, true, StageFailure::NONE, nullptr, capture);
         auto& state = view.reconstruction;
@@ -767,7 +773,7 @@ TEST_F(RayReflectionReconstructionTest, SpatialFilteringReducesRoughNoiseButDoes
     for (auto& pixel : rawMean) { pixel.x /= 2; pixel.y /= 2; pixel.z /= 2; }
     renderer::RayReflectionViewResources reference;
     const auto expected = Reconstruct(reference, rawMean, Surfaces(0.8f), true);
-    /// @note Spatial radiance is an output only; the next Temporal mean must use the unfiltered per-pixel history.
+    // Spatial radiance is an output only; the next Temporal mean must use the unfiltered per-pixel history.
     for (uint32_t pixel = 0; pixel < kPixelCount; ++pixel) ExpectColor(continued[pixel], expected[pixel]);
 }
 
@@ -780,7 +786,9 @@ TEST_F(RayReflectionReconstructionTest, SpatialFilterStopsAtFullOwnerMaterialNor
         raw[kCenter] = {8, 4, 2, 1};
         auto surfaces = Surfaces();
         for (uint32_t pixel = 0; pixel < kPixelCount; ++pixel) {
-            if (pixel == kCenter) continue;
+            if (pixel == kCenter) {
+                continue;
+            }
             auto& surface = surfaces[pixel];
             switch (boundary) {
             case 0: ++surface.objectMaterialValid[0]; break;
@@ -963,7 +971,7 @@ TEST_F(RayReflectionReconstructionTest, MetadataOverwriteAndFailedReceiptsNeverC
         EXPECT_EQ(view.reconstruction.lastFrameStamp, frameStamp);
         EXPECT_EQ(view.reconstruction.surfaces, handles);
         EXPECT_EQ(view.reconstruction.histories, history);
-        /// @note A rejected Spatial receipt may follow a current-history Temporal write; recovery must discard that uncommitted mean.
+        // A rejected Spatial receipt may follow a current-history Temporal write; recovery must discard that uncommitted mean.
         const auto recovered = Reconstruct(view, Uniform({16, 8, 4, 1}), surfaces);
         for (const auto& pixel : recovered) ExpectColor(pixel, {16, 8, 4, 1});
         EXPECT_TRUE(view.reconstruction.historyValid);
@@ -1004,7 +1012,7 @@ TEST_F(RayReflectionReconstructionTest, PreparationReusesExactSizedSplitResource
         EXPECT_EQ(m_resources->Get(handle)->GetElementCount(), kPixelCount);
         metadataBytes += m_resources->Get(handle)->GetSize();
     }
-    /// @note Exact logical payload excludes resource alignment, RAW/output textures, and constants; no performance result is inferred.
+    // Exact logical payload excludes resource alignment, RAW/output textures, and constants; no performance result is inferred.
     EXPECT_EQ(metadataBytes, static_cast<size_t>(kPixelCount) * 224);
     const auto populated = Reconstruct(view.rayReflection, Uniform({64, 32, 16, 1}), Surfaces(0.045f), true);
     for (const auto& pixel : populated) ExpectColor(pixel, {64, 32, 16, 1});
@@ -1119,7 +1127,7 @@ TEST_F(RayReflectionReconstructionTest, PreparationRejectsChangedContentFrameGap
     auto& state = view.rayReflection.reconstruction;
     EXPECT_EQ(state.constantsData.resetHistory, 1u);
     EXPECT_EQ(state.constantsData.temporalAllowed, 1u);
-    /// @note Arrange a previously committed GPU receipt; this case isolates CPU preparation keys from the shader averaging cases.
+    // Arrange a previously committed GPU receipt; this case isolates CPU preparation keys from the shader averaging cases.
     state.historyValid = true;
     state.committedCamera = state.constantsData;
     state.lastFrameStamp = 1;
@@ -1194,7 +1202,7 @@ TEST_F(RayReflectionReconstructionTest, PreparationRejectsChangedContentFrameGap
     EXPECT_EQ(state.constantsData.temporalAllowed, 1u);
     const auto unrelatedCube = m_resources->CreateCubemapRenderTarget(4);
     ASSERT_TRUE(unrelatedCube);
-    /// @note Actual known environment lighting does not consume Raster probe radiance, provenance, or ambient fallback.
+    // Actual known environment lighting does not consume Raster probe radiance, provenance, or ambient fallback.
     for (uint32_t change = 0; change < 4; ++change) {
         commitNextFrame();
         switch (change) {
@@ -1249,7 +1257,7 @@ TEST_F(RayReflectionReconstructionTest, CameraMotionUsesActualTerminalCorrespond
         const auto current = Uniform({5 * transmission, 2.5f * transmission, 1.25f * transmission, kind});
         const auto moved = Reconstruct(view, current, MotionSurfaces(thin, 1), false, true,
             StageFailure::NONE, nullptr, true, true);
-        /// @note The center maps to the old x+1 terminal (31), not its old receiver index (21); the left-behind history would yield 13 rather than18.
+        // The center maps to the old x+1 terminal (31), not its old receiver index (21); the left-behind history would yield 13 rather than18.
         ExpectColor(moved[kCenter], {18 * transmission, 9 * transmission, 4.5f * transmission, kind});
         ExpectColor(moved[kCenter + 2], current[kCenter + 2]);
         EXPECT_TRUE(view.reconstruction.historyValid);
@@ -1292,7 +1300,7 @@ TEST_F(RayReflectionReconstructionTest, HalfRoundedThinDemodulationFailureRetain
     renderer::RayReflectionViewResources view;
     MotionCamera(view, 0);
     view.reconstruction.constantsData.constantEnvironmentRadiance = {32, 0, 0, 1};
-    /// @note At IOR1.5, thin reflection is 1/13; half storage rounds 32/13 below its exact reflected contribution.
+    // At IOR1.5, thin reflection is 1/13; half storage rounds 32/13 below its exact reflected contribution.
     const auto first = Uniform({32.0f / 13.0f, 4, 2, 2});
     Reconstruct(view, first, MotionSurfaces(true), true, true, StageFailure::NONE, nullptr, false, true);
     MotionCamera(view, 0);
@@ -1418,7 +1426,7 @@ TEST_F(RayReflectionReconstructionTest, ConsumedGiRequiresLiveImmutablePublicati
     view.advancedGraphicsSnapshot.probeVolumes[0].intensity = 1;
     m_handles.lightProbeSH[0] = m_handles.iblIrradiance;
     ASSERT_TRUE(renderer::PrepareRayReflectionReconstruction(context, view, shared));
-    /// @note Writable SH is not made immutable by an unrelated cube publication, even under a known black environment.
+    // Writable SH is not made immutable by an unrelated cube publication, even under a known black environment.
     EXPECT_EQ(state.constantsData.temporalAllowed, 0u);
     next();
     const std::array<uint8_t, 4> immutablePixel{255, 255, 255, 255};

@@ -35,7 +35,7 @@ struct StoredState {
 };
 static StoredState s_state;
 
-} /// @note namespace (closed after Draw impl)
+} // namespace (closed after Draw impl)
 
 void RenderDebugOverlay::UpdateSnapshot(const Snapshot& snapshot, bool enabled)
 {
@@ -50,7 +50,9 @@ const RenderDebugOverlay::Snapshot& RenderDebugOverlay::GetLastSnapshot()
 
 void RenderDebugOverlay::DrawIfEnabled(IImGuiRenderer& imguiRenderer, ResourceManager& resources)
 {
-    if (!s_state.enabled) return;
+    if (!s_state.enabled) {
+        return;
+    }
     Draw(imguiRenderer, resources, s_state.snap);
 }
 
@@ -69,24 +71,24 @@ constexpr float BAR_H = 12.0f;
 /// @note reinterpret_cast を uintptr_t 経由で行うことで、ポインタ幅の差異を吸収する。
 ImTextureID ToImTexID(void* ptr)
 {
-    /// @note ImTextureID はこのプロジェクトでは整数型として定義されているため static_cast を使う。
-    /// @note       ViewportPanel.cpp と同様のパターン。
+    // ImTextureID はこのプロジェクトでは整数型として定義されているため static_cast を使う。
+    // ViewportPanel.cpp と同様のパターン。
     return static_cast<ImTextureID>(std::bit_cast<uintptr_t>(ptr));
 }
 
-} /// @note namespace
+} // namespace
 
 void RenderDebugOverlay::Draw(IImGuiRenderer& imguiRenderer, ResourceManager& resources,
                               const Snapshot& snapshot)
 {
-    /// @note アスペクト比を元に高さを決める。解像度が未設定なら 16:9 をフォールバックとする。
+    // アスペクト比を元に高さを決める。解像度が未設定なら 16:9 をフォールバックとする。
     const float thumbH = (snapshot.width > 0 && snapshot.height > 0)
         ? THUMB_W * (static_cast<float>(snapshot.height) / static_cast<float>(snapshot.width))
         : THUMB_W * 9.0f / 16.0f;
 
-    /// @note GetImTextureID は DX11 の SRV バインド状態を変化させる可能性があるため、
-    /// @note       ループを 2 回回すと SRV が交互に切り替わり表示がちらつく。
-    /// @note       1 回だけ呼んで ImTextureID をキャッシュしてから ImGui に渡す。
+    // GetImTextureID は DX11 の SRV バインド状態を変化させる可能性があるため、
+    // ループを 2 回回すと SRV が交互に切り替わり表示がちらつく。
+    // 1 回だけ呼んで ImTextureID をキャッシュしてから ImGui に渡す。
     struct ResolvedSlot {
         const char* label;
         ImTextureID texID = 0;
@@ -95,9 +97,13 @@ void RenderDebugOverlay::Draw(IImGuiRenderer& imguiRenderer, ResourceManager& re
     int validSlotCount = 0;
 
     auto tryResolve = [&](const char* label, const ResourceHandle<RenderTargetTag>& rt) {
-        if (!rt.IsValid()) return;
+        if (!rt.IsValid()) {
+            return;
+        }
         void* rawID = imguiRenderer.GetImTextureID(rt, resources, 0);
-        if (!rawID) return;
+        if (!rawID) {
+            return;
+        }
         resolved[validSlotCount++] = { label, ToImTexID(rawID) };
     };
     tryResolve("HDR",     snapshot.hdrRT);
@@ -116,17 +122,19 @@ void RenderDebugOverlay::Draw(IImGuiRenderer& imguiRenderer, ResourceManager& re
     ImGui::SetNextWindowBgAlpha(0.90f);
     ImGui::Begin("Render Debug##passvwr", nullptr, ImGuiWindowFlags_NoScrollbar);
 
-    /// @name 上段: RT サムネイルタイル
+    // 上段: RT サムネイルタイル
     if (validSlotCount > 0) {
         for (int i = 0; i < validSlotCount; ++i) {
-            if (i > 0) ImGui::SameLine(0.0f, 16.0f);
+            if (i > 0) {
+                ImGui::SameLine(0.0f, 16.0f);
+            }
             const auto& slot = resolved[i];
 
             ImGui::BeginGroup();
             ImGui::TextUnformatted(slot.label);
             ImGui::Image(slot.texID, { THUMB_W, thumbH });
 
-            /// @note ホバー時に拡大プレビューをツールチップとして表示する。
+            // ホバー時に拡大プレビューをツールチップとして表示する。
             if (ImGui::IsItemHovered()) {
                 ImGui::BeginTooltip();
                 ImGui::Image(slot.texID, { THUMB_W * 2.5f, thumbH * 2.5f });
@@ -139,7 +147,7 @@ void RenderDebugOverlay::Draw(IImGuiRenderer& imguiRenderer, ResourceManager& re
         ImGui::TextDisabled("No render targets available.");
     }
 
-    /// @name 下段: パス CPU / GPU タイミングバーチャート
+    // 下段: パス CPU / GPU タイミングバーチャート
     if (!snapshot.passTimings.empty()) {
         ImGui::Separator();
         ImGui::TextUnformatted("Pass timings  [CPU | GPU]");
@@ -153,24 +161,32 @@ void RenderDebugOverlay::Draw(IImGuiRenderer& imguiRenderer, ResourceManager& re
         }
         ImGui::Spacing();
 
-        /// @note GPU 時間を名前引きできるよう map に変換する。
+        // GPU 時間を名前引きできるよう map に変換する。
         std::unordered_map<std::string, double> gpuMap;
         std::unordered_map<std::string, int> gpuNameCount;
-        for (const auto& [name, ms] : snapshot.gpuPassTimings)
+        for (const auto& [name, ms] : snapshot.gpuPassTimings) {
             ++gpuNameCount[name];
-        for (const auto& [name, ms] : snapshot.gpuPassTimings)
-            if (gpuNameCount[name] == 1) gpuMap[name] = ms;
+        }
+        for (const auto& [name, ms] : snapshot.gpuPassTimings) {
+            if (gpuNameCount[name] == 1) {
+                gpuMap[name] = ms;
+            }
+        }
 
-        /// @note 最長パスを 1.0 として正規化する。
+        // 最長パスを 1.0 として正規化する。
         double maxMs = 0.0;
-        for (const auto& [name, ms] : snapshot.passTimings)
+        for (const auto& [name, ms] : snapshot.passTimings) {
             maxMs = std::max(maxMs, ms);
-        if (maxMs <= 0.0) maxMs = 1.0;
+        }
+        if (maxMs <= 0.0) {
+            maxMs = 1.0;
+        }
 
-        /// @note 同名パスが複数あれば警告色で強調する (Editor が Scene/Game 両方から同一パスを呼ぶ等)。
+        // 同名パスが複数あれば警告色で強調する (Editor が Scene/Game 両方から同一パスを呼ぶ等)。
         std::unordered_map<std::string, int> nameCount;
-        for (const auto& [name, ms] : snapshot.passTimings)
+        for (const auto& [name, ms] : snapshot.passTimings) {
             ++nameCount[name];
+        }
 
         ImDrawList* drawList = ImGui::GetWindowDrawList();
         for (const auto& [name, ms] : snapshot.passTimings) {
@@ -178,7 +194,7 @@ void RenderDebugOverlay::Draw(IImGuiRenderer& imguiRenderer, ResourceManager& re
 
             const ImVec2 cursor = ImGui::GetCursorScreenPos();
 
-            /// @note CPU バー (重複=赤、通常=青)
+            // CPU バー (重複=赤、通常=青)
             const float cpuW = static_cast<float>(ms / maxMs) * BAR_MAX_W;
             drawList->AddRectFilled(cursor,
                                     { cursor.x + cpuW, cursor.y + BAR_H },
@@ -205,4 +221,4 @@ void RenderDebugOverlay::Draw(IImGuiRenderer& imguiRenderer, ResourceManager& re
     ImGui::End();
 }
 
-} /// @note namespace fbzz::renderer
+} // namespace fbzz::renderer

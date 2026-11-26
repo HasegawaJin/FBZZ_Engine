@@ -13,12 +13,12 @@ struct BakeReplayRow {
     uint first; uint second; float alpha; uint padding;
     uint targetFirst; uint targetSecond; float targetAlpha; float blendWeight;
 };
-FBZZ_SBUFFER_T(BakeTransform, gSamples, 14);
-FBZZ_SBUFFER_T(BakeNode, gNodes, 15);
-FBZZ_SBUFFER_T(BakeBinding, gBindings, 29);
-FBZZ_SBUFFER_T(BakeReplayRow, gRows, 30);
-FBZZ_RWSBUFFER_T(float4x4, gPalette, 2);
-cbuffer BakeReplayConstants : register(b0) {
+FBZZ_SBUFFER_T(BakeTransform, gSamples, SRV_BAKE_SAMPLES_SLOT);
+FBZZ_SBUFFER_T(BakeNode, gNodes, SRV_BAKE_NODES_SLOT);
+FBZZ_SBUFFER_T(BakeBinding, gBindings, SRV_BAKE_BINDINGS_SLOT);
+FBZZ_SBUFFER_T(BakeReplayRow, gRows, SRV_BAKE_ROWS_SLOT);
+FBZZ_RWSBUFFER_T(float4x4, gPalette, UAV_BAKE_PALETTE_SLOT);
+cbuffer BakeReplayConstants : register(FBZZ_REGISTER(b, CB_BAKE_REPLAY_SLOT)) {
     float4x4 gRootInverse;
     uint gNodeCount; uint gBoneCount; uint gSampleCount; uint gRowCount;
 };

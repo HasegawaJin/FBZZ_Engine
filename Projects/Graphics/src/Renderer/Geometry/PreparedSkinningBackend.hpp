@@ -49,4 +49,4 @@ FBZZ_GRAPHICS_API std::unique_ptr<NativeWork> PrepareExactNative(IRenderer& nati
     std::span<const CapturedSkinningRequest> requests, std::span<const math::Matrix4> matrices);
 FBZZ_GRAPHICS_API std::unique_ptr<NativeWork> PrepareViaFacade(IRenderer& facade, ResourceManager& resources, ResourceHandle<ShaderTag> shader,
     std::span<const CapturedSkinningRequest> requests, std::span<const math::Matrix4> matrices);
-} /// @note namespace fbzz::renderer::prepared_skinning_detail
+} // namespace fbzz::renderer::prepared_skinning_detail

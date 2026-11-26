@@ -36,10 +36,10 @@ public:
     FBZZ_GRAPHICS_API Material& operator=(Material&& other) noexcept;
 
     ResourceHandle<ShaderTag>   shader;
-    std::vector<ResourceHandle<TextureTag>> textures; ///< @note スロット番号でインデックス
+    std::vector<ResourceHandle<TextureTag>> textures; ///< スロット番号でインデックス
 
     ResourceHandle<ConstantBufferTag> paramsBuffer;
-    std::vector<uint8_t>              paramData; ///< @note CB_MATERIAL 生バイト列
+    std::vector<uint8_t>              paramData; ///< CB_MATERIAL 生バイト列
 
     std::string shaderPath;
     SolidDielectricSettings dielectric;
@@ -63,4 +63,4 @@ public:
         ResourceManager& resources) const;
 };
 
-} /// @note namespace fbzz::renderer
+} // namespace fbzz::renderer

@@ -15,12 +15,16 @@ namespace fbzz::renderer::shadow_visibility_detail {
 /// @note 判定はカスケードごとに行う。遠いカスケードで切り捨てられる小物も、手前では十分な大きさを持つ。
 inline bool IsShadowRelevant(const ShadowCascade& cascade, const WorldBounds& bounds)
 {
-    /// @note テクセル情報が無ければカリングしない
-    if (cascade.texelWorldSize <= 0.0f) return true;
-    /// @note bounds 未計算メッシュも同様
-    if (bounds.radius <= 0.0f)          return true;
+    // テクセル情報が無ければカリングしない
+    if (cascade.texelWorldSize <= 0.0f) {
+        return true;
+    }
+    // bounds 未計算メッシュも同様
+    if (bounds.radius <= 0.0f) {
+        return true;
+    }
 
-    /// @note 直径が 2 テクセル未満なら影として解像できない。
+    // 直径が 2 テクセル未満なら影として解像できない。
     constexpr float MIN_TEXEL_DIAMETER = 2.0f;
     return (bounds.radius * 2.0f) >= cascade.texelWorldSize * MIN_TEXEL_DIAMETER;
 }
@@ -37,16 +41,22 @@ inline uint32_t ComputeCascadeMask(const RenderPassContext& ctx, uint32_t update
                             const WorldBounds& bounds, bool hasBounds)
 {
     if (!hasBounds) {
-        /// @note bounds が取れないメッシュはカリングせず全カスケードへ出す (従来の安全側)。
+        // bounds が取れないメッシュはカリングせず全カスケードへ出す (従来の安全側)。
         return updateMask;
     }
 
     uint32_t mask = 0;
     for (int i = 0; i < kMaxShadowCascades; ++i) {
-        if ((updateMask & (1u << i)) == 0) continue;
+        if ((updateMask & (1u << i)) == 0) {
+            continue;
+        }
         const ShadowCascade& cascade = ctx.shadowCascades[i];
-        if (!cascade.frustum.IntersectsSphere(bounds.center, bounds.radius)) continue;
-        if (!IsShadowRelevant(cascade, bounds)) continue;
+        if (!cascade.frustum.IntersectsSphere(bounds.center, bounds.radius)) {
+            continue;
+        }
+        if (!IsShadowRelevant(cascade, bounds)) {
+            continue;
+        }
         mask |= (1u << i);
     }
     return mask;
@@ -60,25 +70,31 @@ inline uint32_t ComputePunctualMask(const RenderPassContext& ctx,
                              const WorldBounds& bounds, bool hasBounds)
 {
     const int count = std::clamp(ctx.punctualShadowViewCount, 0, kMaxPunctualShadows);
-    if (count == 0) return 0;
+    if (count == 0) {
+        return 0;
+    }
 
     uint32_t mask = 0;
     for (int i = 0; i < count; ++i) {
         const PunctualShadowView& view = ctx.punctualShadowViews[i];
         if (hasBounds) {
-            if (!view.frustum.IntersectsSphere(bounds.center, bounds.radius)) continue;
+            if (!view.frustum.IntersectsSphere(bounds.center, bounds.radius)) {
+                continue;
+            }
             if (bounds.radius > 0.0f && view.texelAngularSize > 0.0f) {
                 const math::Vector3 toLight = bounds.center - view.eyePos;
                 const float dist = toLight.Length();
-                /// @note 直径が 2 テクセルに満たない caster は PCF で完全に均されて絵に出ない。
-                /// @note ライトの内側にいる (dist <= radius) 場合は必ず描く。
+                // 直径が 2 テクセルに満たない caster は PCF で完全に均されて絵に出ない。
+                // ライトの内側にいる (dist <= radius) 場合は必ず描く。
                 if (dist > bounds.radius) {
                     const float angularDiameter = 2.0f * bounds.radius / dist;
-                    if (angularDiameter < view.texelAngularSize * 2.0f) continue;
+                    if (angularDiameter < view.texelAngularSize * 2.0f) {
+                        continue;
+                    }
                 }
             }
         }
-        /// @note bounds が取れないメッシュはカリングせず全スロットへ出す (従来の安全側)。
+        // bounds が取れないメッシュはカリングせず全スロットへ出す (従来の安全側)。
         mask |= (1u << i);
     }
     return mask;

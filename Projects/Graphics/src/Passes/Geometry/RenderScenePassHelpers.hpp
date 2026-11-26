@@ -3,6 +3,7 @@
 /// @author  Hasegawa Jin
 /// @date    2026-09-20
 #pragma once
+#include <Graphics/Renderer/Commands/ShaderBindingSlots.hpp>
 #include <Graphics/Passes/Geometry/GeometryPasses.hpp>
 #include <Graphics/Passes/Geometry/RenderSceneDraw.hpp>
 #include <Graphics/Scene/RenderScene.hpp>
@@ -41,17 +42,23 @@ inline float OccluderRadius(const RenderPassContext& ctx, const RenderObject& ob
         || material.shaderCapabilities.vertex != ShaderVertexContract::STANDARD_SURFACE
         || !material.shaderCapabilities.HasStandardVariants()
         || material.shaderCapabilities.opacity == ShaderOpacityContract::UNKNOWN
-        || material.depthBias != 0 || material.depthBiasSlope != 0) return 0;
+        || material.depthBias != 0 || material.depthBiasSlope != 0) {
+        return 0;
+    }
     uint32_t textureMask;
     std::memcpy(&textureMask, material.gbufferParams.data() + 80, sizeof(textureMask));
-    /// @note 浮動小数点のアルベドは負のアルファを持ち得るため、cutoff=0 だけでは被覆を証明できない。
-    if (!material.shaderCapabilities.HasOpaqueOutput() && ((textureMask & 1u) != 0 || material.textures[0].IsValid())) return 0;
+    // 浮動小数点のアルベドは負のアルファを持ち得るため、cutoff=0 だけでは被覆を証明できない。
+    if (!material.shaderCapabilities.HasOpaqueOutput() && ((textureMask & (1u << srv::ALBEDO)) != 0 || material.textures[srv::ALBEDO].IsValid())) {
+        return 0;
+    }
     float alpha, cutoff, wind;
     std::memcpy(&alpha, material.gbufferParams.data() + 12, sizeof(alpha));
     std::memcpy(&cutoff, material.gbufferParams.data() + 64, sizeof(cutoff));
     std::memcpy(&wind, material.gbufferParams.data() + 68, sizeof(wind));
     if (!std::isfinite(alpha) || alpha < 0 || !std::isfinite(cutoff) || cutoff > 0
-        || !std::isfinite(wind) || wind != 0) return 0;
+        || !std::isfinite(wind) || wind != 0) {
+        return 0;
+    }
     return item.occluderRadius;
 }
 
@@ -73,7 +80,7 @@ inline bool IsRenderObjectVisible(RenderPassContext& ctx, const renderer::Render
     const auto bounds = RenderBounds(ctx, object);
     auto view = CullingView(ctx);
     bool gpuEstimateOutside = false;
-    /// @note インスタンスバッチが GPU 上で視錐台を判定し、CPU カウンターは推定値だけを記録する。
+    // インスタンスバッチが GPU 上で視錐台を判定し、CPU カウンターは推定値だけを記録する。
     if (gpuFrustum && view.frustum) {
         gpuEstimateOutside = !view.frustum->IntersectsSphere(bounds.center, bounds.radius);
         view.frustum = nullptr;
@@ -84,9 +91,13 @@ inline bool IsRenderObjectVisible(RenderPassContext& ctx, const renderer::Render
     case renderer::VisibilityResult::SMALL_OBJECT_CULLED: ++ctx.statsSmallObjectCulled; return false;
     case renderer::VisibilityResult::FRUSTUM_CULLED: ++ctx.statsFrustumCulled; return false;
     case renderer::VisibilityResult::VISIBLE:
-        if (gpuEstimateOutside) ++ctx.statsFrustumCulled;
+        if (gpuEstimateOutside) {
+            ++ctx.statsFrustumCulled;
+        }
         if (IsViewOccluded(ctx, bounds.center, bounds.radius)) {
-            if (!gpuEstimateOutside) ++ctx.statsOcclusionCulled;
+            if (!gpuEstimateOutside) {
+                ++ctx.statsOcclusionCulled;
+            }
             return false;
         }
         return true;
@@ -97,13 +108,33 @@ inline bool IsRenderObjectVisible(RenderPassContext& ctx, const renderer::Render
 /// @note t14/t15 は VS のボーンパレット専用で、粒子やメッシュレットの描画には束縛しない。
 inline void BindGpuBonePalette(DrawCall& draw, const RenderObject& object)
 {
-    if (object.gpuBones.current.IsValid()) { draw.vsBuffers[0] = object.gpuBones.current; draw.constantBuffers[7] = {}; }
+    if (object.gpuBones.current.IsValid()) { draw.vsBuffers[VertexBufferIndex(vsSlot::BUFFER0)] = object.gpuBones.current; draw.constantBuffers[cb::SKINNING] = {}; }
 }
 
 inline auto MaterialPipeline(RenderPassContext& ctx, const renderer::RenderMaterial& material)
 {
     return GetOrCreateMaterialPSO(ctx.resources, material.capabilities.blend,
         material.doubleSided, material.depthBias, material.depthBiasSlope, ctx.settings.IsWireframe());
+}
+
+/// @brief メインビューのシャドウ描画より前に使うプローブ撮影用の定数を更新する。
+/// @param[in,out] ctx 現在の照明設定とプローブ撮影用の定数バッファ。メインビューの定数は保持する。
+/// @return 撮影用の定数バッファを更新できた場合は true。不足時は定数を更新せず false。
+[[nodiscard]] bool PrepareProbeCaptureShadowConstants(RenderPassContext& ctx);
+
+/// @brief プローブ撮影に線形ライト一覧と撮影専用の影設定を束縛する。
+/// @param[in,out] draw プローブ撮影の描画コマンド。
+/// @param[in] ctx プローブ撮影用の定数バッファと照明リソース。
+inline void BindProbeCaptureLightingResources(DrawCall& draw, const RenderPassContext& ctx)
+{
+    BindForwardShadingResources(draw, ctx, true);
+    draw.constantBuffers[cb::SHADOW] = ctx.handles.reflectionProbeCaptureShadowCB;
+    draw.constantBuffers[cb::PUNCTUAL_SHADOW] = ctx.handles.reflectionProbeCapturePunctualCB;
+
+    // メインビュー用のアトラスと画面空間テクスチャは、描画前のプローブ撮影では参照できない。
+    for (const uint32_t slot : {srv::SHADOW, srv::SCREEN_AO, srv::CONTACT_SHADOW, srv::PUNCTUAL_SHADOW, srv::LIGHT_COOKIE}) {
+        draw.textures[slot] = {};
+    }
 }
 
 inline bool HasColorGeometry(const renderer::RenderMeshItem& item)
@@ -118,17 +149,17 @@ inline DrawCall ForwardPassBindings(RenderPassContext& ctx, bool bindIbl = true)
 {
     const auto& h = ctx.handles;
     DrawCall draw;
-    draw.constantBuffers[0] = h.frameCB;
-    draw.constantBuffers[1] = h.objectCB;
-    draw.constantBuffers[3] = h.lightCB;
-    draw.constantBuffers[4] = h.shadowCB;
-    draw.constantBuffers[8] = h.advancedGraphicsCB;
+    draw.constantBuffers[cb::CAMERA] = h.frameCB;
+    draw.constantBuffers[cb::OBJECT] = h.objectCB;
+    draw.constantBuffers[cb::LIGHT] = h.lightCB;
+    draw.constantBuffers[cb::SHADOW] = h.shadowCB;
+    draw.constantBuffers[cb::ADVANCED_GRAPHICS] = h.advancedGraphicsCB;
     BindForwardShadingResources(draw, ctx);
-    draw.textures[8] = ctx.resources.GetDepthTexture(ctx.Res().Target("ShadowMap"));
+    draw.textures[srv::SHADOW] = ctx.resources.GetDepthTexture(ctx.Res().Target("ShadowMap"));
     if (bindIbl) {
-        draw.textures[16] = h.iblIrradiance;
-        draw.textures[17] = h.iblPrefilter;
-        draw.textures[18] = h.iblBrdfLut;
+        draw.textures[srv::IBL_IRRADIANCE] = h.iblIrradiance;
+        draw.textures[srv::IBL_PREFILTER] = h.iblPrefilter;
+        draw.textures[srv::IBL_BRDF_LUT] = h.iblBrdfLut;
     }
     return draw;
 }
@@ -146,9 +177,11 @@ inline DrawCall ForwardDrawWithBindings(RenderPassContext& ctx, const RenderObje
     draw.pipelineState = MaterialPipeline(ctx, item.material);
     draw.layer = material.capabilities.blend == BlendMode::OPAQUE_BLEND
         ? RenderLayer::OPAQUE_LAYER : RenderLayer::TRANSPARENT_LAYER;
-    draw.constantBuffers[2] = material.paramsBuffer;
-    if (object.skinned) { draw.constantBuffers[7] = object.skinningPalette; BindGpuBonePalette(draw, object); }
-    for (size_t i = 0; i < material.textures.size(); ++i) draw.textures[i] = material.textures[i];
+    draw.constantBuffers[cb::MATERIAL] = material.paramsBuffer;
+    if (object.skinned) { draw.constantBuffers[cb::SKINNING] = object.skinningPalette; BindGpuBonePalette(draw, object); }
+    for (size_t i = 0; i < material.textures.size(); ++i) {
+        draw.textures[i] = material.textures[i];
+    }
     return draw;
 }
 

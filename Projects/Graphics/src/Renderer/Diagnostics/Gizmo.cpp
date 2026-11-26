@@ -34,7 +34,7 @@ void BuildOrthoBasis(const math::Vector3& dir,
     outUp = math::Vector3::Cross(outRight, dir).Normalized();
 }
 
-} /// @note namespace
+} // namespace
 
 /// @note 汎用
 
@@ -64,17 +64,19 @@ void Gizmo::SightCone(IRenderer& r,
                        float range,
                        const math::Vector4& color)
 {
-    if (range < 1e-6f || fovDegrees < 1e-3f) return;
+    if (range < 1e-6f || fovDegrees < 1e-3f) {
+        return;
+    }
 
-    /// @note forward に直交する right を求める。敵 AI の視野は通常水平方向の扇形のため、
-    /// @note       world-up 基準の right が直感的。
+    // forward に直交する right を求める。敵 AI の視野は通常水平方向の扇形のため、
+    // world-up 基準の right が直感的。
     math::Vector3 right, up;
     BuildOrthoBasis(forward, right, up);
 
     const float halfRad = fovDegrees * 0.5f * DEG_TO_RAD;
 
-    /// @name 弧 (円弧端点を繋ぐ線分列)
-    /// @note forward を 0 度として -halfRad 〜 +halfRad の範囲で CONE_SEGS 分割した弧を描く。
+    // 弧 (円弧端点を繋ぐ線分列)
+    // forward を 0 度として -halfRad 〜 +halfRad の範囲で CONE_SEGS 分割した弧を描く。
     const float step = (2.0f * halfRad) / static_cast<float>(CONE_SEGS);
     math::Vector3 prev = position
         + (forward * std::cos(-halfRad) + right * std::sin(-halfRad)) * range;
@@ -87,7 +89,7 @@ void Gizmo::SightCone(IRenderer& r,
         prev = cur;
     }
 
-    /// @name 両端の辺 (原点 → 弧端点)
+    // 両端の辺 (原点 → 弧端点)
     const math::Vector3 leftEdge  = position
         + (forward * std::cos(-halfRad) + right * std::sin(-halfRad)) * range;
     const math::Vector3 rightEdge = position
@@ -96,8 +98,8 @@ void Gizmo::SightCone(IRenderer& r,
     DebugDraw::Line(r, position, leftEdge,  color);
     DebugDraw::Line(r, position, rightEdge, color);
 
-    /// @name 注視方向の中心線 (短め)
-    /// @note 正面方向を一本引くことで、視野の中心がどこを向いているか一目で分かる。
+    // 注視方向の中心線 (短め)
+    // 正面方向を一本引くことで、視野の中心がどこを向いているか一目で分かる。
     DebugDraw::Line(r, position, position + forward * range, color);
 }
 
@@ -108,29 +110,33 @@ void Gizmo::WaypointPath(IRenderer& r,
 {
     const int count = static_cast<int>(waypoints.size());
     if (count < 2) {
-        /// @note ウェイポイントが 1 つの場合は小球だけ描いて終了
-        if (count == 1)
+        // ウェイポイントが 1 つの場合は小球だけ描いて終了
+        if (count == 1) {
             DebugDraw::Sphere(r, waypoints[0], 0.15f, color);
+        }
         return;
     }
 
-    /// @note 各ウェイポイントを小球でマーク
-    for (const auto& wp : waypoints)
+    // 各ウェイポイントを小球でマーク
+    for (const auto& wp : waypoints) {
         DebugDraw::Sphere(r, wp, 0.12f, color);
+    }
 
-    /// @note 連続する 2 点を矢印で繋ぐ
+    // 連続する 2 点を矢印で繋ぐ
     for (int i = 0; i < count - 1; ++i) {
         const math::Vector3& from = waypoints[i];
         const math::Vector3& to   = waypoints[i + 1];
         const float dist = (to - from).Length();
-        if (dist < 1e-6f) continue;
+        if (dist < 1e-6f) {
+            continue;
+        }
 
         const float headLen = std::min(0.3f, dist * ARROW_HEAD_RATIO);
         const float headRad = headLen * 0.25f;
         DebugDraw::Arrow(r, from, to, headLen, headRad, color);
     }
 
-    /// @note loop=true なら末尾→先頭も結ぶ
+    // loop=true なら末尾→先頭も結ぶ
     if (loop) {
         const math::Vector3& from = waypoints[count - 1];
         const math::Vector3& to   = waypoints[0];
@@ -149,11 +155,13 @@ void Gizmo::DetectionRange(IRenderer& r,
                              const math::Vector4& innerColor,
                              const math::Vector4& outerColor)
 {
-    /// @note 2 種の球を別色で描くことで「攻撃範囲」と「索敵範囲」が色で区別できる。
-    if (innerRadius > 1e-6f)
+    // 2 種の球を別色で描くことで「攻撃範囲」と「索敵範囲」が色で区別できる。
+    if (innerRadius > 1e-6f) {
         DebugDraw::Sphere(r, center, innerRadius, innerColor);
-    if (outerRadius > innerRadius)
+    }
+    if (outerRadius > innerRadius) {
         DebugDraw::Sphere(r, center, outerRadius, outerColor);
+    }
 }
 
 void Gizmo::TargetLine(IRenderer& r,
@@ -162,16 +170,18 @@ void Gizmo::TargetLine(IRenderer& r,
                         const math::Vector4& color)
 {
     const float dist = (to - from).Length();
-    if (dist < 1e-6f) return;
+    if (dist < 1e-6f) {
+        return;
+    }
 
     const float headLen = std::min(0.35f, dist * ARROW_HEAD_RATIO);
     const float headRad = headLen * 0.3f;
 
-    /// @note 矢印本体
+    // 矢印本体
     DebugDraw::Arrow(r, from, to, headLen, headRad, color);
 
-    /// @note ターゲット位置に小球を描いて「どこを狙っているか」を強調する
+    // ターゲット位置に小球を描いて「どこを狙っているか」を強調する
     DebugDraw::Sphere(r, to, headRad * 1.5f, color);
 }
 
-} /// @note namespace fbzz::renderer
+} // namespace fbzz::renderer

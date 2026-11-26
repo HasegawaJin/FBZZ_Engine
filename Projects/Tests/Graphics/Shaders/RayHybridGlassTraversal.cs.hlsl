@@ -43,8 +43,12 @@ uint Hash(uint value)
 float Random(inout uint state)
 {
     state = Hash(state + 0x9e3779b9u);
-    if (forcedChoice == 1u) return 0;
-    if (forcedChoice == 2u) return asfloat(0x3F7FFFFFu);
+    if (forcedChoice == 1u) {
+        return 0;
+    }
+    if (forcedChoice == 2u) {
+        return asfloat(0x3F7FFFFFu);
+    }
     return ((state >> 9) + 0.5f) * (1.0f / 8388608.0f);
 }
 /// @note Match production's visible-normal sampler and Smith term; the tested dielectric evaluator itself is included from production.
@@ -94,12 +98,22 @@ SurfaceHit PlaneHit(RayDesc ray, float z, uint instance, float3 normal)
 void ConsiderPlane(RayDesc ray, float z, uint instance, float3 normal, uint flags,
     uint requiredOwner, uint requiredGeneration, inout SurfaceHit closest, inout bool found)
 {
-    if (ray.Direction.z == 0) return;
+    if (ray.Direction.z == 0) {
+        return;
+    }
     SurfaceHit hit = PlaneHit(ray, z, instance, normal);
-    if (hit.distance < ray.TMin || hit.distance > ray.TMax || hit.distance <= 0) return;
-    if (requiredOwner != 0xFFFFFFFFu && (hit.objectIndex != requiredOwner || hit.objectGeneration != requiredGeneration)) return;
-    if ((flags & RAY_FLAG_CULL_BACK_FACING_TRIANGLES) != 0 && !hit.frontFace) return;
-    if (found && hit.distance >= closest.distance) return;
+    if (hit.distance < ray.TMin || hit.distance > ray.TMax || hit.distance <= 0) {
+        return;
+    }
+    if (requiredOwner != 0xFFFFFFFFu && (hit.objectIndex != requiredOwner || hit.objectGeneration != requiredGeneration)) {
+        return;
+    }
+    if ((flags & RAY_FLAG_CULL_BACK_FACING_TRIANGLES) != 0 && !hit.frontFace) {
+        return;
+    }
+    if (found && hit.distance >= closest.distance) {
+        return;
+    }
     closest = hit; found = true;
 }
 uint TraceAdapter(RayDesc ray, uint mask, out SurfaceHit hit, uint flags, uint owner, uint generation, uint eventKind)
@@ -168,7 +182,9 @@ bool SameMotion(RayReflectionGlassMotion first, RayReflectionGlassMotion second)
 [numthreads(1, 1, 1)]
 void CSMain(uint3 thread : SV_DispatchThreadID)
 {
-    if (any(thread != 0)) return;
+    if (any(thread != 0)) {
+        return;
+    }
     HybridGlassPath initial = (HybridGlassPath)0;
     bool inside = scenario == 3u || scenario == 10u;
     initial.ray.Origin = inside ? float3(0, 0, 1.5f) : 0;
@@ -202,7 +218,9 @@ void CSMain(uint3 thread : SV_DispatchThreadID)
         events[slot + 4u] = uint4(asuint(motion.reflectedRadiance), 0);
         events[slot + 5u] = uint4(asuint(motion.transmittedRadiance), 0);
         events[slot + 6u] = uint4(asuint(value), oldSuccess);
-        if (!oldSuccess) break;
+        if (!oldSuccess) {
+            break;
+        }
     }
     oldEvents = eventCount; oldQueries = traceCount; oldTerminals = terminalCount; oldOverflow = eventOverflow;
     eventCount = traceCount = terminalCount = eventOverflow = 0; eventOffset = 8192u;
@@ -221,7 +239,9 @@ void CSMain(uint3 thread : SV_DispatchThreadID)
             && all(events[slot + 4u].xyz == asuint(motion.reflectedRadiance))
             && all(events[slot + 5u].xyz == asuint(motion.transmittedRadiance))
             && all(events[slot + 6u] == uint4(asuint(value), newSuccess));
-        if (!newSuccess) break;
+        if (!newSuccess) {
+            break;
+        }
     }
     newEvents = eventCount; newQueries = traceCount; newTerminals = terminalCount; newOverflow = eventOverflow;
     bool sequenceEqual = oldEvents == newEvents;

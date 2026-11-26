@@ -21,12 +21,17 @@ bool MatchesLayer(uint32_t layer, uint32_t mask)
 
 bool ValidTransform(const math::Matrix4& transform)
 {
-    for (const auto& row : transform.m)
-        for (float value : row)
-            if (!std::isfinite(value)) return false;
+    for (const auto& row : transform.m) {
+        for (float value : row) {
+            if (!std::isfinite(value)) {
+                return false;
+            }
+        }
+    }
     if (transform.m[3][0] != 0 || transform.m[3][1] != 0
-        || transform.m[3][2] != 0 || transform.m[3][3] != 1)
+        || transform.m[3][2] != 0 || transform.m[3][3] != 1) {
         return false;
+    }
     const auto& m = transform.m;
     const double determinant = static_cast<double>(m[0][0]) * (static_cast<double>(m[1][1]) * m[2][2] - static_cast<double>(m[1][2]) * m[2][1])
         - static_cast<double>(m[0][1]) * (static_cast<double>(m[1][0]) * m[2][2] - static_cast<double>(m[1][2]) * m[2][0])
@@ -37,17 +42,23 @@ bool ValidTransform(const math::Matrix4& transform)
 template<typename T>
 void DiagnoseUnsupported(const std::vector<T>& input, RayScene& output)
 {
-    for (const auto& value : input)
-        if (MatchesLayer(value.layer, output.layerMask))
+    for (const auto& value : input) {
+        if (MatchesLayer(value.layer, output.layerMask)) {
             output.diagnostics.push_back({{output.sceneGeneration, 0, 0}, UINT32_MAX,
                 RaySceneIssue::NONMESH_GEOMETRY_UNSUPPORTED});
+        }
+    }
 }
 
 /// @note Only resolved empty counts prove absence; camera bounds, distance, LOD ratios and unknown modes do not.
 bool HasResolvedFiberGeometry(const RenderFiberInput& fiber)
 {
-    if (!std::isfinite(fiber.material.m_length) || !std::isfinite(fiber.material.m_density)) return true;
-    if (fiber.material.m_length <= 0 || fiber.material.m_density <= 0) return false;
+    if (!std::isfinite(fiber.material.m_length) || !std::isfinite(fiber.material.m_density)) {
+        return true;
+    }
+    if (fiber.material.m_length <= 0 || fiber.material.m_density <= 0) {
+        return false;
+    }
     const bool shell = (fiber.vertices.IsValid() || (fiber.skinned && fiber.skinnedVertices.IsValid()))
         && fiber.indices.IsValid() && fiber.indexCount >= 3;
     const bool fin = fiber.fins.m_vertices.IsValid() && fiber.fins.m_indices.IsValid() && fiber.fins.m_indexCount > 0;
@@ -62,19 +73,29 @@ bool HasResolvedFiberGeometry(const RenderFiberInput& fiber)
 
 RaySceneIssue GeometryIssue(const RenderObject& object, const RenderMeshItem& item, const RaySceneBuildOptions& options)
 {
-    if (object.skinned && (!item.deformedVertexBuffer.IsValid() || item.deformedContentVersion == 0))
+    if (object.skinned && (!item.deformedVertexBuffer.IsValid() || item.deformedContentVersion == 0)) {
         return RaySceneIssue::SKINNED_UNSUPPORTED;
-    if (!item.material.valid) return RaySceneIssue::MATERIAL_UNRESOLVED;
-    if (!item.material.rayCapabilities.staticGeometry) return RaySceneIssue::CUSTOM_GEOMETRY_UNSUPPORTED;
-    if (item.material.capabilities.blend != BlendMode::OPAQUE_BLEND) return RaySceneIssue::TRANSPARENT_UNSUPPORTED;
+    }
+    if (!item.material.valid) {
+        return RaySceneIssue::MATERIAL_UNRESOLVED;
+    }
+    if (!item.material.rayCapabilities.staticGeometry) {
+        return RaySceneIssue::CUSTOM_GEOMETRY_UNSUPPORTED;
+    }
+    if (item.material.capabilities.blend != BlendMode::OPAQUE_BLEND) {
+        return RaySceneIssue::TRANSPARENT_UNSUPPORTED;
+    }
     if (item.material.rayCapabilities.opacity != RayOpacity::OPAQUE_SURFACE
-        && !(item.material.rayCapabilities.opacity == RayOpacity::ALPHA_TEST && item.material.surface.standardSurfaceSupported))
+        && !(item.material.rayCapabilities.opacity == RayOpacity::ALPHA_TEST && item.material.surface.standardSurfaceSupported)) {
         return RaySceneIssue::ALPHA_TEST_UNSUPPORTED;
+    }
     if (item.material.surface.dielectric.transmission != 0
-        && (!options.allowSolidDielectrics || !item.material.surface.solidDielectricSupported))
+        && (!options.allowSolidDielectrics || !item.material.surface.solidDielectricSupported)) {
         return RaySceneIssue::SOLID_DIELECTRIC_UNSUPPORTED;
-    if (item.vertexContentVersion == 0 || (item.indexBuffer.IsValid() && item.indexContentVersion == 0))
+    }
+    if (item.vertexContentVersion == 0 || (item.indexBuffer.IsValid() && item.indexContentVersion == 0)) {
         return RaySceneIssue::CONTENT_VERSION_UNAVAILABLE;
+    }
     return RaySceneIssue::INVALID_GEOMETRY;
 }
 
@@ -98,7 +119,7 @@ bool CanCollect(const RenderObject& object, const RenderMeshItem& item, const Ra
             : item.indexCount == 0 && item.vertexCount % 3 == 0);
 }
 
-} /// @note namespace
+} // namespace
 
 size_t RayGeometryKeyHash::operator()(const RayGeometryKey& key) const
 {
@@ -124,19 +145,25 @@ RayScene BuildRayScene(const RenderScene& scene, RaySceneBuildOptions options)
         return output;
     }
     std::unordered_map<RayGeometryKey, uint32_t, RayGeometryKeyHash> geometryIndices;
-    for (const auto& diagnostic : scene.rayLodDiagnostics)
-        if ((diagnostic.layerMask & options.layerMask) != 0)
+    for (const auto& diagnostic : scene.rayLodDiagnostics) {
+        if ((diagnostic.layerMask & options.layerMask) != 0) {
             output.diagnostics.push_back({{scene.sceneGeneration, diagnostic.sourceIndex,
                 diagnostic.sourceGeneration}, UINT32_MAX, RaySceneIssue::LOD_SELECTION_UNRESOLVED});
+        }
+    }
     for (uint32_t objectIndex = 0; objectIndex < scene.Objects().size(); ++objectIndex) {
         const auto& object = scene.Objects()[objectIndex];
-        if (!MatchesLayer(object.layer, options.layerMask)) continue;
+        if (!MatchesLayer(object.layer, options.layerMask)) {
+            continue;
+        }
         const RayObjectId objectId{scene.sceneGeneration, object.sourceIndex, object.sourceGeneration};
         if (object.rayLodSelectionRequired) {
             output.diagnostics.push_back({objectId, UINT32_MAX, RaySceneIssue::LOD_SELECTION_UNRESOLVED});
             continue;
         }
-        if (!object.rayVisible) continue;
+        if (!object.rayVisible) {
+            continue;
+        }
         if (object.firstItem > scene.items.size() || object.itemCount > scene.items.size() - object.firstItem) {
             output.diagnostics.push_back({objectId, UINT32_MAX, RaySceneIssue::INVALID_OBJECT_RANGE});
             continue;
@@ -148,7 +175,9 @@ RayScene BuildRayScene(const RenderScene& scene, RaySceneBuildOptions options)
         for (uint32_t offset = 0; offset < object.itemCount; ++offset) {
             const uint32_t sourceItem = object.firstItem + offset;
             const auto& capturedItem = scene.items[sourceItem];
-            if (!capturedItem.slotVisible || capturedItem.material.rayCapabilities.opacity == RayOpacity::EMPTY) continue;
+            if (!capturedItem.slotVisible || capturedItem.material.rayCapabilities.opacity == RayOpacity::EMPTY) {
+                continue;
+            }
             std::optional<RenderMeshItem> resolvedItem;
             if (object.skinned && capturedItem.preparedSkinning) {
                 resolvedItem = capturedItem;
@@ -160,10 +189,11 @@ RayScene BuildRayScene(const RenderScene& scene, RaySceneBuildOptions options)
             }
             const auto& item = resolvedItem ? *resolvedItem : capturedItem;
             if (!item.material.surface.standardSurfaceSupported
-                && !(options.allowSolidDielectrics && item.material.surface.solidDielectricSupported))
+                && !(options.allowSolidDielectrics && item.material.surface.solidDielectricSupported)) {
                 output.surfaceDiagnostics.push_back({objectId, sourceItem,
                     item.material.surface.solidDielectricSupported
                         ? SurfaceMaterialIssue::SOLID_DIELECTRIC_UNSUPPORTED : item.material.surface.issue});
+            }
             if (item.objectIndex != objectIndex || !CanCollect(object, item, options)) {
                 output.diagnostics.push_back({objectId, sourceItem, item.objectIndex != objectIndex
                     ? RaySceneIssue::INVALID_OBJECT_RANGE : GeometryIssue(object, item, options)});
@@ -201,7 +231,9 @@ RayScene BuildRayScene(const RenderScene& scene, RaySceneBuildOptions options)
             instance.world = object.world;
             instance.previousWorld = object.previousWorld;
             instance.doubleSided = doubleSided;
-            if (!object.castShadows) instance.mask &= static_cast<uint8_t>(~RAY_SHADOW_MASK);
+            if (!object.castShadows) {
+                instance.mask &= static_cast<uint8_t>(~RAY_SHADOW_MASK);
+            }
             output.instances.push_back(instance);
         }
     }
@@ -209,24 +241,29 @@ RayScene BuildRayScene(const RenderScene& scene, RaySceneBuildOptions options)
     DiagnoseUnsupported(scene.water, output);
     DiagnoseUnsupported(scene.trails, output);
     DiagnoseUnsupported(scene.meshTrails, output);
-    /// @note Resident raster instances are not yet TLAS instances; report coverage loss instead of silently omitting trees from ray reflections/shadows.
-    for (const auto& source : scene.instances)
+    // Resident raster instances are not yet TLAS instances; report coverage loss instead of silently omitting trees from ray reflections/shadows.
+    for (const auto& source : scene.instances) {
         if (MatchesLayer(source.layer,output.layerMask) && source.data
-            && std::any_of(source.data->placements.begin(),source.data->placements.end(),[](const auto& value){return value.active;}))
+            && std::any_of(source.data->placements.begin(),source.data->placements.end(),[](const auto& value){return value.active;})) {
             output.diagnostics.push_back({{source.identity[0],static_cast<uint32_t>(source.identity[1]),static_cast<uint32_t>(source.identity[1]>>32)},
                 UINT32_MAX,RaySceneIssue::NONMESH_GEOMETRY_UNSUPPORTED});
+        }
+    }
     for (const auto& source : scene.rayUnsupportedEffects) {
-        if ((source.layerMask & output.layerMask) != 0)
+        if ((source.layerMask & output.layerMask) != 0) {
             output.diagnostics.push_back({{output.sceneGeneration, source.sourceIndex, source.sourceGeneration},
                 UINT32_MAX, RaySceneIssue::NONMESH_GEOMETRY_UNSUPPORTED});
+        }
     }
-    /// @note Partial metadata cannot prove that another legacy particle owner or layer is absent; duplicate diagnostics are conservative.
+    // Partial metadata cannot prove that another legacy particle owner or layer is absent; duplicate diagnostics are conservative.
     DiagnoseUnsupported(scene.particles, output);
-    /// @note Fiber draw lists can include terrain sources absent from mesh metadata; retaining their conservative diagnosis cannot hide another owner or layer.
-    for (const auto& fiber : scene.fibers)
-        if (MatchesLayer(fiber.layer, output.layerMask) && HasResolvedFiberGeometry(fiber))
+    // Fiber draw lists can include terrain sources absent from mesh metadata; retaining their conservative diagnosis cannot hide another owner or layer.
+    for (const auto& fiber : scene.fibers) {
+        if (MatchesLayer(fiber.layer, output.layerMask) && HasResolvedFiberGeometry(fiber)) {
             output.diagnostics.push_back({{output.sceneGeneration, 0, 0}, UINT32_MAX,
                 RaySceneIssue::NONMESH_GEOMETRY_UNSUPPORTED});
+        }
+    }
     DiagnoseUnsupported(scene.decals, output);
     return output;
 }
@@ -252,4 +289,4 @@ const char* DescribeRaySceneIssue(RaySceneIssue issue)
     return "Unknown ray scene issue";
 }
 
-} /// @note namespace fbzz::renderer
+} // namespace fbzz::renderer

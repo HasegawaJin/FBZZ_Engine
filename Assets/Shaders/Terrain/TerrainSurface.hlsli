@@ -73,8 +73,8 @@ struct TerrainLayer
     float macroStrength;
 };
 
-FBZZ_TEX2D_T(float4, g_splatIndices, 0);
-FBZZ_TEX2D_T(float4, g_splatWeights, 1);
+FBZZ_TEX2D_T(float4, g_splatIndices, SRV_TERRAIN_SPLAT_INDICES_SLOT);
+FBZZ_TEX2D_T(float4, g_splatWeights, SRV_TERRAIN_SPLAT_WEIGHTS_SLOT);
 static StructuredBuffer<TerrainLayer> g_terrainLayers = ResourceDescriptorHeap[NonUniformResourceIndex(layerBufferIndex)];
 
 Texture2D TerrainTexture(uint index) { return ResourceDescriptorHeap[NonUniformResourceIndex(index)]; }

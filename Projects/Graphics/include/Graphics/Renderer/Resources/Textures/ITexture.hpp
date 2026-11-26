@@ -14,17 +14,17 @@ namespace fbzz::renderer
     /// @note       2048x2048 アトラスで 16MB 無駄になるため R8 を選べるようにしておく。
     enum class DynamicTextureFormat
     {
-        R8,      ///< @note 単一チャンネル 8bit。シェーダーからは .r で読む
-        RGBA8,   ///< @note 4 チャンネル 8bit
+        R8,      ///< 単一チャンネル 8bit。シェーダーからは .r で読む
+        RGBA8,   ///< 4 チャンネル 8bit
     };
 
     /// @note CPU で焼いたミップ連鎖 1 段ぶんの RGBA8 データ。
     /// @note rgba は width*height*4 バイトを指し、転送が終わるまで有効であること。
     struct TextureMipData
     {
-        const std::uint8_t* rgba   = nullptr;
-        std::uint32_t       width  = 0;
-        std::uint32_t       height = 0;
+        const std::uint8_t* rgba   = nullptr; ///< 呼び出し元が所有する RGBA8 画素列。1 行は width × 4 バイト。
+        std::uint32_t       width  = 0; ///< このミップ段の横幅 [px]。
+        std::uint32_t       height = 0; ///< このミップ段の高さ [px]。
     };
 
     /// @note bindless 非対応、またはこのテクスチャが永続ディスクリプタ枠を持たないことを表す添字。
@@ -77,4 +77,4 @@ namespace fbzz::renderer
         /// @note Immutable, linear HDR TextureCube loaded from raw DDS; render-target and convolved cube provenance is not implied.
         virtual bool IsRayEnvironmentTexture() const { return false; }
     };
-} /// @note namespace fbzz::renderer
+} // namespace fbzz::renderer

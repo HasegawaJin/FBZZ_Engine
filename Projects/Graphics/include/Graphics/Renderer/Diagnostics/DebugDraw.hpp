@@ -27,8 +27,8 @@ struct DebugDrawVertex {
 
 /// @brief Replay で流し直す層。
 enum class DebugDrawLayer : uint8_t {
-    Overlay     = 1, ///< @note 深度なしの線
-    DepthTested = 2, ///< @note 深度テストありの線と塗りつぶし三角形
+    Overlay     = 1, ///< 深度なしの線
+    DepthTested = 2, ///< 深度テストありの線と塗りつぶし三角形
     All         = 3,
 };
 
@@ -78,8 +78,8 @@ public:
                                 const math::Vector4& color = {1,1,1,1});
 
     /// @brief 破線。同じ形の実線と重なっても両方読めるようにする線種。
-    /// @param dashLength 実線 1 本ぶんのワールド長の目安 [m]。
-    /// @param maxDashes  1 線分あたりの分割上限。
+    /// @param[in] dashLength 実線 1 本ぶんのワールド長の目安 [m]。
+    /// @param[in] maxDashes 1 線分あたりの分割上限。
     FBZZ_GRAPHICS_API static void LineDashed(IRenderer& r, const math::Vector3& from, const math::Vector3& to,
                            const math::Vector4& color = {1,1,1,1},
                            float dashLength = 0.06f, int maxDashes = 8);
@@ -95,29 +95,29 @@ public:
                     const math::Quaternion& rotation, const math::Vector4& color = {0,1,0,1});
     FBZZ_GRAPHICS_API static void Sphere(IRenderer& r, const math::Vector3& center, float radius,
                        const math::Vector4& color = {0,1,0,1});
-    /// @param halfHeight 両端の半球中心までの距離 (半球は含まない)。軸はローカル Y。
+    /// @param[in] halfHeight 両端の半球中心までの距離 (半球は含まない)。軸はローカル Y。
     FBZZ_GRAPHICS_API static void Capsule(IRenderer& r, const math::Vector3& center, float radius, float halfHeight,
                         const math::Vector4& color = {0,1,0,1});
     FBZZ_GRAPHICS_API static void Capsule(IRenderer& r, const math::Vector3& center, float radius, float halfHeight,
                         const math::Quaternion& rotation, const math::Vector4& color = {0,1,0,1});
 
     /// @brief normal に直交する平面上の円。
-    /// @param normal 長さ 0 のときは描かない。
+    /// @param[in] normal 長さ 0 のときは描かない。
     FBZZ_GRAPHICS_API static void Circle(IRenderer& r, const math::Vector3& center, const math::Vector3& normal,
                        float radius, const math::Vector4& color = {1,1,1,1});
     /// @brief normal まわりに fromDirection から angleRadians だけ回る円弧 (右手系で正方向)。
-    /// @param fromDirection normal に射影して使う。平行なら描かない。
+    /// @param[in] fromDirection normal に射影して使う。平行なら描かない。
     FBZZ_GRAPHICS_API static void Arc(IRenderer& r, const math::Vector3& center, const math::Vector3& normal,
                     const math::Vector3& fromDirection, float radius, float angleRadians,
                     const math::Vector4& color = {1,1,1,1});
 
-    /// @param headLength ヘッドのワールド長。シャフトを超えるとクランプする。
+    /// @param[in] headLength ヘッドのワールド長。シャフトを超えるとクランプする。
     FBZZ_GRAPHICS_API static void Arrow(IRenderer& r,
                       const math::Vector3& from, const math::Vector3& to,
                       float headLength = 0.2f, float headRadius = 0.05f,
                       const math::Vector4& color = {1,1,0,1});
 
-    /// @param direction 頂点から底面への向き。正規化不要、長さ 0 なら描かない。
+    /// @param[in] direction 頂点から底面への向き。正規化不要、長さ 0 なら描かない。
     FBZZ_GRAPHICS_API static void Cone(IRenderer& r,
                      const math::Vector3& apex, const math::Vector3& direction,
                      float height, float baseRadius,
@@ -128,4 +128,4 @@ public:
                               const math::Vector4& color = {0.12f, 0.35f, 0.90f, 0.30f});
 };
 
-} /// @note namespace fbzz::renderer
+} // namespace fbzz::renderer

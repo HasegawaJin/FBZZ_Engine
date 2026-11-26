@@ -6,6 +6,7 @@
 /// @note 選択中の State / Transition / .anim / モデルからクリップを解決し、
 /// @note スキンメッシュを SkinnedLit でレンダーターゲットへ毎フレーム描画する。
 /// @note UI (ツールバー・トランスポート・オーバーレイ) は AnimationPreviewUI.cpp が持つ。
+#include <Graphics/Renderer/Commands/ShaderBindingSlots.hpp>
 #include <Engine/Scene/Components/Animation/AnimatorComponent.hpp>
 #include <Engine/Asset/Model/Import/ModelSource.hpp>
 #include <Engine/Asset/AssetDatabase.hpp>
@@ -60,14 +61,22 @@ math::Vector3 SampleVectorKeys(const std::vector<asset::VectorKey>& keys,
                                double ticks,
                                const math::Vector3& fallback)
 {
-    if (keys.empty()) return fallback;
-    if (keys.size() == 1 || ticks <= keys.front().time) return keys.front().value;
-    if (ticks >= keys.back().time) return keys.back().value;
+    if (keys.empty()) {
+        return fallback;
+    }
+    if (keys.size() == 1 || ticks <= keys.front().time) {
+        return keys.front().value;
+    }
+    if (ticks >= keys.back().time) {
+        return keys.back().value;
+    }
 
     for (size_t i = 0; i + 1 < keys.size(); ++i) {
         const auto& a = keys[i];
         const auto& b = keys[i + 1];
-        if (ticks < a.time || ticks > b.time) continue;
+        if (ticks < a.time || ticks > b.time) {
+            continue;
+        }
         const double span = b.time - a.time;
         const float t = span > 0.0 ? static_cast<float>((ticks - a.time) / span) : 0.0f;
         return math::Vector3::Lerp(a.value, b.value, t);
@@ -79,14 +88,22 @@ math::Quaternion SampleQuaternionKeys(const std::vector<asset::QuaternionKey>& k
                                       double ticks,
                                       const math::Quaternion& fallback)
 {
-    if (keys.empty()) return fallback;
-    if (keys.size() == 1 || ticks <= keys.front().time) return keys.front().value;
-    if (ticks >= keys.back().time) return keys.back().value;
+    if (keys.empty()) {
+        return fallback;
+    }
+    if (keys.size() == 1 || ticks <= keys.front().time) {
+        return keys.front().value;
+    }
+    if (ticks >= keys.back().time) {
+        return keys.back().value;
+    }
 
     for (size_t i = 0; i + 1 < keys.size(); ++i) {
         const auto& a = keys[i];
         const auto& b = keys[i + 1];
-        if (ticks < a.time || ticks > b.time) continue;
+        if (ticks < a.time || ticks > b.time) {
+            continue;
+        }
         const double span = b.time - a.time;
         const float t = span > 0.0 ? static_cast<float>((ticks - a.time) / span) : 0.0f;
         return math::Quaternion::Slerp(a.value, b.value, t);
@@ -98,7 +115,9 @@ LocalPose SamplePoseFromTrack(const asset::SkeletonNode& node,
                               const asset::NodeAnimationTrack* track,
                               double ticks)
 {
-    if (!track) return { node.bindTranslation, node.bindRotation, node.bindScale };
+    if (!track) {
+        return { node.bindTranslation, node.bindRotation, node.bindScale };
+    }
     return {
         SampleVectorKeys(track->positions, ticks, node.bindTranslation),
         SampleQuaternionKeys(track->rotations, ticks, node.bindRotation),
@@ -132,8 +151,9 @@ void EvaluatePreviewNode(const asset::Skeleton& skeleton,
     const math::Matrix4 global =
         parentGlobal * math::Matrix4::TRS(pose.translation, pose.rotation, pose.scale);
 
-    if (nodeGlobals && nodeIndex < static_cast<int>(nodeGlobals->size()))
+    if (nodeGlobals && nodeIndex < static_cast<int>(nodeGlobals->size())) {
         (*nodeGlobals)[static_cast<size_t>(nodeIndex)] = global;
+    }
 
     if (node.boneIndex >= 0 && node.boneIndex < static_cast<int>(palette.size())) {
         const auto& bone = skeleton.bones[static_cast<size_t>(node.boneIndex)];
@@ -149,15 +169,22 @@ void EvaluatePreviewNode(const asset::Skeleton& skeleton,
 /// @note 軌跡・接地リング・ルートモーション解析が «どの骨をルートとみなすか» の唯一の定義。
 int FindRootMotionNode(const asset::Skeleton& skeleton)
 {
-    if (skeleton.rootNodeIndex < 0) return -1;
+    if (skeleton.rootNodeIndex < 0) {
+        return -1;
+    }
     std::vector<int> pending{ skeleton.rootNodeIndex };
     while (!pending.empty()) {
         const int nodeIndex = pending.back();
         pending.pop_back();
-        if (nodeIndex < 0 || nodeIndex >= static_cast<int>(skeleton.nodes.size())) continue;
-        if (skeleton.nodes[static_cast<size_t>(nodeIndex)].boneIndex >= 0) return nodeIndex;
-        for (int child : skeleton.nodes[static_cast<size_t>(nodeIndex)].children)
+        if (nodeIndex < 0 || nodeIndex >= static_cast<int>(skeleton.nodes.size())) {
+            continue;
+        }
+        if (skeleton.nodes[static_cast<size_t>(nodeIndex)].boneIndex >= 0) {
+            return nodeIndex;
+        }
+        for (int child : skeleton.nodes[static_cast<size_t>(nodeIndex)].children) {
             pending.push_back(child);
+        }
     }
     return -1;
 }
@@ -175,15 +202,18 @@ void EvaluateGlobalsFromTable(const asset::Skeleton& skeleton,
     const math::Matrix4 global =
         parentGlobal * math::Matrix4::TRS(pose.translation, pose.rotation, pose.scale);
     outGlobals[static_cast<size_t>(nodeIndex)] = global;
-    for (const int child : node.children)
+    for (const int child : node.children) {
         EvaluateGlobalsFromTable(skeleton, tracks, ticks, child, global, outGlobals);
+    }
 }
 
 /// @note node が ancestor の子孫か。足の候補が «Foot と、その子の Toe» に偏るのを避ける。
 bool IsDescendantOf(const asset::Skeleton& skeleton, int node, int ancestor)
 {
     for (int i = node; i >= 0; i = skeleton.nodes[static_cast<size_t>(i)].parentIndex)
-        if (i == ancestor) return true;
+        if (i == ancestor) {
+            return true;
+        }
     return false;
 }
 
@@ -207,7 +237,9 @@ bool StatePreviewSource(const scene::AnimationState& state,
     const auto& motions = state.mode == scene::AnimationStateMode::BlendTree1D
         ? state.blendTree1D.motions
         : state.blendTree2D.motions;
-    if (motions.empty()) return false;
+    if (motions.empty()) {
+        return false;
+    }
     outSource = motions.front().sourcePath;
     outClip = motions.front().clipName;
     return true;
@@ -217,7 +249,9 @@ bool StatePreviewSource(const scene::AnimationState& state,
 /// @note 「1 クリップ = 1 FBX」規約で sourcePath は .anim を指すことが多い。そのまま modelPath に入れると `Load<Model>` が失敗し真っ黒になるため、.anim ならクリップ側スロットへ入れ器は別途探す。
 std::string ResolvePreviewSourcePath(const std::string& source)
 {
-    if (source.empty()) return {};
+    if (source.empty()) {
+        return {};
+    }
     const std::string resolved = asset::AssetManager::ResolveAssetPath(source);
     return NormalizeAssetPath(resolved.empty() ? source : resolved);
 }
@@ -225,13 +259,17 @@ std::string ResolvePreviewSourcePath(const std::string& source)
 void AssignClipSource(PreviewTarget& out, const std::string& source,
                       const std::string& clipName)
 {
-    if (source.empty()) return;
+    if (source.empty()) {
+        return;
+    }
     const std::string resolvedSource = ResolvePreviewSourcePath(source);
     if (util::StringUtils::EndsWith(util::StringUtils::ToLower(resolvedSource), ".anim")) {
         out.animAssetPath = resolvedSource;
         out.clipName.clear();
         std::string geometry = FindGeometryForAnim(resolvedSource);
-        if (geometry.empty()) geometry = g_state.attachedModelPath;
+        if (geometry.empty()) {
+            geometry = g_state.attachedModelPath;
+        }
         out.modelPath = geometry;
     } else {
         out.modelPath = resolvedSource;
@@ -243,15 +281,20 @@ void AssignClipSource(PreviewTarget& out, const std::string& source,
 /// @note MiniBot は本体 GO に Animator、子 GO 群に SkinnedMeshRenderer を持つ構成のため、自分自身だけでは器が見つからない。
 std::string FindGeometryInHierarchy(scene::GameObject* go, int depth = 0)
 {
-    if (!go || depth > 4) return {};
+    if (!go || depth > 4) {
+        return {};
+    }
     if (auto* smr = go->GetComponent<scene::SkinnedMeshRenderer>()) {
-        if (!smr->modelPath.empty() && LoadsAsPreviewableGeometry(smr->modelPath))
+        if (!smr->modelPath.empty() && LoadsAsPreviewableGeometry(smr->modelPath)) {
             return NormalizeAssetPath(smr->modelPath);
+        }
     }
     const int count = go->GetChildCount();
     for (int i = 0; i < count; ++i) {
         std::string found = FindGeometryInHierarchy(go->GetChild(i), depth + 1);
-        if (!found.empty()) return found;
+        if (!found.empty()) {
+            return found;
+        }
     }
     return {};
 }
@@ -261,35 +304,46 @@ std::string FindGeometryInHierarchy(scene::GameObject* go, int depth = 0)
 bool ResolveGameObjectTarget(EditorContext& ctx, PreviewTarget& out)
 {
     scene::GameObject* go = ctx.GetSelectedGO();
-    if (!go) return false;
+    if (!go) {
+        return false;
+    }
     auto* animator = go->GetComponent<scene::AnimatorComponent>();
-    if (!animator) return false;
+    if (!animator) {
+        return false;
+    }
 
-    /// @note クリップ: 現在ステート → デフォルトステート → 先頭ステート
+    // クリップ: 現在ステート → デフォルトステート → 先頭ステート
     std::string source, clipName;
     auto tryState = [&](const std::string& name) {
-        if (name.empty() || !source.empty()) return;
+        if (name.empty() || !source.empty()) {
+            return;
+        }
         for (const auto& st : animator->states)
-            if (st.name == name) { StatePreviewSource(st, source, clipName); return; }
+            if (st.name == name) {
+                StatePreviewSource(st, source, clipName);
+                return;
+            }
     };
     tryState(animator->currentStateName);
     tryState(animator->defaultStateName);
-    if (source.empty() && !animator->states.empty())
+    if (source.empty() && !animator->states.empty()) {
         StatePreviewSource(animator->states.front(), source, clipName);
+    }
 
     out.mode = PreviewTarget::Mode::Clip;
     out.label = go->name;
     AssignClipSource(out, source, clipName);
 
-    /// @note 明示アタッチ済みの FBX を最優先し、未アタッチ時だけシーン上の実物を使う。
+    // 明示アタッチ済みの FBX を最優先し、未アタッチ時だけシーン上の実物を使う。
     if (g_state.attachedModelPath.empty()) {
-        if (std::string geometry = FindGeometryInHierarchy(go); !geometry.empty())
+        if (std::string geometry = FindGeometryInHierarchy(go); !geometry.empty()) {
             out.modelPath = geometry;
+        }
     } else {
         out.modelPath = g_state.attachedModelPath;
     }
 
-    /// @note クリップも器も無ければプレビューする意味がない。
+    // クリップも器も無ければプレビューする意味がない。
     return !out.modelPath.empty() || !out.animAssetPath.empty();
 }
 
@@ -298,102 +352,123 @@ bool ResolveGraphTarget(EditorContext& ctx, PreviewTarget& out)
 {
     const auto& selection = ctx.animationGraphSelection;
     using Type = EditorContext::AnimationGraphSelection::Type;
-    if (selection.type == Type::None || selection.type == Type::AnyState) return false;
+    if (selection.type == Type::None || selection.type == Type::AnyState) {
+        return false;
+    }
 
-    /// @note Controller アセット編集中はそのモデル、Scene 上の GameObject 選択ならそのコンポーネント。
+    // Controller アセット編集中はそのモデル、Scene 上の GameObject 選択ならそのコンポーネント。
     scene::AnimatorComponent* animator = nullptr;
     if (!selection.assetPath.empty() &&
         selection.assetPath == ctx.animationControllerEditorPath &&
         ctx.animationControllerEditor) {
         animator = ctx.animationControllerEditor.get();
     } else if (selection.entityId.IsValid() && ctx.activeScene) {
-        if (auto* go = ctx.activeScene->GetGameObject(selection.entityId))
+        if (auto* go = ctx.activeScene->GetGameObject(selection.entityId)) {
             animator = go->GetComponent<scene::AnimatorComponent>();
+        }
     }
-    if (!animator) return false;
+    if (!animator) {
+        return false;
+    }
 
-    /// @note Graph が追加 Layer を表示しているときは、その Layer の states / Any State を
-    /// @note 参照する。Base Layer の配列を見続けると、遷移線を選択しても別グラフのクリップを
-    /// @note プレビューするか、添字不一致で対象なしになる。
+    // Graph が追加 Layer を表示しているときは、その Layer の states / Any State を
+    // 参照する。Base Layer の配列を見続けると、遷移線を選択しても別グラフのクリップを
+    // プレビューするか、添字不一致で対象なしになる。
     const std::vector<scene::AnimationState>* graphStates = &animator->states;
     const std::vector<scene::AnimationTransition>* graphAnyStateTransitions =
         &animator->anyStateTransitions;
     if (!selection.layerName.empty()) {
         const scene::AnimationLayer* layer = animator->FindLayer(selection.layerName);
-        if (!layer) return false;
+        if (!layer) {
+            return false;
+        }
         graphStates = &layer->states;
         graphAnyStateTransitions = &layer->anyStateTransitions;
     }
 
     auto stateByName = [&](const std::string& name) -> const scene::AnimationState* {
         for (const auto& state : *graphStates)
-            if (state.name == name) return &state;
+            if (state.name == name) {
+                return &state;
+            }
         return nullptr;
     };
 
     if (selection.type == Type::State) {
         if (selection.stateIndex < 0 ||
-            selection.stateIndex >= static_cast<int>(graphStates->size()))
+            selection.stateIndex >= static_cast<int>(graphStates->size())) {
             return false;
+        }
         const auto& state = (*graphStates)[static_cast<size_t>(selection.stateIndex)];
         std::string source, clip;
-        if (!StatePreviewSource(state, source, clip) || source.empty()) return false;
+        if (!StatePreviewSource(state, source, clip) || source.empty()) {
+            return false;
+        }
         out.mode = PreviewTarget::Mode::Clip;
         AssignClipSource(out, source, clip);
-        /// @note 一度 FBX を明示的にアタッチした後は、Clip を切り替えても同じ器を使う。
-        /// @note 未アタッチ時だけ Scene 上の SkinnedMeshRenderer を自動解決する。
+        // 一度 FBX を明示的にアタッチした後は、Clip を切り替えても同じ器を使う。
+        // 未アタッチ時だけ Scene 上の SkinnedMeshRenderer を自動解決する。
         if (g_state.attachedModelPath.empty() && selection.entityId.IsValid() && ctx.activeScene) {
             if (auto* owner = ctx.activeScene->GetGameObject(selection.entityId)) {
-                if (std::string geo = FindGeometryInHierarchy(owner); !geo.empty())
+                if (std::string geo = FindGeometryInHierarchy(owner); !geo.empty()) {
                     out.modelPath = geo;
+                }
             }
         } else if (!g_state.attachedModelPath.empty()) {
             out.modelPath = g_state.attachedModelPath;
         }
         out.label = state.name;
-        if (state.mode != scene::AnimationStateMode::Clip)
+        if (state.mode != scene::AnimationStateMode::Clip) {
             out.label += "  (Blend Tree: first motion)";
+        }
         return true;
     }
 
-    /// @note Transition / AnyStateTransition
+    // Transition / AnyStateTransition
     const scene::AnimationTransition* transition = nullptr;
     const scene::AnimationState* fromState = nullptr;
     if (selection.type == Type::Transition) {
         if (selection.stateIndex < 0 ||
-            selection.stateIndex >= static_cast<int>(graphStates->size()))
+            selection.stateIndex >= static_cast<int>(graphStates->size())) {
             return false;
+        }
         fromState = &(*graphStates)[static_cast<size_t>(selection.stateIndex)];
         if (selection.transitionIndex < 0 ||
-            selection.transitionIndex >= static_cast<int>(fromState->transitions.size()))
+            selection.transitionIndex >= static_cast<int>(fromState->transitions.size())) {
             return false;
+        }
         transition = &fromState->transitions[static_cast<size_t>(selection.transitionIndex)];
     } else {
         if (selection.transitionIndex < 0 ||
-            selection.transitionIndex >= static_cast<int>(graphAnyStateTransitions->size()))
+            selection.transitionIndex >= static_cast<int>(graphAnyStateTransitions->size())) {
             return false;
+        }
         transition =
             &(*graphAnyStateTransitions)[static_cast<size_t>(selection.transitionIndex)];
     }
 
     const scene::AnimationState* toState = stateByName(transition->toStateName);
-    if (!toState) return false;
+    if (!toState) {
+        return false;
+    }
     std::string toSource, toClip;
-    if (!StatePreviewSource(*toState, toSource, toClip) || toSource.empty()) return false;
+    if (!StatePreviewSource(*toState, toSource, toClip) || toSource.empty()) {
+        return false;
+    }
 
     std::string fromSource, fromClip;
     const bool hasFrom =
         fromState && StatePreviewSource(*fromState, fromSource, fromClip) && !fromSource.empty();
 
     if (!hasFrom) {
-        /// @note Any State 遷移は遷移元が不定のため、遷移先クリップの単独プレビューにする。
+        // Any State 遷移は遷移元が不定のため、遷移先クリップの単独プレビューにする。
         out.mode = PreviewTarget::Mode::Clip;
         AssignClipSource(out, toSource, toClip);
         out.label = std::string("Any State -> ") + toState->name;
         return true;
     }
 
-    /// @note 遷移元クリップの長さから、Exit Time とブレンド秒数を Transition Preview と同じ式で求める。
+    // 遷移元クリップの長さから、Exit Time とブレンド秒数を Transition Preview と同じ式で求める。
     const std::string resolvedFromSource = ResolvePreviewSourcePath(fromSource);
     const bool fromIsAnim = util::StringUtils::EndsWith(
         util::StringUtils::ToLower(resolvedFromSource), ".anim");
@@ -417,7 +492,9 @@ bool ResolveGraphTarget(EditorContext& ctx, PreviewTarget& out)
     if (util::StringUtils::EndsWith(util::StringUtils::ToLower(resolvedToSource), ".anim")) {
         out.toAnimAssetPath = resolvedToSource;
         out.toSourcePath = FindGeometryForAnim(resolvedToSource);
-        if (out.toSourcePath.empty()) out.toSourcePath = out.modelPath;
+        if (out.toSourcePath.empty()) {
+            out.toSourcePath = out.modelPath;
+        }
     } else {
         out.toSourcePath = resolvedToSource;
     }
@@ -436,10 +513,12 @@ bool ResolveAssetTarget(EditorContext& ctx, PreviewTarget& out)
 
 bool EnsurePreviewGpu(renderer::ResourceManager& resources)
 {
-    if (!g_gpu.skinnedShader.IsValid())
+    if (!g_gpu.skinnedShader.IsValid()) {
         g_gpu.skinnedShader = resources.LoadShader("Assets/Shaders/Material/Skinned/SkinnedLit.hlsl");
-    if (!g_gpu.surfaceShader.IsValid())
+    }
+    if (!g_gpu.surfaceShader.IsValid()) {
         g_gpu.surfaceShader = resources.LoadShader("Assets/Shaders/Material/Surface/Lit.hlsl");
+    }
     if (!g_gpu.pso.IsValid()) {
         g_gpu.pso = resources.CreatePipelineState({
             renderer::RasterizerMode::SOLID_NOCULL,
@@ -454,16 +533,21 @@ bool EnsurePreviewGpu(renderer::ResourceManager& resources)
             renderer::DepthMode::DEPTH_ON
         });
     }
-    if (!g_gpu.frameCB.IsValid())
+    if (!g_gpu.frameCB.IsValid()) {
         g_gpu.frameCB = resources.CreateConstantBuffer(sizeof(scene::PerFrameCB));
-    if (!g_gpu.objectCB.IsValid())
+    }
+    if (!g_gpu.objectCB.IsValid()) {
         g_gpu.objectCB = resources.CreateConstantBuffer(sizeof(scene::PerObjectCB));
-    if (!g_gpu.materialCB.IsValid())
+    }
+    if (!g_gpu.materialCB.IsValid()) {
         g_gpu.materialCB = resources.CreateConstantBuffer(sizeof(PreviewMaterialCB));
-    if (!g_gpu.lightCB.IsValid())
+    }
+    if (!g_gpu.lightCB.IsValid()) {
         g_gpu.lightCB = resources.CreateConstantBuffer(sizeof(renderer::LightConstantsCB));
-    if (!g_gpu.shadowCB.IsValid())
+    }
+    if (!g_gpu.shadowCB.IsValid()) {
         g_gpu.shadowCB = resources.CreateConstantBuffer(sizeof(scene::ShadowConstantsCB));
+    }
     if (!g_gpu.punctualShadowCB.IsValid()) {
         g_gpu.punctualShadowCB =
             resources.CreateConstantBuffer(sizeof(scene::PunctualShadowConstantsCB));
@@ -473,13 +557,14 @@ bool EnsurePreviewGpu(renderer::ResourceManager& resources)
 
     if (!g_gpu.clusterCB.IsValid()) {
         g_gpu.clusterCB = resources.CreateConstantBuffer(sizeof(scene::ClusterConstantsCB));
-        /// @note clusterLightMode = 0 = LEGACY
+        // clusterLightMode = 0 = LEGACY
         const scene::ClusterConstantsCB legacyCluster{};
         resources.Update(g_gpu.clusterCB, &legacyCluster, sizeof(legacyCluster));
     }
 
-    if (!g_gpu.skinningCB.IsValid())
+    if (!g_gpu.skinningCB.IsValid()) {
         g_gpu.skinningCB = resources.CreateConstantBuffer(sizeof(PreviewSkinningCB));
+    }
     if (!g_gpu.renderTarget.IsValid())
         g_gpu.renderTarget = resources.CreateRenderTarget(PREVIEW_RT_SIZE, PREVIEW_RT_SIZE,
                                                           renderer::CameraDepthTargetDesc(1));
@@ -499,12 +584,14 @@ struct PreviewLineCameraCB {
 
 bool EnsurePreviewLineGpu(renderer::ResourceManager& resources)
 {
-    if (!g_lineGpu.shader.IsValid())
+    if (!g_lineGpu.shader.IsValid()) {
         g_lineGpu.shader = resources.LoadShader("Assets/Shaders/Debug/DebugDraw.hlsl");
-    if (!g_lineGpu.cameraCB.IsValid())
+    }
+    if (!g_lineGpu.cameraCB.IsValid()) {
         g_lineGpu.cameraCB = resources.CreateConstantBuffer(sizeof(PreviewLineCameraCB));
+    }
     if (!g_lineGpu.pso.IsValid()) {
-        /// @note DEPTH_READ: モデルに遮蔽させつつ、深度は書かない (後続の線が互いを消さない)。
+        // DEPTH_READ: モデルに遮蔽させつつ、深度は書かない (後続の線が互いを消さない)。
         g_lineGpu.pso = resources.CreatePipelineState({
             renderer::RasterizerMode::SOLID,
             renderer::BlendMode::ALPHA_BLEND,
@@ -532,17 +619,22 @@ renderer::Material* ResolveImportedPreviewMaterial(EditorContext& ctx,
             g_materialCache.slots[i].materialPath = FindImportedMaterialPath(
                 g_materialCache.modelPath, modelAsset, static_cast<int>(i));
     }
-    if (meshIndex >= g_materialCache.slots.size()) return nullptr;
+    if (meshIndex >= g_materialCache.slots.size()) {
+        return nullptr;
+    }
     PreviewMaterialSlot& slot = g_materialCache.slots[meshIndex];
-    if (slot.materialPath.empty()) return nullptr;
+    if (slot.materialPath.empty()) {
+        return nullptr;
+    }
 
-    /// @note 再インポートで .mat が読み直されるとハンドルが変わり、Inspector の未保存編集は
-    /// @note リビジョンだけが進む。どちらでも組み直す。
+    // 再インポートで .mat が読み直されるとハンドルが変わり、Inspector の未保存編集は
+    // リビジョンだけが進む。どちらでも組み直す。
     const auto assetHandle = asset::AssetManager::Load<asset::MaterialAsset>(slot.materialPath);
     const uint64_t revision =
         ctx.MaterialPreviewRevision(NormalizeAssetPath(slot.materialPath));
-    if (slot.built && slot.asset == assetHandle && slot.revision == revision)
+    if (slot.built && slot.asset == assetHandle && slot.revision == revision) {
         return slot.material.get();
+    }
 
     slot.asset = assetHandle;
     slot.revision = revision;
@@ -550,13 +642,17 @@ renderer::Material* ResolveImportedPreviewMaterial(EditorContext& ctx,
     slot.material.reset();
     const auto materialSnapshot = asset::ReadMaterialAuthoring(assetHandle);
     const auto* materialAsset = materialSnapshot ? &materialSnapshot->Data() : nullptr;
-    if (!materialAsset || materialAsset->shaderPath.empty()) return nullptr;
+    if (!materialAsset || materialAsset->shaderPath.empty()) {
+        return nullptr;
+    }
 
     auto material = std::make_unique<renderer::Material>();
     material->shaderPath = materialAsset->shaderPath;
     material->shader = resources.LoadShader(material->shaderPath);
     auto* shader = resources.Get(material->shader);
-    if (!shader) return nullptr;
+    if (!shader) {
+        return nullptr;
+    }
     const auto desc = shader->GetDescriptor();
     material->paramData.assign(desc.cbufferSize, 0u);
     asset::InitDefaultMaterialParams(desc, material->paramData);
@@ -564,7 +660,9 @@ renderer::Material* ResolveImportedPreviewMaterial(EditorContext& ctx,
     const auto texturePaths = asset::ResolveMaterialTexturePaths(*materialAsset);
     material->textures.resize(texturePaths.size());
     for (size_t t = 0; t < texturePaths.size(); ++t) {
-        if (texturePaths[t].empty()) continue;
+        if (texturePaths[t].empty()) {
+            continue;
+        }
         asset::TextureImportSettings settings;
         const bool flipGreen = asset::GetCachedTextureImportSettings(texturePaths[t], settings)
             && settings.flipGreen;
@@ -577,19 +675,25 @@ renderer::Material* ResolveImportedPreviewMaterial(EditorContext& ctx,
 
 std::string BuildModelNodePath(const asset::Model& model, int nodeIndex)
 {
-    if (nodeIndex < 0 || nodeIndex >= static_cast<int>(model.nodes.size())) return {};
+    if (nodeIndex < 0 || nodeIndex >= static_cast<int>(model.nodes.size())) {
+        return {};
+    }
     std::vector<std::string_view> reverseNames;
     std::vector<bool> visited(model.nodes.size(), false);
     int current = nodeIndex;
     while (current >= 0 && current < static_cast<int>(model.nodes.size())) {
-        if (visited[static_cast<size_t>(current)]) return {};
+        if (visited[static_cast<size_t>(current)]) {
+            return {};
+        }
         visited[static_cast<size_t>(current)] = true;
         reverseNames.push_back(model.nodes[static_cast<size_t>(current)].name);
         current = model.nodes[static_cast<size_t>(current)].parentIndex;
     }
     std::string path;
     for (auto it = reverseNames.rbegin(); it != reverseNames.rend(); ++it) {
-        if (!path.empty()) path += '/';
+        if (!path.empty()) {
+            path += '/';
+        }
         path += *it;
     }
     return path;
@@ -600,29 +704,36 @@ void BuildBindPoseGlobals(const asset::Skeleton& skeleton,
                           const math::Matrix4& parentGlobal,
                           std::vector<math::Matrix4>& outGlobals)
 {
-    if (nodeIndex < 0 || nodeIndex >= static_cast<int>(skeleton.nodes.size())) return;
+    if (nodeIndex < 0 || nodeIndex >= static_cast<int>(skeleton.nodes.size())) {
+        return;
+    }
     const auto& node = skeleton.nodes[static_cast<size_t>(nodeIndex)];
     const math::Matrix4 global = parentGlobal * math::Matrix4::TRS(
         node.bindTranslation, node.bindRotation, node.bindScale);
     outGlobals[static_cast<size_t>(nodeIndex)] = global;
-    for (const int child : node.children)
+    for (const int child : node.children) {
         BuildBindPoseGlobals(skeleton, child, global, outGlobals);
+    }
 }
 
 int FindSkeletonNodeForModelNode(const asset::Model& model, int modelNodeIndex)
 {
     if (!model.skeleton || modelNodeIndex < 0 ||
-        modelNodeIndex >= static_cast<int>(model.nodes.size())) return -1;
+        modelNodeIndex >= static_cast<int>(model.nodes.size())) {
+        return -1;
+    }
     const std::string modelPath = BuildModelNodePath(model, modelNodeIndex);
     for (int i = 0; i < static_cast<int>(model.skeleton->nodes.size()); ++i) {
-        if (asset::BuildSkeletonNodePath(*model.skeleton, i) == modelPath)
+        if (asset::BuildSkeletonNodePath(*model.skeleton, i) == modelPath) {
             return i;
+        }
     }
-    /// @note 旧形式で階層パスが欠けている場合は、同名ノードへ縮退する。
+    // 旧形式で階層パスが欠けている場合は、同名ノードへ縮退する。
     const std::string& modelName = model.nodes[static_cast<size_t>(modelNodeIndex)].name;
     for (int i = 0; i < static_cast<int>(model.skeleton->nodes.size()); ++i)
-        if (model.skeleton->nodes[static_cast<size_t>(i)].name == modelName)
+        if (model.skeleton->nodes[static_cast<size_t>(i)].name == modelName) {
             return i;
+        }
     return -1;
 }
 
@@ -657,9 +768,13 @@ float SkinnedMaskWeight(const renderer::Mesh& mesh, const std::vector<float>& bo
     for (const auto& vertex : mesh.cpuSkinnedVertices) {
         for (int i = 0; i < 4; ++i) {
             const float influence = vertex.boneWeights[i];
-            if (influence <= 0.0f) continue;
+            if (influence <= 0.0f) {
+                continue;
+            }
             const uint32_t bone = vertex.boneIndices[i];
-            if (bone >= boneWeights.size()) continue;
+            if (bone >= boneWeights.size()) {
+                continue;
+            }
             total += static_cast<double>(influence) * boneWeights[bone];
             influenceSum += influence;
         }
@@ -674,10 +789,11 @@ float MaskWeightForMesh(const asset::Model& model,
 {
     const renderer::Mesh* mesh =
         meshIndex < model.meshes.size() ? model.meshes[meshIndex].get() : nullptr;
-    if (mesh && mesh->isSkinned && !mesh->cpuSkinnedVertices.empty() && !boneMaskWeights.empty())
+    if (mesh && mesh->isSkinned && !mesh->cpuSkinnedVertices.empty() && !boneMaskWeights.empty()) {
         return SkinnedMaskWeight(*mesh, boneMaskWeights);
+    }
 
-    /// @note 非スキンメッシュ (小物・アタッチメント) は、そのノード自身の位置で決まる。
+    // 非スキンメッシュ (小物・アタッチメント) は、そのノード自身の位置で決まる。
     const int nodeIndex = model.FindNodeForMesh(static_cast<uint32_t>(meshIndex));
     if (nodeIndex < 0 || nodeIndex >= static_cast<int>(model.nodes.size()))
         return mask.defaultInclude ? 1.0f : 0.0f;
@@ -709,7 +825,7 @@ void ComputePlaybackSampleAt(float time,
     const float lenB = ClipDurationSeconds(clipB, lenA);
     const float start = target.transitionStartSeconds;
     const float blend = target.blendSeconds;
-    /// @note タイムライン: 遷移元 → ブレンド区間 → 遷移先 1 ループ分。全体をループ再生する。
+    // タイムライン: 遷移元 → ブレンド区間 → 遷移先 1 ループ分。全体をループ再生する。
     outTimelineLength = (std::max)(start + blend + lenB, 0.1f);
 
     outSecondsA = WrapTime(time, lenA);
@@ -738,7 +854,9 @@ void ComputePlaybackSample(const asset::AnimationClip* clipA,
 /// @note 目盛りが «中途半端な実数» にならないようにする。
 float NiceGridStep(float raw)
 {
-    if (!(raw > 0.0f)) return 1.0f;
+    if (!(raw > 0.0f)) {
+        return 1.0f;
+    }
     const float decade = std::pow(10.0f, std::floor(std::log10(raw)));
     const float normalized = raw / decade;
     const float snapped = normalized < 1.5f ? 1.0f
@@ -750,17 +868,17 @@ float NiceGridStep(float raw)
 
 void BuildPreviewGridLines(std::vector<PreviewLineVertex>& out)
 {
-    /// @note 中心から片側の本数
+    // 中心から片側の本数
     constexpr int HALF_LINES = 12;
     const float step = NiceGridStep((std::max)(g_state.boundsRadius, 0.01f) * 0.45f);
     const float extent = step * HALF_LINES;
-    /// @note 交点を格子に固定する。焦点が動くたびに線がにじり寄るのを防ぐ。
+    // 交点を格子に固定する。焦点が動くたびに線がにじり寄るのを防ぐ。
     const float centerX = std::round(g_state.focus.x / step) * step;
     const float centerZ = std::round(g_state.focus.z / step) * step;
     const float y = g_state.groundY;
 
-    /// @note 中心から遠いほど薄くする。線ごと 1 マスに割って端点で減衰させないと、
-    /// @note «両端が薄い = 真ん中も薄い» という線形補間の結果になって中央が沈む。
+    // 中心から遠いほど薄くする。線ごと 1 マスに割って端点で減衰させないと、
+    // «両端が薄い = 真ん中も薄い» という線形補間の結果になって中央が沈む。
     const auto fade = [&](float x, float z) {
         const float dx = x - centerX;
         const float dz = z - centerZ;
@@ -789,7 +907,7 @@ void BuildPreviewGridLines(std::vector<PreviewLineVertex>& out)
         for (int s = -HALF_LINES; s < HALF_LINES; ++s) {
             const float a = static_cast<float>(s) * step;
             const float b = a + step;
-            /// @note Z 一定の線 (X 方向へ伸びる) は X 軸色を、X 一定の線は Z 軸色を持つ。
+            // Z 一定の線 (X 方向へ伸びる) は X 軸色を、X 一定の線は Z 軸色を持つ。
             emit({ centerX + a, y, centerZ + offset },
                  { centerX + b, y, centerZ + offset }, colorAlongX, alpha);
             emit({ centerX + offset, y, centerZ + a },
@@ -814,7 +932,7 @@ void BuildPreviewGroundRing(std::vector<PreviewLineVertex>& out, const math::Vec
         out.push_back({ { rootWorld.x + std::cos(a1) * radius, y,
                           rootWorld.z + std::sin(a1) * radius }, ringColor });
     }
-    /// @note ルートの高さを読むための垂線。上端を薄くして «落ちている» ように見せる。
+    // ルートの高さを読むための垂線。上端を薄くして «落ちている» ように見せる。
     out.push_back({ rootWorld, { 1.0f, 0.78f, 0.42f, 0.0f } });
     out.push_back({ { rootWorld.x, y, rootWorld.z }, { 1.0f, 0.78f, 0.42f, 0.7f } });
 }
@@ -823,23 +941,27 @@ void SubmitPreviewLines(renderer::IRenderer& renderer,
                         renderer::ResourceManager& resources,
                         const std::vector<PreviewLineVertex>& vertices)
 {
-    if (vertices.empty()) return;
+    if (vertices.empty()) {
+        return;
+    }
     const auto vb = g_lineGpu.pool.Acquire(
         resources, vertices.size(), static_cast<std::uint32_t>(sizeof(PreviewLineVertex)));
-    if (!vb.IsValid()) return;
+    if (!vb.IsValid()) {
+        return;
+    }
     resources.Update(vb, vertices.data(), vertices.size() * sizeof(PreviewLineVertex));
 
     renderer::DrawCall call;
     call.vertexBuffer       = vb;
     call.shader             = g_lineGpu.shader;
     call.pipelineState      = g_lineGpu.pso;
-    call.constantBuffers[0] = g_lineGpu.cameraCB;
+    call.constantBuffers[renderer::cb::CAMERA] = g_lineGpu.cameraCB;
     call.vertexCount        = static_cast<uint32_t>(vertices.size());
     call.topology           = renderer::PrimitiveTopology::LINE_LIST;
     renderer.Submit(call, resources);
 }
 
-} /// @note namespace
+} // namespace
 
 /// @note クリップ / ポーズ
 
@@ -850,14 +972,18 @@ double ClipTicksPerSecond(const asset::AnimationClip& clip)
 
 float ClipDurationSeconds(const asset::AnimationClip* clip, float fallback)
 {
-    if (!clip) return fallback;
+    if (!clip) {
+        return fallback;
+    }
     const float duration = static_cast<float>(clip->GetDurationSeconds());
     return duration > 0.0001f ? duration : fallback;
 }
 
 float WrapTime(float time, float duration)
 {
-    if (duration <= 0.0001f) return 0.0f;
+    if (duration <= 0.0001f) {
+        return 0.0f;
+    }
     float wrapped = std::fmod(time, duration);
     return wrapped < 0.0f ? wrapped + duration : wrapped;
 }
@@ -905,16 +1031,21 @@ void BuildTrailPoints(const asset::Skeleton& skeleton,
 {
     outPoints.clear();
     outTrailNode = -1;
-    if (skeleton.rootNodeIndex < 0) return;
+    if (skeleton.rootNodeIndex < 0) {
+        return;
+    }
 
     const int trailNode = FindRootMotionNode(skeleton);
-    if (trailNode < 0) return;
+    if (trailNode < 0) {
+        return;
+    }
     outTrailNode = trailNode;
 
     std::vector<int> chain;
     for (int nodeIndex = trailNode; nodeIndex >= 0;
-         nodeIndex = skeleton.nodes[static_cast<size_t>(nodeIndex)].parentIndex)
+         nodeIndex = skeleton.nodes[static_cast<size_t>(nodeIndex)].parentIndex) {
         chain.push_back(nodeIndex);
+    }
     std::reverse(chain.begin(), chain.end());
 
     const double ticksPerSecond = clip.ticksPerSecond > 0.0 ? clip.ticksPerSecond : 30.0;
@@ -941,17 +1072,21 @@ void AnalyzeRootMotion(const asset::Skeleton& skeleton,
                        RootMotionAnalysis& out)
 {
     out = RootMotionAnalysis{};
-    if (skeleton.rootNodeIndex < 0 || skeleton.nodes.empty()) return;
+    if (skeleton.rootNodeIndex < 0 || skeleton.nodes.empty()) {
+        return;
+    }
     const int rootBone = FindRootMotionNode(skeleton);
-    if (rootBone < 0) return;
+    if (rootBone < 0) {
+        return;
+    }
 
     constexpr int SAMPLES = 64;
     const double ticksPerSecond = ClipTicksPerSecond(clip);
     const float duration = (std::max)(static_cast<float>(clip.GetDurationSeconds()), 0.001f);
     const float dt = duration / SAMPLES;
 
-    /// @note 全ノードの «ワールド» 位置をクリップ全長ぶん持つ。足の接地判定が、ルートの移動を
-    /// @note 含んだ位置でないと成立しないため、チェーンだけでなく階層全体を評価する。
+    // 全ノードの «ワールド» 位置をクリップ全長ぶん持つ。足の接地判定が、ルートの移動を
+    // 含んだ位置でないと成立しないため、チェーンだけでなく階層全体を評価する。
     const size_t nodeCount = skeleton.nodes.size();
     std::vector<std::vector<math::Vector3>> positions(SAMPLES + 1);
     std::vector<math::Matrix4> globals(nodeCount, math::Matrix4::Identity());
@@ -965,19 +1100,24 @@ void AnalyzeRootMotion(const asset::Skeleton& skeleton,
                                  math::Matrix4::Identity(), globals);
         auto& frame = positions[static_cast<size_t>(sample)];
         frame.resize(nodeCount);
-        for (size_t i = 0; i < nodeCount; ++i)
+        for (size_t i = 0; i < nodeCount; ++i) {
             frame[i] = MatrixTranslation(skeleton.rootInverseTransform * globals[i]);
+        }
         const math::Vector3 forward =
             MatrixForward(skeleton.rootInverseTransform * globals[static_cast<size_t>(rootBone)]);
-        if (sample == 0) firstForward = forward;
-        if (sample == SAMPLES) lastForward = forward;
+        if (sample == 0) {
+            firstForward = forward;
+        }
+        if (sample == SAMPLES) {
+            lastForward = forward;
+        }
     }
 
     out.valid = true;
     out.rootNode = rootBone;
     out.duration = duration;
 
-    /// @name 移動量と速度
+    // 移動量と速度
     out.speedSamples.reserve(SAMPLES);
     out.verticalSamples.reserve(SAMPLES);
     float rootMinY = FLT_MAX, rootMaxY = -FLT_MAX;
@@ -1007,21 +1147,27 @@ void AnalyzeRootMotion(const asset::Skeleton& skeleton,
                                 out.netDelta.z * out.netDelta.z);
     out.averageSpeed = out.pathLength / duration;
 
-    /// @note 向きの変化は «水平面へ落とした前方ベクトル» 同士の符号付き角度で見る。
+    // 向きの変化は «水平面へ落とした前方ベクトル» 同士の符号付き角度で見る。
     constexpr float RAD_TO_DEG = 57.29577951f;
     const float firstYaw = std::atan2(firstForward.x, firstForward.z);
     const float lastYaw = std::atan2(lastForward.x, lastForward.z);
     float turn = lastYaw - firstYaw;
     constexpr float PI = 3.14159265358979f;
-    while (turn > PI) turn -= 2.0f * PI;
-    while (turn < -PI) turn += 2.0f * PI;
+    while (turn > PI) {
+        turn -= 2.0f * PI;
+    }
+    while (turn < -PI) {
+        turn += 2.0f * PI;
+    }
     out.netTurnDegrees = turn * RAD_TO_DEG;
 
-    /// @name 身長の目安 (しきい値を絶対値で決めると、スケールの違うリグで破綻する)
+    // 身長の目安 (しきい値を絶対値で決めると、スケールの違うリグで破綻する)
     float bodyMinY = FLT_MAX, bodyMaxY = -FLT_MAX;
     for (const auto& frame : positions) {
         for (size_t i = 0; i < nodeCount; ++i) {
-            if (skeleton.nodes[i].boneIndex < 0) continue;
+            if (skeleton.nodes[i].boneIndex < 0) {
+                continue;
+            }
             bodyMinY = (std::min)(bodyMinY, frame[i].y);
             bodyMaxY = (std::max)(bodyMaxY, frame[i].y);
         }
@@ -1029,14 +1175,16 @@ void AnalyzeRootMotion(const asset::Skeleton& skeleton,
     out.bodyHeight = (std::max)(bodyMaxY - bodyMinY, 0.01f);
     out.inPlace = out.netDistance < out.bodyHeight * 0.02f;
 
-    /// @name ループ整合
-    /// @note ルートボーンは «進む・回る» のが正しい姿なので、この比較からは外す。
-    /// @note 残りのボーンが先頭と末尾で食い違っていれば、それがループ時の «跳ね» になる。
+    // ループ整合
+    // ルートボーンは «進む・回る» のが正しい姿なので、この比較からは外す。
+    // 残りのボーンが先頭と末尾で食い違っていれば、それがループ時の «跳ね» になる。
     const double endTicks = static_cast<double>(duration) * ticksPerSecond;
     double positionSumSq = 0.0;
     int comparedBones = 0;
     for (size_t i = 0; i < nodeCount; ++i) {
-        if (skeleton.nodes[i].boneIndex < 0 || static_cast<int>(i) == rootBone) continue;
+        if (skeleton.nodes[i].boneIndex < 0 || static_cast<int>(i) == rootBone) {
+            continue;
+        }
         const LocalPose a = SamplePoseFromTrack(skeleton.nodes[i], tracks[i], 0.0);
         const LocalPose b = SamplePoseFromTrack(skeleton.nodes[i], tracks[i], endTicks);
         const float dx = b.translation.x - a.translation.x;
@@ -1056,23 +1204,29 @@ void AnalyzeRootMotion(const asset::Skeleton& skeleton,
     if (comparedBones > 0)
         out.loopPositionGap =
             static_cast<float>(std::sqrt(positionSumSq / comparedBones));
-    if (!out.speedSamples.empty())
+    if (!out.speedSamples.empty()) {
         out.loopSpeedGap = std::abs(out.speedSamples.back() - out.speedSamples.front());
+    }
 
-    /// @name 接地と足滑り
-    /// @note 足ボーンは «名前» と «クリップ中いちばん低いところまで下りるか» の二段で選ぶ。ヒューマノイド定義に頼らないのは、FBZZ に Avatar の骨マップが無く Mixamo / Blender / 自作リグで名前もノード構成も揃わないため。
+    // 接地と足滑り
+    // 足ボーンは «名前» と «クリップ中いちばん低いところまで下りるか» の二段で選ぶ。ヒューマノイド定義に頼らないのは、FBZZ に Avatar の骨マップが無く Mixamo / Blender / 自作リグで名前もノード構成も揃わないため。
     std::vector<int> candidates;
     for (size_t i = 0; i < nodeCount; ++i) {
-        if (skeleton.nodes[i].boneIndex < 0) continue;
+        if (skeleton.nodes[i].boneIndex < 0) {
+            continue;
+        }
         const std::string lower = util::StringUtils::ToLower(skeleton.nodes[i].name);
         if (lower.find("toe") != std::string::npos ||
             lower.find("foot") != std::string::npos ||
-            lower.find("ankle") != std::string::npos)
+            lower.find("ankle") != std::string::npos) {
             candidates.push_back(static_cast<int>(i));
+        }
     }
     if (candidates.empty()) {
         for (size_t i = 0; i < nodeCount; ++i)
-            if (skeleton.nodes[i].boneIndex >= 0) candidates.push_back(static_cast<int>(i));
+            if (skeleton.nodes[i].boneIndex >= 0) {
+                candidates.push_back(static_cast<int>(i));
+            }
     }
 
     std::vector<float> nodeMinY(nodeCount, FLT_MAX);
@@ -1086,12 +1240,15 @@ void AnalyzeRootMotion(const asset::Skeleton& skeleton,
 
     int footCount = 0;
     for (int node : candidates) {
-        if (footCount >= 2) break;
-        /// @note 1 本目の親子 (Foot と その子の Toe) を 2 本と数えると、片足だけを見てしまう。
+        if (footCount >= 2) {
+            break;
+        }
+        // 1 本目の親子 (Foot と その子の Toe) を 2 本と数えると、片足だけを見てしまう。
         if (footCount == 1 &&
             (IsDescendantOf(skeleton, node, out.footNodes[0]) ||
-             IsDescendantOf(skeleton, out.footNodes[0], node)))
+             IsDescendantOf(skeleton, out.footNodes[0], node))) {
             continue;
+        }
         out.footNodes[footCount] = node;
         out.footNames[footCount] = ShortBoneName(skeleton.nodes[static_cast<size_t>(node)].name);
         ++footCount;
@@ -1105,9 +1262,11 @@ void AnalyzeRootMotion(const asset::Skeleton& skeleton,
         for (int sample = 1; sample <= SAMPLES; ++sample) {
             const math::Vector3& a = positions[static_cast<size_t>(sample - 1)][foot];
             const math::Vector3& b = positions[static_cast<size_t>(sample)][foot];
-            /// @note 前後どちらのサンプルも床付近にある区間だけを «接地» とみなす。
-            /// @note 片側だけで判定すると、踏み込み・蹴り出しの 1 コマを滑りに数えてしまう。
-            if (a.y > footFloor + plantThreshold || b.y > footFloor + plantThreshold) continue;
+            // 前後どちらのサンプルも床付近にある区間だけを «接地» とみなす。
+            // 片側だけで判定すると、踏み込み・蹴り出しの 1 コマを滑りに数えてしまう。
+            if (a.y > footFloor + plantThreshold || b.y > footFloor + plantThreshold) {
+                continue;
+            }
             const float dx = b.x - a.x;
             const float dz = b.z - a.z;
             out.plantedSlide += std::sqrt(dx * dx + dz * dz);
@@ -1130,10 +1289,16 @@ void BuildBoneCurves(const asset::Skeleton& skeleton,
                      float& posMin, float& posMax,
                      float& rotMin, float& rotMax)
 {
-    posX.clear(); posY.clear(); posZ.clear();
-    rotX.clear(); rotY.clear(); rotZ.clear();
+    posX.clear();
+    posY.clear();
+    posZ.clear();
+    rotX.clear();
+    rotY.clear();
+    rotZ.clear();
     posMin = posMax = rotMin = rotMax = 0.0f;
-    if (nodeIndex < 0 || nodeIndex >= static_cast<int>(skeleton.nodes.size())) return;
+    if (nodeIndex < 0 || nodeIndex >= static_cast<int>(skeleton.nodes.size())) {
+        return;
+    }
 
     const auto& node = skeleton.nodes[static_cast<size_t>(nodeIndex)];
     const double ticksPerSecond = ClipTicksPerSecond(clip);
@@ -1155,15 +1320,27 @@ void BuildBoneCurves(const asset::Skeleton& skeleton,
         rotZ.push_back(euler.z);
 
         auto expandPos = [&](float v) {
-            if (first) { posMin = posMax = v; }
-            else { posMin = (std::min)(posMin, v); posMax = (std::max)(posMax, v); }
+            if (first) {
+                posMin = posMax = v;
+            } else {
+                posMin = (std::min)(posMin, v);
+                posMax = (std::max)(posMax, v);
+            }
         };
         auto expandRot = [&](float v) {
-            if (first) { rotMin = rotMax = v; }
-            else { rotMin = (std::min)(rotMin, v); rotMax = (std::max)(rotMax, v); }
+            if (first) {
+                rotMin = rotMax = v;
+            } else {
+                rotMin = (std::min)(rotMin, v);
+                rotMax = (std::max)(rotMax, v);
+            }
         };
-        expandPos(pose.translation.x); expandPos(pose.translation.y); expandPos(pose.translation.z);
-        expandRot(euler.x); expandRot(euler.y); expandRot(euler.z);
+        expandPos(pose.translation.x);
+        expandPos(pose.translation.y);
+        expandPos(pose.translation.z);
+        expandRot(euler.x);
+        expandRot(euler.y);
+        expandRot(euler.z);
         first = false;
     }
 }
@@ -1171,10 +1348,14 @@ void BuildBoneCurves(const asset::Skeleton& skeleton,
 /// @note モデル内クリップを名前で検索。空名は先頭クリップ (State の <Auto / First Clip> と同じ規約)。
 const asset::AnimationClip* FindModelClip(const asset::Model* model, const std::string& clipName)
 {
-    if (!model || model->clips.empty()) return nullptr;
+    if (!model || model->clips.empty()) {
+        return nullptr;
+    }
     if (!clipName.empty()) {
         for (const auto& clip : model->clips)
-            if (clip.name == clipName) return &clip;
+            if (clip.name == clipName) {
+                return &clip;
+            }
     }
     return &model->clips.front();
 }
@@ -1186,7 +1367,9 @@ const asset::AnimationClip* ResolveClip(const asset::Model* model,
 {
     if (!animAssetPath.empty()) {
         const auto handle = asset::AssetManager::Load<asset::AnimationClip>(animAssetPath);
-        if (const auto* clip = asset::AssetManager::Get(handle)) return clip;
+        if (const auto* clip = asset::AssetManager::Get(handle)) {
+            return clip;
+        }
     }
     return FindModelClip(model, clipName);
 }
@@ -1203,7 +1386,9 @@ bool IsPreviewableGeometry(const asset::Model* model)
 
 bool LoadsAsPreviewableGeometry(const std::string& path)
 {
-    if (!util::FileSystem::Exists(path)) return false;
+    if (!util::FileSystem::Exists(path)) {
+        return false;
+    }
     return IsPreviewableGeometry(asset::AssetManager::LoadAndGet<asset::Model>(path));
 }
 
@@ -1220,23 +1405,27 @@ std::string FindGeometryForAnim(const std::string& animPath)
                                              ".gltf", ".GLTF", ".glb", ".GLB", ".obj", ".OBJ" };
     fs::path dir = util::FileSystem::PathFromUtf8(animPath).parent_path();
 
-    /// @note anims/ → クリップパッケージ → モデルパッケージ … と最大 5 階層遡る
+    // anims/ → クリップパッケージ → モデルパッケージ … と最大 5 階層遡る
     for (int depth = 0; depth < 5 && !dir.empty(); ++depth) {
         const std::string dirName = util::FileSystem::PathToUtf8(dir.filename());
         if (!dirName.empty()) {
-            /// @note `Library/Baked/<guid>/anims` のクリップは、コンテナ名の GUID から原本へ戻す。
+            // `Library/Baked/<guid>/anims` のクリップは、コンテナ名の GUID から原本へ戻す。
             const std::string source = asset::AssetDatabase::PathFromGuid(dirName);
-            if (asset::IsModelSourcePath(source) && LoadsAsPreviewableGeometry(source))
+            if (asset::IsModelSourcePath(source) && LoadsAsPreviewableGeometry(source)) {
                 return NormalizeAssetPath(source);
+            }
             for (const char* ext : kExts) {
                 const std::string candidate =
                     util::FileSystem::PathToUtf8(dir.parent_path() / (dirName + ext));
-                if (LoadsAsPreviewableGeometry(candidate))
+                if (LoadsAsPreviewableGeometry(candidate)) {
                     return NormalizeAssetPath(candidate);
+                }
             }
         }
         const fs::path parent = dir.parent_path();
-        if (parent == dir) break;
+        if (parent == dir) {
+            break;
+        }
         dir = parent;
     }
     return {};
@@ -1252,8 +1441,12 @@ const std::vector<std::string>& CollectPackageAnims(const std::string& modelPath
     static std::string cachedKey;
     static std::vector<std::string> cached;
     static std::vector<std::string> empty;
-    if (modelPath.empty()) return empty;
-    if (modelPath == cachedKey) return cached;
+    if (modelPath.empty()) {
+        return empty;
+    }
+    if (modelPath == cachedKey) {
+        return cached;
+    }
 
     namespace fs = std::filesystem;
     cachedKey = modelPath;
@@ -1264,29 +1457,44 @@ const std::vector<std::string>& CollectPackageAnims(const std::string& modelPath
                                 util::FileSystem::PathToUtf8(model.stem());
     std::error_code ec;
 
-    /// @note パッケージ直下の anims/ と、その 1 階層下 (クリップパッケージ) の anims/ を見る。
+    // パッケージ直下の anims/ と、その 1 階層下 (クリップパッケージ) の anims/ を見る。
     auto scanAnimsDir = [&](const fs::path& dir) {
-        if (!fs::exists(dir, ec)) return;
+        if (!fs::exists(dir, ec)) {
+            return;
+        }
         for (const auto& e : fs::directory_iterator(dir, ec)) {
-            if (ec) break;
-            if (!e.is_regular_file(ec)) continue;
+            if (ec) {
+                break;
+            }
+            if (!e.is_regular_file(ec)) {
+                continue;
+            }
             if (util::StringUtils::ToLower(
-                    util::FileSystem::PathToUtf8(e.path().extension())) != ".anim") continue;
+                    util::FileSystem::PathToUtf8(e.path().extension())) != ".anim") {
+                continue;
+            }
             cached.push_back(NormalizeAssetPath(util::FileSystem::PathToUtf8(e.path())));
         }
     };
     const std::string bakedDir = asset::AssetManager::BakedDirForSource(
         asset::AssetManager::ResolveAssetPath(modelPath));
-    if (!bakedDir.empty()) scanAnimsDir(util::FileSystem::PathFromUtf8(bakedDir) / "anims");
+    if (!bakedDir.empty()) {
+        scanAnimsDir(util::FileSystem::PathFromUtf8(bakedDir) / "anims");
+    }
     if (fs::exists(packageDir, ec)) {
         scanAnimsDir(packageDir / "anims");
         for (const auto& e : fs::directory_iterator(packageDir, ec)) {
-            if (ec) break;
-            if (e.is_directory(ec)) scanAnimsDir(e.path() / "anims");
-            else if (asset::IsModelSourcePath(util::FileSystem::PathToUtf8(e.path()))) {
+            if (ec) {
+                break;
+            }
+            if (e.is_directory(ec)) {
+                scanAnimsDir(e.path() / "anims");
+            } else if (asset::IsModelSourcePath(util::FileSystem::PathToUtf8(e.path()))) {
                 const std::string clipBakedDir = asset::AssetManager::BakedDirForSource(
                     util::FileSystem::PathToUtf8(e.path()));
-                if (!clipBakedDir.empty()) scanAnimsDir(util::FileSystem::PathFromUtf8(clipBakedDir) / "anims");
+                if (!clipBakedDir.empty()) {
+                    scanAnimsDir(util::FileSystem::PathFromUtf8(clipBakedDir) / "anims");
+                }
             }
         }
     }
@@ -1297,7 +1505,9 @@ const std::vector<std::string>& CollectPackageAnims(const std::string& modelPath
 
 bool ResolvePathTarget(const std::string& path, PreviewTarget& out)
 {
-    if (path.empty()) return false;
+    if (path.empty()) {
+        return false;
+    }
     const std::string lower = util::StringUtils::ToLower(path);
 
     if (util::StringUtils::EndsWith(lower, ".anim")) {
@@ -1305,7 +1515,7 @@ bool ResolvePathTarget(const std::string& path, PreviewTarget& out)
         out.animAssetPath = path;
         out.label = util::FileSystem::GetFilename(path);
 
-        /// @note ジオメトリは (1) パッケージ規約から自動発見 (2) ユーザー指定の使い回し の順。どちらも無ければ modelPath は空のままにし、UI がドロップ待ち表示を出す (ここで false を返すとプレビューごと消える)。
+        // ジオメトリは (1) パッケージ規約から自動発見 (2) ユーザー指定の使い回し の順。どちらも無ければ modelPath は空のままにし、UI がドロップ待ち表示を出す (ここで false を返すとプレビューごと消える)。
         out.modelPath = g_state.attachedModelPath.empty()
             ? FindGeometryForAnim(path)
             : g_state.attachedModelPath;
@@ -1316,11 +1526,13 @@ bool ResolvePathTarget(const std::string& path, PreviewTarget& out)
         util::StringUtils::EndsWith(lower, ".fzasset") ||
         util::StringUtils::EndsWith(lower, ".asset")) {
         const asset::Model* model = asset::AssetManager::LoadAndGet<asset::Model>(path);
-        /// @note クリップを持たないモデルでも器として成立させる (バインドポーズを表示し、クリップは後からコンボ/ドロップで指定できる)。FBZZ のスキンメッシュ本体 FBX は clips が常に空なので、clips.empty() で弾くと本体モデルごと弾かれる。
-        if (!IsPreviewableGeometry(model)) return false;
+        // クリップを持たないモデルでも器として成立させる (バインドポーズを表示し、クリップは後からコンボ/ドロップで指定できる)。FBZZ のスキンメッシュ本体 FBX は clips が常に空なので、clips.empty() で弾くと本体モデルごと弾かれる。
+        if (!IsPreviewableGeometry(model)) {
+            return false;
+        }
         out.mode = PreviewTarget::Mode::Clip;
         out.modelPath = NormalizeAssetPath(path);
-        /// @note 直前と同じモデルならクリップ選択 (コンボ) を維持する。
+        // 直前と同じモデルならクリップ選択 (コンボ) を維持する。
         if (g_state.target.modelPath == out.modelPath) {
             out.clipName = g_state.target.clipName;
             out.animAssetPath = g_state.target.animAssetPath;
@@ -1337,8 +1549,9 @@ void AdoptManualTarget(const PreviewTarget& target, bool attachModel)
     const bool identityChanged = !target.SameIdentity(g_state.target);
     g_state.target = target;
     g_state.origin = TargetOrigin::Manual;
-    if (attachModel && !target.modelPath.empty())
+    if (attachModel && !target.modelPath.empty()) {
         g_state.attachedModelPath = target.modelPath;
+    }
     if (identityChanged) {
         g_state.time = 0.0f;
         g_state.playing = true;
@@ -1350,13 +1563,17 @@ void AdoptManualTarget(const PreviewTarget& target, bool attachModel)
 /// @note Unity の .anim プレビューと同じく「動きは今のまま、器だけ別モデルで見たい」操作を成立させる。モデルをドロップしてもクリップは消えない。
 void SwapPreviewGeometry(const std::string& modelPath)
 {
-    if (modelPath.empty()) return;
+    if (modelPath.empty()) {
+        return;
+    }
     g_state.attachedModelPath = modelPath;
     g_state.target.modelPath = modelPath;
-    if (g_state.target.mode == PreviewTarget::Mode::None)
+    if (g_state.target.mode == PreviewTarget::Mode::None) {
         g_state.target.mode = PreviewTarget::Mode::Clip;
-    if (g_state.target.label.empty())
+    }
+    if (g_state.target.label.empty()) {
         g_state.target.label = util::FileSystem::GetFilename(modelPath);
+    }
     g_state.origin = TargetOrigin::Manual;
     g_state.needsFraming = true;
 }
@@ -1372,7 +1589,7 @@ bool AcceptPreviewAssetDrop()
                 NormalizeAssetPath(static_cast<const char*>(payload->Data));
             const std::string lower = util::StringUtils::ToLower(dropped);
 
-            /// @note モデルのドロップで、既にクリップが載っている場合は器だけ差し替える。
+            // モデルのドロップで、既にクリップが載っている場合は器だけ差し替える。
             const bool isModelDrop =
                 asset::IsModelSourcePath(lower) ||
                 util::StringUtils::EndsWith(lower, ".fzasset") ||
@@ -1427,7 +1644,7 @@ void UpdatePreviewTarget(EditorContext& ctx)
                util::StringUtils::EndsWith(lower, ".asset");
     };
 
-    /// @note Animator 付き GameObject の選択変化も対象切り替えのトリガーにする。
+    // Animator 付き GameObject の選択変化も対象切り替えのトリガーにする。
     scene::GameObject* selectedGo = ctx.GetSelectedGO();
     const scene::EntityID selectedEntity =
         selectedGo ? selectedGo->GetID() : scene::EntityID::INVALID;
@@ -1440,30 +1657,38 @@ void UpdatePreviewTarget(EditorContext& ctx)
     } else if (assetChanged && ResolveAssetTarget(ctx, candidate)) {
         origin = TargetOrigin::Asset;
         resolved = true;
-        /// @note Asset Browser から別のモデルを選んだ場合も「再アタッチ」とみなし、
-        /// @note 以降の Clip 選択ではこのモデルを保持する。`.anim` 選択では変更しない。
-        if (isModelAssetPath(ctx.selectedAssetPath) && !candidate.modelPath.empty())
+        // Asset Browser から別のモデルを選んだ場合も「再アタッチ」とみなし、
+        // 以降の Clip 選択ではこのモデルを保持する。`.anim` 選択では変更しない。
+        if (isModelAssetPath(ctx.selectedAssetPath) && !candidate.modelPath.empty()) {
             g_state.attachedModelPath = candidate.modelPath;
+        }
     } else if (goChanged && ResolveGameObjectTarget(ctx, candidate)) {
         origin = TargetOrigin::GameObject;
         resolved = true;
     } else if (g_state.origin == TargetOrigin::GameObject) {
         resolved = ResolveGameObjectTarget(ctx, candidate);
     } else if (g_state.origin == TargetOrigin::Graph) {
-        /// @note 継続中の対象は毎フレーム再解決し、Duration 等のパラメーター編集を即反映する。
+        // 継続中の対象は毎フレーム再解決し、Duration 等のパラメーター編集を即反映する。
         resolved = ResolveGraphTarget(ctx, candidate);
     } else if (g_state.origin == TargetOrigin::Asset) {
         resolved = ResolveAssetTarget(ctx, candidate);
     }
-    /// @note origin == Manual (ドロップ指定) は選択に追従しないため、
-    /// @note graphChanged / assetChanged で新しい対象が解決されるまで現状維持する。
+    // origin == Manual (ドロップ指定) は選択に追従しないため、
+    // graphChanged / assetChanged で新しい対象が解決されるまで現状維持する。
 
     if (!resolved && g_state.origin == TargetOrigin::None) {
-        if (ResolveGraphTarget(ctx, candidate)) { origin = TargetOrigin::Graph; resolved = true; }
-        else if (ResolveAssetTarget(ctx, candidate)) { origin = TargetOrigin::Asset; resolved = true; }
+        if (ResolveGraphTarget(ctx, candidate)) {
+            origin = TargetOrigin::Graph;
+            resolved = true;
+        } else if (ResolveAssetTarget(ctx, candidate)) {
+            origin = TargetOrigin::Asset;
+            resolved = true;
+        }
     }
-    /// @note 解決できない間は直前の対象を維持する (Unity と同じ sticky 挙動)
-    if (!resolved) return;
+    // 解決できない間は直前の対象を維持する (Unity と同じ sticky 挙動)
+    if (!resolved) {
+        return;
+    }
 
     const bool identityChanged = !candidate.SameIdentity(g_state.target);
     g_state.target = candidate;
@@ -1479,8 +1704,9 @@ void UpdatePreviewTarget(EditorContext& ctx)
 
 std::string MaskPathForModelNode(const asset::Model& model, int nodeIndex)
 {
-    if (nodeIndex < 0 || nodeIndex >= static_cast<int>(model.nodes.size()))
+    if (nodeIndex < 0 || nodeIndex >= static_cast<int>(model.nodes.size())) {
         return {};
+    }
     if (const int skeletonNodeIndex = FindSkeletonNodeForModelNode(model, nodeIndex);
         skeletonNodeIndex >= 0) {
         return asset::BuildSkeletonNodePath(*model.skeleton, skeletonNodeIndex);
@@ -1511,7 +1737,7 @@ ImU32 MaskWeightColorU32(float weight, int alpha)
 
 std::string MaskPreviewRevision(const asset::AvatarMaskAsset& mask)
 {
-    /// @note 同一フレームに通常 Preview と Mask Preview が描画される場合でも、Weight の中身が変わったら RenderPreviewFrame のキャッシュを無効化する。パスだけをキーにすると、Apply 前の Inspector 編集が古い RT のまま残る。
+    // 同一フレームに通常 Preview と Mask Preview が描画される場合でも、Weight の中身が変わったら RenderPreviewFrame のキャッシュを無効化する。パスだけをキーにすると、Apply 前の Inspector 編集が古い RT のまま残る。
     std::string revision;
     revision.reserve(32 + mask.entries.size() * 32);
     revision += mask.defaultInclude ? '1' : '0';
@@ -1534,12 +1760,17 @@ void ComputeModelBounds(const asset::Model& model, PreviewBounds& out)
     math::Vector3 maxP{ -FLT_MAX, -FLT_MAX, -FLT_MAX };
     bool any = false;
     for (const auto& mesh : model.meshes) {
-        if (!mesh) continue;
+        if (!mesh) {
+            continue;
+        }
         const math::Vector3 c = mesh->boundsCenter;
         const float r = (std::max)(mesh->boundsRadius, 0.001f);
-        minP.x = (std::min)(minP.x, c.x - r); maxP.x = (std::max)(maxP.x, c.x + r);
-        minP.y = (std::min)(minP.y, c.y - r); maxP.y = (std::max)(maxP.y, c.y + r);
-        minP.z = (std::min)(minP.z, c.z - r); maxP.z = (std::max)(maxP.z, c.z + r);
+        minP.x = (std::min)(minP.x, c.x - r);
+        maxP.x = (std::max)(maxP.x, c.x + r);
+        minP.y = (std::min)(minP.y, c.y - r);
+        maxP.y = (std::max)(maxP.y, c.y + r);
+        minP.z = (std::min)(minP.z, c.z - r);
+        maxP.z = (std::max)(maxP.z, c.z + r);
         any = true;
     }
     if (!any) {
@@ -1564,7 +1795,7 @@ void PreviewCameraBasis(math::Vector3& outRight, math::Vector3& outUp, math::Vec
     };
     outForward = { -orbitDir.x, -orbitDir.y, -orbitDir.z };
     outRight = { std::cos(g_state.yaw), 0.0f, -std::sin(g_state.yaw) };
-    /// @note up = (-forward) × right。yaw=pitch=0 で (0,1,0) になる並び。
+    // up = (-forward) × right。yaw=pitch=0 で (0,1,0) になる並び。
     outUp = {
         orbitDir.y * outRight.z - orbitDir.z * outRight.y,
         orbitDir.z * outRight.x - orbitDir.x * outRight.z,
@@ -1574,25 +1805,32 @@ void PreviewCameraBasis(math::Vector3& outRight, math::Vector3& outUp, math::Vec
 
 bool RenderPreviewFrame(EditorContext& ctx, float displayAspect)
 {
-    if (!ctx.renderer || !ctx.resources) return false;
+    if (!ctx.renderer || !ctx.resources) {
+        return false;
+    }
     const std::string renderIdentity = g_maskPreview.active
         ? "mask|" + g_maskPreview.modelPath + "|" + g_maskPreview.maskPath + "|" +
             MaskPreviewRevision(g_maskPreview.mask)
         : "animation";
     if (g_state.lastRenderFrame == ImGui::GetFrameCount()
-        && g_state.lastRenderIdentity == renderIdentity)
+        && g_state.lastRenderIdentity == renderIdentity) {
         return g_state.lastRenderOk;
+    }
     g_state.lastRenderFrame = ImGui::GetFrameCount();
     g_state.lastRenderIdentity = renderIdentity;
     g_state.lastRenderOk = false;
 
     auto& resources = *ctx.resources;
-    if (!EnsurePreviewGpu(resources)) return false;
+    if (!EnsurePreviewGpu(resources)) {
+        return false;
+    }
 
     const asset::Model* model = asset::AssetManager::LoadAndGet<asset::Model>(g_state.target.modelPath);
-    if (!model || model->meshes.empty()) return false;
+    if (!model || model->meshes.empty()) {
+        return false;
+    }
 
-    /// @name クリップ解決 + 時刻計算
+    // クリップ解決 + 時刻計算
     const asset::AnimationClip* clipA =
         ResolveClip(model, g_state.target.clipName, g_state.target.animAssetPath);
     const asset::AnimationClip* clipB = nullptr;
@@ -1606,13 +1844,13 @@ bool RenderPreviewFrame(EditorContext& ctx, float displayAspect)
     float secondsA = 0.0f, secondsB = 0.0f, blendWeight = 0.0f;
     ComputePlaybackSample(clipA, clipB, secondsA, secondsB, blendWeight);
 
-    /// @name スキニングパレット + ノードアニメーション
+    // スキニングパレット + ノードアニメーション
     const bool hasRigidMeshes = std::any_of(
         model->meshes.begin(), model->meshes.end(),
         [](const auto& mesh) { return mesh && !mesh->isSkinned; });
-    /// @note 剛体メッシュは GPU スキニングを通らないため、ノード姿勢も常に計算する。
+    // 剛体メッシュは GPU スキニングを通らないため、ノード姿勢も常に計算する。
     const bool needsNodePose = hasRigidMeshes && model->skeleton && clipA;
-    /// @note 接地リングはルートボーンの «今» の位置を要るので、有効ならポーズを組む。
+    // 接地リングはルートボーンの «今» の位置を要るので、有効ならポーズを組む。
     const bool wantsDebugPose =
         g_state.showBones || g_state.showBoneNames || g_state.showTrail ||
         g_state.showGhost || g_state.showInfo || g_state.showRootMotion ||
@@ -1621,7 +1859,9 @@ bool RenderPreviewFrame(EditorContext& ctx, float displayAspect)
     g_state.selectedBoneValid = false;
 
     PreviewSkinningCB skinning{};
-    for (auto& bone : skinning.boneMatrices) bone = math::Matrix4::Identity();
+    for (auto& bone : skinning.boneMatrices) {
+        bone = math::Matrix4::Identity();
+    }
     std::vector<math::Matrix4> previewNodeGlobals;
     std::vector<math::Matrix4> previewBindGlobals;
     if (model->skeleton && model->skeleton->rootNodeIndex >= 0 && hasRigidMeshes) {
@@ -1629,7 +1869,7 @@ bool RenderPreviewFrame(EditorContext& ctx, float displayAspect)
         previewBindGlobals.assign(skeleton.nodes.size(), math::Matrix4::Identity());
         BuildBindPoseGlobals(skeleton, skeleton.rootNodeIndex,
                              math::Matrix4::Identity(), previewBindGlobals);
-        /// @note クリップが無い場合も剛体メッシュを正しいバインド姿勢で描けるようにする。
+        // クリップが無い場合も剛体メッシュを正しいバインド姿勢で描けるようにする。
         previewNodeGlobals = previewBindGlobals;
     }
     if (model->skeleton && model->skeleton->rootNodeIndex >= 0 && clipA) {
@@ -1637,7 +1877,7 @@ bool RenderPreviewFrame(EditorContext& ctx, float displayAspect)
         const int assetGeneration = asset::AssetManager::GetAssetGeneration();
         const bool tracksAChanged = g_state.tracksA.Update(skeleton, clipA, assetGeneration);
         const bool tracksBChanged = g_state.tracksB.Update(skeleton, clipB, assetGeneration);
-        /// @note パスが同じホットリロードでも軌跡・解析・カーブを旧クリップから再利用しない。
+        // パスが同じホットリロードでも軌跡・解析・カーブを旧クリップから再利用しない。
         if (tracksAChanged || tracksBChanged) {
             g_state.debugCacheIdentity.clear();
             g_state.rootMotionCacheKey.clear();
@@ -1648,8 +1888,9 @@ bool RenderPreviewFrame(EditorContext& ctx, float displayAspect)
                                            math::Matrix4::Identity());
         std::vector<math::Matrix4>* nodeGlobalsPtr = nullptr;
         if (wantsDebugPose) {
-            if (previewNodeGlobals.empty())
+            if (previewNodeGlobals.empty()) {
                 previewNodeGlobals.assign(skeleton.nodes.size(), math::Matrix4::Identity());
+            }
             nodeGlobalsPtr = &previewNodeGlobals;
         }
         const double ticksA = static_cast<double>(secondsA) * ClipTicksPerSecond(*clipA);
@@ -1661,10 +1902,12 @@ bool RenderPreviewFrame(EditorContext& ctx, float displayAspect)
                             nodeGlobalsPtr);
         const size_t count =
             (std::min)(palette.size(), static_cast<size_t>(asset::MAX_SKINNING_BONES));
-        for (size_t i = 0; i < count; ++i) skinning.boneMatrices[i] = palette[i];
+        for (size_t i = 0; i < count; ++i) {
+            skinning.boneMatrices[i] = palette[i];
+        }
 
         if (wantsDebugPose) {
-            /// @note 対応表が失効した場合も軌跡とトラック有無を再計算する。
+            // 対応表が失効した場合も軌跡とトラック有無を再計算する。
             const std::string cacheIdentity = g_state.target.modelPath + "|" +
                 g_state.target.clipName + "|" + g_state.target.animAssetPath + "|" +
                 g_state.target.toClipName;
@@ -1675,7 +1918,9 @@ bool RenderPreviewFrame(EditorContext& ctx, float displayAspect)
                 g_state.animatedNodeCount = 0;
                 g_state.boneNodeCount = 0;
                 for (size_t i = 0; i < skeleton.nodes.size(); ++i) {
-                    if (skeleton.nodes[i].boneIndex < 0) continue;
+                    if (skeleton.nodes[i].boneIndex < 0) {
+                        continue;
+                    }
                     ++g_state.boneNodeCount;
                     if (g_state.tracksA[i]) {
                         g_state.nodeHasTrack[i] = 1;
@@ -1686,26 +1931,27 @@ bool RenderPreviewFrame(EditorContext& ctx, float displayAspect)
                                  g_state.trailPoints, g_state.trailNodeIndex);
             }
 
-            /// @note ルートモーション解析はクリップ単位で 1 回。トグルを後から点けた場合も
-            /// @note «そのクリップでまだ解析していない» としてここで組む。
+            // ルートモーション解析はクリップ単位で 1 回。トグルを後から点けた場合も
+            // «そのクリップでまだ解析していない» としてここで組む。
             if (g_state.showRootMotion &&
                 g_state.rootMotionCacheKey != g_state.debugCacheIdentity) {
                 g_state.rootMotionCacheKey = g_state.debugCacheIdentity;
                 AnalyzeRootMotion(skeleton, *clipA, g_state.tracksA, g_state.rootMotion);
             }
 
-            /// @note ノードグローバル → ワールド位置 (メッシュと同じく rootInverse 空間へ揃える)
+            // ノードグローバル → ワールド位置 (メッシュと同じく rootInverse 空間へ揃える)
             auto globalsToPositions = [&](const std::vector<math::Matrix4>& globals,
                                           std::vector<math::Vector3>& out) {
                 out.resize(globals.size());
-                for (size_t i = 0; i < globals.size(); ++i)
+                for (size_t i = 0; i < globals.size(); ++i) {
                     out[i] = MatrixTranslation(skeleton.rootInverseTransform * globals[i]);
+                }
             };
             globalsToPositions(previewNodeGlobals, g_state.jointPositions);
 
-            /// @note オニオンスキン: 前後フレームのスケルトンを併記して動きの変化量を読めるようにする。
+            // オニオンスキン: 前後フレームのスケルトンを併記して動きの変化量を読めるようにする。
             if (g_state.showGhost) {
-                /// @note 手動オフセット指定があればそれを、無ければタイムライン長依存の自動値を使う。
+                // 手動オフセット指定があればそれを、無ければタイムライン長依存の自動値を使う。
                 const float ghostOffset = g_state.ghostOffsetSeconds > 0.0001f
                     ? g_state.ghostOffsetSeconds
                     : (std::max)(g_state.timelineLength / 14.0f, 1.0f / 30.0f);
@@ -1731,7 +1977,7 @@ bool RenderPreviewFrame(EditorContext& ctx, float displayAspect)
                 evaluateGhost(g_state.time + ghostOffset, g_state.ghostNextPositions);
             }
 
-            /// @note 選択中ボーンのローカル TRS とキー数をライブ更新する。
+            // 選択中ボーンのローカル TRS とキー数をライブ更新する。
             if (g_state.selectedBoneNode >= 0 &&
                 g_state.selectedBoneNode < static_cast<int>(skeleton.nodes.size())) {
                 const auto& node =
@@ -1749,7 +1995,7 @@ bool RenderPreviewFrame(EditorContext& ctx, float displayAspect)
                 }
                 g_state.selectedBoneValid = true;
 
-                /// @note カーブグラフ用の全長サンプルは、ボーンかクリップが変わったときだけ再計算する。
+                // カーブグラフ用の全長サンプルは、ボーンかクリップが変わったときだけ再計算する。
                 if (g_state.showCurves) {
                     const std::string curveKey = g_state.debugCacheIdentity + "|" +
                         std::to_string(g_state.selectedBoneNode);
@@ -1770,16 +2016,18 @@ bool RenderPreviewFrame(EditorContext& ctx, float displayAspect)
     }
     resources.Update(g_gpu.skinningCB, &skinning, sizeof(skinning));
 
-    /// @name カメラ (オービット)
+    // カメラ (オービット)
     PreviewBounds bounds;
     ComputeModelBounds(*model, bounds);
     g_state.groundY = bounds.minY;
     g_state.boundsRadius = bounds.radius;
     g_state.footprintRadius = bounds.radiusXZ;
     if (g_state.hasPendingFocus) {
-        /// @note ボーンフォーカス: 距離は «その部位が画面に収まる» 程度まで寄せる。
+        // ボーンフォーカス: 距離は «その部位が画面に収まる» 程度まで寄せる。
         g_state.focus = g_state.pendingFocus;
-        if (g_state.pendingDistance > 0.0f) g_state.distance = g_state.pendingDistance;
+        if (g_state.pendingDistance > 0.0f) {
+            g_state.distance = g_state.pendingDistance;
+        }
         g_state.hasPendingFocus = false;
         g_state.needsFraming = false;
     } else if (g_state.needsFraming || g_state.distance <= 0.0f) {
@@ -1803,7 +2051,7 @@ bool RenderPreviewFrame(EditorContext& ctx, float displayAspect)
 
     scene::PerFrameCB frameData{};
     frameData.view = camera.GetViewMatrix();
-    /// @note 描画先 RT は Reversed-Z (CameraDepthTargetDesc)。xy と w は CPU 用の射影と同じ。
+    // 描画先 RT は Reversed-Z (CameraDepthTargetDesc)。xy と w は CPU 用の射影と同じ。
     frameData.projection = camera.GetGpuProjectionMatrix();
     frameData.viewProjection = camera.GetGpuViewProjection();
     frameData.invViewProjection = math::Matrix4::Inverse(frameData.viewProjection);
@@ -1811,20 +2059,20 @@ bool RenderPreviewFrame(EditorContext& ctx, float displayAspect)
     frameData.nearZ = camera.m_near;
     frameData.farZ = camera.m_far;
     resources.Update(g_gpu.frameCB, &frameData, sizeof(frameData));
-    /// @note オーバーレイ (ボーン線など) が CPU 側で同じ射影を使えるように保持する。
+    // オーバーレイ (ボーン線など) が CPU 側で同じ射影を使えるように保持する。
     g_state.debugViewProjection = frameData.viewProjection;
 
     scene::PerObjectCB objectData{};
     objectData.world = math::Matrix4::Identity();
     objectData.worldInvTranspose = math::Matrix4::Identity();
 
-    /// @name ライティング (サムネイルと同じ 3 点照明リグの簡易版)
+    // ライティング (サムネイルと同じ 3 点照明リグの簡易版)
     renderer::LightConstantsCB lightData{};
     math::Vector3 keyOffset =
         camera.m_position +
         math::Vector3{ bounds.radius * 1.4f, bounds.radius * 1.8f, bounds.radius * 0.8f } -
         g_state.focus;
-    /// @note キーライトだけを水平回転させる。陰の出方を変えてシルエットを読むための調整口。
+    // キーライトだけを水平回転させる。陰の出方を変えてシルエットを読むための調整口。
     if (std::abs(g_state.view.lightYaw) > 0.0001f) {
         const float cs = std::cos(g_state.view.lightYaw);
         const float sn = std::sin(g_state.view.lightYaw);
@@ -1835,13 +2083,13 @@ bool RenderPreviewFrame(EditorContext& ctx, float displayAspect)
     const math::Vector3 keyDirection = keyOffset.Normalized();
     lightData.lightDir = { -keyDirection.x, -keyDirection.y, -keyDirection.z };
     lightData.lightColor = { 1.0f, 0.97f, 0.92f };
-    /// @note 手調整リグなので、Lighting.hlsli の LIGHT_UNIT_SCALE (= PI) を相殺して
-    /// @note 記述値がそのまま「絵として狙った明るさ」を表すようにする (サムネイルと同じ方針)。
+    // 手調整リグなので、Lighting.hlsli の LIGHT_UNIT_SCALE (= PI) を相殺して
+    // 記述値がそのまま「絵として狙った明るさ」を表すようにする (サムネイルと同じ方針)。
     constexpr float kPreviewUnitScale = 3.14159265358979323846f;
     lightData.lightIntensity = 1.6f / kPreviewUnitScale;
     lightData.ambientColor = { 0.16f, 0.17f, 0.20f };
-    /// @note LightAttenuation の逆二乗を打ち消し、intensity を「最終的な明るさ」として扱う。
-    /// @note range = boundsRadius * 20 に対し dist は boundsRadius * 3 前後なので range 窓はほぼ 1.0。
+    // LightAttenuation の逆二乗を打ち消し、intensity を「最終的な明るさ」として扱う。
+    // range = boundsRadius * 20 に対し dist は boundsRadius * 3 前後なので range 窓はほぼ 1.0。
     auto placeLight = [&](renderer::PointLight& light,
                           const math::Vector3& offset,
                           const math::Vector3& color,
@@ -1850,7 +2098,7 @@ bool RenderPreviewFrame(EditorContext& ctx, float displayAspect)
         light.color = color;
         light.range = bounds.radius * 20.0f;
         const float dist = offset.Length();
-        /// @note シェーダー側の特異点ガード max(d*d, 0.01) と同じ下限を掛ける。
+        // シェーダー側の特異点ガード max(d*d, 0.01) と同じ下限を掛ける。
         light.intensity = intensity * std::max(dist * dist, 0.01f) / kPreviewUnitScale;
     };
     placeLight(lightData.pointLights[0],
@@ -1862,7 +2110,7 @@ bool RenderPreviewFrame(EditorContext& ctx, float displayAspect)
     lightData.pointLightCount = 2;
     resources.Update(g_gpu.lightCB, &lightData, sizeof(lightData));
 
-    /// @note シャドウは bias=1.0 で常時ライティング扱いにして無効化する (サムネイルと同じ手法)。
+    // シャドウは bias=1.0 で常時ライティング扱いにして無効化する (サムネイルと同じ手法)。
     scene::ShadowConstantsCB shadowData{};
     shadowData.lightViewProjection = math::Matrix4::Translate({ 16.0f, 16.0f, 0.0f });
     shadowData.shadowMapTexelSize[0] = 0.0f;
@@ -1870,7 +2118,7 @@ bool RenderPreviewFrame(EditorContext& ctx, float displayAspect)
     shadowData.shadowBias = 1.0f;
     resources.Update(g_gpu.shadowCB, &shadowData, sizeof(shadowData));
 
-    /// @name 描画
+    // 描画
     auto& renderer = *ctx.renderer;
     renderer.SetRenderTarget(g_gpu.renderTarget, resources);
     const int backgroundIndex =
@@ -1879,8 +2127,8 @@ bool RenderPreviewFrame(EditorContext& ctx, float displayAspect)
     renderer.Clear({ bg[0], bg[1], bg[2], bg[3] });
     renderer.ClearDepth();
     const bool maskColorMode = g_maskPreview.active && g_maskPreview.loaded;
-    /// @note スキンメッシュの着色に使うボーン別ウェイト。描画は RenderPreviewFrame が
-    /// @note キャッシュミスのときだけ呼ぶので、ここで組んでもフレームごとには走らない。
+    // スキンメッシュの着色に使うボーン別ウェイト。描画は RenderPreviewFrame が
+    // キャッシュミスのときだけ呼ぶので、ここで組んでもフレームごとには走らない。
     const std::vector<float> boneMaskWeights =
         (maskColorMode && model->skeleton)
             ? BuildBoneMaskWeights(*model->skeleton, g_maskPreview.mask)
@@ -1898,20 +2146,20 @@ bool RenderPreviewFrame(EditorContext& ctx, float displayAspect)
                 skeletonNodeIndex < static_cast<int>(previewNodeGlobals.size())) {
                 const math::Matrix4 animatedGlobal =
                     previewNodeGlobals[static_cast<size_t>(skeletonNodeIndex)];
-                /// @note 現行フォーマットでは、スケルトンを持つモデル内の剛体メッシュは
-                /// @note ノードローカル頂点として保存される。旧アセットも同じ挙動へ縮退させ、
-                /// @note アニメーション付き FBX の混在メッシュをバインド姿勢で二重補正しない。
+                // 現行フォーマットでは、スケルトンを持つモデル内の剛体メッシュは
+                // ノードローカル頂点として保存される。旧アセットも同じ挙動へ縮退させ、
+                // アニメーション付き FBX の混在メッシュをバインド姿勢で二重補正しない。
                 const bool meshTransformsBaked = model->nodeTransformsBaked &&
                     model->skeleton == nullptr;
                 if (meshTransformsBaked &&
                     skeletonNodeIndex < static_cast<int>(previewBindGlobals.size())) {
-                    /// @note 静的メッシュはバインド姿勢が頂点へ焼き込まれているため、
-                    /// @note 「現在姿勢 × バインド姿勢の逆行列」だけを追加して二重変換を避ける。
+                    // 静的メッシュはバインド姿勢が頂点へ焼き込まれているため、
+                    // 「現在姿勢 × バインド姿勢の逆行列」だけを追加して二重変換を避ける。
                     meshWorld = animatedGlobal * math::Matrix4::Inverse(
                         previewBindGlobals[static_cast<size_t>(skeletonNodeIndex)]);
                 } else {
-                    /// @note 未ベイク形式は頂点がノードローカルなので、スキニングと同じ
-                    /// @note rootInverse 空間へ変換した現在のノード姿勢を使う。
+                    // 未ベイク形式は頂点がノードローカルなので、スキニングと同じ
+                    // rootInverse 空間へ変換した現在のノード姿勢を使う。
                     meshWorld = model->skeleton->rootInverseTransform * animatedGlobal;
                 }
             }
@@ -1931,20 +2179,23 @@ bool RenderPreviewFrame(EditorContext& ctx, float displayAspect)
     const auto meshPso = (g_state.view.wireframe && g_gpu.wireframePso.IsValid())
         ? g_gpu.wireframePso : g_gpu.pso;
 
-    /// @note Mesh トグル Off のときはスケルトンオーバーレイだけを見せる (デバッグ時の視認性優先)。
+    // Mesh トグル Off のときはスケルトンオーバーレイだけを見せる (デバッグ時の視認性優先)。
     for (size_t i = 0; g_state.showMesh && i < model->meshes.size(); ++i) {
         const auto& mesh = model->meshes[i];
-        if (!mesh || !mesh->vertexBuffer.IsValid() || !mesh->indexBuffer.IsValid()) continue;
+        if (!mesh || !mesh->vertexBuffer.IsValid() || !mesh->indexBuffer.IsValid()) {
+            continue;
+        }
         updateMeshObjectTransform(i, *mesh);
 
-        /// @note インポート済み .mat を優先し、無いモデル (旧 Assimp 経路など) だけ
-        /// @note Model 自身の materials へ落とす。
+        // インポート済み .mat を優先し、無いモデル (旧 Assimp 経路など) だけ
+        // Model 自身の materials へ落とす。
         renderer::Material* material =
             ResolveImportedPreviewMaterial(ctx, resources, model->meshes.size(), i);
-        if (!material && i < model->materials.size())
+        if (!material && i < model->materials.size()) {
             material = model->materials[i].get();
+        }
 
-        /// @note シェーダーの頂点入力がメッシュと合わなければ使えない。描画パスと同じくフォールバックする。スキンモデルの .mat はインポーターが一律 Skinned で書くため、同じ FBX 内の剛体メッシュ (武器など) にも Skinned シェーダーが付いてくる。
+        // シェーダーの頂点入力がメッシュと合わなければ使えない。描画パスと同じくフォールバックする。スキンモデルの .mat はインポーターが一律 Skinned で書くため、同じ FBX 内の剛体メッシュ (武器など) にも Skinned シェーダーが付いてくる。
         const bool materialSupportsSkinning =
             material && resources.GetShaderCapabilities(material->shader).SupportsSkinning();
         const bool useMaterial =
@@ -1957,18 +2208,19 @@ bool RenderPreviewFrame(EditorContext& ctx, float displayAspect)
         dc.indexCount = mesh->indexCount;
         dc.vertexCount = mesh->vertexCount;
         dc.pipelineState = meshPso;
-        dc.constantBuffers[0] = g_gpu.frameCB;
-        dc.constantBuffers[1] = g_gpu.objectCB;
-        dc.constantBuffers[3] = g_gpu.lightCB;
-        dc.constantBuffers[4] = g_gpu.shadowCB;
-        dc.constantBuffers[12] = g_gpu.punctualShadowCB;
-        dc.constantBuffers[9] = g_gpu.clusterCB;
-        if (mesh->isSkinned)
-            dc.constantBuffers[7] = g_gpu.skinningCB;
+        dc.constantBuffers[renderer::cb::CAMERA] = g_gpu.frameCB;
+        dc.constantBuffers[renderer::cb::OBJECT] = g_gpu.objectCB;
+        dc.constantBuffers[renderer::cb::LIGHT] = g_gpu.lightCB;
+        dc.constantBuffers[renderer::cb::SHADOW] = g_gpu.shadowCB;
+        dc.constantBuffers[renderer::cb::PUNCTUAL_SHADOW] = g_gpu.punctualShadowCB;
+        dc.constantBuffers[renderer::cb::CLUSTER] = g_gpu.clusterCB;
+        if (mesh->isSkinned) {
+            dc.constantBuffers[renderer::cb::SKINNING] = g_gpu.skinningCB;
+        }
 
         if (maskColorMode) {
-            /// @note マスクプレビューでは元材質よりも「どの部位が効くか」の判読性を優先し、
-            /// @note メッシュを担当ノードの実効ウェイト色で描く。
+            // マスクプレビューでは元材質よりも「どの部位が効くか」の判読性を優先し、
+            // メッシュを担当ノードの実効ウェイト色で描く。
             PreviewMaterialCB materialData{};
             const float weight =
                 MaskWeightForMesh(*model, i, g_maskPreview.mask, boneMaskWeights);
@@ -1978,7 +2230,7 @@ bool RenderPreviewFrame(EditorContext& ctx, float displayAspect)
                 && g_maskPreview.selectedNodePath ==
                     MaskPathForModelNode(*model, meshNodeIndex);
             if (selectedMesh) {
-                /// @note 選択部位は白を少し混ぜて明るくし、色相 (Weight) を残したままフォーカスを示す。
+                // 選択部位は白を少し混ぜて明るくし、色相 (Weight) を残したままフォーカスを示す。
                 color.x += (1.0f - color.x) * 0.45f;
                 color.y += (1.0f - color.y) * 0.45f;
                 color.z += (1.0f - color.z) * 0.45f;
@@ -1986,32 +2238,34 @@ bool RenderPreviewFrame(EditorContext& ctx, float displayAspect)
             materialData.albedo = { color.x, color.y, color.z, 1.0f };
             resources.Update(g_gpu.materialCB, &materialData, sizeof(materialData));
             dc.shader = mesh->isSkinned ? g_gpu.skinnedShader : g_gpu.surfaceShader;
-            dc.constantBuffers[2] = g_gpu.materialCB;
+            dc.constantBuffers[renderer::cb::MATERIAL] = g_gpu.materialCB;
         } else if (useMaterial) {
             dc.shader             = material->shader;
-            dc.constantBuffers[2] = material->paramsBuffer;
+            dc.constantBuffers[renderer::cb::MATERIAL] = material->paramsBuffer;
             for (size_t ti = 0; ti < material->textures.size() && ti < 8; ++ti)
-                if (material->textures[ti].IsValid()) dc.textures[ti] = material->textures[ti];
+                if (material->textures[ti].IsValid()) {
+                    dc.textures[ti] = material->textures[ti];
+                }
         } else {
-            /// @note フォールバック: プレビュー既定のフラットマテリアル。
-            /// @note アルベドテクスチャがあればそれだけは反映する。
+            // フォールバック: プレビュー既定のフラットマテリアル。
+            // アルベドテクスチャがあればそれだけは反映する。
             PreviewMaterialCB materialData{};
             renderer::ResourceHandle<renderer::TextureTag> albedoTexture;
-            if (material && !material->textures.empty() && material->textures[0].IsValid()) {
-                albedoTexture = material->textures[0];
+            if (material && material->textures.size() > renderer::srv::ALBEDO && material->textures[renderer::srv::ALBEDO].IsValid()) {
+                albedoTexture = material->textures[renderer::srv::ALBEDO];
                 materialData.textureMask = 1u;
             }
             resources.Update(g_gpu.materialCB, &materialData, sizeof(materialData));
             dc.shader             = mesh->isSkinned ? g_gpu.skinnedShader : g_gpu.surfaceShader;
-            dc.constantBuffers[2] = g_gpu.materialCB;
-            dc.textures[0]        = albedoTexture;
+            dc.constantBuffers[renderer::cb::MATERIAL] = g_gpu.materialCB;
+            dc.textures[renderer::srv::ALBEDO]        = albedoTexture;
         }
         renderer.Submit(dc, resources);
     }
 
-    /// @name 床グリッド / 接地リング
-    /// @note メッシュより «後» に出す。DEPTH_READ なので、既に書かれた深度がそのまま
-    /// @note 「モデルの手前か奥か」の判定になり、キャラクターの向こう側だけが隠れる。
+    // 床グリッド / 接地リング
+    // メッシュより «後» に出す。DEPTH_READ なので、既に書かれた深度がそのまま
+    // 「モデルの手前か奥か」の判定になり、キャラクターの向こう側だけが隠れる。
     if ((g_state.view.showGrid || g_state.view.showGroundRing) &&
         EnsurePreviewLineGpu(resources)) {
         const PreviewLineCameraCB lineCamera{ frameData.viewProjection };
@@ -2019,7 +2273,9 @@ bool RenderPreviewFrame(EditorContext& ctx, float displayAspect)
 
         std::vector<PreviewLineVertex> lines;
         lines.reserve(2048);
-        if (g_state.view.showGrid) BuildPreviewGridLines(lines);
+        if (g_state.view.showGrid) {
+            BuildPreviewGridLines(lines);
+        }
         if (g_state.view.showGroundRing) {
             math::Vector3 rootWorld{ g_state.focus.x, g_state.groundY, g_state.focus.z };
             if (g_state.trailNodeIndex >= 0 &&
@@ -2031,7 +2287,7 @@ bool RenderPreviewFrame(EditorContext& ctx, float displayAspect)
         SubmitPreviewLines(renderer, resources, lines);
     }
 
-    /// @note ImGui 描画中の RT 切り替えなので、必ずバックバッファへ戻す。
+    // ImGui 描画中の RT 切り替えなので、必ずバックバッファへ戻す。
     renderer.SetRenderTarget(renderer::ResourceHandle<renderer::RenderTargetTag>{}, resources);
     g_state.lastRenderOk = true;
     return true;
@@ -2040,9 +2296,13 @@ bool RenderPreviewFrame(EditorContext& ctx, float displayAspect)
 /// @note 再生時刻を進める。複数箇所 (Inspector + パネル) から呼ばれても 1 フレーム 1 回だけ。
 void AdvancePlayback()
 {
-    if (g_state.lastAdvanceFrame == ImGui::GetFrameCount()) return;
+    if (g_state.lastAdvanceFrame == ImGui::GetFrameCount()) {
+        return;
+    }
     g_state.lastAdvanceFrame = ImGui::GetFrameCount();
-    if (!g_state.playing) return;
+    if (!g_state.playing) {
+        return;
+    }
 
     g_state.time += ImGui::GetIO().DeltaTime * g_state.speed;
     if (g_state.time > g_state.timelineLength) {
@@ -2055,7 +2315,7 @@ void AdvancePlayback()
     }
 }
 
-} /// @note namespace fbzz::editor::animpreview
+} // namespace fbzz::editor::animpreview
 
 namespace fbzz::editor {
 
@@ -2066,16 +2326,17 @@ bool HasAnimationPreviewTarget()
 
 void TickAnimationPreview(EditorContext& ctx)
 {
-    /// @note Mask Preview の一時対象を通常 Animation の選択追従で上書きしない。
-    if (!animpreview::g_maskPreview.active)
+    // Mask Preview の一時対象を通常 Animation の選択追従で上書きしない。
+    if (!animpreview::g_maskPreview.active) {
         animpreview::UpdatePreviewTarget(ctx);
+    }
     animpreview::AdvancePlayback();
 }
 
 void ShutdownAnimationPreview()
 {
-    /// @note ResourceManager は EditorApp の所有物なのでここでは解放せず、次回起動時に無効なハンドルと前回のアタッチ FBX が残らないよう状態だけ初期化する。
-    /// @note 表示設定だけ持ち越すのは、EditorApp がこの関数を «パネルから設定を回収する前» に呼ぶため。トグルやカメラまで既定へ戻すと保存される値が常に既定値になる。捨てるのはハンドルと対象だけ。
+    // ResourceManager は EditorApp の所有物なのでここでは解放せず、次回起動時に無効なハンドルと前回のアタッチ FBX が残らないよう状態だけ初期化する。
+    // 表示設定だけ持ち越すのは、EditorApp がこの関数を «パネルから設定を回収する前» に呼ぶため。トグルやカメラまで既定へ戻すと保存される値が常に既定値になる。捨てるのはハンドルと対象だけ。
     const animpreview::PreviewViewSettings view = animpreview::g_state.view;
     const bool showMesh      = animpreview::g_state.showMesh;
     const bool showBones     = animpreview::g_state.showBones;
@@ -2172,4 +2433,4 @@ void SaveAnimationPreviewSettings(EditorSettings& settings)
     settings.animPreviewLightYaw       = state.view.lightYaw;
 }
 
-} /// @note namespace fbzz::editor
+} // namespace fbzz::editor

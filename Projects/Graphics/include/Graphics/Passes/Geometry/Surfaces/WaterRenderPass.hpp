@@ -62,4 +62,4 @@ public:
     FBZZ_GRAPHICS_API void Execute(PassResources& resources, RenderPassContext& ctx) override;
 };
 
-} /// @note namespace fbzz::renderer
+} // namespace fbzz::renderer

@@ -108,44 +108,49 @@ public:
     template<typename Fn>
     void ForEachTarget(Fn&& fn) const
     {
-        for (const auto& [name, handle] : m_targets)
+        for (const auto& [name, handle] : m_targets) {
             fn(name, handle);
+        }
     }
 
     template<typename Fn>
     void ForEachTexture(Fn&& fn) const
     {
-        for (const auto& [name, handle] : m_textures)
+        for (const auto& [name, handle] : m_textures) {
             fn(name, handle);
+        }
     }
 
     template<typename Fn>
     void ForEachBuffer(Fn&& fn) const
     {
-        for (const auto& [name, handle] : m_buffers)
+        for (const auto& [name, handle] : m_buffers) {
             fn(name, handle);
+        }
     }
 
     template<typename Fn>
     void ForEachStructuredBuffer(Fn&& fn) const
     {
-        for (const auto& [name, handle] : m_structuredBuffers)
+        for (const auto& [name, handle] : m_structuredBuffers) {
             fn(name, handle);
+        }
     }
 
     template<typename Fn>
     void ForEachAccelerationStructure(Fn&& fn) const
     {
-        for (const auto& [name, handle] : m_accelerationStructures)
+        for (const auto& [name, handle] : m_accelerationStructures) {
             fn(name, handle);
+        }
     }
 
 private:
-    std::unordered_map<std::string, renderer::ResourceHandle<renderer::RenderTargetTag>> m_targets;
-    std::unordered_map<std::string, renderer::ResourceHandle<renderer::TextureTag>>      m_textures;
-    std::unordered_map<std::string, renderer::ResourceHandle<renderer::BufferTag>> m_buffers;
-    std::unordered_map<std::string, renderer::ResourceHandle<renderer::StructuredBufferTag>> m_structuredBuffers;
-    std::unordered_map<std::string, renderer::ResourceHandle<renderer::AccelerationStructureTag>> m_accelerationStructures;
+    std::unordered_map<std::string, renderer::ResourceHandle<renderer::RenderTargetTag>> m_targets; ///< 論理名から現在の描画ターゲットを引く登録表。
+    std::unordered_map<std::string, renderer::ResourceHandle<renderer::TextureTag>>      m_textures; ///< 論理名から現在のテクスチャを引く登録表。
+    std::unordered_map<std::string, renderer::ResourceHandle<renderer::BufferTag>> m_buffers; ///< 論理名から現在のバッファを引く登録表。
+    std::unordered_map<std::string, renderer::ResourceHandle<renderer::StructuredBufferTag>> m_structuredBuffers; ///< 論理名から現在の構造化バッファを引く登録表。
+    std::unordered_map<std::string, renderer::ResourceHandle<renderer::AccelerationStructureTag>> m_accelerationStructures; ///< 論理名から現在のレイ追跡用加速構造を引く登録表。
 };
 
 /// @note パスが «何を読み、何を書くか» を申告する唯一の場所 (IRenderPass::Setup)。
@@ -208,8 +213,8 @@ private:
         return *this;
     }
 
-    std::vector<Access> m_accesses;
-    std::string         m_autoTarget;
+    std::vector<Access> m_accesses; ///< パスの構築中に収集するリソースのアクセス宣言。
+    std::string         m_autoTarget; ///< パスが要求する自動ターゲットの指定。
 };
 
 /// @note Execute から実体を引く口。申告していない名前は引けない。
@@ -263,9 +268,9 @@ public:
 private:
     FBZZ_GRAPHICS_API void WarnIfUndeclared(std::string_view name) const;
 
-    const RenderResourceRegistry&                              m_registry;
-    const std::vector<renderer::RenderGraph::ResourceAccess>&  m_accesses;
-    std::string_view                                           m_passName;
+    const RenderResourceRegistry&                              m_registry; ///< 論理名から、このフレームで束縛されている実リソースを探す登録表。
+    const std::vector<renderer::RenderGraph::ResourceAccess>&  m_accesses; ///< パスが構築時に宣言した読み書きの一覧。
+    std::string_view                                           m_passName; ///< 宣言と異なるリソースを参照したとき診断に載せるパス名。
 };
 
-} /// @note namespace fbzz::renderer
+} // namespace fbzz::renderer

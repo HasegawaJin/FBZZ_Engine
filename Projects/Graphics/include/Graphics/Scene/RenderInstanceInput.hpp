@@ -23,4 +23,4 @@ struct InstanceSetData {
     std::vector<InstancePlacement> placements;
     std::vector<uint32_t> dirtySlots;
 };
-} /// @note namespace fbzz::renderer
+} // namespace fbzz::renderer

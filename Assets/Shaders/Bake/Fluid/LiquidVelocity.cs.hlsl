@@ -5,8 +5,8 @@
 #include "Bake/Fluid/LiquidCommon.hlsli"
 #include "Common/BindlessIndices.hlsli"
 
-FBZZ_SBUFFER_T(float4, gPredicted, 14);
-FBZZ_RWSBUFFER_T(float4, gState, 2);
+FBZZ_SBUFFER_T(float4, gPredicted, SRV_LIQUID_PARTICLES_SLOT);
+FBZZ_RWSBUFFER_T(float4, gState, UAV_LIQUID_STATE_SLOT);
 
 [numthreads(64, 1, 1)]
 void CSMain(uint3 id : SV_DispatchThreadID)
@@ -18,8 +18,8 @@ void CSMain(uint3 id : SV_DispatchThreadID)
     if (!LiquidIsAlive(velocityState)) return;
 
     const float3 solved = gPredicted[i].xyz;
-    // WHY 押し出しの速さに上限を置くか: 詰まった粒子を押し広げた補正まで速度になると、重なりのたびに爆ぜる。
-    //     位置は補正どおり動かし、速度へ持ち越す分だけを抑える (CPU の kMaxPushSpeed)。
+    /// @note 押し出しの速さに上限を置くか: 詰まった粒子を押し広げた補正まで速度になると、重なりのたびに爆ぜる。
+    /// @note 位置は補正どおり動かし、速度へ持ち越す分だけを抑える (CPU の kMaxPushSpeed)。
     float3 push = (solved - positionAge.xyz) / gDt - velocityState.xyz;
     const float pushLength = length(push);
     if (pushLength > kLiquidMaxPushSpeed) push *= kLiquidMaxPushSpeed / pushLength;
@@ -32,7 +32,7 @@ void CSMain(uint3 id : SV_DispatchThreadID)
         v.z *= gFloorKeep;
         v.y = max(v.y, 0.0f);
     }
-    // 床と同じ扱いを障害物の面で行う。速度は障害物に対する相対で見る (動く障害物に乗った粒は一緒に動く)。
+    /// @note 床と同じ扱いを障害物の面で行う。速度は障害物に対する相対で見る (動く障害物に乗った粒は一緒に動く)。
     [loop]
     for (uint c = 0u; c < gColliderCount; ++c)
     {

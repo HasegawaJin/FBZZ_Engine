@@ -13,6 +13,7 @@
 /// @note u2 = 主な書き先 / u3 = 2 つ目の書き先 (並べ替え・予測位置)
 /// @note t14/t15/t29/t30 か: ComputeCall が StructuredBuffer として null を差すスロットはこの 4 本だけ
 /// @note (kComputeStructuredBufferSlots)。束縛し忘れても DX12 の null の次元が食い違わない。
+#include "Common/Binding.hlsli"
 #ifndef LIQUID_COMMON_HLSLI
 #define LIQUID_COMMON_HLSLI
 
@@ -37,7 +38,7 @@ struct LiquidCollider
 
 /// @note FluidGpuLiquidSolver.cpp の LiquidStepConstants と 1:1
 /// @note (ヘッダー 144 B + 力 48 B × 8 + 障害物 64 B × 8 = 1040 B)。
-cbuffer LiquidStepConstants : register(b0)
+cbuffer LiquidStepConstants : register(FBZZ_REGISTER(b, CB_LIQUID_STEP_SLOT))
 {
     float gTime;             float gDt;            float gGravity;       float gCohesion;
     float gViscosity;        float gRadius;        float gH;             float gH2;
@@ -53,7 +54,7 @@ cbuffer LiquidStepConstants : register(b0)
 };
 
 /// @note 並べ替え: A = k / B = j。鍵を作る: A = 位置の間隔 (1 = 予測位置 / 2 = 状態)。
-cbuffer LiquidPassConstants : register(b1)
+cbuffer LiquidPassConstants : register(FBZZ_REGISTER(b, CB_LIQUID_PASS_SLOT))
 {
     uint gPassA;
     uint gPassB;

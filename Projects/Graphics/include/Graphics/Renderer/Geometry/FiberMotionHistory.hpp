@@ -37,7 +37,9 @@ struct FiberMotionHistory {
     /// @see https://developer.nvidia.com/gpugems/gpugems3/part-iv-image-effects/chapter-27-motion-blur-post-processing-effect
     void Advance(uint64_t frame, const FiberDeformationState& state)
     {
-        if (m_initialized && m_frame == frame) return;
+        if (m_initialized && m_frame == frame) {
+            return;
+        }
         m_valid = m_initialized && frame > m_frame && frame - m_frame == 1
             && state.m_time >= m_current.m_time
             && state.m_mode == m_current.m_mode && state.m_shellCount == m_current.m_shellCount;
@@ -48,4 +50,4 @@ struct FiberMotionHistory {
     }
 };
 
-} /// @note namespace fbzz::renderer
+} // namespace fbzz::renderer

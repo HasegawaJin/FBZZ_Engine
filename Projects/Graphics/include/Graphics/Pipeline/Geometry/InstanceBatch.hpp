@@ -18,8 +18,8 @@ namespace fbzz::renderer {
 /// @note LAYOUT: Assets/Shaders/Common/ObjectInstance.hlsli の ObjectInstance と一致させること。
 /// @note ずらすと VS が別の行列を読み、物体が原点や無限遠へ飛ぶ。
 struct PerInstanceData {
-    math::Matrix4 world;
-    math::Matrix4 worldInvTranspose;
+    math::Matrix4 world; ///< 頂点のローカル座標をワールド座標に変換する行列。
+    math::Matrix4 worldInvTranspose; ///< 非一様スケールを含むワールド変換に合わせて法線を変換する逆転置行列。
 };
 static_assert(sizeof(PerInstanceData) == 128, "ObjectInstance.hlsli と同じ 128 バイトであること");
 /// @note InstanceBatcher は b1 の載せ直しを memcmp で飛ばす。詰め物が入ると未初期化バイトの
@@ -40,9 +40,9 @@ static_assert(sizeof(PerObjectCB) == 144, "PerObjectCB に詰め物が入って�
 /// @note (Docs/design/gpu-instancing.md «やらないこと»)。
 class InstanceBatcher {
 public:
-    /// @param baseShader      束ねてよい描画が使っているシェーダー。
-    /// @param instancedShader baseShader の変種。無効なら束ねず 1 件ずつ出す。
-    /// @param shadow          true なら統計を影側 (statsShadowDrawCalls) へ積む。
+    /// @param[in] baseShader 束ねてよい描画が使っているシェーダー。
+    /// @param[in] instancedShader baseShader の変種。無効なら束ねず 1 件ずつ出す。
+    /// @param[in] shadow true なら統計を影側 (statsShadowDrawCalls) へ積む。
     /// @note baseShader を受けるのは、同じループに別のシェーダーで描く物体が混ざるため
     /// @note (影の列には VS スキニングへ落ちた caster が混ざる)。シェーダーを見ずに差し替えると、
     /// @note 変種が想定していない頂点入力のまま描いてジオメトリが壊れる。
@@ -57,9 +57,9 @@ public:
     InstanceBatcher& operator=(const InstanceBatcher&) = delete;
 
     /// @brief 描画を 1 件積む。直前と束ねられなければ、溜まっていた束を先に吐き出す。
-    /// @param prototype b1 と instanceBuffer / instanceCount を空にした DrawCall。
-    /// @param object この物体の b1 の中身。objectParams.x != 0 (LOD 遷移中) は束ねない。
-    /// @param worldSphere Conservative world-space bounds; a negative radius disables GPU compaction for this batch.
+    /// @param[in] prototype b1 と instanceBuffer / instanceCount を空にした DrawCall。
+    /// @param[in] object この物体の b1 の中身。objectParams.x != 0 (LOD 遷移中) は束ねない。
+    /// @param[in] worldSphere 形状を覆うワールド空間の境界球。半径が負のときバッチを GPU で圧縮しない。
     FBZZ_GRAPHICS_API void Add(const renderer::DrawCall& prototype, const PerObjectCB& object,
         const math::Vector4& worldSphere = {0, 0, 0, -1});
 
@@ -74,28 +74,28 @@ public:
 
 private:
     [[nodiscard]] bool CheckDeformedReadiness(ResourceHandle<BufferTag> output);
-    const math::Frustum* m_gpuFrustum = nullptr;
-    std::vector<math::Vector4> m_gpuBounds;
+    const math::Frustum* m_gpuFrustum = nullptr; ///< GPU 選別用に参照するビューの視錐台。
+    std::vector<math::Vector4> m_gpuBounds; ///< 保留中インスタンスに対応するワールド空間の境界球。
     FBZZ_GRAPHICS_API void SubmitOne(const renderer::DrawCall& call);
     /// @brief b1 を更新する。直前に載せた内容と同じなら何もしない。
     FBZZ_GRAPHICS_API void BindObjectConstants(renderer::DrawCall& call, const PerObjectCB& object);
 
-    RenderPassContext&                            m_ctx;
-    renderer::ResourceHandle<renderer::ShaderTag> m_baseShader;
-    renderer::ResourceHandle<renderer::ShaderTag> m_instancedShader;
-    bool                                          m_shadow = false;
-    bool                                          m_reuseDeformedReadiness = false;
+    RenderPassContext&                            m_ctx; ///< 現在記録中の描画パスのコンテキスト。
+    renderer::ResourceHandle<renderer::ShaderTag> m_baseShader; ///< 単体描画に使うシェーダーのハンドル。
+    renderer::ResourceHandle<renderer::ShaderTag> m_instancedShader; ///< 複数のインスタンスをまとめて描くシェーダーのハンドル。
+    bool                                          m_shadow = false; ///< 影の深度を描くバッチか。
+    bool                                          m_reuseDeformedReadiness = false; ///< 変形後頂点の準備状態をバッチ内で再利用できるか。
 
-    renderer::DrawCall       m_prototype{};
-    std::vector<PerObjectCB> m_pending;
-    renderer::ResourceHandle<renderer::ShaderTag> m_deformedShader;
-    std::vector<renderer::ResourceHandle<renderer::BufferTag>> m_deformedVertices;
+    renderer::DrawCall       m_prototype{}; ///< 保留中の描画に共通する設定を保持する描画コマンド。
+    std::vector<PerObjectCB> m_pending; ///< まとめて描画する各インスタンスのオブジェクト定数。
+    renderer::ResourceHandle<renderer::ShaderTag> m_deformedShader; ///< 変形済みの頂点を入力として使うシェーダー。
+    std::vector<renderer::ResourceHandle<renderer::BufferTag>> m_deformedVertices; ///< 準備状態を確認した変形済み頂点バッファ。
 
-    PerObjectCB m_lastObject{};
-    bool        m_hasLastObject = false;
+    PerObjectCB m_lastObject{}; ///< 最後に送ったオブジェクト定数。再送の要否を判定する。
+    bool        m_hasLastObject = false; ///< 比較に使える前回のオブジェクト定数があるか。
 };
 
 /// @brief インスタンスバッファの貸出プールを手放す。シーン切り替え・リソースリセットで呼ぶこと。
 FBZZ_GRAPHICS_API void ReleaseInstanceBatchCaches(renderer::ResourceManager& resources);
 
-} /// @note namespace fbzz::renderer
+} // namespace fbzz::renderer

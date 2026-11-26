@@ -44,34 +44,34 @@ constexpr uint32_t PLUME_ROWS = 2u;
 constexpr float MINIMUM_BOUNDS_SPAN = 1.0e-5f;
 
 struct BodyCandidate {
-    uint32_t inputIndex = 0;
-    uint64_t ownerKey = 0;
-    int32_t priority = 0;
-    const WaterMediumInput* medium = nullptr;
-    math::Vector4 bounds{};
-    math::Vector3 queryMinimum{};
-    math::Vector3 queryMaximum{};
-    std::vector<uint32_t> exclusionIndices;
-    std::vector<uint32_t> plumeIndices;
-    uint32_t cellMinX = 0;
-    uint32_t cellMinZ = 0;
-    uint32_t cellMaxX = 0;
-    uint32_t cellMaxZ = 0;
-    bool variableDepth = false;
-    float depthQuantization = 0.0f;
-    bool horizon = false;
-    float certifiedDisplacement = 0.0f;
-    float physicalMinimumY = 0.0f;
-    float physicalMaximumY = 0.0f;
+    uint32_t inputIndex = 0; ///< RenderScene::water 内の入力番号。
+    uint64_t ownerKey = 0; ///< 水域の重複検出と無効化の報告に使う安定キー。
+    int32_t priority = 0; ///< 水域が重なったときの優先度。
+    const WaterMediumInput* medium = nullptr; ///< 現在の RenderScene から借りる水域設定。
+    math::Vector4 bounds{}; ///< このビューで扱うワールド XZ 境界。順序は最小 X/Z、最大 X/Z。
+    math::Vector3 queryMinimum{}; ///< 除外領域とプルームの検索に使うワールド境界の下端。
+    math::Vector3 queryMaximum{}; ///< 除外領域とプルームの検索に使うワールド境界の上端。
+    std::vector<uint32_t> exclusionIndices; ///< medium->exclusions 内の、検索境界と重なる除外領域の番号。
+    std::vector<uint32_t> plumeIndices; ///< medium->plumes 内の、検索境界と重なるプルームの番号。
+    uint32_t cellMinX = 0; ///< 水域を覆う候補グリッドの最小 X セル。
+    uint32_t cellMinZ = 0; ///< 水域を覆う候補グリッドの最小 Z セル。
+    uint32_t cellMaxX = 0; ///< 水域を覆う候補グリッドの最大 X セル。
+    uint32_t cellMaxZ = 0; ///< 水域を覆う候補グリッドの最大 Z セル。
+    bool variableDepth = false; ///< 地形テクスチャから位置ごとの水深を求めるかどうか。
+    float depthQuantization = 0.0f; ///< 地形に格納した水深の量子化誤差の上限 [m]。
+    bool horizon = false; ///< 遠景の海面を含むように水域の XZ 境界を求めるかどうか。
+    float certifiedDisplacement = 0.0f; ///< 矩形水域の内部を保証する計算に使うワールド Y の変位上限 [m]。安全余白を含む。
+    float physicalMinimumY = 0.0f; ///< 水域の物理的なワールド Y 下限 [m]。
+    float physicalMaximumY = 0.0f; ///< 水域の物理的なワールド Y 上限 [m]。
 };
 
 struct GridCell {
-    std::vector<uint32_t> bodies;
+    std::vector<uint32_t> bodies; ///< このセルと重なる、パック対象の水域配列内の番号。
 };
 
 struct Bounds3 {
-    math::Vector3 minimum{};
-    math::Vector3 maximum{};
+    math::Vector3 minimum{}; ///< ワールド軸に沿った境界の最小座標 [m]。
+    math::Vector3 maximum{}; ///< ワールド軸に沿った境界の最大座標 [m]。
 };
 
 using ScreenTileRows = std::array<uint16_t, SCREEN_TILE_COUNT>;
@@ -103,35 +103,65 @@ using ScreenTileRows = std::array<uint16_t, SCREEN_TILE_COUNT>;
 
 [[nodiscard]] bool IsFinite(const math::Matrix4& matrix)
 {
-    for (const auto& row : matrix.m)
-        for (float value : row)
-            if (!IsFinite(value)) return false;
+    for (const auto& row : matrix.m) {
+        for (float value : row) {
+            if (!IsFinite(value)) {
+                return false;
+            }
+        }
+    }
     return true;
 }
 
+/// @brief 水中描画向けの検索境界と GPU 定数を作れる水域か確認する。
+/// @param[in] input 水域の境界、変換と光学パラメーター。
+/// @return パックに使う値が有限で、境界と距離の範囲が成立する場合は true。
 [[nodiscard]] bool HasValidSource(const RenderWaterInput& input)
 {
     const WaterMediumInput& medium = input.medium;
-    if (!IsFinite(medium.worldBoundsXZ) || !(medium.worldBoundsXZ.z > medium.worldBoundsXZ.x)
-        || !(medium.worldBoundsXZ.w > medium.worldBoundsXZ.y)
-        || !IsFinite(medium.worldToLocalRows)
-        || !IsFinite(medium.absorptionPhaseG) || !IsFinite(medium.scatteringLight)
-        || !IsFinite(medium.surfaceY) || !IsFinite(medium.bottomY) || !IsFinite(medium.depthLimit)
-        || !IsFinite(medium.maxDistance) || !IsFinite(medium.transitionDepth)
-        || !IsFinite(medium.causticsIntensity) || !IsFinite(medium.distortion)
-        || !IsFinite(medium.localHalfExtent)
-        || !IsFinite(input.constants.worldMatrix) || !IsFinite(input.aabbMin) || !IsFinite(input.aabbMax)
-        || !IsFinite(input.margin.horizontal) || !IsFinite(input.margin.vertical)
-        || input.margin.horizontal < 0.0f || input.margin.vertical < 0.0f
-        || input.aabbMin.x > input.aabbMax.x || input.aabbMin.y > input.aabbMax.y
-        || input.aabbMin.z > input.aabbMax.z
-        || medium.depthLimit < 0.0f || medium.bottomY > medium.surfaceY + 1.0e-3f
-        || medium.maxDistance < 0.0f || medium.localHalfExtent.x < 0.0f || medium.localHalfExtent.y < 0.0f)
+    // 空間グリッドに登録するには、ワールド XZ の両方向に幅が必要になる。
+    const auto& worldBounds = medium.worldBoundsXZ;
+    const bool validWorldBounds = IsFinite(worldBounds)
+        && worldBounds.z > worldBounds.x && worldBounds.w > worldBounds.y;
+    if (!validWorldBounds || !IsFinite(medium.worldToLocalRows)) {
         return false;
-    if (!IsFinite(medium.worldBoundsXZ.z - medium.worldBoundsXZ.x)
-        || !IsFinite(medium.worldBoundsXZ.w - medium.worldBoundsXZ.y)) return false;
+    }
 
-    return true;
+    // GPU テーブルに格納する光学係数と水深の値が有限か確かめる。
+    if (!IsFinite(medium.absorptionPhaseG) || !IsFinite(medium.scatteringLight)) {
+        return false;
+    }
+    const bool finiteDepthRange = IsFinite(medium.surfaceY) && IsFinite(medium.bottomY)
+        && IsFinite(medium.depthLimit) && IsFinite(medium.maxDistance) && IsFinite(medium.transitionDepth);
+    if (!finiteDepthRange || !IsFinite(medium.causticsIntensity) || !IsFinite(medium.distortion)) {
+        return false;
+    }
+
+    // 水面形状から検索境界を作るため、変換とローカル境界、変位の余白を確認する。
+    const bool finiteSurfaceGeometry = IsFinite(medium.localHalfExtent) && IsFinite(input.constants.worldMatrix)
+        && IsFinite(input.aabbMin) && IsFinite(input.aabbMax);
+    if (!finiteSurfaceGeometry) {
+        return false;
+    }
+    const bool validMargins = IsFinite(input.margin.horizontal) && IsFinite(input.margin.vertical)
+        && input.margin.horizontal >= 0.0f && input.margin.vertical >= 0.0f;
+    if (!validMargins) {
+        return false;
+    }
+    const bool orderedLocalBounds = input.aabbMin.x <= input.aabbMax.x && input.aabbMin.y <= input.aabbMax.y
+        && input.aabbMin.z <= input.aabbMax.z;
+    if (!orderedLocalBounds) {
+        return false;
+    }
+
+    const bool validDepthRange = medium.depthLimit >= 0.0f && medium.bottomY <= medium.surfaceY + 1.0e-3f
+        && medium.maxDistance >= 0.0f;
+    if (!validDepthRange || medium.localHalfExtent.x < 0.0f || medium.localHalfExtent.y < 0.0f) {
+        return false;
+    }
+
+    // 端点が有限でも、グリッドのセル幅を求める差分がオーバーフローする場合がある。
+    return IsFinite(worldBounds.z - worldBounds.x) && IsFinite(worldBounds.w - worldBounds.y);
 }
 
 [[nodiscard]] bool ComputeWorldSurfaceYBounds(const RenderWaterInput& input,
@@ -147,9 +177,13 @@ using ScreenTileRows = std::array<uint16_t, SCREEN_TILE_COUNT>;
             (corner & 4u) != 0u ? input.aabbMax.z : input.aabbMin.z
         };
         const math::Vector4 world = input.constants.worldMatrix * math::Vector4{ local.x, local.y, local.z, 1.0f };
-        if (!IsFinite(world) || std::abs(world.w) <= 1.0e-7f) return false;
+        if (!IsFinite(world) || std::abs(world.w) <= 1.0e-7f) {
+            return false;
+        }
         const float worldY = world.y / world.w;
-        if (!IsFinite(worldY)) return false;
+        if (!IsFinite(worldY)) {
+            return false;
+        }
         outMinimumY = (std::min)(outMinimumY, worldY);
         outMaximumY = (std::max)(outMaximumY, worldY);
     }
@@ -162,8 +196,9 @@ using ScreenTileRows = std::array<uint16_t, SCREEN_TILE_COUNT>;
 {
     if (!IsFinite(exclusion.worldToLocalRows) || !IsFinite(exclusion.halfExtent)
         || exclusion.halfExtent.x < 0.0f || exclusion.halfExtent.y < 0.0f
-        || exclusion.halfExtent.z < 0.0f)
+        || exclusion.halfExtent.z < 0.0f) {
         return false;
+    }
 
     const double matrix[3][3] = {
         { exclusion.worldToLocalRows[0].x, exclusion.worldToLocalRows[0].y, exclusion.worldToLocalRows[0].z },
@@ -176,7 +211,9 @@ using ScreenTileRows = std::array<uint16_t, SCREEN_TILE_COUNT>;
     const double determinant = matrix[0][0] * (matrix[1][1] * matrix[2][2] - matrix[1][2] * matrix[2][1])
         - matrix[0][1] * (matrix[1][0] * matrix[2][2] - matrix[1][2] * matrix[2][0])
         + matrix[0][2] * (matrix[1][0] * matrix[2][1] - matrix[1][1] * matrix[2][0]);
-    if (!std::isfinite(determinant) || std::abs(determinant) <= 1.0e-24) return false;
+    if (!std::isfinite(determinant) || std::abs(determinant) <= 1.0e-24) {
+        return false;
+    }
 
     const double inverseDeterminant = 1.0 / determinant;
     const double inverse[3][3] = {
@@ -202,7 +239,9 @@ using ScreenTileRows = std::array<uint16_t, SCREEN_TILE_COUNT>;
         }
         minimum[axis] = center - extent;
         maximum[axis] = center + extent;
-        if (!std::isfinite(minimum[axis]) || !std::isfinite(maximum[axis])) return false;
+        if (!std::isfinite(minimum[axis]) || !std::isfinite(maximum[axis])) {
+            return false;
+        }
     }
     outBounds.minimum = { static_cast<float>(minimum[0]), static_cast<float>(minimum[1]), static_cast<float>(minimum[2]) };
     outBounds.maximum = { static_cast<float>(maximum[0]), static_cast<float>(maximum[1]), static_cast<float>(maximum[2]) };
@@ -220,7 +259,9 @@ using ScreenTileRows = std::array<uint16_t, SCREEN_TILE_COUNT>;
 [[nodiscard]] bool Intersects(const math::Vector4& sphere, const math::Vector3& minimum,
                               const math::Vector3& maximum)
 {
-    if (!IsFinite(sphere) || sphere.w < 0.0f) return false;
+    if (!IsFinite(sphere) || sphere.w < 0.0f) {
+        return false;
+    }
     return sphere.x + sphere.w >= minimum.x && sphere.x - sphere.w <= maximum.x
         && sphere.y + sphere.w >= minimum.y && sphere.y - sphere.w <= maximum.y
         && sphere.z + sphere.w >= minimum.z && sphere.z - sphere.w <= maximum.z;
@@ -230,14 +271,18 @@ using ScreenTileRows = std::array<uint16_t, SCREEN_TILE_COUNT>;
 {
     float surfaceMinimumY = 0.0f;
     float surfaceMaximumY = 0.0f;
-    if (!ComputeWorldSurfaceYBounds(input, surfaceMinimumY, surfaceMaximumY)) return false;
+    if (!ComputeWorldSurfaceYBounds(input, surfaceMinimumY, surfaceMaximumY)) {
+        return false;
+    }
     const WaterMediumInput& medium = input.medium;
     const auto& worldY = input.constants.worldMatrix.m[1];
     const float verticalMargin = input.margin.vertical * (std::max)(1.0f, std::abs(worldY[1]))
         + input.margin.horizontal * (std::abs(worldY[0]) + std::abs(worldY[2]));
     const float displacement = (std::max)(std::abs(surfaceMinimumY - medium.surfaceY),
         std::abs(surfaceMaximumY - medium.surfaceY)) + verticalMargin;
-    if (IsFinite(displacement)) body.certifiedDisplacement = displacement + 1.0f;
+    if (IsFinite(displacement)) {
+        body.certifiedDisplacement = displacement + 1.0f;
+    }
     const float verticalReach = medium.maxDistance;
     body.physicalMinimumY = (std::min)(surfaceMinimumY - verticalMargin - medium.depthLimit, medium.bottomY);
     body.physicalMaximumY = surfaceMaximumY + verticalMargin;
@@ -258,19 +303,30 @@ using ScreenTileRows = std::array<uint16_t, SCREEN_TILE_COUNT>;
     body.plumeIndices.clear();
     for (size_t index = 0; index < medium.exclusions.size(); ++index) {
         Bounds3 bounds;
-        if (!ComputeWorldAabb(medium.exclusions[index], bounds)) return false;
-        if (!Intersects(bounds, body.queryMinimum, body.queryMaximum)) continue;
+        if (!ComputeWorldAabb(medium.exclusions[index], bounds)) {
+            return false;
+        }
+        if (!Intersects(bounds, body.queryMinimum, body.queryMaximum)) {
+            continue;
+        }
         body.exclusionIndices.push_back(static_cast<uint32_t>(index));
-        if (body.exclusionIndices.size() > MAXIMUM_BOXES_PER_BODY) return false;
+        if (body.exclusionIndices.size() > MAXIMUM_BOXES_PER_BODY) {
+            return false;
+        }
     }
     for (size_t index = 0; index < medium.plumes.size(); ++index) {
         const WaterMediumPlumeInput& plume = medium.plumes[index];
         if (!IsFinite(plume.worldPositionRadius) || !IsFinite(plume.scatteringDensity)
-            || plume.worldPositionRadius.w < 0.0f)
+            || plume.worldPositionRadius.w < 0.0f) {
             return false;
-        if (!Intersects(plume.worldPositionRadius, body.queryMinimum, body.queryMaximum)) continue;
+        }
+        if (!Intersects(plume.worldPositionRadius, body.queryMinimum, body.queryMaximum)) {
+            continue;
+        }
         body.plumeIndices.push_back(static_cast<uint32_t>(index));
-        if (body.plumeIndices.size() > MAXIMUM_PLUMES_PER_BODY) return false;
+        if (body.plumeIndices.size() > MAXIMUM_PLUMES_PER_BODY) {
+            return false;
+        }
     }
     return true;
 }
@@ -287,10 +343,14 @@ using ScreenTileRows = std::array<uint16_t, SCREEN_TILE_COUNT>;
         for (float clipY : { -1.0f, 1.0f }) {
             for (float clipX : { -1.0f, 1.0f }) {
                 const math::Vector4 world = inverseViewProjection * math::Vector4{ clipX, clipY, clipZ, 1.0f };
-                if (!IsFinite(world) || std::abs(world.w) <= 1.0e-7f) return false;
+                if (!IsFinite(world) || std::abs(world.w) <= 1.0e-7f) {
+                    return false;
+                }
                 const float x = world.x / world.w;
                 const float z = world.z / world.w;
-                if (!IsFinite(x) || !IsFinite(z)) return false;
+                if (!IsFinite(x) || !IsFinite(z)) {
+                    return false;
+                }
                 minimumX = (std::min)(minimumX, x);
                 minimumZ = (std::min)(minimumZ, z);
                 maximumX = (std::max)(maximumX, x);
@@ -298,7 +358,9 @@ using ScreenTileRows = std::array<uint16_t, SCREEN_TILE_COUNT>;
             }
         }
     }
-    if (!(maximumX > minimumX) || !(maximumZ > minimumZ)) return false;
+    if (!(maximumX > minimumX) || !(maximumZ > minimumZ)) {
+        return false;
+    }
     outBounds = { minimumX, minimumZ, maximumX, maximumZ };
     return true;
 }
@@ -314,7 +376,9 @@ using ScreenTileRows = std::array<uint16_t, SCREEN_TILE_COUNT>;
     const float maxZ = medium.worldBoundsXZ.w + horizontalMargin;
     float worldSurfaceMinY = 0.0f;
     float worldSurfaceMaxY = 0.0f;
-    if (!ComputeWorldSurfaceYBounds(input, worldSurfaceMinY, worldSurfaceMaxY)) return false;
+    if (!ComputeWorldSurfaceYBounds(input, worldSurfaceMinY, worldSurfaceMaxY)) {
+        return false;
+    }
     const float minY = (std::min)(worldSurfaceMinY - medium.depthLimit, medium.bottomY) - verticalMargin;
     const float maxY = worldSurfaceMaxY + verticalMargin;
     const math::Vector3 center{
@@ -345,7 +409,9 @@ using ScreenTileRows = std::array<uint16_t, SCREEN_TILE_COUNT>;
         static_cast<double>(viewBounds.z) + expansion);
     const double maxZ = (std::min)(static_cast<double>(medium.worldBoundsXZ.w) + horizontalMargin,
         static_cast<double>(viewBounds.w) + expansion);
-    if (!(maxX - minX > MINIMUM_BOUNDS_SPAN) || !(maxZ - minZ > MINIMUM_BOUNDS_SPAN)) return false;
+    if (!(maxX - minX > MINIMUM_BOUNDS_SPAN) || !(maxZ - minZ > MINIMUM_BOUNDS_SPAN)) {
+        return false;
+    }
     outBounds = { static_cast<float>(minX), static_cast<float>(minZ),
                   static_cast<float>(maxX), static_cast<float>(maxZ) };
     return IsFinite(outBounds) && outBounds.z > outBounds.x && outBounds.w > outBounds.y;
@@ -360,9 +426,15 @@ using ScreenTileRows = std::array<uint16_t, SCREEN_TILE_COUNT>;
 
 [[nodiscard]] uint32_t ChooseTileResolution(uint32_t bodyCount)
 {
-    if (bodyCount <= 4u) return 512u;
-    if (bodyCount <= 16u) return 256u;
-    if (bodyCount <= 64u) return 128u;
+    if (bodyCount <= 4u) {
+        return 512u;
+    }
+    if (bodyCount <= 16u) {
+        return 256u;
+    }
+    if (bodyCount <= 64u) {
+        return 128u;
+    }
     return MINIMUM_TILE_RESOLUTION;
 }
 
@@ -390,7 +462,9 @@ using ScreenTileRows = std::array<uint16_t, SCREEN_TILE_COUNT>;
     const float spanX = globalBounds.z - globalBounds.x;
     const float spanZ = globalBounds.w - globalBounds.y;
     if (!IsFinite(spanX) || !IsFinite(spanZ)
-        || !(spanX > MINIMUM_BOUNDS_SPAN) || !(spanZ > MINIMUM_BOUNDS_SPAN)) return UINT64_MAX;
+        || !(spanX > MINIMUM_BOUNDS_SPAN) || !(spanZ > MINIMUM_BOUNDS_SPAN)) {
+        return UINT64_MAX;
+    }
 
     candidateCount = 0;
     for (BodyCandidate& body : bodies) {
@@ -410,7 +484,9 @@ using ScreenTileRows = std::array<uint16_t, SCREEN_TILE_COUNT>;
 
 void AppendDisabled(std::vector<uint64_t>& disabled, std::unordered_set<uint64_t>& seen, uint64_t key)
 {
-    if (seen.insert(key).second) disabled.push_back(key);
+    if (seen.insert(key).second) {
+        disabled.push_back(key);
+    }
 }
 
 /// @brief Project the part of a conservative box in the forward half-space.
@@ -426,9 +502,13 @@ void AppendDisabled(std::vector<uint64_t>& disabled, std::unordered_set<uint64_t
             minimum[axis] = (std::min)(minimum[axis], ndc);
             maximum[axis] = (std::max)(maximum[axis], ndc);
         } else {
-            /// @note A box edge reaching the camera plane can project without a finite bound on either side.
-            if (numerator <= 1.0e-6) minimum[axis] = -infinity;
-            if (numerator >= -1.0e-6) maximum[axis] = infinity;
+            // A box edge reaching the camera plane can project without a finite bound on either side.
+            if (numerator <= 1.0e-6) {
+                minimum[axis] = -infinity;
+            }
+            if (numerator >= -1.0e-6) {
+                maximum[axis] = infinity;
+            }
         }
     };
     struct ClipCorner { double x, y, w; };
@@ -450,10 +530,14 @@ void AppendDisabled(std::vector<uint64_t>& disabled, std::unordered_set<uint64_t
     }
     for (uint32_t i = 0; i < corners.size(); ++i) {
         for (uint32_t edge : {1u, 2u, 4u}) {
-            if (i & edge) continue;
+            if (i & edge) {
+                continue;
+            }
             const auto& a = corners[i];
             const auto& b = corners[i | edge];
-            if ((a.w < 0.0) == (b.w < 0.0)) continue;
+            if ((a.w < 0.0) == (b.w < 0.0)) {
+                continue;
+            }
             const double t = a.w / (a.w - b.w);
             include(0u, std::lerp(a.x, b.x, t), 0.0);
             include(1u, std::lerp(a.y, b.y, t), 0.0);
@@ -461,13 +545,14 @@ void AppendDisabled(std::vector<uint64_t>& disabled, std::unordered_set<uint64_t
     }
     std::array<uint16_t, 2> masks{};
     constexpr double tileStep = 2.0 / SCREEN_TILE_COUNT;
-    /// @note Expand by half a tile to cover projection and inverse-projection roundoff.
+    // Expand by half a tile to cover projection and inverse-projection roundoff.
     for (uint32_t axis = 0; axis < masks.size(); ++axis) {
         for (uint32_t tile = 0; tile < SCREEN_TILE_COUNT; ++tile) {
             const double lower = -1.0 + tileStep * (tile - 0.5);
             const double upper = -1.0 + tileStep * (tile + 1.5);
-            if (minimum[axis] <= upper && maximum[axis] >= lower)
+            if (minimum[axis] <= upper && maximum[axis] >= lower) {
                 masks[axis] |= static_cast<uint16_t>(1u << tile);
+            }
         }
     }
     return masks;
@@ -478,21 +563,32 @@ void AppendDisabled(std::vector<uint64_t>& disabled, std::unordered_set<uint64_t
 {
     const auto viewProjection = MakeJitteredViewProjection(ctx.camera, ctx.taaJitterNdcX, ctx.taaJitterNdcY);
     if (!IsFinite(viewProjection) || !IsFinite(ctx.camera.m_position)
-        || !(ctx.camera.m_near > 0.0f && ctx.camera.m_far > ctx.camera.m_near)) return false;
+        || !(ctx.camera.m_near > 0.0f && ctx.camera.m_far > ctx.camera.m_near)) {
+        return false;
+    }
     float reach = 0.0f;
-    for (const auto& body : bodies)
-        if (body.medium->opticalEnabled) reach = (std::max)(reach, body.medium->maxDistance);
-    if (reach <= 0.0f) return false;
-    /// @note The shader uses the longest optical distance among all packed owners.
+    for (const auto& body : bodies) {
+        if (body.medium->opticalEnabled) {
+            reach = (std::max)(reach, body.medium->maxDistance);
+        }
+    }
+    if (reach <= 0.0f) {
+        return false;
+    }
+    // The shader uses the longest optical distance among all packed owners.
     const auto& origin = ctx.camera.m_position;
     const float padding = 0.1f + 2.0e-5f * (std::max)({
         std::abs(origin.x), std::abs(origin.y), std::abs(origin.z), reach});
     const math::Vector3 guard{padding, padding, padding};
     for (const auto& body : bodies) {
-        if (!body.medium->opticalEnabled) continue;
+        if (!body.medium->opticalEnabled) {
+            continue;
+        }
         Bounds3 bounds{{body.bounds.x, body.physicalMinimumY, body.bounds.y},
                        {body.bounds.z, body.physicalMaximumY, body.bounds.w}};
-        if (!(bounds.minimum.y < bounds.maximum.y)) return false;
+        if (!(bounds.minimum.y < bounds.maximum.y)) {
+            return false;
+        }
         bounds.minimum -= guard;
         bounds.maximum += guard;
         if (ctx.camera.m_projection != ProjectionMode::Orthographic) {
@@ -504,12 +600,19 @@ void AppendDisabled(std::vector<uint64_t>& disabled, std::unordered_set<uint64_t
                               (std::min)(bounds.maximum.y, origin.y + limit),
                               (std::min)(bounds.maximum.z, origin.z + limit)};
         }
-        if (!IsFinite(bounds.minimum) || !IsFinite(bounds.maximum)) return false;
+        if (!IsFinite(bounds.minimum) || !IsFinite(bounds.maximum)) {
+            return false;
+        }
         if (bounds.minimum.x > bounds.maximum.x || bounds.minimum.y > bounds.maximum.y
-            || bounds.minimum.z > bounds.maximum.z) continue;
+            || bounds.minimum.z > bounds.maximum.z) {
+            continue;
+        }
         const auto [horizontal, vertical] = ProjectScreenTiles(bounds, viewProjection);
-        for (uint32_t y = 0; y < SCREEN_TILE_COUNT; ++y)
-            if ((vertical & (1u << y)) != 0u) rows[SCREEN_TILE_COUNT - 1u - y] |= horizontal;
+        for (uint32_t y = 0; y < SCREEN_TILE_COUNT; ++y) {
+            if ((vertical & (1u << y)) != 0u) {
+                rows[SCREEN_TILE_COUNT - 1u - y] |= horizontal;
+            }
+        }
     }
     return true;
 }
@@ -527,14 +630,18 @@ void AppendDisabled(std::vector<uint64_t>& disabled, std::unordered_set<uint64_t
         + exclusionCount * EXCLUSION_ROWS + plumeCount * PLUME_ROWS;
     const uint64_t candidateStart = gridHeaderStart + GRID_CELL_COUNT;
     const uint64_t rowCount = candidateStart + candidateCount;
-    if (rowCount > MAXIMUM_TABLE_ROWS || rowCount > std::numeric_limits<uint32_t>::max()) return false;
+    if (rowCount > MAXIMUM_TABLE_ROWS || rowCount > std::numeric_limits<uint32_t>::max()) {
+        return false;
+    }
 
     std::array<GridCell, GRID_CELL_COUNT> cells;
     for (uint32_t bodyIndex = 0; bodyIndex < bodies.size(); ++bodyIndex) {
         const BodyCandidate& body = bodies[bodyIndex];
-        for (uint32_t z = body.cellMinZ; z <= body.cellMaxZ; ++z)
-            for (uint32_t x = body.cellMinX; x <= body.cellMaxX; ++x)
+        for (uint32_t z = body.cellMinZ; z <= body.cellMaxZ; ++z) {
+            for (uint32_t x = body.cellMinX; x <= body.cellMaxX; ++x) {
                 cells[z * GRID_RESOLUTION + x].bodies.push_back(bodyIndex);
+            }
+        }
     }
 
     outRows.clear();
@@ -543,7 +650,7 @@ void AppendDisabled(std::vector<uint64_t>& disabled, std::unordered_set<uint64_t
     outViewBodies.reserve(bodies.size());
     const uint32_t exclusionStart = HEADER_ROWS + static_cast<uint32_t>(bodies.size()) * BODY_ROWS;
     const uint32_t plumeStart = exclusionStart + static_cast<uint32_t>(exclusionCount) * EXCLUSION_ROWS;
-    /// @note Candidate indices follow all grid-cell headers; the shader adds each cell's relative candidate offset.
+    // Candidate indices follow all grid-cell headers; the shader adds each cell's relative candidate offset.
     const uint32_t candidateStartRow = static_cast<uint32_t>(candidateStart);
     float physicalMinimumY = std::numeric_limits<float>::infinity();
     float physicalMaximumY = -std::numeric_limits<float>::infinity();
@@ -551,12 +658,13 @@ void AppendDisabled(std::vector<uint64_t>& disabled, std::unordered_set<uint64_t
     for (const auto& body : bodies) {
         physicalMinimumY = (std::min)(physicalMinimumY, body.physicalMinimumY);
         physicalMaximumY = (std::max)(physicalMaximumY, body.physicalMaximumY);
-        if (body.medium->opticalEnabled)
+        if (body.medium->opticalEnabled) {
             opticalMaximumY = (std::max)(opticalMaximumY, body.physicalMaximumY);
+        }
     }
     const bool hasPhysicalBounds = IsFinite(physicalMinimumY) && IsFinite(physicalMaximumY)
         && physicalMinimumY < physicalMaximumY;
-    /// @note A caustics-only owner remains visible to interface and caustic passes, but cannot extend the optical march.
+    // A caustics-only owner remains visible to interface and caustic passes, but cannot extend the optical march.
     const bool hasTighterOpticalMaximum = hasPhysicalBounds && IsFinite(opticalMaximumY)
         && opticalMaximumY >= physicalMinimumY && opticalMaximumY < physicalMaximumY;
     const float verticalBoundsMode = hasTighterOpticalMaximum ? 2.0f : (hasPhysicalBounds ? 1.0f : 0.0f);
@@ -580,7 +688,9 @@ void AppendDisabled(std::vector<uint64_t>& disabled, std::unordered_set<uint64_t
         const BodyCandidate& candidate = bodies[bodyIndex];
         const WaterMediumInput& medium = *candidate.medium;
         if (!hasLastPriority || candidate.priority != lastPriority) {
-            if (hasLastPriority) priorityRank -= 1.0f;
+            if (hasLastPriority) {
+                priorityRank -= 1.0f;
+            }
             lastPriority = candidate.priority;
             hasLastPriority = true;
         }
@@ -595,7 +705,7 @@ void AppendDisabled(std::vector<uint64_t>& disabled, std::unordered_set<uint64_t
 
         const float certifiedDisplacement = medium.analyticRectangle && !candidate.variableDepth
             ? candidate.certifiedDisplacement : 0.0f;
-        /// @note Positive row w certifies a wet interior; negative w is the Terrain packed-depth half-step for receiver lighting only.
+        // Positive row w certifies a wet interior; negative w is the Terrain packed-depth half-step for receiver lighting only.
         outRows.emplace_back(medium.localHalfExtent.x, medium.localHalfExtent.y,
                               candidate.variableDepth ? 1.0f : 0.0f,
                               candidate.variableDepth ? -candidate.depthQuantization : certifiedDisplacement);
@@ -639,9 +749,11 @@ void AppendDisabled(std::vector<uint64_t>& disabled, std::unordered_set<uint64_t
         outRows.emplace_back(static_cast<float>(firstCandidate), static_cast<float>(cell.bodies.size()), 0.0f, 0.0f);
         firstCandidate += static_cast<uint32_t>(cell.bodies.size());
     }
-    for (const GridCell& cell : cells)
-        for (uint32_t bodyIndex : cell.bodies)
+    for (const GridCell& cell : cells) {
+        for (uint32_t bodyIndex : cell.bodies) {
             outRows.emplace_back(static_cast<float>(bodyIndex), 0.0f, 0.0f, 0.0f);
+        }
+    }
     return outRows.size() == rowCount && outViewBodies.size() == bodies.size();
 }
 
@@ -649,7 +761,9 @@ void DisableBodies(const std::vector<BodyCandidate>& bodies,
                    std::vector<uint64_t>& disabled,
                    std::unordered_set<uint64_t>& seen)
 {
-    for (const BodyCandidate& body : bodies) AppendDisabled(disabled, seen, body.ownerKey);
+    for (const BodyCandidate& body : bodies) {
+        AppendDisabled(disabled, seen, body.ownerKey);
+    }
 }
 
 void ClearPreparedState(RenderPassContext& ctx, RenderViewResources& viewTargets)
@@ -695,18 +809,26 @@ void ReportDisabledOwners(const RenderViewResources& viewTargets,
         state.ownerKeys = ownerKeys;
         if (diagnosticStates.size() > 32u) {
             for (auto it = diagnosticStates.begin(); it != diagnosticStates.end();) {
-                if (it->first != &viewTargets) it = diagnosticStates.erase(it);
-                else ++it;
+                if (it->first != &viewTargets) {
+                    it = diagnosticStates.erase(it);
+                }
+                else {
+                    ++it;
+                }
             }
         }
     }
-    if (!changed || ownerKeys.empty()) return;
+    if (!changed || ownerKeys.empty()) {
+        return;
+    }
 
     std::string visibleKeys;
     constexpr size_t MAXIMUM_LOGGED_KEYS = 16u;
     const size_t visibleCount = (std::min)(ownerKeys.size(), MAXIMUM_LOGGED_KEYS);
     for (size_t index = 0; index < visibleCount; ++index) {
-        if (index > 0u) visibleKeys += ",";
+        if (index > 0u) {
+            visibleKeys += ",";
+        }
         visibleKeys += std::to_string(ownerKeys[index]);
     }
     const size_t omittedCount = ownerKeys.size() - visibleCount;
@@ -715,7 +837,7 @@ void ReportDisabledOwners(const RenderViewResources& viewTargets,
                   visibleKeys.c_str(), omittedCount > 0u ? " (additional keys omitted)" : "");
 }
 
-} /// @note namespace
+} // namespace
 
 bool PrepareWaterMediumResources(RenderPassContext& ctx, RenderViewResources& viewTargets)
 {
@@ -727,7 +849,9 @@ bool PrepareWaterMediumResources(RenderPassContext& ctx, RenderViewResources& vi
                              ctx.handles.waterMediumDisabledOwnerKeys);
         return prepared;
     };
-    if (!ctx.renderScene || ctx.width == 0u || ctx.height == 0u) return finish(false);
+    if (!ctx.renderScene || ctx.width == 0u || ctx.height == 0u) {
+        return finish(false);
+    }
 
     std::vector<BodyCandidate> bodies;
     bodies.reserve((std::min)(ctx.renderScene->water.size(), static_cast<size_t>(MAXIMUM_BODIES)));
@@ -737,29 +861,41 @@ bool PrepareWaterMediumResources(RenderPassContext& ctx, RenderViewResources& vi
     for (size_t inputIndex = 0; inputIndex < ctx.renderScene->water.size(); ++inputIndex) {
         const RenderWaterInput& input = ctx.renderScene->water[inputIndex];
         const WaterMediumInput& medium = input.medium;
-        /// @note A hidden alias must not invalidate a visible body with the same stable owner key.
-        if (input.layer >= 32u || (ctx.cullingMask & (1u << input.layer)) == 0u) continue;
-        if (!medium.opticalEnabled && !medium.causticsEnabled && medium.exclusions.empty()) continue;
-        if (seenKeys.contains(medium.stableOwnerKey)) duplicateKeys.insert(medium.stableOwnerKey);
-        else seenKeys.insert(medium.stableOwnerKey);
+        // A hidden alias must not invalidate a visible body with the same stable owner key.
+        if (input.layer >= 32u || (ctx.cullingMask & (1u << input.layer)) == 0u) {
+            continue;
+        }
+        if (!medium.opticalEnabled && !medium.causticsEnabled && medium.exclusions.empty()) {
+            continue;
+        }
+        if (seenKeys.contains(medium.stableOwnerKey)) {
+            duplicateKeys.insert(medium.stableOwnerKey);
+        }
+        else {
+            seenKeys.insert(medium.stableOwnerKey);
+        }
         if (inputIndex > std::numeric_limits<uint32_t>::max() || !HasValidSource(input)) {
             AppendDisabled(ctx.handles.waterMediumDisabledOwnerKeys, disabledKeys, medium.stableOwnerKey);
             continue;
         }
         bodies.push_back({ static_cast<uint32_t>(inputIndex), medium.stableOwnerKey, medium.priority, &medium, {} });
         bodies.back().variableDepth = input.constants.terrainInfoParams.x > 0.5f && !medium.depthIsUniform;
-        /// @note Signed UNORM16 spans twice the depth range; half a quantization step is range / 65535.
+        // Signed UNORM16 spans twice the depth range; half a quantization step is range / 65535.
         bodies.back().depthQuantization = (std::max)(input.constants.terrainInfoParams.y, 0.0f) / 65535.0f;
     }
 
     if (!duplicateKeys.empty()) {
         std::erase_if(bodies, [&](const BodyCandidate& body) {
-            if (!duplicateKeys.contains(body.ownerKey)) return false;
+            if (!duplicateKeys.contains(body.ownerKey)) {
+                return false;
+            }
             AppendDisabled(ctx.handles.waterMediumDisabledOwnerKeys, disabledKeys, body.ownerKey);
             return true;
         });
     }
-    if (bodies.empty()) return finish(false);
+    if (bodies.empty()) {
+        return finish(false);
+    }
 
     math::Frustum generatedFrustum;
     const math::Frustum* frustum = ctx.cameraFrustum;
@@ -778,7 +914,9 @@ bool PrepareWaterMediumResources(RenderPassContext& ctx, RenderViewResources& vi
     for (BodyCandidate& body : bodies) {
         const RenderWaterInput& input = ctx.renderScene->water[body.inputIndex];
         body.horizon = input.farOceanEnabled && input.medium.analyticRectangle;
-        if (!body.horizon && ctx.frustumCullingEnabled && !IsVisibleInFrustum(input, *frustum)) continue;
+        if (!body.horizon && ctx.frustumCullingEnabled && !IsVisibleInFrustum(input, *frustum)) {
+            continue;
+        }
         const float horizontalMargin = IsFinite(input.margin.horizontal)
             ? (std::max)(input.margin.horizontal, 0.0f) : 0.0f;
         if (body.horizon) {
@@ -798,7 +936,9 @@ bool PrepareWaterMediumResources(RenderPassContext& ctx, RenderViewResources& vi
                     body.bounds.w = (std::max)(body.bounds.w, world.z + horizontalMargin);
                 }
             }
-        } else if (!ClipToViewAndLightRange(*body.medium, viewBounds, horizontalMargin, body.bounds)) continue;
+        } else if (!ClipToViewAndLightRange(*body.medium, viewBounds, horizontalMargin, body.bounds)) {
+            continue;
+        }
         if (!BuildQueryBounds(body, input) || !GatherRelevantFeatures(body)) {
             AppendDisabled(ctx.handles.waterMediumDisabledOwnerKeys, disabledKeys, body.ownerKey);
             continue;
@@ -806,15 +946,20 @@ bool PrepareWaterMediumResources(RenderPassContext& ctx, RenderViewResources& vi
         visible.push_back(body);
     }
     bodies = std::move(visible);
-    if (bodies.empty()) return finish(false);
+    if (bodies.empty()) {
+        return finish(false);
+    }
 
     std::sort(bodies.begin(), bodies.end(), [](const BodyCandidate& left, const BodyCandidate& right) {
-        if (left.priority != right.priority) return left.priority > right.priority;
+        if (left.priority != right.priority) {
+            return left.priority > right.priority;
+        }
         return left.ownerKey < right.ownerKey;
     });
     if (bodies.size() > MAXIMUM_BODIES) {
-        for (size_t i = MAXIMUM_BODIES; i < bodies.size(); ++i)
+        for (size_t i = MAXIMUM_BODIES; i < bodies.size(); ++i) {
             AppendDisabled(ctx.handles.waterMediumDisabledOwnerKeys, disabledKeys, bodies[i].ownerKey);
+        }
         bodies.resize(MAXIMUM_BODIES);
     }
 
@@ -841,7 +986,9 @@ bool PrepareWaterMediumResources(RenderPassContext& ctx, RenderViewResources& vi
         rowCount = bodies.empty() ? 0u
             : RequiredTableRows(bodies, globalBounds, candidateCount, exclusionCount, plumeCount);
     }
-    if (bodies.empty() || rowCount == 0u || rowCount > MAXIMUM_TABLE_ROWS) return finish(false);
+    if (bodies.empty() || rowCount == 0u || rowCount > MAXIMUM_TABLE_ROWS) {
+        return finish(false);
+    }
 
     const uint32_t tileResolution = ChooseTileResolution(static_cast<uint32_t>(bodies.size()));
     std::vector<math::Vector4> rows;
@@ -879,12 +1026,13 @@ bool PrepareWaterMediumResources(RenderPassContext& ctx, RenderViewResources& vi
     ctx.waterMediumQualityLimited = tileResolution < MAXIMUM_TILE_RESOLUTION;
     if (ctx.waterMediumQualityLimited) {
         ctx.handles.waterMediumQualityLimitedOwnerKeys.reserve(bodies.size());
-        for (const BodyCandidate& body : bodies)
+        for (const BodyCandidate& body : bodies) {
             ctx.handles.waterMediumQualityLimitedOwnerKeys.push_back(body.ownerKey);
+        }
     }
     ctx.waterMediumPassActive = true;
     ctx.waterInterfacePassActive = true;
     return finish(true);
 }
 
-} /// @note namespace fbzz::renderer
+} // namespace fbzz::renderer

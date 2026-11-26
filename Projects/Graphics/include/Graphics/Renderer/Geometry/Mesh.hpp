@@ -98,4 +98,4 @@ private:
     std::shared_ptr<const MeshletClusterData> m_clusterLod;
 };
 
-} /// @note namespace fbzz::renderer
+} // namespace fbzz::renderer

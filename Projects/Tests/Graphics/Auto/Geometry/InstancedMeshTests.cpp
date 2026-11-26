@@ -236,7 +236,9 @@ TEST_F(InstancedMeshTest, ClusteredWindUsesCpuAndGpuSelectedPlacementIds)
         const float u = static_cast<float>(x) / CELLS;
         const float v = static_cast<float>(y) / CELLS;
         vertices.push_back({{(u - 0.5f) * 0.7f, (v - 0.5f) * 0.7f, 0.0f}, {0, 0, -1}, {1, 0, 0}, {u, v}});
-        if (x == CELLS || y == CELLS) continue;
+        if (x == CELLS || y == CELLS) {
+            continue;
+        }
         const uint32_t i = y * (CELLS + 1u) + x;
         indices.insert(indices.end(), {i, i + CELLS + 1u, i + 1u, i + 1u, i + CELLS + 1u, i + CELLS + 2u});
     }
@@ -291,7 +293,7 @@ TEST_F(InstancedMeshTest, VegetationCellBudgetsLowerDetailWithoutDroppingPlaceme
     input.localBoundsRadius = 1.2f;
     input.parts.push_back({input.parts.back().mesh, 2});
 
-    /// @note The coarse mesh keeps its silhouette but moves in depth, making shadow LOD visible independently of color.
+    // The coarse mesh keeps its silhouette but moves in depth, making shadow LOD visible independently of color.
     const std::array<r::Vertex, 4> coarseVertices{{
         {{-0.35f, -0.35f, 1}, {0, 0, -1}, {1, 0, 0}, {0, 0}},
         {{-0.35f, 0.35f, 1}, {0, 0, -1}, {1, 0, 0}, {0, 1}},
@@ -300,7 +302,7 @@ TEST_F(InstancedMeshTest, VegetationCellBudgetsLowerDetailWithoutDroppingPlaceme
     }};
     input.parts.back().mesh.vertexBuffer = m_resources->CreateVertexBuffer(coarseVertices.data(), sizeof(coarseVertices), sizeof(r::Vertex));
     ASSERT_TRUE(input.parts.back().mesh.vertexBuffer);
-    /// @note LOD3 uses the original depth. If the budget forces it, the caster is counted as a detailed shadow.
+    // LOD3 uses the original depth. If the budget forces it, the caster is counted as a detailed shadow.
     input.parts.push_back({input.parts.front().mesh, 3});
     for (auto& part : input.parts) {
         InstanceMaterial material;
@@ -378,7 +380,7 @@ TEST_F(InstancedMeshTest, VegetationCellsKeepEdgeOverhangAndReusePlacementsWhenP
             (static_cast<float>(slot / 8) - 3.5f) * 0.5f, 4.0f};
         placement.scale = {0.5f, 0.5f, 0.5f};
     }
-    /// @note This root lies outside the view and below the 128 m cell boundary. Its mesh extends into the view.
+    // This root lies outside the view and below the 128 m cell boundary. Its mesh extends into the view.
     auto& overhang = placements->placements.front();
     overhang.position = {127.9f, 0, 4};
     overhang.scale = {1, 1, 1};
@@ -470,6 +472,37 @@ TEST_F(InstancedMeshTest, CurrentViewOcclusionMatchesCpuAndIndirectWithoutSuppre
     Same(baseline,Render(scene,2));
     m_occlusion=nullptr;
 }
+/// @brief 地形の裏の植生セルは GPU に渡さず、深度が消えたビューでは再び描く。
+TEST_F(InstancedMeshTest, VegetationCellsBehindOccluderAreRemovedBeforeIndirectDispatch)
+{
+    const auto scene = Scene(256);
+    auto& input = scene->instances.front();
+    auto data = std::make_shared<r::InstanceSetData>(*input.data);
+    for (size_t index = 0; index < data->placements.size(); ++index) {
+        data->placements[index].position = {index < 128 ? -2.0f : 2.0f, 0.0f, 4.0f};
+    }
+    input.data = data;
+    r::OcclusionCuller culler;
+    m_occlusion = &culler;
+    for (bool enableBudget : {false, true}) {
+        SCOPED_TRACE(enableBudget);
+        input.vegetationBudget.enabled = enableBudget;
+        const auto visible = Render(scene, 2);
+        m_occlusionSetup = [](auto& depth) {
+            depth.RasterQuad({-4, 3, -1}, {-1, 3, -1}, {-1, -3, -1}, {-4, -3, -1});
+        };
+        const auto cpu = Render(scene, 1);
+        ASSERT_EQ(m_stats.occlusionCulled, 128);
+        Same(cpu, Render(scene, 2));
+        EXPECT_EQ(m_stats.occlusionCulled, 128);
+        EXPECT_EQ(m_stats.gpuVisibilityUnknownObjects, 128);
+        m_occlusionSetup = {};
+        Same(visible, Render(scene, 2));
+        EXPECT_EQ(m_stats.occlusionCulled, 0);
+    }
+    m_occlusion = nullptr;
+}
+
 /// @brief Directional cascade batch matches four independent masked wind shadows.
 TEST_F(InstancedMeshTest, DirectionalCascadeBatchMatchesFourIndependentMaskedWindShadows)
 {
@@ -548,7 +581,7 @@ TEST_F(InstancedMeshTest, DirectionalCascadeBatchMatchesFourIndependentMaskedWin
     EXPECT_NE(reference, rigid);
     const auto actual = renderAtlas(true);
     Same(reference, actual);
-    /// @note 最初の 2 枚は異なる LOD だけが可視。GPU は空の LOD も間接引数を持つ。
+    // 最初の 2 枚は異なる LOD だけが可視。GPU は空の LOD も間接引数を持つ。
     EXPECT_EQ(m_draws, CASCADE_COUNT * input.parts.size());
     std::array<uint32_t, CASCADE_COUNT> covered{};
     for (uint32_t y = 0; y < m_height; ++y)
@@ -579,7 +612,7 @@ TEST_F(InstancedMeshTest, DirectionalCascadeBatchMatchesFourIndependentMaskedWin
     const auto budgeted = renderAtlas(false);
     EXPECT_NE(budgeted, reference);
     Same(budgeted, renderAtlas(true));
-    /// @note The near cascade tiles occupy the upper half of the atlas.
+    // The near cascade tiles occupy the upper half of the atlas.
     ASSERT_EQ(budgeted.size(), reference.size());
     EXPECT_TRUE(std::equal(reference.begin(), reference.begin() + reference.size() / 2, budgeted.begin()));
 
@@ -616,7 +649,7 @@ TEST_F(InstancedMeshTest, DirectionalCascadeBatchMatchesFourIndependentMaskedWin
             const uint32_t cell = i % PLACEMENTS_PER_CASCADE;
             const float texelSize = (4.0f + static_cast<float>(tile) * 0.2f) / (m_width / 2);
             const float scale = scaleInTexels * texelSize;
-            /// @note Align the smaller quads to a sample center so the reference rasterizes them.
+            // Align the smaller quads to a sample center so the reference rasterizes them.
             placement.position = {centers[tile] + (4.0f * static_cast<float>(cell % 6) - 9.5f) * texelSize,
                 (4.0f * static_cast<float>(cell / 6) - 9.5f) * texelSize, 4.0f};
             placement.scale = {scale, scale, scale};
@@ -640,7 +673,7 @@ TEST_F(InstancedMeshTest, DirectionalCascadeBatchMatchesFourIndependentMaskedWin
     placeVegetation(1.5f);
     expectFarReduction();
 
-    /// @note Make the coarsest LOD invisible to detect its selection independently of draw-call bookkeeping.
+    // Make the coarsest LOD invisible to detect its selection independently of draw-call bookkeeping.
     auto& billboard = input.parts.back().mesh.material;
     InstanceMaterial transparent;
     transparent.albedo.w = 0.0f;
@@ -769,7 +802,7 @@ TEST_F(InstancedMeshTest, CurrentGpuDepthHiZRejectsCoveredInstancesAndKeepsHoles
         Draw(occluder,0);
         const auto hierarchy=r::BuildGpuHiZ(*m_bundle.renderer,*m_resources,m_target);
         ASSERT_TRUE(hierarchy.depths.IsValid());
-        /// @note The fixture reads receiver color alone so a missing GPU rejection changes the image.
+        // The fixture reads receiver color alone so a missing GPU rejection changes the image.
         Draw(scene,2,false,false,&hierarchy);
         End();
         EXPECT_EQ(m_stats.gpuVisibilityUnknownObjects,3);
@@ -871,7 +904,7 @@ TEST_F(InstancedMeshTest, ResidentRowsSurviveCacheSweepThroughLastLiveFrameAndRe
 TEST_F(InstancedMeshTest, ShadowAlphaCoverageMatchesStandardGBufferIncludingVertexColorContract)
 {
     const auto scene=Scene(130,0.2f);
-    /// @note Scene extraction for instance sets supplies the packed cutoff without the derived surface inputs.
+    // Scene extraction for instance sets supplies the packed cutoff without the derived surface inputs.
     for (auto& part : scene->instances.front().parts) part.mesh.material.surface.alphaCutoff = 0.0f;
     const auto colorDepth=Render(scene,2,false,true), shadowDepth=Render(scene,2,true,true);
     Same(shadowDepth, Render(scene,0,true,true));
@@ -983,7 +1016,7 @@ TEST_F(InstancedMeshTest, SubToleranceShearKeepsAnActuallyVisibleVertexSubmitted
     const math::Vector3 visibleVertex{transformed.x,transformed.y,transformed.z};
     ASSERT_GE(frustum.GetPlane(0).SignedDistanceTo(visibleVertex),0.0f);
     ASSERT_TRUE(frustum.Contains(visibleVertex));
-    /// @note The visible sliver can be below pixel coverage; native draw submission is the culling contract under test.
+    // The visible sliver can be below pixel coverage; native draw submission is the culling contract under test.
     m_frustumCulling=false; Render(scene,0);
     const auto referenceDraws=m_draws; ASSERT_GT(referenceDraws,0u);
     m_frustumCulling=true; Render(scene,0);
@@ -1117,19 +1150,46 @@ TEST_F(InstancedMeshTest, DISABLED_MeasureTenThousandInstancesWithNativeProfiler
     ASSERT_GE(count,64u);ASSERT_LE(count,1048576u);
     const auto scene=Scene(count); std::vector<InstanceMeasurement> results;
     for (int mode=0;mode<3;++mode) {
-        InstanceMeasurement result; result.mode=mode==0 ? "individual" : mode==1 ? "cpu_instanced" : "gpu_indirect"; result.count=count;
-        const uint32_t warmup=8,measured=mode==0 ? 12u : 48u; uint64_t first=0,last=0,physical=0;
-        const auto collect=[&] {
-            m_bundle.renderer->GpuProfCollect(); const auto& snapshot=m_bundle.renderer->GpuProfGetSnapshot();
-            if (!snapshot.available || !snapshot.complete || snapshot.physicalFrameSerial==physical) return;
-            physical=snapshot.physicalFrameSerial;
-            for (const auto& pass : snapshot.passes) if (pass.available && pass.name=="InstanceFrame" && pass.metadata.viewId==static_cast<uint64_t>(mode+1)
-                && first>0 && pass.metadata.applicationFrameSerial>=first && pass.metadata.applicationFrameSerial<=last) result.gpu.push_back(pass.gpuMs);
+        constexpr const char* MEASUREMENT_MODES[] = {"individual", "cpu_instanced", "gpu_indirect"};
+        InstanceMeasurement result;
+        result.mode = MEASUREMENT_MODES[mode];
+        result.count = count;
+        const uint64_t viewId = static_cast<uint64_t>(mode + 1);
+        const uint32_t warmup = 8;
+        const uint32_t measured = mode == 0 ? 12u : 48u;
+        uint64_t firstMeasuredSerial = 0;
+        uint64_t lastMeasuredSerial = 0;
+        uint64_t lastPhysicalSerial = 0;
+        const auto collect = [&] {
+            m_bundle.renderer->GpuProfCollect();
+            const auto& snapshot = m_bundle.renderer->GpuProfGetSnapshot();
+            if (!snapshot.available || !snapshot.complete || snapshot.physicalFrameSerial == lastPhysicalSerial) {
+                return;
+            }
+            lastPhysicalSerial = snapshot.physicalFrameSerial;
+
+            // 描画モードに対応するビューから、測定区間内の GPU パスだけを集める。
+            for (const auto& pass : snapshot.passes) {
+                if (!pass.available || pass.name != "InstanceFrame" || pass.metadata.viewId != viewId) {
+                    continue;
+                }
+                const uint64_t frameSerial = pass.metadata.applicationFrameSerial;
+                const bool inMeasurement = firstMeasuredSerial != 0
+                    && frameSerial >= firstMeasuredSerial && frameSerial <= lastMeasuredSerial;
+                if (inMeasurement) {
+                    result.gpu.push_back(pass.gpuMs);
+                }
+            }
         };
         for (uint32_t i=0;i<warmup+measured+8;++i) {
             Begin(); collect(); const bool measurement=i>=warmup && i<warmup+measured;
-            if (measurement) { if (!first) first=m_resources->FrameStamp(); last=m_resources->FrameStamp(); }
-            r::GpuProfilerViewMetadata metadata; metadata.applicationFrameSerial=m_resources->FrameStamp(); metadata.viewId=mode+1;
+            if (measurement) {
+                if (firstMeasuredSerial == 0) {
+                    firstMeasuredSerial = m_resources->FrameStamp();
+                }
+                lastMeasuredSerial = m_resources->FrameStamp();
+            }
+            r::GpuProfilerViewMetadata metadata; metadata.applicationFrameSerial=m_resources->FrameStamp(); metadata.viewId=viewId;
             metadata.sceneGeneration=1; metadata.planGeneration=1; metadata.resourceEpoch=m_resources->GetResetVersion(); metadata.width=m_width; metadata.height=m_height;
             ASSERT_TRUE(m_bundle.renderer->GpuProfBeginView(metadata));
             const auto start=std::chrono::steady_clock::now(); m_bundle.renderer->GpuProfBeginPass("InstanceFrame");

@@ -31,8 +31,8 @@ class DynamicFontSource;
 /// @note       scale (= fontSize / lineHeight) を掛ける。
 struct FontGlyph {
     /// @brief アトラステクスチャ上の UV (正規化 0.0〜1.0)。
-    float u0 = 0.0f, v0 = 0.0f;   ///< @note 左上
-    float u1 = 0.0f, v1 = 0.0f;   ///< @note 右下
+    float u0 = 0.0f, v0 = 0.0f;   ///< 左上
+    float u1 = 0.0f, v1 = 0.0f;   ///< 右下
 
     /// @brief グリフ画像の寸法 (px)。空白文字は 0 になり、描画をスキップする目印になる。
     float width  = 0.0f;
@@ -64,7 +64,7 @@ public:
     /// @brief フォントを読み込む。path の拡張子で 2 つのモードを自動的に選ぶ。
     /// @note ".ttf"/".ttc"/".otf" → 動的モード (使われたグリフを実行時に SDF で焼く。日本語向き)。
     /// @note       それ以外 → 静的モード (path + ".fnt" (+ PNG) を読む)。
-    /// @param rasterPixelHeight 動的モードで焼く em サイズ (px)。静的モードでは無視される。
+    /// @param[in] rasterPixelHeight 動的モードで焼く em サイズ (px)。静的モードでは無視される。
     /// @note        ResolveRasterPixelHeight() を通した値を渡すこと。
     /// @return 失敗しても例外は投げない。IsValid() で成否を確認すること。
     FBZZ_GRAPHICS_API bool Load(const std::string& path, ResourceManager& resources, float rasterPixelHeight);
@@ -157,4 +157,4 @@ private:
     float m_fallbackAdvance = 0.0f;
 };
 
-} /// @note namespace fbzz::renderer
+} // namespace fbzz::renderer

@@ -24,15 +24,20 @@ enum class SurfaceFarRegion : uint8_t {
 };
 
 struct SurfaceFarPatch {
-    /// @note key は region と geometry の depth/x/z。strip は接続元の leaf、corner は depth/x/z=0。
-    SurfaceFarRegion region = SurfaceFarRegion::MIN_X;
-    SurfacePatch geometry;
+    SurfaceFarRegion region = SurfaceFarRegion::MIN_X; ///< 基準矩形に接する辺または角。geometry の depth/x/z と組み合わせて識別する。
+    SurfacePatch geometry; ///< 外周パッチの幾何。depth/x/z は辺なら接続元の葉、角なら 0。
 };
 
 /// @brief inner の外側から outer までを、境界 leaf と同じ分割数の strip と corner で埋める。
-/// @param innerLeaves SurfacePatchView::includeCulledPatches で得た全境界を含む leaf 配列。
+/// @param[in] inner 内側の基準矩形、変位の範囲とワールド変換。
+/// @param[in] innerLeaves SurfacePatchView::includeCulledPatches で得た全境界を含む leaf 配列。
+/// @param[in] outerMin 内側と同じローカル座標系での外周 XZ の最小点。
+/// @param[in] outerMax 内側と同じローカル座標系での外周 XZ の最大点。
+/// @param[in] cellsPerPatch 内側のパッチの各辺と同じセル数。
+/// @param[out] out 接続用の辺と角のパッチを格納する配列。
+/// @param[in] morphEnabled モーフの移動範囲を外周パッチの境界に含めるかどうか。
 /// @return 無効な境界・外周・導出幾何なら false。out は未変更。拡張不要なら空配列で成功。
-/// @note cellsPerPatch は inner と同じ二の冪。stitch mask は0、morphEnabled はモーフの移動範囲を AABB へ含める。
+/// @note cellsPerPatch は 2〜256 の二の冪。外周パッチの縫合マスクは常に 0。
 /// @note 物理領域は拡張しない。uv は inner の基準矩形に対する値で [0,1] の外にも出る。
 /// @note 内側の辺と角は inner と同じセル幅、その他の共有頂点は全 far patch の共通セル幅で評価する。
 /// @note 各 strip の外向き分割数は共通。隣接 strip の幅が違っても、共有辺の頂点列は一致する。
@@ -41,4 +46,4 @@ struct SurfaceFarPatch {
     std::span<const SurfacePatch> innerLeaves, math::Vector2 outerMin, math::Vector2 outerMax,
     uint32_t cellsPerPatch, std::vector<SurfaceFarPatch>& out, bool morphEnabled = false);
 
-} /// @note namespace fbzz::renderer
+} // namespace fbzz::renderer

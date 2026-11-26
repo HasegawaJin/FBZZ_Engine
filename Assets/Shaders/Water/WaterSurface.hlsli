@@ -96,7 +96,7 @@ struct WaterMaterialBlendTarget
     float4 rippleColor;
 };
 
-cbuffer WaterCB : register(CB_OBJECT)
+cbuffer WaterCB : register(FBZZ_REGISTER(b, CB_WATER_SLOT))
 {
     float4x4 g_worldMatrix;
     float4x4 g_wvpMatrix;
@@ -218,7 +218,7 @@ struct WaterPatchInstance
     float4 morphParams;
     float4 morphCellSize;
 };
-FBZZ_VS_SBUFFER(WaterPatchInstance, g_waterPatchInstances, 0);
+FBZZ_VS_SBUFFER(WaterPatchInstance, g_waterPatchInstances, VS_SB_INSTANCE_SLOT);
 
 WaterPatchInstance ResolveWaterPatchInstance(uint instanceId)
 {
@@ -236,12 +236,12 @@ WaterPatchInstance ResolveWaterPatchInstance(uint instanceId)
 }
 
 /// @note 水面が読むテクスチャは «エンジンが生成するもの» だけ。オーサリング資産は要らない。
-FBZZ_TEX2D(g_foamMask, 3); ///< @brief 岸沿いの泡マスク (地形高さから CPU 生成)
-FBZZ_TEX2D(g_detailNoise, 4); ///< @brief さざ波タイル (起動時に CPU で焼く。RG=勾配, B=高さ)
-FBZZ_TEX2D(g_sceneDepth, 5); ///< @brief Water 描画直前の深度コピー
-FBZZ_TEX2D(g_sceneColor, 6); ///< @brief Water 描画直前の HDR コピー
-FBZZ_TEX2D(g_rippleTex, 8); ///< @brief 着水波紋 (CPU 生成)
-FBZZ_TEX2D_T(float, g_shadowMap, 9);
+FBZZ_TEX2D(g_foamMask, SRV_WATER_FOAM_SLOT); ///< @brief 岸沿いの泡マスク (地形高さから CPU 生成)
+FBZZ_TEX2D(g_detailNoise, SRV_WATER_DETAIL_NOISE_SLOT); ///< @brief さざ波タイル (起動時に CPU で焼く。RG=勾配, B=高さ)
+FBZZ_TEX2D(g_sceneDepth, SRV_WATER_SCENE_DEPTH_SLOT); ///< @brief Water 描画直前の深度コピー
+FBZZ_TEX2D(g_sceneColor, SRV_WATER_SCENE_COLOR_SLOT); ///< @brief Water 描画直前の HDR コピー
+FBZZ_TEX2D(g_rippleTex, SRV_WATER_RIPPLE_SLOT); ///< @brief 着水波紋 (CPU 生成)
+FBZZ_TEX2D_T(float, g_shadowMap, SRV_WATER_SHADOW_SLOT);
 FBZZ_TEXCUBE(g_skyReflection, TEX_IBL_PREFILTER_SLOT); ///< @brief 空連動 IBL の事前フィルタ済みキューブ
 /// @note 常駐中の 速度場 PNG を積んだアトラス。場が 1 枚も無くても 1x1x1 が必ず束縛される。
 FBZZ_TEX3D_T(float4, g_velocityAtlas, TEX_VELOCITY_FIELD_SLOT);
@@ -673,7 +673,7 @@ WaterPSInput EvaluateWaterVertex(WaterVSInput v, uint instanceId)
 /// @note SV_InstanceID は StartInstanceLocation を含まないため、候補の先頭は root constant から明示的に加算する。
 /// @note The backend resets b15 to zero for direct draws and writes the candidate offset in 24-byte indexed-indirect commands.
 /// @see https://microsoft.github.io/hlsl-specs/proposals/0015-extended-command-info/ SV_InstanceID excludes StartInstanceLocation.
-cbuffer WaterGeometryDrawConstants : register(b15)
+cbuffer WaterGeometryDrawConstants : register(FBZZ_REGISTER(b, CB_INSTANCE_DRAW_OFFSET_SLOT))
 {
     uint g_waterGeometryInstanceOffset;
 };

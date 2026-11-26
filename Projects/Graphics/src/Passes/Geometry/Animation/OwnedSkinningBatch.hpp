@@ -12,8 +12,10 @@ namespace fbzz::renderer::skinning_batch_detail {
 [[nodiscard]] inline bool Enabled()
 {
     const char* value = std::getenv("FBZZ_OWNED_SKINNING_BATCH");
-    if (value) return std::strcmp(value, "1") == 0;
+    if (value) {
+        return std::strcmp(value, "1") == 0;
+    }
     const char* demand = std::getenv("FBZZ_GPU_SKINNING_DEMAND");
     return !demand || std::strcmp(demand, "1") != 0;
 }
-} /// @note namespace fbzz::renderer::skinning_batch_detail
+} // namespace fbzz::renderer::skinning_batch_detail

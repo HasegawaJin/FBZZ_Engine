@@ -43,4 +43,4 @@ private:
     bool m_hasFrame = false, m_hasCursor = false;
 };
 
-} /// @note namespace fbzz::renderer
+} // namespace fbzz::renderer

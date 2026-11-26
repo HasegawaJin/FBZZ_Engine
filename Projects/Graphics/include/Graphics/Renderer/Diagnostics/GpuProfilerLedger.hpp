@@ -27,7 +27,9 @@ public:
 
     void Reset(uint64_t deviceEpoch, bool supported)
     {
-        for (auto& frame : m_frames) frame = {};
+        for (auto& frame : m_frames) {
+            frame = {};
+        }
         m_activeSlot = INVALID_SLOT;
         m_lastBegunSerial = 0;
         m_deviceEpoch = deviceEpoch;
@@ -42,7 +44,9 @@ public:
     {
         if (!m_supported || slot >= m_frames.size() || m_activeSlot != INVALID_SLOT
             || m_frames[slot].state != State::EMPTY || deviceEpoch != m_deviceEpoch
-            || physicalFrameSerial == 0 || physicalFrameSerial <= m_lastBegunSerial) return false;
+            || physicalFrameSerial == 0 || physicalFrameSerial <= m_lastBegunSerial) {
+            return false;
+        }
         auto& frame = m_frames[slot];
         frame = {};
         frame.state = State::RECORDING;
@@ -56,7 +60,9 @@ public:
     bool BeginView(const GpuProfilerViewMetadata& metadata)
     {
         auto* frame = RecordingFrame();
-        if (!frame) return false;
+        if (!frame) {
+            return false;
+        }
         if (frame->viewOpen || frame->passOpen || metadata.width == 0 || metadata.height == 0) {
             frame->complete = false;
             return false;
@@ -69,8 +75,12 @@ public:
     void EndView()
     {
         auto* frame = RecordingFrame();
-        if (!frame) return;
-        if (!frame->viewOpen) frame->complete = false;
+        if (!frame) {
+            return;
+        }
+        if (!frame->viewOpen) {
+            frame->complete = false;
+        }
         DiscardOpenPass(*frame);
         frame->viewOpen = false;
     }
@@ -80,7 +90,9 @@ public:
     {
         outIndex = INVALID_SLOT;
         auto* frame = RecordingFrame();
-        if (!frame) return false;
+        if (!frame) {
+            return false;
+        }
         if (!frame->viewOpen || frame->passOpen || frame->count == MAX_PASSES) {
             frame->complete = false;
             IncrementDropped(*frame);
@@ -97,7 +109,9 @@ public:
     {
         outIndex = INVALID_SLOT;
         auto* frame = RecordingFrame();
-        if (!frame) return false;
+        if (!frame) {
+            return false;
+        }
         if (!frame->passOpen) {
             frame->complete = false;
             return false;
@@ -116,7 +130,9 @@ public:
     bool CancelOpenPass()
     {
         auto* frame = RecordingFrame();
-        if (!frame || !frame->passOpen) return false;
+        if (!frame || !frame->passOpen) {
+            return false;
+        }
         DiscardOpenPass(*frame);
         return true;
     }
@@ -125,8 +141,12 @@ public:
     uint32_t FinishFrame()
     {
         auto* frame = RecordingFrame();
-        if (!frame) return 0;
-        if (frame->viewOpen) frame->complete = false;
+        if (!frame) {
+            return 0;
+        }
+        if (frame->viewOpen) {
+            frame->complete = false;
+        }
         DiscardOpenPass(*frame);
         frame->viewOpen = false;
         frame->state = State::FINISHED;
@@ -139,7 +159,9 @@ public:
     /// @return fence 0 / UINT64_MAX は提出失敗として領域を破棄し false。以前の公開結果は維持する。
     bool SubmitFrame(uint32_t slot, uint64_t actualFence)
     {
-        if (slot >= m_frames.size() || m_frames[slot].state != State::FINISHED) return false;
+        if (slot >= m_frames.size() || m_frames[slot].state != State::FINISHED) {
+            return false;
+        }
         auto& frame = m_frames[slot];
         if (actualFence == 0 || actualFence == std::numeric_limits<uint64_t>::max()) {
             frame = {};
@@ -163,7 +185,9 @@ public:
         }
         for (uint32_t slot = 0; slot < m_frames.size(); ++slot) {
             auto& frame = m_frames[slot];
-            if (frame.state != State::SUBMITTED || frame.fence > completedFence) continue;
+            if (frame.state != State::SUBMITTED || frame.fence > completedFence) {
+                continue;
+            }
             if (frame.serial > m_snapshot.physicalFrameSerial) {
                 GpuProfilerSnapshot candidate;
                 candidate.supported = m_supported;
@@ -226,12 +250,16 @@ private:
 
     static void IncrementDropped(Frame& frame)
     {
-        if (frame.dropped != std::numeric_limits<uint32_t>::max()) ++frame.dropped;
+        if (frame.dropped != std::numeric_limits<uint32_t>::max()) {
+            ++frame.dropped;
+        }
     }
 
     static void DiscardOpenPass(Frame& frame)
     {
-        if (!frame.passOpen) return;
+        if (!frame.passOpen) {
+            return;
+        }
         frame.complete = false;
         IncrementDropped(frame);
         frame.passOpen = false;
@@ -245,4 +273,4 @@ private:
     bool m_supported = false;
 };
 
-} /// @note namespace fbzz::renderer
+} // namespace fbzz::renderer

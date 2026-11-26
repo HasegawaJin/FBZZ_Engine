@@ -42,13 +42,17 @@ public:
     /// @note 書き込み前に以前の空間差分を失効させる。共有中なら、このビューの姿勢だけを複製する。
     std::vector<RenderObject>& EditObjects()
     {
-        if (m_shared) ReplaceObjects(m_shared->objects);
+        if (m_shared) {
+            ReplaceObjects(m_shared->objects);
+        }
         m_local.spatialUpdate.reset();
         return m_local.objects;
     }
     void SetSpatialUpdate(std::optional<RenderSpatialUpdate> update)
     {
-        if (m_shared) ReplaceObjects(m_shared->objects);
+        if (m_shared) {
+            ReplaceObjects(m_shared->objects);
+        }
         m_local.spatialUpdate = std::move(update);
     }
     void ReplaceObjects(std::vector<RenderObject> objects)

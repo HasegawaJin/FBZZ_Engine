@@ -6,6 +6,7 @@
 /// @note 面は深度付きの 2D RT。キューブ RT は深度を持たず、壁の向こうの物体が描画順しだいで手前に出て空の遮蔽が崩れるため使わない。
 /// @note 射影 CS は生のボリュームへ書き、膨張 CS が壁に埋まったプローブを周りで埋めて描画用ボリュームを作る。
 /// @see Docs/design/light-probe-gi.md
+#include <Graphics/Renderer/Commands/ShaderBindingSlots.hpp>
 #include "../RenderScenePassHelpers.hpp"
 #include <Graphics/Scene/RenderProbeInput.hpp>
 #include <Graphics/Renderer/Commands/ComputeCall.hpp>
@@ -42,10 +43,10 @@ static_assert(sizeof(LightProbeDilateCB) == kLightProbeDilateCBSize,
               "LightProbeDilateCB must match LightProbeDilateConstants (16 bytes)");
 
 /// @note 面の色・深度・表裏を置く CS のスロット。LightProbeProject.cs.hlsl の LIGHT_PROBE_*_SLOT と一致させること。
-constexpr uint32_t kFaceColorSlot   = 0;
-constexpr uint32_t kFaceDepthSlot   = 6;
-constexpr uint32_t kEnvironmentSlot = 16;
-constexpr uint32_t kFaceFacingSlot  = 20;
+constexpr uint32_t kFaceColorSlot   = srv::LIGHT_PROBE_FACE_COLOR;
+constexpr uint32_t kFaceDepthSlot   = srv::LIGHT_PROBE_FACE_DEPTH;
+constexpr uint32_t kEnvironmentSlot = srv::LIGHT_PROBE_ENVIRONMENT;
+constexpr uint32_t kFaceFacingSlot  = srv::LIGHT_PROBE_FACE_FACING;
 /// @note SH 係数 7 枚を Z 方向へ積む。LightProbeGI.hlsli の kLightProbeSHSlices と一致させること。
 constexpr int kSHSlices = 7;
 
@@ -97,13 +98,19 @@ void CollectCaptureItems(RenderPassContext& ctx, const RenderLightProbeInput& vo
     const auto& input = SceneInput(ctx);
     for (const auto& object : input.Objects()) {
         if (object.skinned || !object.colorEligible || !MatchesView(ctx, object) ||
-            (object.sourceIndex == volume.sourceIndex && object.sourceGeneration == volume.sourceGeneration)) continue;
-        if (object.boundsRadius > 0.0f && !frustum.IntersectsSphere(object.boundsCenter, object.boundsRadius)) continue;
+            (object.sourceIndex == volume.sourceIndex && object.sourceGeneration == volume.sourceGeneration)) {
+            continue;
+        }
+        if (object.boundsRadius > 0.0f && !frustum.IntersectsSphere(object.boundsCenter, object.boundsRadius)) {
+            continue;
+        }
         for (uint32_t i = object.firstItem; i < object.firstItem + object.itemCount; ++i) {
             const auto& item = input.items[i];
             const auto& material = item.material;
             if (!item.slotVisible || !HasColorGeometry(item) || !material.valid || !material.shader.IsValid()
-                || material.capabilities.blend != renderer::BlendMode::OPAQUE_BLEND) continue;
+                || material.capabilities.blend != renderer::BlendMode::OPAQUE_BLEND) {
+                continue;
+            }
             items.push_back({ &object, &item, &material,
                 GetOrCreateMaterialPSO(ctx.resources, material.capabilities.blend,
                     material.doubleSided, material.depthBias, material.depthBiasSlope, false) });
@@ -143,7 +150,7 @@ math::Matrix4 RenderFace(RenderPassContext& ctx, const RenderLightProbeInput& vo
     CollectCaptureItems(ctx, volume, math::Frustum::FromViewProjection(frame.viewProjection), items);
 
     ctx.renderer.SetRenderTarget(volume.runtimeFaces[face], resources);
-    /// @note 深度もクリア値 1 へ戻る。CS はこの値のまま残った画素を «空» として環境キューブで埋める。
+    // 深度もクリア値 1 へ戻る。CS はこの値のまま残った画素を «空» として環境キューブで埋める。
     ctx.renderer.Clear({ 0.0f, 0.0f, 0.0f, 0.0f });
     for (const CaptureItem& item : items) {
         UpdateObjectCB(ctx, *item.object);
@@ -154,30 +161,31 @@ math::Matrix4 RenderFace(RenderPassContext& ctx, const RenderLightProbeInput& vo
         draw.vertexCount = item.mesh->vertexCount;
         draw.shader = item.material->shader;
         draw.pipelineState = item.pso;
-        draw.constantBuffers[0] = h.lightProbeCaptureFrameCB;
-        draw.constantBuffers[1] = h.objectCB;
-        draw.constantBuffers[2] = item.material->paramsBuffer;
-        draw.constantBuffers[3] = h.lightCB;
-        draw.constantBuffers[4] = h.shadowCB;
-        draw.constantBuffers[8] = h.lightProbeCaptureAdvancedCB;
-        for (size_t i = 0; i < item.material->textures.size() && i < 8; ++i)
-            if (item.material->textures[i].IsValid()) draw.textures[i] = item.material->textures[i];
-        draw.textures[8]  = resources.GetDepthTexture(ctx.Res().Target("ShadowMap"));
-        draw.textures[16] = h.iblIrradiance;
-        draw.textures[17] = h.iblPrefilter;
-        draw.textures[18] = h.iblBrdfLut;
-        /// @note クラスタリストはメインカメラの視錐台向けなので、プローブ位置から描くここでは Linear へ落とす。
-        BindForwardShadingResources(draw, ctx, true);
-        /// @note 多重反射の焼きでは «このボリュームの前回の結果» だけを受けた面を描く。メインビューが選んだボリュームとは限らないので上書きする。
-        draw.textures[22] = probeInput;
-        draw.textures[21] = {};
-        if (probeInput.IsValid() && volume.runtimeVisibility.IsValid())
+        draw.constantBuffers[cb::CAMERA] = h.lightProbeCaptureFrameCB;
+        draw.constantBuffers[cb::OBJECT] = h.objectCB;
+        draw.constantBuffers[cb::MATERIAL] = item.material->paramsBuffer;
+        draw.constantBuffers[cb::LIGHT] = h.lightCB;
+        draw.constantBuffers[cb::ADVANCED_GRAPHICS] = h.lightProbeCaptureAdvancedCB;
+        for (size_t i = 0; i < item.material->textures.size() && i < 8; ++i) {
+            if (item.material->textures[i].IsValid()) {
+                draw.textures[i] = item.material->textures[i];
+            }
+        }
+        draw.textures[srv::IBL_IRRADIANCE] = h.iblIrradiance;
+        draw.textures[srv::IBL_PREFILTER] = h.iblPrefilter;
+        draw.textures[srv::IBL_BRDF_LUT] = h.iblBrdfLut;
+        BindProbeCaptureLightingResources(draw, ctx);
+        // 多重反射の焼きでは «このボリュームの前回の結果» だけを受けた面を描く。メインビューが選んだボリュームとは限らないので上書きする。
+        draw.textures[srv::LIGHT_PROBE_SH] = probeInput;
+        draw.textures[srv::LIGHT_PROBE_SH_OUTER] = {};
+        if (probeInput.IsValid() && volume.runtimeVisibility.IsValid()) {
             draw.indirectReadTextures = { volume.runtimeVisibility, {} };
+        }
         ctx.renderer.Submit(draw, resources);
     }
 
     if (volume.rejectInsideGeometry && h.lightProbeFacingShader.IsValid()) {
-        /// @note 表裏はカリング無しで描かないと分からない (裏面カリングのマテリアル PSO では裏が消え、壁の中から外が素通しで見える)。
+        // 表裏はカリング無しで描かないと分からない (裏面カリングのマテリアル PSO では裏が消え、壁の中から外が素通しで見える)。
         ctx.renderer.SetRenderTarget(volume.runtimeFacing[face], resources);
         ctx.renderer.Clear({ 1.0f, 1.0f, 1.0f, 1.0f });
         const auto cullNone = GetOrCreateMaterialPSO(resources, renderer::BlendMode::OPAQUE_BLEND, true);
@@ -190,8 +198,8 @@ math::Matrix4 RenderFace(RenderPassContext& ctx, const RenderLightProbeInput& vo
             draw.vertexCount = item.mesh->vertexCount;
             draw.shader = h.lightProbeFacingShader;
             draw.pipelineState = cullNone;
-            draw.constantBuffers[0] = h.lightProbeCaptureFrameCB;
-            draw.constantBuffers[1] = h.objectCB;
+            draw.constantBuffers[cb::CAMERA] = h.lightProbeCaptureFrameCB;
+            draw.constantBuffers[cb::OBJECT] = h.objectCB;
             ctx.renderer.Submit(draw, resources);
         }
     }
@@ -210,8 +218,9 @@ void BakeProbe(RenderPassContext& ctx, const RenderLightProbeInput& volume, int 
     const math::Vector3 position = ProbePosition(volume.boxMin, volume.boxSize, grid, x, y, z);
 
     LightProbeProjectCB project{};
-    for (uint32_t face = 0; face < 6; ++face)
+    for (uint32_t face = 0; face < 6; ++face) {
         project.faceInvViewProj[face] = RenderFace(ctx, volume, position, face, probeInput, items);
+    }
     ctx.renderer.SetRenderTarget({}, resources);
 
     const bool useFacing = volume.rejectInsideGeometry && h.lightProbeFacingShader.IsValid();
@@ -233,16 +242,19 @@ void BakeProbe(RenderPassContext& ctx, const RenderLightProbeInput& volume, int 
 
     renderer::ComputeCall call;
     call.shader = h.lightProbeProjectCS;
-    call.constantBuffers[0] = h.lightProbeProjectCB;
+    call.constantBuffers[cb::LIGHT_PROBE_PROJECT] = h.lightProbeProjectCB;
     for (uint32_t face = 0; face < 6; ++face) {
         call.srvInputs[kFaceColorSlot + face] = resources.GetColorTexture(volume.runtimeFaces[face], 0);
         call.srvInputs[kFaceDepthSlot + face] = resources.GetDepthTexture(volume.runtimeFaces[face]);
-        if (useFacing)
+        if (useFacing) {
             call.srvInputs[kFaceFacingSlot + face] = resources.GetColorTexture(volume.runtimeFacing[face], 0);
+        }
     }
-    if (h.iblPrefilter.IsValid()) call.srvInputs[kEnvironmentSlot] = h.iblPrefilter;
-    call.uavOutputs[0] = volume.runtimeRawVolume;
-    call.uavOutputs[1] = volume.runtimeVisibility;
+    if (h.iblPrefilter.IsValid()) {
+        call.srvInputs[kEnvironmentSlot] = h.iblPrefilter;
+    }
+    call.uavOutputs[uav::LIGHT_PROBE_SH] = volume.runtimeRawVolume;
+    call.uavOutputs[uav::LIGHT_PROBE_VISIBILITY] = volume.runtimeVisibility;
     ctx.renderer.Dispatch(call, resources);
 }
 
@@ -251,17 +263,21 @@ void BakeProbe(RenderPassContext& ctx, const RenderLightProbeInput& volume, int 
 void DilateVolume(RenderPassContext& ctx, const RenderLightProbeInput& volume)
 {
     auto& h = ctx.handles;
-    if (!h.lightProbeDilateCS.IsValid() || !h.lightProbeDilateCB.IsValid()) return;
+    if (!h.lightProbeDilateCS.IsValid() || !h.lightProbeDilateCB.IsValid()) {
+        return;
+    }
     LightProbeDilateCB data{};
-    for (int axis = 0; axis < 3; ++axis) data.grid[axis] = static_cast<uint32_t>(volume.runtimeGrid[axis]);
+    for (int axis = 0; axis < 3; ++axis) {
+        data.grid[axis] = static_cast<uint32_t>(volume.runtimeGrid[axis]);
+    }
     data.validLimit = kValidLimit;
     ctx.resources.Update(h.lightProbeDilateCB, &data, sizeof(data));
 
     renderer::ComputeCall call;
     call.shader = h.lightProbeDilateCS;
-    call.constantBuffers[0] = h.lightProbeDilateCB;
-    call.srvInputs[0] = volume.runtimeRawVolume;
-    call.uavOutputs[0] = volume.runtimeVolume;
+    call.constantBuffers[cb::LIGHT_PROBE_DILATE] = h.lightProbeDilateCB;
+    call.srvInputs[srv::LIGHT_PROBE_RAW_SH] = volume.runtimeRawVolume;
+    call.uavOutputs[uav::LIGHT_PROBE_SH] = volume.runtimeVolume;
     call.dispatchX = (data.grid[0] + 3u) / 4u;
     call.dispatchY = (data.grid[1] + 3u) / 4u;
     call.dispatchZ = (data.grid[2] + 3u) / 4u;
@@ -271,6 +287,10 @@ void DilateVolume(RenderPassContext& ctx, const RenderLightProbeInput& volume)
 }
 void BakeLightProbe(RenderPassContext& ctx, const RenderLightProbeInput& input, int index, ResourceHandle<TextureTag> probeInput)
 {
+    if (!PrepareProbeCaptureShadowConstants(ctx)) {
+        return;
+    }
+
     std::vector<CaptureItem> items;
     BakeProbe(ctx, input, index, probeInput, items);
 }

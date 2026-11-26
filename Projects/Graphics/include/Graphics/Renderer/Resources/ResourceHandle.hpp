@@ -18,10 +18,9 @@ using Where = std::source_location;
 
 template<typename Tag>
 struct ResourceHandle {
-    uint32_t id = 0;
-    uint32_t gen = 0;
-    /// @note 作成元 Manager の寿命 ID。別 Manager の同じ slot / generation と区別する。
-    uint64_t owner = 0;
+    uint32_t id = 0; ///< 作成元 ResourcePool 内のスロット添字。0 は無効ハンドル。
+    uint32_t gen = 0; ///< スロットを再利用したときに以前の参照を見分ける世代。
+    uint64_t owner = 0; ///< 作成元 ResourceManager の寿命 ID。同じスロット番号と世代を持つ別の管理器と区別する。
 
     [[nodiscard]] bool IsValid() const { return id != 0; }
     explicit operator bool() const { return IsValid(); }
@@ -38,7 +37,7 @@ struct BufferTag {};
 struct ConstantBufferTag {};
 struct PipelineStateTag {};
 struct RenderTargetTag {};
-struct StructuredBufferTag {}; ///< @note GPU StructuredBuffer (SRV) — DrawInstanced のインスタンスデータ用
+struct StructuredBufferTag {}; ///< GPU StructuredBuffer (SRV) — DrawInstanced のインスタンスデータ用
 struct AccelerationStructureTag {};
 
-} /// @note namespace fbzz::renderer
+} // namespace fbzz::renderer

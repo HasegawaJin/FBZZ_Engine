@@ -3,6 +3,7 @@
 /// @author  Hasegawa Jin
 /// @date    2026-11-21
 
+#include <Graphics/Renderer/Commands/ShaderBindingSlots.hpp>
 #include "RenderDecalMaterials.hpp"
 #include <Engine/Rendering/Extraction/Effects/RenderDecalExtractor.hpp>
 #include <Engine/Rendering/Passes/RenderPassContext.hpp>
@@ -28,8 +29,7 @@ namespace fbzz::scene::decal_extraction_detail {
 /// @note 値で持つ理由 (shared_ptr にしない): この構造体は下のキャッシュの要素としてしか存在せず、unordered_map はノード単位で確保するため rehash しても要素のアドレスは動かない。
 struct DecalMaterialBinding {
     renderer::Material                                    material;
-    /// @note 上書きを名前でバイトオフセットへ写像するのに要る。
-    renderer::ShaderDescriptor                            descriptor;
+    renderer::ShaderDescriptor                            descriptor; ///< 上書きを名前でバイトオフセットへ写像するのに要る。
     renderer::ResourceHandle<renderer::PipelineStateTag>  pso;
     /// @note PSO を作り直す判断に使う。CreatePipelineState は重複を畳まないため、
     /// @note 毎フレーム呼ぶとステートオブジェクトが際限なく増える。
@@ -70,18 +70,27 @@ void ApplyDecalMaterialOverrides(renderer::ResourceManager& resources,
         const auto& slotNames = asset::kMaterialTextureSlotNames;
         for (size_t slot = 0; slot < slotNames.size() && slot < call.textures.size(); ++slot) {
             const auto it = decal.materialTextureOverrides.find(slotNames[slot]);
-            if (it == decal.materialTextureOverrides.end() || it->second.empty()) continue;
+            if (it == decal.materialTextureOverrides.end() || it->second.empty()) {
+                continue;
+            }
             if (const auto texture = asset::StreamedTextureResolver::Engine().ResolveGpu(resources, it->second);
-                texture.IsValid())
+                texture.IsValid()) {
                 call.textures[slot] = texture;
+            }
         }
     }
 
-    if (decal.materialParamOverrides.empty()) return;
-    if (!binding.overrideConstants.IsValid()) return;
-    if (binding.overrideScratch.size() != binding.material.paramData.size()) return;
+    if (decal.materialParamOverrides.empty()) {
+        return;
+    }
+    if (!binding.overrideConstants.IsValid()) {
+        return;
+    }
+    if (binding.overrideScratch.size() != binding.material.paramData.size()) {
+        return;
+    }
 
-    /// @note 共有側の paramData は触らない — 触ると同じ .mat を使う他のデカールへ波及する。
+    // 共有側の paramData は触らない — 触ると同じ .mat を使う他のデカールへ波及する。
     std::memcpy(binding.overrideScratch.data(),
                 binding.material.paramData.data(),
                 binding.material.paramData.size());
@@ -90,16 +99,18 @@ void ApplyDecalMaterialOverrides(renderer::ResourceManager& resources,
     resources.Update(binding.overrideConstants,
                      binding.overrideScratch.data(),
                      static_cast<uint32_t>(binding.overrideScratch.size()));
-    call.constantBuffers[2] = binding.overrideConstants;
+    call.constantBuffers[renderer::cb::MATERIAL] = binding.overrideConstants;
 }
 
-} /// @note namespace
+} // namespace
 
 /// @note materialPath から描画に要るものを揃える。解決できない場合は組み込み経路へ落とす。
 DecalMaterialBinding* ResolveDecalMaterial(renderer::ResourceManager& resources,
                                            const DecalComponent& decal)
 {
-    if (decal.materialPath.empty()) return nullptr;
+    if (decal.materialPath.empty()) {
+        return nullptr;
+    }
 
     const auto assetHandle = asset::AssetManager::Load<asset::MaterialAsset>(decal.materialPath);
     const auto authoringSnapshot = assetHandle.IsValid()
@@ -111,7 +122,7 @@ DecalMaterialBinding* ResolveDecalMaterial(renderer::ResourceManager& resources,
                           decal.materialPath.c_str());
         return nullptr;
     }
-    /// @note 用途を検査する理由: メッシュ用の .mat は頂点入力を前提にしたシェーダーを指すが、デカールは頂点バッファを持たない SV_VertexID 描画のため、割り当てると入力レイアウト不一致で何も出ないか画面が塗り潰される。原因が絵からは分からない事故のため名指しで止める。
+    // 用途を検査する理由: メッシュ用の .mat は頂点入力を前提にしたシェーダーを指すが、デカールは頂点バッファを持たない SV_VertexID 描画のため、割り当てると入力レイアウト不一致で何も出ないか画面が塗り潰される。原因が絵からは分からない事故のため名指しで止める。
     if (authoring->renderPath != asset::RenderPath::Decal) {
         if (WarnDecalMaterialOnce(decal.materialPath))
             FBZZ_LOG_WARN("Decal material '%s' is not declared for decals (render_path must be \"decal\") "
@@ -126,8 +137,9 @@ DecalMaterialBinding* ResolveDecalMaterial(renderer::ResourceManager& resources,
     }
 
     DecalMaterialBinding& binding = s_decalMaterials[decal.materialPath];
-    if (binding.resolvedPass == s_decalPassSerial)
+    if (binding.resolvedPass == s_decalPassSerial) {
         return binding.resolvedOk ? &binding : nullptr;
+    }
     binding.resolvedPass = s_decalPassSerial;
     binding.resolvedOk   = false;
 
@@ -141,11 +153,12 @@ DecalMaterialBinding* ResolveDecalMaterial(renderer::ResourceManager& resources,
         return nullptr;
     }
 
-    /// @note 記述子は値ごと持つ。シェーダーはホットリロードで差し替わりうるので、
-    /// @note ポインタで持つと解決時の中身と食い違う瞬間ができる。
+    // 記述子は値ごと持つ。シェーダーはホットリロードで差し替わりうるので、
+    // ポインタで持つと解決時の中身と食い違う瞬間ができる。
     binding.descriptor = {};
-    if (auto* shader = resources.Get(material.shader))
+    if (auto* shader = resources.Get(material.shader)) {
         binding.descriptor = shader->GetDescriptor();
+    }
 
     material.paramData.assign(binding.descriptor.cbufferSize, 0u);
     if (binding.descriptor.IsValid()) {
@@ -171,17 +184,20 @@ DecalMaterialBinding* ResolveDecalMaterial(renderer::ResourceManager& resources,
             binding.overrideConstants = {};
         }
     }
-    if (!binding.overrideConstants.IsValid() && binding.descriptor.cbufferSize > 0)
+    if (!binding.overrideConstants.IsValid() && binding.descriptor.cbufferSize > 0) {
         binding.overrideConstants = resources.CreateConstantBuffer(binding.descriptor.cbufferSize);
+    }
 
-    /// @note デカールは深度を書かない。ブレンドだけ .mat に従わせる。
+    // デカールは深度を書かない。ブレンドだけ .mat に従わせる。
     if (!binding.psoValid || binding.psoBlend != authoring->blendMode) {
         binding.pso = resources.CreatePipelineState({
             renderer::RasterizerMode::SOLID, authoring->blendMode, renderer::DepthMode::DEPTH_OFF });
         binding.psoBlend = authoring->blendMode;
         binding.psoValid = binding.pso.IsValid();
     }
-    if (!binding.psoValid) return nullptr;
+    if (!binding.psoValid) {
+        return nullptr;
+    }
 
     binding.resolvedOk = true;
     return &binding;
@@ -195,10 +211,11 @@ void BindCustomDecalMaterial(renderer::ResourceManager& resources, DecalMaterial
     auto& drawCall = input.binding;
     drawCall.shader             = binding.material.shader;
     drawCall.pipelineState      = binding.pso;
-    drawCall.constantBuffers[2] = binding.material.paramsBuffer;
+    drawCall.constantBuffers[renderer::cb::MATERIAL] = binding.material.paramsBuffer;
     for (size_t textureSlot = 0; textureSlot < binding.material.textures.size() && textureSlot < drawCall.textures.size(); ++textureSlot)
-        if (binding.material.textures[textureSlot].IsValid())
+        if (binding.material.textures[textureSlot].IsValid()) {
             drawCall.textures[textureSlot] = binding.material.textures[textureSlot];
+        }
     input.customMaterial = true;
     ApplyDecalMaterialOverrides(resources, binding, decal, drawCall, input.materialParameters);
 }
@@ -226,8 +243,8 @@ void BindBuiltInDecalMaterial(renderer::ResourceManager& resources, const Render
     materialConstants.emissiveColor[2] = decal.emissiveColor[2];
     materialConstants.emissiveScale    = decal.emissiveScale;
     materialConstants.normalStrength   = decal.normalStrength;
-    /// @note ビット位置はテクスチャスロット番号。renderer::Material::Upload と同じ規則に
-    /// @note 揃えてあるので、.mat 経路と組み込み経路でシェーダーを共有できる。
+    // ビット位置はテクスチャスロット番号。renderer::Material::Upload と同じ規則に
+    // 揃えてあるので、.mat 経路と組み込み経路でシェーダーを共有できる。
     materialConstants.textureMask = (albedoTexture.IsValid()   ? 1u : 0u)
                         | (normalTexture.IsValid()   ? 2u : 0u)
                         | (emissiveTexture.IsValid() ? 8u : 0u);
@@ -235,10 +252,16 @@ void BindBuiltInDecalMaterial(renderer::ResourceManager& resources, const Render
 
     drawCall.shader             = handles.decalShader;
     drawCall.pipelineState      = handles.decalPSO;
-    drawCall.constantBuffers[2] = handles.decalMaterialCB;
-    if (albedoTexture.IsValid())   drawCall.textures[0] = albedoTexture;
-    if (normalTexture.IsValid())   drawCall.textures[1] = normalTexture;
-    if (emissiveTexture.IsValid()) drawCall.textures[3] = emissiveTexture;
+    drawCall.constantBuffers[renderer::cb::MATERIAL] = handles.decalMaterialCB;
+    if (albedoTexture.IsValid()) {
+        drawCall.textures[renderer::srv::ALBEDO] = albedoTexture;
+    }
+    if (normalTexture.IsValid()) {
+        drawCall.textures[renderer::srv::NORMAL] = normalTexture;
+    }
+    if (emissiveTexture.IsValid()) {
+        drawCall.textures[renderer::srv::EMISSIVE] = emissiveTexture;
+    }
 }
 
 void BeginDecalMaterialPass()
@@ -252,7 +275,7 @@ void ClearDecalMaterialCache()
     s_warnedDecalMaterials.clear();
 }
 
-} /// @note namespace fbzz::scene::decal_extraction_detail
+} // namespace fbzz::scene::decal_extraction_detail
 
 namespace fbzz::scene {
 
@@ -261,4 +284,4 @@ void ReleaseDecalMaterialCache()
     decal_extraction_detail::ClearDecalMaterialCache();
 }
 
-} /// @note namespace fbzz::scene
+} // namespace fbzz::scene

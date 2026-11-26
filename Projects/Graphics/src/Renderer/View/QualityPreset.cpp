@@ -19,10 +19,10 @@ struct PresetSpec {
     int      shadowCascades;
     int      shadowPcfRadius;
     bool     shadowPcss;
-    bool     ssao;              ///< @note postProcess.ambientOcclusion (軽い方の AO)
-    bool     gtao;              ///< @note 高品質 AO。ssao と排他
-    bool     fxaa;              ///< @note 軽い方の AA
-    bool     taa;               ///< @note 高品質 AA。fxaa と排他
+    bool     ssao;              ///< postProcess.ambientOcclusion (軽い方の AO)
+    bool     gtao;              ///< 高品質 AO。ssao と排他
+    bool     fxaa;              ///< 軽い方の AA
+    bool     taa;               ///< 高品質 AA。fxaa と排他
     bool     ssr;
     bool     volumetricLight;
     bool     contactShadow;
@@ -66,7 +66,7 @@ constexpr PresetSpec kPresets[] = {
         && s.postProcess.bloom.enabled         == spec.bloom;
 }
 
-} /// @note namespace
+} // namespace
 
 void ApplyQualityPreset(RenderSettings& settings, QualityPreset preset)
 {
@@ -89,27 +89,32 @@ void ApplyQualityPreset(RenderSettings& settings, QualityPreset preset)
     settings.lensFlare.enabled       = spec.lensFlare;
     settings.postProcess.bloom.enabled = spec.bloom;
 
-    /// @note 排他スロット (FXAA/TAA, SSAO/GTAO) の規則は 1 か所に集約されている。
-    /// @note       プリセットの表が正しくても、ここを通しておけば表の書き間違いで
-    /// @note       両方立った状態が描画へ届くことはない。
+    // 排他スロット (FXAA/TAA, SSAO/GTAO) の規則は 1 か所に集約されている。
+    // プリセットの表が正しくても、ここを通しておけば表の書き間違いで
+    // 両方立った状態が描画へ届くことはない。
     (void)settings.NormalizeExclusivePipelineSlots();
 }
 
 QualityPreset DetectQualityPreset(const RenderSettings& settings)
 {
     for (size_t i = 0; i < std::size(kPresets); ++i) {
-        if (Matches(settings, kPresets[i])) return static_cast<QualityPreset>(i);
+        if (Matches(settings, kPresets[i])) {
+            return static_cast<QualityPreset>(i);
+        }
     }
-    /// @note どれとも一致しない = 個別に調整された状態。影の解像度を目安に
-    /// @note       一番近い (超えない) 段を返す。Option 画面が「カスタム」を持たない前提の妥協。
+    // どれとも一致しない = 個別に調整された状態。影の解像度を目安に
+    // 一番近い (超えない) 段を返す。Option 画面が「カスタム」を持たない前提の妥協。
     const uint32_t resolution = settings.shadow.mapResolution;
-    if (resolution >= kPresets[static_cast<size_t>(QualityPreset::Ultra)].shadowMapResolution)
+    if (resolution >= kPresets[static_cast<size_t>(QualityPreset::Ultra)].shadowMapResolution) {
         return QualityPreset::Ultra;
-    if (resolution >= kPresets[static_cast<size_t>(QualityPreset::High)].shadowMapResolution)
+    }
+    if (resolution >= kPresets[static_cast<size_t>(QualityPreset::High)].shadowMapResolution) {
         return QualityPreset::High;
-    if (resolution >= kPresets[static_cast<size_t>(QualityPreset::Medium)].shadowMapResolution)
+    }
+    if (resolution >= kPresets[static_cast<size_t>(QualityPreset::Medium)].shadowMapResolution) {
         return QualityPreset::Medium;
+    }
     return QualityPreset::Low;
 }
 
-} /// @note namespace fbzz::renderer
+} // namespace fbzz::renderer

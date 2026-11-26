@@ -6,7 +6,7 @@
 /// @see https://research.nvidia.com/labs/rtr/publication/schied2017spatiotemporal/ Temporal validation and edge-aware reconstruction
 #include "Common/BindlessIndices.hlsli"
 
-cbuffer RayReconstructionConstants : register(b0)
+cbuffer RayReconstructionConstants : register(FBZZ_REGISTER(b, CB_RAY_RECONSTRUCTION_SLOT))
 {
     float4 previousCameraPosition, previousCameraRight, previousCameraUp, previousCameraForward;
     uint width, height, previousOrthographic, resetHistory;
@@ -54,10 +54,10 @@ bool PreviousPixel(RayReconstructionSurface surface, out uint2 pixel)
 void Temporal(uint2 pixel)
 {
     uint index = pixel.y * width + pixel.x;
-    StructuredBuffer<RayGameTransportRecord> frame = ResourceDescriptorHeap[FbzzPixelSlot(14)];
-    StructuredBuffer<RayReconstructionSurface> surfaces = ResourceDescriptorHeap[FbzzPixelSlot(15)];
-    StructuredBuffer<RayReconstructionHistoryRecord> previous = ResourceDescriptorHeap[FbzzPixelSlot(29)];
-    RWStructuredBuffer<RayReconstructionHistoryRecord> next = ResourceDescriptorHeap[FbzzUavSlot(2)];
+    StructuredBuffer<RayGameTransportRecord> frame = ResourceDescriptorHeap[FbzzPixelSlot(SRV_RAY_RECON_FRAME_SLOT)];
+    StructuredBuffer<RayReconstructionSurface> surfaces = ResourceDescriptorHeap[FbzzPixelSlot(SRV_RAY_RECON_SURFACE_SLOT)];
+    StructuredBuffer<RayReconstructionHistoryRecord> previous = ResourceDescriptorHeap[FbzzPixelSlot(SRV_RAY_RECON_HISTORY_SLOT)];
+    RWStructuredBuffer<RayReconstructionHistoryRecord> next = ResourceDescriptorHeap[FbzzUavSlot(UAV_RAY_RECON_HISTORY_SLOT)];
     RayGameTransportRecord current = frame[index];
     RayReconstructionHistoryRecord result = (RayReconstructionHistoryRecord)0;
     result.surface = surfaces[index];
@@ -77,10 +77,10 @@ void Temporal(uint2 pixel)
 void Spatial(uint2 pixel)
 {
     uint index = pixel.y * width + pixel.x;
-    StructuredBuffer<RayReconstructionHistoryRecord> history = ResourceDescriptorHeap[FbzzPixelSlot(14)];
-    StructuredBuffer<RayGameTransportRecord> frame = ResourceDescriptorHeap[FbzzPixelSlot(15)];
-    StructuredBuffer<RayReconstructionSurface> surfaces = ResourceDescriptorHeap[FbzzPixelSlot(29)];
-    RWTexture2D<float4> output = ResourceDescriptorHeap[FbzzUavSlot(0)];
+    StructuredBuffer<RayReconstructionHistoryRecord> history = ResourceDescriptorHeap[FbzzPixelSlot(SRV_RAY_SPATIAL_HISTORY_SLOT)];
+    StructuredBuffer<RayGameTransportRecord> frame = ResourceDescriptorHeap[FbzzPixelSlot(SRV_RAY_SPATIAL_FRAME_SLOT)];
+    StructuredBuffer<RayReconstructionSurface> surfaces = ResourceDescriptorHeap[FbzzPixelSlot(SRV_RAY_SPATIAL_SURFACE_SLOT)];
+    RWTexture2D<float4> output = ResourceDescriptorHeap[FbzzUavSlot(UAV_RAY_RESULT_SLOT)];
     RayReconstructionSurface center = surfaces[index];
     RayGameTransportRecord raw = frame[index];
     float3 diffuse = history[index].diffuse.rgb, specular = raw.specular.rgb;

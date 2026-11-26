@@ -5,6 +5,7 @@
 /// @note 1 group は最大 32 triangle / 96 vertex を出力し、Y group が WaterPatchInstance を選ぶ。
 /// @see https://microsoft.github.io/DirectX-Specs/d3d/MeshShader.html - output limits, SetMeshOutputCounts, and DispatchMesh group order.
 
+#include "Common/Binding.hlsli"
 #include "Water/Water.hlsl"
 
 #if BINDLESS_SUPPORTED
@@ -13,13 +14,13 @@ static ByteAddressBuffer g_waterRawVertices = ResourceDescriptorHeap[
 static ByteAddressBuffer g_waterRawIndices = ResourceDescriptorHeap[
     NonUniformResourceIndex(FbzzVertexSlot(VS_SB_BUFFER1_SLOT))];
 #else
-ByteAddressBuffer g_waterRawVertices : register(t14);
-ByteAddressBuffer g_waterRawIndices : register(t15);
+ByteAddressBuffer g_waterRawVertices : register(FBZZ_REGISTER(t, SRV_MESHLET_RAW_VERTICES_SLOT));
+ByteAddressBuffer g_waterRawIndices : register(FBZZ_REGISTER(t, SRV_MESHLET_RAW_DATA_SLOT));
 #endif
 
 /// @brief 標準 Water patch の raw input ABI と今回の mesh dispatch 寸法。
 /// @note b13 は Water の色パスで未使用。b12 の PunctualShadowConstants とは分ける。
-cbuffer WaterMeshConstants : register(b13)
+cbuffer WaterMeshConstants : register(FBZZ_REGISTER(b, CB_WATER_MESH_SLOT))
 {
     uint g_waterIndexCount;
     uint g_waterVertexStride;

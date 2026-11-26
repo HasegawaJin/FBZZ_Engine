@@ -31,7 +31,9 @@ struct GpuProfilerViewMetadata {
 {
     if (sample.applicationFrameSerial > current.applicationFrameSerial
         || current.applicationFrameSerial - sample.applicationFrameSerial > maxFrameAge
-        || sample.planGeneration == 0) return false;
+        || sample.planGeneration == 0) {
+        return false;
+    }
     auto expected = current;
     expected.applicationFrameSerial = sample.applicationFrameSerial;
     return sample == expected;
@@ -65,4 +67,4 @@ struct GpuProfilerSnapshot {
     std::vector<GpuPassProfile> passes;
 };
 
-} /// @note namespace fbzz::renderer
+} // namespace fbzz::renderer

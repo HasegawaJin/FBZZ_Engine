@@ -12,9 +12,32 @@ if(NOT FBZZ_ENABLE_DX12)
 endif()
 source_group(TREE "${CMAKE_CURRENT_SOURCE_DIR}" FILES ${GRAPHICS_SOURCES})
 add_library(FBZZGraphics SHARED ${GRAPHICS_SOURCES})
+set(bindingSource "${CMAKE_SOURCE_DIR}/Assets/Shaders/Common/Binding.hlsli")
+set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${bindingSource}")
+file(STRINGS "${bindingSource}" bindingSlots REGEX "^#define ([A-Z0-9_]+_SLOT|BINDING_COUNT_[A-Z_]+) +[0-9]+$")
+foreach(binding IN LISTS bindingSlots)
+    if(binding MATCHES "^#define BINDING_COUNT_([A-Z_]+) +([0-9]+)$")
+        string(APPEND COUNT_SLOTS "inline constexpr uint32_t ${CMAKE_MATCH_1} = ${CMAKE_MATCH_2};\n")
+        continue()
+    endif()
+    if(NOT binding MATCHES "^#define (CB|TEX|SB|SRV|UAV|VS_SB|SAMPLER)_([A-Z0-9_]+)_SLOT +([0-9]+)$")
+        message(FATAL_ERROR "Unknown shader binding: ${binding}")
+    endif()
+    set(kind "${CMAKE_MATCH_1}")
+    set(name "${CMAKE_MATCH_2}")
+    set(slot "${CMAKE_MATCH_3}")
+    if(kind MATCHES "^(TEX|SB)$")
+        set(kind SRV)
+    endif()
+    string(APPEND ${kind}_SLOTS "inline constexpr uint32_t ${name} = ${slot};\n")
+endforeach()
+set(bindingInclude "${CMAKE_CURRENT_BINARY_DIR}/include")
+set(bindingHeader "Graphics/Renderer/Commands/ShaderBindingSlots.hpp")
+configure_file(ShaderBindingSlots.hpp.in "${bindingInclude}/${bindingHeader}" @ONLY)
+install(FILES "${bindingInclude}/${bindingHeader}" DESTINATION "include/Graphics/Renderer/Commands")
 set_target_properties(FBZZGraphics PROPERTIES WINDOWS_EXPORT_ALL_SYMBOLS OFF EXPORT_NAME Graphics)
 target_include_directories(FBZZGraphics
-    PUBLIC "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>" "$<INSTALL_INTERFACE:include>"
+    PUBLIC "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>" "$<BUILD_INTERFACE:${bindingInclude}>" "$<INSTALL_INTERFACE:include>"
     PRIVATE "${DIRECTXTEX_INCLUDE}" "${CMAKE_SOURCE_DIR}/ThirdParty/Stb")
 target_compile_definitions(FBZZGraphics PRIVATE FBZZ_ENABLE_DX12=$<BOOL:${FBZZ_ENABLE_DX12}>)
 target_link_libraries(FBZZGraphics PUBLIC FBZZCore FBZZMath
@@ -47,8 +70,9 @@ if(FBZZ_ENABLE_DX12)
             COMMAND "${FBZZ_DXC_EXECUTABLE}" "${errorShaderSource}"
                 -E ${errorEntry} -T ${errorProfile} -HV 2021 -O3
                 -D "FBZZ_ERROR_SKINNED=${errorSkinned}"
+                -I "${CMAKE_SOURCE_DIR}/Assets/Shaders"
                 -Fh "${errorHeader}" -Vn "ERROR_${errorVariantName}_BYTECODE"
-            DEPENDS "${errorShaderSource}" "${FBZZ_DXC_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/CMakeLists.txt"
+            DEPENDS "${errorShaderSource}" "${bindingSource}" "${FBZZ_DXC_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/CMakeLists.txt"
             VERBATIM)
         list(APPEND errorShaderHeaders "${errorHeader}")
     endforeach()

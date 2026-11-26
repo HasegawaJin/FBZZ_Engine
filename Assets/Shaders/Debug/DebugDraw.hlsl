@@ -1,8 +1,10 @@
-// FBZZ Engine
-// Debug/DebugDraw.hlsl | fbzz::renderer
-// デバッグ描画用シェーダー。頂点カラーで色を指定する (Line / Box / Sphere / Capsule)
+/// @file    DebugDraw.hlsl
+/// @brief   デバッグ描画用シェーダー。頂点カラーで色を指定する (Line / Box / Sphere / Capsule)
+/// @author  Hasegawa Jin
+/// @date    2026-05-17
 
-cbuffer CameraConstants : register(b0) {
+#include "Common/Binding.hlsli"
+cbuffer CameraConstants : register(CB_CAMERA) {
     float4x4 viewProjection;
 };
 

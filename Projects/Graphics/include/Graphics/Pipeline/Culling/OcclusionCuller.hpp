@@ -17,16 +17,16 @@ namespace fbzz::renderer {
 /// @note 同じビュー内の CPU 深度を使い、過去フレームの可視性には依存しない。
 class OcclusionCuller {
 public:
-    static constexpr int kWidth = 256;
-    static constexpr int kHeight = 144;
-    static constexpr size_t kGpuRows = 9 + kWidth * kHeight / 4;
+    static constexpr int kWidth = 256; ///< CPU 遮蔽判定用の深度画像の幅（画素）。
+    static constexpr int kHeight = 144; ///< CPU 遮蔽判定用の深度画像の高さ（画素）。
+    static constexpr size_t kGpuRows = 9 + kWidth * kHeight / 4; ///< ビュー情報と 4 画素ずつ詰めた深度を GPU に送る行数。
 
     FBZZ_GRAPHICS_API OcclusionCuller();
     /// @note jitter は描画と同じ NDC オフセット。Reset ごとに過去の深度を破棄する。
     FBZZ_GRAPHICS_API void Reset(const Camera& cam, float jitterX = 0, float jitterY = 0);
     /// @note 同じインスタンスが別ビューで初期化された場合、準備済み CPU/GPU 遮蔽を失効させる。
     [[nodiscard]] uint64_t GetResetVersion() const { return m_resetVersion; }
-    /// @param opaqueInteriorRadius 同じ中心の実形状内部に収まる球 [m]。不透明被覆が確定した呼び出しだけ正値を渡す。
+    /// @param[in] opaqueInteriorRadius 同じ中心の実形状内部に収まる球 [m]。不透明被覆が確定した呼び出しだけ正値を渡す。
     /// @note 外接球は検査だけに使い、遮蔽者は内接球の投影でセル全体を覆う領域だけ登録する。
     /// @return 不明・near 交差・数値不正は true。false は外接球全体が既存の不透明面に隠れる場合だけ。
     FBZZ_GRAPHICS_API bool TestAndRaster(const math::Vector3& worldCenter, float worldRadius,
@@ -45,15 +45,15 @@ public:
 
 private:
     bool RasterPolygon(std::span<const math::Vector3> vertices);
-    float m_depth[kWidth * kHeight];
-    math::Matrix4 m_view;
-    math::Matrix4 m_proj;
-    float m_nearZ = 0.1f;
-    float m_farZ = 1000.0f;
-    bool m_orthographic = false;
-    bool m_valid = false;
-    bool m_hasDepth = false;
-    uint64_t m_resetVersion = 0;
+    float m_depth[kWidth * kHeight]; ///< 遮蔽側の形状をラスタライズした低解像度の深度画像。
+    math::Matrix4 m_view; ///< 遮蔽物と描画候補を同じ視点へ変換するビュー行列。
+    math::Matrix4 m_proj; ///< 遮蔽判定用の画面座標を求める射影行列。
+    float m_nearZ = 0.1f; ///< この判定に使うビューの近クリップ距離。
+    float m_farZ = 1000.0f; ///< この判定に使うビューの遠クリップ距離。
+    bool m_orthographic = false; ///< 正射影の深度として判定するか。
+    bool m_valid = false; ///< 現在のビューで遮蔽判定を行えるか。
+    bool m_hasDepth = false; ///< 深度画像に遮蔽側の形状が既に書き込まれているか。
+    uint64_t m_resetVersion = 0; ///< 深度のリセットを GPU 側のコピーに伝える世代番号。
 };
 
-} /// @note namespace fbzz::renderer
+} // namespace fbzz::renderer

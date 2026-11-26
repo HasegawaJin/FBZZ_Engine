@@ -5,6 +5,7 @@
 
 /// @note Inject → Integrate の 2 ディスパッチ。結果は `handles.froxelIntegrated` に残り、
 /// @note Composite が深度からスライスを引いて 1 回サンプルする。
+#include <Graphics/Renderer/Commands/ShaderBindingSlots.hpp>
 #include <Graphics/Passes/PostProcess/PostProcessPasses.hpp>
 #include <Graphics/Pipeline/Passes/RenderPassContext.hpp>
 #include <Graphics/Renderer/Commands/ComputeCall.hpp>
@@ -26,12 +27,14 @@ float HaltonBase2(uint32_t index)
     float result = 0.0f;
     float f = 0.5f;
     for (uint32_t i = index + 1u; i > 0u; i >>= 1u) {
-        if (i & 1u) result += f;
+        if (i & 1u) {
+            result += f;
+        }
         f *= 0.5f;
     }
     return result;
 }
-} /// @note namespace
+} // namespace
 
 void ExecuteFroxelFogPass(RenderPassContext& ctx)
 {
@@ -40,14 +43,14 @@ void ExecuteFroxelFogPass(RenderPassContext& ctx)
     auto& h         = ctx.handles;
     const auto& fog = ctx.settings.froxelFog;
 
-    /// @note 走れない条件では霧を切った状態を b13 へ明示的に書いてから帰る。定数バッファの
-    /// @note 束縛はドローをまたいで残るため、何も書かず帰ると Composite が前フレームの b13
-    /// @note (gridZ != 0) を読んだまま未束縛の t23 をサンプルし、透過率 0 で画面全体が真っ黒
-    /// @note になる (3D コンピュートテクスチャ未対応バックエンドも同じ経路)。froxelFogState
-    /// @note が無いフレームもここを通す必要があるため、null 判定は早期 return でなく canRun に畳む。
+    // 走れない条件では霧を切った状態を b13 へ明示的に書いてから帰る。定数バッファの
+    // 束縛はドローをまたいで残るため、何も書かず帰ると Composite が前フレームの b13
+    // (gridZ != 0) を読んだまま未束縛の t23 をサンプルし、透過率 0 で画面全体が真っ黒
+    // になる (3D コンピュートテクスチャ未対応バックエンドも同じ経路)。froxelFogState
+    // が無いフレームもここを通す必要があるため、null 判定は早期 return でなく canRun に畳む。
     const bool canRun =
         fog.enabled
-        /// @note 光学水中では水媒体が視界を担当し、粒子を含め空気の霧を重ねない。
+        // 光学水中では水媒体が視界を担当し、粒子を含め空気の霧を重ねない。
         && !UsesOpticalUnderwater(ctx.environment.underwater)
         && ctx.froxelFogState != nullptr
         && h.froxelInjectCS.IsValid() && h.froxelIntegrateCS.IsValid()
@@ -55,25 +58,28 @@ void ExecuteFroxelFogPass(RenderPassContext& ctx)
 
     if (!canRun) {
         if (h.froxelFogCB.IsValid()) {
-            /// @note gridZ = 0 が「無効」の印
+            // gridZ = 0 が「無効」の印
             const FroxelFogCB disabled{};
             resources.Update(h.froxelFogCB, &disabled, sizeof(FroxelFogCB));
         }
-        /// @note 走らなかったフレームのぶん履歴が途切れる。次に有効化されたとき
-        /// @note 古いボリュームを混ぜないよう、ここで無効化しておく。
-        if (ctx.froxelFogState)
+        // 走らなかったフレームのぶん履歴が途切れる。次に有効化されたとき
+        // 古いボリュームを混ぜないよう、ここで無効化しておく。
+        if (ctx.froxelFogState) {
             ctx.froxelFogState->grid[0] = ctx.froxelFogState->grid[1]
                                         = ctx.froxelFogState->grid[2] = 0u;
+        }
         return;
     }
-    if (!h.froxelFogCB.IsValid()) return;
+    if (!h.froxelFogCB.IsValid()) {
+        return;
+    }
 
-    /// @note 履歴の引き直しに使う前フレームの行列とグリッド寸法。グリッドが変わった/霧を
-    /// @note 切って入れ直したフレームは前の中身が今のグリッドと対応しないため履歴を捨てる
-    /// @note (寸法を 0 にするのが無効の印)。static で持てないのはフロクセルのグリッドが
-    /// @note カメラの視錐台に貼り付いているため。SceneView と GameView が 1 組を共有すると
-    /// @note 相手のカメラ行列で履歴を引き直し、相手が今フレーム書いたボリュームを前フレーム
-    /// @note として読み、霧が視界の中でとぎれとぎれに明滅する。状態はビューが持つ。
+    // 履歴の引き直しに使う前フレームの行列とグリッド寸法。グリッドが変わった/霧を
+    // 切って入れ直したフレームは前の中身が今のグリッドと対応しないため履歴を捨てる
+    // (寸法を 0 にするのが無効の印)。static で持てないのはフロクセルのグリッドが
+    // カメラの視錐台に貼り付いているため。SceneView と GameView が 1 組を共有すると
+    // 相手のカメラ行列で履歴を引き直し、相手が今フレーム書いたボリュームを前フレーム
+    // として読み、霧が視界の中でとぎれとぎれに明滅する。状態はビューが持つ。
     auto& state = *ctx.froxelFogState;
 
     const uint32_t gridX = (std::max)(fog.gridX, 1u);
@@ -92,12 +98,12 @@ void ExecuteFroxelFogPass(RenderPassContext& ctx)
     data.invViewProj   = math::Matrix4::Inverse(viewProj);
     data.prevViewProj  = state.prevViewProjection;
     data.historyValid  = historyValid ? 1u : 0u;
-    /// @note 今フレームの寄与率。指数移動平均なので実効窓は約 1/α フレーム。ジッター周期と
-    /// @note 一致させるのは、スライス内ジッターが Halton 列を 32 個で一巡するため。窓が短い
-    /// @note と列を一巡ぶん平均できず平均値が列に沿って揺れ、光源近くは 1/d^2 の勾配が急
-    /// @note なのでそのまま明滅になる (以前の 1/8 は窓 8 フレームで周期の 1/4 だった)。窓を
-    /// @note 伸ばすぶん動くものは尾を引くが、霧は低周波でカメラ移動は FBZZ_FroxelHistoryUVW
-    /// @note の再投影が吸収するため周期側に合わせる。履歴が無いフレームは全部を今フレームで埋める。
+    // 今フレームの寄与率。指数移動平均なので実効窓は約 1/α フレーム。ジッター周期と
+    // 一致させるのは、スライス内ジッターが Halton 列を 32 個で一巡するため。窓が短い
+    // と列を一巡ぶん平均できず平均値が列に沿って揺れ、光源近くは 1/d^2 の勾配が急
+    // なのでそのまま明滅になる (以前の 1/8 は窓 8 フレームで周期の 1/4 だった)。窓を
+    // 伸ばすぶん動くものは尾を引くが、霧は低周波でカメラ移動は FBZZ_FroxelHistoryUVW
+    // の再投影が吸収するため周期側に合わせる。履歴が無いフレームは全部を今フレームで埋める。
     data.historyBlend  = historyValid ? (1.0f / 32.0f) : 1.0f;
 
     state.prevViewProjection = viewProj;
@@ -108,7 +114,7 @@ void ExecuteFroxelFogPass(RenderPassContext& ctx)
     data.albedo        = { fog.albedo[0], fog.albedo[1], fog.albedo[2] };
     data.emissive      = { fog.emissive[0], fog.emissive[1], fog.emissive[2] };
     data.density       = (std::max)(fog.density, 0.0f);
-    /// @note g = ±1 は位相関数の分母が 0 に落ちる特異点。手前で止める。
+    // g = ±1 は位相関数の分母が 0 に落ちる特異点。手前で止める。
     data.anisotropy    = std::clamp(fog.anisotropy, -0.95f, 0.95f);
     data.heightFalloff = (std::max)(fog.heightFalloff, 0.0f);
     data.heightStart   = fog.heightStart;
@@ -121,59 +127,59 @@ void ExecuteFroxelFogPass(RenderPassContext& ctx)
         ? std::clamp(fog.lightScattering, 0.0f, 8.0f) : 1.0f;
     resources.Update(h.froxelFogCB, &data, sizeof(FroxelFogCB));
 
-    /// @name 1. Inject
+    // 1. Inject
     renderer::ComputeCall inject;
     inject.shader              = h.froxelInjectCS;
-    /// @note b0: view / cameraPos
-    inject.constantBuffers[0]  = h.frameCB;
-    /// @note b3: Directional (Legacy 時は点光源 / スポットも)
-    inject.constantBuffers[3]  = h.lightCB;
-    /// @note b4: カスケードシャドウ
-    inject.constantBuffers[4]  = h.shadowCB;
-    /// @note b12: Spot / Point の影と Cookie
-    inject.constantBuffers[12] = h.punctualShadowCB;
-    /// @note b13
-    inject.constantBuffers[13] = h.froxelFogCB;
+    // b0: view / cameraPos
+    inject.constantBuffers[cb::CAMERA]  = h.frameCB;
+    // b3: Directional (Legacy 時は点光源 / スポットも)
+    inject.constantBuffers[cb::LIGHT]  = h.lightCB;
+    // b4: カスケードシャドウ
+    inject.constantBuffers[cb::SHADOW]  = h.shadowCB;
+    // b12: Spot / Point の影と Cookie
+    inject.constantBuffers[cb::PUNCTUAL_SHADOW] = h.punctualShadowCB;
+    // b13
+    inject.constantBuffers[cb::FROXEL_FOG] = h.froxelFogCB;
 
-    /// @note ライトの供給元。束縛の規則は `BindForwardShadingResources` と同じにすること
-    /// @note (片方だけ変えると霧とサーフェスに映るライトの顔ぶれがずれる)。クラスタの Z
-    /// @note スライスはカメラ near 〜 clustered.maxDistance (既定 200m) を覆い、froxelFar
-    /// @note (既定 64m) がその外側まで伸びると奥のフロクセルは最終スライスへ丸められそこの
-    /// @note ライトを引くが、霧の最奥だけの話なので破綻はしない。
+    // ライトの供給元。束縛の規則は `BindForwardShadingResources` と同じにすること
+    // (片方だけ変えると霧とサーフェスに映るライトの顔ぶれがずれる)。クラスタの Z
+    // スライスはカメラ near 〜 clustered.maxDistance (既定 200m) を覆い、froxelFar
+    // (既定 64m) がその外側まで伸びると奥のフロクセルは最終スライスへ丸められそこの
+    // ライトを引くが、霧の最奥だけの話なので破綻はしない。
     if (ctx.clusterLightMode != ClusterLightMode::Legacy) {
-        /// @note b9: 供給モード / グリッド係数
-        inject.constantBuffers[9] = h.clusterCB;
-        /// @note t29: 統合ライト配列
-        inject.srvBuffers[29]     = h.punctualLightBuffer;
+        // b9: 供給モード / グリッド係数
+        inject.constantBuffers[cb::CLUSTER] = h.clusterCB;
+        // t29: 統合ライト配列
+        inject.srvBuffers[srv::PUNCTUAL_LIGHTS]     = h.punctualLightBuffer;
         if (UsesClusterLightIndices(ctx.clusterLightMode))
-            /// @note t30: クラスタごとのライト番号
-            inject.srvBuffers[30] = h.clusterIndexBuffer;
+            // t30: クラスタごとのライト番号
+            inject.srvBuffers[srv::CLUSTER_INDICES] = h.clusterIndexBuffer;
     }
-    /// @note t8
-    inject.srvInputs[8]        = resources.GetDepthTexture(ctx.Res().Target("ShadowMap"));
-    /// @note t28
-    inject.srvInputs[28]       = resources.GetDepthTexture(ctx.Res().Target("PunctualShadowMap"));
-    /// @note t31
-    inject.srvInputs[31]       = resources.GetColorTexture(ctx.Res().Target("LightCookieAtlas"), 0);
+    // t8
+    inject.srvInputs[srv::SHADOW]        = resources.GetDepthTexture(ctx.Res().Target("ShadowMap"));
+    // t28
+    inject.srvInputs[srv::PUNCTUAL_SHADOW]       = resources.GetDepthTexture(ctx.Res().Target("PunctualShadowMap"));
+    // t31
+    inject.srvInputs[srv::LIGHT_COOKIE]       = resources.GetColorTexture(ctx.Res().Target("LightCookieAtlas"), 0);
     if (data.historyValid != 0u)
-        /// @note t20: 前フレームの散乱
-        inject.srvInputs[20]   = h.froxelScatterHistory;
-    /// @note u0
-    inject.uavOutputs[0]       = h.froxelScatter;
+        // t20: 前フレームの散乱
+        inject.srvInputs[srv::FROXEL_HISTORY]   = h.froxelScatterHistory;
+    // u0
+    inject.uavOutputs[uav::FROXEL_SCATTER]       = h.froxelScatter;
     inject.dispatchX           = (gridX + 7) / 8;
     inject.dispatchY           = (gridY + 7) / 8;
     inject.dispatchZ           = gridZ;
     renderer.Dispatch(inject, resources);
 
-    /// @name 2. Integrate
-    /// @note Z 列ごとに直列積分するので dispatchZ は 1。
+    // 2. Integrate
+    // Z 列ごとに直列積分するので dispatchZ は 1。
     renderer::ComputeCall integrate;
     integrate.shader              = h.froxelIntegrateCS;
-    integrate.constantBuffers[13] = h.froxelFogCB;
-    /// @note t20
-    integrate.srvInputs[20]       = h.froxelScatter;
-    /// @note u1
-    integrate.uavOutputs[1]       = h.froxelIntegrated;
+    integrate.constantBuffers[cb::FROXEL_FOG] = h.froxelFogCB;
+    // t20
+    integrate.srvInputs[srv::FROXEL_SCATTER]       = h.froxelScatter;
+    // u1
+    integrate.uavOutputs[uav::FROXEL_INTEGRATED]       = h.froxelIntegrated;
     integrate.dispatchX           = (gridX + 7) / 8;
     integrate.dispatchY           = (gridY + 7) / 8;
     integrate.dispatchZ           = 1;
@@ -190,4 +196,4 @@ void FroxelFogPass::Execute(PassResources&, RenderPassContext& ctx)
 {
     ExecuteFroxelFogPass(ctx);
 }
-} /// @note namespace fbzz::renderer
+} // namespace fbzz::renderer

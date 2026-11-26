@@ -5,7 +5,7 @@
 #include "Common/Fullscreen.hlsli"
 #include "Common/BindlessIndices.hlsli"
 
-FBZZ_TEX2D_T(float, g_bakedDepth, 0);
+FBZZ_TEX2D_T(float, g_bakedDepth, SRV_BAKED_DEPTH_SLOT);
 
 FBZZFullscreenVertex VSMain(uint id : SV_VertexID)
 {

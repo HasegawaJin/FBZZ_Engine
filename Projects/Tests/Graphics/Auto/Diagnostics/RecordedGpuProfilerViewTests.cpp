@@ -98,7 +98,7 @@ TEST_F(RecordedGpuProfilerViewTest, RecordsNextViewWhilePreviousPacketIsStillExe
     auto& r = *m_bundle.renderer;
     m_result.blockClear = true;
     r.BeginCpuFrame(1); r.BeginFrame(); r.Clear({}); r.EndFrame(); m_result.entered.acquire();
-    /// @note The worker cannot progress until this producer records the next complete scope and releases it.
+    // 生成側が次の計測区間を最後まで記録して解放するまで、ワーカーは先へ進めない。
     r.BeginCpuFrame(2); r.BeginFrame(); const bool accepted = r.GpuProfRecordView(View()); Pass(); r.GpuProfEndRecordedView();
     m_result.resume.release();
     EXPECT_TRUE(accepted); Finish(); EXPECT_EQ(m_result.ends, 1u); EXPECT_EQ(m_result.clears, 2u);

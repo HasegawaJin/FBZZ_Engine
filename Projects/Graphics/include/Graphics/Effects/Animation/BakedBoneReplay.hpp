@@ -61,7 +61,7 @@ struct BoneReplayResult {
 };
 
 /// @note Render-thread only. Palette belongs to the existing three-lane dynamic buffer pool and must not be released by callers.
-/// @param shaderOverride Optional caller-owned program handle, allowing isolated tests to load the Engine shader by absolute path.
+/// @param[in] shaderOverride 呼び出し元が所有するプログラムの任意指定。テストではエンジンのシェーダーを絶対パスから読み込める。
 /// @return Failure publishes no palette; caller keeps its current CPU/VS skinning fallback and history.
 FBZZ_GRAPHICS_API BoneReplayResult ReplayBakedBones(RenderPassContext& context, const BoneReplayGpuAsset& asset,
                                  std::span<const BoneReplayRow> rows, ResourceHandle<ShaderTag> shaderOverride = {});

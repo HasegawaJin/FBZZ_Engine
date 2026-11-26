@@ -23,7 +23,7 @@ std::unique_lock<std::mutex> AcquireRenderThreadMutex(std::mutex& mutex)
     return lock;
 }
 
-} /// @note namespace
+} // namespace
 
 RenderThread::RenderThread()
     : m_thread([this] { Run(); }), m_workerId(m_thread.get_id())
@@ -44,7 +44,7 @@ bool RenderThread::CalledFromWorker() const
 
 void RenderThread::Wait(std::unique_lock<std::mutex>& lock, const std::function<bool()>& ready)
 {
-    /// @note Predicates read only mutex-protected completion state; the diagnostic probe never changes readiness.
+    // Predicates read only mutex-protected completion state; the diagnostic probe never changes readiness.
     const cpu_trace::WaitScope traceWait(cpu_trace::HasSelectedFrame() && !ready());
     if (!m_waitPump) {
         m_completed.wait(lock, ready);
@@ -52,7 +52,7 @@ void RenderThread::Wait(std::unique_lock<std::mutex>& lock, const std::function<
     }
 
     while (!ready() && !m_completed.wait_for(lock, std::chrono::milliseconds(1), ready)) {
-        /// @note ポンプは描画待ちへ再入し得るため、呼び出し前に mutex を解放する。
+        // ポンプは描画待ちへ再入し得るため、呼び出し前に mutex を解放する。
         lock.unlock();
         {
             const cpu_trace::PumpScope tracePump;
@@ -67,24 +67,34 @@ void RenderThread::Wait(std::unique_lock<std::mutex>& lock, const std::function<
 bool RenderThread::Submit(uint64_t serial, std::unique_ptr<IRenderFrame> frame)
 {
     assert(!CalledFromWorker());
-    if (CalledFromWorker() || !frame || serial == 0) return false;
+    if (CalledFromWorker() || !frame || serial == 0) {
+        return false;
+    }
     auto lock = AcquireRenderThreadMutex(m_mutex);
     Wait(lock, [this] { return !m_busy || m_stopping; });
-    if (m_stopping || serial <= m_submittedSerial) return false;
+    if (m_stopping || serial <= m_submittedSerial) {
+        return false;
+    }
     return SubmissionReservation(*this, serial, std::move(lock)).Publish(std::move(frame));
 }
 
 RenderThread::SubmissionReservation RenderThread::TryReserveSubmission(uint64_t serial)
 {
-    if (CalledFromWorker() || serial == 0) return {};
+    if (CalledFromWorker() || serial == 0) {
+        return {};
+    }
     std::unique_lock lock(m_mutex, std::try_to_lock);
-    if (!lock.owns_lock() || m_busy || m_stopping || serial <= m_submittedSerial) return {};
+    if (!lock.owns_lock() || m_busy || m_stopping || serial <= m_submittedSerial) {
+        return {};
+    }
     return SubmissionReservation(*this, serial, std::move(lock));
 }
 
 bool RenderThread::SubmissionReservation::Publish(std::unique_ptr<IRenderFrame> frame)
 {
-    if (!IsValid() || !frame) return false;
+    if (!IsValid() || !frame) {
+        return false;
+    }
 
     auto* owner = m_owner;
     owner->m_submittedSerial = m_serial;
@@ -103,16 +113,22 @@ bool RenderThread::SubmissionReservation::Publish(std::unique_ptr<IRenderFrame> 
 bool RenderThread::WaitUntilCompleted(uint64_t serial)
 {
     assert(!CalledFromWorker());
-    if (CalledFromWorker() || serial == 0) return false;
+    if (CalledFromWorker() || serial == 0) {
+        return false;
+    }
     auto lock = AcquireRenderThreadMutex(m_mutex);
-    if (serial > m_submittedSerial) return false;
+    if (serial > m_submittedSerial) {
+        return false;
+    }
     Wait(lock, [this, serial] { return m_completedSerial >= serial; });
     return true;
 }
 
 bool RenderThread::TryIsIdle()
 {
-    if (CalledFromWorker()) return false;
+    if (CalledFromWorker()) {
+        return false;
+    }
     std::unique_lock lock(m_mutex, std::try_to_lock);
     return lock.owns_lock() && !m_busy && !m_frame;
 }
@@ -120,7 +136,9 @@ bool RenderThread::TryIsIdle()
 void RenderThread::WaitIdle()
 {
     assert(!CalledFromWorker());
-    if (CalledFromWorker()) return;
+    if (CalledFromWorker()) {
+        return;
+    }
     auto lock = AcquireRenderThreadMutex(m_mutex);
     Wait(lock, [this] { return !m_busy; });
 }
@@ -128,7 +146,9 @@ void RenderThread::WaitIdle()
 void RenderThread::Stop()
 {
     assert(!CalledFromWorker());
-    if (CalledFromWorker()) return;
+    if (CalledFromWorker()) {
+        return;
+    }
     {
         std::lock_guard lock(m_mutex);
         m_stopping = true;
@@ -136,7 +156,9 @@ void RenderThread::Stop()
     m_wakeup.notify_one();
     m_completed.notify_all();
     WaitIdle();
-    if (m_thread.joinable()) m_thread.join();
+    if (m_thread.joinable()) {
+        m_thread.join();
+    }
     cpu_trace::ThreadStopped(this);
 }
 
@@ -149,7 +171,9 @@ void RenderThread::Run()
         {
             std::unique_lock lock(m_mutex);
             m_wakeup.wait(lock, [this] { return m_frame != nullptr || m_stopping; });
-            if (!m_frame) return;
+            if (!m_frame) {
+                return;
+            }
             frame = std::move(m_frame);
             serial = m_submittedSerial;
             timelineContext = m_frameTimeline;
@@ -162,7 +186,7 @@ void RenderThread::Run()
             frame->Execute();
         }
         tracePacket.BeginDestruction();
-        /// @note 完了通知より先に破棄し、producer が次の入力や資源寿命へ進んでも参照を残さない。
+        // 完了通知より先に破棄し、producer が次の入力や資源寿命へ進んでも参照を残さない。
         {
             const profiler::frame_timeline::Scope timelineDestroy(profiler::frame_timeline::Event::PACKET_DESTROY);
             frame.reset();
@@ -177,4 +201,4 @@ void RenderThread::Run()
     }
 }
 
-} /// @note namespace fbzz::renderer
+} // namespace fbzz::renderer

@@ -1,7 +1,8 @@
 /// @file    InstanceRenderPasses.cpp
-/// @brief   Reuse GPU placement rows; views build visible IDs and mesh/material/LOD draw commands.
+/// @brief   GPU の配置を再利用し、ビューごとの可視 ID とメッシュ・材質・LOD 別の描画要求を作る。
 /// @author  Hasegawa Jin
 /// @date    2026-10-10
+#include <Graphics/Renderer/Commands/ShaderBindingSlots.hpp>
 #include <Graphics/Passes/Geometry/Instancing/InstanceRenderPasses.hpp>
 #include "../RenderScenePassHelpers.hpp"
 #include <Graphics/Renderer/Resources/Buffers/DynamicBufferPool.hpp>
@@ -29,24 +30,48 @@
 namespace fbzz::renderer {
 namespace {
 enum class InstancePass { GBUFFER, FORWARD, SHADOW, SELECTION, VELOCITY, CAPTURE };
+
+/// @brief InstanceResources::shaders と読み込みパス配列に共通する添字。
+enum InstanceShaderSlot : size_t {
+    RESIDENT_GBUFFER_SHADER,
+    RESIDENT_FORWARD_SHADER,
+    RESIDENT_SHADOW_SHADER,
+    RESIDENT_ALPHA_SHADOW_SHADER,
+    RESIDENT_SELECTION_SHADER,
+    RESIDENT_VELOCITY_SHADER,
+    INSTANCE_CULL_SHADER,
+    DRAW_ALPHA_SHADOW_SHADER,
+    DRAW_ALPHA_SELECTION_SHADER,
+    DRAW_VELOCITY_SHADER,
+    INSTANCE_SHADER_COUNT,
+};
+
 struct ResidentInstanceRecord {
-    math::Matrix4 world, normal, previousWorld;
-    math::Vector4 bounds;
+    math::Matrix4 world; ///< このフレームのインスタンスからワールド空間への変換。
+    math::Matrix4 normal; ///< 法線をワールド空間へ移すための逆転置行列。
+    math::Matrix4 previousWorld; ///< 速度パスが使う前フレームのワールド変換。
+    math::Vector4 bounds; ///< 全 LOD を覆うワールド空間の境界球。xyz は中心、w は半径 [m]。
 };
-static_assert(sizeof(ResidentInstanceRecord)==208);
+static_assert(sizeof(ResidentInstanceRecord) == 208);
+
+/// @brief InstanceLodCull.cs.hlsl のビュー入力と同じ配置の CPU 側データ。
 struct InstanceView {
-    std::array<math::Vector4,6> planes{};
-    math::Vector4 cameraProjection{}, metrics{}, heights{};
-    std::array<uint32_t,4> counts{}, firstParts{};
-    math::Vector4 forward{}, culling{};
-    math::Matrix4 terrainViewProjection{};
-    std::array<uint32_t,4> terrainDepth{};
-    std::array<uint32_t,4> vegetation{};
-    std::array<uint32_t,4> shadowViewport{};
+    std::array<math::Vector4, 6> planes{}; ///< ワールド空間の視錐台平面。xyz は法線、w は平面定数。
+    math::Vector4 cameraProjection{}; ///< xyz はワールド空間のカメラ位置、w は縦方向の射影倍率 [px]。
+    math::Vector4 metrics{}; ///< ビュー高さ [px]、近面とカリング距離 [m]、平行投影フラグ。
+    math::Vector4 heights{}; ///< LOD ごとの切り替え画面高の比率。
+    std::array<uint32_t, 4> counts{}; ///< 配置数、LOD 数、描画部品数、視錐台判定の有効フラグ。
+    std::array<uint32_t, 4> firstParts{}; ///< LOD ごとの最初の描画部品の添字。部品がなければ UINT32_MAX。
+    math::Vector4 forward{}; ///< xyz はカメラのワールド前方、w は影の投影サイズから LOD を選ぶ倍率。
+    math::Vector4 culling{}; ///< 境界余白 [m]、小物カリング閾値、距離判定方式、CPU 遮蔽データの有効フラグ。
+    math::Matrix4 terrainViewProjection{}; ///< 地形または影の Hi-Z を作ったビューのワールド空間からクリップ空間への変換。
+    std::array<uint32_t, 4> terrainDepth{}; ///< xy は地形または影の Hi-Z 寸法 [px]。影の一括処理では z に詳細保持マスク、w にカスケード数を格納する。
+    std::array<uint32_t, 4> vegetation{}; ///< xyz はセル当たりの描画・近距離・影の詳細度上限、w はパーティション済みセル数。
+    std::array<uint32_t, 4> shadowViewport{}; ///< 影の深度テクスチャ内の左上 X・Y、領域の一辺 [px]、Reversed-Z フラグ。
 };
-static_assert(sizeof(InstanceView)==320);
-constexpr uint32_t TERRAIN_HIZ_SLOT=28;
-constexpr uint32_t VEGETATION_SLOTS=27;
+static_assert(sizeof(InstanceView) == 320);
+constexpr uint32_t TERRAIN_HIZ_SLOT=srv::TERRAIN_HIZ;
+constexpr uint32_t VEGETATION_SLOTS=srv::VEGETATION_SLOTS;
 constexpr uint32_t MIN_GPU_PLACEMENTS=64;
 constexpr uint32_t INSTANCE_GROUP_SIZE=64;
 constexpr uint32_t MAX_DISPATCH_X=65535;
@@ -60,8 +85,11 @@ struct VegetationCell {
     uint32_t first, count;
 };
 struct VegetationCandidates {
-    uint32_t active=0, frustum=0, distance=0;
-    bool partitioned=false;
+    uint32_t active = 0; ///< GPU で個別に可視性を調べる配置数。
+    uint32_t frustum = 0; ///< 視錐台の外にある区画の配置数。
+    uint32_t distance = 0; ///< 描画距離を超えた区画の配置数。
+    uint32_t occluded = 0; ///< 現在のビューで区画全体が遮蔽された配置数。
+    bool partitioned = false; ///< 候補数が区画単位で確定しているか。
 };
 struct InstanceSource {
     ResourceHandle<StructuredBufferTag> gpu;
@@ -91,7 +119,7 @@ struct InstanceResources {
     SourceMap sources;
     uint64_t residentGpuBytes=0, lastSweepFrame=UINT64_MAX, evictionFrame=UINT64_MAX;
     std::vector<SourceMap::iterator> evictionOrder;
-    std::array<ResourceHandle<ShaderTag>,10> shaders{};
+    std::array<ResourceHandle<ShaderTag>, INSTANCE_SHADER_COUNT> shaders{}; ///< InstanceShaderSlot で参照する描画・計算シェーダー。
     ResourceHandle<ShaderTag> cascadeCullShader;
     DynamicStructuredBufferPool views{1}, partLods{1}, cpuIds{64};
     DynamicStructuredBufferPool occlusion{OcclusionCuller::kGpuRows};
@@ -120,27 +148,38 @@ void ReleaseResidentGpu(ResourceManager& resources,InstanceResources& cache,Inst
 bool MakeResidentGpuRoom(ResourceManager& resources,InstanceResources& cache,uint64_t requiredBytes,uint64_t frame)
 {
     constexpr uint64_t RESIDENT_GPU_BUDGET=256ull*1024*1024;
-    if (cache.residentGpuBytes+requiredBytes<=RESIDENT_GPU_BUDGET) return true;
+    if (cache.residentGpuBytes+requiredBytes<=RESIDENT_GPU_BUDGET) {
+        return true;
+    }
 
-    /// @note During this resource frame, newly resident or prepared sources only leave the eviction candidates.
+    // During this resource frame, newly resident or prepared sources only leave the eviction candidates.
     if (cache.evictionFrame!=frame) {
         cache.evictionFrame=frame;
         cache.evictionOrder.clear();
-        for (auto it=cache.sources.begin();it!=cache.sources.end();++it)
-            if (it->second.gpuBytes!=0 && it->second.preparedFrame!=frame) cache.evictionOrder.push_back(it);
+        for (auto it=cache.sources.begin();it!=cache.sources.end();++it) {
+            if (it->second.gpuBytes!=0 && it->second.preparedFrame!=frame) {
+                cache.evictionOrder.push_back(it);
+            }
+        }
         std::sort(cache.evictionOrder.begin(),cache.evictionOrder.end(),[](const auto& a,const auto& b) {
-            if (a->second.lastSeen!=b->second.lastSeen) return a->second.lastSeen>b->second.lastSeen;
+            if (a->second.lastSeen!=b->second.lastSeen) {
+                return a->second.lastSeen>b->second.lastSeen;
+            }
             return a->first>b->first;
         });
     }
     while (!cache.evictionOrder.empty()) {
         auto& oldest=cache.evictionOrder.back()->second;
         cache.evictionOrder.pop_back();
-        if (oldest.gpuBytes==0 || oldest.preparedFrame==frame) continue;
+        if (oldest.gpuBytes==0 || oldest.preparedFrame==frame) {
+            continue;
+        }
         ReleaseResidentGpu(resources,cache,oldest);
         resources.Release(oldest.vegetationGpu);
         oldest.vegetationGpu={};
-        if (cache.residentGpuBytes+requiredBytes<=RESIDENT_GPU_BUDGET) return true;
+        if (cache.residentGpuBytes+requiredBytes<=RESIDENT_GPU_BUDGET) {
+            return true;
+        }
     }
     return false;
 }
@@ -159,14 +198,22 @@ InstanceResources& Resources(ResourceManager& manager)
         }
         cache={}; cache.owner=manager.GetInstanceId(); cache.epoch=manager.GetResetVersion();
     }
-    constexpr std::array<const char*,10> paths{"Assets/Shaders/Pipeline/Deferred/GBufferResident.hlsl",
+    constexpr std::array<const char*, INSTANCE_SHADER_COUNT> paths{"Assets/Shaders/Pipeline/Deferred/GBufferResident.hlsl",
         "Assets/Shaders/Material/Surface/PBRResident.hlsl","Assets/Shaders/Pipeline/Shadow/ShadowResident.hlsl",
         "Assets/Shaders/Pipeline/Shadow/AlphaShadowResident.hlsl","Assets/Shaders/Pipeline/InstanceSelection.hlsl",
         "Assets/Shaders/Motion/VelocityResident.hlsl","Assets/Shaders/Pipeline/InstanceLodCull.cs.hlsl",
         "Assets/Shaders/Pipeline/Shadow/AlphaShadow.hlsl","Assets/Shaders/Pipeline/AlphaSelection.hlsl","Assets/Shaders/Motion/VelocityAlpha.hlsl"};
-    for (size_t i=0;i<paths.size();++i) if (!manager.Get(cache.shaders[i])) cache.shaders[i]=manager.LoadShader(paths[i]);
-    if (!manager.Get(cache.material)) cache.material=manager.CreateConstantBuffer(96);
-    if (!manager.Get(cache.windFrame)) cache.windFrame=manager.CreateConstantBuffer(sizeof(PostProcCB));
+    for (size_t i=0;i<paths.size();++i) {
+        if (!manager.Get(cache.shaders[i])) {
+            cache.shaders[i]=manager.LoadShader(paths[i]);
+        }
+    }
+    if (!manager.Get(cache.material)) {
+        cache.material=manager.CreateConstantBuffer(96);
+    }
+    if (!manager.Get(cache.windFrame)) {
+        cache.windFrame=manager.CreateConstantBuffer(sizeof(PostProcCB));
+    }
     const uint64_t frame=manager.FrameStamp();
     if (cache.lastSweepFrame!=frame) {
         cache.lastSweepFrame=frame;
@@ -206,10 +253,27 @@ float LeafWindStrength(const RenderMaterial& material)
 bool LeafAnimated(const RenderMaterial& material) { return LeafWindStrength(material)>0.0f; }
 bool UsesAlphaShadow(const RenderMaterial& material)
 {
-    /// @note Instance sets carry the normalized material buffer even when surface inputs have not been extracted.
+    // Instance sets carry the normalized material buffer even when surface inputs have not been extracted.
     float alphaCutoff = 0;
     std::memcpy(&alphaCutoff, material.gbufferParams.data() + 64, sizeof(alphaCutoff));
     return alphaCutoff>0.0f || material.surface.alphaCutoff>0.0f || LeafAnimated(material);
+}
+
+InstanceShaderSlot ResidentShaderSlot(InstancePass pass, const RenderMaterial& material)
+{
+    switch (pass) {
+    case InstancePass::GBUFFER:
+        return RESIDENT_GBUFFER_SHADER;
+    case InstancePass::FORWARD:
+    case InstancePass::CAPTURE:
+        return RESIDENT_FORWARD_SHADER;
+    case InstancePass::SELECTION:
+        return RESIDENT_SELECTION_SHADER;
+    case InstancePass::VELOCITY:
+        return RESIDENT_VELOCITY_SHADER;
+    default:
+        return UsesAlphaShadow(material) ? RESIDENT_ALPHA_SHADOW_SHADER : RESIDENT_SHADOW_SHADER;
+    }
 }
 constexpr float POSITIVE_INFINITY=std::numeric_limits<float>::infinity();
 constexpr double MAX_FLOAT=static_cast<double>((std::numeric_limits<float>::max)());
@@ -217,28 +281,38 @@ constexpr double MAX_FLOAT=static_cast<double>((std::numeric_limits<float>::max)
 /// @see https://nhigham.com/2021/10/12/what-is-a-matrix-norm/ Higham, spectral-radius bound (1) and the A* A norm bound.
 float Stretch(const math::Matrix4& world)
 {
-    for (int row=0;row<3;++row) for (int col=0;col<3;++col)
-        if (!std::isfinite(world.m[row][col])) return POSITIVE_INFINITY;
+    for (int row=0;row<3;++row) {
+        for (int col=0;col<3;++col) {
+            if (!std::isfinite(world.m[row][col])) {
+                return POSITIVE_INFINITY;
+            }
+        }
+    }
     double maximumRowSum=0;
     for (int a=0;a<3;++a) {
         double rowSum=0;
         for (int b=0;b<3;++b) {
             double gram=0;
-            for (int row=0;row<3;++row)
+            for (int row=0;row<3;++row) {
                 gram+=static_cast<double>(world.m[row][a])*static_cast<double>(world.m[row][b]);
+            }
             rowSum+=std::abs(gram);
         }
         maximumRowSum=std::max(maximumRowSum,rowSum);
     }
     const double stretch=std::sqrt(maximumRowSum);
-    if (stretch>MAX_FLOAT) return POSITIVE_INFINITY;
+    if (stretch>MAX_FLOAT) {
+        return POSITIVE_INFINITY;
+    }
     return stretch>0 ? std::nextafter(static_cast<float>(stretch),POSITIVE_INFINITY) : 0;
 }
 
 void PrepareVegetationCells(InstanceSource& source)
 {
     source.vegetationPrepared=true;
-    if (!source.finiteBounds || !source.hasBounds) return;
+    if (!source.finiteBounds || !source.hasBounds) {
+        return;
+    }
     struct CellSlot {
         std::array<float,2> cell;
         uint32_t priority, slot;
@@ -248,10 +322,14 @@ void PrepareVegetationCells(InstanceSource& source)
     sorted.reserve(source.activeCount);
     for (uint32_t slot=0;slot<source.rows.size();++slot) {
         const auto& row=source.rows[slot];
-        if (row.bounds.w<0.0f) continue;
+        if (row.bounds.w<0.0f) {
+            continue;
+        }
         const std::array cell{std::floor(row.world.m[0][3]/CELL_SIZE), std::floor(row.world.m[2][3]/CELL_SIZE)};
-        if (!std::isfinite(cell[0]) || !std::isfinite(cell[1])) return;
-        /// @note 安定 ID の順位は視点や入力順を問わず、連番の配置を空間的に偏らせない。
+        if (!std::isfinite(cell[0]) || !std::isfinite(cell[1])) {
+            return;
+        }
+        // 安定 ID の順位は視点や入力順を問わず、連番の配置を空間的に偏らせない。
         uint32_t priority=source.data->placements[slot].id;
         priority=(priority^(priority>>16u))*0x7feb352du;
         priority=(priority^(priority>>15u))*0x846ca68bu;
@@ -259,8 +337,12 @@ void PrepareVegetationCells(InstanceSource& source)
         sorted.push_back({cell,priority,slot});
     }
     std::sort(sorted.begin(),sorted.end(),[](const auto& a,const auto& b) {
-        if (a.cell!=b.cell) return a.cell<b.cell;
-        if (a.priority!=b.priority) return a.priority<b.priority;
+        if (a.cell!=b.cell) {
+            return a.cell<b.cell;
+        }
+        if (a.priority!=b.priority) {
+            return a.priority<b.priority;
+        }
         return a.slot<b.slot;
     });
     source.vegetationSlots.reserve(sorted.size());
@@ -271,7 +353,9 @@ void PrepareVegetationCells(InstanceSource& source)
         const auto& sphere=source.rows[slot].bounds;
         const math::Vector3 low{negative(sphere.x-sphere.w),negative(sphere.y-sphere.w),negative(sphere.z-sphere.w)};
         const math::Vector3 high{positive(sphere.x+sphere.w),positive(sphere.y+sphere.w),positive(sphere.z+sphere.w)};
-        if (i==0 || sorted[i-1].cell!=sorted[i].cell) source.vegetationCells.push_back({low,high,static_cast<uint32_t>(i),1});
+        if (i==0 || sorted[i-1].cell!=sorted[i].cell) {
+            source.vegetationCells.push_back({low,high,static_cast<uint32_t>(i),1});
+        }
         else {
             auto& cell=source.vegetationCells.back();
             cell.low={std::min(cell.low.x,low.x),std::min(cell.low.y,low.y),std::min(cell.low.z,low.z)};
@@ -289,21 +373,29 @@ InstanceSource* Source(RenderPassContext& ctx,InstanceResources& cache,const Ren
     const bool unchanged=MatchesSource(source,input);
     if (source.preparedFrame==frame) {
         if (unchanged) {
-            if (input.vegetationBudget.enabled && !source.vegetationPrepared) PrepareVegetationCells(source);
+            if (input.vegetationBudget.enabled && !source.vegetationPrepared) {
+                PrepareVegetationCells(source);
+            }
             return &source;
         }
-        /// @note Finish any same-frame use before replacing the resident data for this identity.
-        if (!submitPending(source)) return nullptr;
+        // Finish any same-frame use before replacing the resident data for this identity.
+        if (!submitPending(source)) {
+            return nullptr;
+        }
     }
     std::vector<uint32_t> changed=source.motionSlots; source.motionSlots.clear(); source.moved=false;
-    for (uint32_t slot : changed) source.rows[slot].previousWorld=source.rows[slot].world;
+    for (uint32_t slot : changed) {
+        source.rows[slot].previousWorld=source.rows[slot].world;
+    }
     const bool partial=source.data && input.data->parentRevision==source.data->revision && source.rows.size()<=input.data->placements.size()
         && SameMatrix(source.world,input.world) && SameVector(source.center,input.localBoundsCenter) && source.radius==input.localBoundsRadius;
     if (!unchanged) {
         source.spatialSlots.clear(); source.spatialNodes.clear();
         source.vegetationSlots.clear(); source.vegetationCells.clear(); source.vegetationPrepared=false;
         ctx.resources.Release(source.vegetationGpu); source.vegetationGpu={};
-        if (partial) changed.insert(changed.end(),input.data->dirtySlots.begin(),input.data->dirtySlots.end());
+        if (partial) {
+            changed.insert(changed.end(),input.data->dirtySlots.begin(),input.data->dirtySlots.end());
+        }
         else { changed.resize(input.data->placements.size()); for (size_t i=0;i<changed.size();++i) changed[i]=static_cast<uint32_t>(i); }
         std::sort(changed.begin(),changed.end()); changed.erase(std::unique(changed.begin(),changed.end()),changed.end());
         const size_t previousCount=source.rows.size();
@@ -312,7 +404,9 @@ InstanceSource* Source(RenderPassContext& ctx,InstanceResources& cache,const Ren
         for (uint32_t slot : changed) {
             const auto& placement=input.data->placements[slot]; auto& row=source.rows[slot];
             const bool previouslyActive=slot<previousCount && source.data && source.data->placements[slot].active;
-            if (!partial) source.activeCount+=placement.active ? 1u : 0u;
+            if (!partial) {
+                source.activeCount+=placement.active ? 1u : 0u;
+            }
             else if (placement.active!=previouslyActive) { if (placement.active) ++source.activeCount; else --source.activeCount; }
             const auto world=input.world*math::Matrix4::TRS(placement.position,math::Quaternion::FromEuler(placement.eulerRadians),placement.scale);
             const bool sameId=slot<previousCount && source.data && source.data->placements[slot].id==placement.id;
@@ -321,18 +415,22 @@ InstanceSource* Source(RenderPassContext& ctx,InstanceResources& cache,const Ren
             const auto center=world*math::Vector4{input.localBoundsCenter,1};
             float radius=-1;
             if (placement.active) {
-                /// @note float 同士の積も外接境界を縮めないよう double で求め、格納時だけ外向きへ丸める。
+                // float 同士の積も外接境界を縮めないよう double で求め、格納時だけ外向きへ丸める。
                 const double exactRadius=static_cast<double>(input.localBoundsRadius)*static_cast<double>(Stretch(world));
                 radius=!std::isfinite(exactRadius) || exactRadius<0 || exactRadius>MAX_FLOAT
                     ? POSITIVE_INFINITY : static_cast<float>(exactRadius);
-                if (static_cast<double>(radius)<exactRadius) radius=std::nextafter(radius,POSITIVE_INFINITY);
+                if (static_cast<double>(radius)<exactRadius) {
+                    radius=std::nextafter(radius,POSITIVE_INFINITY);
+                }
             }
             row.bounds={center.x,center.y,center.z,radius};
             if (placement.active) {
                 if (!std::isfinite(row.bounds.x) || !std::isfinite(row.bounds.y)
-                    || !std::isfinite(row.bounds.z) || !std::isfinite(row.bounds.w) || row.bounds.w<=0) source.finiteBounds=false;
+                    || !std::isfinite(row.bounds.z) || !std::isfinite(row.bounds.w) || row.bounds.w<=0) {
+                    source.finiteBounds=false;
+                }
                 else {
-                    /// @note A partial edit only grows the aggregate radius and cannot hide another active row.
+                    // A partial edit only grows the aggregate radius and cannot hide another active row.
                     source.maxActiveRadius=std::max(source.maxActiveRadius,radius);
                     const math::Vector3 low{center.x-row.bounds.w,center.y-row.bounds.w,center.z-row.bounds.w};
                     const math::Vector3 high{center.x+row.bounds.w,center.y+row.bounds.w,center.z+row.bounds.w};
@@ -347,13 +445,17 @@ InstanceSource* Source(RenderPassContext& ctx,InstanceResources& cache,const Ren
         }
         source.world=input.world; source.center=input.localBoundsCenter; source.radius=input.localBoundsRadius; source.data=input.data;
     }
-    if (input.vegetationBudget.enabled && !source.vegetationPrepared) PrepareVegetationCells(source);
+    if (input.vegetationBudget.enabled && !source.vegetationPrepared) {
+        PrepareVegetationCells(source);
+    }
     source.preparedFrame=frame;
     const auto* buffer=ctx.resources.Get(source.gpu);
     if (!source.rows.empty() && (!buffer || buffer->GetElementCount()<source.rows.size())) {
         ReleaseResidentGpu(ctx.resources,cache,source);
         uint32_t capacity=64;
-        while (capacity<source.rows.size()) capacity*=2;
+        while (capacity<source.rows.size()) {
+            capacity*=2;
+        }
         const uint64_t required=static_cast<uint64_t>(capacity)*sizeof(ResidentInstanceRecord);
         if (MakeResidentGpuRoom(ctx.resources,cache,required,frame)) {
             source.gpu=ctx.resources.CreateRWStructuredBuffer(nullptr,capacity,sizeof(ResidentInstanceRecord));
@@ -361,11 +463,15 @@ InstanceSource* Source(RenderPassContext& ctx,InstanceResources& cache,const Ren
                 source.gpuBytes=created->GetSize();
                 cache.residentGpuBytes+=source.gpuBytes;
             }
-        } else FBZZ_LOG_WARN("Instance rendering: resident GPU budget exceeded; using CPU fallback");
+        } else {
+            FBZZ_LOG_WARN("Instance rendering: resident GPU budget exceeded; using CPU fallback");
+        }
         changed.resize(source.rows.size()); for (size_t i=0;i<changed.size();++i) changed[i]=static_cast<uint32_t>(i);
     }
     std::sort(changed.begin(),changed.end()); changed.erase(std::unique(changed.begin(),changed.end()),changed.end());
-    if (!ctx.resources.Get(source.gpu)) return &source;
+    if (!ctx.resources.Get(source.gpu)) {
+        return &source;
+    }
     for (size_t i=0;i<changed.size();) {
         size_t end=i+1; while (end<changed.size() && changed[end]==changed[end-1]+1) ++end;
         const size_t bytes=(end-i)*sizeof(ResidentInstanceRecord), offset=changed[i]*sizeof(ResidentInstanceRecord);
@@ -393,7 +499,9 @@ float ShadowLodScale(const InstanceShadowView& light,bool vegetation)
 }
 void ConfigureShadowLod(InstanceView& view, const InstanceShadowView& light, bool vegetation)
 {
-    if (light.preserveVegetationDetail) view.vegetation[2] = 0;
+    if (light.preserveVegetationDetail) {
+        view.vegetation[2] = 0;
+    }
     view.forward.w=ShadowLodScale(light,vegetation);
 }
 /// @note The resident sphere includes all mesh LODs and wind displacement; visibility padding does not change its footprint.
@@ -401,11 +509,19 @@ void ConfigureShadowLod(InstanceView& view, const InstanceShadowView& light, boo
 uint32_t ShadowCasterMinimumLod(float shadowLodScale,const math::Vector4& sphere)
 {
     if (!(shadowLodScale>0.0f) || !(sphere.w>0.0f) || !std::isfinite(sphere.w)
-        || !std::isfinite(sphere.x) || !std::isfinite(sphere.y) || !std::isfinite(sphere.z)) return 0;
+        || !std::isfinite(sphere.x) || !std::isfinite(sphere.y) || !std::isfinite(sphere.z)) {
+        return 0;
+    }
     const float diameter=(sphere.w*shadowLodScale)*4.0f;
-    if (diameter<2.0f) return SHADOW_CASTER_CULLED;
-    if (diameter<=8.0f) return 3;
-    if (diameter<=40.0f) return 2;
+    if (diameter<2.0f) {
+        return SHADOW_CASTER_CULLED;
+    }
+    if (diameter<=8.0f) {
+        return 3;
+    }
+    if (diameter<=40.0f) {
+        return 2;
+    }
     return diameter<=80.0f ? 1u : 0u;
 }
 uint32_t SourceShadowMinimumLod(const InstanceSource& source,float shadowLodScale)
@@ -419,7 +535,9 @@ InstanceView View(const RenderPassContext& ctx,const RenderInstanceInput& input,
     const float scale=std::abs(ctx.camera.GetProjectionMatrix().m[1][1])*static_cast<float>(std::max(ctx.height,1u))*0.5f;
     result.cameraProjection={ctx.camera.m_position.x,ctx.camera.m_position.y,ctx.camera.m_position.z,scale};
     float distance=ctx.hasLayerCullDistances && ctx.cullLayerDistances[input.layer]>0 ? ctx.cullLayerDistances[input.layer] : ctx.cullMaxDistance;
-    if (input.maxDistance>0) distance=distance>0 ? std::min(distance,input.maxDistance) : input.maxDistance;
+    if (input.maxDistance>0) {
+        distance=distance>0 ? std::min(distance,input.maxDistance) : input.maxDistance;
+    }
     result.metrics={static_cast<float>(std::max(ctx.height,1u)),std::max(ctx.camera.m_near,0.001f),distance,
         ctx.camera.m_projection==ProjectionMode::Orthographic ? 1.0f : 0.0f};
     result.heights={input.lodHeights[0],input.lodHeights[1],input.lodHeights[2],input.lodHeights[3]};
@@ -433,7 +551,11 @@ InstanceView View(const RenderPassContext& ctx,const RenderInstanceInput& input,
         result.vegetation=shadow ? std::array{0u,0u,budget.shadowDetailPerCell,0u}
             : std::array{budget.drawDetailPerCell,budget.nearDetailPerCell,0u,0u};
     }
-    for (uint32_t i=0;i<input.parts.size();++i) if (result.firstParts[input.parts[i].lod]==UINT32_MAX) result.firstParts[input.parts[i].lod]=i;
+    for (uint32_t i=0;i<input.parts.size();++i) {
+        if (result.firstParts[input.parts[i].lod]==UINT32_MAX) {
+            result.firstParts[input.parts[i].lod]=i;
+        }
+    }
     return result;
 }
 /// @note Partial edits only expand the cached union; retaining old extents cannot hide a live placement.
@@ -444,9 +566,15 @@ VisibilityResult BoundsVisibility(math::Vector3 lowBound,math::Vector3 highBound
     const float padding=view.culling.x;
     const auto extents=(highBound-lowBound)*0.5f+math::Vector3{padding,padding,padding};
     if (!std::isfinite(center.x) || !std::isfinite(center.y) || !std::isfinite(center.z)
-        || !std::isfinite(extents.x) || !std::isfinite(extents.y) || !std::isfinite(extents.z)) return VisibilityResult::VISIBLE;
-    if (view.counts[3] && !frustum.IntersectsAABB(center,extents)) return VisibilityResult::FRUSTUM_CULLED;
-    if (view.metrics.z<=0) return VisibilityResult::VISIBLE;
+        || !std::isfinite(extents.x) || !std::isfinite(extents.y) || !std::isfinite(extents.z)) {
+        return VisibilityResult::VISIBLE;
+    }
+    if (view.counts[3] && !frustum.IntersectsAABB(center,extents)) {
+        return VisibilityResult::FRUSTUM_CULLED;
+    }
+    if (view.metrics.z<=0) {
+        return VisibilityResult::VISIBLE;
+    }
     const math::Vector3 camera{view.cameraProjection.x,view.cameraProjection.y,view.cameraProjection.z};
     if (view.culling.z>0.5f) {
         const math::Vector3 forward{view.forward.x,view.forward.y,view.forward.z};
@@ -468,13 +596,26 @@ VisibilityResult CellVisibility(const VegetationCell& cell,const InstanceView& v
 {
     for (const auto& frustum : frusta) {
         const auto visibility=BoundsVisibility(cell.low,cell.high,view,frustum);
-        if (visibility!=VisibilityResult::FRUSTUM_CULLED) return visibility;
+        if (visibility!=VisibilityResult::FRUSTUM_CULLED) {
+            return visibility;
+        }
     }
     return VisibilityResult::FRUSTUM_CULLED;
 }
 
+bool IsVegetationCellOccluded(const VegetationCell& cell, float boundsPadding, const OcclusionCuller* occlusion)
+{
+    if (!occlusion) {
+        return false;
+    }
+
+    // 個体の変形を含む区画全体が隠れた場合だけ、区画内の配置をまとめて除外する。
+    const math::Vector3 padding{boundsPadding, boundsPadding, boundsPadding};
+    return !occlusion->TestAabb(cell.low - padding, cell.high + padding);
+}
+
 VegetationCandidates PrepareVegetationDispatch(const InstanceSource& source,const InstanceView& view,
-    std::span<const math::Frustum> frusta,std::vector<uint32_t>& parameters)
+    std::span<const math::Frustum> frusta,std::vector<uint32_t>& parameters,const OcclusionCuller* occlusion)
 {
     FBZZ_PROFILE_SCOPE("InstanceVisibility::VegetationCells");
     VegetationCandidates result;
@@ -483,8 +624,15 @@ VegetationCandidates PrepareVegetationDispatch(const InstanceSource& source,cons
     parameters.reserve(parameters.size()+3*maxGroups);
     for (const auto& cell : source.vegetationCells) {
         const auto visibility=CellVisibility(cell,view,frusta);
-        if (visibility==VisibilityResult::FRUSTUM_CULLED) result.frustum+=cell.count;
-        else if (visibility==VisibilityResult::DISTANCE_CULLED) result.distance+=cell.count;
+        if (visibility==VisibilityResult::FRUSTUM_CULLED) {
+            result.frustum+=cell.count;
+        }
+        else if (visibility==VisibilityResult::DISTANCE_CULLED) {
+            result.distance+=cell.count;
+        }
+        else if (IsVegetationCellOccluded(cell, view.culling.x, occlusion)) {
+            result.occluded += cell.count;
+        }
         else {
             result.active+=cell.count;
             for (uint32_t rank=0;rank<cell.count;rank+=INSTANCE_GROUP_SIZE) {
@@ -500,9 +648,17 @@ VegetationCandidates PrepareVegetationDispatch(const InstanceSource& source,cons
 /// @note 葉の変位を含む常駐球を包む。個体・owner・モデル境界の変更時に破棄し、ビューの可視結果は保存しない。
 void PrepareSpatialBounds(InstanceSource& source)
 {
-    if (!source.spatialNodes.empty()) return;
-    for (uint32_t i = 0; i < source.rows.size(); ++i) if (source.rows[i].bounds.w >= 0) source.spatialSlots.push_back(i);
-    if (source.spatialSlots.empty()) return;
+    if (!source.spatialNodes.empty()) {
+        return;
+    }
+    for (uint32_t i = 0; i < source.rows.size(); ++i) {
+        if (source.rows[i].bounds.w >= 0) {
+            source.spatialSlots.push_back(i);
+        }
+    }
+    if (source.spatialSlots.empty()) {
+        return;
+    }
     source.spatialNodes.reserve(source.spatialSlots.size() / 8 + 1);
     const auto build = [&](auto&& self,uint32_t first,uint32_t count) -> uint32_t {
         const uint32_t index = uint32_t(source.spatialNodes.size());
@@ -519,13 +675,28 @@ void PrepareSpatialBounds(InstanceSource& source)
         }
         source.spatialNodes.push_back(node);
         if (count > 32) {
+            // 最長軸上の中央で分割する。長さが等しい場合の軸の優先順位も固定しておく。
             const auto extents = node.high - node.low;
-            const int axis = extents.y > extents.x && extents.y > extents.z ? 1 : extents.z > extents.x ? 2 : 0;
-            const auto coordinate = [&](uint32_t slot) { const auto b = source.rows[slot].bounds; return axis == 0 ? b.x : axis == 1 ? b.y : b.z; };
+            int splitAxis = 0;
+            if (extents.y > extents.x && extents.y > extents.z) {
+                splitAxis = 1;
+            } else if (extents.z > extents.x) {
+                splitAxis = 2;
+            }
+            const auto coordinate = [&](uint32_t slot) {
+                const auto& bounds = source.rows[slot].bounds;
+                switch (splitAxis) {
+                case 0: return bounds.x;
+                case 1: return bounds.y;
+                default: return bounds.z;
+                }
+            };
             const uint32_t half = count / 2;
-            std::nth_element(source.spatialSlots.begin() + first,source.spatialSlots.begin() + first + half,source.spatialSlots.begin() + first + count,
-                [&](uint32_t a,uint32_t b) { return coordinate(a) < coordinate(b); });
-            const auto left = self(self,first,half), right = self(self,first + half,count - half);
+            const auto begin = source.spatialSlots.begin() + first;
+            std::nth_element(begin, begin + half, begin + count,
+                [&](uint32_t a, uint32_t b) { return coordinate(a) < coordinate(b); });
+            const auto left = self(self, first, half);
+            const auto right = self(self, first + half, count - half);
             source.spatialNodes[index].left = left; source.spatialNodes[index].right = right;
         }
         return index;
@@ -548,7 +719,11 @@ uint32_t CpuLod(const InstanceView& view,const math::Vector4& bounds)
     const float height=2*bounds.w*view.cameraProjection.w/view.metrics.x
         /(view.metrics.w>0.5f ? 1.0f : std::max(distance-bounds.w,view.metrics.y));
     const std::array<float,4> heights{view.heights.x,view.heights.y,view.heights.z,view.heights.w};
-    for (uint32_t i=0;i<view.counts[1];++i) if (height>=heights[i]) return i;
+    for (uint32_t i=0;i<view.counts[1];++i) {
+        if (height>=heights[i]) {
+            return i;
+        }
+    }
     return view.counts[1]-1;
 }
 uint32_t VegetationLod(const InstanceView& view,uint32_t lod,uint32_t rank,uint32_t minimumLod)
@@ -556,32 +731,69 @@ uint32_t VegetationLod(const InstanceView& view,uint32_t lod,uint32_t rank,uint3
     const uint32_t last=view.counts[1]-1;
     const auto& limits=view.vegetation;
     lod=std::max(lod,std::min(minimumLod,last));
-    /// @note LOD3 can be a distant billboard. Leave it to the projected-size test for shadow casters.
-    if (limits[2]!=0 && rank>=limits[2]) return std::max(lod,std::min(2u,last));
-    if (limits[0]!=0 && rank>=limits[0]) return std::max(lod,std::min(2u,last));
-    if (limits[1]!=0 && rank>=limits[1]) return std::max(lod,std::min(1u,last));
+    // LOD3 can be a distant billboard. Leave it to the projected-size test for shadow casters.
+    if (limits[2]!=0 && rank>=limits[2]) {
+        return std::max(lod,std::min(2u,last));
+    }
+    if (limits[0]!=0 && rank>=limits[0]) {
+        return std::max(lod,std::min(2u,last));
+    }
+    if (limits[1]!=0 && rank>=limits[1]) {
+        return std::max(lod,std::min(1u,last));
+    }
     return lod;
 }
 bool HasValidInput(const RenderPassContext& ctx,const RenderInstanceInput& input)
 {
-    if (!input.data || input.lodCount==0 || input.lodCount>4 || input.layer>=32 || (ctx.cullingMask&(1u<<input.layer))==0
-        || input.parts.empty() || input.parts.size()>64 || input.data->placements.size()>1048576) return false;
-    uint32_t lodMask=0;
-    for (const auto& part : input.parts) {
-        if (part.lod>=input.lodCount) return false;
-        lodMask|=1u<<part.lod;
+    if (!input.data) {
+        return false;
     }
-    return lodMask==(1u<<input.lodCount)-1;
+
+    // LOD 番号は固定長の GPU 配列に、レイヤー番号はビューのビットマスクに収まる必要がある。
+    const bool validLodCount = input.lodCount > 0 && input.lodCount <= 4;
+    if (!validLodCount) {
+        return false;
+    }
+    if (input.layer >= 32) {
+        return false;
+    }
+    if ((ctx.cullingMask & (1u << input.layer)) == 0) {
+        return false;
+    }
+
+    const bool validPartCount = !input.parts.empty() && input.parts.size() <= 64;
+    if (!validPartCount) {
+        return false;
+    }
+    if (input.data->placements.size() > 1048576) {
+        return false;
+    }
+
+    // 各 LOD に描画部品が存在することを確認してからカリングと描画を組み立てる。
+    uint32_t lodMask = 0;
+    for (const auto& part : input.parts) {
+        if (part.lod>=input.lodCount) {
+            return false;
+        }
+        lodMask |= 1u << part.lod;
+    }
+    return lodMask == (1u << input.lodCount) - 1u;
 }
 bool HasHiZMaterials(const RenderInstanceInput& input)
 {
     bool hasOpaque=false;
     for (const auto& part : input.parts) {
         const auto& material=part.mesh.material;
-        if (!material.shaderCapabilities.SupportsGBuffer()) return false;
-        if (material.capabilities.blend!=BlendMode::OPAQUE_BLEND) continue;
-        /// @note A depth-biased receiver may rasterize nearer than its geometric bounds.
-        if (material.depthBias!=0 || material.depthBiasSlope!=0.0f || !std::isfinite(LeafWindStrength(material))) return false;
+        if (!material.shaderCapabilities.SupportsGBuffer()) {
+            return false;
+        }
+        if (material.capabilities.blend!=BlendMode::OPAQUE_BLEND) {
+            continue;
+        }
+        // A depth-biased receiver may rasterize nearer than its geometric bounds.
+        if (material.depthBias!=0 || material.depthBiasSlope!=0.0f || !std::isfinite(LeafWindStrength(material))) {
+            return false;
+        }
         hasOpaque=true;
     }
     return hasOpaque;
@@ -600,7 +812,7 @@ bool SupportsTerrainHiZMode(const RenderPassContext& ctx)
 
 bool HasShadowHiZBounds(const RenderInstanceInput& input)
 {
-    /// @note A raster depth bias can move a caster nearer than its projected geometric bounds.
+    // A raster depth bias can move a caster nearer than its projected geometric bounds.
     /// @see https://learn.microsoft.com/en-us/windows/win32/direct3d11/d3d10-graphics-programming-guide-output-merger-stage-depth-bias Depth Bias.
     return std::all_of(input.parts.begin(),input.parts.end(),[](const auto& part) {
         const auto& material=part.mesh.material;
@@ -611,7 +823,9 @@ bool HasShadowHiZBounds(const RenderInstanceInput& input)
 
 void BindShadowHiZ(InstanceView& view,const InstanceShadowView& light,ComputeCall& compute)
 {
-    if (!light.hierarchy.depths.IsValid()) return;
+    if (!light.hierarchy.depths.IsValid()) {
+        return;
+    }
     view.terrainViewProjection=light.viewProjection;
     view.terrainDepth[0]=light.hierarchy.width;
     view.terrainDepth[1]=light.hierarchy.height;
@@ -622,30 +836,44 @@ bool CanPrepareGpu(RenderPassContext& ctx,const InstanceResources& cache,const R
     const InstanceSource& source,uint32_t slotCount)
 {
     if (!ctx.settings.bulkInstanceGpuCulling || !ctx.settings.gpuInstancing || !ctx.renderer.SupportsIndirectDraw()
-        || !ctx.resources.Get(source.gpu) || slotCount<MIN_GPU_PLACEMENTS || !ctx.resources.Get(cache.shaders[6])) return false;
-    /// @note Native Profiler measurements favor CPU-visible-ID instancing for small sets; explicit Indirect/Mesh mode keeps the GPU comparison available.
+        || !ctx.resources.Get(source.gpu) || slotCount<MIN_GPU_PLACEMENTS || !ctx.resources.Get(cache.shaders[INSTANCE_CULL_SHADER])) {
+        return false;
+    }
+    // Native Profiler measurements favor CPU-visible-ID instancing for small sets; explicit Indirect/Mesh mode keeps the GPU comparison available.
     if ((ctx.settings.geometryDrawMode==GeometryDrawMode::CPU
-        || ctx.settings.geometryDrawMode==GeometryDrawMode::GPU_INSTANCE_INDIRECT) && slotCount<32768) return false;
+        || ctx.settings.geometryDrawMode==GeometryDrawMode::GPU_INSTANCE_INDIRECT) && slotCount<32768) {
+        return false;
+    }
     return std::all_of(input.parts.begin(),input.parts.end(),[](const auto& part) {
         return part.mesh.material.shaderCapabilities.SupportsGBuffer();
     });
 }
 std::optional<ComputeCall> PrepareGpuBuffers(RenderPassContext& ctx,InstanceResources& cache,const RenderInstanceInput& input,
     InstanceSource& source,InstanceView& view,std::span<const math::Frustum> frusta,ResourceHandle<ShaderTag> shader,
-    VegetationCandidates* candidateCounts=nullptr)
+    VegetationCandidates* candidateCounts=nullptr, const OcclusionCuller* occlusion=nullptr)
 {
     const uint32_t viewCount=static_cast<uint32_t>(frusta.size());
     std::vector<uint32_t> parameters;
     parameters.reserve(input.parts.size());
-    for (const auto& part : input.parts) parameters.push_back(part.lod);
-    if (input.vegetationBudget.enabled && !source.vegetationCells.empty()) {
-        const auto candidates=PrepareVegetationDispatch(source,view,frusta,parameters);
-        if (candidates.active==0) return {};
-        if (!ctx.resources.Get(source.vegetationGpu))
+    for (const auto& part : input.parts) {
+        parameters.push_back(part.lod);
+    }
+    const bool useCells = input.vegetationBudget.enabled || (occlusion && source.vegetationCells.size() > 1);
+    if (useCells && !source.vegetationCells.empty()) {
+        const auto candidates=PrepareVegetationDispatch(source,view,frusta,parameters,occlusion);
+        if (candidates.active==0) {
+            return {};
+        }
+        if (!ctx.resources.Get(source.vegetationGpu)) {
             source.vegetationGpu=ctx.resources.CreateGpuLocalStructuredBuffer(source.vegetationSlots.data(),
                 static_cast<uint32_t>(source.vegetationSlots.size()),sizeof(uint32_t));
-        if (!ctx.resources.Get(source.vegetationGpu)) return {};
-        if (candidateCounts) *candidateCounts=candidates;
+        }
+        if (!ctx.resources.Get(source.vegetationGpu)) {
+            return {};
+        }
+        if (candidateCounts) {
+            *candidateCounts=candidates;
+        }
         view.vegetation[3]=static_cast<uint32_t>((parameters.size()-input.parts.size())/3);
         view.counts[0]=candidates.active;
     }
@@ -654,20 +882,25 @@ std::optional<ComputeCall> PrepareGpuBuffers(RenderPassContext& ctx,InstanceReso
     initial.reserve(input.parts.size()*viewCount);
     for (uint32_t viewIndex=0;viewIndex<viewCount;++viewIndex) {
         const uint32_t firstId=viewIndex*idsPerView;
-        for (const auto& part : input.parts)
+        for (const auto& part : input.parts) {
             initial.push_back({firstId+part.lod*view.counts[0],part.mesh.indexCount,0,0,0,0});
+        }
     }
     const auto ids=cache.ids.Acquire(ctx.resources,static_cast<size_t>(idsPerView)*viewCount,sizeof(uint32_t));
     const auto args=cache.arguments.Acquire(ctx.resources,initial.size(),sizeof(GpuGeometryIndexedArguments));
     const auto viewBuffer=cache.views.Acquire(ctx.resources,viewCount,sizeof(InstanceView));
     const auto partsBuffer=cache.partLods.Acquire(ctx.resources,parameters.size(),sizeof(uint32_t));
-    if (!ctx.resources.Get(ids)||!ctx.resources.Get(args)||!ctx.resources.Get(viewBuffer)||!ctx.resources.Get(partsBuffer)) return {};
+    if (!ctx.resources.Get(ids)||!ctx.resources.Get(args)||!ctx.resources.Get(viewBuffer)||!ctx.resources.Get(partsBuffer)) {
+        return {};
+    }
     ctx.resources.Update(partsBuffer,parameters.data(),parameters.size()*sizeof(uint32_t));
     ctx.resources.Update(args,initial.data(),initial.size()*sizeof(GpuGeometryIndexedArguments));
     ComputeCall compute;
     compute.shader=shader;
-    compute.srvBuffers[14]=source.gpu; compute.srvBuffers[15]=viewBuffer; compute.srvBuffers[29]=partsBuffer;
-    compute.uavBuffers={ids,args}; compute.dispatchX=(view.counts[0]+63)/64;
+    compute.srvBuffers[srv::CULL_CANDIDATES]=source.gpu; compute.srvBuffers[srv::CULL_VIEW]=viewBuffer; compute.srvBuffers[srv::INSTANCE_PART_LODS]=partsBuffer;
+    compute.uavBuffers[StructuredUavIndex(uav::CULL_VISIBLE)] = ids;
+    compute.uavBuffers[StructuredUavIndex(uav::CULL_ARGUMENTS)] = args;
+    compute.dispatchX=(view.counts[0]+63)/64;
     if (view.vegetation[3]!=0) {
         compute.srvBuffers[VEGETATION_SLOTS]=source.vegetationGpu;
         compute.dispatchX=std::min(view.vegetation[3],MAX_DISPATCH_X);
@@ -679,9 +912,14 @@ std::optional<ComputeCall> PrepareGpu(RenderPassContext& ctx,InstanceResources& 
     InstanceSource& source,InstanceView view,const math::Frustum& frustum,const GpuHiZ* hierarchy,const RenderScene* scene,
     const math::Matrix4& viewProjection,VegetationCandidates& candidateCounts)
 {
-    if (!CanPrepareGpu(ctx,cache,input,source,view.counts[0])) return {};
-    auto compute=PrepareGpuBuffers(ctx,cache,input,source,view,std::span{&frustum,1},cache.shaders[6],&candidateCounts);
-    if (!compute) return {};
+    if (!CanPrepareGpu(ctx,cache,input,source,view.counts[0])) {
+        return {};
+    }
+    const auto* occlusion = view.culling.w > 0 && IsViewOcclusionCurrent(ctx) ? ctx.occlusionCuller : nullptr;
+    auto compute=PrepareGpuBuffers(ctx,cache,input,source,view,std::span{&frustum,1},cache.shaders[INSTANCE_CULL_SHADER],&candidateCounts,occlusion);
+    if (!compute) {
+        return {};
+    }
     const auto currentHiZ=[&] {
         return hierarchy && hierarchy->reversedZ && hierarchy->width==ctx.width && hierarchy->height==ctx.height
             && hierarchy->width!=0 && hierarchy->height!=0 && SupportsTerrainHiZMode(ctx)
@@ -694,19 +932,25 @@ std::optional<ComputeCall> PrepareGpu(RenderPassContext& ctx,InstanceResources& 
         view.culling.w=0.0f;
         compute->srvBuffers[TERRAIN_HIZ_SLOT]=hierarchy->depths;
     } else if (view.culling.w > 0) {
-        if (!IsViewOcclusionCurrent(ctx)) return {};
+        if (!IsViewOcclusionCurrent(ctx)) {
+            return {};
+        }
         if (!ctx.resources.Get(ctx.occlusionGpuRows)) {
             std::array<math::Vector4, OcclusionCuller::kGpuRows> rows;
             ctx.occlusionCuller->CopyGpuRows(rows);
             ctx.occlusionGpuRows=cache.occlusion.Acquire(ctx.resources,rows.size(),sizeof(math::Vector4));
-            if (!ctx.resources.Get(ctx.occlusionGpuRows)) return {};
+            if (!ctx.resources.Get(ctx.occlusionGpuRows)) {
+                return {};
+            }
             ctx.resources.Update(ctx.occlusionGpuRows,rows.data(),sizeof(rows));
         }
-        compute->srvBuffers[30]=ctx.occlusionGpuRows;
+        compute->srvBuffers[srv::INSTANCE_OCCLUSION]=ctx.occlusionGpuRows;
     }
-    ctx.resources.Update(compute->srvBuffers[15],&view,sizeof(view));
-    /// @note Buffer allocation/update may pump a callback that retires the prepared snapshot or view.
-    if (useHiZ ? !currentHiZ() : view.culling.w>0 && !IsViewOcclusionCurrent(ctx)) return {};
+    ctx.resources.Update(compute->srvBuffers[srv::CULL_VIEW],&view,sizeof(view));
+    // Buffer allocation/update may pump a callback that retires the prepared snapshot or view.
+    if (useHiZ ? !currentHiZ() : view.culling.w>0 && !IsViewOcclusionCurrent(ctx)) {
+        return {};
+    }
     return compute;
 }
 struct InstanceSetSelection {
@@ -727,11 +971,17 @@ struct InstanceSubmission {
 ResourceHandle<ShaderTag> ForwardInstanceShader(ResourceManager& resources, InstanceResources& cache,
     const RenderMaterial& material)
 {
-    if (material.shaderCapabilities.SupportsGBuffer()) return cache.shaders[1];
+    if (material.shaderCapabilities.SupportsGBuffer()) {
+        return cache.shaders[RESIDENT_FORWARD_SHADER];
+    }
     if (!material.shaderCapabilities.SupportsResidentForward()
-        || material.capabilities.blend != BlendMode::OPAQUE_BLEND) return {};
+        || material.capabilities.blend != BlendMode::OPAQUE_BLEND) {
+        return {};
+    }
     const auto* source = resources.Get(material.shader);
-    if (!source || !source->GetPath().ends_with(".hlsl")) return {};
+    if (!source || !source->GetPath().ends_with(".hlsl")) {
+        return {};
+    }
     const std::array key{material.shader.id, material.shader.gen};
     const auto [entry, inserted] = cache.customForwardShaders.try_emplace(key);
     if (inserted) {
@@ -747,19 +997,24 @@ void SubmitSet(const InstanceSubmission& submission,const RenderInstanceInput& i
 {
     auto& [ctx,cache,pass,frustum,lightFrame,countStatistics,shadowView]=submission;
     const bool forwardPass=pass==InstancePass::FORWARD || pass==InstancePass::CAPTURE;
-    const float cardWireframe = pass == InstancePass::FORWARD && ctx.settings.IsWireframe()
-        ? (ctx.settings.IsUnlit() ? 2.0f : 1.0f) : 0.0f;
+    float cardWireframe = 0.0f;
+    if (pass == InstancePass::FORWARD && ctx.settings.IsWireframe()) {
+        cardWireframe = ctx.settings.IsUnlit() ? 2.0f : 1.0f;
+    }
     const bool gpu=selection!=nullptr;
     const auto sourceMinimumLod=SourceShadowMinimumLod(source,view.forward.w);
-    if (sourceMinimumLod==SHADOW_CASTER_CULLED) return;
+    if (sourceMinimumLod==SHADOW_CASTER_CULLED) {
+        return;
+    }
     const auto firstPossibleLod=std::min(sourceMinimumLod,input.lodCount-1u);
-    /// @note GPU visibility stays on the GPU; unresolved candidates must not be reported as visible CPU objects.
+    // GPU visibility stays on the GPU; unresolved candidates must not be reported as visible CPU objects.
     /// @see Docs/design/instanced-mesh.md カリング統計の完全性。
     if (gpu && countStatistics) {
         const auto& candidates=selection->vegetation;
         ctx.statsGpuVisibilityUnknownObjects+=static_cast<int>(candidates.partitioned ? candidates.active : source.activeCount);
         ctx.statsFrustumCulled+=static_cast<int>(candidates.frustum);
         ctx.statsDistanceCulled+=static_cast<int>(candidates.distance);
+        ctx.statsOcclusionCulled += static_cast<int>(candidates.occluded);
     }
     std::array<std::vector<uint32_t>,4> visible;
     std::array<ResourceHandle<StructuredBufferTag>,4> cpuIds{};
@@ -768,42 +1023,65 @@ void SubmitSet(const InstanceSubmission& submission,const RenderInstanceInput& i
         const auto select = [&](uint32_t i,uint32_t rank=0) {
             const auto& sphere=source.rows[i].bounds; if (sphere.w<0) return;
             const uint32_t minimumLod=ShadowCasterMinimumLod(view.forward.w,sphere);
-            if (minimumLod==SHADOW_CASTER_CULLED) return;
+            if (minimumLod==SHADOW_CASTER_CULLED) {
+                return;
+            }
             const float radius=sphere.w+view.culling.x;
             if (view.counts[3] && !frustum.IntersectsSphere({sphere.x,sphere.y,sphere.z},radius)) {
-                if (countStatistics) CountRejected(ctx,VisibilityResult::FRUSTUM_CULLED,1);
+                if (countStatistics) {
+                    CountRejected(ctx,VisibilityResult::FRUSTUM_CULLED,1);
+                }
                 return;
             }
             if (view.metrics.z>0 || view.culling.y>0) {
                 const auto delta=math::Vector3{sphere.x-view.cameraProjection.x,sphere.y-view.cameraProjection.y,sphere.z-view.cameraProjection.z};
                 const float distance=view.culling.z>0.5f ? math::Vector3::Dot(delta,{view.forward.x,view.forward.y,view.forward.z}) : delta.Length();
                 if (view.metrics.z>0 && distance-radius>view.metrics.z) {
-                    if (countStatistics) CountRejected(ctx,VisibilityResult::DISTANCE_CULLED,1);
+                    if (countStatistics) {
+                        CountRejected(ctx,VisibilityResult::DISTANCE_CULLED,1);
+                    }
                     return;
                 }
                 const float screenHeight=2*radius*view.cameraProjection.w/view.metrics.x/(view.metrics.w>0.5f ? 1.0f : std::max(distance,view.metrics.y));
                 if (view.culling.y>0 && distance>0 && screenHeight<view.culling.y) {
-                    if (countStatistics) CountRejected(ctx,VisibilityResult::SMALL_OBJECT_CULLED,1);
+                    if (countStatistics) {
+                        CountRejected(ctx,VisibilityResult::SMALL_OBJECT_CULLED,1);
+                    }
                     return;
                 }
             }
             if (occlusion && !occlusion->TestAndRaster({sphere.x,sphere.y,sphere.z}, radius)) {
-                if (countStatistics) ++ctx.statsOcclusionCulled;
+                if (countStatistics) {
+                    ++ctx.statsOcclusionCulled;
+                }
                 return;
             }
             visible[VegetationLod(view,CpuLod(view,sphere),rank,minimumLod)].push_back(i);
         };
-        if (input.vegetationBudget.enabled && !source.vegetationCells.empty()) {
+        const bool useCells = input.vegetationBudget.enabled || (occlusion && source.vegetationCells.size() > 1);
+        if (useCells && !source.vegetationCells.empty()) {
             FBZZ_PROFILE_SCOPE("InstanceVisibility::VegetationCells");
             for (const auto& cell : source.vegetationCells) {
                 const auto result=BoundsVisibility(cell.low,cell.high,view,frustum);
                 if (result!=VisibilityResult::VISIBLE) {
-                    if (countStatistics) CountRejected(ctx,result,static_cast<int>(cell.count));
+                    if (countStatistics) {
+                        CountRejected(ctx,result,static_cast<int>(cell.count));
+                    }
                     continue;
                 }
-                for (uint32_t rank=0;rank<cell.count;++rank) select(source.vegetationSlots[cell.first+rank],rank);
+                if (IsVegetationCellOccluded(cell, view.culling.x, occlusion)) {
+                    if (countStatistics) {
+                        ctx.statsOcclusionCulled += static_cast<int>(cell.count);
+                    }
+                    continue;
+                }
+                for (uint32_t rank=0;rank<cell.count;++rank) {
+                    select(source.vegetationSlots[cell.first+rank],rank);
+                }
             }
-            for (auto& ids : visible) std::sort(ids.begin(),ids.end());
+            for (auto& ids : visible) {
+                std::sort(ids.begin(),ids.end());
+            }
         } else if (occlusion && source.activeCount >= 512 && source.hasBounds && source.finiteBounds) {
             PrepareSpatialBounds(source);
             const math::Vector3 padding{view.culling.x,view.culling.x,view.culling.x};
@@ -811,66 +1089,96 @@ void SubmitSet(const InstanceSubmission& submission,const RenderInstanceInput& i
                 const auto& node = source.spatialNodes[index];
                 const auto result = BoundsVisibility(node.low,node.high,view,frustum);
                 if (result != VisibilityResult::VISIBLE) {
-                    if (countStatistics) CountRejected(ctx,result,int(node.count));
+                    if (countStatistics) {
+                        CountRejected(ctx,result,int(node.count));
+                    }
                     return;
                 }
                 if (!occlusion->TestAabb(node.low - padding,node.high + padding)) {
-                    if (countStatistics) ctx.statsOcclusionCulled += int(node.count);
+                    if (countStatistics) {
+                        ctx.statsOcclusionCulled += int(node.count);
+                    }
                     return;
                 }
                 if (node.left) { self(self,node.left); self(self,node.right); }
-                else for (uint32_t i = node.first; i < node.first + node.count; ++i) select(source.spatialSlots[i]);
+                else {
+                    for (uint32_t i = node.first; i < node.first + node.count; ++i) {
+                        select(source.spatialSlots[i]);
+                    }
+                }
             };
             visit(visit,0);
             constexpr uint32_t BITS_PER_WORD = std::numeric_limits<uint64_t>::digits;
             const size_t wordCount = (source.rows.size() + BITS_PER_WORD - 1) / BITS_PER_WORD;
             for (auto& ids : visible) {
-                /// @note 少数の可視個体に対して全スロットのビット列を走査するコストを避ける。
+                // 少数の可視個体に対して全スロットのビット列を走査するコストを避ける。
                 if (ids.size() < BITS_PER_WORD || ids.size() < wordCount) {
                     std::sort(ids.begin(),ids.end());
                     continue;
                 }
-                /// @note BVH の葉は各スロットを一度だけ列挙する。昇順を保ち、callback のない範囲で LOD 間の作業領域を再利用する。
+                // BVH の葉は各スロットを一度だけ列挙する。昇順を保ち、callback のない範囲で LOD 間の作業領域を再利用する。
                 thread_local std::vector<uint64_t> words;
                 words.assign(wordCount,0);
-                for (uint32_t slot : ids) words[slot / BITS_PER_WORD] |= uint64_t{1} << (slot % BITS_PER_WORD);
+                for (uint32_t slot : ids) {
+                    words[slot / BITS_PER_WORD] |= uint64_t{1} << (slot % BITS_PER_WORD);
+                }
                 size_t output = 0;
                 for (size_t word = 0; word < wordCount; ++word) {
-                    for (uint64_t bits = words[word]; bits != 0; bits &= bits - 1)
+                    for (uint64_t bits = words[word]; bits != 0; bits &= bits - 1) {
                         ids[output++] = static_cast<uint32_t>(word * BITS_PER_WORD + std::countr_zero(bits));
+                    }
                 }
             }
-        } else for (uint32_t i=0;i<source.rows.size();++i) select(i);
+        } else {
+            for (uint32_t i=0;i<source.rows.size();++i) {
+                select(i);
+            }
+        }
     }
-    if (!gpu && ctx.settings.gpuInstancing && ctx.resources.Get(source.gpu)) for (uint32_t lod=0;lod<input.lodCount;++lod) if (!visible[lod].empty()) {
-        cpuIds[lod]=cache.cpuIds.Acquire(ctx.resources,visible[lod].size(),sizeof(uint32_t));
-        ctx.resources.Update(cpuIds[lod],visible[lod].data(),visible[lod].size()*sizeof(uint32_t));
+    if (!gpu && ctx.settings.gpuInstancing && ctx.resources.Get(source.gpu)) {
+        for (uint32_t lod=0;lod<input.lodCount;++lod) {
+            if (!visible[lod].empty()) {
+                cpuIds[lod]=cache.cpuIds.Acquire(ctx.resources,visible[lod].size(),sizeof(uint32_t));
+                ctx.resources.Update(cpuIds[lod],visible[lod].data(),visible[lod].size()*sizeof(uint32_t));
+            }
+        }
     }
     for (uint32_t partIndex=0;partIndex<input.parts.size();++partIndex) {
         const auto& part=input.parts[partIndex]; const auto& material=part.mesh.material;
         if ((pass == InstancePass::FORWARD || pass == InstancePass::GBUFFER)
-            && material.capabilities.blend != BlendMode::OPAQUE_BLEND) continue;
+            && material.capabilities.blend != BlendMode::OPAQUE_BLEND) {
+            continue;
+        }
         const bool standard=material.shaderCapabilities.SupportsGBuffer();
-        if (pass==InstancePass::GBUFFER && !standard) continue;
-        if (forwardPass && ctx.isDeferred && standard) continue;
-        if (gpu && part.lod<firstPossibleLod) continue;
-        if (!gpu && visible[part.lod].empty()) continue;
+        if (pass==InstancePass::GBUFFER && !standard) {
+            continue;
+        }
+        if (forwardPass && ctx.isDeferred && standard) {
+            continue;
+        }
+        if (gpu && part.lod<firstPossibleLod) {
+            continue;
+        }
+        if (!gpu && visible[part.lod].empty()) {
+            continue;
+        }
         DrawCall draw; draw.vertexBuffer=part.mesh.vertexBuffer; draw.indexBuffer=part.mesh.indexBuffer;
         draw.indexCount=part.mesh.indexCount; draw.vertexCount=part.mesh.vertexCount;
         draw.pipelineState=pass==InstancePass::SHADOW || pass==InstancePass::CAPTURE
             ? GetOrCreateMaterialPSO(ctx.resources,BlendMode::OPAQUE_BLEND,material.doubleSided,material.depthBias,material.depthBiasSlope,false)
             : MaterialPipeline(ctx,material);
-        draw.constantBuffers[0]=pass==InstancePass::SHADOW ? lightFrame : ctx.handles.frameCB;
-        draw.constantBuffers[1]=ctx.handles.objectCB; draw.constantBuffers[8]=ctx.handles.advancedGraphicsCB;
-        draw.constantBuffers[5]=cache.windFrame;
+        draw.constantBuffers[cb::CAMERA]=pass==InstancePass::SHADOW ? lightFrame : ctx.handles.frameCB;
+        draw.constantBuffers[cb::OBJECT]=ctx.handles.objectCB; draw.constantBuffers[cb::ADVANCED_GRAPHICS]=ctx.handles.advancedGraphicsCB;
+        draw.constantBuffers[cb::POSTPROC]=cache.windFrame;
         PerObjectCB identity{};
         identity.objectParams.y = cardWireframe;
         ctx.resources.Update(ctx.handles.objectCB,&identity,sizeof(identity));
-        for (size_t i=0;i<material.textures.size();++i) draw.textures[i]=material.textures[i];
+        for (size_t i=0;i<material.textures.size();++i) {
+            draw.textures[i]=material.textures[i];
+        }
         ctx.resources.Update(cache.material,material.gbufferParams.data(),material.gbufferParams.size());
-        draw.constantBuffers[2]=cache.material;
-        size_t shader=pass==InstancePass::GBUFFER ? 0u : forwardPass ? 1u : pass==InstancePass::SELECTION ? 4u : pass==InstancePass::VELOCITY ? 5u : UsesAlphaShadow(material) ? 3u : 2u;
-        draw.shader=cache.shaders[shader];
+        draw.constantBuffers[cb::MATERIAL]=cache.material;
+        draw.shader = cache.shaders[ResidentShaderSlot(pass, material)];
         if (forwardPass) {
             draw.shader = ForwardInstanceShader(ctx.resources, cache, material);
             if (!standard && !ctx.resources.Get(draw.shader)
@@ -879,20 +1187,24 @@ void SubmitSet(const InstanceSubmission& submission,const RenderInstanceInput& i
                 FBZZ_LOG_WARN("Instance rendering: individual forward draws for %s",
                     sourceShader ? sourceShader->GetPath().c_str() : "unavailable shader");
             }
-            draw.constantBuffers[2]=material.paramsBuffer; draw.constantBuffers[3]=ctx.handles.lightCB; draw.constantBuffers[4]=ctx.handles.shadowCB;
-            BindForwardShadingResources(draw,ctx); draw.textures[8]=ctx.resources.GetDepthTexture(ctx.Res().Target("ShadowMap"));
-            draw.textures[16]=ctx.handles.iblIrradiance; draw.textures[17]=ctx.handles.iblPrefilter; draw.textures[18]=ctx.handles.iblBrdfLut;
+            draw.constantBuffers[cb::MATERIAL]=material.paramsBuffer; draw.constantBuffers[cb::LIGHT]=ctx.handles.lightCB; draw.constantBuffers[cb::SHADOW]=ctx.handles.shadowCB;
+            BindForwardShadingResources(draw,ctx); draw.textures[srv::SHADOW]=ctx.resources.GetDepthTexture(ctx.Res().Target("ShadowMap"));
+            draw.textures[srv::IBL_IRRADIANCE]=ctx.handles.iblIrradiance; draw.textures[srv::IBL_PREFILTER]=ctx.handles.iblPrefilter; draw.textures[srv::IBL_BRDF_LUT]=ctx.handles.iblBrdfLut;
             if (pass==InstancePass::CAPTURE) {
-                draw.constantBuffers[4]=ctx.handles.reflectionProbeCaptureShadowCB;
-                BindForwardShadingResources(draw,ctx,true);draw.constantBuffers[12]=ctx.handles.reflectionProbeCapturePunctualCB;
-                for (uint32_t slot : {8u,16u,17u,18u,23u,24u,28u,31u}) draw.textures[slot]={};
+                draw.constantBuffers[cb::SHADOW]=ctx.handles.reflectionProbeCaptureShadowCB;
+                BindForwardShadingResources(draw,ctx,true);draw.constantBuffers[cb::PUNCTUAL_SHADOW]=ctx.handles.reflectionProbeCapturePunctualCB;
+                for (uint32_t slot : {8u,16u,17u,18u,23u,24u,28u,31u}) {
+                    draw.textures[slot]={};
+                }
             }
         }
-        if (pass==InstancePass::VELOCITY) draw.textures[7]=ctx.resources.GetDepthTexture(ctx.Res().Target("HDR"));
+        if (pass==InstancePass::VELOCITY) {
+            draw.textures[srv::DEPTH]=ctx.resources.GetDepthTexture(ctx.Res().Target("HDR"));
+        }
         const bool instanced=ctx.resources.Get(source.gpu) && ctx.resources.Get(draw.shader)
             && (gpu || ctx.resources.Get(cpuIds[part.lod]));
         if (instanced) {
-            draw.instanceBuffer=source.gpu; draw.vsBuffers[0]=gpu ? selection->ids : cpuIds[part.lod];
+            draw.instanceBuffer=source.gpu; draw.vsBuffers[VertexBufferIndex(vsSlot::BUFFER0)]=gpu ? selection->ids : cpuIds[part.lod];
             draw.instanceCount=gpu ? view.counts[0] : static_cast<uint32_t>(visible[part.lod].size());
             if (gpu) { draw.indirectArguments=selection->arguments; draw.indirectArgumentOffset=(selection->firstArgument+partIndex)*sizeof(GpuGeometryIndexedArguments); draw.indirectInstanceOffset=true; }
         }
@@ -910,13 +1222,18 @@ void SubmitSet(const InstanceSubmission& submission,const RenderInstanceInput& i
                 : UsesAlphaShadow(material) ? MeshletDrawPass::SHADOW_MASKED : MeshletDrawPass::SHADOW;
             if (instanced) {
                 const auto argumentIndex = gpu ? selection->firstArgument + partIndex : UINT32_MAX;
-                const MeshletClusterInstances instances{source.gpu, draw.vsBuffers[0], draw.indirectArguments,
+                const MeshletClusterInstances instances{source.gpu, draw.vsBuffers[VertexBufferIndex(vsSlot::BUFFER0)], draw.indirectArguments,
                     argumentIndex, draw.instanceCount};
-                if (TrySubmitInstancedClusterDraw(ctx, jittered, clusterView, part.mesh, meshPass, draw, instances)) continue;
+                if (TrySubmitInstancedClusterDraw(ctx, jittered, clusterView, part.mesh, meshPass, draw, instances)) {
+                    continue;
+                }
             } else {
                 auto prototype = draw;
-                prototype.shader = pass == InstancePass::GBUFFER ? ctx.handles.gbufferShader
-                    : UsesAlphaShadow(material) ? cache.shaders[7] : ctx.handles.shadowShader;
+                if (pass == InstancePass::GBUFFER) {
+                    prototype.shader = ctx.handles.gbufferShader;
+                } else {
+                    prototype.shader = UsesAlphaShadow(material) ? cache.shaders[DRAW_ALPHA_SHADOW_SHADER] : ctx.handles.shadowShader;
+                }
                 for (uint32_t slot : visible[part.lod]) {
                     PerObjectCB object{};
                     object.world = source.rows[slot].world;
@@ -926,27 +1243,56 @@ void SubmitSet(const InstanceSubmission& submission,const RenderInstanceInput& i
                     if (TryPrepareMeshletDraw(ctx.resources, ctx.renderer, jittered, object.world,
                             meshPass, part.mesh, false, meshDraw, ctx.frustumCullingEnabled, false, &clusterView)) {
                         SubmitMeshletDraw(ctx, meshDraw, meshPass);
-                    } else if (pass == InstancePass::SHADOW) SubmitCountedShadow(ctx, prototype);
-                    else SubmitCounted(ctx, prototype);
+                    } else if (pass == InstancePass::SHADOW) {
+                        SubmitCountedShadow(ctx, prototype);
+                    }
+                    else {
+                        SubmitCounted(ctx, prototype);
+                    }
                 }
                 continue;
             }
         }
         if (instanced) {
-            if (pass==InstancePass::SHADOW) SubmitCountedShadow(ctx,draw);
+            if (pass==InstancePass::SHADOW) {
+                SubmitCountedShadow(ctx,draw);
+            }
             else if (forwardPass && !standard) {
                 FBZZ_PROFILE_SCOPE("InstanceDraw::CustomResidentForward");
                 SubmitCounted(ctx,draw);
-            } else SubmitCounted(ctx,draw);
+            } else {
+                SubmitCounted(ctx,draw);
+            }
         } else {
-            draw.shader=pass==InstancePass::GBUFFER ? ctx.handles.gbufferShader : forwardPass ? material.shader
-                : pass==InstancePass::VELOCITY ? cache.shaders[9] : pass==InstancePass::SHADOW ? (UsesAlphaShadow(material) ? cache.shaders[7] : ctx.handles.shadowShader) : cache.shaders[8];
+            // インスタンシングが使えないときは、同じパスの個別描画用シェーダーを選ぶ。
+            switch (pass) {
+            case InstancePass::GBUFFER:
+                draw.shader = ctx.handles.gbufferShader;
+                break;
+            case InstancePass::FORWARD:
+            case InstancePass::CAPTURE:
+                draw.shader = material.shader;
+                break;
+            case InstancePass::VELOCITY:
+                draw.shader = cache.shaders[DRAW_VELOCITY_SHADER];
+                break;
+            case InstancePass::SHADOW:
+                draw.shader = UsesAlphaShadow(material) ? cache.shaders[DRAW_ALPHA_SHADOW_SHADER] : ctx.handles.shadowShader;
+                break;
+            default:
+                draw.shader = cache.shaders[DRAW_ALPHA_SELECTION_SHADER];
+                break;
+            }
             for (uint32_t slot : visible[part.lod]) {
                 PerObjectCB object{}; object.world=source.rows[slot].world;
                 object.worldInvTranspose=pass==InstancePass::VELOCITY ? source.rows[slot].previousWorld : source.rows[slot].normal;
                 object.objectParams.y = cardWireframe;
                 ctx.resources.Update(ctx.handles.objectCB,&object,sizeof(object));
-                if (pass==InstancePass::SHADOW) SubmitCountedShadow(ctx,draw); else SubmitCounted(ctx,draw);
+                if (pass==InstancePass::SHADOW) {
+                    SubmitCountedShadow(ctx,draw);
+                } else {
+                    SubmitCounted(ctx,draw);
+                }
             }
         }
     }
@@ -956,7 +1302,9 @@ void Execute(RenderPassContext& ctx,InstancePass pass,const math::Frustum* light
     const InstanceShadowView* shadowView=nullptr)
 {
     const auto scene=ctx.renderScene;
-    if (!scene || scene->instances.empty()) return;
+    if (!scene || scene->instances.empty()) {
+        return;
+    }
     auto& cache=Resources(ctx.resources);
     const auto resourceOwner=cache.owner;
     const auto resourceEpoch=cache.epoch;
@@ -985,12 +1333,14 @@ void Execute(RenderPassContext& ctx,InstancePass pass,const math::Frustum* light
             && ctx.occlusionPreparedResourceEpoch==occlusionEpoch;
     };
     const auto occlusionCurrent=[&] { return sameOcclusionPublication() && IsViewOcclusionCurrent(ctx); };
-    if (pass!=InstancePass::SHADOW) ctx.resources.Update(ctx.handles.frameCB,&frame,sizeof(frame));
+    if (pass!=InstancePass::SHADOW) {
+        ctx.resources.Update(ctx.handles.frameCB,&frame,sizeof(frame));
+    }
     const InstanceSubmission submission{ctx,cache,pass,frustum,lightFrame,countStatistics,shadowView};
     const auto submit=[&](const RenderInstanceInput& input,InstanceSource& source,const InstanceView& view,
         const ComputeCall* selection,const VegetationCandidates& vegetation) {
         if (selection) {
-            const InstanceSetSelection selected{selection->uavBuffers[0],selection->uavBuffers[1],0,vegetation};
+            const InstanceSetSelection selected{selection->uavBuffers[StructuredUavIndex(uav::CULL_VISIBLE)],selection->uavBuffers[StructuredUavIndex(uav::CULL_ARGUMENTS)],0,vegetation};
             SubmitSet(submission,input,source,view,&selected,nullptr);
         } else {
             auto* occlusion=view.culling.w>0 && occlusionCurrent() ? ctx.occlusionCuller : nullptr;
@@ -1008,11 +1358,15 @@ void Execute(RenderPassContext& ctx,InstancePass pass,const math::Frustum* light
     std::vector<PendingSet> pending;
     std::vector<ComputeCall> dispatches;
     const auto usesOcclusion=[](const ComputeCall& call) {
-        return call.srvBuffers[TERRAIN_HIZ_SLOT].IsValid() || call.srvBuffers[30].IsValid();
+        return call.srvBuffers[TERRAIN_HIZ_SLOT].IsValid() || call.srvBuffers[srv::INSTANCE_OCCLUSION].IsValid();
     };
     const auto submitPending=[&] {
-        if (!resourcesCurrent()) return false;
-        if (dispatches.empty()) return true;
+        if (!resourcesCurrent()) {
+            return false;
+        }
+        if (dispatches.empty()) {
+            return true;
+        }
         const bool needsProof=std::any_of(dispatches.begin(),dispatches.end(),usesOcclusion);
         std::vector<uint8_t> recorded(dispatches.size());
         if (!needsProof || occlusionCurrent()) {
@@ -1022,16 +1376,22 @@ void Execute(RenderPassContext& ctx,InstancePass pass,const math::Frustum* light
             if (hasHiZ) {
                 FBZZ_PROFILE_SCOPE("InstanceVisibility::GpuTerrainHiZ");
                 gpu_cull_detail::TryDispatchSequence(ctx.renderer,ctx.resources,dispatches,recorded);
-            } else gpu_cull_detail::TryDispatchSequence(ctx.renderer,ctx.resources,dispatches,recorded);
+            } else {
+                gpu_cull_detail::TryDispatchSequence(ctx.renderer,ctx.resources,dispatches,recorded);
+            }
         }
         for (const auto& set : pending) {
-            /// @note A retired resource frame cannot receive either the indirect draw or its fallback.
-            if (!resourcesCurrent()) return false;
+            // A retired resource frame cannot receive either the indirect draw or its fallback.
+            if (!resourcesCurrent()) {
+                return false;
+            }
             const ComputeCall* selection=nullptr;
             if (set.selection!=NO_SELECTION && recorded[set.selection]) {
                 const auto& call=dispatches[set.selection];
-                /// @note The dispatch wait and earlier draw setup can pump callbacks that retire the view proof.
-                if (!usesOcclusion(call) || occlusionCurrent()) selection=&call;
+                // The dispatch wait and earlier draw setup can pump callbacks that retire the view proof.
+                if (!usesOcclusion(call) || occlusionCurrent()) {
+                    selection=&call;
+                }
                 if (selection && call.srvBuffers[TERRAIN_HIZ_SLOT].IsValid()) {
                     FBZZ_PROFILE_SCOPE("InstanceVisibility::GpuTerrainHiZSubmitted");
                 }
@@ -1043,47 +1403,90 @@ void Execute(RenderPassContext& ctx,InstancePass pass,const math::Frustum* light
         return resourcesCurrent();
     };
     for (const auto& input : scene->instances) {
-        if (input.selectionOnly && pass != InstancePass::SELECTION) continue;
-        if (pass==InstancePass::CAPTURE && input.identity[1]==excludedOwner) continue;
-        if (!HasValidInput(ctx,input)) continue;
-        if (pass==InstancePass::SHADOW && !input.castShadows) continue;
-        if (pass==InstancePass::SELECTION && !input.selected) continue;
-        /// @note Deferred already consumed these parts; reject before preparing rows or synchronizing GPU visibility dispatches.
+        if (input.selectionOnly && pass != InstancePass::SELECTION) {
+            continue;
+        }
+        if (pass==InstancePass::CAPTURE && input.identity[1]==excludedOwner) {
+            continue;
+        }
+        if (!HasValidInput(ctx,input)) {
+            continue;
+        }
+        if (pass==InstancePass::SHADOW && !input.castShadows) {
+            continue;
+        }
+        if (pass==InstancePass::SELECTION && !input.selected) {
+            continue;
+        }
+        // Deferred already consumed these parts; reject before preparing rows or synchronizing GPU visibility dispatches.
         if (pass==InstancePass::FORWARD && ctx.isDeferred && std::all_of(input.parts.begin(),input.parts.end(),
-            [](const auto& part) { return part.mesh.material.shaderCapabilities.SupportsGBuffer(); })) continue;
-        if (!resourcesCurrent()) return;
+            [](const auto& part) { return part.mesh.material.shaderCapabilities.SupportsGBuffer(); })) {
+            continue;
+        }
+        if (!resourcesCurrent()) {
+            return;
+        }
         auto* preparedSource=Source(ctx,cache,input,[&](const InstanceSource&) { return submitPending(); });
-        if (!preparedSource || !resourcesCurrent()) return;
+        if (!preparedSource || !resourcesCurrent()) {
+            return;
+        }
         auto& source=*preparedSource;
-        if (countStatistics) ctx.statsTotalObjects+=static_cast<int>(source.activeCount);
-        if (source.activeCount==0) continue;
+        if (countStatistics) {
+            ctx.statsTotalObjects+=static_cast<int>(source.activeCount);
+        }
+        if (source.activeCount==0) {
+            continue;
+        }
         if (pass==InstancePass::VELOCITY && !source.moved && std::none_of(input.parts.begin(),input.parts.end(),
-            [](const auto& part) { return LeafAnimated(part.mesh.material); })) continue;
+            [](const auto& part) { return LeafAnimated(part.mesh.material); })) {
+            continue;
+        }
         auto view=View(ctx,input,frustum,pass==InstancePass::SHADOW);
-        if (shadowView) ConfigureShadowLod(view, *shadowView, input.vegetationBudget.enabled);
-        if (pass==InstancePass::SELECTION) view.culling.w=0;
-        if (SourceShadowMinimumLod(source,view.forward.w)==SHADOW_CASTER_CULLED) continue;
+        if (shadowView) {
+            ConfigureShadowLod(view, *shadowView, input.vegetationBudget.enabled);
+        }
+        if (pass==InstancePass::SELECTION) {
+            view.culling.w=0;
+        }
+        if (SourceShadowMinimumLod(source,view.forward.w)==SHADOW_CASTER_CULLED) {
+            continue;
+        }
         const auto sourceVisibility=SourceVisibility(source,view,frustum);
         if (sourceVisibility!=VisibilityResult::VISIBLE) {
-            if (countStatistics) CountRejected(ctx,sourceVisibility,static_cast<int>(source.activeCount));
+            if (countStatistics) {
+                CountRejected(ctx,sourceVisibility,static_cast<int>(source.activeCount));
+            }
             continue;
         }
         if (view.culling.w>0 && source.hasBounds && source.finiteBounds && sameOcclusionPublication()
             && IsViewAabbOccluded(ctx,math::Matrix4::Identity(),source.boundsMin,source.boundsMax)) {
-            if (countStatistics) ctx.statsOcclusionCulled+=static_cast<int>(source.activeCount);
+            if (countStatistics) {
+                ctx.statsOcclusionCulled+=static_cast<int>(source.activeCount);
+            }
             continue;
         }
+        // 詳細度の上限を指定していない草木も、初めて遮蔽を調べるときに区画境界を作る。
+        if (view.culling.w > 0 && !source.vegetationPrepared && source.activeCount >= MIN_GPU_PLACEMENTS) {
+            const bool hasFoliage = std::any_of(input.parts.begin(), input.parts.end(),
+                [](const auto& part) { return UsesAlphaShadow(part.mesh.material); });
+            if (hasFoliage) {
+                PrepareVegetationCells(source);
+            }
+        }
+
         bool residentShaders=true;
         for (const auto& part : input.parts) {
             const auto& material = part.mesh.material;
             if (forwardPass) {
                 if (pass == InstancePass::FORWARD && (material.capabilities.blend != BlendMode::OPAQUE_BLEND
-                    || (ctx.isDeferred && material.shaderCapabilities.SupportsGBuffer()))) continue;
+                    || (ctx.isDeferred && material.shaderCapabilities.SupportsGBuffer()))) {
+                    continue;
+                }
                 residentShaders = residentShaders && ctx.resources.Get(ForwardInstanceShader(ctx.resources, cache, material));
                 continue;
             }
-            const size_t shader=pass==InstancePass::GBUFFER ? 0u : pass==InstancePass::SELECTION ? 4u : pass==InstancePass::VELOCITY ? 5u : UsesAlphaShadow(material) ? 3u : 2u;
-            residentShaders=residentShaders && ctx.resources.Get(cache.shaders[shader]);
+            const InstanceShaderSlot shaderSlot = ResidentShaderSlot(pass, material);
+            residentShaders = residentShaders && ctx.resources.Get(cache.shaders[shaderSlot]);
         }
         VegetationCandidates vegetation;
         auto selection=enableGpu && residentShaders
@@ -1091,12 +1494,16 @@ void Execute(RenderPassContext& ctx,InstancePass pass,const math::Frustum* light
         if (selection) {
             pending.push_back({&input,&source,view,dispatches.size(),vegetation});
             dispatches.push_back(std::move(*selection));
-        } else if (!dispatches.empty()) pending.push_back({&input,&source,view,NO_SELECTION});
-        else submit(input,source,view,nullptr,{});
+        } else if (!dispatches.empty()) {
+            pending.push_back({&input,&source,view,NO_SELECTION});
+        }
+        else {
+            submit(input,source,view,nullptr,{});
+        }
     }
     submitPending();
 }
-} /// @note namespace
+} // namespace
 
 struct PreparedInstanceShadowBatch::State {
     struct ViewPolicy {
@@ -1155,12 +1562,19 @@ PreparedInstanceShadowBatch& PreparedInstanceShadowBatch::operator=(PreparedInst
 uint32_t InstanceShadowOcclusionViewMask(RenderPassContext& ctx,std::span<const InstanceShadowView> views)
 {
     const auto scene=ctx.renderScene;
-    if (!scene || !SupportsTerrainHiZMode(ctx)) return 0;
+    if (!scene || !SupportsTerrainHiZMode(ctx)) {
+        return 0;
+    }
     views=views.first(std::min<size_t>(views.size(),std::numeric_limits<uint32_t>::digits));
     uint32_t eligible=0;
-    for (size_t i=0;i<views.size();++i)
-        if (views[i].viewportSize>0) eligible|=1u<<i;
-    if (eligible==0) return 0;
+    for (size_t i=0;i<views.size();++i) {
+        if (views[i].viewportSize>0) {
+            eligible|=1u<<i;
+        }
+    }
+    if (eligible==0) {
+        return 0;
+    }
 
     const auto& cache=ResourceCache();
     const uint64_t owner=ctx.resources.GetInstanceId();
@@ -1170,21 +1584,32 @@ uint32_t InstanceShadowOcclusionViewMask(RenderPassContext& ctx,std::span<const 
     uint32_t mask=0;
     for (const auto& input : scene->instances) {
         if (!input.castShadows || input.selectionOnly || !HasValidInput(ctx,input)
-            || input.data->placements.size()<MIN_GPU_PLACEMENTS || !HasShadowHiZBounds(input)) continue;
+            || input.data->placements.size()<MIN_GPU_PLACEMENTS || !HasShadowHiZBounds(input)) {
+            continue;
+        }
         const auto entry=cacheCurrent ? cache.sources.find(input.identity) : cache.sources.end();
-        /// @note Cold and edited sets may enter any light view. The batch prepares their rows and GPU buffers once.
-        if (entry==cache.sources.end() || entry->second.preparedFrame>frame || !MatchesSource(entry->second,input))
+        // Cold and edited sets may enter any light view. The batch prepares their rows and GPU buffers once.
+        if (entry==cache.sources.end() || entry->second.preparedFrame>frame || !MatchesSource(entry->second,input)) {
             return eligible;
+        }
         const auto& source=entry->second;
-        if (source.activeCount==0) continue;
+        if (source.activeCount==0) {
+            continue;
+        }
         const auto commonView=View(ctx,input,views.front().frustum,true);
         for (uint32_t pending=eligible & ~mask;pending!=0;pending&=pending-1) {
             const auto i=std::countr_zero(pending);
             const float shadowLodScale=ShadowLodScale(views[i],input.vegetationBudget.enabled);
-            if (SourceShadowMinimumLod(source,shadowLodScale)==SHADOW_CASTER_CULLED) continue;
-            if (SourceVisibility(source,commonView,views[i].frustum)==VisibilityResult::VISIBLE) mask|=1u<<i;
+            if (SourceShadowMinimumLod(source,shadowLodScale)==SHADOW_CASTER_CULLED) {
+                continue;
+            }
+            if (SourceVisibility(source,commonView,views[i].frustum)==VisibilityResult::VISIBLE) {
+                mask|=1u<<i;
+            }
         }
-        if (mask==eligible) return mask;
+        if (mask==eligible) {
+            return mask;
+        }
     }
     return mask;
 }
@@ -1194,7 +1619,9 @@ PreparedInstanceShadowBatch PrepareInstanceShadowBatch(RenderPassContext& ctx,st
 {
     PreparedInstanceShadowBatch result;
     const auto scene=ctx.renderScene;
-    if (!scene || scene->instances.empty() || views.empty()) return result;
+    if (!scene || scene->instances.empty() || views.empty()) {
+        return result;
+    }
     auto& cache=Resources(ctx.resources);
     result.m_state=std::make_unique<PreparedInstanceShadowBatch::State>();
     auto& state=*result.m_state;
@@ -1205,32 +1632,44 @@ PreparedInstanceShadowBatch PrepareInstanceShadowBatch(RenderPassContext& ctx,st
     state.frame=ctx.resources.FrameStamp();
     state.policy=PreparedInstanceShadowBatch::State::CapturePolicy(ctx);
     state.views.reserve(views.size());
-    for (const auto& view : views) state.views.push_back({view,{}});
+    for (const auto& view : views) {
+        state.views.push_back({view,{}});
+    }
     const bool hasHiZ=std::any_of(views.begin(),views.end(),[](const auto& view) { return view.hierarchy.depths.IsValid(); });
     const size_t firstCommand=commands.size();
     UpdateWindFrame(ctx,cache);
 
-    /// @note 同一フレームの配置差し替え時だけ、提出待ちの参照を索引化する。
+    // 同一フレームの配置差し替え時だけ、提出待ちの参照を索引化する。
     std::optional<std::unordered_set<const InstanceSource*>> admittedSources;
     for (const auto& input : scene->instances) {
-        if (!state.ResourcesCurrent(ctx.resources)) break;
-        if (input.selectionOnly || !input.castShadows || !HasValidInput(ctx,input)) continue;
+        if (!state.ResourcesCurrent(ctx.resources)) {
+            break;
+        }
+        if (input.selectionOnly || !input.castShadows || !HasValidInput(ctx,input)) {
+            continue;
+        }
         auto* source=Source(ctx,cache,input,[&](const InstanceSource& currentSource) {
             if (!admittedSources) {
                 admittedSources.emplace();
                 admittedSources->reserve(scene->instances.size());
-                for (const auto& entry : state.sources) admittedSources->insert(entry.source);
+                for (const auto& entry : state.sources) {
+                    admittedSources->insert(entry.source);
+                }
             }
             return !admittedSources->contains(&currentSource);
         });
         if (!source) {
-            /// @note A duplicate identity with different resident data needs ordered CPU replay before its rows are replaced.
+            // A duplicate identity with different resident data needs ordered CPU replay before its rows are replaced.
             state.cpuReplay=true;
             commands.resize(firstCommand);
             return result;
         }
-        if (!state.ResourcesCurrent(ctx.resources)) break;
-        if (source->activeCount==0) continue;
+        if (!state.ResourcesCurrent(ctx.resources)) {
+            break;
+        }
+        if (source->activeCount==0) {
+            continue;
+        }
         const auto commonView=View(ctx,input,views.front().frustum,true);
         const size_t sourceIndex=state.sources.size();
         std::array<size_t,kMaxShadowCascades> cascadeIndices{};
@@ -1240,28 +1679,43 @@ PreparedInstanceShadowBatch PrepareInstanceShadowBatch(RenderPassContext& ctx,st
             auto& light=state.views[viewIndex];
             const float shadowLodScale=ShadowLodScale(light.input,input.vegetationBudget.enabled);
             if (SourceShadowMinimumLod(*source,shadowLodScale)==SHADOW_CASTER_CULLED
-                || SourceVisibility(*source,commonView,light.input.frustum)!=VisibilityResult::VISIBLE) continue;
+                || SourceVisibility(*source,commonView,light.input.frustum)!=VisibilityResult::VISIBLE) {
+                continue;
+            }
             light.sets.push_back({sourceIndex,SIZE_MAX,{},false});
             admitted=true;
-            if (light.input.directional && cascadeCount<cascadeIndices.size()) cascadeIndices[cascadeCount++]=viewIndex;
+            if (light.input.directional && cascadeCount<cascadeIndices.size()) {
+                cascadeIndices[cascadeCount++]=viewIndex;
+            }
         }
-        if (!admitted) continue;
+        if (!admitted) {
+            continue;
+        }
         state.sources.push_back({&input,source,commonView});
-        if (admittedSources) admittedSources->insert(source);
-        if (!CanPrepareGpu(ctx,cache,input,*source,commonView.counts[0])) continue;
+        if (admittedSources) {
+            admittedSources->insert(source);
+        }
+        if (!CanPrepareGpu(ctx,cache,input,*source,commonView.counts[0])) {
+            continue;
+        }
         const bool residentShaders=std::all_of(input.parts.begin(),input.parts.end(),[&](const auto& part) {
             const auto& material=part.mesh.material;
-            return ctx.resources.Get(cache.shaders[UsesAlphaShadow(material) ? 3u : 2u])!=nullptr;
+            return ctx.resources.Get(cache.shaders[ResidentShaderSlot(InstancePass::SHADOW, material)]) != nullptr;
         });
-        if (!residentShaders) continue;
+        if (!residentShaders) {
+            continue;
+        }
         const bool useHiZ=hasHiZ && HasShadowHiZBounds(input);
 
         if (cascadeCount>1) {
-            if (!ctx.resources.Get(cache.cascadeCullShader))
+            if (!ctx.resources.Get(cache.cascadeCullShader)) {
                 cache.cascadeCullShader=ctx.resources.LoadShader("Assets/Shaders/Pipeline/InstanceCascadeLodCull.cs.hlsl");
+            }
             if (ctx.resources.Get(cache.cascadeCullShader)) {
                 std::array<math::Frustum,kMaxShadowCascades> frusta;
-                for (uint32_t i=0;i<cascadeCount;++i) frusta[i]=state.views[cascadeIndices[i]].input.frustum;
+                for (uint32_t i=0;i<cascadeCount;++i) {
+                    frusta[i]=state.views[cascadeIndices[i]].input.frustum;
+                }
                 auto gpuView=commonView;
                 auto compute=PrepareGpuBuffers(ctx,cache,input,*source,gpuView,std::span{frusta}.first(cascadeCount),
                     cache.cascadeCullShader);
@@ -1273,35 +1727,45 @@ PreparedInstanceShadowBatch PrepareInstanceShadowBatch(RenderPassContext& ctx,st
                         cascadeViews[i]=gpuView;
                         SetFrustumPlanes(cascadeViews[i],light.input.frustum);
                         ConfigureShadowLod(cascadeViews[i], light.input, input.vegetationBudget.enabled);
-                        if (useHiZ) BindShadowHiZ(cascadeViews[i],light.input,*compute);
-                        /// @note The grouped kernel reads the shared cell budget from view zero and masks out near tiles itself.
+                        if (useHiZ) {
+                            BindShadowHiZ(cascadeViews[i],light.input,*compute);
+                        }
+                        // The grouped kernel reads the shared cell budget from view zero and masks out near tiles itself.
                         cascadeViews[i].vegetation[2] = gpuView.vegetation[2];
-                        if (light.input.preserveVegetationDetail) preserveDetailMask|=1u<<i;
+                        if (light.input.preserveVegetationDetail) {
+                            preserveDetailMask|=1u<<i;
+                        }
                         auto& set=light.sets.back();
                         set.receipt=commands.size();
-                        set.selection={compute->uavBuffers[0],compute->uavBuffers[1],i*commonView.counts[2]};
+                        set.selection={compute->uavBuffers[StructuredUavIndex(uav::CULL_VISIBLE)],compute->uavBuffers[StructuredUavIndex(uav::CULL_ARGUMENTS)],i*commonView.counts[2]};
                         set.firstGroupedCascade=i==0;
                     }
-                    /// @note The directional variant reads one resident sphere and loops over the compacted light views.
+                    // The directional variant reads one resident sphere and loops over the compacted light views.
                     cascadeViews[0].terrainDepth[2]=preserveDetailMask;
                     cascadeViews[0].terrainDepth[3]=cascadeCount;
-                    ctx.resources.Update(compute->srvBuffers[15],cascadeViews.data(),cascadeCount*sizeof(InstanceView));
+                    ctx.resources.Update(compute->srvBuffers[srv::CULL_VIEW],cascadeViews.data(),cascadeCount*sizeof(InstanceView));
                     commands.push_back(std::move(*compute));
                 }
             }
         }
         for (auto& light : state.views) {
-            if (light.sets.empty() || light.sets.back().sourceIndex!=sourceIndex || light.sets.back().receipt!=SIZE_MAX) continue;
+            if (light.sets.empty() || light.sets.back().sourceIndex!=sourceIndex || light.sets.back().receipt!=SIZE_MAX) {
+                continue;
+            }
             auto view=commonView;
             SetFrustumPlanes(view,light.input.frustum);
             ConfigureShadowLod(view, light.input, input.vegetationBudget.enabled);
-            auto compute=PrepareGpuBuffers(ctx,cache,input,*source,view,std::span{&light.input.frustum,1},cache.shaders[6]);
-            if (!compute) continue;
-            if (useHiZ) BindShadowHiZ(view,light.input,*compute);
-            ctx.resources.Update(compute->srvBuffers[15],&view,sizeof(view));
+            auto compute=PrepareGpuBuffers(ctx,cache,input,*source,view,std::span{&light.input.frustum,1},cache.shaders[INSTANCE_CULL_SHADER]);
+            if (!compute) {
+                continue;
+            }
+            if (useHiZ) {
+                BindShadowHiZ(view,light.input,*compute);
+            }
+            ctx.resources.Update(compute->srvBuffers[srv::CULL_VIEW],&view,sizeof(view));
             auto& set=light.sets.back();
             set.receipt=commands.size();
-            set.selection={compute->uavBuffers[0],compute->uavBuffers[1]};
+            set.selection={compute->uavBuffers[StructuredUavIndex(uav::CULL_VISIBLE)],compute->uavBuffers[StructuredUavIndex(uav::CULL_ARGUMENTS)]};
             commands.push_back(std::move(*compute));
         }
     }
@@ -1316,7 +1780,9 @@ PreparedInstanceShadowBatch PrepareInstanceShadowBatch(RenderPassContext& ctx,st
 void SubmitInstanceShadowBatchView(RenderPassContext& ctx,const PreparedInstanceShadowBatch& batch,size_t viewIndex,
     std::span<const uint8_t> receipts,ResourceHandle<ConstantBufferTag> lightFrame)
 {
-    if (!batch.m_state || !batch.m_state->ResourcesCurrent(ctx.resources) || viewIndex>=batch.m_state->views.size()) return;
+    if (!batch.m_state || !batch.m_state->ResourcesCurrent(ctx.resources) || viewIndex>=batch.m_state->views.size()) {
+        return;
+    }
     const auto& state=*batch.m_state;
     const auto& view=state.views[viewIndex];
     if (state.cpuReplay || ctx.renderScene.get()!=state.scene.get()
@@ -1327,7 +1793,9 @@ void SubmitInstanceShadowBatchView(RenderPassContext& ctx,const PreparedInstance
     }
     const InstanceSubmission submission{ctx,*state.cache,InstancePass::SHADOW,view.input.frustum,lightFrame,false,&view.input};
     for (const auto& work : view.sets) {
-        if (!state.ResourcesCurrent(ctx.resources)) return;
+        if (!state.ResourcesCurrent(ctx.resources)) {
+            return;
+        }
         const auto& entry=state.sources[work.sourceIndex];
         const bool recorded=work.receipt<receipts.size() && receipts[work.receipt]!=0;
         if (recorded && work.firstGroupedCascade) {
@@ -1341,7 +1809,9 @@ void SubmitInstanceShadowBatchView(RenderPassContext& ctx,const PreparedInstance
 
 bool HasTerrainHiZInstanceCandidates(const RenderPassContext& ctx)
 {
-    if (!ctx.renderScene || !SupportsTerrainHiZMode(ctx)) return false;
+    if (!ctx.renderScene || !SupportsTerrainHiZMode(ctx)) {
+        return false;
+    }
     return std::any_of(ctx.renderScene->instances.begin(),ctx.renderScene->instances.end(),[&](const auto& input) {
         return HasValidInput(ctx,input) && IsTerrainHiZCandidate(input);
     });
@@ -1360,4 +1830,4 @@ void ExecuteInstanceCapture(RenderPassContext& ctx,const Camera& camera,uint32_t
     Execute(capture,InstancePass::CAPTURE,nullptr,{},(static_cast<uint64_t>(excludedGeneration)<<32)|excludedIndex);
 }
 void SubmitInstanceShadows(RenderPassContext& ctx,const math::Frustum& frustum,ResourceHandle<ConstantBufferTag> frame) { Execute(ctx,InstancePass::SHADOW,&frustum,frame); }
-} /// @note namespace fbzz::renderer
+} // namespace fbzz::renderer

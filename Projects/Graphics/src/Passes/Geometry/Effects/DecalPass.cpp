@@ -10,6 +10,7 @@
 /// @note materialPath 有り → .mat (render_path = "decal") のシェーダーとパラメータ
 /// @note どちらの経路でも投影ボリューム・角度フェード・ライフタイムは b10 の
 /// @note DecalConstants がエンジン側から埋める (DecalCommon.hlsli 参照)。
+#include <Graphics/Renderer/Commands/ShaderBindingSlots.hpp>
 #include "../RenderScenePassHelpers.hpp"
 #include <algorithm>
 namespace fbzz::renderer {
@@ -22,33 +23,43 @@ bool RenderDecalReceiverLayers(RenderPassContext& ctx, uint32_t markMask)
     auto& h         = ctx.handles;
 
     if (!h.decalMaskRT.IsValid() || !h.decalMaskShader.IsValid() ||
-        !h.decalMaskPSO.IsValid() || !h.decalReceiverCB.IsValid())
+        !h.decalMaskPSO.IsValid() || !h.decalReceiverCB.IsValid()) {
         return false;
+    }
 
     const auto depthTex = resources.GetDepthTexture(ctx.Res().Target("DecalDepth"));
-    if (!depthTex.IsValid()) return false;
+    if (!depthTex.IsValid()) {
+        return false;
+    }
 
     r.SetRenderTarget(h.decalMaskRT, resources);
     r.Clear({ 0.0f, 0.0f, 0.0f, 0.0f });
 
     const auto& input = SceneInput(ctx);
     for (const auto& object : input.Objects()) {
-        if (!MatchesView(ctx, object)) continue;
+        if (!MatchesView(ctx, object)) {
+            continue;
+        }
         const auto bounds = RenderBounds(ctx, object);
-        if (IsViewOccluded(ctx, bounds.center, bounds.radius)) continue;
+        if (IsViewOccluded(ctx, bounds.center, bounds.radius)) {
+            continue;
+        }
         const bool markStatic = !object.skinned && ContainsLayer(markMask, 9);
         bool staticSiblingMarked = false;
         if (object.skinned && ContainsLayer(markMask, 9)) {
-            for (const auto& sibling : input.Objects())
+            for (const auto& sibling : input.Objects()) {
                 if (!sibling.skinned && sibling.sourceIndex == object.sourceIndex && MatchesView(ctx, sibling)) {
                     const auto& mesh = input.items[sibling.firstItem];
                     staticSiblingMarked = mesh.vertexBuffer.IsValid() && mesh.indexBuffer.IsValid();
                     break;
                 }
+            }
         }
         const bool markSkinned = object.skinned && !staticSiblingMarked &&
             h.decalMaskSkinnedShader.IsValid() && ContainsLayer(markMask, object.layer);
-        if (!markStatic && !markSkinned) continue;
+        if (!markStatic && !markSkinned) {
+            continue;
+        }
         auto constants = ObjectConstants(object);
         constants.objectParams.x = 0.0f;
         resources.Update(h.objectCB, &constants, sizeof(constants));
@@ -58,18 +69,20 @@ bool RenderDecalReceiverLayers(RenderPassContext& ctx, uint32_t markMask)
         resources.Update(h.decalReceiverCB, &layerData, sizeof(layerData));
         for (uint32_t i = object.firstItem; i < object.firstItem + object.itemCount; ++i) {
             const auto& item = input.items[i];
-            if (!item.vertexBuffer.IsValid() || !item.indexBuffer.IsValid() || (object.skinned && !item.slotVisible)) continue;
+            if (!item.vertexBuffer.IsValid() || !item.indexBuffer.IsValid() || (object.skinned && !item.slotVisible)) {
+                continue;
+            }
             renderer::DrawCall dc;
             dc.vertexBuffer = object.skinned ? item.skinningVertexBuffer : item.vertexBuffer;
             dc.indexBuffer = item.indexBuffer;
             dc.indexCount = item.indexCount;
             dc.shader = object.skinned ? h.decalMaskSkinnedShader : h.decalMaskShader;
             dc.pipelineState = h.decalMaskPSO;
-            dc.constantBuffers[0] = h.frameCB;
-            dc.constantBuffers[1] = h.objectCB;
-            if (object.skinned) { dc.constantBuffers[7] = object.skinningPalette; BindGpuBonePalette(dc, object); }
-            dc.constantBuffers[10] = h.decalReceiverCB;
-            dc.textures[7] = depthTex;
+            dc.constantBuffers[cb::CAMERA] = h.frameCB;
+            dc.constantBuffers[cb::OBJECT] = h.objectCB;
+            if (object.skinned) { dc.constantBuffers[cb::SKINNING] = object.skinningPalette; BindGpuBonePalette(dc, object); }
+            dc.constantBuffers[cb::DECAL] = h.decalReceiverCB;
+            dc.textures[srv::DEPTH] = depthTex;
             r.Submit(dc, resources);
         }
     }
@@ -81,14 +94,20 @@ void ExecuteDecalPass(RenderPassContext& ctx) {
     auto& resources = ctx.resources;
     auto& h = ctx.handles;
     r.SetRenderTarget(ctx.Res().Target("HDR"), resources);
-    if (!ctx.renderScene || !h.decalShader.IsValid() || !h.decalPSO.IsValid() || !h.decalCB.IsValid() || !h.decalMaterialCB.IsValid()) return;
+    if (!ctx.renderScene || !h.decalShader.IsValid() || !h.decalPSO.IsValid() || !h.decalCB.IsValid() || !h.decalMaterialCB.IsValid()) {
+        return;
+    }
     const auto depthTex = resources.GetDepthTexture(ctx.Res().Target("DecalDepth"));
-    if (!depthTex.IsValid()) return;
+    if (!depthTex.IsValid()) {
+        return;
+    }
     std::vector<const RenderDecalInput*> pending;
     uint32_t alwaysReceive = ~0u;
     bool anyFiltered = false;
     for (const auto& input : ctx.renderScene->decals) {
-        if (!ContainsLayer(ctx.cullingMask, input.layer)) continue;
+        if (!ContainsLayer(ctx.cullingMask, input.layer)) {
+            continue;
+        }
         ++ctx.statsTotalObjects;
         if (IsViewAabbOccluded(ctx, math::Matrix4::Inverse(input.projection.invDecalWorld),
             {-0.5f, -0.5f, -0.5f}, {0.5f, 0.5f, 0.5f})) { ++ctx.statsOcclusionCulled; continue; }
@@ -97,7 +116,9 @@ void ExecuteDecalPass(RenderPassContext& ctx) {
     }
     std::stable_sort(pending.begin(), pending.end(), [](const auto* a, const auto* b) { return a->sortOrder < b->sortOrder; });
     const bool receiverBufferReady = anyFiltered && RenderDecalReceiverLayers(ctx, ~alwaysReceive);
-    if (receiverBufferReady) r.SetRenderTarget(ctx.Res().Target("HDR"), resources);
+    if (receiverBufferReady) {
+        r.SetRenderTarget(ctx.Res().Target("HDR"), resources);
+    }
     for (const auto* input : pending) {
         auto projection = input->projection;
         const bool filtered = receiverBufferReady && projection.receiverLayerMask != ~0u;
@@ -105,13 +126,19 @@ void ExecuteDecalPass(RenderPassContext& ctx) {
         resources.Update(h.decalCB, &projection, sizeof(projection));
         auto drawCall = input->binding;
         drawCall.vertexCount = 3;
-        drawCall.constantBuffers[0] = h.frameCB;
-        drawCall.constantBuffers[3] = h.lightCB;
-        drawCall.constantBuffers[10] = h.decalCB;
-        drawCall.textures[7] = depthTex;
-        if (filtered) drawCall.textures[13] = resources.GetColorTexture(h.decalMaskRT, 0);
-        if (!input->customMaterial) resources.Update(h.decalMaterialCB, &input->material, sizeof(input->material));
-        else if (!input->materialParameters.empty()) resources.Update(drawCall.constantBuffers[2], input->materialParameters.data(), input->materialParameters.size());
+        drawCall.constantBuffers[cb::CAMERA] = h.frameCB;
+        drawCall.constantBuffers[cb::LIGHT] = h.lightCB;
+        drawCall.constantBuffers[cb::DECAL] = h.decalCB;
+        drawCall.textures[srv::DEPTH] = depthTex;
+        if (filtered) {
+            drawCall.textures[srv::DECAL_MASK] = resources.GetColorTexture(h.decalMaskRT, 0);
+        }
+        if (!input->customMaterial) {
+            resources.Update(h.decalMaterialCB, &input->material, sizeof(input->material));
+        }
+        else if (!input->materialParameters.empty()) {
+            resources.Update(drawCall.constantBuffers[cb::MATERIAL], input->materialParameters.data(), input->materialParameters.size());
+        }
         SubmitCounted(ctx, drawCall);
     }
 }
@@ -123,13 +150,15 @@ void ExecuteDecalDepthCopyPass(RenderPassContext& ctx)
 
     r.SetRenderTarget(ctx.Res().Target("DecalDepth"), resources);
     r.ClearDepth();
-    if (!h.depthCopyShader.IsValid()) return;
+    if (!h.depthCopyShader.IsValid()) {
+        return;
+    }
 
     renderer::DrawCall dc;
     dc.shader        = h.depthCopyShader;
     dc.pipelineState = h.defaultPSO;
     dc.vertexCount   = 3;
-    dc.textures[7]   = ctx.isDeferred ? resources.GetDepthTexture(ctx.Res().Target("GBuffer"))
+    dc.textures[srv::DEPTH]   = ctx.isDeferred ? resources.GetDepthTexture(ctx.Res().Target("GBuffer"))
                                       : resources.GetDepthTexture(ctx.Res().Target("HDR"));
     r.Submit(dc, resources);
 }
@@ -154,4 +183,4 @@ void DecalPass::Execute(PassResources&, RenderPassContext& ctx)
 {
     ExecuteDecalPass(ctx);
 }
-} /// @note namespace fbzz::renderer
+} // namespace fbzz::renderer

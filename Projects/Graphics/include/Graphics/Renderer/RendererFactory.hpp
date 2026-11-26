@@ -34,7 +34,7 @@ struct RendererBundle {
 };
 
 /// @brief 指定バックエンドの IRenderer を初期化し、同一デバイスへ紐づけた IImGuiRenderer を生成する。
-/// @param hwnd Win32 ウィンドウハンドル。ヘッダーの Windows.h 依存を避けるため void* で受ける。
+/// @param[in] hwnd Win32 ウィンドウハンドル。ヘッダーの Windows.h 依存を避けるため void* で受ける。
 /// @return いずれかの初期化に失敗した場合は空の RendererBundle (nullptr ペア)。
 /// @note ImGui バックエンドの Win32 初期化 (ImGuiInit) は呼び出し側が別途行う。
 /// @note       ここで担うのは GPU デバイスへの紐づけのみ。
@@ -68,4 +68,4 @@ private:
 /// @note Unknown/native renderers, opaque commands, reentry and any busy lock/slot fail closed.
 [[nodiscard]] FBZZ_GRAPHICS_API bool TrySubmitPendingResourceUpdates(IRenderer& renderer);
 
-} /// @note namespace fbzz::renderer
+} // namespace fbzz::renderer

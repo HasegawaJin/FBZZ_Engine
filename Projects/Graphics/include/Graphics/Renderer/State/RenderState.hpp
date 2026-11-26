@@ -14,11 +14,11 @@
 namespace fbzz::renderer {
 
     enum class RasterizerMode {
-        SOLID,        ///< @brief 通常の塗りつぶし描画 (デフォルト)
-        WIREFRAME,    ///< @brief ワイヤーフレーム
-        SOLID_NOCULL, ///< @brief 塗りつぶし・背面カリングなし (スカイドーム内面描画)
-        SOLID_FRONT_CULL, ///< @brief 選択アウトライン用
-        WIREFRAME_NOCULL, ///< @brief ワイヤーフレーム・背面カリングなし
+        SOLID,            ///< 塗りつぶしと背面カリングを行う既定の経路。
+        WIREFRAME,        ///< 背面をカリングし、三角形を辺だけで描く。
+        SOLID_NOCULL,     ///< スカイドーム内面など、両面を塗りつぶす。
+        SOLID_FRONT_CULL, ///< 選択アウトラインなどで正面をカリングする。
+        WIREFRAME_NOCULL, ///< 両面の三角形を辺だけで描く。
     };
 
     /// @note ブレンド方程式の唯一の正本。DX12PsoCache は「ここに書いてある式をそれぞれの API 語彙へ
@@ -30,41 +30,39 @@ namespace fbzz::renderer {
     /// @note 3 モードに差し替わるため非事前乗算に統一。ONE にすると PREMULTIPLIED と区別できない)
     /// @note PREMULTIPLIED : rgb = src.rgb + dst.rgb * (1 - src.a)  (アルファ共通 a = src.a + dst.a*(1-src.a))
     enum class BlendMode {
-        OPAQUE_BLEND, ///< @brief 不透明 (デフォルト)
-        ALPHA_BLEND, ///< @brief アルファブレンド (半透明)
-        ADDITIVE,    ///< @brief 加算合成 (パーティクル・エフェクト)
+        OPAQUE_BLEND, ///< 既存の出力色を新しいソース色で置き換える。
+        ALPHA_BLEND,  ///< ソースのアルファで半透明合成する。
+        ADDITIVE,     ///< ソース色にアルファを掛けて既存の出力色へ加算する。
         /// @note 事前乗算アルファ: out = src.rgb + dst.rgb * (1 - src.a)
         /// @note 1 枚のテクスチャの中で「発光する芯」と「煙のように背景を隠す縁」を同時に
         /// @note 表現できる (alpha=0 かつ RGB>0 の画素が加算として振る舞う)。Alpha と Additive
         /// @note を別エミッターに分ける必要がなく、爆炎のようなコアと煙の連続表現でも崩れない。
-        PREMULTIPLIED,
+        PREMULTIPLIED, ///< ソース色にアルファを掛けた状態の入力を半透明合成する。
     };
 
     /// @note 比較の向きは束縛中の RT が決める (RenderTargetDesc::reversedZ)。
     /// @note 通常の Z では LESS / LESS_EQUAL、Reversed-Z では GREATER / GREATER_EQUAL になる。
     enum class DepthMode {
-        DEPTH_ON,    ///< @brief 深度テスト・書き込みあり (デフォルト)
-        DEPTH_READ,  ///< @brief 深度テストあり・書き込みなし (半透明オブジェクト)
-        DEPTH_OFF,   ///< @brief 深度テスト・書き込みなし (デバッグ描画, UI)
-        DEPTH_SKY,   ///< @brief 最遠と等しい深度も通す・書き込みなし (スカイドーム: 最遠面に描画)
+        DEPTH_ON,   ///< 深度テストと書き込みを行う既定の経路。
+        DEPTH_READ, ///< 深度をテストするが書き込まない。半透明などで使う。
+        DEPTH_OFF,  ///< 深度のテストも書き込みも省く。UI などで使う。
+        DEPTH_SKY,  ///< 最遠と等しい深度も通し、深度を書き込まない。
     };
 
     enum class PrimitiveTopology {
-        TRIANGLE_LIST,  ///< @brief 通常の三角形描画 (デフォルト)
-        LINE_LIST,      ///< @brief デバッグ線描画
-        TRIANGLE_STRIP, ///< @note 32 ビットインデックスの 0xFFFFFFFF でストリップを再開する。
+        TRIANGLE_LIST,  ///< 3 頂点ごとに独立した三角形を作る。
+        LINE_LIST,      ///< 2 頂点ごとに独立した線分を作る。
+        TRIANGLE_STRIP, ///< 32 ビットインデックスの 0xFFFFFFFF でストリップを再開する。
     };
 
     struct PipelineStateDesc {
-        RasterizerMode rasterizer = RasterizerMode::SOLID;
-        BlendMode      blend      = BlendMode::OPAQUE_BLEND;
-        DepthMode      depth      = DepthMode::DEPTH_ON;
-        /// @brief 深度バイアスの定数項。正で手前へ寄せる (同一平面に重なった面の Z-fighting 回避)。
+        RasterizerMode rasterizer = RasterizerMode::SOLID; ///< 面の塗り方と正面・背面のカリング方式。
+        BlendMode      blend      = BlendMode::OPAQUE_BLEND; ///< 出力色を既存のレンダーターゲットと合成する方式。
+        DepthMode      depth      = DepthMode::DEPTH_ON; ///< 描画先の深度をテスト・更新する方式。
         /// @note 単位は D32_FLOAT の 1 ULP (プリミティブ内の最大深度の指数で決まる)。符号は束縛中の RT の向きでバックエンドが裏返す。
         /// @see https://learn.microsoft.com/en-us/windows/win32/direct3d11/d3d10-graphics-programming-guide-output-merger-stage-depth-bias (Depth Bias)
-        int32_t        depthBias      = 0;
-        /// @brief 深度バイアスの傾き項 (MaxDepthSlope に掛ける係数)。正で手前へ寄せる。
-        float          depthBiasSlope = 0.0f;
+        int32_t        depthBias      = 0; ///< 深度バイアスの定数項。正値はカメラ側へ寄せる。
+        float          depthBiasSlope = 0.0f; ///< 最大深度勾配に掛ける深度バイアス係数。正値はカメラ側へ寄せる。
     };
 
-}
+} // namespace fbzz::renderer

@@ -2,6 +2,7 @@
 /// @brief   Owner-scoped meshlet shader state and direct mesh draw preparation.
 /// @author  Hasegawa Jin
 /// @date    2026-10-10
+#include <Graphics/Renderer/Commands/ShaderBindingSlots.hpp>
 #include <Graphics/Pipeline/Geometry/MeshletDrawHelpers.hpp>
 #include <Graphics/Pipeline/Resources/RenderResources.hpp>
 
@@ -55,7 +56,7 @@ MeshletDrawResources& StateFor(ResourceManager& resources)
 
     const uint64_t resetVersion = resources.GetResetVersion();
     if (state.ownerId != resources.GetInstanceId() || state.resetVersion != resetVersion) {
-        /// @note Reset invalidates every old handle; never release one through a different owner or device generation.
+        // Reset invalidates every old handle; never release one through a different owner or device generation.
         state = {};
         state.ownerId = resources.GetInstanceId();
         state.resetVersion = resetVersion;
@@ -137,33 +138,49 @@ bool PrepareClusterPages(ResourceManager& resources, IRenderer& renderer, Meshle
                 ++it;
                 continue;
             }
-            for (const auto page : it->second.pages) resources.Release(page);
-            if (it->second.table.IsValid()) resources.Release(it->second.table);
+            for (const auto page : it->second.pages) {
+                resources.Release(page);
+            }
+            if (it->second.table.IsValid()) {
+                resources.Release(it->second.table);
+            }
             state.streamBytes -= it->second.bytes;
             it = state.streams.erase(it);
         }
-        /// @note Under pressure, recycle previous-frame entries before admitting new pages.
+        // Under pressure, recycle previous-frame entries before admitting new pages.
         if (state.streamBytes >= STREAM_BUDGET - UPLOAD_BUDGET) {
             for (auto it = state.streams.begin(); it != state.streams.end();) {
                 if (frame - it->second.lastFrame < 3u) {
                     ++it;
                     continue;
                 }
-                for (const auto page : it->second.pages) resources.Release(page);
-                if (it->second.table.IsValid()) resources.Release(it->second.table);
+                for (const auto page : it->second.pages) {
+                    resources.Release(page);
+                }
+                if (it->second.table.IsValid()) {
+                    resources.Release(it->second.table);
+                }
                 state.streamBytes -= it->second.bytes;
                 it = state.streams.erase(it);
-                if (state.streamBytes < STREAM_BUDGET - UPLOAD_BUDGET) break;
+                if (state.streamBytes < STREAM_BUDGET - UPLOAD_BUDGET) {
+                    break;
+                }
             }
         }
     }
     const auto& source = *item.clusterLod;
-    if (source.streamPages.empty()) return false;
+    if (source.streamPages.empty()) {
+        return false;
+    }
     const uint64_t key = (static_cast<uint64_t>(item.vertexBuffer.gen) << 32u) | item.vertexBuffer.id;
     auto& stream = state.streams[key];
     if (stream.source.lock() != item.clusterLod) {
-        for (const auto page : stream.pages) resources.Release(page);
-        if (stream.table.IsValid()) resources.Release(stream.table);
+        for (const auto page : stream.pages) {
+            resources.Release(page);
+        }
+        if (stream.table.IsValid()) {
+            resources.Release(stream.table);
+        }
         state.streamBytes -= stream.bytes;
         stream = {};
         stream.source = item.clusterLod;
@@ -171,22 +188,32 @@ bool PrepareClusterPages(ResourceManager& resources, IRenderer& renderer, Meshle
     stream.lastFrame = frame;
     while (stream.nextPage < source.streamPages.size()) {
         const auto& page = source.streamPages[stream.nextPage];
-        if (page.depth > desiredDepth) break;
+        if (page.depth > desiredDepth) {
+            break;
+        }
         const size_t bytes = page.words.size() * sizeof(uint32_t);
-        if (bytes > STREAM_BUDGET - state.streamBytes || bytes > UPLOAD_BUDGET - state.uploadedBytes) break;
+        if (bytes > STREAM_BUDGET - state.streamBytes || bytes > UPLOAD_BUDGET - state.uploadedBytes) {
+            break;
+        }
         const auto handle = resources.CreateGpuLocalStructuredBuffer(page.words.data(),
             static_cast<uint32_t>(page.words.size()), sizeof(uint32_t));
-        if (!handle.IsValid()) break;
+        if (!handle.IsValid()) {
+            break;
+        }
         stream.pages.push_back(handle);
         ++stream.nextPage;
         stream.bytes += bytes;
         state.streamBytes += bytes;
         state.uploadedBytes += bytes;
     }
-    if (stream.nextPage == 0) return false;
+    if (stream.nextPage == 0) {
+        return false;
+    }
     uint32_t residentDepth = source.streamPages[stream.nextPage - 1].depth;
     if (stream.nextPage < source.streamPages.size() && source.streamPages[stream.nextPage].depth == residentDepth) {
-        if (residentDepth == 0) return false;
+        if (residentDepth == 0) {
+            return false;
+        }
         --residentDepth;
     }
     const auto nodeCount = static_cast<uint32_t>(source.streamTable.size() - source.meshletCount * 3u);
@@ -195,11 +222,15 @@ bool PrepareClusterPages(ResourceManager& resources, IRenderer& renderer, Meshle
             while (stream.descriptors.size() < stream.pages.size()) {
                 const auto* buffer = resources.Get(stream.pages[stream.descriptors.size()]);
                 const auto descriptor = buffer ? buffer->GetBindlessIndex() : INVALID_BINDLESS_INDEX;
-                if (descriptor == INVALID_BINDLESS_INDEX) break;
+                if (descriptor == INVALID_BINDLESS_INDEX) {
+                    break;
+                }
                 stream.descriptors.push_back(descriptor);
             }
         });
-        if (stream.descriptors.size() != stream.pages.size()) return false;
+        if (stream.descriptors.size() != stream.pages.size()) {
+            return false;
+        }
         auto rows = source.streamTable;
         for (size_t i = nodeCount; i < rows.size(); i += 3) {
             const uint32_t page = rows[i];
@@ -208,14 +239,18 @@ bool PrepareClusterPages(ResourceManager& resources, IRenderer& renderer, Meshle
         }
         const auto table = resources.CreateGpuLocalStructuredBuffer(rows.data(),
             static_cast<uint32_t>(rows.size()), sizeof(uint32_t));
-        if (!table.IsValid()) return false;
-        if (stream.table.IsValid()) resources.Release(stream.table);
+        if (!table.IsValid()) {
+            return false;
+        }
+        if (stream.table.IsValid()) {
+            resources.Release(stream.table);
+        }
         stream.table = table;
         stream.tableDepth = residentDepth;
     }
     constants.nodeCount = nodeCount;
     constants.residentDepth = residentDepth;
-    draw.auxiliaryPsBuffers[0] = stream.table;
+    draw.auxiliaryPsBuffers[AuxiliaryPixelBufferIndex(srv::MESHLET_PAGE_TABLE)] = stream.table;
     draw.meshletPages = stream.pages;
     return true;
 }
@@ -256,14 +291,16 @@ bool HasMeaningfulFrustumClipping(const MeshletGeometry& geometry,
     const math::Vector3 localMax{geometry.boundsMax[0], geometry.boundsMax[1], geometry.boundsMax[2]};
     if (!std::isfinite(localMin.x) || !std::isfinite(localMin.y) || !std::isfinite(localMin.z)
         || !std::isfinite(localMax.x) || !std::isfinite(localMax.y) || !std::isfinite(localMax.z)
-        || localMin.x > localMax.x || localMin.y > localMax.y || localMin.z > localMax.z)
+        || localMin.x > localMax.x || localMin.y > localMax.y || localMin.z > localMax.z) {
         return false;
+    }
 
     const math::Vector3 localCenter = (localMin + localMax) * 0.5f;
     const math::Vector3 localExtents = (localMax - localMin) * 0.5f;
     if (std::abs(world.m[3][0]) > 1.0e-6f || std::abs(world.m[3][1]) > 1.0e-6f
-        || std::abs(world.m[3][2]) > 1.0e-6f || std::abs(world.m[3][3] - 1.0f) > 1.0e-6f)
+        || std::abs(world.m[3][2]) > 1.0e-6f || std::abs(world.m[3][3] - 1.0f) > 1.0e-6f) {
         return false;
+    }
     const math::Vector4 worldCenter4 = world * math::Vector4{localCenter, 1.0f};
     const auto projectRow = [&](size_t row) {
         return std::abs(world.m[row][0]) * localExtents.x
@@ -274,8 +311,9 @@ bool HasMeaningfulFrustumClipping(const MeshletGeometry& geometry,
     math::Vector3 worldCenter{worldCenter4.x, worldCenter4.y, worldCenter4.z};
     if (!std::isfinite(worldCenter.x) || !std::isfinite(worldCenter.y) || !std::isfinite(worldCenter.z)
         || !std::isfinite(worldCenter4.w) || !std::isfinite(worldExtents.x)
-        || !std::isfinite(worldExtents.y) || !std::isfinite(worldExtents.z))
+        || !std::isfinite(worldExtents.y) || !std::isfinite(worldExtents.z)) {
         return false;
+    }
 
     const float boundsMagnitude = (std::max)({
         std::abs(worldCenter.x), std::abs(worldCenter.y), std::abs(worldCenter.z),
@@ -289,24 +327,31 @@ bool HasMeaningfulFrustumClipping(const MeshletGeometry& geometry,
         const float normalLengthSquared = plane.normal.LengthSq();
         if (!std::isfinite(plane.normal.x) || !std::isfinite(plane.normal.y)
             || !std::isfinite(plane.normal.z) || !std::isfinite(plane.distance)
-            || !std::isfinite(normalLengthSquared) || normalLengthSquared <= 1.0e-20f)
+            || !std::isfinite(normalLengthSquared) || normalLengthSquared <= 1.0e-20f) {
             return false;
+        }
         const float support = std::abs(plane.normal.x) * worldExtents.x
             + std::abs(plane.normal.y) * worldExtents.y
             + std::abs(plane.normal.z) * worldExtents.z;
         const float centerDistance = math::Vector3::Dot(plane.normal, worldCenter) + plane.distance;
-        if (!std::isfinite(support) || !std::isfinite(centerDistance)) return false;
+        if (!std::isfinite(support) || !std::isfinite(centerDistance)) {
+            return false;
+        }
         if (support <= 1.0e-20f) {
-            if (centerDistance < 0.0f) return true;
+            if (centerDistance < 0.0f) {
+                return true;
+            }
             continue;
         }
         const float clippedFraction = (support - centerDistance) / (2.0f * support);
-        if (std::isfinite(clippedFraction) && clippedFraction >= kMinimumMeshletClippedFraction) return true;
+        if (std::isfinite(clippedFraction) && clippedFraction >= kMinimumMeshletClippedFraction) {
+            return true;
+        }
     }
     return false;
 }
 
-} /// @note namespace
+} // namespace
 
 bool IsMeshletDrawCandidate(const RenderMeshItem& item, bool skinned, MeshletDrawPass pass)
 {
@@ -316,7 +361,9 @@ bool IsMeshletDrawCandidate(const RenderMeshItem& item, bool skinned, MeshletDra
         || !item.material.valid
         || item.vertexCount == 0 || item.indexCount < (item.clusterLod ? CLUSTER_MIN_TRIANGLES : kMeshletMinimumTriangleCount) * 3u
         || item.indexCount % 3u != 0 || item.vertexPositionOffset != 0
-        || !HasStandardPbrVariant(item)) return false;
+        || !HasStandardPbrVariant(item)) {
+        return false;
+    }
 
     if (pass == MeshletDrawPass::GBUFFER) {
         return (skinned || item.vertexStride == sizeof(Vertex))
@@ -351,16 +398,23 @@ bool PrepareMeshletDraw(ResourceManager& resources, IRenderer& renderer,
                            bool forceMesh, const MeshletClusterView* clusterView, const GpuHiZ* hierarchy,
                            const MeshletClusterInstances* instances)
 {
-    if (!renderer.SupportsMeshShaders() || !IsMeshletDrawCandidate(item, skinned, pass)) return false;
-    if (!forceMesh && !frustumCullingEnabled) return false;
+    if (!renderer.SupportsMeshShaders() || !IsMeshletDrawCandidate(item, skinned, pass)) {
+        return false;
+    }
+    if (!forceMesh && !frustumCullingEnabled) {
+        return false;
+    }
 
     const bool tryClusters = clusterView && clusterView->width > 0 && clusterView->height > 0
         && inOut.startIndex == 0 && inOut.baseVertex == 0 && HasClusterLodMaterial(item);
     if (skinned && (!tryClusters || !(clusterView->skinDisplacement >= 0.0f)
-        || !std::isfinite(clusterView->skinDisplacement) || item.skinningVertexBuffer != item.vertexBuffer)) return false;
-    const float leafWindStrength = MaterialGeometryParameter(item.material, 68u);
-    if (!std::isfinite(leafWindStrength) || (pass == MeshletDrawPass::GBUFFER && leafWindStrength > 0.0f && !tryClusters))
+        || !std::isfinite(clusterView->skinDisplacement) || item.skinningVertexBuffer != item.vertexBuffer)) {
         return false;
+    }
+    const float leafWindStrength = MaterialGeometryParameter(item.material, 68u);
+    if (!std::isfinite(leafWindStrength) || (pass == MeshletDrawPass::GBUFFER && leafWindStrength > 0.0f && !tryClusters)) {
+        return false;
+    }
     MeshletDrawResources& state = StateFor(resources);
     DrawCall meshCall = inOut;
     MeshletGeometryConstants pageConstants;
@@ -380,45 +434,62 @@ bool PrepareMeshletDraw(ResourceManager& resources, IRenderer& renderer,
         const uint32_t desiredDepth = depth > 1.0e-6f && screenScale * item.clusterLod->streamRootError / depth < 0.5f
             ? 0u : UINT32_MAX;
         paged = PrepareClusterPages(resources, renderer, state, item, desiredDepth, meshCall, pageConstants);
-        if (!paged) return false;
+        if (!paged) {
+            return false;
+        }
     }
     MeshletGeometry geometry;
     const bool clustered = tryClusters && resources.Meshlets().Prepare(resources, item.vertexBuffer, item.indexBuffer,
         item.vertexCount, item.vertexStride, item.indexCount, geometry, item.clusterLod.get(), paged);
-    if (paged && !clustered) return false;
+    if (paged && !clustered) {
+        return false;
+    }
     if (!clustered && (instances || skinned || pass == MeshletDrawPass::SHADOW_MASKED
-        || (pass == MeshletDrawPass::GBUFFER && leafWindStrength > 0.0f))) return false;
-    if (!clustered && item.indexCount < kMeshletMinimumTriangleCount * 3u) return false;
+        || (pass == MeshletDrawPass::GBUFFER && leafWindStrength > 0.0f))) {
+        return false;
+    }
+    if (!clustered && item.indexCount < kMeshletMinimumTriangleCount * 3u) {
+        return false;
+    }
     if (!clustered && !resources.Meshlets().Prepare(resources, item.vertexBuffer, item.indexBuffer,
-        item.vertexCount, item.vertexStride, item.indexCount, geometry)) return false;
+        item.vertexCount, item.vertexStride, item.indexCount, geometry)) {
+        return false;
+    }
     if (!geometry.blob.IsValid() || geometry.meshletCount == 0
         || geometry.meshletCount > kMeshletMaximumDispatchGroups
         || geometry.vertexCount != item.vertexCount || geometry.vertexStride != item.vertexStride
-        || geometry.indexCount != item.indexCount) return false;
+        || geometry.indexCount != item.indexCount) {
+        return false;
+    }
 
     BufferResourceMetadata vertexMetadata;
     BufferResourceMetadata blobMetadata;
     if (!resources.GetBufferMetadata(item.vertexBuffer, vertexMetadata)
         || !resources.GetBufferMetadata(geometry.blob, blobMetadata)
         || vertexMetadata.stride != item.vertexStride
-        || blobMetadata.sizeBytes < static_cast<uint64_t>(geometry.meshletCount) * sizeof(MeshletDescriptor))
+        || blobMetadata.sizeBytes < static_cast<uint64_t>(geometry.meshletCount) * sizeof(MeshletDescriptor)) {
         return false;
+    }
     const uint64_t vertexBytes = static_cast<uint64_t>(item.vertexCount) * item.vertexStride;
-    if (vertexBytes > vertexMetadata.sizeBytes || vertexBytes > std::numeric_limits<uint32_t>::max())
+    if (vertexBytes > vertexMetadata.sizeBytes || vertexBytes > std::numeric_limits<uint32_t>::max()) {
         return false;
+    }
 
     const math::Frustum frustum = math::Frustum::FromViewProjection(viewProjection);
     MeshletGeometryConstants constants;
     const bool validFrustum = BuildConstants(frustum, geometry.meshletCount,
         skinned && inOut.vertexBuffer != item.vertexBuffer ? sizeof(Vertex) : geometry.vertexStride,
         frustumCullingEnabled, constants);
-    if (!forceMesh && (!validFrustum || (!clustered && !HasMeaningfulFrustumClipping(geometry, world, frustum))))
+    if (!forceMesh && (!validFrustum || (!clustered && !HasMeaningfulFrustumClipping(geometry, world, frustum)))) {
         return false;
+    }
     if (clustered) {
         const auto localToClip = clusterView->viewProjection * world;
         for (size_t row = 0; row < 4; ++row) {
             for (size_t column = 0; column < 4; ++column) {
-                if (!std::isfinite(localToClip.m[row][column])) return false;
+                if (!std::isfinite(localToClip.m[row][column])) {
+                    return false;
+                }
                 constants.clusterClipRows[row][column] = localToClip.m[row][column];
             }
         }
@@ -436,21 +507,29 @@ bool PrepareMeshletDraw(ResourceManager& resources, IRenderer& renderer,
         if (skinned) {
             constants.cullingEnabled = 0u;
             const auto& vp = clusterView->viewProjection;
-            for (size_t row = 0; row < constants.clipPadding.size(); ++row)
+            for (size_t row = 0; row < constants.clipPadding.size(); ++row) {
                 constants.clipPadding[row] = math::Vector3{vp.m[row][0], vp.m[row][1], vp.m[row][2]}.Length()
                     * clusterView->skinDisplacement;
+            }
             constants.vertexSkinning = inOut.vertexBuffer == item.vertexBuffer ? 1u : 0u;
         }
     }
     const bool useHiZ = clustered && !skinned && pass == MeshletDrawPass::GBUFFER && hierarchy
         && hierarchy->reversedZ && hierarchy->width && hierarchy->height && resources.Get(hierarchy->depths);
-    if (useHiZ) constants.hizSize = {hierarchy->width, hierarchy->height};
+    if (useHiZ) {
+        constants.hizSize = {hierarchy->width, hierarchy->height};
+    }
 
     const ResourceHandle<ShaderTag> meshShader = MeshletShader(resources, state, pass);
-    if (!meshShader.IsValid()) return false;
-    if (!state.geometryConstants.IsValid())
+    if (!meshShader.IsValid()) {
+        return false;
+    }
+    if (!state.geometryConstants.IsValid()) {
         state.geometryConstants = resources.CreateConstantBuffer(sizeof(MeshletGeometryConstants));
-    if (!state.geometryConstants.IsValid()) return false;
+    }
+    if (!state.geometryConstants.IsValid()) {
+        return false;
+    }
     resources.Update(state.geometryConstants, &constants, sizeof(constants));
 
     meshCall.vertexBuffer = {};
@@ -458,13 +537,17 @@ bool PrepareMeshletDraw(ResourceManager& resources, IRenderer& renderer,
     meshCall.startIndex = 0;
     meshCall.baseVertex = 0;
     meshCall.shader = meshShader;
-    meshCall.constantBuffers[13] = state.geometryConstants;
-    meshCall.instanceBuffer = constants.vertexSkinning ? inOut.vsBuffers[0] : ResourceHandle<StructuredBufferTag>{};
+    meshCall.constantBuffers[cb::MESHLET_GEOMETRY] = state.geometryConstants;
+    meshCall.instanceBuffer = constants.vertexSkinning ? inOut.vsBuffers[VertexBufferIndex(vsSlot::BUFFER0)] : ResourceHandle<StructuredBufferTag>{};
     meshCall.vsBuffers = {};
-    if (useHiZ) meshCall.auxiliaryPsBuffers[1] = hierarchy->depths;
-    if (instances) meshCall.instanceBuffer = instances->rows;
-    meshCall.vsRawBuffers[0] = skinned ? inOut.vertexBuffer : item.vertexBuffer;
-    meshCall.vsRawBuffers[1] = geometry.blob;
+    if (useHiZ) {
+        meshCall.auxiliaryPsBuffers[AuxiliaryPixelBufferIndex(srv::MESHLET_HIZ_DRAW)] = hierarchy->depths;
+    }
+    if (instances) {
+        meshCall.instanceBuffer = instances->rows;
+    }
+    meshCall.vsRawBuffers[VertexBufferIndex(vsSlot::BUFFER0)] = skinned ? inOut.vertexBuffer : item.vertexBuffer;
+    meshCall.vsRawBuffers[VertexBufferIndex(vsSlot::BUFFER1)] = geometry.blob;
     meshCall.indirectArguments = {};
     meshCall.indirectArgumentOffset = 0;
     meshCall.indirectCommandCount = 1;
@@ -483,33 +566,44 @@ bool QueueCompactedMeshletDraw(RenderPassContext& ctx, const DrawCall& draw, Mes
     FBZZ_PROFILE_SCOPE("Meshlet::Compact");
     auto& resources = ctx.resources;
     auto& state = StateFor(resources);
-    if (!ctx.renderer.SupportsIndirectDraw() || (!instances && draw.meshGroupCountX < 32u)) return false;
+    if (!ctx.renderer.SupportsIndirectDraw() || (!instances && draw.meshGroupCountX < 32u)) {
+        return false;
+    }
     const uint32_t candidates = draw.meshGroupCountX * (instances ? instances->capacity : 1u);
-    if (!state.compactShader.IsValid())
+    if (!state.compactShader.IsValid()) {
         state.compactShader = resources.LoadShader("Assets/Shaders/Pipeline/ClusterMeshletCompact.cs.hlsl");
-    if (!state.resetShader.IsValid())
+    }
+    if (!state.resetShader.IsValid()) {
         state.resetShader = resources.LoadShader("Assets/Shaders/Pipeline/ClusterMeshletReset.cs.hlsl");
+    }
     const auto ids = state.compactIds.Acquire(resources, instances ? 1u + candidates * 2u : candidates, sizeof(uint32_t));
     const auto args = state.compactArguments.Acquire(resources, 1, 3 * sizeof(uint32_t));
-    if (!state.compactShader.IsValid() || !state.resetShader.IsValid() || !ids.IsValid() || !args.IsValid()) return false;
+    if (!state.compactShader.IsValid() || !state.resetShader.IsValid() || !ids.IsValid() || !args.IsValid()) {
+        return false;
+    }
     ComputeCall reset;
     reset.shader = state.resetShader;
-    reset.constantBuffers[13] = draw.constantBuffers[13];
-    reset.uavBuffers[1] = args;
-    if (instances) reset.uavBuffers[0] = ids;
+    reset.constantBuffers[cb::MESHLET_GEOMETRY] = draw.constantBuffers[cb::MESHLET_GEOMETRY];
+    reset.uavBuffers[StructuredUavIndex(uav::MESHLET_DISPATCH)] = args;
+    if (instances) {
+        reset.uavBuffers[StructuredUavIndex(uav::MESHLET_VISIBLE)] = ids;
+    }
     ComputeCall compact;
     compact.shader = state.compactShader;
-    compact.constantBuffers[0] = draw.constantBuffers[0];
-    compact.constantBuffers[1] = draw.constantBuffers[1];
-    compact.constantBuffers[13] = draw.constantBuffers[13];
-    compact.srvRawBuffers[14] = draw.vsRawBuffers[1];
-    compact.srvBuffers[15] = draw.auxiliaryPsBuffers[0];
+    compact.constantBuffers[cb::CAMERA] = draw.constantBuffers[cb::CAMERA];
+    compact.constantBuffers[cb::OBJECT] = draw.constantBuffers[cb::OBJECT];
+    compact.constantBuffers[cb::MESHLET_GEOMETRY] = draw.constantBuffers[cb::MESHLET_GEOMETRY];
+    compact.srvRawBuffers[srv::MESHLET_RAW_DATA_CS] = draw.vsRawBuffers[VertexBufferIndex(vsSlot::BUFFER1)];
+    compact.srvBuffers[srv::MESHLET_PAGE_TABLE_CS] = draw.auxiliaryPsBuffers[AuxiliaryPixelBufferIndex(srv::MESHLET_PAGE_TABLE)];
     if (instances) {
-        compact.srvBuffers[15] = instances->rows;
-        compact.srvBuffers[29] = instances->ids;
-        compact.srvBuffers[30] = instances->indexedArguments;
-    } else if (pass == MeshletDrawPass::GBUFFER) compact.srvBuffers[29] = draw.auxiliaryPsBuffers[1];
-    compact.uavBuffers = {ids, args};
+        compact.srvBuffers[srv::MESHLET_INSTANCE_ROWS] = instances->rows;
+        compact.srvBuffers[srv::MESHLET_INSTANCE_IDS] = instances->ids;
+        compact.srvBuffers[srv::MESHLET_INDEXED_ARGUMENTS] = instances->indexedArguments;
+    } else if (pass == MeshletDrawPass::GBUFFER) {
+        compact.srvBuffers[srv::MESHLET_HIZ] = draw.auxiliaryPsBuffers[AuxiliaryPixelBufferIndex(srv::MESHLET_HIZ_DRAW)];
+    }
+    compact.uavBuffers[StructuredUavIndex(uav::MESHLET_VISIBLE)] = ids;
+    compact.uavBuffers[StructuredUavIndex(uav::MESHLET_DISPATCH)] = args;
     compact.dispatchX = (candidates + 31u) / 32u;
     DrawCall indirect = draw;
     indirect.meshletSelection = ids;
@@ -530,7 +624,7 @@ void CountMeshletDraw(RenderPassContext& ctx, const DrawCall& draw, MeshletDrawP
     }
 }
 
-} /// @note namespace
+} // namespace
 
 bool TryPrepareMeshletDraw(ResourceManager& resources, IRenderer& renderer,
     const math::Matrix4& viewProjection, const math::Matrix4& world, MeshletDrawPass pass,
@@ -545,7 +639,9 @@ ResourceHandle<ConstantBufferTag> MeshletWindFrame(RenderPassContext& ctx)
 {
     auto& resources = ctx.resources;
     auto& state = StateFor(resources);
-    if (!state.windFrame.IsValid()) state.windFrame = resources.CreateConstantBuffer(sizeof(PostProcCB));
+    if (!state.windFrame.IsValid()) {
+        state.windFrame = resources.CreateConstantBuffer(sizeof(PostProcCB));
+    }
     if (state.windFrame.IsValid() && state.windFrameStamp != resources.FrameStamp()) {
         PostProcCB wind{};
         wind.time = ctx.time;
@@ -557,26 +653,38 @@ ResourceHandle<ConstantBufferTag> MeshletWindFrame(RenderPassContext& ctx)
 
 void SubmitMeshletDraw(RenderPassContext& ctx, const DrawCall& draw, MeshletDrawPass pass)
 {
-    if (QueueCompactedMeshletDraw(ctx, draw, pass, draw, nullptr)) CountMeshletDraw(ctx, draw, pass);
-    else if (pass == MeshletDrawPass::GBUFFER) SubmitCounted(ctx, draw);
-    else SubmitCountedShadow(ctx, draw);
+    if (QueueCompactedMeshletDraw(ctx, draw, pass, draw, nullptr)) {
+        CountMeshletDraw(ctx, draw, pass);
+    }
+    else if (pass == MeshletDrawPass::GBUFFER) {
+        SubmitCounted(ctx, draw);
+    }
+    else {
+        SubmitCountedShadow(ctx, draw);
+    }
 }
 
 bool TrySubmitInstancedClusterDraw(RenderPassContext& ctx, const math::Matrix4& rasterViewProjection,
     const MeshletClusterView& view, const RenderMeshItem& item, MeshletDrawPass pass,
     const DrawCall& indexedDraw, const MeshletClusterInstances& instances)
 {
-    /// @note Bound transient memory and preserve the existing resident draw for oversized Cartesian products.
+    // Bound transient memory and preserve the existing resident draw for oversized Cartesian products.
     constexpr uint32_t MAX_PAIR_CANDIDATES = 512u * 1024u;
     if (!item.clusterLod || !instances.capacity || !ctx.renderer.SupportsIndirectDraw()
         || !instances.rows.IsValid() || !instances.ids.IsValid()
-        || item.clusterLod->meshletCount > MAX_PAIR_CANDIDATES / instances.capacity) return false;
+        || item.clusterLod->meshletCount > MAX_PAIR_CANDIDATES / instances.capacity) {
+        return false;
+    }
     auto draw = indexedDraw;
     if (!PrepareMeshletDraw(ctx.resources, ctx.renderer, rasterViewProjection, math::Matrix4::Identity(),
-            pass, item, false, draw, ctx.frustumCullingEnabled, false, &view, nullptr, &instances)) return false;
-    if (!QueueCompactedMeshletDraw(ctx, draw, pass, indexedDraw, &instances)) return false;
+            pass, item, false, draw, ctx.frustumCullingEnabled, false, &view, nullptr, &instances)) {
+        return false;
+    }
+    if (!QueueCompactedMeshletDraw(ctx, draw, pass, indexedDraw, &instances)) {
+        return false;
+    }
     CountMeshletDraw(ctx, indexedDraw, pass);
     return true;
 }
 
-} /// @note namespace fbzz::renderer
+} // namespace fbzz::renderer

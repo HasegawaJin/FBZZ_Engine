@@ -106,10 +106,10 @@ public:
 
     /// @brief 1 つの view/batch の候補を検査し、GPU へ選択と間接引数生成を記録する。
     /// @return Dispatch を記録できた場合は true。入力・容量・backend・資源が無効なら false。
-    /// @param candidates 同一 VB / IB batch の候補。配列順を引数出力にも維持する。
-    /// @param indexCapacityElements 共有 index buffer の有効 index 数。
-    /// @param vertexCapacityElements 共有 vertex buffer の有効 vertex 数。
-    /// @param out 成功時だけ更新する Dispatch 出力。
+    /// @param[in] candidates 同一 VB / IB batch の候補。配列順を引数出力にも維持する。
+    /// @param[in] indexCapacityElements 共有 index buffer の有効 index 数。
+    /// @param[in] vertexCapacityElements 共有 vertex buffer の有効 vertex 数。
+    /// @param[out] out 成功時だけ更新する Dispatch 出力。
     /// @see https://learn.microsoft.com/en-us/windows/win32/direct3d12/indirect-drawing - ExecuteIndirect argument records.
     [[nodiscard]] FBZZ_GRAPHICS_API bool Prepare(IRenderer& renderer, ResourceManager& resources,
         const GpuGeometrySelectionView& view, std::span<const GpuGeometryCandidate> candidates,
@@ -129,4 +129,4 @@ private:
     std::unique_ptr<State> m_state;
 };
 
-} /// @note namespace fbzz::renderer
+} // namespace fbzz::renderer

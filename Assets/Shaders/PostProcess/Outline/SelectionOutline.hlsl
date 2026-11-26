@@ -1,17 +1,18 @@
-// FBZZ Engine
-// PostProcess/Outline/SelectionOutline.hlsl | PostProcess
-// Pixel-width editor selection outline from a selected-object mask
+/// @file    SelectionOutline.hlsl
+/// @brief   選択マスクからピクセル幅の輪郭線を描く。
+/// @author  Hasegawa Jin
+/// @date    2026-05-26
 
 #include "Common/Constants.hlsli"
 #include "Common/Fullscreen.hlsli"
 #include "Platform/Backend.hlsli"
 #include "Common/BindlessIndices.hlsli"
 
-FBZZ_TEX2D(texLDR, TEX_GBUFFER0_SLOT);
-FBZZ_TEX2D(texSelectionMask, TEX_GBUFFER1_SLOT);
+FBZZ_TEX2D(texLDR, SRV_POST_COLOR_SLOT);
+FBZZ_TEX2D(texSelectionMask, SRV_MASK_COLOR_SLOT);
 FBZZ_TEX2D_T(float, texSceneDepth, TEX_DEPTH_SLOT);
-FBZZ_TEX2D_T(float, texSelectionDepth, TEX_SHADOW_SLOT);
-// 全画面フェッチなので clamp 必須 (s0 は DX12 では WRAP)。
+FBZZ_TEX2D_T(float, texSelectionDepth, SRV_MASK_DEPTH_SLOT);
+/// @note 全画面フェッチなので clamp 必須 (s0 は DX12 では WRAP)。
 SamplerState       sampLinear        : register(SAMPLER_LINEAR_CLAMP);
 
 cbuffer OutlineConstants : register(CB_MATERIAL)
@@ -38,9 +39,9 @@ float4 PSMain(FBZZFullscreenVertex p) : SV_Target0
     /// @note カメラ深度は Reversed-Z (手前ほど大きい)。最遠 0 から始めて最も手前 (max) を取る。
     float selectedDepth = 0.0f;
 
-    // 走査範囲は radius (= ceil(radiusPx)) まで。半径外は下の distPx 判定で必ず弾かれるので
-    // 出力は固定 33x33 走査と完全に一致する。
-    // WHY: 固定 -16..16 だと輪郭幅 1px でも 1 ピクセルあたり 1089 回ループを回していた。
+    /// @note 走査範囲は radius (= ceil(radiusPx)) まで。半径外は下の distPx 判定で必ず弾かれるので
+    /// @note 出力は固定 33x33 走査と完全に一致する。
+    /// @note 固定 -16..16 だと輪郭幅 1px でも 1 ピクセルあたり 1089 回ループを回していた。
     [loop]
     for (int y = -radius; y <= radius; ++y)
     {

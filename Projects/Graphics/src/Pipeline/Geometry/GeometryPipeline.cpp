@@ -27,7 +27,9 @@ public:
     void Execute(PassResources& resources, RenderPassContext& ctx) override
     {
         const auto target = resources.Target(OCCLUDER_DEPTH);
-        if (!ctx.resources.Get(target) || !IsViewOcclusionCurrent(ctx)) return;
+        if (!ctx.resources.Get(target) || !IsViewOcclusionCurrent(ctx)) {
+            return;
+        }
         ctx.renderer.ClearDepth();
         const bool terrainSubmitted = DrawTerrainOccluderDepth(ctx);
         const bool meshSubmitted = DrawOpaqueOccluderDepth(ctx);
@@ -46,11 +48,14 @@ public:
 
     void Execute(PassResources& resources, RenderPassContext& ctx) override
     {
-        if (!ctx.gpuOccluderDepthReady || !IsViewOcclusionCurrent(ctx)) return;
+        if (!ctx.gpuOccluderDepthReady || !IsViewOcclusionCurrent(ctx)) {
+            return;
+        }
         const auto hierarchy = BuildGpuHiZ(ctx.renderer, ctx.resources, resources.Target(OCCLUDER_DEPTH));
         if (hierarchy.reversedZ && hierarchy.width == ctx.width && hierarchy.height == ctx.height
-            && hierarchy.depths.IsValid() && IsViewOcclusionCurrent(ctx))
+            && hierarchy.depths.IsValid() && IsViewOcclusionCurrent(ctx)) {
             ctx.resourceRegistry.BindStructuredBuffer(OCCLUSION_HIZ, hierarchy.depths);
+        }
     }
 };
 
@@ -89,9 +94,9 @@ void BuildForwardOpaque(RenderPipeline& pipeline, bool depthNormalPrepass)
 {
     if (depthNormalPrepass) {
         pipeline.AddPass<GBufferPass>(GBufferPassMode::DepthNormalPrepass);
-        /// @note 地形も AO の遮蔽者・受け手になるためプリパスへ含める。
+        // 地形も AO の遮蔽者・受け手になるためプリパスへ含める。
         pipeline.AddPass<TerrainRenderPass>(TerrainDrawMode::GBuffer);
-        /// @note Forward は各材質が遮蔽を読むため、本描画前に結果を揃える。
+        // Forward は各材質が遮蔽を読むため、本描画前に結果を揃える。
         BuildScreenSpaceOcclusion(pipeline);
     }
 
@@ -113,33 +118,40 @@ void BuildDeferredOpaque(RenderPipeline& pipeline, const std::function<void()>& 
     pipeline.AddPass<DeferredDepthCopyPass>();
     BuildScreenSpaceOcclusion(pipeline);
     if (hybridScreenFirst) {
-        /// @note SSR の入力は baseline の一度目の照明。最終 resolve の RT/SSR を循環参照しない。
+        // SSR の入力は baseline の一度目の照明。最終 resolve の RT/SSR を循環参照しない。
         pipeline.AddPass<DeferredLightingPass>(true);
         BuildSkyBackground(pipeline);
         pipeline.AddPass<SSRPass>();
     }
-    if (deferredSurfaceReady) deferredSurfaceReady();
+    if (deferredSurfaceReady) {
+        deferredSurfaceReady();
+    }
     pipeline.AddPass<DeferredLightingPass>();
-    /// @note 雲は前景にも合成するため baseline へ入れず、最終照明後に一度だけ重ねる。
-    if (hybridScreenFirst) pipeline.AddPass<VolumetricCloudPass>();
-    else BuildSkyComposition(pipeline);
+    // 雲は前景にも合成するため baseline へ入れず、最終照明後に一度だけ重ねる。
+    if (hybridScreenFirst) {
+        pipeline.AddPass<VolumetricCloudPass>();
+    }
+    else {
+        BuildSkyComposition(pipeline);
+    }
     pipeline.AddPass<DeferredSkinnedForwardPass>();
     pipeline.AddPass<FiberRenderPass>();
-    /// @note SSR は不透明 HDR から解決し、透明色を反射元や反射の受け手へ混入させない。
+    // SSR は不透明 HDR から解決し、透明色を反射元や反射の受け手へ混入させない。
     if (!hybridScreenFirst) {
         pipeline.AddPass<SSRPass>();
         pipeline.AddPass<SSRResolvePass>();
     }
 }
 
-} /// @note namespace
+} // namespace
 
 void BuildGeometryPreparation(RenderPipeline& pipeline, bool clusteredEnabled)
 {
-    /// @note スキニング出力は現在グラフの論理資源でないため、影より先の登録を保つ。
+    // スキニング出力は現在グラフの論理資源でないため、影より先の登録を保つ。
     pipeline.AddPass<SkinningComputePass>();
-    if (clusteredEnabled)
+    if (clusteredEnabled) {
         pipeline.AddPass<ClusterLightCullPass>();
+    }
     pipeline.AddPass<LightCookiePass>();
     pipeline.AddPass<ShadowPass>();
     pipeline.AddPass<WaterMediumAtlasPass>();
@@ -151,10 +163,12 @@ void BuildGeometryPipeline(RenderPipeline& pipeline, const renderer::OpaqueRende
     pipeline.AddPass<OccluderDepthPass>();
     pipeline.AddPass<OcclusionHiZPass>();
     pipeline.AddPass<MeshOcclusionPass>();
-    if (plan.UsesDeferredLighting())
+    if (plan.UsesDeferredLighting()) {
         BuildDeferredOpaque(pipeline, deferredSurfaceReady, hybridScreenFirst);
-    else
+    }
+    else {
         BuildForwardOpaque(pipeline, plan.HasScreenSpaceInputs());
+    }
 }
 
 void BuildGeometryTransparency(RenderPipeline& pipeline, const renderer::OpaqueRenderPlan& plan)
@@ -165,11 +179,11 @@ void BuildGeometryTransparency(RenderPipeline& pipeline, const renderer::OpaqueR
 void BuildWaterComposition(RenderPipeline& pipeline)
 {
     pipeline.AddPass<WaterInterfacePass>();
-    /// @note 水面の後で光芒・コースティクスを足すと、水底への効果が水面を覆う。
+    // 水面の後で光芒・コースティクスを足すと、水底への効果が水面を覆う。
     pipeline.AddPass<VolumetricLightPass>();
     pipeline.AddPass<WaterCausticsPass>();
     pipeline.AddPass<WaterRenderPass>();
     pipeline.AddPass<ForwardTransparentPass>(false, true);
 }
 
-} /// @note namespace fbzz::renderer
+} // namespace fbzz::renderer

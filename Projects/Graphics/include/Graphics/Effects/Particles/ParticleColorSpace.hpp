@@ -17,9 +17,9 @@ namespace fbzz::renderer {
 /// @note 等間隔で動くため色相を大きく回すランプで破綻しない。用途で使い分ける。
 /// @note 値は Assets/Shaders/Rendering/ParticleCommon.hlsli の FBZZ_PGRAD_* と一致させること。
 enum class ParticleColorSpace : uint8_t {
-    Gamma  = 0, ///< @note オーサリング値をそのまま線形補間 (従来の挙動)
-    Linear = 1, ///< @note リニア空間で補間
-    Oklab  = 2, ///< @note 知覚的に等間隔な OkLab で補間
+    Gamma  = 0, ///< オーサリング値をそのまま線形補間 (従来の挙動)
+    Linear = 1, ///< リニア空間で補間
+    Oklab  = 2, ///< 知覚的に等間隔な OkLab で補間
 };
 
 /// @note パーティクルの色をオーサリング空間 (sRGB) からリニアへ。
@@ -108,17 +108,19 @@ inline math::Vector3 ParticleCieXyzBar(float nanometres)
 /// @note プランクの法則 (分光放射輝度)。λ は nm、戻り値は相対値でよいので定数倍は省く。
 inline float ParticlePlanckRadiance(float nanometres, float kelvin)
 {
-    /// @note Planck
+    // Planck
     constexpr double h = 6.62607015e-34;
-    /// @note 光速
+    // 光速
     constexpr double c = 2.99792458e8;
-    /// @note Boltzmann
+    // Boltzmann
     constexpr double kB = 1.380649e-23;
     const double lambda = static_cast<double>(nanometres) * 1.0e-9;
     const double l5 = lambda * lambda * lambda * lambda * lambda;
     const double exponent = (h * c) / (lambda * kB * static_cast<double>(kelvin));
-    /// @note exp のオーバーフローを避ける。指数が大きい領域は放射がほぼ 0 なので切ってよい。
-    if (exponent > 700.0) return 0.0f;
+    // exp のオーバーフローを避ける。指数が大きい領域は放射がほぼ 0 なので切ってよい。
+    if (exponent > 700.0) {
+        return 0.0f;
+    }
     return static_cast<float>((2.0 * h * c * c) / (l5 * (std::exp(exponent) - 1.0)));
 }
 
@@ -129,23 +131,25 @@ inline math::Vector3 ParticleBlackbodyChroma(float kelvin)
 {
     const float clamped = std::clamp(kelvin, 500.0f, 40000.0f);
     math::Vector3 xyz = math::Vector3::ZERO;
-    /// @note 5nm 刻みの矩形積分。可視域の端は寄与が小さいので、これで十分な精度が出る。
+    // 5nm 刻みの矩形積分。可視域の端は寄与が小さいので、これで十分な精度が出る。
     constexpr float kStep = 5.0f;
     for (float nm = 380.0f; nm <= 780.0f; nm += kStep) {
         const float radiance = ParticlePlanckRadiance(nm, clamped);
         const math::Vector3 bar = ParticleCieXyzBar(nm);
         xyz = xyz + bar * (radiance * kStep);
     }
-    /// @note CIE XYZ → リニア sRGB (Rec.709 原色 / D65 白色点)
+    // CIE XYZ → リニア sRGB (Rec.709 原色 / D65 白色点)
     math::Vector3 rgb = {
          3.2404542f * xyz.x - 1.5371385f * xyz.y - 0.4985314f * xyz.z,
         -0.9692660f * xyz.x + 1.8760108f * xyz.y + 0.0415560f * xyz.z,
          0.0556434f * xyz.x - 0.2040259f * xyz.y + 1.0572252f * xyz.z
     };
-    /// @note 色域外の負値は最も近い表現可能色へ寄せる (低色温度で B が負になる)。
+    // 色域外の負値は最も近い表現可能色へ寄せる (低色温度で B が負になる)。
     rgb = { (std::max)(rgb.x, 0.0f), (std::max)(rgb.y, 0.0f), (std::max)(rgb.z, 0.0f) };
     const float peak = (std::max)(rgb.x, (std::max)(rgb.y, rgb.z));
-    if (peak <= 1.0e-8f) return { 1.0f, 1.0f, 1.0f };
+    if (peak <= 1.0e-8f) {
+        return { 1.0f, 1.0f, 1.0f };
+    }
     return rgb * (1.0f / peak);
 }
 
@@ -162,4 +166,4 @@ inline math::Vector3 ParticleBlackbodyLinear(float kelvin, float referenceKelvin
     return chroma * (radiance * (std::max)(intensity, 0.0f));
 }
 
-} /// @note namespace fbzz::renderer
+} // namespace fbzz::renderer

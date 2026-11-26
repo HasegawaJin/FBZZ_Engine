@@ -11,11 +11,11 @@
 #include "Rendering/Underwater.hlsli"
 #include "Rendering/WaterLocalLights.hlsli"
 
-FBZZ_TEX2D_T(float, texDepth, 7);
-FBZZ_TEX2D_T(float, texShadow, 8);
-FBZZ_TEX2D_T(float4, texWaterInterface, 13);
-SamplerComparisonState sampShadow : register(s1);
-FBZZ_RWTEX2D_T(float4, OutputVolumetric, 4);
+FBZZ_TEX2D_T(float, texDepth, TEX_DEPTH_SLOT);
+FBZZ_TEX2D_T(float, texShadow, TEX_SHADOW_SLOT);
+FBZZ_TEX2D_T(float4, texWaterInterface, SRV_WATER_INTERFACE_SLOT);
+SamplerComparisonState sampShadow : register(SAMPLER_SHADOW);
+FBZZ_RWTEX2D_T(float4, OutputVolumetric, UAV_VOLUMETRIC_SLOT);
 
 /// @brief 単位立体角あたりの Henyey-Greenstein 散乱確率。
 /// @pre g の絶対値は 1 未満。
@@ -259,7 +259,7 @@ float3 FBZZ_IntegrateSharedWaterLight(float3 origin, float3 rayDir, float endpoi
     const float temporalPhase = frac(taaOffsetPx.x * 1.61803399f + taaOffsetPx.y * 2.41421356f);
     const float jitter = frac(InterleavedGradientNoise(float2(fullPixel)) + temporalPhase);
     const float3 V = -rayDir;
-    const bool sunShadowAvailable = FBZZ_WaterShadowResourceAvailable(texShadow, 8u);
+    const bool sunShadowAvailable = FBZZ_WaterShadowResourceAvailable(texShadow, TEX_SHADOW_SLOT);
     const float lightLength = length(lightDir);
     const float3 L = lightLength > 1.0e-5f ? -lightDir / lightLength : 0.0f;
     const float3 incidentAir = -L;

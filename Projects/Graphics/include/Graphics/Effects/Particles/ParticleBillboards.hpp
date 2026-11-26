@@ -31,8 +31,8 @@ struct ParticleDrawRange {
     }
 };
 
-/// @param localToWorld シミュレーション空間がローカルの場合に渡す。ワールド変換済みの入力には nullptr。
-/// @param trailTint 呼び出し先の描画パスに合わせた色空間の色と、不透明度の倍率。
+/// @param[in] localToWorld シミュレーション空間がローカルの場合に渡す。ワールド変換済みの入力には nullptr。
+/// @param[in] trailTint 呼び出し先の描画パスに合わせた色空間の色と、不透明度の倍率。
 /// @note 入力順で本体の後に最新から古い履歴を積み、共有インデックスバッファの容量で打ち切る。
 /// @return vertices を置き換え、書き込んだクワッド数を返す。
 [[nodiscard]] FBZZ_GRAPHICS_API int BuildParticleBillboards(std::span<const Particle> particles,

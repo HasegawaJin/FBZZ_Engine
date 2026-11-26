@@ -23,4 +23,4 @@ private:
     bool m_spatial = false;
 };
 
-} /// @note namespace fbzz::renderer
+} // namespace fbzz::renderer

@@ -21,7 +21,9 @@ class RequestCounterScope {
 public:
     explicit RequestCounterScope(RequestCounters* counters) : m_active(counters != nullptr)
     {
-        if (m_active) m_previous = ExchangeRequestCounters(counters);
+        if (m_active) {
+            m_previous = ExchangeRequestCounters(counters);
+        }
     }
     ~RequestCounterScope() { if (m_active) ExchangeRequestCounters(m_previous); }
     RequestCounterScope(const RequestCounterScope&) = delete;
@@ -30,4 +32,4 @@ private:
     RequestCounters* m_previous = nullptr;
     bool m_active = false;
 };
-} /// @note namespace fbzz::renderer::skinning_trace_detail
+} // namespace fbzz::renderer::skinning_trace_detail

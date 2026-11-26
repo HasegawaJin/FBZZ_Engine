@@ -14,11 +14,11 @@ struct RenderTerrainInput;
 
 /// @note 通常 Z の float 深度を行優先 RGBA バイト列として格納する。R が最下位バイト。
 struct DirectionalShadowBakeData {
-    math::Vector3 lightDirection{};
-    ShadowBounds coverage;
-    uint32_t resolution = 0;
-    uint32_t cullingMask = 0;
-    std::vector<uint8_t> depthRgba;
+    math::Vector3 lightDirection{}; ///< ベイク時の平行光源の向き。実行時の投影との照合に使う。
+    ShadowBounds coverage; ///< ベイクした深度が覆うワールド空間の境界。
+    uint32_t resolution = 0; ///< ベイクした深度画像の一辺の画素数。
+    uint32_t cullingMask = 0; ///< ベイクに含める描画レイヤーのビットマスク。
+    std::vector<uint8_t> depthRgba; ///< ベイクした深度を格納する RGBA 画素列。
 };
 
 [[nodiscard]] FBZZ_GRAPHICS_API bool IsDirectionalShadowBakeMesh(
@@ -44,4 +44,4 @@ struct DirectionalShadowBakeData {
     const math::Vector3& currentDirection, uint32_t cullingMask, float shadowBias,
     const PreparedShadows& shadows, DirectionalShadowBakeView& out);
 
-} /// @note namespace fbzz::renderer
+} // namespace fbzz::renderer

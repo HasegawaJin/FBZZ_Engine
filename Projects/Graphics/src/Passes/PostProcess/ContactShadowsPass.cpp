@@ -7,6 +7,7 @@
 /// @note 通常のシャドウマップはテクセルサイズ/キャスケード遷移の解像度限界で小物に張り付く
 /// @note 細かい影を正確に表現できないため、スクリーンスペースで深度バッファを直接トレース
 /// @note し解像度に依らない鋭い接触影を低コストで追加する。
+#include <Graphics/Renderer/Commands/ShaderBindingSlots.hpp>
 #include <Graphics/Passes/PostProcess/PostProcessPasses.hpp>
 #include <Graphics/Pipeline/Passes/RenderPassContext.hpp>
 #include <Graphics/Renderer/Commands/ComputeCall.hpp>
@@ -21,29 +22,19 @@ void ExecuteContactShadowsPass(RenderPassContext& ctx)
     const auto& cs  = ctx.settings.contactShadow;
 
     if (!cs.enabled ||
-        !h.contactShadowShader.IsValid() || !ctx.Res().Texture("ContactShadowResult").IsValid())
+        !h.contactShadowShader.IsValid() || !ctx.Res().Texture("ContactShadowResult").IsValid()) {
         return;
+    }
 
-    /// @note 深度バッファ(t7)からビュー空間位置を復元し、ライト方向に沿って
-    /// @note contactShadowSteps ステップのレイマーチを行う。厚み閾値以上の遮蔽を検出した
-    /// @note ピクセルを暗化させ UAV_CONTACT_SHADOW(u3) に書く。出力値は lerp(1.0, 0.0, shadow)
-    /// @note で DeferredLighting が遮蔽係数として乗算する。
-    renderer::ComputeCall csDC;
-    csDC.shader             = h.contactShadowShader;
-    /// @note b0: CameraConstants (projection, invProjection)
-    csDC.constantBuffers[0] = h.frameCB;
-    /// @note b3: LightConstants (lightDir はワールド空間。シェーダーが view でビュー空間へ回す)
-    csDC.constantBuffers[3] = h.lightCB;
-    /// @note b8: contactShadowStrength/rayLen/steps/thick
-    csDC.constantBuffers[8] = h.advancedGraphicsCB;
-    /// @note t7: Depth。GBuffer の深度が書けているならそちらを読む。isDeferred ではなく
-    /// @note gbufferDepthReady で判定するのは、Forward + GBuffer プリパスでは isDeferred が
-    /// @note false のまま GBuffer の深度だけ揃っているため。isDeferred で判定すると hdrRT を
-    /// @note 読みに行き、本描画前で空のままになり接触影が全面に出る。
-    csDC.srvInputs[7]       = resources.GetDepthTexture(
-        ctx.gbufferDepthReady ? ctx.Res().Target("GBuffer") : ctx.Res().Target("HDR"));
-    /// @note u3: UAV_CONTACT_SHADOW (UAV_SSR スロットを時分割で再利用)
-    csDC.uavOutputs[3]      = ctx.Res().Texture("ContactShadowResult");
+    // Forward でもプリパス後は GBuffer に深度がある。描画方式だけで選ぶと未描画の HDR 深度を読む。
+    const auto depthTarget = ctx.gbufferDepthReady ? ctx.Res().Target("GBuffer") : ctx.Res().Target("HDR");
+    ComputeCall csDC;
+    csDC.shader = h.contactShadowShader;
+    csDC.constantBuffers[cb::CAMERA] = h.frameCB;
+    csDC.constantBuffers[cb::LIGHT] = h.lightCB;
+    csDC.constantBuffers[cb::ADVANCED_GRAPHICS] = h.advancedGraphicsCB;
+    csDC.srvInputs[srv::DEPTH] = resources.GetDepthTexture(depthTarget);
+    csDC.uavOutputs[uav::CONTACT_SHADOW] = ctx.Res().Texture("ContactShadowResult");
     csDC.dispatchX          = (ctx.width  / 2 + 7) / 8;
     csDC.dispatchY          = (ctx.height / 2 + 7) / 8;
     csDC.dispatchZ          = 1;
@@ -55,9 +46,9 @@ std::string_view ContactShadowsPass::Name() const { return "ContactShadows"; }
 
 void ContactShadowsPass::Setup(PassBuilder& builder, const RenderPassContext&) const
 {
-    /// @note HDR は申告しない。本体は gbufferDepthReady が false のときだけ HDR の
-    /// @note 深度へ落ちるが、このパスが載るのは «GBuffer が揃う» 経路だけ。申告すると
-    /// @note 本描画前の HDR へ偽の依存が張られる。
+    // HDR は申告しない。本体は gbufferDepthReady が false のときだけ HDR の
+    // 深度へ落ちるが、このパスが載るのは «GBuffer が揃う» 経路だけ。申告すると
+    // 本描画前の HDR へ偽の依存が張られる。
     builder.Read("GBuffer").Write("ContactShadowResult");
 }
 
@@ -71,4 +62,4 @@ void ContactShadowsPass::Execute(PassResources&, RenderPassContext& ctx)
     ExecuteContactShadowsPass(ctx);
 }
 
-} /// @note namespace fbzz::renderer
+} // namespace fbzz::renderer

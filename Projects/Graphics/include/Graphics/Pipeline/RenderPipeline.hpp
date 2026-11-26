@@ -65,8 +65,9 @@ public:
 
     void Setup(PassBuilder& builder, const RenderPassContext&) const override
     {
-        for (const auto& access : m_accesses)
+        for (const auto& access : m_accesses) {
             builder.Declare(access);
+        }
     }
 
     bool IsEnabled(const RenderPassContext&) const override { return static_cast<bool>(m_fn); }
@@ -75,10 +76,10 @@ public:
     void Execute(PassResources& resources, RenderPassContext&) override { m_fn(resources); }
 
 private:
-    std::string                                        m_name;
-    std::vector<renderer::RenderGraph::ResourceAccess> m_accesses;
-    PassFn                                             m_fn;
-    bool                                               m_allowCulling = true;
+    std::string                                        m_name; ///< グラフ登録とパス上書きに使う名前の所有文字列。
+    std::vector<renderer::RenderGraph::ResourceAccess> m_accesses; ///< 外部から登録されたパスが読み書きする論理資源の一覧。
+    PassFn                                             m_fn; ///< パス実行時に呼び出す処理本体。
+    bool                                               m_allowCulling = true; ///< 出力から到達しない場合にパスを省略できるかどうか。
 };
 
 class RenderPipeline {
@@ -91,7 +92,7 @@ public:
     /// @note 確保を伴わない。毎フレーム全パスぶん回るため。
     class GraphFingerprint {
     public:
-        /// @param desc 寸法・形式だけでなく実体の «形» を決める項目もすべて混ぜる。
+        /// @param[in] desc 寸法・形式だけでなく実体の «形» を決める項目もすべて混ぜる。
         FBZZ_GRAPHICS_API void MixResource(std::string_view name, const renderer::RenderGraph::ResourceDesc& desc);
         FBZZ_GRAPHICS_API void MixOutput(std::string_view name);
         FBZZ_GRAPHICS_API void MixPass(std::string_view name, bool allowCulling,
@@ -104,12 +105,12 @@ public:
         /// @note 末尾に区切りを足す。"ab"+"c" と "a"+"bc" を別の鍵にするため。
         FBZZ_GRAPHICS_API void MixString(std::string_view text);
 
-        uint64_t m_value = 1469598103934665603ull; ///< @note FNV-1a offset basis
+        uint64_t m_value = 1469598103934665603ull; ///< 資源・出力・パス宣言を混ぜた FNV-1a の累積値。
     };
 
     /// @note 上書きを «このフレームの確定した申告» へ畳み込む。
 
-    /// @param allowCulling 入出力。false 方向にしか変わらない。
+    /// @param[in,out] allowCulling 入出力。false 方向にしか変わらない。
     /// @note extraReads のうち既に申告済みの名前は足さない (重複した辺は無意味)。
     /// @note ctx を要らないので単体で試せる。判定の本体はここに閉じる。
     FBZZ_GRAPHICS_API static void ApplyOverride(const renderer::RenderPassOverride& over,
@@ -127,8 +128,9 @@ public:
     {
         std::vector<std::string> names;
         names.reserve(m_entries.size());
-        for (const auto& entry : m_entries)
+        for (const auto& entry : m_entries) {
             names.emplace_back(entry->Name());
+        }
         return names;
     }
 
@@ -279,11 +281,11 @@ private:
     /// @note Setup が返した申告に上書きを適用した «このフレームの確定値»。グラフへ渡すラムダが
     /// @note 参照で掴むので、Execute の間ずっと生きている場所へ置く。添字は m_entries と揃える。
     struct PassSetup {
-        std::vector<renderer::RenderGraph::ResourceAccess> accesses;
-        std::string                                        autoTarget;
-        bool                                               allowCulling = true;
+        std::vector<renderer::RenderGraph::ResourceAccess> accesses; ///< Setup の宣言とビュー上書きを反映した読み書き一覧。
+        std::string                                        autoTarget; ///< 実行前に自動束縛する論理ターゲット名。空なら自動束縛しない。
+        bool                                               allowCulling = true; ///< このフレームの上書きまで反映したカリング可否。
     };
-    std::vector<PassSetup> m_setups;
+    std::vector<PassSetup> m_setups; ///< m_entries と同じ添字で保持する、そのフレームの確定済み申告。
 
     /// @note ここには «aliasGroup ごとに物理リソースを確保して貸し回す» プールがあった。
     /// @note 貸出先が 1 つも無いまま alias グループの数だけ実体を確保しており、実測では
@@ -296,39 +298,39 @@ private:
     /// @note 1 つの論理リソースについて «申告» と «実体» を同じ行に持つ。
     /// @note 各ハンドルのうち宣言した型だけが有効になる。StructuredBuffer は Buffer 種別。
     struct ResourceEntry {
-        std::string                                         name;
-        renderer::RenderGraph::ResourceDesc                 desc;
-        renderer::ResourceHandle<renderer::RenderTargetTag> target;
-        renderer::ResourceHandle<renderer::TextureTag>      texture;
-        renderer::ResourceHandle<renderer::BufferTag> buffer;
-        renderer::ResourceHandle<renderer::StructuredBufferTag> structuredBuffer;
-        renderer::ResourceHandle<renderer::AccelerationStructureTag> accelerationStructure;
+        std::string                                         name; ///< パスが資源の読み書きを宣言する際の論理名。
+        renderer::RenderGraph::ResourceDesc                 desc; ///< グラフへ渡す資源の形式、寸法、所有・寿命の属性。
+        renderer::ResourceHandle<renderer::RenderTargetTag> target; ///< RenderTarget 宣言が参照する非所有ハンドル。
+        renderer::ResourceHandle<renderer::TextureTag>      texture; ///< Texture 宣言が参照する非所有ハンドル。
+        renderer::ResourceHandle<renderer::BufferTag> buffer; ///< Buffer 宣言が参照する非所有ハンドル。
+        renderer::ResourceHandle<renderer::StructuredBufferTag> structuredBuffer; ///< 構造化 Buffer 宣言が参照する非所有ハンドル。
+        renderer::ResourceHandle<renderer::AccelerationStructureTag> accelerationStructure; ///< レイ用加速構造の宣言が参照する非所有ハンドル。
     };
 
-    std::vector<Entry> m_entries;
-    std::vector<ResourceEntry> m_resources;
-    std::vector<std::string> m_outputs;
-    std::vector<renderer::RenderPassOverride> m_overrides;
-    renderer::RenderGraphSchedulePolicy m_policy = renderer::RenderGraphSchedulePolicy::RegistrationOrder;
-    renderer::RenderGraph::ExecutionReport m_lastReport;
-    std::string m_lastPlanDescription;
+    std::vector<Entry> m_entries; ///< 登録順に保持したフレームの描画パス本体。
+    std::vector<ResourceEntry> m_resources; ///< 論理資源ごとの宣言と実体の参照を保持する登録列。
+    std::vector<std::string> m_outputs; ///< 依存解決時にグラフの最終出力として残す論理資源名。
+    std::vector<renderer::RenderPassOverride> m_overrides; ///< フレームをまたいで適用するパス単位の上書き設定。
+    renderer::RenderGraphSchedulePolicy m_policy = renderer::RenderGraphSchedulePolicy::RegistrationOrder; ///< 複数の実行順が有効な場合に選択するグラフの方針。
+    renderer::RenderGraph::ExecutionReport m_lastReport; ///< 直近のグラフ実行順と計測の結果。条件が同じフレームで実行順を再利用する。
+    std::string m_lastPlanDescription; ///< パス構成が変わった時点で生成するグラフの診断テキスト。
 
     /// @note 束縛毒用の 1x1 RT (RenderBindingGuard)。診断を立てたときだけ確保する。
-    renderer::SizedRenderTarget m_bindingPoisonRT;
-    std::function<void(std::string_view)> m_gpuBegin;
-    std::function<void(std::string_view)> m_gpuEnd;
+    renderer::SizedRenderTarget m_bindingPoisonRT; ///< 診断有効時に各パス直前へ束縛する 1×1 ターゲット。
+    std::function<void(std::string_view)> m_gpuBegin; ///< グラフのパス開始時に GPU 計測を始めるフック。
+    std::function<void(std::string_view)> m_gpuEnd; ///< グラフのパス終了時に GPU 計測を閉じるフック。
 
     /// @note Plan キャッシュ: 有効パスのインデックス列と依存宣言の指紋が変わらなければ
     /// @note 毎フレームの Plan() をスキップし、前フレームの実行順を注入する。
-    std::vector<size_t> m_lastEnabledEntryIndices;
+    std::vector<size_t> m_lastEnabledEntryIndices; ///< 前回の実行計画を作った時点の m_entries 内の有効パス添字。
     /// @note リソース記述 + outputs + パス名 + accesses + allowCulling の FNV-1a ハッシュ。
     /// @note index 列だけでは Setup() の申告内容の変化 (設定トグル等) を検出できない。
-    uint64_t m_lastGraphFingerprint = 0;
-    bool m_planValid = false;
-    uint64_t m_gpuProfilePlanGeneration = 0;
-    ResolvedRenderPlan m_gpuProfileRenderPlan;
-    bool m_gpuProfileRenderPlanValid = false;
-    GpuProfilerViewMetadata m_lastGpuProfilerView;
+    uint64_t m_lastGraphFingerprint = 0; ///< 前回の実行計画を作った資源とパス宣言のハッシュ。
+    bool m_planValid = false; ///< 前回の実行計画を後続フレームで再利用できるかどうか。
+    uint64_t m_gpuProfilePlanGeneration = 0; ///< GPU 計測で別の描画構成を区別する計画世代。
+    ResolvedRenderPlan m_gpuProfileRenderPlan; ///< GPU 計測の世代番号を決めた解決済みのビュー構成。
+    bool m_gpuProfileRenderPlanValid = false; ///< GPU 計測用の比較元となるビュー構成を保持しているかどうか。
+    GpuProfilerViewMetadata m_lastGpuProfilerView; ///< 直近の実行で GPU プロファイラーに記録したビュー情報。
 };
 
-} /// @note namespace fbzz::renderer
+} // namespace fbzz::renderer

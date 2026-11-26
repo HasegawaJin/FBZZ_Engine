@@ -2,6 +2,7 @@
 /// @brief   抽出済み RenderScene の GBuffer・照明・Forward 合成。
 /// @author  Hasegawa Jin
 /// @date    2026-06-18
+#include <Graphics/Renderer/Commands/ShaderBindingSlots.hpp>
 #include "RenderScenePassHelpers.hpp"
 #include <Graphics/Pipeline/Culling/GpuHiZ.hpp>
 #include <Graphics/Effects/Animation/ComputedSkinningOutput.hpp>
@@ -44,42 +45,60 @@ void ExecuteGBufferPass(RenderPassContext& ctx)
     GpuHiZ clusterHierarchy;
     if (ctx.settings.geometryDrawMode == GeometryDrawMode::MESH_SHADER) {
         clusterView = {ctx.camera.GetGpuProjectionMatrix() * frame.view, ctx.width, ctx.height};
-        if (ctx.isDeferred) clusterHierarchy = ReadViewGpuHiZ(ctx);
+        if (ctx.isDeferred) {
+            clusterHierarchy = ReadViewGpuHiZ(ctx);
+        }
     }
     resources.Update(h.frameCB, &frame, sizeof(frame));
     resources.Update(h.lightCB, &ctx.lightData, sizeof(renderer::LightConstantsCB));
     UpdateShadowConstants(ctx);
     UpdatePunctualShadowConstants(ctx);
-    if (!h.gbufferShader.IsValid()) return;
+    if (!h.gbufferShader.IsValid()) {
+        return;
+    }
     auto& materialCB = h.gbufferMaterialCB;
-    if (!resources.Get(materialCB)) materialCB = resources.CreateConstantBuffer(96);
-    if (!resources.Get(materialCB)) return;
-    /// @note 整列済みの値グループは b2 を共有する。ビュー所有の代替バッファを更新する前に前グループの描画を確定し、キューの更新が入力バイト列を所有する。
-    /// @note ネイティブ Submit は後続の順序付き更新より先に CB の内容を転送領域へ写す。材質スロットのバッファは変更しない。
+    if (!resources.Get(materialCB)) {
+        materialCB = resources.CreateConstantBuffer(96);
+    }
+    if (!resources.Get(materialCB)) {
+        return;
+    }
+    // 整列済みの値グループは b2 を共有する。ビュー所有の代替バッファを更新する前に前グループの描画を確定し、キューの更新が入力バイト列を所有する。
+    // ネイティブ Submit は後続の順序付き更新より先に CB の内容を転送領域へ写す。材質スロットのバッファは変更しない。
     /// @see Docs/design/runtime-workset-optimization.md GBuffer材質の同値共有。
     std::array<uint8_t, 96> boundParameters{};
     renderer::ResourceHandle<renderer::ConstantBufferTag> parameterBuffer;
     for (bool skinned : { false, true }) {
         std::vector<MeshEntry> queue;
         for (const auto& object : input.Objects()) {
-            if (object.skinned != skinned || !object.colorEligible || !MatchesView(ctx, object)) continue;
+            if (object.skinned != skinned || !object.colorEligible || !MatchesView(ctx, object)) {
+                continue;
+            }
             if (!skinned) {
                 const auto& item = input.items[object.firstItem];
                 if (!HasColorGeometry(item) || renderer::ResolveGeometryRoute(item.material.capabilities, true)
-                    != renderer::GeometryRoute::GBuffer) continue;
+                    != renderer::GeometryRoute::GBuffer) {
+                    continue;
+                }
                 ++ctx.statsTotalObjects;
             }
             const bool gpuFrustum = !arguments.IsValid() && !skinned && object.boundsRadius > 0 && object.lodDither == 0
                 && (ctx.settings.geometryDrawMode == GeometryDrawMode::GPU_INDIRECT
                     || ctx.settings.geometryDrawMode == GeometryDrawMode::GPU_INSTANCE_INDIRECT) && ctx.settings.gpuInstancing
                 && ctx.renderer.SupportsIndirectDraw() && resources.Get(h.gbufferInstancedShader);
-            if (!IsRenderObjectVisible(ctx, object, gpuFrustum)) continue;
+            if (!IsRenderObjectVisible(ctx, object, gpuFrustum)) {
+                continue;
+            }
             for (uint32_t i = object.firstItem; i < object.firstItem + object.itemCount; ++i) {
                 const auto& item = input.items[i];
                 if (!item.visible || !item.indexBuffer.IsValid() ||
-                    renderer::ResolveGeometryRoute(item.material.capabilities, true) != renderer::GeometryRoute::GBuffer) continue;
+                    renderer::ResolveGeometryRoute(item.material.capabilities, true) != renderer::GeometryRoute::GBuffer) {
+                    continue;
+                }
                 if (skinned && (!item.material.valid || (!item.preparedSkinning && !item.deformedVertexBuffer.IsValid() &&
-                    (!item.skinningVertexBuffer.IsValid() || !h.gbufferSkinnedShader.IsValid())))) continue;
+                    (!item.skinningVertexBuffer.IsValid() || !h.gbufferSkinnedShader.IsValid())))) {
+                    continue;
+                }
                 queue.push_back({ &object, &item, (object.sortPosition - ctx.camera.m_position).LengthSq(),
                     MakeHybridGBufferParams(item.material.gbufferParams, item.material.surface) });
             }
@@ -89,9 +108,11 @@ void ExecuteGBufferPass(RenderPassContext& ctx)
                 return a.distanceSquared < b.distanceSquared;
             });
         }
-        /// @note 不透明材質は正規化した最終値で整列するため、値が同じ個体別バッファは同じ材質グループにまとまる。DrawCall は各バインドを検証する。
+        // 不透明材質は正規化した最終値で整列するため、値が同じ個体別バッファは同じ材質グループにまとまる。DrawCall は各バインドを検証する。
         std::stable_sort(queue.begin(), queue.end(), [](const MeshEntry& a, const MeshEntry& b) {
-            if (a.params != b.params) return a.params < b.params;
+            if (a.params != b.params) {
+                return a.params < b.params;
+            }
             return a.item->vertexBuffer.id < b.item->vertexBuffer.id;
         });
         const auto gpuFrustum = math::Frustum::FromViewProjection(frame.viewProjection);
@@ -103,15 +124,19 @@ void ExecuteGBufferPass(RenderPassContext& ctx)
             renderer::DrawCall dc;
             dc.vertexBuffer = skinned ? (item.deformedVertexBuffer.IsValid()
                 ? item.deformedVertexBuffer : item.skinningVertexBuffer) : item.vertexBuffer;
-            if (skinned && !BindPreparedSkinningOutput(item, dc)) continue;
+            if (skinned && !BindPreparedSkinningOutput(item, dc)) {
+                continue;
+            }
             dc.indexBuffer = item.indexBuffer;
             dc.indexCount = item.indexCount;
             dc.vertexCount = item.vertexCount;
             const bool vertexSkinning = skinned && !item.preparedSkinning && !item.deformedVertexBuffer.IsValid();
             dc.shader = vertexSkinning ? h.gbufferSkinnedShader : h.gbufferShader;
-            if (skinned && item.deformedVertexBuffer.IsValid()) dc.deformationSource = item.skinningVertexBuffer;
+            if (skinned && item.deformedVertexBuffer.IsValid()) {
+                dc.deformationSource = item.skinningVertexBuffer;
+            }
             dc.pipelineState = MaterialPipeline(ctx, material);
-            dc.constantBuffers[0] = h.frameCB;
+            dc.constantBuffers[cb::CAMERA] = h.frameCB;
             if (material.valid) {
                 const auto& params = entry.params;
                 if (!parameterBuffer.IsValid() || params != boundParameters) {
@@ -125,12 +150,16 @@ void ExecuteGBufferPass(RenderPassContext& ctx)
                     }
                     boundParameters = params;
                 }
-                dc.constantBuffers[2] = parameterBuffer;
+                dc.constantBuffers[cb::MATERIAL] = parameterBuffer;
             }
-            if (vertexSkinning) { dc.constantBuffers[7] = entry.object->skinningPalette; BindGpuBonePalette(dc, *entry.object); }
-            if (entry.object->leafWindBoundsPadding > 0.0f) dc.constantBuffers[5] = MeshletWindFrame(ctx);
-            dc.constantBuffers[8] = h.advancedGraphicsCB;
-            for (size_t i = 0; i < material.textures.size(); ++i) dc.textures[i] = material.textures[i];
+            if (vertexSkinning) { dc.constantBuffers[cb::SKINNING] = entry.object->skinningPalette; BindGpuBonePalette(dc, *entry.object); }
+            if (entry.object->leafWindBoundsPadding > 0.0f) {
+                dc.constantBuffers[cb::POSTPROC] = MeshletWindFrame(ctx);
+            }
+            dc.constantBuffers[cb::ADVANCED_GRAPHICS] = h.advancedGraphicsCB;
+            for (size_t i = 0; i < material.textures.size(); ++i) {
+                dc.textures[i] = material.textures[i];
+            }
 
             const size_t itemIndex = &item - input.items.data();
             if (arguments.IsValid() && itemIndex < ctx.gpuOcclusionArguments.size()
@@ -138,27 +167,29 @@ void ExecuteGBufferPass(RenderPassContext& ctx)
                 batcher.Flush();
                 const auto constants = ObjectConstants(*entry.object);
                 resources.Update(h.objectCB, &constants, sizeof(constants));
-                dc.constantBuffers[1] = h.objectCB;
+                dc.constantBuffers[cb::OBJECT] = h.objectCB;
                 (void)BindMeshOcclusionArguments(ctx, input, itemIndex, arguments, dc);
                 SubmitCounted(ctx, dc);
                 batcher.InvalidateObjectConstants();
                 continue;
             }
-            /// @note メッシュ選択が失敗してもインスタンスが Hi-Z を使う場合、初期描画項目はインデックス付きの面を保持する。
+            // メッシュ選択が失敗してもインスタンスが Hi-Z を使う場合、初期描画項目はインデックス付きの面を保持する。
             const bool seeded = ctx.gpuOccluderDepthReady && ctx.renderScene.get() == &input
                 && itemIndex < ctx.gpuOccluderItems.size() && ctx.gpuOccluderItems[itemIndex];
             if (!seeded && ctx.settings.geometryDrawMode == GeometryDrawMode::MESH_SHADER) {
                 renderer::DrawCall meshCall = dc;
                 const bool clusterEligible = CanUseGBufferClusterLod(*entry.object, item);
                 auto objectClusterView = clusterView;
-                if (skinned) objectClusterView.skinDisplacement = entry.object->skinClusterDisplacement;
+                if (skinned) {
+                    objectClusterView.skinDisplacement = entry.object->skinClusterDisplacement;
+                }
                 if (TryPrepareMeshletDraw(resources, ctx.renderer, frame.viewProjection,
                     entry.object->world, MeshletDrawPass::GBUFFER, item, skinned, meshCall,
                     ctx.frustumCullingEnabled, false, clusterEligible ? &objectClusterView : nullptr, &clusterHierarchy)) {
                     batcher.Flush();
                     const renderer::PerObjectCB objectCB = ObjectConstants(*entry.object);
                     resources.Update(h.objectCB, &objectCB, sizeof(objectCB));
-                    meshCall.constantBuffers[1] = h.objectCB;
+                    meshCall.constantBuffers[cb::OBJECT] = h.objectCB;
                     SubmitMeshletDraw(ctx, meshCall, MeshletDrawPass::GBUFFER);
                     batcher.InvalidateObjectConstants();
                     continue;
@@ -171,8 +202,12 @@ void ExecuteGBufferPass(RenderPassContext& ctx)
         batcher.Flush();
     }
     const auto hierarchy = ctx.isDeferred ? ReadViewGpuHiZ(ctx) : GpuHiZ{};
-    if (hierarchy.depths.IsValid()) ExecuteInstanceGBuffer(ctx, hierarchy);
-    else ExecuteInstanceGBuffer(ctx);
+    if (hierarchy.depths.IsValid()) {
+        ExecuteInstanceGBuffer(ctx, hierarchy);
+    }
+    else {
+        ExecuteInstanceGBuffer(ctx);
+    }
 }
 
 void ExecuteDeferredDepthCopyPass(RenderPassContext& ctx)
@@ -181,18 +216,20 @@ void ExecuteDeferredDepthCopyPass(RenderPassContext& ctx)
     auto& resources = ctx.resources;
     auto& h         = ctx.handles;
 
-    /// @note hdrRT をクリア (カラー・深度を最遠 = Reversed-Z の 0 にリセット) してから GBuffer 深度を転写する。
-    /// @note この深度は Sky (DEPTH_SKY) と DeferredSkinnedForward (DEPTH_ON) が参照する。
+    // hdrRT をクリア (カラー・深度を最遠 = Reversed-Z の 0 にリセット) してから GBuffer 深度を転写する。
+    // この深度は Sky (DEPTH_SKY) と DeferredSkinnedForward (DEPTH_ON) が参照する。
     renderer.SetRenderTarget(ctx.Res().Target("HDR"), resources);
     ClearForCamera(renderer, ctx.camera);
 
-    if (!h.depthCopyShader.IsValid() || !ctx.Res().Target("GBuffer").IsValid()) return;
+    if (!h.depthCopyShader.IsValid() || !ctx.Res().Target("GBuffer").IsValid()) {
+        return;
+    }
 
     renderer::DrawCall dc;
     dc.shader        = h.depthCopyShader;
     dc.pipelineState = h.defaultPSO;
     dc.vertexCount   = 3;
-    dc.textures[7]   = resources.GetDepthTexture(ctx.Res().Target("GBuffer"));
+    dc.textures[srv::DEPTH]   = resources.GetDepthTexture(ctx.Res().Target("GBuffer"));
     renderer.Submit(dc, resources);
 }
 
@@ -204,10 +241,10 @@ void ExecuteDeferredLightingPass(RenderPassContext& ctx)
     auto& h         = ctx.handles;
     const auto& rs  = ctx.settings;
 
-    /// @note Sky 色・深度を保持したまま上書きするため SetRenderTarget のみ (Clear しない)。
+    // Sky 色・深度を保持したまま上書きするため SetRenderTarget のみ (Clear しない)。
     renderer.SetRenderTarget(ctx.Res().Target("HDR"), resources);
-    /// @note AO 入力の選択: GTAO が有効ならそれを、無ければ SSAO を DeferredLighting の AO として供給する。DeferredLighting は AO テクスチャ (TEX_SSAO=t9) を ssaoIntensity>0 のとき乗算する 1 経路設計のため、GTAO もこの共通経路に流し込む。
-    /// @note GTAO.cs は出力に gtaoIntensity を織り込み済みのため、二重適用を避けて ssaoIntensity=1.0 で「そのまま乗算」する。SSAO は raw 出力なので intensity をここで適用する。
+    // AO 入力の選択: GTAO が有効ならそれを、無ければ SSAO を DeferredLighting の AO として供給する。DeferredLighting は AO テクスチャ (TEX_SSAO=t9) を ssaoIntensity>0 のとき乗算する 1 経路設計のため、GTAO もこの共通経路に流し込む。
+    // GTAO.cs は出力に gtaoIntensity を織り込み済みのため、二重適用を避けて ssaoIntensity=1.0 で「そのまま乗算」する。SSAO は raw 出力なので intensity をここで適用する。
     const bool underwater = ctx.environment.cameraUnderwater;
     const bool gtaoActive = rs.IsGtaoActive() && ctx.Res().Texture("GTAOResult").IsValid();
     renderer::ResourceHandle<renderer::TextureTag> aoTex{};
@@ -235,70 +272,79 @@ void ExecuteDeferredLightingPass(RenderPassContext& ctx)
     lightingPostData.reflectionSsrEnabled = reflectionSsrActive ? 1.0f : 0.0f;
     resources.Update(h.postprocCB, &lightingPostData, sizeof(PostProcCB));
 
-    if (!h.deferredLightingShader.IsValid() || !ctx.Res().Target("GBuffer").IsValid()) return;
+    if (!h.deferredLightingShader.IsValid() || !ctx.Res().Target("GBuffer").IsValid()) {
+        return;
+    }
 
     renderer::DrawCall dc;
     dc.shader             = h.deferredLightingShader;
     dc.pipelineState      = h.postprocPSO;
     dc.vertexCount        = 3;
-    dc.constantBuffers[0] = h.frameCB;
-    dc.constantBuffers[3] = h.lightCB;
-    dc.constantBuffers[4] = h.shadowCB;
-    dc.constantBuffers[5] = h.postprocCB;
-    /// @note b8: iblIntensity など IBL パラメータを含む AdvancedGraphicsCB
-    /// @note iblIntensity == 0.0 のとき HLSL は IBL テクスチャをサンプルせず fallback ambient を使う
-    dc.constantBuffers[8] = h.advancedGraphicsCB;
+    dc.constantBuffers[cb::CAMERA] = h.frameCB;
+    dc.constantBuffers[cb::LIGHT] = h.lightCB;
+    dc.constantBuffers[cb::SHADOW] = h.shadowCB;
+    dc.constantBuffers[cb::POSTPROC] = h.postprocCB;
+    // b8: iblIntensity など IBL パラメータを含む AdvancedGraphicsCB
+    // iblIntensity == 0.0 のとき HLSL は IBL テクスチャをサンプルせず fallback ambient を使う
+    dc.constantBuffers[cb::ADVANCED_GRAPHICS] = h.advancedGraphicsCB;
     const auto mediumAtlas = ctx.waterMediumPassActive && h.waterMediumAtlasRT
         && h.waterMediumAtlasRT->IsValid()
         ? resources.GetColorTexture(*h.waterMediumAtlasRT, 0)
         : renderer::ResourceHandle<renderer::TextureTag>{};
     if (ctx.waterMediumPassActive && h.waterMediumTable.IsValid() && mediumAtlas.IsValid()) {
-        dc.auxiliaryPsBuffers[0] = h.waterMediumTable;
-        dc.textures[15] = mediumAtlas;
+        dc.auxiliaryPsBuffers[AuxiliaryPixelBufferIndex(srv::WATER_MEDIUM_TABLE)] = h.waterMediumTable;
+        dc.textures[srv::WATER_MEDIUM_ATLAS] = mediumAtlas;
     } else {
-        dc.auxiliaryPsBuffers[0] = {};
-        dc.textures[15] = {};
+        dc.auxiliaryPsBuffers[AuxiliaryPixelBufferIndex(srv::WATER_MEDIUM_TABLE)] = {};
+        dc.textures[srv::WATER_MEDIUM_ATLAS] = {};
     }
-    /// @note b9 + t29/t30: クラスタライティング。Legacy モードのときは束縛しない。b9 が未束縛だと clusterLightMode が 0 (= Legacy) として読まれ、シェーダーは b3 の固定長配列へフォールバックするため従来と完全に同じ経路になる。
+    // b9 + t29/t30: クラスタライティング。Legacy モードのときは束縛しない。b9 が未束縛だと clusterLightMode が 0 (= Legacy) として読まれ、シェーダーは b3 の固定長配列へフォールバックするため従来と完全に同じ経路になる。
     if (ctx.clusterLightMode != ClusterLightMode::Legacy) {
-        dc.constantBuffers[9] = h.clusterCB;
-        dc.psBuffers[0]       = h.punctualLightBuffer;
-        /// @note クラスタリストは Clustered モードでしか読まれない (Linear は全数走査)。
-        if (UsesClusterLightIndices(ctx.clusterLightMode))
-            dc.psBuffers[1]   = h.clusterIndexBuffer;
+        dc.constantBuffers[cb::CLUSTER] = h.clusterCB;
+        dc.psBuffers[PixelBufferIndex(srv::PUNCTUAL_LIGHTS)]       = h.punctualLightBuffer;
+        // クラスタリストは Clustered モードでしか読まれない (Linear は全数走査)。
+        if (UsesClusterLightIndices(ctx.clusterLightMode)) {
+            dc.psBuffers[PixelBufferIndex(srv::CLUSTER_INDICES)]   = h.clusterIndexBuffer;
+        }
     }
-    /// @note b12 + t28 + t31: Spot / Point のシャドウと Cookie。
-    /// @note 供給経路 (Legacy / Clustered) によらず束縛する。
+    // b12 + t28 + t31: Spot / Point のシャドウと Cookie。
+    // 供給経路 (Legacy / Clustered) によらず束縛する。
     if (h.punctualShadowCB.IsValid()) {
-        dc.constantBuffers[12] = h.punctualShadowCB;
-        dc.textures[28]        = resources.GetDepthTexture(ctx.Res().Target("PunctualShadowMap"));
-        dc.textures[31]        = resources.GetColorTexture(ctx.Res().Target("LightCookieAtlas"), 0);
+        dc.constantBuffers[cb::PUNCTUAL_SHADOW] = h.punctualShadowCB;
+        dc.textures[srv::PUNCTUAL_SHADOW]        = resources.GetDepthTexture(ctx.Res().Target("PunctualShadowMap"));
+        dc.textures[srv::LIGHT_COOKIE]        = resources.GetColorTexture(ctx.Res().Target("LightCookieAtlas"), 0);
     }
-    dc.textures[5]        = resources.GetColorTexture(ctx.Res().Target("GBuffer"), 0);
-    dc.textures[6]        = resources.GetColorTexture(ctx.Res().Target("GBuffer"), 1);
-    /// @note Deferred の t3 は材質の emissive texture ではなく、GBuffer に保持した線形 HDR emission。
-    dc.textures[3]        = resources.GetColorTexture(ctx.Res().Target("GBuffer"), 2);
-    dc.textures[7]        = resources.GetDepthTexture(ctx.Res().Target("GBuffer"));
-    dc.textures[8]        = resources.GetDepthTexture(ctx.Res().Target("ShadowMap"));
-    /// @note TEX_SSAO スロット: GTAO(優先) or SSAO の AO テクスチャ
-    dc.textures[9]        = aoTex;
-    /// @note TEX_CONTACT_SHADOW: 有効時のみ接触影マスクを供給。無効時は未バインド (シェーダーが
-    /// @note contactShadowStrength>0 のガードでサンプルを回避する)。
-    dc.textures[24]       = (rs.contactShadow.enabled && ctx.Res().Texture("ContactShadowResult").IsValid())
+    dc.textures[srv::GBUFFER0]        = resources.GetColorTexture(ctx.Res().Target("GBuffer"), 0);
+    dc.textures[srv::GBUFFER1]        = resources.GetColorTexture(ctx.Res().Target("GBuffer"), 1);
+    // Deferred の t3 は材質の emissive texture ではなく、GBuffer に保持した線形 HDR emission。
+    dc.textures[srv::EMISSIVE]        = resources.GetColorTexture(ctx.Res().Target("GBuffer"), 2);
+    dc.textures[srv::DEPTH]        = resources.GetDepthTexture(ctx.Res().Target("GBuffer"));
+    dc.textures[srv::SHADOW]        = resources.GetDepthTexture(ctx.Res().Target("ShadowMap"));
+    // TEX_SSAO スロット: GTAO(優先) or SSAO の AO テクスチャ
+    dc.textures[srv::SSAO]        = aoTex;
+    // TEX_CONTACT_SHADOW: 有効時のみ接触影マスクを供給。無効時は未バインド (シェーダーが
+    // contactShadowStrength>0 のガードでサンプルを回避する)。
+    dc.textures[srv::CONTACT_SHADOW]       = (rs.contactShadow.enabled && ctx.Res().Texture("ContactShadowResult").IsValid())
         ? ctx.Res().Texture("ContactShadowResult")
         : renderer::ResourceHandle<renderer::TextureTag>{};
-    dc.textures[16]       = h.iblIrradiance;
-    dc.textures[17]       = h.iblPrefilter;
-    dc.textures[18]       = h.iblBrdfLut;
-    /// @note t20 はこのパスと Composite のレイ反射用。無効時は b5 の gate で読まない。
-    if (rayReflectionActive) dc.textures[20] = ctx.handles.rayReflectionResult;
-    if (reflectionSsrActive) dc.textures[23] = ssrResult;
-    /// @note TEX_LIGHT_PROBE_SH / _OUTER: 無効ハンドルなら未束縛 (b8 の probeVolumes[i].intensity が 0 で引かない)
-    dc.textures[22]       = h.lightProbeSH[0];
-    dc.textures[21]       = h.lightProbeSH[1];
+    dc.textures[srv::IBL_IRRADIANCE]       = h.iblIrradiance;
+    dc.textures[srv::IBL_PREFILTER]       = h.iblPrefilter;
+    dc.textures[srv::IBL_BRDF_LUT]       = h.iblBrdfLut;
+    // t20 はこのパスと Composite のレイ反射用。無効時は b5 の gate で読まない。
+    if (rayReflectionActive) {
+        dc.textures[srv::RAY_REFLECTION] = ctx.handles.rayReflectionResult;
+    }
+    if (reflectionSsrActive) {
+        dc.textures[srv::SCREEN_REFLECTION] = ssrResult;
+    }
+    // TEX_LIGHT_PROBE_SH / _OUTER: 無効ハンドルなら未束縛 (b8 の probeVolumes[i].intensity が 0 で引かない)
+    dc.textures[srv::LIGHT_PROBE_SH]       = h.lightProbeSH[0];
+    dc.textures[srv::LIGHT_PROBE_SH_OUTER]       = h.lightProbeSH[1];
     dc.indirectReadTextures = { h.lightProbeVisibility[0], h.lightProbeVisibility[1] };
     renderer.Submit(dc, resources);
-    if (reflectionSsrActive) ctx.ssrContributionSubmitted = true;
+    if (reflectionSsrActive) {
+        ctx.ssrContributionSubmitted = true;
+    }
 }
 
 /// @name Deferred 内スキンドメッシュフォワードパス
@@ -311,14 +357,22 @@ void SubmitForwardRoute(RenderPassContext& ctx, renderer::GeometryRoute route, b
         ? ctx.Res().StructuredBuffer(OCCLUSION_DRAW_ARGUMENTS) : ResourceHandle<StructuredBufferTag>{};
     std::vector<MeshEntry> queue;
     const auto append = [&](const RenderObject& object) {
-        if ((object.waterfallFarIndexStart != 0) != waterfalls || !object.colorEligible || !MatchesView(ctx, object)) return;
-        if (route == renderer::GeometryRoute::ForwardOpaque && object.skinned) ++ctx.statsTotalObjects;
+        if ((object.waterfallFarIndexStart != 0) != waterfalls || !object.colorEligible || !MatchesView(ctx, object)) {
+            return;
+        }
+        if (route == renderer::GeometryRoute::ForwardOpaque && object.skinned) {
+            ++ctx.statsTotalObjects;
+        }
         const auto first = input.items.begin() + object.firstItem;
         const auto last = first + object.itemCount;
         if (std::none_of(first, last, [&](const auto& item) {
             return HasColorGeometry(item) && renderer::ResolveGeometryRoute(item.material.capabilities, ctx.isDeferred) == route;
-        })) return;
-        if (ctx.isDeferred && !object.skinned) ++ctx.statsTotalObjects;
+        })) {
+            return;
+        }
+        if (ctx.isDeferred && !object.skinned) {
+            ++ctx.statsTotalObjects;
+        }
         const bool visible = [&] {
             if (route == renderer::GeometryRoute::ForwardTransparent && (!ctx.isDeferred || object.skinned)) {
                 CullStatsRollback rollback(ctx);
@@ -326,26 +380,38 @@ void SubmitForwardRoute(RenderPassContext& ctx, renderer::GeometryRoute route, b
             }
             return IsRenderObjectVisible(ctx, object);
         }();
-        if (!visible) return;
+        if (!visible) {
+            return;
+        }
         for (auto it = first; it != last; ++it) {
             const auto& item = *it;
             if (!HasColorGeometry(item) || !item.forwardMaterial.valid || !item.forwardMaterial.shader.IsValid()
-                || renderer::ResolveGeometryRoute(item.material.capabilities, ctx.isDeferred) != route) continue;
+                || renderer::ResolveGeometryRoute(item.material.capabilities, ctx.isDeferred) != route) {
+                continue;
+            }
             queue.push_back({&object, &item, (object.sortPosition - ctx.camera.m_position).LengthSq()});
         }
     };
     const auto objects = input.Objects();
     if (waterfalls) {
-        for (const auto index : input.waterfallObjects) if (index < objects.size()) append(objects[index]);
+        for (const auto index : input.waterfallObjects) {
+            if (index < objects.size()) {
+                append(objects[index]);
+            }
+        }
     } else {
-        for (const auto& object : objects) append(object);
+        for (const auto& object : objects) {
+            append(object);
+        }
     }
     std::sort(queue.begin(), queue.end(), [route](const MeshEntry& a, const MeshEntry& b) {
-        if (a.item->material.renderQueue != b.item->material.renderQueue)
+        if (a.item->material.renderQueue != b.item->material.renderQueue) {
             return a.item->material.renderQueue < b.item->material.renderQueue;
-        if (a.distanceSquared != b.distanceSquared)
+        }
+        if (a.distanceSquared != b.distanceSquared) {
             return route == renderer::GeometryRoute::ForwardTransparent
                 ? a.distanceSquared > b.distanceSquared : a.distanceSquared < b.distanceSquared;
+        }
         return std::tie(a.object->sourceIndex, a.object->sourceGeneration, a.item->materialSlot, a.item->sourceSubmesh)
             < std::tie(b.object->sourceIndex, b.object->sourceGeneration, b.item->materialSlot, b.item->sourceSubmesh);
     });
@@ -353,7 +419,9 @@ void SubmitForwardRoute(RenderPassContext& ctx, renderer::GeometryRoute route, b
     const float projectionY = waterfalls ? std::abs(ctx.camera.GetProjectionMatrix().m[1][1]) : 0.0f;
     const auto viewForward = waterfalls ? ctx.camera.GetForward() : math::Vector3{};
     for (const auto& entry : queue) {
-        if (!bindings) bindings = ForwardPassBindings(ctx);
+        if (!bindings) {
+            bindings = ForwardPassBindings(ctx);
+        }
         const auto constants = ObjectConstants(*entry.object);
         ctx.resources.Update(ctx.handles.objectCB, &constants, sizeof(constants));
         auto draw = ForwardDrawWithBindings(ctx, *entry.object, *entry.item, *bindings);
@@ -387,7 +455,9 @@ void ExecuteDeferredSkinnedForwardPass(RenderPassContext& ctx)
 namespace {
 void ExecuteForwardTransparency(RenderPassContext& ctx, bool waterfalls)
 {
-    if (waterfalls && SceneInput(ctx).waterfallObjects.empty()) return;
+    if (waterfalls && SceneInput(ctx).waterfallObjects.empty()) {
+        return;
+    }
     ctx.renderer.SetRenderTarget(ctx.Res().Target("HDR"), ctx.resources);
     const auto frame = MakeCameraFrameCB(ctx.camera, ctx.taaJitterNdcX, ctx.taaJitterNdcY);
     ctx.resources.Update(ctx.handles.frameCB, &frame, sizeof(frame));
@@ -415,20 +485,24 @@ std::string_view GBufferPass::Name() const
 
 void GBufferPass::Setup(PassBuilder& builder, const RenderPassContext& ctx) const
 {
-    /// @note Forward のプリパスだけが影と Cookie を読む。Deferred 本経路は
-    /// @note ライティングをしないので、法線・深度・roughness を書くだけ。
-    if (m_mode == GBufferPassMode::DepthNormalPrepass)
+    // Forward のプリパスだけが影と Cookie を読む。Deferred 本経路は
+    // ライティングをしないので、法線・深度・roughness を書くだけ。
+    if (m_mode == GBufferPassMode::DepthNormalPrepass) {
         builder.Read("ShadowMap").Read("PunctualShadowMap").Read("LightCookieAtlas");
-    else if (ctx.gpuOcclusionEnabled)
+    }
+    else if (ctx.gpuOcclusionEnabled) {
         builder.Read(OCCLUSION_HIZ, PassBuilder::Purpose::SHADER_READ).Read(OCCLUSION_DRAW_ARGUMENTS);
+    }
     builder.Write("GBuffer");
 }
 
 void GBufferPass::Execute(PassResources&, RenderPassContext& ctx)
 {
-    /// @note Forward の前段は ForwardOpaque と同じ物体を同じカメラで判定し直すので、カリング統計を数えない (数えると倍になる)。
+    // Forward の前段は ForwardOpaque と同じ物体を同じカメラで判定し直すので、カリング統計を数えない (数えると倍になる)。
     std::optional<CullStatsRollback> rollback;
-    if (m_mode == GBufferPassMode::DepthNormalPrepass) rollback.emplace(ctx);
+    if (m_mode == GBufferPassMode::DepthNormalPrepass) {
+        rollback.emplace(ctx);
+    }
     ExecuteGBufferPass(ctx);
     ExecuteFiberGBufferPass(ctx);
 }
@@ -447,9 +521,12 @@ void DeferredSkinnedForwardPass::Setup(PassBuilder& builder, const RenderPassCon
 {
     builder.Read("ShadowMap").Read("PunctualShadowMap").Read("LightCookieAtlas")
            .ReadWrite("HDR");
-    if (ctx.gpuOcclusionEnabled) builder.Read(OCCLUSION_DRAW_ARGUMENTS);
-    if (ctx.waterMediumPassActive)
+    if (ctx.gpuOcclusionEnabled) {
+        builder.Read(OCCLUSION_DRAW_ARGUMENTS);
+    }
+    if (ctx.waterMediumPassActive) {
         builder.Read("WaterMediumAtlas");
+    }
 }
 
 void DeferredSkinnedForwardPass::Execute(PassResources&, RenderPassContext& ctx)
@@ -461,9 +538,12 @@ void ForwardTransparentPass::Setup(PassBuilder& builder, const RenderPassContext
 {
     builder.Read("ShadowMap").Read("PunctualShadowMap").Read("LightCookieAtlas")
            .ReadWrite("HDR");
-    if (ctx.gbufferDepthReady) DeclareScreenSpaceOcclusionReads(builder, ctx);
-    if (ctx.waterMediumPassActive)
+    if (ctx.gbufferDepthReady) {
+        DeclareScreenSpaceOcclusionReads(builder, ctx);
+    }
+    if (ctx.waterMediumPassActive) {
         builder.Read("WaterMediumAtlas");
+    }
 }
 
 void ForwardTransparentPass::Execute(PassResources&, RenderPassContext& ctx)
@@ -475,15 +555,19 @@ void DeferredLightingPass::Setup(PassBuilder& builder, const RenderPassContext& 
 {
     builder.Read("GBuffer").ReadWrite("HDR")
            .Read("ShadowMap").Read("PunctualShadowMap").Read("LightCookieAtlas");
-    if (ctx.waterMediumPassActive)
+    if (ctx.waterMediumPassActive) {
         builder.Read("WaterMediumAtlas");
+    }
     DeclareScreenSpaceOcclusionReads(builder, ctx);
-    if (!m_reflectionSource && ctx.rayReflectionPassActive)
+    if (!m_reflectionSource && ctx.rayReflectionPassActive) {
         builder.Read("RayReflectionResult", RenderGraph::ResourceAccessPurpose::SHADER_READ);
-    if (!m_reflectionSource && ctx.rayReflectionReconstructionPrepared)
+    }
+    if (!m_reflectionSource && ctx.rayReflectionReconstructionPrepared) {
         builder.Read("RayReflectionRaw", RenderGraph::ResourceAccessPurpose::SHADER_READ);
-    if (!m_reflectionSource && ctx.IsHybridSsrPlanned())
+    }
+    if (!m_reflectionSource && ctx.IsHybridSsrPlanned()) {
         builder.Read("SSRResult", RenderGraph::ResourceAccessPurpose::SHADER_READ);
+    }
 }
 
 void DeferredLightingPass::Execute(PassResources&, RenderPassContext& ctx)

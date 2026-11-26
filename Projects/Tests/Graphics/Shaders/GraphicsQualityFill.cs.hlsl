@@ -9,7 +9,9 @@ FBZZ_RWTEX3D_T(float4, visibilityOutput, 1);
 [numthreads(8,8,1)]
 void CSMain(uint3 id : SV_DispatchThreadID)
 {
-    if (id.x >= 16u || id.y >= 8u || id.z >= 1u) return;
+    if (id.x >= 16u || id.y >= 8u || id.z >= 1u) {
+        return;
+    }
     const uint probe = id.x / 8u;
     const bool occluded = blocked == 2u || (blocked == 1u && probe == 1u);
     const float distance = occluded ? 0.01f : 1.0f;

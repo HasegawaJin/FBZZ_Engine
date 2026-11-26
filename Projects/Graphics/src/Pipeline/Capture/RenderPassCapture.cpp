@@ -2,6 +2,7 @@
 /// @brief   パス終了時の添付画像とフレーム末尾のリソース一覧を診断用 RT へ保存する。
 /// @author  Hasegawa Jin
 /// @date    2026-09-15
+#include <Graphics/Renderer/Commands/ShaderBindingSlots.hpp>
 #include <Graphics/Pipeline/Capture/RenderPassCapture.hpp>
 #include <Graphics/Pipeline/Passes/RenderPassContext.hpp>
 #include <Core/Logger/Logger.hpp>
@@ -36,7 +37,7 @@ bool IsCameraDepthTarget(const std::string& name)
         || name == "Velocity" || name == "SelectionMask" || name == "ObjectMask";
 }
 
-} /// @note namespace
+} // namespace
 
 void RenderPassCapture::Invalidate()
 {
@@ -48,7 +49,7 @@ void RenderPassCapture::Invalidate()
     m_selectedIndex = static_cast<size_t>(-1);
     m_lastExecutedIndex = static_cast<size_t>(-1);
     m_status = "Waiting for the selected view.";
-    /// @note m_gallery は消さない。タイルは GPU リソースを持つため、毎フレーム捨てて作り直すと一覧を開いている間ずっと RT を確保し直すことになる。中身の更新は CaptureGallery。
+    // m_gallery は消さない。タイルは GPU リソースを持つため、毎フレーム捨てて作り直すと一覧を開いている間ずっと RT を確保し直すことになる。中身の更新は CaptureGallery。
 }
 
 void RenderPassCapture::Begin(const std::vector<renderer::RenderGraph::RenderPass>& passes,
@@ -56,24 +57,29 @@ void RenderPassCapture::Begin(const std::vector<renderer::RenderGraph::RenderPas
 {
     Invalidate();
     for (const auto& lifetime : report.lifetimes) {
-        if (lifetime.desc.withDepth) m_depthTargets.push_back(lifetime.name);
+        if (lifetime.desc.withDepth) {
+            m_depthTargets.push_back(lifetime.name);
+        }
         m_declared.push_back(lifetime.name);
     }
-    if (!report.executionOrder.empty())
+    if (!report.executionOrder.empty()) {
         m_lastExecutedIndex = report.executionOrder.back();
+    }
 
     std::unordered_map<std::string, size_t> counts;
     std::vector<size_t> occurrences;
     occurrences.reserve(passes.size());
-    for (const auto& pass : passes)
+    for (const auto& pass : passes) {
         occurrences.push_back(counts[pass.name]++);
+    }
 
     const auto append = [&](size_t index, bool culled) {
         const auto& pass = passes[index];
         m_passes.push_back({ pass.name, occurrences[index], index, culled, -1.0, -1.0, pass.accesses });
         if (pass.name == request.passName && occurrences[index] == request.occurrence) {
-            if (culled)
+            if (culled) {
                 m_status = "The selected pass was culled; no image was produced.";
+            }
             else {
                 m_selectedIndex = index;
                 m_status = "Waiting for the selected pass.";
@@ -81,8 +87,12 @@ void RenderPassCapture::Begin(const std::vector<renderer::RenderGraph::RenderPas
         }
     };
     m_status = "The selected pass is not active in this view. Select a pass from the list.";
-    for (size_t index : report.executionOrder) append(index, false);
-    for (size_t index : report.culledPasses) append(index, true);
+    for (size_t index : report.executionOrder) {
+        append(index, false);
+    }
+    for (size_t index : report.culledPasses) {
+        append(index, true);
+    }
 }
 
 void RenderPassCapture::CollectImages(RenderPassContext& ctx, const std::string& name,
@@ -91,7 +101,9 @@ void RenderPassCapture::CollectImages(RenderPassContext& ctx, const std::string&
     const auto addTexture = [&](std::string label, renderer::ResourceHandle<renderer::TextureTag> texture,
                                 bool depth, bool cameraDepth) {
         auto* image = ctx.resources.Get(texture);
-        if (!image || image->GetDepth() != 1) return;
+        if (!image || image->GetDepth() != 1) {
+            return;
+        }
         out.push_back({ std::move(label), texture, depth, cameraDepth,
                         image->GetWidth(), image->GetHeight() });
     };
@@ -100,13 +112,15 @@ void RenderPassCapture::CollectImages(RenderPassContext& ctx, const std::string&
     if (auto* rt = ctx.resources.Get(target)) {
         for (uint32_t slot = 0; slot < rt->GetColorCount(); ++slot) {
             std::string label = name + " / Color " + std::to_string(slot);
-            if (name == "GBuffer")
+            if (name == "GBuffer") {
                 label += slot == 0 ? " (Albedo / Roughness)" : " (Normal / Metallic)";
+            }
             addTexture(std::move(label), ctx.resources.GetColorTexture(target, slot), false, false);
         }
-        if (std::find(m_depthTargets.begin(), m_depthTargets.end(), name) != m_depthTargets.end())
+        if (std::find(m_depthTargets.begin(), m_depthTargets.end(), name) != m_depthTargets.end()) {
             addTexture(name + " / Depth", ctx.resources.GetDepthTexture(target), true,
                        IsCameraDepthTarget(name));
+        }
     } else {
         addTexture(name, ctx.resourceRegistry.Texture(name), false, false);
     }
@@ -118,12 +132,13 @@ bool RenderPassCapture::EnsurePreviewPipeline(RenderPassContext& ctx)
         m_shader = {};
         m_pipelineState = {};
         m_constants = {};
-        /// @note 返さずに捨てる。デバイスリセットで実体はもう無く、古いハンドルを返却すると同じ枠に作り直された別物を巻き込んで解放してしまう。
+        // 返さずに捨てる。デバイスリセットで実体はもう無く、古いハンドルを返却すると同じ枠に作り直された別物を巻き込んで解放してしまう。
         m_gallery.clear();
         m_resetVersion = ctx.resources.GetResetVersion();
     }
-    if (!ctx.resources.Get(m_shader))
+    if (!ctx.resources.Get(m_shader)) {
         m_shader = ctx.resources.LoadShader("Assets/Shaders/Debug/RenderPassPreview.hlsl");
+    }
     if (!ctx.resources.Get(m_pipelineState)) {
         renderer::PipelineStateDesc desc;
         desc.rasterizer = renderer::RasterizerMode::SOLID_NOCULL;
@@ -138,16 +153,19 @@ bool RenderPassCapture::BlitPreview(RenderPassContext& ctx, const OutputInfo& ou
                                     renderer::ResourceHandle<renderer::ConstantBufferTag>& constants,
                                     renderer::SizedRenderTarget& dst)
 {
-    /// @note 定数バッファは画像ごとに持つ。1 本を使い回すと、描画がまとめて走るバックエンドでは全タイルが最後の設定で出る。枚数ぶん持たせても 32 bytes × 数十なので正しさを取る。
-    if (!ctx.resources.Get(constants))
+    // 定数バッファは画像ごとに持つ。1 本を使い回すと、描画がまとめて走るバックエンドでは全タイルが最後の設定で出る。枚数ぶん持たせても 32 bytes × 数十なので正しさを取る。
+    if (!ctx.resources.Get(constants)) {
         constants = ctx.resources.CreateConstantBuffer(sizeof(PreviewConstants));
-    if (!ctx.resources.Get(constants) || !ctx.resources.Get(dst.Handle()))
+    }
+    if (!ctx.resources.Get(constants) || !ctx.resources.Get(dst.Handle())) {
         return false;
+    }
 
     auto mode = view.mode;
-    if (mode == DisplayMode::AUTO)
+    if (mode == DisplayMode::AUTO) {
         mode = output.depth ? (output.cameraDepth ? DisplayMode::LINEAR_DEPTH : DisplayMode::RED)
                             : DisplayMode::RGB;
+    }
     const PreviewConstants data{
         static_cast<float>(mode), std::exp2(view.exposure), view.rangeMin,
         std::max(view.rangeMax, view.rangeMin + 0.000001f),
@@ -160,38 +178,49 @@ bool RenderPassCapture::BlitPreview(RenderPassContext& ctx, const OutputInfo& ou
     renderer::DrawCall call;
     call.shader = m_shader;
     call.pipelineState = m_pipelineState;
-    call.constantBuffers[5] = constants;
-    call.textures[5] = output.texture;
+    call.constantBuffers[cb::PREVIEW] = constants;
+    call.textures[srv::POST_COLOR] = output.texture;
     call.vertexCount = 3;
     return ctx.renderer.RenderDebugPreview(call, dst.Handle(), ctx.resources);
 }
 
 void RenderPassCapture::Capture(size_t graphIndex, RenderPassContext& ctx)
 {
-    if (WantsPass(graphIndex))
+    if (WantsPass(graphIndex)) {
         CapturePreview(graphIndex, ctx);
+    }
 
-    /// @note 一覧が見たいのは «フレーム末尾の状態» なので、実行順の最後のパスの直後に焼く。
-    if (galleryEnabled && graphIndex == m_lastExecutedIndex)
+    // 一覧が見たいのは «フレーム末尾の状態» なので、実行順の最後のパスの直後に焼く。
+    if (galleryEnabled && graphIndex == m_lastExecutedIndex) {
         CaptureGallery(ctx);
+    }
 }
 
 void RenderPassCapture::CapturePreview(size_t graphIndex, RenderPassContext& ctx)
 {
     const auto pass = std::find_if(m_passes.begin(), m_passes.end(),
         [graphIndex](const PassInfo& info) { return info.graphIndex == graphIndex; });
-    if (pass == m_passes.end()) return;
+    if (pass == m_passes.end()) {
+        return;
+    }
     m_capturedRequest = request;
 
     std::vector<std::string> visited;
     const auto addResource = [&](const std::string& name) {
-        if (std::find(visited.begin(), visited.end(), name) != visited.end()) return;
+        if (std::find(visited.begin(), visited.end(), name) != visited.end()) {
+            return;
+        }
         visited.push_back(name);
         CollectImages(ctx, name, m_outputs);
     };
-    for (const auto& access : pass->accesses)
-        if (access.usage != renderer::RenderGraph::ResourceUsage::Read) addResource(access.name);
-    for (const auto& access : pass->accesses) addResource(access.name);
+    for (const auto& access : pass->accesses) {
+        if (access.usage != renderer::RenderGraph::ResourceUsage::Read) {
+            addResource(access.name);
+        }
+    }
+    for (const auto& access : pass->accesses) {
+        addResource(access.name);
+    }
 
     if (m_outputs.empty()) {
         m_status = "This pass has no available 2D image. See its resource declarations below.";
@@ -199,14 +228,14 @@ void RenderPassCapture::CapturePreview(size_t graphIndex, RenderPassContext& ctx
     }
     auto output = std::find_if(m_outputs.begin(), m_outputs.end(),
         [this](const OutputInfo& info) { return info.name == request.outputName; });
-    /// @note m_outputs は «書き込み先が先、読み取りが後» の順なので、先頭がそのパスの主出力になる。
+    // m_outputs は «書き込み先が先、読み取りが後» の順なので、先頭がそのパスの主出力になる。
     if (request.outputName.empty()) {
         output = m_outputs.begin();
         request.outputName = output->name;
     }
     if (output == m_outputs.end() && request.outputIsPreference) {
-        /// @note 希望が通らないだけなので送りは止めない。名前は書き戻さず «希望» のまま残し、
-        /// @note 次に同じ名前を持つパスへ移ったときに復帰できるようにする。
+        // 希望が通らないだけなので送りは止めない。名前は書き戻さず «希望» のまま残し、
+        // 次に同じ名前を持つパスへ移ったときに復帰できるようにする。
         output = m_outputs.begin();
     }
     if (output == m_outputs.end()) {
@@ -214,7 +243,9 @@ void RenderPassCapture::CapturePreview(size_t graphIndex, RenderPassContext& ctx
         return;
     }
     m_resolvedOutputName = output->name;
-    if (output->width == 0 || output->height == 0) return;
+    if (output->width == 0 || output->height == 0) {
+        return;
+    }
 
     if (!EnsurePreviewPipeline(ctx)) {
         m_status = "Preview resources are unavailable. Check shader compilation in Console.";
@@ -226,9 +257,10 @@ void RenderPassCapture::CapturePreview(size_t graphIndex, RenderPassContext& ctx
     m_capturedRequest = request;
     m_status = m_hasPreview ? "Captured immediately after the selected pass."
                            : "The renderer could not capture this output.";
-    if (!m_hasPreview)
+    if (!m_hasPreview) {
         FBZZ_LOG_ERROR("Render Pass Viewer: failed to capture %s / %s.",
                        request.passName.c_str(), request.outputName.c_str());
+    }
 }
 
 void RenderPassCapture::CaptureGallery(RenderPassContext& ctx)
@@ -238,12 +270,13 @@ void RenderPassCapture::CaptureGallery(RenderPassContext& ctx)
         return;
     }
 
-    /// @note 宣言側 (このフレームに生きたパスが触れた名前) と実体側 (登録簿に差さっている名前) の
-    /// @note 和集合を並べる。片側にしか無い名前が、そのまま二重帳簿の食い違いになる。
+    // 宣言側 (このフレームに生きたパスが触れた名前) と実体側 (登録簿に差さっている名前) の
+    // 和集合を並べる。片側にしか無い名前が、そのまま二重帳簿の食い違いになる。
     std::vector<std::string> names = m_declared;
     const auto addBound = [&names](const std::string& name, auto) {
-        if (std::find(names.begin(), names.end(), name) == names.end())
+        if (std::find(names.begin(), names.end(), name) == names.end()) {
             names.push_back(name);
+        }
     };
     ctx.resourceRegistry.ForEachTarget(addBound);
     ctx.resourceRegistry.ForEachTexture(addBound);
@@ -253,7 +286,7 @@ void RenderPassCapture::CaptureGallery(RenderPassContext& ctx)
     std::vector<GalleryTile> next;
     next.reserve(names.size() + 8);
 
-    /// @note 前フレームのタイルを表示名で引き当てて使い回す。引き当たらなかった分は末尾で返す。
+    // 前フレームのタイルを表示名で引き当てて使い回す。引き当たらなかった分は末尾で返す。
     const auto takeTile = [this](const std::string& label) {
         const auto existing = std::find_if(m_gallery.begin(), m_gallery.end(),
             [&label](const GalleryTile& tile) { return tile.label == label; });
@@ -278,7 +311,7 @@ void RenderPassCapture::CaptureGallery(RenderPassContext& ctx)
         if (images.empty()) {
             GalleryTile tile = takeTile(name);
             tile.resource = name;
-            /// @note 申告はあるのに実体が無い ＝ パスが名前を使っているのに宣言されていない。
+            // 申告はあるのに実体が無い ＝ パスが名前を使っているのに宣言されていない。
             tile.issue = declared ? GalleryTile::Issue::NotBound : GalleryTile::Issue::NoImage;
             next.push_back(std::move(tile));
             continue;
@@ -290,7 +323,7 @@ void RenderPassCapture::CaptureGallery(RenderPassContext& ctx)
             tile.sourceWidth = image.width;
             tile.sourceHeight = image.height;
             tile.depth = image.depth;
-            /// @note 実体はあるのに誰も申告していない ＝ 依存辺が張られておらず、順序は偶然。
+            // 実体はあるのに誰も申告していない ＝ 依存辺が張られておらず、順序は偶然。
             tile.issue = declared ? GalleryTile::Issue::None : GalleryTile::Issue::NotDeclared;
 
             const uint32_t width  = std::max(16u, galleryTileWidth);
@@ -308,8 +341,8 @@ void RenderPassCapture::CaptureGallery(RenderPassContext& ctx)
     m_gallery = std::move(next);
     m_capturedGalleryView = galleryView;
 
-    /// @note 1 枚も焼けていないなら、リソースではなくバックエンドの問題。区別が付かないと
-    /// @note 「全部真っ白」を «そういう絵» だと誤解する。
+    // 1 枚も焼けていないなら、リソースではなくバックエンドの問題。区別が付かないと
+    // 「全部真っ白」を «そういう絵» だと誤解する。
     const bool anyImage = std::any_of(m_gallery.begin(), m_gallery.end(),
         [](const GalleryTile& tile) { return tile.hasImage; });
     m_galleryStatus = anyImage ? std::string()
@@ -324,12 +357,16 @@ void RenderPassCapture::Finish(const renderer::RenderGraph::ExecutionReport& rep
     size_t profileIndex = 0;
     for (auto& pass : m_passes) {
         pass.gpuMs = -1.0;
-        if (pass.culled) continue;
-        if (profileIndex < report.profiles.size())
-            pass.cpuMs = report.profiles[profileIndex++].cpuMilliseconds;
-        if (!gpuSnapshot.available || !gpuSnapshot.complete || capturedView.planGeneration == 0)
+        if (pass.culled) {
             continue;
-        /// @note 名前の一致だけでは過去の画像や別ビューに結び付く。完全一致の出自だけを受け入れる。
+        }
+        if (profileIndex < report.profiles.size()) {
+            pass.cpuMs = report.profiles[profileIndex++].cpuMilliseconds;
+        }
+        if (!gpuSnapshot.available || !gpuSnapshot.complete || capturedView.planGeneration == 0) {
+            continue;
+        }
+        // 名前の一致だけでは過去の画像や別ビューに結び付く。完全一致の出自だけを受け入れる。
         const auto matchesPass = [&](const auto& timing) {
             return timing.name == pass.name && IsGpuProfilerViewCompatible(timing.metadata, capturedView)
                 && timing.physicalFrameSerial == gpuSnapshot.physicalFrameSerial
@@ -342,8 +379,9 @@ void RenderPassCapture::Finish(const renderer::RenderGraph::ExecutionReport& rep
         if (matches == 1 && sameNamePasses == 1) {
             const auto timing = std::find_if(gpuTimings.begin(), gpuTimings.end(),
                 matchesPass);
-            if (timing->available && std::isfinite(timing->gpuMs) && timing->gpuMs >= 0.0)
+            if (timing->available && std::isfinite(timing->gpuMs) && timing->gpuMs >= 0.0) {
                 pass.gpuMs = timing->gpuMs;
+            }
         }
     }
 }
@@ -353,7 +391,9 @@ void RenderPassCapture::ReleaseGallery(renderer::ResourceManager& resources)
     const bool live = m_resetVersion == resources.GetResetVersion();
     for (auto& tile : m_gallery) {
         tile.image.Release(resources);
-        if (live) resources.Release(tile.constants);
+        if (live) {
+            resources.Release(tile.constants);
+        }
         tile.constants = {};
     }
     m_gallery.clear();
@@ -367,7 +407,7 @@ void RenderPassCapture::Release(renderer::ResourceManager& resources)
         resources.Release(m_pipelineState);
         resources.Release(m_constants);
     }
-    /// @note LoadShader のキャッシュは ResourceManager が所有する。
+    // LoadShader のキャッシュは ResourceManager が所有する。
     m_shader = {};
     m_pipelineState = {};
     m_constants = {};
@@ -375,4 +415,4 @@ void RenderPassCapture::Release(renderer::ResourceManager& resources)
     Invalidate();
 }
 
-} /// @note namespace fbzz::renderer
+} // namespace fbzz::renderer

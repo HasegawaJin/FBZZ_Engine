@@ -111,7 +111,9 @@ struct MeshletBenchmarkResult {
 
 double Median(std::vector<double> values)
 {
-    if (values.empty()) return 0;
+    if (values.empty()) {
+        return 0;
+    }
     std::sort(values.begin(), values.end());
     const size_t middle = values.size() / 2u;
     return values.size() % 2u ? values[middle] : (values[middle - 1u] + values[middle]) * 0.5;
@@ -326,7 +328,9 @@ protected:
                     item, false, draw, culling, forceMesh, clusterView, hierarchy) && (forceMesh || clusterView)) return false;
             } else {
                 r::MeshletGeometry geometry;
-                if (!Prepare(grid, geometry)) return false;
+                if (!Prepare(grid, geometry)) {
+                    return false;
+                }
                 MeshletTestConstants constants;
                 constants.meshletCount = geometry.meshletCount;
                 constants.vertexStride = geometry.vertexStride;
@@ -347,7 +351,7 @@ protected:
             }
         }
         if (preparedDraw) *preparedDraw = draw;
-        /// @note The cache hit and CPU metadata preparation precede the GPU interval but remain in the caller's CPU submission measurement.
+        // キャッシュヒットと CPU のメタデータ準備は GPU 計測の前に行い、呼び出し側の CPU 送信時間には含める。
         if (profile) device.GpuProfBeginPass("MeshletFrame");
         device.SetRenderTarget(target, resources);
         device.Clear({0, 0, 0, 0}); device.ClearDepth();
@@ -418,7 +422,9 @@ protected:
                     {0.0f, 0.0f, side == 0 ? -1.0f : 1.0f}, {1.0f, 0.0f, 0.0f}, {u, v}});
             }
             for (uint32_t y = 0; y < cells; ++y) for (uint32_t x = 0; x < cells; ++x) {
-                if (!regularGrid && x >= 6 && x < 10 && y >= 6 && y < 10) continue;
+                if (!regularGrid && x >= 6 && x < 10 && y >= 6 && y < 10) {
+                    continue;
+                }
                 const uint32_t a = first + y * rowStride + x;
                 const uint32_t b = a + 1;
                 const uint32_t c = a + rowStride;
@@ -612,9 +618,17 @@ protected:
                 return;
             lastPhysicalSerial = snapshot.physicalFrameSerial;
             for (const auto& pass : snapshot.passes) {
-                if (!pass.available || pass.name != scope || pass.metadata.viewId != runId
-                    || firstMeasuredSerial == 0 || pass.metadata.applicationFrameSerial < firstMeasuredSerial
-                    || pass.metadata.applicationFrameSerial > lastMeasuredSerial) continue;
+                if (!pass.available || pass.name != scope || pass.metadata.viewId != runId) {
+                    continue;
+                }
+
+                // 同じビューでもウォームアップや計測後に記録した GPU パスは集計しない。
+                const uint64_t frameSerial = pass.metadata.applicationFrameSerial;
+                const bool inMeasurement = firstMeasuredSerial != 0
+                    && frameSerial >= firstMeasuredSerial && frameSerial <= lastMeasuredSerial;
+                if (!inMeasurement) {
+                    continue;
+                }
                 if (!std::isfinite(pass.gpuMs) || pass.gpuMs < 0) {
                     ADD_FAILURE() << "Invalid GPU timestamp duration";
                     continue;
@@ -648,16 +662,20 @@ protected:
             m_bundle.renderer->GpuProfEndView();
             End();
             const auto frameEnd = Clock::now();
-            if (!drawn) return false;
+            if (!drawn) {
+                return false;
+            }
             if (measured) {
                 result.cpuSubmitMs.push_back(std::chrono::duration<double, std::milli>(submissionEnd - submissionStart).count());
                 result.cpuFrameMs.push_back(std::chrono::duration<double, std::milli>(frameEnd - frameStart).count());
             }
             collect();
         }
-        /// @note Drain through the existing readback boundary without inserting waits into steady-frame measurements.
+        // 定常フレームに待機を追加せず、既存の読み戻しのタイミングで残りの結果を回収する。
         const auto depth = ReadTexture(m_resources->GetDepthTexture(target), true);
-        if (depth.empty()) return false;
+        if (depth.empty()) {
+            return false;
+        }
         collect();
         return result.cpuFrameMs.size() == MEASURED_FRAMES && result.gpuFrameMs.size() >= MEASURED_FRAMES / 2u;
     }
@@ -666,7 +684,9 @@ protected:
         bool shadow, bool mesh, uint64_t runId, MeshletBenchmarkResult& result)
     {
         r::MeshletGeometry geometry;
-        if (!Prepare(grid, geometry)) return false;
+        if (!Prepare(grid, geometry)) {
+            return false;
+        }
         result.cells = cells; result.visibleDenominator = visibleDenominator;
         result.shadow = shadow; result.mesh = mesh; result.meshletCount = geometry.meshletCount;
         const auto camera = Camera(32.0f / std::sqrt(static_cast<float>(visibleDenominator)));
@@ -705,9 +725,13 @@ protected:
             ? std::filesystem::path(configuredPath) : repository / "Scratch/MeshletGeometryBenchmark.json";
         std::error_code error;
         if (!path.parent_path().empty()) std::filesystem::create_directories(path.parent_path(), error);
-        if (error) return false;
+        if (error) {
+            return false;
+        }
         std::ofstream output(path, std::ios::binary);
-        if (!output) return false;
+        if (!output) {
+            return false;
+        }
         output.precision(9);
         output << "{\n  \"schema\": \"fbzz-meshlet-benchmark/1\",\n"
             << "  \"targetPixels\": [16,16],\n  \"warmupFrames\": 12,\n  \"measuredFrames\": 48,\n"
@@ -936,7 +960,9 @@ TEST_F(MeshletGeometryShaderTest, StreamedClustersKeepCoverageBeforeFinePagesAre
     for (size_t frame = 0; frame < grid.clusterLod->streamPages.size(); ++frame) {
         fine = Render(grid, true, false, camera, world, false, true, false, true,
             &finalDraw, nullptr, false, &fineView, nullptr, true);
-        if (finalDraw.meshletPages.size() == grid.clusterLod->streamPages.size()) break;
+        if (finalDraw.meshletPages.size() == grid.clusterLod->streamPages.size()) {
+            break;
+        }
     }
     ASSERT_EQ(finalDraw.meshletPages.size(), grid.clusterLod->streamPages.size());
     ExpectSame(indexed, fine, false);
@@ -1148,7 +1174,7 @@ TEST_F(MeshletGeometryShaderTest, UpdatingSourceBuffersRebuildsTheProductionMesh
         changedCoverage += (before.depth[offset] > 1.0e-5f) != (updated.depth[offset] > 1.0e-5f);
     EXPECT_GT(changedCoverage, 128u);
 
-    /// @note Changing the live index range must invalidate the blob without mutating the canonical source buffers.
+    // Changing the live index range must invalidate the blob without mutating the canonical source buffers.
     for (size_t triangle = 0; triangle < grid.indices.size(); triangle += 3u)
         grid.indices[triangle + 2u] = grid.indices[triangle + 1u];
     m_resources->Update(grid.indexBuffer, grid.indices.data(), grid.indices.size() * sizeof(uint32_t));
@@ -1236,7 +1262,7 @@ TEST_F(MeshletGeometryShaderTest, TerrainMeshletsPreserveGrazingMirroredAndShado
         expectTerrain(mirrored, front, nullptr, false);
     }
 
-    /// @note The main view excludes the terrain so a camera-derived shadow cone would remove valid depth.
+    // The main view excludes the terrain so a camera-derived shadow cone would remove valid depth.
     auto offCamera = front;
     offCamera.LookAt({0, 0, -4});
     {
@@ -1341,7 +1367,7 @@ TEST_F(MeshletGeometryShaderTest, StaticCascadeCacheRestoresDepthAndDrawsMovedCa
     for (const int cachedIndex : {2, 3}) {
         SCOPED_TRACE(cachedIndex);
         auto shadows = prepared;
-        /// @note The depth reader samples the atlas at its upper-left tile.
+        // The depth reader samples the atlas at its upper-left tile.
         std::swap(shadows.cascades[0].viewportX, shadows.cascades[cachedIndex].viewportX);
         std::swap(shadows.cascades[0].viewportY, shadows.cascades[cachedIndex].viewportY);
         const auto bit = 1u << cachedIndex;
@@ -1375,10 +1401,10 @@ TEST_F(MeshletGeometryShaderTest, StaticCascadeCacheRestoresDepthAndDrawsMovedCa
     farTerrain.shadowBakeStatic = true;
     farTerrain.constants.worldMatrix = math::Matrix4::Translate({FAR_TERRAIN_X, 0, 0}) * terrainScale;
     farTerrain.chunkWorldSize = 2.0f;
-    /// @note Use four rows of the fixture's 16-cell grid so both LODs cover enough pixels to compare.
+    // Use four rows of the fixture's 16-cell grid so both LODs cover enough pixels to compare.
     farTerrain.patches.front().indexCountLOD[1] = 4u * 16u * 6u;
 
-    /// @note Fixed, disjoint light views isolate cache invalidation from projection changes.
+    // Fixed, disjoint light views isolate cache invalidation from projection changes.
     for (const int index : {2, 3}) {
         auto light = Camera(10.0f);
         light.m_position.x = index == 3 ? FAR_TERRAIN_X : 0.0f;
@@ -1410,7 +1436,7 @@ TEST_F(MeshletGeometryShaderTest, DirectionalShadowBakeRestoresStaticTerrainAndK
 {
     auto& resources = *m_resources;
     auto& device = *m_bundle.renderer;
-    /// @note Keep the perforated terrain thick enough in the 64px depth tile to measure a 5x5 interior.
+    // Keep the perforated terrain thick enough in the 64px depth tile to measure a 5x5 interior.
     const auto terrainScale = math::Matrix4::Scale({1.75f, 1.75f, 1.0f});
     auto staticScene = TerrainScene(terrainScale);
     staticScene->terrains.front().shadowBakeStatic = true;
@@ -1484,7 +1510,7 @@ TEST_F(MeshletGeometryShaderTest, DirectionalShadowBakeRestoresStaticTerrainAndK
         size_t missing = 0;
         size_t unexpected = 0;
         float maxDepthError = 0.0f;
-        /// @note A fixed texel covers fewer than two live pixels in this fixture. Permit edge shifts inside that footprint only.
+        // A fixed texel covers fewer than two live pixels in this fixture. Permit edge shifts inside that footprint only.
         constexpr uint32_t margin = 2;
         constexpr float clear = 1.0f - 1.0e-5f;
         for (uint32_t y = margin; y < EXTENT - margin; ++y) for (uint32_t x = margin; x < EXTENT - margin; ++x) {
@@ -1526,7 +1552,7 @@ TEST_F(MeshletGeometryShaderTest, DirectionalShadowBakeRestoresStaticTerrainAndK
         ASSERT_TRUE(texture);
         auto prepared = r::PrepareShadows(camera, settings, coverage, lightDirection, 12.0f, 1.0f);
         ASSERT_EQ(prepared.count, 2);
-        /// @note The fixture reads the upper-left depth tile. Place the far tile there and keep the near tile separate.
+        // The fixture reads the upper-left depth tile. Place the far tile there and keep the near tile separate.
         std::swap(prepared.cascades[0].viewportX, prepared.cascades[1].viewportX);
         std::swap(prepared.cascades[0].atlasRect, prepared.cascades[1].atlasRect);
         auto uncovered = prepared;
@@ -1544,7 +1570,7 @@ TEST_F(MeshletGeometryShaderTest, DirectionalShadowBakeRestoresStaticTerrainAndK
         EXPECT_FALSE(r::PrepareDirectionalShadowBakeView(resources, bake, texture, coverage,
             math::Vector3::UP, UINT32_MAX, 1.0f, prepared, stale));
 
-        /// @note Erode static coverage alone. Touching static and dynamic silhouettes can hide each other's edges.
+        // Erode static coverage alone. Touching static and dynamic silhouettes can hide each other's edges.
         const auto staticReference = render(staticScene, prepared, {}, false);
         auto bakedStatic = render(staticScene, prepared, baked, true);
         expectResampled(staticReference, bakedStatic);
@@ -1560,7 +1586,7 @@ TEST_F(MeshletGeometryShaderTest, DirectionalShadowBakeRestoresStaticTerrainAndK
 
         auto sameProjection = prepared;
         auto& farCascade = sameProjection.cascades[1];
-        /// @note Reconstruct the fixed orthographic camera independently to check exact, unresampled depth restoration.
+        // Reconstruct the fixed orthographic camera independently to check exact, unresampled depth restoration.
         const float radius = bake.coverage.radius;
         const float pullback = 2.0f * radius + 20.0f;
         const auto up = std::abs(bake.lightDirection.y) > 0.99f ? math::Vector3::RIGHT : math::Vector3::UP;
@@ -1607,7 +1633,7 @@ TEST_F(MeshletGeometryShaderTest, TerrainNormalConeOnlyRejectsProvenBackFaces)
     r::MeshletDescriptor descriptor;
     ASSERT_TRUE(blob->CopyData(0, sizeof(descriptor), &descriptor));
 
-    /// @note SNORM8 (0, 0, -127) and UNORM8 cutoff ceil(0.3 * 255).
+    // SNORM8 (0, 0, -127) and UNORM8 cutoff ceil(0.3 * 255).
     constexpr uint32_t axis = 0x4D810000u;
     const math::Vector4 center{0, 0, 3, 0};
     const float invalidDistance = std::numeric_limits<float>::quiet_NaN();
@@ -1679,7 +1705,7 @@ TEST_F(MeshletGeometryShaderTest, DISABLED_SteadyHighDensityGeometryComparison)
             SCOPED_TRACE(cells);
             SCOPED_TRACE(visibleDenominator);
             SCOPED_TRACE(shadow);
-            /// @note Alternate route order across workloads to avoid consistently assigning one mode the colder GPU clock state.
+            // Alternate route order across workloads to avoid consistently assigning one mode the colder GPU clock state.
             const bool meshFirst = ((visibleDenominator + cells / 256u + static_cast<uint32_t>(shadow)) & 1u) != 0u;
             for (uint32_t route = 0; route < 2; ++route) {
                 MeshletBenchmarkResult result;

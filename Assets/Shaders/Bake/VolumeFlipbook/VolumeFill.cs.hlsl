@@ -2,25 +2,25 @@
 /// @brief   Volume Flipbook Baker: 解析 puff の和を媒質ボリュームと速度ボリュームへ書き込む。
 /// @author  Hasegawa Jin
 /// @date    2026-09-11
-//
-// 式は Projects/Engine/src/Asset/Flipbook/VolumeFlipbookAnalytic.cpp の SampleVolumeFill と 1:1。
-// 片方だけ直すと、テストが守っている CPU 側と実際に焼かれる絵が静かにずれる。
-//
-// WHY このシェーダーが境界か: 流体ソルバーに置き換えるときも、下流 (レイマーチ・MV・Atlas) は
-//     «u0 に媒質、u1 に速度» しか見ていない。ソルバーは同じ 2 枚を書けばそのまま焼ける。
+///
+/// @note 式は Projects/Engine/src/Asset/Flipbook/VolumeFlipbookAnalytic.cpp の SampleVolumeFill と 1:1。
+/// @note 片方だけ直すと、テストが守っている CPU 側と実際に焼かれる絵が静かにずれる。
+///
+/// @note このシェーダーが境界か: 流体ソルバーに置き換えるときも、下流 (レイマーチ・MV・Atlas) は
+/// @note «u0 に媒質、u1 に速度» しか見ていない。ソルバーは同じ 2 枚を書けばそのまま焼ける。
 #include "Platform/Backend.hlsli"
 #include "Rendering/ParticleNoise.hlsli"
 #include "Common/BindlessIndices.hlsli"
 
 struct VolumePuffGpu
 {
-    float4 body[3];      // y = dot(body[i].xyz, x) + body[i].w
-    float4 velocity[3];  // v = dot(velocity[i].xyz, x) + velocity[i].w
-    float4 params;       // x density·envelope / y 芯の温度 / z noise seed / w 物体座標の cull 半径
-    float4 look;         // x colorKey / y 液体の割合 / z noise の倍率 / w 予備
+    float4 body[3];      /// @note y = dot(body[i].xyz, x) + body[i].w
+    float4 velocity[3];  /// @note v = dot(velocity[i].xyz, x) + velocity[i].w
+    float4 params;       /// @note x density·envelope / y 芯の温度 / z noise seed / w 物体座標の cull 半径
+    float4 look;         /// @note x colorKey / y 液体の割合 / z noise の倍率 / w 予備
 };
 
-cbuffer VolumeFillConstants : register(b0)
+cbuffer VolumeFillConstants : register(FBZZ_REGISTER(b, CB_VOLUME_FILL_SLOT))
 {
     uint  gResolution;
     uint  gPuffCount;
@@ -28,12 +28,12 @@ cbuffer VolumeFillConstants : register(b0)
     float gNoiseAmplitude;
 };
 
-// t14 は ComputeCall の kComputeStructuredBufferSlots の 1 つ。それ以外の番号だと、
-// DX12 で束縛しなかったときの null がテクスチャ次元になり、読み値が未定義になる。
-FBZZ_SBUFFER_T(VolumePuffGpu, gPuffs, 14);
+/// @note t14 は ComputeCall の kComputeStructuredBufferSlots の 1 つ。それ以外の番号だと、
+/// @note DX12 で束縛しなかったときの null がテクスチャ次元になり、読み値が未定義になる。
+FBZZ_SBUFFER_T(VolumePuffGpu, gPuffs, SRV_VOLUME_PUFFS_SLOT);
 
-FBZZ_RWTEX3D_T(float4, gMediumOut, 0); // R 密度 / G 温度 / B colorKey / A 液体の割合
-FBZZ_RWTEX3D_T(float4, gVelocityOut, 1); // xyz 速度 [bake 単位/秒]
+FBZZ_RWTEX3D_T(float4, gMediumOut, UAV_VOLUME_MEDIUM_SLOT); /// @note R 密度 / G 温度 / B colorKey / A 液体の割合
+FBZZ_RWTEX3D_T(float4, gVelocityOut, UAV_VOLUME_VELOCITY_SLOT); /// @note xyz 速度 [bake 単位/秒]
 
 float PuffBodyDensity(float3 y, float seedOffset, float noiseScale)
 {

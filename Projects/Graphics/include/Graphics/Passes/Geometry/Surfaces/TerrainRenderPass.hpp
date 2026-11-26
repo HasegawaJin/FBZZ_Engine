@@ -25,8 +25,8 @@ FBZZ_GRAPHICS_API void TerrainSelectionMaskSystem(RenderPassContext& ctx);
 /// @note 呼ばれず申告をホスト側のラムダが代理していたため。描き先はパス自身の属性として
 /// @note 登録時に決めて持たせる。
 enum class TerrainDrawMode {
-    GBuffer,  ///< @note GBuffer へ書く (Deferred 本体 / Forward のプリパス)
-    Forward,  ///< @note HDR へ直接ライティング結果を描く
+    GBuffer,  ///< GBuffer へ書く (Deferred 本体 / Forward のプリパス)
+    Forward,  ///< HDR へ直接ライティング結果を描く
 };
 
 /// @note IRenderPass 実装 — RenderPipeline::`AddPass<TerrainRenderPass>(mode)` で登録する。

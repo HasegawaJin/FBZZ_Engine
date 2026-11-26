@@ -28,14 +28,14 @@ inline constexpr uint32_t OCCLUSION_DRAW_ARGUMENT_STRIDE = 20;
 /// @note float の各段を row-major で連結する。先頭段は 4×4 ピクセルを覆い、各軸の段寸法は切り上げる。
 /// @note 寸法はビュー内のピクセル数。描画を続ける同じビューと深度書き込みだけに対応する。
 struct GpuHiZ {
-    ResourceHandle<StructuredBufferTag> depths;
-    uint32_t width = 0;
-    uint32_t height = 0;
-    bool reversedZ = false;
+    ResourceHandle<StructuredBufferTag> depths; ///< 遮蔽判定で読む縮約済み深度バッファのハンドル。
+    uint32_t width = 0; ///< 縮約済み深度の横方向の要素数。
+    uint32_t height = 0; ///< 縮約済み深度の縦方向の要素数。
+    bool reversedZ = false; ///< 手前ほど深度が大きくなる投影を使用したか。
 };
 
-/// @param source 現在の描画先。深度を書いた後、後続の描画が始まる前に呼ぶ。
-/// @param viewportWidth 0 は viewportHeight も 0 のとき描画先全体を示す。
+/// @param[in] source 現在の描画先。深度を書いた後、後続の描画が始まる前に呼ぶ。
+/// @param[in] viewportWidth 0 は viewportHeight も 0 のとき描画先全体を示す。
 /// @return 構築できなければ depths は無効。構築後は source と指定ビューポートを復元する。
 /// @pre DIRECT queue の独立 dispatch。相互依存のない compute batch 内で呼ばないこと。
 [[nodiscard]] FBZZ_GRAPHICS_API GpuHiZ BuildGpuHiZ(IRenderer& renderer, ResourceManager& resources,
@@ -49,4 +49,4 @@ void CullOccludedMeshes(RenderPassContext& ctx, const GpuHiZ& hierarchy);
 [[nodiscard]] bool BindMeshOcclusionArguments(RenderPassContext& ctx, const RenderScene& scene, std::size_t itemIndex,
     ResourceHandle<StructuredBufferTag> arguments, DrawCall& draw);
 
-} /// @note namespace fbzz::renderer
+} // namespace fbzz::renderer

@@ -2,14 +2,14 @@
 /// @brief   GPU パーティクルシミュレーション: スポーン + 物理積分 + 流れ/ノイズ + 色/サイズ/スプライト補間
 /// @author  Hasegawa Jin
 /// @date    2026-06-14
-//
-// dispatch: ceil(maxParticles / 64) × 1 × 1
-// スロット:
-//   b0  = GpuEmitterCB
-//   t15 = StructuredBuffer<GpuSpawnEntry>  (スポーンバッファ DYNAMIC SRV)
-//   t29 = StructuredBuffer<GpuFlowField>   (このエミッターに効く流れ一式)
-//   t26 = Texture3D<float4>                (速度場アトラス。空でも常に束縛される)
-//   u2  = RWStructuredBuffer<GpuParticle> (パーティクルプール DEFAULT)
+///
+/// @note dispatch: ceil(maxParticles / 64) × 1 × 1
+/// @note スロット:
+/// @note b0  = GpuEmitterCB
+/// @note t15 = StructuredBuffer<GpuSpawnEntry>  (スポーンバッファ DYNAMIC SRV)
+/// @note t29 = StructuredBuffer<GpuFlowField>   (このエミッターに効く流れ一式)
+/// @note t26 = Texture3D<float4>                (速度場アトラス。空でも常に束縛される)
+/// @note u2  = RWStructuredBuffer<GpuParticle> (パーティクルプール DEFAULT)
 
 #include "Common/Binding.hlsli"
 #include "Common/Color.hlsli"
@@ -17,7 +17,7 @@
 #include "Rendering/FlowField.hlsli"
 #include "Common/BindlessIndices.hlsli"
 
-// ---------- 構造体 --------------------------------------------------------
+/// @note ---------- 構造体 --------------------------------------------------------
 
 struct GpuParticle
 {
@@ -31,10 +31,10 @@ struct GpuParticle
     float  angularVelocity;
     float  spriteSeed;
     float4 uvRect;
-    // 粒子ごとの色倍率 (colorVariation)。毎フレーム作り直す色へ掛け直すために保持する。
+    /// @note 粒子ごとの色倍率 (colorVariation)。毎フレーム作り直す色へ掛け直すために保持する。
     float3 colorScale;
-    float  spriteBlend;   // 次のコマへの補間率 (Frame Blending)
-    float4 nextUvRect;    // 次のコマの UV 矩形
+    float  spriteBlend;   /// @note 次のコマへの補間率 (Frame Blending)
+    float4 nextUvRect;    /// @note 次のコマの UV 矩形
 };
 
 struct GpuSpawnEntry
@@ -44,7 +44,7 @@ struct GpuSpawnEntry
     float3 velocity;
     float  size;
     float4 colorStart;
-    // 粒子ごとの色ゆらぎ倍率 (xyz)。w は未使用。
+    /// @note 粒子ごとの色ゆらぎ倍率 (xyz)。w は未使用。
     float4 colorScale;
     float4 uvRect;
     float  rotation;
@@ -53,9 +53,9 @@ struct GpuSpawnEntry
     float  pad1;
 };
 
-// ---------- リソース -------------------------------------------------------
+/// @note ---------- リソース -------------------------------------------------------
 
-cbuffer GpuEmitterCB : register(b0)
+cbuffer GpuEmitterCB : register(FBZZ_REGISTER(b, CB_PARTICLE_EMITTER_SLOT))
 {
     float3   gEmitterPos;
     float    gDeltaTime;
@@ -63,10 +63,10 @@ cbuffer GpuEmitterCB : register(b0)
     uint     gMaxParticles;
     float4   gColorStart;
     float4   gColorEnd;
-    uint     gSpawnCount;       // 今フレームにスポーンする粒子数
-    uint     gSpawnOffset;      // リングバッファの書き込み開始インデックス
+    uint     gSpawnCount;       /// @note 今フレームにスポーンする粒子数
+    uint     gSpawnOffset;      /// @note リングバッファの書き込み開始インデックス
     float    gColorCurvePower;
-    float    gFlowCoupling;      // 流れへ寄る速さ [1/s] (旧 gVelocityDamping と同じ枠)
+    float    gFlowCoupling;      /// @note 流れへ寄る速さ [1/s] (旧 gVelocityDamping と同じ枠)
     float    gSizeStart;
     float    gSizeEnd;
     float    gSizeCurvePower;
@@ -75,19 +75,19 @@ cbuffer GpuEmitterCB : register(b0)
     uint     gSpriteRows;
     uint     gSpriteStartFrame;
     uint     gSpriteEndFrame;
-    // ── ノイズモジュール + 流れ (末尾追加で既存オフセットを変えない) ──
-    float    gTime;             // カールノイズのスクロールに使う経過時間
-    float    gNoiseStrength;    // エミッター固有乱流の強さ (0 で無効)
+    /// @note ── ノイズモジュール + 流れ (末尾追加で既存オフセットを変えない) ──
+    float    gTime;             /// @note カールノイズのスクロールに使う経過時間
+    float    gNoiseStrength;    /// @note エミッター固有乱流の強さ (0 で無効)
     float    gNoiseFrequency;
     float    gNoiseSpeed;
-    uint     gFlowFieldCount;   // gParticleForces (SRV) の有効本数
+    uint     gFlowFieldCount;   /// @note gParticleForces (SRV) の有効本数
     uint     gFlipbookMode;
     float    gFlipbookFramesPerSecond;
     float    gPad1;
-    // 流れは StructuredBuffer (gParticleForces) へ移った (2026-09-11)。
-    // 枠は **空けたまま残す**。詰めると後続の gViewProjection 以降が丸ごと別の値を読む。
+    /// @note 流れは StructuredBuffer (gParticleForces) へ移った (2026-09-11)。
+    /// @note 枠は **空けたまま残す**。詰めると後続の gViewProjection 以降が丸ごと別の値を読む。
     float4   gReservedFlowFields[24];
-    float4   gCurveFlags;       // x=size, y=velocity, z=gradient, w=frameBlend
+    float4   gCurveFlags;       /// @note x=size, y=velocity, z=gradient, w=frameBlend
     float4   gSizeCurveKeys01;
     float4   gSizeCurveKeys23;
     float4   gVelocityCurveKeys01;
@@ -103,21 +103,21 @@ cbuffer GpuEmitterCB : register(b0)
     uint     gDepthResponse;
     float    gDepthDamping;
     float    gDepthPad;
-    // ── over-lifetime モジュール追加分 (末尾追加で既存オフセットを変えない) ──
-    float4   gCurveFlags2;          // x=rotation, y=drag, z/w=予約
+    /// @note ── over-lifetime モジュール追加分 (末尾追加で既存オフセットを変えない) ──
+    float4   gCurveFlags2;          /// @note x=rotation, y=drag, z/w=予約
     float4   gRotationCurveKeys01;
     float4   gRotationCurveKeys23;
     float4   gDragCurveKeys01;
     float4   gDragCurveKeys23;
-    float3   gOrbitalAxis;          // CPU 側で正規化済み
+    float3   gOrbitalAxis;          /// @note CPU 側で正規化済み
     float    gOrbitalVelocity;
     float    gRadialVelocity;
-    // bit0 = spriteRandomStartFrame / bit1 = spriteRandomRow
+    /// @note bit0 = spriteRandomStartFrame / bit1 = spriteRandomRow
     uint     gSpriteRandomFlags;
     float    gVelocityPad0;
     float    gVelocityPad1;
-    // ── カーブ 8 キー化の追加分 (RenderPassContext.hpp の GpuParticleEmitterCB と対) ──
-    // 既存の *Keys01/23 (キー 0〜3) はオフセットを保ち、キー 4〜7 を末尾へ足す。
+    /// @note ── カーブ 8 キー化の追加分 (RenderPassContext.hpp の GpuParticleEmitterCB と対) ──
+    /// @note 既存の *Keys01/23 (キー 0〜3) はオフセットを保ち、キー 4〜7 を末尾へ足す。
     float4   gSizeCurveKeys45;
     float4   gSizeCurveKeys67;
     float4   gVelocityCurveKeys45;
@@ -128,34 +128,34 @@ cbuffer GpuEmitterCB : register(b0)
     float4   gDragCurveKeys67;
     float4   gGradientTimes47;
     float4   gGradientColors47[4];
-    float4   gCurveKeyCounts;       // x=size, y=velocity, z=rotation, w=drag の有効キー数
-    float4   gCurveModes;           // 補間モード 0=Linear 1=Step 2=Smooth
-    float4   gGradientMeta;         // x=キー数, y=補間モード, z/w=予約
+    float4   gCurveKeyCounts;       /// @note x=size, y=velocity, z=rotation, w=drag の有効キー数
+    float4   gCurveModes;           /// @note 補間モード 0=Linear 1=Step 2=Smooth
+    float4   gGradientMeta;         /// @note x=キー数, y=補間モード, z/w=予約
 };
 
 FBZZ_SBUFFER_T(GpuSpawnEntry, gSpawnBuffer, SB_GPU_SPAWN_SLOT);
 FBZZ_RWSBUFFER_T(GpuParticle, gParticles, UAV_GPU_PARTICLES_SLOT);
 FBZZ_TEX2D_T(float, gSceneDepth, TEX_DEPTH_SLOT);
-// このエミッターに効く流れ一式。本数は gFlowFieldCount。上限は無い。
+/// @note このエミッターに効く流れ一式。本数は gFlowFieldCount。上限は無い。
 FBZZ_SBUFFER_T(GpuFlowField, gParticleForces, SB_PARTICLE_FORCES_SLOT);
-// 常駐中の速度場を積んだアトラス。場が 1 枚も無くても 1x1x1 が必ず束縛される。
+/// @note 常駐中の速度場を積んだアトラス。場が 1 枚も無くても 1x1x1 が必ず束縛される。
 FBZZ_TEX3D_T(float4, gVelocityAtlas, TEX_VELOCITY_FIELD_SLOT);
 SamplerState                       gVelocitySamp   : register(SAMPLER_LINEAR_CLAMP);
 
-// ---------- 速度モジュール (周回 / 放射) ------------------------------------
+/// @note ---------- 速度モジュール (周回 / 放射) ------------------------------------
 
-// 周回 (orbital) と放射 (radial) の加速度を速度へ加える。
-// 対になる CPU 実装は無い。ParticlePass.cpp の同名関数は orbital スロットの廃止で削除済みで、
-// gOrbitalVelocity / gRadialVelocity は常に 0 が入るため、ここは実質 no-op。
-// WHY 消さないか: この 2 枠と gOrbitalAxis は GpuEmitterCB のレイアウトの一部で、
-//      式だけ削っても CB は縮まない。常に 0 なら素通りするので残しておく方が安全。
+/// @note 周回 (orbital) と放射 (radial) の加速度を速度へ加える。
+/// @note 対になる CPU 実装は無い。ParticlePass.cpp の同名関数は orbital スロットの廃止で削除済みで、
+/// @note gOrbitalVelocity / gRadialVelocity は常に 0 が入るため、ここは実質 no-op。
+/// @note 消さないか: この 2 枠と gOrbitalAxis は GpuEmitterCB のレイアウトの一部で、
+/// @note 式だけ削っても CB は縮まない。常に 0 なら素通りするので残しておく方が安全。
 void ApplyOrbitalVelocity(float3 position, inout float3 velocity)
 {
     if (gOrbitalVelocity == 0.0f && gRadialVelocity == 0.0f) return;
 
     float3 offset = position - gEmitterPos;
     float  dist   = length(offset);
-    // 原点に重なった粒子は接線・放射方向が定義できない。ゼロ除算を避けて素通しする。
+    /// @note 原点に重なった粒子は接線・放射方向が定義できない。ゼロ除算を避けて素通しする。
     if (dist < 1.0e-5f) return;
     float3 radialDir = offset / dist;
 
@@ -164,7 +164,7 @@ void ApplyOrbitalVelocity(float3 position, inout float3 velocity)
 
     if (gOrbitalVelocity != 0.0f)
     {
-        // 接線 = axis × radial。軸と平行な粒子では長さ 0 になるので正規化前に確認する。
+        /// @note 接線 = axis × radial。軸と平行な粒子では長さ 0 になるので正規化前に確認する。
         float3 tangent = cross(gOrbitalAxis, radialDir);
         float  tangentLength = length(tangent);
         if (tangentLength > 1.0e-5f)
@@ -172,18 +172,18 @@ void ApplyOrbitalVelocity(float3 position, inout float3 velocity)
     }
 }
 
-// ---------- 流れの場 (FlowField) -------------------------------------------
+/// @note ---------- 流れの場 (FlowField) -------------------------------------------
 
-// 1 点の媒質速度 [m/s]。式の本体は Rendering/FlowField.hlsli (Fiber と共有)。
-// チャンネルは CPU の ResolveEmitterForces で絞り込み済みなので全チャンネルで評価する。
+/// @note 1 点の媒質速度 [m/s]。式の本体は Rendering/FlowField.hlsli (Fiber と共有)。
+/// @note チャンネルは CPU の ResolveEmitterForces で絞り込み済みなので全チャンネルで評価する。
 float3 SampleFlow(float3 position, out bool covered)
 {
     return SampleFlowFields(gParticleForces, 0u, gFlowFieldCount, FLOW_ALL_CHANNELS,
                             gVelocityAtlas, gVelocitySamp, position, gTime, covered);
 }
 
-// 流れへ粒子速度を緩和させる。式は FlowFieldEval.cpp の ApplyFlowFields と一致させること。
-// 場に覆われていない点では何もしない («場が無い» は «流速 0 の静止した空気» ではない)。
+/// @note 流れへ粒子速度を緩和させる。式は FlowFieldEval.cpp の ApplyFlowFields と一致させること。
+/// @note 場に覆われていない点では何もしない («場が無い» は «流速 0 の静止した空気» ではない)。
 void ApplyFlowFields(float3 position, inout float3 velocity, float coupling)
 {
     if (gFlowFieldCount == 0 || coupling <= 0.0f) return;
@@ -193,19 +193,19 @@ void ApplyFlowFields(float3 position, inout float3 velocity, float coupling)
     velocity += (flow - velocity) * saturate(coupling * gDeltaTime);
 }
 
-// 補間係数へ曲線モードを適用する。
-// ParticleEmitter.hpp の ApplyCurveInterpolation と必ず同じ式にすること
-// (片方だけ直すと「CPU では正しいが GPU では違う」形で静かに壊れる)。
+/// @note 補間係数へ曲線モードを適用する。
+/// @note ParticleEmitter.hpp の ApplyCurveInterpolation と必ず同じ式にすること
+/// @note (片方だけ直すと「CPU では正しいが GPU では違う」形で静かに壊れる)。
 float ApplyCurveInterpolation(float alpha, float mode)
 {
-    if (mode > 1.5f) return alpha * alpha * (3.0f - 2.0f * alpha); // Smooth
-    if (mode > 0.5f) return alpha >= 1.0f ? 1.0f : 0.0f;           // Step (区間は [前, 次))
-    return alpha;                                                  // Linear
+    if (mode > 1.5f) return alpha * alpha * (3.0f - 2.0f * alpha); /// @note Smooth
+    if (mode > 0.5f) return alpha >= 1.0f ? 1.0f : 0.0f;           /// @note Step (区間は [前, 次))
+    return alpha;                                                  /// @note Linear
 }
 
-// 8キーカーブを評価する。float4 1本へ (time,value) を2点ずつ、計4本で8キー。
-// count は有効キー数。超過分は最終キーで埋めてあるが、count で打ち切らないと
-// 末尾のダミー区間を踏んで CPU の Evaluate と結果がずれる。
+/// @note 8キーカーブを評価する。float4 1本へ (time,value) を2点ずつ、計4本で8キー。
+/// @note count は有効キー数。超過分は最終キーで埋めてあるが、count で打ち切らないと
+/// @note 末尾のダミー区間を踏んで CPU の Evaluate と結果がずれる。
 float EvaluateCurve8(float4 keys01, float4 keys23, float4 keys45, float4 keys67,
                      float count, float mode, float t)
 {
@@ -227,9 +227,9 @@ float EvaluateCurve8(float4 keys01, float4 keys23, float4 keys45, float4 keys67,
     return keys[last].y;
 }
 
-// ---------- グラデーションの色空間 -----------------------------------------
-// 式は ParticleEmitter.hpp の ParticleGradient::MixKeys / ParticleColorSpace.hpp と
-// 完全に一致させること。ずれると同じ .vfx が CPU/GPU で違う色になる。
+/// @note ---------- グラデーションの色空間 -----------------------------------------
+/// @note 式は ParticleEmitter.hpp の ParticleGradient::MixKeys / ParticleColorSpace.hpp と
+/// @note 完全に一致させること。ずれると同じ .vfx が CPU/GPU で違う色になる。
 
 float3 SignedCbrt3(float3 v)
 {
@@ -262,30 +262,30 @@ float3 OklabToLinear(float3 lab)
         -0.0041960863f * lms.x - 0.7034186147f * lms.y + 1.7076147010f * lms.z);
 }
 
-// 2 キーをオーサリング空間 (sRGB) で受け取り、指定空間で混ぜて sRGB のまま返す。
-// アルファは常に線形補間 (不透明度は光量ではないため色空間の対象外)。
-// NOTE: 出口を 1 つにしてある。ループ内で展開される関数の早期 return は FXC が X4000 で咎める。
+/// @note 2 キーをオーサリング空間 (sRGB) で受け取り、指定空間で混ぜて sRGB のまま返す。
+/// @note アルファは常に線形補間 (不透明度は光量ではないため色空間の対象外)。
+/// @note NOTE: 出口を 1 つにしてある。ループ内で展開される関数の早期 return は FXC が X4000 で咎める。
 float4 MixGradientKeys(float4 a, float4 b, float alpha, float space)
 {
     float3 rgb;
-    if (space > 1.5f)   // Oklab
+    if (space > 1.5f)   /// @note Oklab
     {
         float3 oa = LinearToOklab(SRGBToLinear(a.rgb));
         float3 ob = LinearToOklab(SRGBToLinear(b.rgb));
         rgb = LinearToSRGB(OklabToLinear(lerp(oa, ob, alpha)));
     }
-    else if (space > 0.5f)   // Linear
+    else if (space > 0.5f)   /// @note Linear
     {
         rgb = LinearToSRGB(lerp(SRGBToLinear(a.rgb), SRGBToLinear(b.rgb), alpha));
     }
-    else   // Gamma
+    else   /// @note Gamma
     {
         rgb = lerp(a.rgb, b.rgb, alpha);
     }
     return float4(rgb, lerp(a.a, b.a, alpha));
 }
 
-// 戻り値はリニア。粒子バッファへ書く色は常にリニアで、描画側は変換しない。
+/// @note 戻り値はリニア。粒子バッファへ書く色は常にリニアで、描画側は変換しない。
 float4 EvaluateGradient8(float t)
 {
     float times[8] = {
@@ -312,7 +312,7 @@ float4 EvaluateGradient8(float t)
     return SRGBToLinear(colors[last]);
 }
 
-// ---------- カーネル -------------------------------------------------------
+/// @note ---------- カーネル -------------------------------------------------------
 
 [numthreads(64, 1, 1)]
 void CSMain(uint3 id : SV_DispatchThreadID)
@@ -320,8 +320,8 @@ void CSMain(uint3 id : SV_DispatchThreadID)
     uint i = id.x;
     if (i >= gMaxParticles) return;
 
-    // このスレッドがスポーンスロットかどうかを判定する。
-    // リングバッファ: [spawnOffset, spawnOffset + spawnCount) % maxParticles に新粒子を配置。
+    /// @note このスレッドがスポーンスロットかどうかを判定する。
+    /// @note リングバッファ: [spawnOffset, spawnOffset + spawnCount) % maxParticles に新粒子を配置。
     uint relIdx = (i + gMaxParticles - gSpawnOffset) % gMaxParticles;
     bool isSpawnSlot = (relIdx < gSpawnCount);
 
@@ -339,10 +339,10 @@ void CSMain(uint3 id : SV_DispatchThreadID)
         p.angularVelocity = s.angularVelocity;
         p.spriteSeed      = s.spriteSeed;
         p.uvRect          = s.uvRect;
-        // 色ゆらぎ倍率は CPU が求めた値をそのまま受け取る。
-        // WHY: 旧実装は colorStart と CB の基準色の「比」から復元していたが、
-        //      グラデーション使用時は色が基準色と無関係になるため復元が成立せず、
-        //      GPU だけゆらぎが化けていた。CPU/GPU で必ず同じ値を使う。
+        /// @note 色ゆらぎ倍率は CPU が求めた値をそのまま受け取る。
+        /// @note 旧実装は colorStart と CB の基準色の「比」から復元していたが、
+        /// @note グラデーション使用時は色が基準色と無関係になるため復元が成立せず、
+        /// @note GPU だけゆらぎが化けていた。CPU/GPU で必ず同じ値を使う。
         p.colorScale = s.colorScale.rgb;
         p.spriteBlend = 0.0f;
         p.nextUvRect  = s.uvRect;
@@ -350,24 +350,24 @@ void CSMain(uint3 id : SV_DispatchThreadID)
     else
     {
         p = gParticles[i];
-        // 死亡粒子はそのまま (VS で age >= lifetime をクリップ)
+        /// @note 死亡粒子はそのまま (VS で age >= lifetime をクリップ)
         if (p.age >= p.lifetime) return;
     }
 
-    // 更新後の正規化寿命。drag / 回転 / 速度カーブが同じ値を見るよう先に 1 回だけ求める
-    // (CPU 側も age を進めた後の t を全カーブで共有している)。
+    /// @note 更新後の正規化寿命。drag / 回転 / 速度カーブが同じ値を見るよう先に 1 回だけ求める
+    /// @note (CPU 側も age を進めた後の t を全カーブで共有している)。
     float normalizedAge = saturate((p.age + gDeltaTime) / max(p.lifetime, 1.0e-4f));
 
-    // 物理積分 (半陽的オイラー)。スポーン直後も同フレームから重力・流れ・Noiseを受ける。
+    /// @note 物理積分 (半陽的オイラー)。スポーン直後も同フレームから重力・流れ・Noiseを受ける。
     p.velocity += gGravity * gDeltaTime;
-    // 周回・放射。定数が常に 0 で渡るため現状は no-op (ApplyOrbitalVelocity の注記を参照)。
+    /// @note 周回・放射。定数が常に 0 で渡るため現状は no-op (ApplyOrbitalVelocity の注記を参照)。
     ApplyOrbitalVelocity(p.position, p.velocity);
-    // Drag over Lifetime は結合係数への時間倍率 (CPU と同じ)。
+    /// @note Drag over Lifetime は結合係数への時間倍率 (CPU と同じ)。
     float dragScale = gCurveFlags2.y > 0.5f
         ? max(EvaluateCurve8(gDragCurveKeys01, gDragCurveKeys23, gDragCurveKeys45,
                              gDragCurveKeys67, gCurveKeyCounts.w, gCurveModes.w, normalizedAge), 0.0f)
         : 1.0f;
-    // 流れへの緩和: シーンの場 + エミッター内蔵の流れ (CPU と同順)
+    /// @note 流れへの緩和: シーンの場 + エミッター内蔵の流れ (CPU と同順)
     ApplyFlowFields(p.position, p.velocity, gFlowCoupling * dragScale);
     if (gNoiseStrength > 0.0f)
     {
@@ -389,7 +389,7 @@ void CSMain(uint3 id : SV_DispatchThreadID)
             float2 uv = float2(ndc.x * 0.5f + 0.5f, 0.5f - ndc.y * 0.5f);
             if (all(uv >= 0.0f) && all(uv <= 1.0f) && ndc.z >= 0.0f && ndc.z <= 1.0f)
             {
-            // UV=1.0 は解像度ちょうどの範囲外座標になるため、右端・下端を必ず有効画素へ収める。
+            /// @note UV=1.0 は解像度ちょうどの範囲外座標になるため、右端・下端を必ず有効画素へ収める。
             int2 pixel = clamp(int2(uv * float2(gScreenWidth, gScreenHeight)),
                                int2(0, 0), int2(gScreenWidth - 1u, gScreenHeight - 1u));
                 float sceneDepth = gSceneDepth.Load(int3(pixel, 0));
@@ -412,20 +412,20 @@ void CSMain(uint3 id : SV_DispatchThreadID)
     }
     p.age      += gDeltaTime;
 
-    // 回転更新。回転カーブは角速度への時間倍率 (CPU の useRotationCurve と同じ)。
+    /// @note 回転更新。回転カーブは角速度への時間倍率 (CPU の useRotationCurve と同じ)。
     float rotationScale = gCurveFlags2.x > 0.5f
         ? EvaluateCurve8(gRotationCurveKeys01, gRotationCurveKeys23, gRotationCurveKeys45,
                          gRotationCurveKeys67, gCurveKeyCounts.z, gCurveModes.z, normalizedAge)
         : 1.0f;
     p.rotation += p.angularVelocity * gDeltaTime * rotationScale;
 
-    // 寿命 t [0, 1] で色・サイズ補間 (CPU の colorCurvePower / sizeCurvePower と一致)
+    /// @note 寿命 t [0, 1] で色・サイズ補間 (CPU の colorCurvePower / sizeCurvePower と一致)
     float t = saturate(p.age / p.lifetime);
-    // 粒子バッファへ書く色は常にリニア。描画シェーダーは頂点カラーを変換しない。
+    /// @note 粒子バッファへ書く色は常にリニア。描画シェーダーは頂点カラーを変換しない。
     p.color = gCurveFlags.z > 0.5f
         ? EvaluateGradient8(t)
         : SRGBToLinear(lerp(gColorStart, gColorEnd, pow(t, gColorCurvePower)));
-    // 粒子ごとの色ゆらぎを掛け直す (alpha はフェード制御なので触らない)。
+    /// @note 粒子ごとの色ゆらぎを掛け直す (alpha はフェード制御なので触らない)。
     p.color.rgb *= p.colorScale;
     float sizeT = gCurveFlags.x > 0.5f
         ? saturate(EvaluateCurve8(gSizeCurveKeys01, gSizeCurveKeys23, gSizeCurveKeys45,
@@ -433,10 +433,10 @@ void CSMain(uint3 id : SV_DispatchThreadID)
         : pow(t, gSizeCurvePower);
     p.size = lerp(gSizeStart, gSizeEnd, sizeT);
 
-    // スプライトアニメーション (asset::EvaluateFlipbookFrame と 1:1 に保つこと)
+    /// @note スプライトアニメーション (asset::EvaluateFlipbookFrame と 1:1 に保つこと)
     uint spriteStart = gSpriteStartFrame;
     uint spriteEnd   = gSpriteEndFrame;
-    // Random Row: 粒子ごとに 1 行を選び、その行の中だけで再生する
+    /// @note Random Row: 粒子ごとに 1 行を選び、その行の中だけで再生する
     if ((gSpriteRandomFlags & 2u) != 0u && gSpriteRows > 1u)
     {
         uint row = min((uint)(saturate(p.spriteSeed) * (float)gSpriteRows), gSpriteRows - 1u);
@@ -444,7 +444,7 @@ void CSMain(uint3 id : SV_DispatchThreadID)
         spriteEnd   = spriteStart + gSpriteColumns - 1u;
     }
     uint spriteSpan = spriteEnd - spriteStart;
-    // コマ位置を小数で持ち、整数部 = 現コマ・小数部 = 次コマへの補間率とする。
+    /// @note コマ位置を小数で持ち、整数部 = 現コマ・小数部 = 次コマへの補間率とする。
     float fps = max(gFlipbookFramesPerSecond, 0.0f);
     float framePosition = saturate(t) * (float)spriteSpan;
     bool  wrapNext = false;
@@ -463,8 +463,8 @@ void CSMain(uint3 id : SV_DispatchThreadID)
         float cycleFrame  = fmod(p.age * fps, cycleLength);
         framePosition = cycleFrame <= (float)spriteSpan ? cycleFrame : (float)(spriteSpan * 2u) - cycleFrame;
     }
-    // Random Start Frame: 再生位相を粒子ごとにずらす (RandomFrame モードでは不要)。
-    // seed の使い回しで行と位相が相関しないよう、CPU 側と同じ係数でずらして小数部を取る。
+    /// @note Random Start Frame: 再生位相を粒子ごとにずらす (RandomFrame モードでは不要)。
+    /// @note seed の使い回しで行と位相が相関しないよう、CPU 側と同じ係数でずらして小数部を取る。
     if ((gSpriteRandomFlags & 1u) != 0u && spriteSpan > 0u && gFlipbookMode != 2u)
     {
         float phaseSeed = saturate(p.spriteSeed) * 7.13f + 0.37f;
@@ -476,7 +476,7 @@ void CSMain(uint3 id : SV_DispatchThreadID)
     uint relativeFrame     = min((uint)max(floor(framePosition), 0.0f), spriteSpan);
     uint nextRelativeFrame = min(relativeFrame + 1u, spriteSpan);
     if (wrapNext && relativeFrame == spriteSpan) nextRelativeFrame = 0u;
-    // curveFlags.w = Frame Blending。RandomFrame はコマが飛ぶだけなので混ぜない。
+    /// @note curveFlags.w = Frame Blending。RandomFrame はコマが飛ぶだけなので混ぜない。
     p.spriteBlend = (gCurveFlags.w > 0.5f && gFlipbookMode != 2u)
         ? framePosition - floor(framePosition) : 0.0f;
 

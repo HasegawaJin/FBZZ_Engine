@@ -5,9 +5,9 @@
 #include "Bake/Fluid/FluidGpuCommon.hlsli"
 #include "Common/BindlessIndices.hlsli"
 
-FBZZ_TEX3D_T(float4, gVelocityIn, 0);
-FBZZ_TEX3D_T(float4, gScalarsIn, 1);
-FBZZ_RWTEX3D_T(float4, gVelocityOut, 0);
+FBZZ_TEX3D_T(float4, gVelocityIn, SRV_FLUID_FORCES_VELOCITY_IN_SLOT);
+FBZZ_TEX3D_T(float4, gScalarsIn, SRV_FLUID_FORCES_SCALARS_IN_SLOT);
+FBZZ_RWTEX3D_T(float4, gVelocityOut, UAV_FLUID_FORCES_VELOCITY_OUT_SLOT);
 
 [numthreads(4, 4, 4)]
 void CSMain(uint3 id : SV_DispatchThreadID)
@@ -20,13 +20,13 @@ void CSMain(uint3 id : SV_DispatchThreadID)
     v += gWind * gDt;
     if (gTurbulence != 0.0f)
     {
-        // 時間でゆっくりずらして «止まった渦» にしない。
+        /// @note 時間でゆっくりずらして «止まった渦» にしない。
         const float3 curl = FluidCurlNoise(float3(p.x * gTurbulenceScale + gNoiseOffset.x,
                                                   p.y * gTurbulenceScale + gNoiseOffset.y - gTime * 0.35f,
                                                   p.z * gTurbulenceScale + gNoiseOffset.z + gTime * 0.2f));
         v += curl * gTurbulence * gDt;
     }
-    // 部品の力は減衰より前 (CPU の ApplyForces と同じ順)。Drag は減衰前の速度を見る。
+    /// @note 部品の力は減衰より前 (CPU の ApplyForces と同じ順)。Drag は減衰前の速度を見る。
     [loop] for (uint i = 0; i < gForceCount; ++i)
         v += FluidForceDelta(gForces[i], i, p, v, gTime, gDt);
     gVelocityOut[id] = float4(v * gVelocityKeep, 0.0f);

@@ -11,8 +11,8 @@ struct SkinnedOutVertex { float3 position; float3 normal; float3 tangent; float2
 struct SkinningRow { uint boneOffset; uint outputIndex; uint boneCount; uint padding; };
 FBZZ_SBUFFER_T(SkinSrcVertex, gSrcVertices, SB_SKIN_SRC_VERTICES_SLOT);
 FBZZ_SBUFFER_T(float4x4, gBoneMatrices, SB_SKIN_BONES_SLOT);
-FBZZ_SBUFFER_T(SkinningRow, gSkinningRows, 29);
-cbuffer SkinningConstants : register(b0) { uint gVertexCount; uint gInstanceCount; uint2 gPadding; };
+FBZZ_SBUFFER_T(SkinningRow, gSkinningRows, SRV_SKIN_ROWS_SLOT);
+cbuffer SkinningConstants : register(FBZZ_REGISTER(b, CB_SKIN_COMPUTE_SLOT)) { uint gVertexCount; uint gInstanceCount; uint2 gPadding; };
 /// @see https://learn.microsoft.com/en-us/windows/win32/api/d3d12/nf-d3d12-id3d12graphicscommandlist-dispatch Dispatch limits per dimension.
 [numthreads(64, 1, 1)]
 void CSMain(uint3 dtid : SV_DispatchThreadID)

@@ -16,12 +16,12 @@ struct OpaqueRenderPlan;
 struct ViewPipelineExtensions;
 
 struct RayDebugViewResources {
-    ResourceHandle<TextureTag> output;
-    ResourceHandle<ConstantBufferTag> constants;
-    uint32_t width = 0;
-    uint32_t height = 0;
-    RayScene scene;
-    RaySceneGpu gpu;
+    ResourceHandle<TextureTag> output; ///< レイの交差診断画像を受け取る、このビューのテクスチャ。
+    ResourceHandle<ConstantBufferTag> constants; ///< 交差診断シェーダーのビュー・シーン入力を渡す定数バッファ。
+    uint32_t width = 0; ///< 診断出力の幅 [px]。
+    uint32_t height = 0; ///< 診断出力の高さ [px]。
+    RayScene scene; ///< このビューの対象集合から抽出した CPU 側のレイシーン。
+    RaySceneGpu gpu; ///< 同じレイシーンの TLAS とヒット表を参照する GPU 公開結果。
 };
 
 [[nodiscard]] FBZZ_GRAPHICS_API bool IsRayDebugView(ViewMode mode);
@@ -47,4 +47,4 @@ FBZZ_GRAPHICS_API void BuildRayReflectionPipeline(RenderPipeline& pipeline, Rend
 /// @pre PrepareRayPathView が成功済み。Raster 照明・TAA・HDR 拡張を登録しない。
 FBZZ_GRAPHICS_API void BuildRayPathViewPipeline(RenderPipeline& pipeline, RenderPassContext& context,
     RenderViewResources& view, RenderSharedResources& shared, const ViewPipelineExtensions& extensions);
-} /// @note namespace fbzz::renderer
+} // namespace fbzz::renderer

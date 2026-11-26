@@ -8,7 +8,7 @@
 #include "Platform/Backend.hlsli"
 #include "Common/BindlessIndices.hlsli"
 
-FBZZ_TEX2D(texColor, TEX_GBUFFER0_SLOT);
+FBZZ_TEX2D(texColor, SRV_POST_COLOR_SLOT);
 FBZZ_TEX2D_T(float, texDepth, TEX_DEPTH_SLOT);
 FBZZ_TEX2D(texVelocity, TEX_VELOCITY_SLOT);
 SamplerState sampDefault : register(SAMPLER_LINEAR_CLAMP);

@@ -5,6 +5,7 @@
 
 /// @note マスクの RGBA はエンジンが意味を決めない。申告した側 (スクリプト) と読む側
 /// @note (カスタムパスのシェーダー) の取り決めで、輪郭の色にも強さにもボカし量にもなる。
+#include <Graphics/Renderer/Commands/ShaderBindingSlots.hpp>
 #include "RenderScenePassHelpers.hpp"
 #include <Graphics/Effects/Animation/ComputedSkinningOutput.hpp>
 #include <Graphics/Pipeline/Geometry/InstanceBatch.hpp>
@@ -27,47 +28,61 @@ int g_objectMaskDraws = 0;
 /// @note 読める。visibleOnly が偽の申告はこの深度テストを素通しにし、壁越しシルエットを許す。
 void DrawObjectMask(const renderer::RenderObject& object, RenderPassContext& ctx, InstanceBatcher& batcher)
 {
-    if (!MatchesView(ctx, object)) return;
+    if (!MatchesView(ctx, object)) {
+        return;
+    }
     auto& h = ctx.handles;
     const auto& input = SceneInput(ctx);
     const auto shader = object.skinned ? h.objectMaskSkinnedShader : h.objectMaskShader;
-    if (!shader.IsValid()) return;
+    if (!shader.IsValid()) {
+        return;
+    }
     auto constants = ObjectConstants(object);
     constants.objectParams.x = 0.0f;
     for (uint32_t i = object.firstItem; i < object.firstItem + object.itemCount; ++i) {
         const auto& item = input.items[i];
-        if (!item.vertexBuffer.IsValid() || !item.indexBuffer.IsValid() || (object.skinned && !item.slotVisible)) continue;
+        if (!item.vertexBuffer.IsValid() || !item.indexBuffer.IsValid() || (object.skinned && !item.slotVisible)) {
+            continue;
+        }
         renderer::DrawCall dc;
         dc.vertexBuffer = object.skinned ? (item.deformedVertexBuffer.IsValid()
             ? item.deformedVertexBuffer : item.skinningVertexBuffer) : item.vertexBuffer;
-        if (object.skinned && !BindPreparedSkinningOutput(item, dc)) continue;
-        if (object.skinned && item.deformedVertexBuffer.IsValid()) dc.deformationSource = item.skinningVertexBuffer;
+        if (object.skinned && !BindPreparedSkinningOutput(item, dc)) {
+            continue;
+        }
+        if (object.skinned && item.deformedVertexBuffer.IsValid()) {
+            dc.deformationSource = item.skinningVertexBuffer;
+        }
         dc.indexBuffer = item.indexBuffer;
         dc.indexCount = item.indexCount;
         dc.vertexCount = item.vertexCount;
         dc.shader = object.skinned && (item.preparedSkinning || item.deformedVertexBuffer.IsValid()) ? h.objectMaskShader : shader;
         dc.pipelineState = h.selectionMaskPSO;
-        dc.constantBuffers[0] = h.frameCB;
-        dc.constantBuffers[2] = h.objectMaskCB;
-        dc.textures[7] = ctx.resources.GetDepthTexture(ctx.Res().Target("HDR"));
+        dc.constantBuffers[cb::CAMERA] = h.frameCB;
+        dc.constantBuffers[cb::MATERIAL] = h.objectMaskCB;
+        dc.textures[srv::DEPTH] = ctx.resources.GetDepthTexture(ctx.Res().Target("HDR"));
         if (object.skinned && !item.preparedSkinning && !item.deformedVertexBuffer.IsValid()) {
             batcher.Flush();
             ctx.resources.Update(h.objectCB, &constants, sizeof(constants));
             batcher.InvalidateObjectConstants();
-            dc.constantBuffers[1] = h.objectCB;
-            dc.constantBuffers[7] = object.skinningPalette;
+            dc.constantBuffers[cb::OBJECT] = h.objectCB;
+            dc.constantBuffers[cb::SKINNING] = object.skinningPalette;
             BindGpuBonePalette(dc, object);
             ctx.renderer.Submit(dc, ctx.resources);
-        } else batcher.Add(dc, constants);
+        } else {
+            batcher.Add(dc, constants);
+        }
         ++g_objectMaskDraws;
     }
 }
 
-} /// @note namespace
+} // namespace
 
 void ExecuteObjectMaskPass(RenderPassContext& ctx)
 {
-    if (!ctx.objectMaskEnabled || !ctx.Res().Target("ObjectMask").IsValid()) return;
+    if (!ctx.objectMaskEnabled || !ctx.Res().Target("ObjectMask").IsValid()) {
+        return;
+    }
 
     auto& r = ctx.renderer;
     auto& resources = ctx.resources;
@@ -86,20 +101,22 @@ void ExecuteObjectMaskPass(RenderPassContext& ctx)
         maskData.flags = { group.visibleOnly ? 1.0f : 0.0f, 0.0f, 0.0f, 0.0f };
         resources.Update(h.objectMaskCB, &maskData, sizeof(maskData));
 
-        /// @note 束ねる範囲は申告 1 件ぶん。b2 (objectMaskCB) は申告ごとに書き換わるハンドル
-        /// @note 共有の CB なので、跨いで束ねると先に積んだシルエットまで後の色で描かれる。
-        /// @note スコープを抜けるときにデストラクタが吐き出す。
+        // 束ねる範囲は申告 1 件ぶん。b2 (objectMaskCB) は申告ごとに書き換わるハンドル
+        // 共有の CB なので、跨いで束ねると先に積んだシルエットまで後の色で描かれる。
+        // スコープを抜けるときにデストラクタが吐き出す。
         /// @see Docs/design/gpu-instancing.md
         InstanceBatcher batcher(ctx, h.objectMaskShader,
                                 ctx.settings.gpuInstancing
                                     ? h.objectMaskInstancedShader
                                     : renderer::ResourceHandle<renderer::ShaderTag>{},
                                 false);
-        for (uint32_t index : group.objectIndices) DrawObjectMask(input.Objects()[index], ctx, batcher);
+        for (uint32_t index : group.objectIndices) {
+            DrawObjectMask(input.Objects()[index], ctx, batcher);
+        }
     }
 
-    /// @note 内訳が変わったときだけ 1 行。毎フレーム出すとログが埋まって本当のエラーが見えなくなる
-    /// @note (RenderSystem の «無視される設定» の報告と同じ扱い)。
+    // 内訳が変わったときだけ 1 行。毎フレーム出すとログが埋まって本当のエラーが見えなくなる
+    // (RenderSystem の «無視される設定» の報告と同じ扱い)。
     {
         static int sLive = -1;
         static int sResolved = -1;
@@ -132,4 +149,4 @@ void ObjectMaskPass::Execute(PassResources&, RenderPassContext& ctx)
 {
     ExecuteObjectMaskPass(ctx);
 }
-} /// @note namespace fbzz::renderer
+} // namespace fbzz::renderer

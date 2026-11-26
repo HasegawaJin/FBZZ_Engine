@@ -8,9 +8,9 @@
 #include "Bake/Fluid/LiquidGrid.hlsli"
 #include "Common/BindlessIndices.hlsli"
 
-// 粒子 i の近傍は gLiquidRanges[i × 9 + 行] の [x, y) を gLiquidSorted で引いた粒子 (自分も含む)。
+/// @note 粒子 i の近傍は gLiquidRanges[i × 9 + 行] の [x, y) を gLiquidSorted で引いた粒子 (自分も含む)。
 #define LIQUID_NEIGHBOR_ROWS 9u
 
-FBZZ_SBUFFER_T(uint2, gLiquidRanges, 29);
+FBZZ_SBUFFER_T(uint2, gLiquidRanges, SRV_LIQUID_NEIGHBORS_SLOT);
 
-#endif // LIQUID_NEIGHBORS_HLSLI
+#endif /// @note LIQUID_NEIGHBORS_HLSLI

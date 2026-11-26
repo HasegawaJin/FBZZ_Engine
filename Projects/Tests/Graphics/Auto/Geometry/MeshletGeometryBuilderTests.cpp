@@ -148,7 +148,9 @@ TEST_F(MeshletGeometryBuilderTest, ClusterLodReducesTrianglesAndKeepsEveryMixedL
     RecordProperty("fine_triangles", static_cast<int>(fineTriangles));
     RecordProperty("coarse_triangles", static_cast<int>(coarseTriangles));
     for (size_t i = 0; i < nodes.size(); ++i) {
-        if (nodes[i].error == 0.0f) continue;
+        if (nodes[i].error == 0.0f) {
+            continue;
+        }
         std::erase_if(childBorders[i], [](const auto& edge) { return edge.second == 0; });
         EXPECT_LT(triangleCounts[i], childTriangles[i]);
         EXPECT_EQ(borders[i], childBorders[i]);

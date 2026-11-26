@@ -20,7 +20,7 @@ FBZZ_VS_SBUFFER(float, g_terrainHeights, VS_SB_BUFFER0_SLOT);
 FBZZ_VS_SBUFFER(TerrainGpuPatch, g_terrainPatches, VS_SB_BUFFER1_SLOT);
 /// @note Indexed indirect commands supply the patch ordinal; direct draws reset the root constant to zero.
 /// @see https://learn.microsoft.com/en-us/windows/win32/direct3d12/indirect-drawing - root constant argument records.
-cbuffer TerrainGeometryDrawConstants : register(b15)
+cbuffer TerrainGeometryDrawConstants : register(FBZZ_REGISTER(b, CB_INSTANCE_DRAW_OFFSET_SLOT))
 {
     uint g_terrainPatchIndex;
 };

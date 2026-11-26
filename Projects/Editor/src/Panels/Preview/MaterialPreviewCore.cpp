@@ -2,6 +2,7 @@
 /// @brief   .mat プレビューのパラメータ解決・メッシュ生成・オフスクリーン描画。
 /// @author  Hasegawa Jin
 /// @date    2026-09-16
+#include <Graphics/Renderer/Commands/ShaderBindingSlots.hpp>
 #include <Engine/Scene/Components/Water/WaterComponent.hpp>
 #include <Engine/Asset/Material/MaterialParamBinding.hpp>
 #include <Engine/Asset/AssetDatabase.hpp>
@@ -99,9 +100,9 @@ struct SkinningCB {
 /// @note LAYOUT: Assets/Shaders/Debug/MaterialChannel.hlsl の MaterialChannelConstants。
 struct ChannelCB {
     math::Vector4 baseColor;
-    math::Vector4 pbr;      ///< @note x=metallic y=roughness z=occlusionStrength w=normalStrength
-    math::Vector4 uv;       ///< @note xy=tiling zw=offset
-    math::Vector4 emissive; ///< @note rgb=emissiveColor a=emissiveScale
+    math::Vector4 pbr;      ///< x=metallic y=roughness z=occlusionStrength w=normalStrength
+    math::Vector4 uv;       ///< xy=tiling zw=offset
+    math::Vector4 emissive; ///< rgb=emissiveColor a=emissiveScale
     std::uint32_t textureMask = 0;
     std::uint32_t mode = 0;
     float         parallaxDepth = 0.0f;
@@ -186,41 +187,57 @@ SharedResources g_shared;
 const std::vector<float>* FindParam(const asset::MaterialAssetAuthoring& material, std::string_view name)
 {
     auto it = material.params.find(std::string(name));
-    if (it != material.params.end()) return &it->second;
+    if (it != material.params.end()) {
+        return &it->second;
+    }
 
-    /// @note .mat は PBR 寄りの名前、HLSL は shader ごとの短い変数名を使う場合があるため、
-    /// @note プレビューも本編描画と同じ別名吸収を行う。
-    if (name == "albedo")              it = material.params.find("base_color");
-    else if (name == "metallic")       it = material.params.find("metallic_factor");
-    else if (name == "roughness")      it = material.params.find("roughness_factor");
-    else if (name == "normalStrength") it = material.params.find("normal_strength");
-    else if (name == "emissiveColor")  it = material.params.find("emissive_color");
-    else if (name == "emissiveScale")  it = material.params.find("emissive_scale");
+    // .mat は PBR 寄りの名前、HLSL は shader ごとの短い変数名を使う場合があるため、
+    // プレビューも本編描画と同じ別名吸収を行う。
+    if (name == "albedo") {
+        it = material.params.find("base_color");
+    } else if (name == "metallic") {
+        it = material.params.find("metallic_factor");
+    } else if (name == "roughness") {
+        it = material.params.find("roughness_factor");
+    } else if (name == "normalStrength") {
+        it = material.params.find("normal_strength");
+    } else if (name == "emissiveColor") {
+        it = material.params.find("emissive_color");
+    } else if (name == "emissiveScale") {
+        it = material.params.find("emissive_scale");
+    }
 
     return it != material.params.end() ? &it->second : nullptr;
 }
 
 float ParamFloat(const asset::MaterialAssetAuthoring* material, std::string_view name, float fallback)
 {
-    if (!material) return fallback;
+    if (!material) {
+        return fallback;
+    }
     const auto* values = FindParam(*material, name);
     return (values && !values->empty() && std::isfinite((*values)[0])) ? (*values)[0] : fallback;
 }
 
 math::Vector3 ParamFloat3(const asset::MaterialAssetAuthoring* material, std::string_view name, math::Vector3 fallback)
 {
-    if (!material) return fallback;
+    if (!material) {
+        return fallback;
+    }
     const auto* values = FindParam(*material, name);
     if (!values || values->size() < 3 || !std::isfinite((*values)[0])
-        || !std::isfinite((*values)[1]) || !std::isfinite((*values)[2])) return fallback;
+        || !std::isfinite((*values)[1]) || !std::isfinite((*values)[2])) {
+        return fallback;
+    }
     return { (*values)[0], (*values)[1], (*values)[2] };
 }
 
 std::string FindTexturePath(const asset::MaterialAssetAuthoring& material,
                             const renderer::ShaderTexBindDesc& binding)
 {
-    if (auto it = material.textures.find(binding.name); it != material.textures.end())
+    if (auto it = material.textures.find(binding.name); it != material.textures.end()) {
         return it->second;
+    }
 
     const std::string name = Lower(binding.name);
     const auto slotOf = [&material](const std::string& slot) -> std::string {
@@ -228,26 +245,49 @@ std::string FindTexturePath(const asset::MaterialAssetAuthoring& material,
         return it != material.textures.end() ? it->second : std::string{};
     };
 
-    if (name == "g_normalmap1") return slotOf("normalMap1");
-    if (name == "g_normalmap2") return slotOf("normalMap2");
-    if (name == "g_foamtex")    return slotOf("foamTex");
-    if (name == "g_foammask")   return slotOf("foamMask");
-    if (name == "g_envtex")     return slotOf("envCubemap");
-    if (name == "g_flowmap")    return slotOf("flowMap");
-    if (name == "g_splatmap")   return slotOf("splatmap");
-    if (name.starts_with("g_diffuse") && binding.slot >= 1 && binding.slot <= 4)
+    if (name == "g_normalmap1") {
+        return slotOf("normalMap1");
+    }
+    if (name == "g_normalmap2") {
+        return slotOf("normalMap2");
+    }
+    if (name == "g_foamtex") {
+        return slotOf("foamTex");
+    }
+    if (name == "g_foammask") {
+        return slotOf("foamMask");
+    }
+    if (name == "g_envtex") {
+        return slotOf("envCubemap");
+    }
+    if (name == "g_flowmap") {
+        return slotOf("flowMap");
+    }
+    if (name == "g_splatmap") {
+        return slotOf("splatmap");
+    }
+    if (name.starts_with("g_diffuse") && binding.slot >= 1 && binding.slot <= 4) {
         return slotOf("layer" + std::to_string(binding.slot - 1) + "_diffuse");
-    if (name.starts_with("g_normal") && binding.slot >= 5 && binding.slot <= 8)
+    }
+    if (name.starts_with("g_normal") && binding.slot >= 5 && binding.slot <= 8) {
         return slotOf("layer" + std::to_string(binding.slot - 5) + "_normal");
-    if (name.starts_with("g_aoroughness") && binding.slot >= 9 && binding.slot <= 12)
+    }
+    if (name.starts_with("g_aoroughness") && binding.slot >= 9 && binding.slot <= 12) {
         return slotOf("layer" + std::to_string(binding.slot - 9) + "_ao_roughness");
+    }
 
     if (binding.slot < kSlotNames.size()) {
         const std::string standard = slotOf(kSlotNames[binding.slot]);
-        if (!standard.empty()) return standard;
-        /// @note Terrain レイヤーの fzmat はプレフィックスなし ("diffuse" / "ao_roughness") を使う。
-        if (std::string_view(kSlotNames[binding.slot]) == "albedo") return slotOf("diffuse");
-        if (std::string_view(kSlotNames[binding.slot]) == "ao")     return slotOf("ao_roughness");
+        if (!standard.empty()) {
+            return standard;
+        }
+        // Terrain レイヤーの fzmat はプレフィックスなし ("diffuse" / "ao_roughness") を使う。
+        if (std::string_view(kSlotNames[binding.slot]) == "albedo") {
+            return slotOf("diffuse");
+        }
+        if (std::string_view(kSlotNames[binding.slot]) == "ao") {
+            return slotOf("ao_roughness");
+        }
     }
     return {};
 }
@@ -261,13 +301,16 @@ void ApplyAssetParams(const asset::MaterialAssetAuthoring& material,
                       const renderer::ShaderDescriptor& descriptor,
                       std::vector<std::uint8_t>& data)
 {
-    if (asset::ResolveShaderCapabilities(material.shaderPath).surface == renderer::ShaderSurfaceContract::WATER)
+    if (asset::ResolveShaderCapabilities(material.shaderPath).surface == renderer::ShaderSurfaceContract::WATER) {
         asset::InitializeWaterAppearanceParameters(material, descriptor, data);
-    else
+    } else {
         asset::ApplyMaterialAssetParams(material, descriptor, data);
-    /// @note 古いプレビュー専用の別名も共通の型検証と転送を通す。
+    }
+    // 古いプレビュー専用の別名も共通の型検証と転送を通す。
     for (const auto& variable : descriptor.vars) {
-        if (material.params.contains(variable.name) || material.integerParams.contains(variable.name)) continue;
+        if (material.params.contains(variable.name) || material.integerParams.contains(variable.name)) {
+            continue;
+        }
         if (const auto* values = FindParam(material, variable.name)) {
             const std::vector<double> converted(values->begin(), values->end());
             (void)asset::WriteMaterialValues(variable, converted, data);
@@ -281,7 +324,7 @@ class PreviewMeshCache {
 public:
     renderer::Mesh* Find(renderer::ResourceManager& resources, int key)
     {
-        /// @note 旧 Manager / Reset 前のハンドルを現在の資源プールへ返さない。
+        // 旧 Manager / Reset 前のハンドルを現在の資源プールへ返さない。
         const auto lifetime = PreviewResourceLifetime::Read(resources);
         if (m_lifetime != lifetime) {
             m_meshes.clear();
@@ -346,15 +389,23 @@ renderer::Mesh* PrimitiveFor(renderer::ResourceManager& resources, Shape shape)
 {
     static PreviewMeshCache cache;
     const int key = static_cast<int>(shape);
-    if (auto* mesh = cache.Find(resources, key)) return mesh;
+    if (auto* mesh = cache.Find(resources, key)) {
+        return mesh;
+    }
     const auto* source = PrimitiveSourceFor(resources, shape);
-    if (!source) return nullptr;
+    if (!source) {
+        return nullptr;
+    }
 
     auto mesh = core::MakeUnique<renderer::Mesh>();
-    if (!mesh) return nullptr;
+    if (!mesh) {
+        return nullptr;
+    }
     mesh->cpuVertices = source->cpuVertices;
     mesh->cpuIndices = source->cpuIndices;
-    if (!UploadPreviewMesh(resources, *mesh)) return nullptr;
+    if (!UploadPreviewMesh(resources, *mesh)) {
+        return nullptr;
+    }
     return cache.Insert(key, std::move(mesh));
 }
 
@@ -363,7 +414,9 @@ renderer::Mesh* PrimitiveFor(renderer::ResourceManager& resources, Shape shape)
 renderer::Mesh* GridMesh(renderer::ResourceManager& resources, int segments)
 {
     static PreviewMeshCache cache;
-    if (auto* mesh = cache.Find(resources, segments)) return mesh;
+    if (auto* mesh = cache.Find(resources, segments)) {
+        return mesh;
+    }
 
     std::vector<renderer::Vertex> vertices;
     std::vector<std::uint32_t> indices;
@@ -389,7 +442,9 @@ renderer::Mesh* GridMesh(renderer::ResourceManager& resources, int segments)
     }
 
     auto mesh = core::MakeUnique<renderer::Mesh>();
-    if (!mesh) return nullptr;
+    if (!mesh) {
+        return nullptr;
+    }
     mesh->vertexBuffer = resources.CreateVertexBuffer(
         vertices.data(), vertices.size() * sizeof(renderer::Vertex), sizeof(renderer::Vertex));
     mesh->indexBuffer = resources.CreateIndexBuffer(
@@ -406,10 +461,14 @@ renderer::Mesh* SkinnedCopy(renderer::ResourceManager& resources, Shape shape)
 {
     static PreviewMeshCache cache;
     const int key = static_cast<int>(shape);
-    if (auto* mesh = cache.Find(resources, key)) return mesh;
+    if (auto* mesh = cache.Find(resources, key)) {
+        return mesh;
+    }
 
     const auto* surface = PrimitiveSourceFor(resources, shape);
-    if (!surface) return nullptr;
+    if (!surface) {
+        return nullptr;
+    }
 
     std::vector<renderer::SkinnedVertex> vertices;
     vertices.reserve(surface->cpuVertices.size());
@@ -425,29 +484,40 @@ renderer::Mesh* SkinnedCopy(renderer::ResourceManager& resources, Shape shape)
     }
 
     auto mesh = core::MakeUnique<renderer::Mesh>();
-    if (!mesh) return nullptr;
+    if (!mesh) {
+        return nullptr;
+    }
     mesh->isSkinned   = true;
     mesh->cpuSkinnedVertices = std::move(vertices);
     mesh->cpuIndices  = surface->cpuIndices;
-    if (!UploadPreviewMesh(resources, *mesh)) return nullptr;
+    if (!UploadPreviewMesh(resources, *mesh)) {
+        return nullptr;
+    }
     return cache.Insert(key, std::move(mesh));
 }
 
 renderer::Mesh* WaterGrid(renderer::ResourceManager& resources, int segments)
 {
     static PreviewMeshCache cache;
-    if (auto* mesh = cache.Find(resources, segments)) return mesh;
+    if (auto* mesh = cache.Find(resources, segments)) {
+        return mesh;
+    }
 
     auto* surface = GridMesh(resources, segments);
-    if (!surface) return nullptr;
+    if (!surface) {
+        return nullptr;
+    }
 
     std::vector<WaterVertex> vertices;
     vertices.reserve(surface->cpuVertices.size());
-    for (const auto& source : surface->cpuVertices)
+    for (const auto& source : surface->cpuVertices) {
         vertices.push_back({ source.position * WATER_PREVIEW_EXTENT, source.uv });
+    }
 
     auto mesh = core::MakeUnique<renderer::Mesh>();
-    if (!mesh) return nullptr;
+    if (!mesh) {
+        return nullptr;
+    }
     mesh->vertexBuffer = resources.CreateVertexBuffer(
         vertices.data(), vertices.size() * sizeof(WaterVertex), sizeof(WaterVertex));
     mesh->indexBuffer = resources.CreateIndexBuffer(
@@ -455,7 +525,9 @@ renderer::Mesh* WaterGrid(renderer::ResourceManager& resources, int segments)
     mesh->vertexCount = static_cast<std::uint32_t>(vertices.size());
     mesh->indexCount  = static_cast<std::uint32_t>(surface->cpuIndices.size());
     mesh->cpuVertices = surface->cpuVertices;
-    for (auto& vertex : mesh->cpuVertices) vertex.position = vertex.position * WATER_PREVIEW_EXTENT;
+    for (auto& vertex : mesh->cpuVertices) {
+        vertex.position = vertex.position * WATER_PREVIEW_EXTENT;
+    }
     mesh->cpuIndices  = surface->cpuIndices;
     mesh->ComputeBounds();
     return cache.Insert(segments, std::move(mesh));
@@ -465,7 +537,9 @@ renderer::Mesh* WaterGrid(renderer::ResourceManager& resources, int segments)
 
 math::Vector3 BoundsCenter(const renderer::Mesh& mesh)
 {
-    if (mesh.boundsRadius > 0.0f) return mesh.boundsCenter;
+    if (mesh.boundsRadius > 0.0f) {
+        return mesh.boundsCenter;
+    }
 
     constexpr float big = (std::numeric_limits<float>::max)();
     math::Vector3 minP{ big, big, big };
@@ -475,21 +549,29 @@ math::Vector3 BoundsCenter(const renderer::Mesh& mesh)
         maxP = { std::max(maxP.x, p.x), std::max(maxP.y, p.y), std::max(maxP.z, p.z) };
     };
     if (mesh.isSkinned) for (const auto& v : mesh.cpuSkinnedVertices) visit(v.position);
-    else                for (const auto& v : mesh.cpuVertices)        visit(v.position);
-    if (minP.x > maxP.x) return {};
+    else                for (const auto& v : mesh.cpuVertices) {
+        visit(v.position);
+    }
+    if (minP.x > maxP.x) {
+        return {};
+    }
     return (minP + maxP) * 0.5f;
 }
 
 float BoundsRadius(const renderer::Mesh& mesh, const math::Vector3& center)
 {
-    if (mesh.boundsRadius > 0.0f) return mesh.boundsRadius;
+    if (mesh.boundsRadius > 0.0f) {
+        return mesh.boundsRadius;
+    }
 
     float radiusSq = 0.0f;
     const auto visit = [&](const math::Vector3& p) {
         radiusSq = std::max(radiusSq, (p - center).LengthSq());
     };
     if (mesh.isSkinned) for (const auto& v : mesh.cpuSkinnedVertices) visit(v.position);
-    else                for (const auto& v : mesh.cpuVertices)        visit(v.position);
+    else                for (const auto& v : mesh.cpuVertices) {
+        visit(v.position);
+    }
     return std::sqrt(std::max(radiusSq, 0.0001f));
 }
 
@@ -515,7 +597,7 @@ RigProfile ProfileFor(LightPreset preset)
             return { { 0.55f, 0.66f, 1.0f }, 0.5f, { 0.03f, 0.035f, 0.05f },
                      { 0.30f, 0.40f, 0.80f }, 0.2f, { 0.70f, 0.90f, 1.0f }, 1.8f };
         case LightPreset::Flat:
-            /// @note 陰影をほぼ消してテクスチャの絵柄だけを読ませる。リムは輪郭を歪めるので切る。
+            // 陰影をほぼ消してテクスチャの絵柄だけを読ませる。リムは輪郭を歪めるので切る。
             return { { 1.0f, 1.0f, 1.0f }, 0.8f, { 0.55f, 0.55f, 0.58f },
                      { 1.0f, 1.0f, 1.0f }, 0.35f, { 1.0f, 1.0f, 1.0f }, 0.0f };
         case LightPreset::Studio:
@@ -561,16 +643,26 @@ bool EnsureDefaultTextures(renderer::ResourceManager& resources)
 renderer::ResourceHandle<renderer::TextureTag> DefaultTextureForSlot(Flavor flavor, std::uint32_t slot)
 {
     if (flavor == Flavor::Water) {
-        if (slot == 0 || slot == 1 || slot == 7) return g_shared.flatNormalTexture;
-        /// @note t8 は着水の波紋。RG = 法線, B = 頂点へ乗せる高さなので «中央値» でなければならない。
-        if (slot == 8) return g_shared.neutralRippleTexture;
-        if (slot == 4 || slot == 6) return g_shared.blackTexture;
+        if (slot == 0 || slot == 1 || slot == 7) {
+            return g_shared.flatNormalTexture;
+        }
+        // t8 は着水の波紋。RG = 法線, B = 頂点へ乗せる高さなので «中央値» でなければならない。
+        if (slot == 8) {
+            return g_shared.neutralRippleTexture;
+        }
+        if (slot == 4 || slot == 6) {
+            return g_shared.blackTexture;
+        }
         return g_shared.whiteTexture;
     }
     if (flavor == Flavor::Terrain) {
-        /// @note t0 / t1 は層番号 / 重みマップ。«全面が層 0» の 1x1 を差す。
-        if (slot == 0) return g_shared.terrainSplatIndices;
-        if (slot == 1) return g_shared.terrainSplatWeights;
+        // t0 / t1 は層番号 / 重みマップ。«全面が層 0» の 1x1 を差す。
+        if (slot == 0) {
+            return g_shared.terrainSplatIndices;
+        }
+        if (slot == 1) {
+            return g_shared.terrainSplatWeights;
+        }
         return g_shared.whiteTexture;
     }
     return {};
@@ -578,40 +670,48 @@ renderer::ResourceHandle<renderer::TextureTag> DefaultTextureForSlot(Flavor flav
 
 bool EnsureShared(renderer::ResourceManager& resources, bool needFallbackShader)
 {
-    /// @note Numeric GPU handles cannot be reused after manager replacement or a device-resource reset.
+    // Numeric GPU handles cannot be reused after manager replacement or a device-resource reset.
     static PreviewResourceLifetime lifetime{0, UINT64_MAX};
     const auto current = PreviewResourceLifetime::Read(resources);
     if (lifetime != current) {
         g_shared = {};
         lifetime = current;
     }
-    if (needFallbackShader && !g_shared.fallbackShader.IsValid())
+    if (needFallbackShader && !g_shared.fallbackShader.IsValid()) {
         g_shared.fallbackShader = resources.LoadShader(kMeshFallbackShader);
-    if (needFallbackShader && !g_shared.fallbackShader.IsValid()) return false;
+    }
+    if (needFallbackShader && !g_shared.fallbackShader.IsValid()) {
+        return false;
+    }
 
     if (!g_shared.solidPso.IsValid()) {
-        /// @note 材質自身の blend / depth を使わない: そうすると同じ .mat でも表示場所によって
-        /// @note 輪郭・透過・陰影が変わってしまう。
+        // 材質自身の blend / depth を使わない: そうすると同じ .mat でも表示場所によって
+        // 輪郭・透過・陰影が変わってしまう。
         g_shared.solidPso = resources.CreatePipelineState({
             renderer::RasterizerMode::SOLID_NOCULL,
             renderer::BlendMode::OPAQUE_BLEND,
             renderer::DepthMode::DEPTH_ON });
     }
-    if (!g_shared.frameCB.IsValid())
+    if (!g_shared.frameCB.IsValid()) {
         g_shared.frameCB = resources.CreateConstantBuffer(sizeof(scene::PerFrameCB));
-    if (!g_shared.objectCB.IsValid())
+    }
+    if (!g_shared.objectCB.IsValid()) {
         g_shared.objectCB = resources.CreateConstantBuffer(sizeof(scene::PerObjectCB));
-    if (!g_shared.lightCB.IsValid())
+    }
+    if (!g_shared.lightCB.IsValid()) {
         g_shared.lightCB = resources.CreateConstantBuffer(sizeof(renderer::LightConstantsCB));
+    }
     if (!g_shared.advancedCB.IsValid()) {
         g_shared.advancedCB = resources.CreateConstantBuffer(sizeof(scene::AdvancedGraphicsCB));
         const scene::AdvancedGraphicsCB isolated{};
         resources.Update(g_shared.advancedCB, &isolated, sizeof(isolated));
     }
-    if (!g_shared.shadowCB.IsValid())
+    if (!g_shared.shadowCB.IsValid()) {
         g_shared.shadowCB = resources.CreateConstantBuffer(sizeof(scene::ShadowConstantsCB));
-    if (needFallbackShader && !g_shared.fallbackMaterialCB.IsValid())
+    }
+    if (needFallbackShader && !g_shared.fallbackMaterialCB.IsValid()) {
         g_shared.fallbackMaterialCB = resources.CreateConstantBuffer(sizeof(FallbackMaterialCB));
+    }
     if (!g_shared.punctualShadowCB.IsValid()) {
         g_shared.punctualShadowCB =
             resources.CreateConstantBuffer(sizeof(scene::PunctualShadowConstantsCB));
@@ -620,7 +720,7 @@ bool EnsureShared(renderer::ResourceManager& resources, bool needFallbackShader)
     }
     if (!g_shared.clusterCB.IsValid()) {
         g_shared.clusterCB = resources.CreateConstantBuffer(sizeof(scene::ClusterConstantsCB));
-        /// @note clusterLightMode = 0 = LEGACY
+        // clusterLightMode = 0 = LEGACY
         const scene::ClusterConstantsCB legacy{};
         resources.Update(g_shared.clusterCB, &legacy, sizeof(legacy));
     }
@@ -640,8 +740,9 @@ bool EnsureShared(renderer::ResourceManager& resources, bool needFallbackShader)
 bool BuildTerrainCB(renderer::ResourceManager& resources, const asset::MaterialAssetAuthoring* material,
                     const math::Matrix4& viewProjection, TerrainObjectCB& outCb)
 {
-    if (!g_shared.terrainFallback.IsValid())
+    if (!g_shared.terrainFallback.IsValid()) {
         g_shared.terrainFallback = scene::CreateTerrainFallbackTextures(resources);
+    }
     if (!g_shared.terrainSplatIndices.IsValid()) {
         const std::uint8_t indices[4] = { 0, 0, 0, 0 };
         g_shared.terrainSplatIndices = resources.CreateTexture(indices, 1, 1);
@@ -652,11 +753,17 @@ bool BuildTerrainCB(renderer::ResourceManager& resources, const asset::MaterialA
     }
 
     const auto hasPrefix = [material](const std::string& prefix) {
-        if (!material) return false;
+        if (!material) {
+            return false;
+        }
         for (const auto& [key, value] : material->textures)
-            if (key.starts_with(prefix)) return true;
+            if (key.starts_with(prefix)) {
+                return true;
+            }
         for (const auto& [key, value] : material->params)
-            if (key.starts_with(prefix)) return true;
+            if (key.starts_with(prefix)) {
+                return true;
+            }
         return false;
     };
     std::vector<scene::TerrainLayerGpu> layers;
@@ -669,8 +776,11 @@ bool BuildTerrainCB(renderer::ResourceManager& resources, const asset::MaterialA
     if (layers.empty()) {
         scene::TerrainLayerGpu layer = material ? scene::ReadTerrainLayerParams(*material)
             : scene::ReadTerrainLayerParams(static_cast<const asset::MaterialAsset*>(nullptr));
-        if (material) scene::FillTerrainLayerTextureIndices(resources, *material, {}, g_shared.terrainFallback, layer);
-        else scene::FillTerrainLayerTextureIndices(resources, static_cast<const asset::MaterialAsset*>(nullptr), {}, g_shared.terrainFallback, layer);
+        if (material) {
+            scene::FillTerrainLayerTextureIndices(resources, *material, {}, g_shared.terrainFallback, layer);
+        } else {
+            scene::FillTerrainLayerTextureIndices(resources, static_cast<const asset::MaterialAsset*>(nullptr), {}, g_shared.terrainFallback, layer);
+        }
         layers.push_back(layer);
     }
 
@@ -685,13 +795,16 @@ bool BuildTerrainCB(renderer::ResourceManager& resources, const asset::MaterialA
         resources.Update(g_shared.terrainLayerBuffer, layers.data(), bytes);
     }
     const renderer::IStructuredBuffer* buffer = resources.Get(g_shared.terrainLayerBuffer);
-    if (!buffer || buffer->GetBindlessIndex() == renderer::INVALID_BINDLESS_INDEX) return false;
+    if (!buffer || buffer->GetBindlessIndex() == renderer::INVALID_BINDLESS_INDEX) {
+        return false;
+    }
 
     bool anyAutoBlend = false;
-    for (const auto& layer : layers)
+    for (const auto& layer : layers) {
         anyAutoBlend |= layer.autoBlendEnabled > 0.0f && layer.autoBlendStrength > 0.0f;
+    }
 
-    /// @note GridMesh は 1 × 1 のローカル平面。三方向投影の «1 m あたり» の換算もこの寸法で行う。
+    // GridMesh は 1 × 1 のローカル平面。三方向投影の «1 m あたり» の換算もこの寸法で行う。
     outCb = TerrainObjectCB{};
     outCb.worldMatrix      = math::Matrix4::Identity();
     outCb.wvpMatrix        = viewProjection;
@@ -747,17 +860,20 @@ WaterCB BuildWaterCB(const asset::MaterialAssetAuthoring* material,
                         ParamFloat(material, "smoothness", 0.92f) };
     const math::Vector3 sss = ParamFloat3(material, "sssColor", { 0.12f, 0.50f, 0.46f });
     cb.sssParams = { sss.x, sss.y, sss.z, ParamFloat(material, "sssStrength", 0.6f) };
-    /// @note The preview has no scene IBL cube; the water shader retains its analytic sky fallback.
+    // The preview has no scene IBL cube; the water shader retains its analytic sky fallback.
     cb.reflectParams = { ParamFloat(material, "skyReflection", 1.0f), 0.0f, 0.0f, 0.0f };
     cb.flowParams    = { 1.0f, 0.0f,
                          (std::max)(ParamFloat(material, "detailAnisotropy", 2.0f), 1.0f),
                          (std::max)(ParamFloat(material, "detailWarp",       0.5f), 0.0f) };
 
-    /// @note Use the runtime material resolver so Flat and authored waves remain distinguishable in thumbnails.
+    // Use the runtime material resolver so Flat and authored waves remain distinguishable in thumbnails.
     /// @see https://dev.epicgames.com/documentation/en-us/unreal-engine/single-layer-water-shading-model-in-unreal-engine Water material parameters.
     scene::WaterComponent water;
-    if (material) scene::ResolveWaterWaves(water, *material, {});
-    else scene::ResolveWaterWaves(water, static_cast<const asset::MaterialAsset*>(nullptr), {});
+    if (material) {
+        scene::ResolveWaterWaves(water, *material, {});
+    } else {
+        scene::ResolveWaterWaves(water, static_cast<const asset::MaterialAsset*>(nullptr), {});
+    }
     cb.waveControls.x = static_cast<float>(water.waveCount);
     cb.reflectParams.y = water.waveGrouping;
     cb.waveShapeParams.x = water.waveSpread;
@@ -816,12 +932,15 @@ ChannelCB BuildChannelCB(const asset::MaterialAssetAuthoring* material, const Gp
     cb.mode = ChannelModeValue(channel);
     if (gpu) {
         for (std::uint32_t slot = 0; slot < 5 && slot < gpu->textures.size(); ++slot) {
-            if (gpu->textures[slot].IsValid()) cb.textureMask |= (1u << slot);
+            if (gpu->textures[slot].IsValid()) {
+                cb.textureMask |= (1u << slot);
+            }
         }
-        if (gpu->parallaxDepthOffset != UINT32_MAX && gpu->textures.size() > 5 && gpu->textures[5].IsValid()) {
+        if (gpu->parallaxDepthOffset != UINT32_MAX && gpu->textures.size() > 5 && gpu->textures[renderer::srv::FIBER_MASK].IsValid()) {
             cb.textureMask |= 1u << 5;
-            if (showParallax)
+            if (showParallax) {
                 std::memcpy(&cb.parallaxDepth, gpu->paramData.data() + gpu->parallaxDepthOffset, sizeof(float));
+            }
         }
     }
     return cb;
@@ -848,14 +967,14 @@ FrameState UploadFrame(renderer::ResourceManager& resources,
     state.radius = std::max(radius, 0.0001f);
     const float distance = state.radius * std::max(orbit.distance, 0.05f);
 
-    /// @note 望遠にしない: FOV 30 + 遠距離はパースがほぼ消えて正射影に近づき、球が円板のように
-    /// @note 平坦に見えるため、FOV を広げてカメラを寄せる。
+    // 望遠にしない: FOV 30 + 遠距離はパースがほぼ消えて正射影に近づき、球が円板のように
+    // 平坦に見えるため、FOV を広げてカメラを寄せる。
     const float cosPitch = std::cos(orbit.pitch);
     state.camera.m_position = center + math::Vector3{
         cosPitch * std::sin(orbit.yaw) * distance,
         std::sin(orbit.pitch) * distance,
         cosPitch * std::cos(orbit.yaw) * distance };
-    /// @note 描画先は常に正方形 RT
+    // 描画先は常に正方形 RT
     state.camera.m_aspect = 1.0f;
     state.camera.m_fovY   = 38.0f;
     state.camera.m_near   = 0.01f;
@@ -863,7 +982,7 @@ FrameState UploadFrame(renderer::ResourceManager& resources,
     state.camera.LookAt(center);
 
     state.frame.view              = state.camera.GetViewMatrix();
-    /// @note 描画先 RT は Reversed-Z (CameraDepthTargetDesc)。本編と同じシェーダーが深度を読むので行列も揃える。
+    // 描画先 RT は Reversed-Z (CameraDepthTargetDesc)。本編と同じシェーダーが深度を読むので行列も揃える。
     state.frame.projection        = state.camera.GetGpuProjectionMatrix();
     state.frame.viewProjection    = state.camera.GetGpuViewProjection();
     state.frame.invViewProjection = math::Matrix4::Inverse(state.frame.viewProjection);
@@ -893,8 +1012,8 @@ void UploadRig(renderer::ResourceManager& resources, const Rig& rig, const Frame
     lightData.lightIntensity = profile.keyIntensity * exposure / kLightUnitScale;
     lightData.ambientColor = profile.ambient * exposure;
 
-    /// @note LightAttenuation は 1/dist^2 を含むためメッシュ半径で効きが変わる。range = radius*20 に
-    /// @note 対し dist は radius*3 前後で range 窓はほぼ 1.0 なので、逆二乗と LIGHT_UNIT_SCALE だけ打ち消す。
+    // LightAttenuation は 1/dist^2 を含むためメッシュ半径で効きが変わる。range = radius*20 に
+    // 対し dist は radius*3 前後で range 窓はほぼ 1.0 なので、逆二乗と LIGHT_UNIT_SCALE だけ打ち消す。
     const auto placeLight = [&](renderer::PointLight& light,
                                 const math::Vector3& offsetFromCenter,
                                 const math::Vector3& color,
@@ -903,8 +1022,8 @@ void UploadRig(renderer::ResourceManager& resources, const Rig& rig, const Frame
         light.position = fs.center + rotated;
         light.color    = color;
         light.range    = radius * 20.0f;
-        /// @note シェーダー側の特異点ガード max(d*d, 0.01) と同じ下限を掛け、
-        /// @note 極小メッシュで補正が過剰にならないようにする。
+        // シェーダー側の特異点ガード max(d*d, 0.01) と同じ下限を掛け、
+        // 極小メッシュで補正が過剰にならないようにする。
         light.intensity = targetIntensity * exposure *
             std::max(rotated.LengthSq(), 0.01f) / kLightUnitScale;
     };
@@ -922,8 +1041,8 @@ void UploadRig(renderer::ResourceManager& resources, const Rig& rig, const Frame
     shadowData.lightViewProjection = math::Matrix4::Translate({ 16.0f, 16.0f, 0.0f });
     shadowData.shadowMapTexelSize[0] = 0.0f;
     shadowData.shadowMapTexelSize[1] = 0.0f;
-    /// @note NDC 深度最大値 (1.0) をバイアスにすると depth - bias <= 0 が常に成立し、
-    /// @note SampleCmpLevelZero が必ず 1.0 (照らされている) を返して影を無効化できる。
+    // NDC 深度最大値 (1.0) をバイアスにすると depth - bias <= 0 が常に成立し、
+    // SampleCmpLevelZero が必ず 1.0 (照らされている) を返して影を無効化できる。
     shadowData.shadowBias = 1.0f;
     resources.Update(g_shared.shadowCB, &shadowData, sizeof(shadowData));
 }
@@ -947,14 +1066,14 @@ void DrawNeutralMesh(renderer::IRenderer& renderer,
     drawCall.vertexCount  = mesh.vertexCount;
     drawCall.shader        = g_shared.fallbackShader;
     drawCall.pipelineState = g_shared.solidPso;
-    drawCall.constantBuffers[0]  = g_shared.frameCB;
-    drawCall.constantBuffers[1]  = g_shared.objectCB;
-    drawCall.constantBuffers[2]  = g_shared.fallbackMaterialCB;
-    drawCall.constantBuffers[3]  = g_shared.lightCB;
-    drawCall.constantBuffers[4]  = g_shared.shadowCB;
-    drawCall.constantBuffers[8]  = g_shared.advancedCB;
-    drawCall.constantBuffers[9]  = g_shared.clusterCB;
-    drawCall.constantBuffers[12] = g_shared.punctualShadowCB;
+    drawCall.constantBuffers[renderer::cb::CAMERA]  = g_shared.frameCB;
+    drawCall.constantBuffers[renderer::cb::OBJECT]  = g_shared.objectCB;
+    drawCall.constantBuffers[renderer::cb::MATERIAL]  = g_shared.fallbackMaterialCB;
+    drawCall.constantBuffers[renderer::cb::LIGHT]  = g_shared.lightCB;
+    drawCall.constantBuffers[renderer::cb::SHADOW]  = g_shared.shadowCB;
+    drawCall.constantBuffers[renderer::cb::ADVANCED_GRAPHICS]  = g_shared.advancedCB;
+    drawCall.constantBuffers[renderer::cb::CLUSTER]  = g_shared.clusterCB;
+    drawCall.constantBuffers[renderer::cb::PUNCTUAL_SHADOW] = g_shared.punctualShadowCB;
     renderer.Submit(drawCall, resources);
 }
 
@@ -977,8 +1096,8 @@ renderer::ResourceHandle<renderer::PipelineStateTag> BlendPso(
     const auto make = [&](renderer::ResourceHandle<renderer::PipelineStateTag>& slot,
                           renderer::BlendMode mode) {
         if (!slot.IsValid()) {
-            /// @note DEPTH_OFF: プレビューには遮蔽物が無く、粒子どうしの前後も «重なって見える»
-            /// @note ほうが素材を読み取りやすい。
+            // DEPTH_OFF: プレビューには遮蔽物が無く、粒子どうしの前後も «重なって見える»
+            // ほうが素材を読み取りやすい。
             slot = resources.CreatePipelineState({
                 renderer::RasterizerMode::SOLID_NOCULL, mode, renderer::DepthMode::DEPTH_OFF });
         }
@@ -1011,8 +1130,9 @@ bool EnsureUiResources(renderer::ResourceManager& resources)
             renderer::BlendMode::ALPHA_BLEND,
             renderer::DepthMode::DEPTH_OFF });
     }
-    if (!g_shared.uiCB.IsValid())
+    if (!g_shared.uiCB.IsValid()) {
         g_shared.uiCB = resources.CreateConstantBuffer(sizeof(UIConstantsCB));
+    }
     if (!g_shared.uiVertexBuffer.IsValid()) {
         const float lo = kUiMargin;
         const float hi = kUiCanvasSize - kUiMargin;
@@ -1037,8 +1157,12 @@ bool RenderUi(renderer::IRenderer& renderer,
               renderer::ResourceManager& resources,
               const RenderDesc& desc)
 {
-    if (!desc.gpu || !desc.gpu->shader.IsValid()) return false;
-    if (!EnsureUiResources(resources) || !EnsureDefaultTextures(resources)) return false;
+    if (!desc.gpu || !desc.gpu->shader.IsValid()) {
+        return false;
+    }
+    if (!EnsureUiResources(resources) || !EnsureDefaultTextures(resources)) {
+        return false;
+    }
 
     const float rectSize = kUiCanvasSize - kUiMargin * 2.0f;
     UIConstantsCB uiData{};
@@ -1061,14 +1185,15 @@ bool RenderUi(renderer::IRenderer& renderer,
     drawCall.vertexCount  = 4;
     drawCall.shader        = desc.gpu->shader;
     drawCall.pipelineState = g_shared.uiPso;
-    drawCall.constantBuffers[0] = g_shared.uiCB;
-    drawCall.constantBuffers[2] = desc.gpu->materialCB;
-    /// @note 素材を持たない UI マテリアルでも図形は描ける。白 1px を差して
-    /// @note «テクスチャ未束縛で真っ黒» にならないようにする。
-    drawCall.textures[0] = (!desc.gpu->textures.empty() && desc.gpu->textures[0].IsValid())
-        ? desc.gpu->textures[0] : g_shared.whiteTexture;
-    for (std::size_t i = 1; i < std::min(drawCall.textures.size(), desc.gpu->textures.size()); ++i)
+    drawCall.constantBuffers[renderer::cb::UI] = g_shared.uiCB;
+    drawCall.constantBuffers[renderer::cb::MATERIAL] = desc.gpu->materialCB;
+    // 素材を持たない UI マテリアルでも図形は描ける。白 1px を差して
+    // «テクスチャ未束縛で真っ黒» にならないようにする。
+    drawCall.textures[renderer::srv::ALBEDO] = (desc.gpu->textures.size() > renderer::srv::ALBEDO && desc.gpu->textures[renderer::srv::ALBEDO].IsValid())
+        ? desc.gpu->textures[renderer::srv::ALBEDO] : g_shared.whiteTexture;
+    for (std::size_t i = 1; i < std::min(drawCall.textures.size(), desc.gpu->textures.size()); ++i) {
         drawCall.textures[i] = desc.gpu->textures[i];
+    }
 
     renderer.Submit(drawCall, resources);
     renderer.SetRenderTarget(renderer::ResourceHandle<renderer::RenderTargetTag>{}, resources);
@@ -1094,8 +1219,9 @@ constexpr std::array<PreviewParticle, 3> kPreviewParticles = {{
 
 bool EnsureParticleGeometry(renderer::ResourceManager& resources)
 {
-    if (g_shared.particleVertexBuffer.IsValid() && g_shared.particleIndexBuffer.IsValid())
+    if (g_shared.particleVertexBuffer.IsValid() && g_shared.particleIndexBuffer.IsValid()) {
         return true;
+    }
 
     std::vector<ParticleVertex> vertices;
     std::vector<std::uint32_t>  indices;
@@ -1134,11 +1260,18 @@ bool RenderParticle(renderer::IRenderer& renderer,
                     renderer::ResourceManager& resources,
                     const RenderDesc& desc)
 {
-    if (!desc.gpu || !desc.gpu->shader.IsValid()) return false;
-    if (!EnsureShared(resources, false) || !EnsureParticleGeometry(resources)) return false;
-    if (!g_shared.particleCB.IsValid())
+    if (!desc.gpu || !desc.gpu->shader.IsValid()) {
+        return false;
+    }
+    if (!EnsureShared(resources, false) || !EnsureParticleGeometry(resources)) {
+        return false;
+    }
+    if (!g_shared.particleCB.IsValid()) {
         g_shared.particleCB = resources.CreateConstantBuffer(sizeof(ParticleRenderCB));
-    if (!g_shared.particleCB.IsValid()) return false;
+    }
+    if (!g_shared.particleCB.IsValid()) {
+        return false;
+    }
 
     const FrameState frameState = UploadFrame(resources, desc.orbit, math::Vector3::ZERO, 0.5f);
     UploadRig(resources, desc.rig, frameState);
@@ -1151,16 +1284,18 @@ bool RenderParticle(renderer::IRenderer& renderer,
     particleData.maxParticles = static_cast<std::uint32_t>(kPreviewParticles.size());
     particleData.screenWidth  = static_cast<float>(kEffectRtSize);
     particleData.screenHeight = static_cast<float>(kEffectRtSize);
-    /// @note 影・ソフトパーティクル・歪みはシーンの深度とカラーを要る。プレビューには
-    /// @note どちらも無いので切る (未束縛 SRV を読むと真っ黒になる)。
+    // 影・ソフトパーティクル・歪みはシーンの深度とカラーを要る。プレビューには
+    // どちらも無いので切る (未束縛 SRV を読むと真っ黒になる)。
     particleData.softParticles = 0;
     particleData.shadowStrength = 0.0f;
     particleData.selfShadowStrength = 0.0f;
     particleData.effectsFlags = 0;
-    if (blend == renderer::BlendMode::ADDITIVE)
+    if (blend == renderer::BlendMode::ADDITIVE) {
         particleData.effectsFlags |= scene::kParticleFxAdditive;
-    if (blend == renderer::BlendMode::PREMULTIPLIED)
+    }
+    if (blend == renderer::BlendMode::PREMULTIPLIED) {
         particleData.effectsFlags |= scene::kParticleFxPremultiplied;
+    }
     if (desc.material) {
         const auto& settings = desc.material->particle;
         particleData.effectsFlags |= (settings.sixWayLighting ? scene::kParticleFxSixWay : 0u)
@@ -1201,18 +1336,21 @@ bool RenderParticle(renderer::IRenderer& renderer,
     drawCall.vertexCount  = static_cast<std::uint32_t>(kPreviewParticles.size() * 4);
     drawCall.shader        = desc.gpu->shader;
     drawCall.pipelineState = BlendPso(resources, blend);
-    drawCall.constantBuffers[0]  = g_shared.frameCB;
-    drawCall.constantBuffers[1]  = g_shared.objectCB;
-    drawCall.constantBuffers[2]  = desc.gpu->materialCB;
-    drawCall.constantBuffers[3]  = g_shared.lightCB;
-    drawCall.constantBuffers[4]  = g_shared.shadowCB;
-    drawCall.constantBuffers[9]  = g_shared.clusterCB;
-    drawCall.constantBuffers[12] = g_shared.punctualShadowCB;
+    drawCall.constantBuffers[renderer::cb::CAMERA]  = g_shared.frameCB;
+    drawCall.constantBuffers[renderer::cb::OBJECT]  = g_shared.objectCB;
+    drawCall.constantBuffers[renderer::cb::MATERIAL]  = desc.gpu->materialCB;
+    drawCall.constantBuffers[renderer::cb::LIGHT]  = g_shared.lightCB;
+    drawCall.constantBuffers[renderer::cb::SHADOW]  = g_shared.shadowCB;
+    drawCall.constantBuffers[renderer::cb::CLUSTER]  = g_shared.clusterCB;
+    drawCall.constantBuffers[renderer::cb::PUNCTUAL_SHADOW] = g_shared.punctualShadowCB;
     drawCall.constantBuffers[scene::kParticleConstantSlot] = g_shared.particleCB;
     const std::size_t count = std::min(drawCall.textures.size(), desc.gpu->textures.size());
-    for (std::size_t i = 0; i < count; ++i) drawCall.textures[i] = desc.gpu->textures[i];
-    if (!drawCall.textures[0].IsValid() && EnsureDefaultTextures(resources))
-        drawCall.textures[0] = g_shared.whiteTexture;
+    for (std::size_t i = 0; i < count; ++i) {
+        drawCall.textures[i] = desc.gpu->textures[i];
+    }
+    if (!drawCall.textures[renderer::srv::ALBEDO].IsValid() && EnsureDefaultTextures(resources)) {
+        drawCall.textures[renderer::srv::ALBEDO] = g_shared.whiteTexture;
+    }
 
     renderer.Submit(drawCall, resources);
     renderer.SetRenderTarget(renderer::ResourceHandle<renderer::RenderTargetTag>{}, resources);
@@ -1227,10 +1365,11 @@ constexpr int kTrailSegments = 48;
 
 bool EnsureTrailGeometry(renderer::ResourceManager& resources)
 {
-    if (g_shared.trailVertexBuffer.IsValid() && g_shared.trailIndexBuffer.IsValid())
+    if (g_shared.trailVertexBuffer.IsValid() && g_shared.trailIndexBuffer.IsValid()) {
         return true;
+    }
 
-    /// @note XZ 平面の弧。既定カメラが斜め上から見るので、帯の «面» がそのまま見える。
+    // XZ 平面の弧。既定カメラが斜め上から見るので、帯の «面» がそのまま見える。
     std::vector<TrailVertex> vertices;
     std::vector<std::uint32_t> indices;
     vertices.reserve((kTrailSegments + 1) * 2);
@@ -1238,12 +1377,14 @@ bool EnsureTrailGeometry(renderer::ResourceManager& resources)
         const float t = static_cast<float>(i) / static_cast<float>(kTrailSegments);
         const float angle = (t - 0.5f) * 2.4f;
         const math::Vector3 center{ std::sin(angle) * 0.55f, 0.0f, std::cos(angle) * 0.35f - 0.3f };
-        /// @note 先端へ向かって細くする。幅が一定だと «軌跡» ではなく «板» に見える。
+        // 先端へ向かって細くする。幅が一定だと «軌跡» ではなく «板» に見える。
         const float halfWidth = 0.20f * (1.0f - t * 0.85f);
         const math::Vector3 across{ std::cos(angle), 0.0f, -std::sin(angle) };
         vertices.push_back({ center + across * halfWidth, t, 0.0f, t });
         vertices.push_back({ center - across * halfWidth, t, 1.0f, t });
-        if (i == 0) continue;
+        if (i == 0) {
+            continue;
+        }
         const auto base = static_cast<std::uint32_t>((i - 1) * 2);
         indices.insert(indices.end(),
                        { base, base + 1, base + 2, base + 1, base + 3, base + 2 });
@@ -1260,9 +1401,13 @@ math::Vector4 TrailParamColor(const asset::MaterialAssetAuthoring* material,
                               std::string_view name,
                               const math::Vector4& fallback)
 {
-    if (!material) return fallback;
+    if (!material) {
+        return fallback;
+    }
     const auto* values = FindParam(*material, name);
-    if (!values || values->size() < 3) return fallback;
+    if (!values || values->size() < 3) {
+        return fallback;
+    }
     return { (*values)[0], (*values)[1], (*values)[2],
              values->size() >= 4 ? (*values)[3] : 1.0f };
 }
@@ -1271,19 +1416,26 @@ bool RenderTrail(renderer::IRenderer& renderer,
                  renderer::ResourceManager& resources,
                  const RenderDesc& desc)
 {
-    if (!desc.gpu || !desc.gpu->shader.IsValid()) return false;
-    if (!EnsureShared(resources, false) || !EnsureTrailGeometry(resources)) return false;
-    if (!g_shared.trailCB.IsValid())
+    if (!desc.gpu || !desc.gpu->shader.IsValid()) {
+        return false;
+    }
+    if (!EnsureShared(resources, false) || !EnsureTrailGeometry(resources)) {
+        return false;
+    }
+    if (!g_shared.trailCB.IsValid()) {
         g_shared.trailCB = resources.CreateConstantBuffer(sizeof(TrailCB));
-    if (!g_shared.trailCB.IsValid()) return false;
+    }
+    if (!g_shared.trailCB.IsValid()) {
+        return false;
+    }
 
     const FrameState frameState = UploadFrame(resources, desc.orbit, math::Vector3::ZERO, 0.6f);
     UploadRig(resources, desc.rig, frameState);
     UploadIdentityObjectCB(resources);
 
     TrailCB trailData{};
-    /// @note 帯の色は TrailComponent が持つ値で、.mat には無いことが多い。
-    /// @note 同名の [params] があればそれを使い、無ければ «白 → 透明» の既定で形を見せる。
+    // 帯の色は TrailComponent が持つ値で、.mat には無いことが多い。
+    // 同名の [params] があればそれを使い、無ければ «白 → 透明» の既定で形を見せる。
     trailData.colorStart = TrailParamColor(desc.material.get(), "colorStart", { 1.0f, 1.0f, 1.0f, 1.0f });
     trailData.colorEnd   = TrailParamColor(desc.material.get(), "colorEnd",   { 1.0f, 1.0f, 1.0f, 0.0f });
     trailData.uvScrollSpeed = ParamFloat(desc.material.get(), "uvScrollSpeed", 0.0f);
@@ -1312,14 +1464,17 @@ bool RenderTrail(renderer::IRenderer& renderer,
     drawCall.shader        = desc.gpu->shader;
     drawCall.pipelineState = BlendPso(resources,
         desc.material ? desc.material->blendMode : renderer::BlendMode::ALPHA_BLEND);
-    drawCall.constantBuffers[0] = g_shared.frameCB;
-    drawCall.constantBuffers[1] = g_shared.objectCB;
-    drawCall.constantBuffers[2] = g_shared.trailCB;
-    drawCall.constantBuffers[3] = g_shared.lightCB;
+    drawCall.constantBuffers[renderer::cb::CAMERA] = g_shared.frameCB;
+    drawCall.constantBuffers[renderer::cb::OBJECT] = g_shared.objectCB;
+    drawCall.constantBuffers[renderer::cb::MATERIAL] = g_shared.trailCB;
+    drawCall.constantBuffers[renderer::cb::LIGHT] = g_shared.lightCB;
     const std::size_t count = std::min(drawCall.textures.size(), desc.gpu->textures.size());
-    for (std::size_t i = 0; i < count; ++i) drawCall.textures[i] = desc.gpu->textures[i];
-    if (!drawCall.textures[0].IsValid() && EnsureDefaultTextures(resources))
-        drawCall.textures[0] = g_shared.whiteTexture;
+    for (std::size_t i = 0; i < count; ++i) {
+        drawCall.textures[i] = desc.gpu->textures[i];
+    }
+    if (!drawCall.textures[renderer::srv::ALBEDO].IsValid() && EnsureDefaultTextures(resources)) {
+        drawCall.textures[renderer::srv::ALBEDO] = g_shared.whiteTexture;
+    }
 
     renderer.Submit(drawCall, resources);
     renderer.SetRenderTarget(renderer::ResourceHandle<renderer::RenderTargetTag>{}, resources);
@@ -1342,17 +1497,26 @@ bool RenderDecal(renderer::IRenderer& renderer,
                  renderer::ResourceManager& resources,
                  const RenderDesc& desc)
 {
-    if (!desc.gpu || !desc.gpu->shader.IsValid()) return false;
-    if (!EnsureShared(resources, true) || !EnsureSceneRT(resources)) return false;
-    if (!g_shared.decalCB.IsValid())
+    if (!desc.gpu || !desc.gpu->shader.IsValid()) {
+        return false;
+    }
+    if (!EnsureShared(resources, true) || !EnsureSceneRT(resources)) {
+        return false;
+    }
+    if (!g_shared.decalCB.IsValid()) {
         g_shared.decalCB = resources.CreateConstantBuffer(sizeof(DecalCB));
-    if (!g_shared.decalCB.IsValid()) return false;
+    }
+    if (!g_shared.decalCB.IsValid()) {
+        return false;
+    }
 
     renderer::Mesh* receiver = GridMesh(resources, 8);
-    if (!receiver) return false;
+    if (!receiver) {
+        return false;
+    }
 
-    /// @note 受け面は投影ボリュームより広く取る: 同じ大きさだとデカールが画面いっぱいになり
-    /// @note «どこまで乗るか» が見えないため、周囲を残して投影範囲と角の落ち方を読めるようにする。
+    // 受け面は投影ボリュームより広く取る: 同じ大きさだとデカールが画面いっぱいになり
+    // «どこまで乗るか» が見えないため、周囲を残して投影範囲と角の落ち方を読めるようにする。
     constexpr float kReceiverScale = 2.2f;
     const FrameState frameState =
         UploadFrame(resources, desc.orbit, math::Vector3::ZERO, kReceiverScale * 0.5f);
@@ -1360,8 +1524,8 @@ bool RenderDecal(renderer::IRenderer& renderer,
     UploadObjectCB(resources, math::Matrix4::Scale(
         { kReceiverScale, kReceiverScale, kReceiverScale }));
 
-    /// @note 受け面 (中性グレー) を 2 回焼く。描画先の深度バッファは同時に SRV として読めないため、
-    /// @note 1 回目は深度を SRV として読む別 RT へ、2 回目は «デカールが乗る下地» としてプレビュー本体へ。
+    // 受け面 (中性グレー) を 2 回焼く。描画先の深度バッファは同時に SRV として読めないため、
+    // 1 回目は深度を SRV として読む別 RT へ、2 回目は «デカールが乗る下地» としてプレビュー本体へ。
     constexpr math::Vector4 kReceiverColor{ 0.62f, 0.63f, 0.66f, 1.0f };
     renderer.SetRenderTarget(g_shared.sceneRT, resources);
     renderer.Clear({ 0.0f, 0.0f, 0.0f, 0.0f });
@@ -1375,34 +1539,36 @@ bool RenderDecal(renderer::IRenderer& renderer,
     }
     DrawNeutralMesh(renderer, resources, *receiver, kReceiverColor);
 
-    /// @note 投影ボリュームは受け面 (1x1 の平面) をちょうど覆う立方体。
-    /// @note デカールローカルは [-0.5, 0.5]^3 で、+Y が投影軸・+X/+Z が UV 軸。
+    // 投影ボリュームは受け面 (1x1 の平面) をちょうど覆う立方体。
+    // デカールローカルは [-0.5, 0.5]^3 で、+Y が投影軸・+X/+Z が UV 軸。
     DecalCB decalData{};
     decalData.invDecalWorld     = math::Matrix4::Identity();
     decalData.decalTangent      = { 1.0f, 0.0f, 0.0f };
     decalData.decalBitangent    = { 0.0f, 0.0f, 1.0f };
     decalData.decalNormal       = { 0.0f, 1.0f, 0.0f };
     decalData.alpha             = 1.0f;
-    /// @note 受け面は平らなので角度フェードは掛けない
+    // 受け面は平らなので角度フェードは掛けない
     decalData.angleFadeStrength = 0.0f;
-    /// @note 受信レイヤーフィルタなし (t13 を読ませない)
+    // 受信レイヤーフィルタなし (t13 を読ませない)
     decalData.flags             = 0;
     decalData.receiverLayerMask = ~0u;
     resources.Update(g_shared.decalCB, &decalData, sizeof(decalData));
 
-    /// @note 頂点バッファを持たない全画面三角形 (DecalVertexMain が SV_VertexID から組む)。
+    // 頂点バッファを持たない全画面三角形 (DecalVertexMain が SV_VertexID から組む)。
     renderer::DrawCall drawCall;
     drawCall.shader        = desc.gpu->shader;
     drawCall.pipelineState = BlendPso(resources, renderer::BlendMode::ALPHA_BLEND);
     drawCall.vertexCount   = 3;
-    drawCall.constantBuffers[0]  = g_shared.frameCB;
-    drawCall.constantBuffers[2]  = desc.gpu->materialCB;
-    drawCall.constantBuffers[3]  = g_shared.lightCB;
-    drawCall.constantBuffers[10] = g_shared.decalCB;
+    drawCall.constantBuffers[renderer::cb::CAMERA]  = g_shared.frameCB;
+    drawCall.constantBuffers[renderer::cb::MATERIAL]  = desc.gpu->materialCB;
+    drawCall.constantBuffers[renderer::cb::LIGHT]  = g_shared.lightCB;
+    drawCall.constantBuffers[renderer::cb::DECAL] = g_shared.decalCB;
     const std::size_t count = std::min(drawCall.textures.size(), desc.gpu->textures.size());
-    for (std::size_t i = 0; i < count; ++i) drawCall.textures[i] = desc.gpu->textures[i];
-    /// @note TEX_DEPTH
-    drawCall.textures[7] = resources.GetDepthTexture(g_shared.sceneRT);
+    for (std::size_t i = 0; i < count; ++i) {
+        drawCall.textures[i] = desc.gpu->textures[i];
+    }
+    // TEX_DEPTH
+    drawCall.textures[renderer::srv::DEPTH] = resources.GetDepthTexture(g_shared.sceneRT);
 
     renderer.Submit(drawCall, resources);
     renderer.SetRenderTarget(renderer::ResourceHandle<renderer::RenderTargetTag>{}, resources);
@@ -1417,14 +1583,23 @@ bool RenderPostProcess(renderer::IRenderer& renderer,
                        renderer::ResourceManager& resources,
                        const RenderDesc& desc)
 {
-    if (!desc.gpu || !desc.gpu->shader.IsValid()) return false;
-    if (!EnsureShared(resources, true) || !EnsureSceneRT(resources)) return false;
-    if (!g_shared.postProcCB.IsValid())
+    if (!desc.gpu || !desc.gpu->shader.IsValid()) {
+        return false;
+    }
+    if (!EnsureShared(resources, true) || !EnsureSceneRT(resources)) {
+        return false;
+    }
+    if (!g_shared.postProcCB.IsValid()) {
         g_shared.postProcCB = resources.CreateConstantBuffer(sizeof(PostProcCB));
-    if (!g_shared.postProcCB.IsValid()) return false;
+    }
+    if (!g_shared.postProcCB.IsValid()) {
+        return false;
+    }
 
     renderer::Mesh* subject = PrimitiveFor(resources, Shape::Sphere);
-    if (!subject) return false;
+    if (!subject) {
+        return false;
+    }
 
     const FrameState frameState = UploadFrame(resources, desc.orbit, math::Vector3::ZERO, 0.5f);
     UploadRig(resources, desc.rig, frameState);
@@ -1440,11 +1615,11 @@ bool RenderPostProcess(renderer::IRenderer& renderer,
     postProcData.exposure        = 1.0f;
     postProcData.customIntensity = 1.0f;
     postProcData.customBlend     = 1.0f;
-    /// @note customPassInfo.x は «縮小して走った割合»。等倍で焼くので 1。
+    // customPassInfo.x は «縮小して走った割合»。等倍で焼くので 1。
     postProcData.customPassInfo[0] = 1.0f;
 
-    /// @note .mat の [params] を b5 の custom* へ名前で束縛する。オフセットはリフレクション
-    /// @note (ShaderDescriptor::postProcessVars) 由来なので、ここで名前を書き並べずに済む。
+    // .mat の [params] を b5 の custom* へ名前で束縛する。オフセットはリフレクション
+    // (ShaderDescriptor::postProcessVars) 由来なので、ここで名前を書き並べずに済む。
     if (auto* shader = resources.Get(desc.gpu->shader); shader && desc.material) {
         auto* raw = static_cast<uint8_t*>(static_cast<void*>(&postProcData));
         renderer::ShaderDescriptor descriptor;
@@ -1465,13 +1640,13 @@ bool RenderPostProcess(renderer::IRenderer& renderer,
     drawCall.shader        = desc.gpu->shader;
     drawCall.pipelineState = g_shared.solidPso;
     drawCall.vertexCount   = 3;
-    drawCall.constantBuffers[0] = g_shared.frameCB;
-    drawCall.constantBuffers[2] = desc.gpu->materialCB;
-    drawCall.constantBuffers[5] = g_shared.postProcCB;
-    /// @note TEX_GBUFFER0
-    drawCall.textures[5] = resources.GetColorTexture(g_shared.sceneRT);
-    /// @note 深度を読むフィルタ (被写界深度・フォグ) も «この絵» の深度で通せるようにする。
-    drawCall.textures[7] = resources.GetDepthTexture(g_shared.sceneRT);
+    drawCall.constantBuffers[renderer::cb::CAMERA] = g_shared.frameCB;
+    drawCall.constantBuffers[renderer::cb::MATERIAL] = desc.gpu->materialCB;
+    drawCall.constantBuffers[renderer::cb::POSTPROC] = g_shared.postProcCB;
+    // TEX_GBUFFER0
+    drawCall.textures[renderer::srv::POST_COLOR] = resources.GetColorTexture(g_shared.sceneRT);
+    // 深度を読むフィルタ (被写界深度・フォグ) も «この絵» の深度で通せるようにする。
+    drawCall.textures[renderer::srv::DEPTH] = resources.GetDepthTexture(g_shared.sceneRT);
 
     renderer.Submit(drawCall, resources);
     renderer.SetRenderTarget(renderer::ResourceHandle<renderer::RenderTargetTag>{}, resources);
@@ -1522,20 +1697,24 @@ FiberPreviewShared g_fiber;
 
 bool EnsureFiberShared(renderer::ResourceManager& resources)
 {
-    /// @note 別 Manager の同じ Reset 世代も別資源。旧ハンドルは Release せず捨てる。
+    // 別 Manager の同じ Reset 世代も別資源。旧ハンドルは Release せず捨てる。
     const auto lifetime = PreviewResourceLifetime::Read(resources);
     if (g_fiber.lifetime != lifetime) {
         g_fiber = FiberPreviewShared{};
         g_fiber.lifetime = lifetime;
     }
-    if (!g_fiber.materialCB.IsValid())
+    if (!g_fiber.materialCB.IsValid()) {
         g_fiber.materialCB = resources.CreateConstantBuffer(sizeof(asset::FiberMaterialSettings));
-    if (!g_fiber.frameCB.IsValid())
+    }
+    if (!g_fiber.frameCB.IsValid()) {
         g_fiber.frameCB = resources.CreateConstantBuffer(sizeof(scene::FiberFrameCB));
+    }
     if (!g_fiber.contactCB.IsValid()) {
         g_fiber.contactCB = resources.CreateConstantBuffer(sizeof(scene::FiberContactCB));
         const scene::FiberContactCB none{};
-        if (g_fiber.contactCB.IsValid()) resources.Update(g_fiber.contactCB, &none, sizeof(none));
+        if (g_fiber.contactCB.IsValid()) {
+            resources.Update(g_fiber.contactCB, &none, sizeof(none));
+        }
     }
     if (!g_fiber.emptyFlow.IsValid()) {
         const scene::GpuFlowField none{};
@@ -1566,13 +1745,17 @@ FiberPreviewGeometry& FiberGeometryFor(renderer::ResourceManager& resources, con
         geometry.bladeBuilt = true;
         geometry.bladeDensity = bladeDensity;
         geometry.bladeWidth = bladeWidth;
-        if (geometry.blades.IsValid()) resources.Release(geometry.blades);
+        if (geometry.blades.IsValid()) {
+            resources.Release(geometry.blades);
+        }
         geometry.blades = {};
         geometry.bladeCount = 0;
         std::vector<renderer::FiberBladeRoot> roots;
         float density = bladeDensity;
         for (int attempt = 0; attempt < 8; ++attempt, density *= 0.5f) {
-            if (renderer::BuildFiberBlades(mesh, density, bladeWidth, 1u, roots)) break;
+            if (renderer::BuildFiberBlades(mesh, density, bladeWidth, 1u, roots)) {
+                break;
+            }
             roots.clear();
         }
         if (!roots.empty()) {
@@ -1586,7 +1769,9 @@ FiberPreviewGeometry& FiberGeometryFor(renderer::ResourceManager& resources, con
 
 void FiberPreviewWarning(const char* message)
 {
-    if (g_fiber.familyWarning == message) return;
+    if (g_fiber.familyWarning == message) {
+        return;
+    }
     g_fiber.familyWarning = message;
     FBZZ_LOG_WARN("Fiber material preview: %s; using the compatible built-in family", message);
 }
@@ -1609,7 +1794,9 @@ bool ResolveFiberPreviewFamily(renderer::ResourceManager& resources, const GpuDa
             && (capability.preview == renderer::ShaderPreviewKind::FIBER_SHELL
                 || capability.preview == renderer::ShaderPreviewKind::FIBER_FIN
                 || capability.preview == renderer::ShaderPreviewKind::FIBER_BLADE);
-        if (!legacy) FiberPreviewWarning("component mode does not match the declared project geometry");
+        if (!legacy) {
+            FiberPreviewWarning("component mode does not match the declared project geometry");
+        }
         return false;
     }
     const std::string path = asset::AssetDatabase::IsGuidRef(gpu.shaderPath)
@@ -1640,7 +1827,9 @@ bool ResolveFiberPreviewFamily(renderer::ResourceManager& resources, const GpuDa
                 const auto* native = resources.Get(handle);
                 if (!native || resources.GetShaderCapabilities(handle).vertex != capability.vertex
                     || !renderer::HasFiberMaterialPrefix(native->GetDescriptor()) || !reference
-                    || !renderer::HaveMatchingFiberMaterialLayouts(reference->GetDescriptor(), native->GetDescriptor())) valid = false;
+                    || !renderer::HaveMatchingFiberMaterialLayouts(reference->GetDescriptor(), native->GetDescriptor())) {
+                    valid = false;
+                }
                 g_fiber.familyShaders[pass * 2 + skin] = handle;
             }
         }
@@ -1655,12 +1844,16 @@ bool ResolveFiberPreviewFamily(renderer::ResourceManager& resources, const GpuDa
                     const auto* native = resources.Get(handle);
                     if (!native || resources.GetShaderCapabilities(handle).vertex != renderer::ShaderVertexContract::FIBER_FIN
                         || !renderer::HasFiberMaterialPrefix(native->GetDescriptor())
-                        || !renderer::HaveMatchingFiberMaterialLayouts(reference->GetDescriptor(), native->GetDescriptor())) validFins = false;
+                        || !renderer::HaveMatchingFiberMaterialLayouts(reference->GetDescriptor(), native->GetDescriptor())) {
+                        validFins = false;
+                    }
                     g_fiber.familyFinShaders[pass * 2 + skin] = handle;
                 }
             }
             g_fiber.familyFinValid = validFins;
-            if (!validFins) g_fiber.familyFinShaders = {};
+            if (!validFins) {
+                g_fiber.familyFinShaders = {};
+            }
         }
         g_fiber.familyVersion = resources.GetShaderVersion();
     }
@@ -1679,12 +1872,18 @@ bool ResolveFiberPreviewFamily(renderer::ResourceManager& resources, const GpuDa
 
 bool RenderFiber(renderer::IRenderer& renderer, renderer::ResourceManager& resources, const RenderDesc& desc)
 {
-    if (!desc.mesh || !desc.material || desc.mesh->isSkinned) return false;
+    if (!desc.mesh || !desc.material || desc.mesh->isSkinned) {
+        return false;
+    }
     const renderer::Mesh& mesh = *desc.mesh;
-    if (!mesh.vertexBuffer.IsValid() || !mesh.indexBuffer.IsValid()) return false;
-    if (!EnsureShared(resources, true) || !EnsureFiberShared(resources)) return false;
+    if (!mesh.vertexBuffer.IsValid() || !mesh.indexBuffer.IsValid()) {
+        return false;
+    }
+    if (!EnsureShared(resources, true) || !EnsureFiberShared(resources)) {
+        return false;
+    }
 
-    /// @note 本編と同じ値の丸め (範囲外・非有限の除去) を通す。生の params を CB へ写さない。
+    // 本編と同じ値の丸め (範囲外・非有限の除去) を通す。生の params を CB へ写さない。
     asset::FiberMaterialSettings settings = asset::ResolveFiberMaterial(*desc.material);
     const auto mask = desc.material->textures.find(asset::FIBER_MASK_TEXTURE_KEY);
     const std::string maskPath = mask != desc.material->textures.end() ? mask->second : std::string{};
@@ -1698,7 +1897,9 @@ bool RenderFiber(renderer::IRenderer& renderer, renderer::ResourceManager& resou
             std::memcpy(bytes.data(), &settings, sizeof(settings));
             const auto* buffer = resources.Get(g_fiber.appearanceCB);
             if (!buffer || buffer->GetSize() < bytes.size()) {
-                if (g_fiber.appearanceCB.IsValid()) resources.Release(g_fiber.appearanceCB);
+                if (g_fiber.appearanceCB.IsValid()) {
+                    resources.Release(g_fiber.appearanceCB);
+                }
                 g_fiber.appearanceCB = resources.CreateConstantBuffer(static_cast<uint32_t>(bytes.size()));
                 g_fiber.appearanceBytes.clear();
             }
@@ -1710,7 +1911,7 @@ bool RenderFiber(renderer::IRenderer& renderer, renderer::ResourceManager& resou
         }
     }
 
-    /// @note 毛先と曲げまで枠へ収める。形状の境界だけで寄ると長い草の先が切れる。
+    // 毛先と曲げまで枠へ収める。形状の境界だけで寄ると長い草の先が切れる。
     const math::Vector3 center = BoundsCenter(mesh);
     const float radius = std::max(0.0001f, BoundsRadius(mesh, center) + settings.m_length + settings.m_maxBend);
     const FrameState frameState = UploadFrame(resources, desc.orbit, center, radius);
@@ -1723,7 +1924,7 @@ bool RenderFiber(renderer::IRenderer& renderer, renderer::ResourceManager& resou
         renderer.ClearDepth();
     }
 
-    /// @note 土台。本編では MeshRenderer の材質が描くが .mat 単体には無いので、根元色を暗くした単色で塞ぐ。
+    // 土台。本編では MeshRenderer の材質が描くが .mat 単体には無いので、根元色を暗くした単色で塞ぐ。
     const math::Vector4 rootColor = settings.m_rootColor;
     DrawNeutralMesh(renderer, resources, mesh, { rootColor.x * 0.7f, rootColor.y * 0.7f, rootColor.z * 0.7f, 1.0f });
     UploadIdentityObjectCB(resources);
@@ -1732,7 +1933,7 @@ bool RenderFiber(renderer::IRenderer& renderer, renderer::ResourceManager& resou
     frame.m_time = std::isfinite(desc.time) ? desc.time : 0.0f;
     const float wind = std::isfinite(desc.fiberWind) ? std::clamp(desc.fiberWind, 0.0f, 50.0f) : 0.0f;
     frame.m_wind = { wind, 0.0f, 0.0f };
-    /// @note 一定の風だけでは静止画と区別が付かないため、風速に比例した突風を足す。
+    // 一定の風だけでは静止画と区別が付かないため、風速に比例した突風を足す。
     frame.m_turbulence = wind * 0.5f;
     frame.m_pulseFrequency = wind > 0.0f ? 0.8f : 0.0f;
     frame.m_shellCount = static_cast<float>(std::clamp(desc.fiberShellCount, 1, 64));
@@ -1747,18 +1948,18 @@ bool RenderFiber(renderer::IRenderer& renderer, renderer::ResourceManager& resou
 
     renderer::DrawCall call;
     call.pipelineState = g_shared.solidPso;
-    call.constantBuffers[0]  = g_shared.frameCB;
-    call.constantBuffers[1]  = g_shared.objectCB;
-    call.constantBuffers[2]  = appearanceMaterial.IsValid() ? appearanceMaterial : g_fiber.materialCB;
-    call.constantBuffers[3]  = g_shared.lightCB;
-    call.constantBuffers[4]  = g_shared.shadowCB;
-    call.constantBuffers[5]  = g_fiber.frameCB;
-    call.constantBuffers[9]  = g_shared.clusterCB;
-    call.constantBuffers[10] = g_fiber.contactCB;
-    call.constantBuffers[12] = g_shared.punctualShadowCB;
-    call.vsBuffers[1] = g_fiber.emptyFlow;
-    /// @note t26 は Texture3D 宣言。2D の既定で埋まらないよう常に本物のアトラスを差す。
-    call.textures[26] = asset::VelocityFieldAtlas::Texture(resources);
+    call.constantBuffers[renderer::cb::CAMERA]  = g_shared.frameCB;
+    call.constantBuffers[renderer::cb::OBJECT]  = g_shared.objectCB;
+    call.constantBuffers[renderer::cb::MATERIAL]  = appearanceMaterial.IsValid() ? appearanceMaterial : g_fiber.materialCB;
+    call.constantBuffers[renderer::cb::LIGHT]  = g_shared.lightCB;
+    call.constantBuffers[renderer::cb::SHADOW]  = g_shared.shadowCB;
+    call.constantBuffers[renderer::cb::FIBER_FRAME]  = g_fiber.frameCB;
+    call.constantBuffers[renderer::cb::CLUSTER]  = g_shared.clusterCB;
+    call.constantBuffers[renderer::cb::FIBER_CONTACT] = g_fiber.contactCB;
+    call.constantBuffers[renderer::cb::PUNCTUAL_SHADOW] = g_shared.punctualShadowCB;
+    call.vsBuffers[renderer::VertexBufferIndex(renderer::vsSlot::BUFFER1)] = g_fiber.emptyFlow;
+    // t26 は Texture3D 宣言。2D の既定で埋まらないよう常に本物のアトラスを差す。
+    call.textures[renderer::srv::VELOCITY_FIELD] = asset::VelocityFieldAtlas::Texture(resources);
 
     bool drew = false;
     if (drawFins && geometry.finIndexCount > 0) {
@@ -1766,7 +1967,10 @@ bool RenderFiber(renderer::IRenderer& renderer, renderer::ResourceManager& resou
         call.vertexBuffer = geometry.finVertices;
         call.indexBuffer = geometry.finIndices;
         call.indexCount = geometry.finIndexCount;
-        if (call.shader.IsValid()) { renderer.Submit(call, resources); drew = true; }
+        if (call.shader.IsValid()) {
+            renderer.Submit(call, resources);
+            drew = true;
+        }
     }
     if (drawShells) {
         call.shader = appearanceShader.IsValid() ? appearanceShader : resources.LoadShader(kFiberShellShader);
@@ -1774,7 +1978,10 @@ bool RenderFiber(renderer::IRenderer& renderer, renderer::ResourceManager& resou
         call.indexBuffer = mesh.indexBuffer;
         call.indexCount = mesh.indexCount;
         call.instanceCount = static_cast<std::uint32_t>(frame.m_shellCount);
-        if (call.shader.IsValid()) { renderer.Submit(call, resources); drew = true; }
+        if (call.shader.IsValid()) {
+            renderer.Submit(call, resources);
+            drew = true;
+        }
     }
     if (drawBlades && geometry.bladeCount > 0) {
         call.shader = appearanceShader.IsValid() ? appearanceShader : resources.LoadShader(kFiberBladeShader);
@@ -1782,27 +1989,31 @@ bool RenderFiber(renderer::IRenderer& renderer, renderer::ResourceManager& resou
         call.indexBuffer = {};
         call.indexCount = 0;
         call.instanceCount = 1;
-        call.vsBuffers[0] = geometry.blades;
+        call.vsBuffers[renderer::VertexBufferIndex(renderer::vsSlot::BUFFER0)] = geometry.blades;
         call.vertexCount = geometry.bladeCount * renderer::FIBER_BLADE_VERTICES;
-        if (call.shader.IsValid()) { renderer.Submit(call, resources); drew = true; }
+        if (call.shader.IsValid()) {
+            renderer.Submit(call, resources);
+            drew = true;
+        }
     }
 
     renderer.SetRenderTarget(renderer::ResourceHandle<renderer::RenderTargetTag>{}, resources);
     return drew;
 }
 
-} /// @note namespace
+} // namespace
 
 
 Flavor DetectFlavor(const asset::MaterialAssetAuthoring& material)
 {
     using renderer::ShaderPreviewKind;
     const auto preview = asset::ResolveShaderCapabilities(material.shaderPath).preview;
-    /// @note render_path より頂点入力の宣言を優先し、メッシュ残像や GPU 粒子をリボン頂点で描かない。
-    if (preview == ShaderPreviewKind::MESH_TRAIL || preview == ShaderPreviewKind::GPU_PARTICLE)
+    // render_path より頂点入力の宣言を優先し、メッシュ残像や GPU 粒子をリボン頂点で描かない。
+    if (preview == ShaderPreviewKind::MESH_TRAIL || preview == ShaderPreviewKind::GPU_PARTICLE) {
         return Flavor::Unsupported;
+    }
 
-    /// @note 専用の render_path は材質が選んだ入力であり、標準メッシュ用の球へ流さない。
+    // 専用の render_path は材質が選んだ入力であり、標準メッシュ用の球へ流さない。
     switch (material.renderPath) {
         case asset::RenderPath::UI:          return Flavor::Ui;
         case asset::RenderPath::Particle:    return Flavor::Particle;
@@ -1832,8 +2043,12 @@ const char* UnsupportedBadge(const asset::MaterialAssetAuthoring& material)
 {
     using renderer::ShaderPreviewKind;
     const auto preview = asset::ResolveShaderCapabilities(material.shaderPath).preview;
-    if (preview == ShaderPreviewKind::MESH_TRAIL) return "TRAIL";
-    if (preview == ShaderPreviewKind::GPU_PARTICLE) return "PARTICLE";
+    if (preview == ShaderPreviewKind::MESH_TRAIL) {
+        return "TRAIL";
+    }
+    if (preview == ShaderPreviewKind::GPU_PARTICLE) {
+        return "PARTICLE";
+    }
     switch (material.renderPath) {
         case asset::RenderPath::Particle:    return "PARTICLE";
         case asset::RenderPath::Trail:       return "TRAIL";
@@ -1866,16 +2081,25 @@ math::Vector4 SwatchColor(const asset::MaterialAssetAuthoring& material)
         }
     }
     if (!found) {
-        /// @note 名前が独自でも «...Color» は色として扱える。params は unordered なので、
-        /// @note 名前の小さい方に決めておかないと起動のたびに色が変わる。
+        // 名前が独自でも «...Color» は色として扱える。params は unordered なので、
+        // 名前の小さい方に決めておかないと起動のたびに色が変わる。
         const std::string* pick = nullptr;
         for (const auto& [name, values] : material.params) {
-            if (values.size() < 3) continue;
-            if (!name.ends_with("Color") && !name.ends_with("color")) continue;
-            if (pick == nullptr || name < *pick) { pick = &name; found = &values; }
+            if (values.size() < 3) {
+                continue;
+            }
+            if (!name.ends_with("Color") && !name.ends_with("color")) {
+                continue;
+            }
+            if (pick == nullptr || name < *pick) {
+                pick = &name;
+                found = &values;
+            }
         }
     }
-    if (!found) return { 0.55f, 0.58f, 0.66f, 1.0f };
+    if (!found) {
+        return { 0.55f, 0.58f, 0.66f, 1.0f };
+    }
 
     const float peak = (std::max)({ (*found)[0], (*found)[1], (*found)[2], 1.0f });
     return { (*found)[0] / peak, (*found)[1] / peak, (*found)[2] / peak, 1.0f };
@@ -1885,8 +2109,9 @@ math::Vector4 AlbedoColor(const asset::MaterialAssetAuthoring& material)
 {
     const auto find = [&material]() -> const std::vector<float>* {
         for (const char* name : { "base_color", "baseColor", "albedo" }) {
-            if (auto it = material.params.find(name); it != material.params.end() && it->second.size() >= 3)
+            if (auto it = material.params.find(name); it != material.params.end() && it->second.size() >= 3) {
                 return &it->second;
+            }
         }
         return nullptr;
     };
@@ -1903,11 +2128,14 @@ std::string RepresentativeTexturePath(const asset::MaterialAssetAuthoring& mater
         "albedo", "base_color", "diffuse", "layer0_diffuse", "foamTex"
     };
     for (const char* slot : kPriority) {
-        if (auto it = material.textures.find(slot); it != material.textures.end() && !it->second.empty())
+        if (auto it = material.textures.find(slot); it != material.textures.end() && !it->second.empty()) {
             return it->second;
+        }
     }
     for (const auto& [slot, path] : material.textures) {
-        if (!path.empty()) return path;
+        if (!path.empty()) {
+            return path;
+        }
     }
     return {};
 }
@@ -1915,10 +2143,14 @@ std::string RepresentativeTexturePath(const asset::MaterialAssetAuthoring& mater
 std::string TextureLoadPath(const std::string& path, std::string_view projectRoot)
 {
     const std::string normalized = util::FileSystem::NormalizePathSeparators(path);
-    if (normalized.starts_with("guid:")) return asset::AssetManager::ResolveAssetPath(normalized);
+    if (normalized.starts_with("guid:")) {
+        return asset::AssetManager::ResolveAssetPath(normalized);
+    }
     const std::string root = util::FileSystem::NormalizePathSeparators(std::string(projectRoot));
-    /// @note .mat 内のテクスチャ参照は Assets/ 相対で保存される。
-    if (normalized.starts_with("Assets/") && !root.empty()) return root + "/" + normalized;
+    // .mat 内のテクスチャ参照は Assets/ 相対で保存される。
+    if (normalized.starts_with("Assets/") && !root.empty()) {
+        return root + "/" + normalized;
+    }
     return normalized;
 }
 
@@ -1959,9 +2191,13 @@ FiberMode DefaultFiberMode(const asset::MaterialAssetAuthoring& material)
 
 Shape ThumbnailShape(const asset::MaterialAssetAuthoring& material, Flavor flavor)
 {
-    if (flavor == Flavor::Water || flavor == Flavor::Terrain) return Shape::Plane;
-    /// @note 草は地面に生える前提 (worldMapping で根元の分布が XZ)。球では «苔むした玉» になり何の素材か読めない。
-    if (flavor == Flavor::Fiber && asset::ResolveFiberMaterial(material).m_planarShading >= 0.5f) return Shape::Plane;
+    if (flavor == Flavor::Water || flavor == Flavor::Terrain) {
+        return Shape::Plane;
+    }
+    // 草は地面に生える前提 (worldMapping で根元の分布が XZ)。球では «苔むした玉» になり何の素材か読めない。
+    if (flavor == Flavor::Fiber && asset::ResolveFiberMaterial(material).m_planarShading >= 0.5f) {
+        return Shape::Plane;
+    }
     return Shape::Sphere;
 }
 
@@ -1995,14 +2231,20 @@ const char* LightPresetLabel(LightPreset preset)
 
 bool ChannelSupported(Flavor flavor, Channel channel)
 {
-    if (channel == Channel::Shaded) return true;
-    /// @note Fiber は専用シェーダーで繊維を重ねるため、差し替えチャンネル (MaterialChannel.hlsl) の前提が無い。
-    if (flavor == Flavor::Unsupported || flavor == Flavor::Fiber) return false;
-    /// @note Wireframe は材質自身のシェーダーのまま RasterizerMode だけ差し替える経路なので、
-    /// @note 3D メッシュを焼く Flavor にしか効かない (矩形・ビルボード・リボン・全画面は対象外)。
-    if (channel == Channel::Wireframe) return !UsesOwnGeometry(flavor);
-    /// @note Terrain / Water / UI / エフェクト系はテクスチャスロットの意味が標準と違い、
-    /// @note MaterialChannel.hlsl の t0-t4 の前提が成立しない。
+    if (channel == Channel::Shaded) {
+        return true;
+    }
+    // Fiber は専用シェーダーで繊維を重ねるため、差し替えチャンネル (MaterialChannel.hlsl) の前提が無い。
+    if (flavor == Flavor::Unsupported || flavor == Flavor::Fiber) {
+        return false;
+    }
+    // Wireframe は材質自身のシェーダーのまま RasterizerMode だけ差し替える経路なので、
+    // 3D メッシュを焼く Flavor にしか効かない (矩形・ビルボード・リボン・全画面は対象外)。
+    if (channel == Channel::Wireframe) {
+        return !UsesOwnGeometry(flavor);
+    }
+    // Terrain / Water / UI / エフェクト系はテクスチャスロットの意味が標準と違い、
+    // MaterialChannel.hlsl の t0-t4 の前提が成立しない。
     return flavor == Flavor::Surface || flavor == Flavor::Skinned;
 }
 
@@ -2022,11 +2264,11 @@ renderer::Mesh* ShapeMesh(renderer::ResourceManager& resources, Shape shape, Fla
 {
     switch (flavor) {
         case Flavor::Skinned: return SkinnedCopy(resources, shape);
-        /// @note Terrain / Water は «地面» と «水面» なので形状指定を無視して平面へ焼く。
+        // Terrain / Water は «地面» と «水面» なので形状指定を無視して平面へ焼く。
         case Flavor::Water:   return WaterGrid(resources, 64);
         case Flavor::Terrain: return GridMesh(resources, 32);
         case Flavor::Unsupported: return nullptr;
-        /// @note 矩形・ビルボード・リボン・全画面は Render が自前で持つ。
+        // 矩形・ビルボード・リボン・全画面は Render が自前で持つ。
         default:
             return UsesOwnGeometry(flavor) ? nullptr : PrimitiveFor(resources, shape);
     }
@@ -2052,7 +2294,7 @@ bool BuildGpuData(GpuData& gpu,
 
     if (DetectFlavor(*renderAsset) == Flavor::Water
         && !asset::ResolveShaderCapabilities(renderAsset->shaderPath).SupportsWaterGeometry()) {
-        /// @note The builtin descriptor rebuilds b2 and texture bindings; an unsupported project's layout must not leak into shared Water.
+        // The builtin descriptor rebuilds b2 and texture bindings; an unsupported project's layout must not leak into shared Water.
         fallbackAsset = *renderAsset;
         fallbackAsset.shaderPath = "Assets/Shaders/Water/Water.hlsl";
         renderAsset = &fallbackAsset;
@@ -2070,26 +2312,38 @@ bool BuildGpuData(GpuData& gpu,
         gpu.paramData.clear();
     }
 
-    if (!gpu.shader.IsValid()) gpu.shader = resources.LoadShader(gpu.shaderPath);
+    if (!gpu.shader.IsValid()) {
+        gpu.shader = resources.LoadShader(gpu.shaderPath);
+    }
     auto* shader = resources.Get(gpu.shader);
-    if (!shader) return false;
+    if (!shader) {
+        return false;
+    }
 
     const renderer::ShaderDescriptor descriptor = shader->GetDescriptor();
     const Flavor flavor = DetectFlavor(*renderAsset);
-    if (flavor == Flavor::Unsupported) return false;
+    if (flavor == Flavor::Unsupported) {
+        return false;
+    }
 
-    /// @note b2 をエンジンが所有するシェーダーは «MaterialConstants» という名前の cbuffer を
-    /// @note 持たないため、リフレクションが空で返る。これは «壊れている» ではないので通す。
-    /// @note (Terrain は b1 の TerrainObjectCB、Trail は b2 の TrailConstants が正本)
+    // b2 をエンジンが所有するシェーダーは «MaterialConstants» という名前の cbuffer を
+    // 持たないため、リフレクションが空で返る。これは «壊れている» ではないので通す。
+    // (Terrain は b1 の TerrainObjectCB、Trail は b2 の TrailConstants が正本)
     const bool engineOwnsMaterialCB = flavor == Flavor::Terrain || flavor == Flavor::Trail
         || flavor == Flavor::Water || flavor == Flavor::Particle;
-    if (!descriptor.IsValid() && !engineOwnsMaterialCB) return false;
+    if (!descriptor.IsValid() && !engineOwnsMaterialCB) {
+        return false;
+    }
 
     gpu.textures.assign(16, {});
     for (const auto& binding : descriptor.textures) {
-        if (binding.slot >= gpu.textures.size()) continue;
+        if (binding.slot >= gpu.textures.size()) {
+            continue;
+        }
         const std::string path = FindTexturePath(*renderAsset, binding);
-        if (path.empty()) continue;
+        if (path.empty()) {
+            continue;
+        }
         const std::string loadPath = TextureLoadPath(path, projectRoot);
         asset::TextureImportSettings settings;
         const bool flipGreen = asset::GetCachedTextureImportSettings(loadPath, settings)
@@ -2098,10 +2352,12 @@ bool BuildGpuData(GpuData& gpu,
     }
     gpu.parallaxDepthOffset = UINT32_MAX;
     if (!descriptor.IsValid()) {
-        /// @note cbuffer のリフレクションが無い分、標準スロット名だけは名前で解決しておく。
-        /// @note 素材が 1 枚も付かないと «何の絵か» が消えてしまう。
+        // cbuffer のリフレクションが無い分、標準スロット名だけは名前で解決しておく。
+        // 素材が 1 枚も付かないと «何の絵か» が消えてしまう。
         for (std::uint32_t slot = 0; slot < 5; ++slot) {
-            if (gpu.textures[slot].IsValid()) continue;
+            if (gpu.textures[slot].IsValid()) {
+                continue;
+            }
             auto it = renderAsset->textures.find(kSlotNames[slot]);
             if (it != renderAsset->textures.end() && !it->second.empty()) {
                 const std::string loadPath = TextureLoadPath(it->second, projectRoot);
@@ -2112,10 +2368,12 @@ bool BuildGpuData(GpuData& gpu,
             }
         }
     }
-    /// @note 地形の層テクスチャは BuildTerrainCB が bindless 添字として層配列へ詰める。枠へは差さない。
+    // 地形の層テクスチャは BuildTerrainCB が bindless 添字として層配列へ詰める。枠へは差さない。
 
     if (!descriptor.IsValid()) {
-        if (gpu.materialCB.IsValid()) resources.Release(gpu.materialCB);
+        if (gpu.materialCB.IsValid()) {
+            resources.Release(gpu.materialCB);
+        }
         gpu.materialCB = {};
         gpu.paramData.clear();
         return true;
@@ -2127,15 +2385,22 @@ bool BuildGpuData(GpuData& gpu,
     const auto* parallax = descriptor.FindVar("parallaxDepth");
     if (parallax && parallax->IsWritable() && parallax->varType == renderer::ShaderVarType::Float
         && parallax->varClass == renderer::ShaderVarClass::Scalar && parallax->elements == 0
-        && parallax->offset + sizeof(float) <= gpu.paramData.size())
+        && parallax->offset + sizeof(float) <= gpu.paramData.size()) {
         gpu.parallaxDepthOffset = parallax->offset;
+    }
 
     std::uint32_t mask = 0;
     for (const auto& binding : descriptor.textures) {
-        if (binding.slot >= gpu.textures.size()) continue;
-        if (binding.slot < 8 && gpu.textures[binding.slot].IsValid()) mask |= 1u << binding.slot;
+        if (binding.slot >= gpu.textures.size()) {
+            continue;
+        }
+        if (binding.slot < 8 && gpu.textures[binding.slot].IsValid()) {
+            mask |= 1u << binding.slot;
+        }
         if (binding.constantOffset == UINT32_MAX ||
-            binding.constantOffset + sizeof(std::uint32_t) > gpu.paramData.size()) continue;
+            binding.constantOffset + sizeof(std::uint32_t) > gpu.paramData.size()) {
+            continue;
+        }
         const auto* texture = resources.Get(gpu.textures[binding.slot]);
         const std::uint32_t index = texture ? texture->GetBindlessIndex() : renderer::INVALID_BINDLESS_INDEX;
         std::memcpy(gpu.paramData.data() + binding.constantOffset, &index, sizeof(index));
@@ -2145,9 +2410,12 @@ bool BuildGpuData(GpuData& gpu,
         std::memcpy(gpu.paramData.data() + descriptor.textureMaskOffset, &mask, sizeof(mask));
     }
 
-    if (!gpu.materialCB.IsValid())
+    if (!gpu.materialCB.IsValid()) {
         gpu.materialCB = resources.CreateConstantBuffer(descriptor.cbufferSize);
-    if (!gpu.materialCB.IsValid()) return false;
+    }
+    if (!gpu.materialCB.IsValid()) {
+        return false;
+    }
     resources.Update(gpu.materialCB, gpu.paramData.data(), gpu.paramData.size());
     return true;
 }
@@ -2156,7 +2424,9 @@ void ResetGpuData(GpuData& gpu, renderer::ResourceManager* resources)
 {
     gpu.shaderPath.clear();
     gpu.shader = {};
-    if (resources && gpu.materialCB.IsValid()) resources->Release(gpu.materialCB);
+    if (resources && gpu.materialCB.IsValid()) {
+        resources->Release(gpu.materialCB);
+    }
     gpu.materialCB = {};
     gpu.textures.clear();
     gpu.paramData.clear();
@@ -2165,8 +2435,10 @@ void ResetGpuData(GpuData& gpu, renderer::ResourceManager* resources)
 
 bool Render(renderer::IRenderer& renderer, renderer::ResourceManager& resources, const RenderDesc& desc)
 {
-    if (!desc.target.IsValid()) return false;
-    /// @note 自前の形を持つ経路は先に分岐させる。ここから下はメッシュ 1 枚の描画に閉じる。
+    if (!desc.target.IsValid()) {
+        return false;
+    }
+    // 自前の形を持つ経路は先に分岐させる。ここから下はメッシュ 1 枚の描画に閉じる。
     switch (desc.flavor) {
         case Flavor::Ui:          return RenderUi(renderer, resources, desc);
         case Flavor::Particle:    return RenderParticle(renderer, resources, desc);
@@ -2177,18 +2449,25 @@ bool Render(renderer::IRenderer& renderer, renderer::ResourceManager& resources,
         case Flavor::Unsupported: return false;
         default: break;
     }
-    if (!desc.mesh) return false;
+    if (!desc.mesh) {
+        return false;
+    }
     const renderer::Mesh& mesh = *desc.mesh;
-    if (!mesh.vertexBuffer.IsValid() || !mesh.indexBuffer.IsValid()) return false;
+    if (!mesh.vertexBuffer.IsValid() || !mesh.indexBuffer.IsValid()) {
+        return false;
+    }
 
     const bool useMaterial = desc.gpu && desc.gpu->shader.IsValid();
-    if (!EnsureShared(resources, !useMaterial || desc.flavor == Flavor::Water)) return false;
+    if (!EnsureShared(resources, !useMaterial || desc.flavor == Flavor::Water)) {
+        return false;
+    }
 
     const bool useChannel = useMaterial && desc.channel != Channel::Shaded &&
                             desc.channel != Channel::Wireframe &&
                             ChannelSupported(desc.flavor, desc.channel);
-    if (useChannel && !g_shared.channelShader.IsValid())
+    if (useChannel && !g_shared.channelShader.IsValid()) {
         g_shared.channelShader = resources.LoadShader(kChannelShader);
+    }
     const bool channelReady = useChannel && g_shared.channelShader.IsValid();
 
     const bool wireframe = desc.channel == Channel::Wireframe &&
@@ -2204,24 +2483,34 @@ bool Render(renderer::IRenderer& renderer, renderer::ResourceManager& resources,
     const float radius = std::max(0.0001f,
         (desc.overrideRadius >= 0.0f) ? desc.overrideRadius : BoundsRadius(mesh, center));
     Orbit orbit = desc.orbit;
-    if (desc.flavor == Flavor::Water) orbit.distance *= 0.72f;
+    if (desc.flavor == Flavor::Water) {
+        orbit.distance *= 0.72f;
+    }
     const FrameState frameState = UploadFrame(resources, orbit, center, radius);
     const scene::PerFrameCB& frameData = frameState.frame;
 
-    /// @name b1: Flavor ごとに別の ObjectCB を差す
+    // b1: Flavor ごとに別の ObjectCB を差す
     renderer::ResourceHandle<renderer::ConstantBufferTag> objectCBForDraw = g_shared.objectCB;
     if (desc.flavor == Flavor::Terrain && !channelReady) {
-        if (!g_shared.terrainCB.IsValid())
+        if (!g_shared.terrainCB.IsValid()) {
             g_shared.terrainCB = resources.CreateConstantBuffer(sizeof(TerrainObjectCB));
-        if (!g_shared.terrainCB.IsValid()) return false;
+        }
+        if (!g_shared.terrainCB.IsValid()) {
+            return false;
+        }
         TerrainObjectCB terrainData{};
-        if (!BuildTerrainCB(resources, desc.material.get(), frameData.viewProjection, terrainData)) return false;
+        if (!BuildTerrainCB(resources, desc.material.get(), frameData.viewProjection, terrainData)) {
+            return false;
+        }
         resources.Update(g_shared.terrainCB, &terrainData, sizeof(terrainData));
         objectCBForDraw = g_shared.terrainCB;
     } else if (desc.flavor == Flavor::Water && !channelReady) {
-        if (!g_shared.waterCB.IsValid())
+        if (!g_shared.waterCB.IsValid()) {
             g_shared.waterCB = resources.CreateConstantBuffer(sizeof(WaterCB));
-        if (!g_shared.waterCB.IsValid()) return false;
+        }
+        if (!g_shared.waterCB.IsValid()) {
+            return false;
+        }
         const WaterCB waterData = BuildWaterCB(desc.material.get(), frameData.viewProjection, desc.time,
                                                scene::GetWaterDetailNoise(resources));
         resources.Update(g_shared.waterCB, &waterData, sizeof(waterData));
@@ -2231,36 +2520,48 @@ bool Render(renderer::IRenderer& renderer, renderer::ResourceManager& resources,
     }
 
     if (desc.flavor == Flavor::Skinned) {
-        if (!g_shared.skinningCB.IsValid())
+        if (!g_shared.skinningCB.IsValid()) {
             g_shared.skinningCB = resources.CreateConstantBuffer(sizeof(SkinningCB));
-        if (!g_shared.skinningCB.IsValid()) return false;
+        }
+        if (!g_shared.skinningCB.IsValid()) {
+            return false;
+        }
         SkinningCB skinningData{};
-        for (auto& bone : skinningData.boneMatrices) bone = math::Matrix4::Identity();
+        for (auto& bone : skinningData.boneMatrices) {
+            bone = math::Matrix4::Identity();
+        }
         resources.Update(g_shared.skinningCB, &skinningData, sizeof(skinningData));
     }
 
-    /// @name b2: 材質 / チャンネル / 単色フォールバック
+    // b2: 材質 / チャンネル / 単色フォールバック
     renderer::ResourceHandle<renderer::ConstantBufferTag> materialCBForDraw;
     if (channelReady) {
-        if (!g_shared.channelCB.IsValid())
+        if (!g_shared.channelCB.IsValid()) {
             g_shared.channelCB = resources.CreateConstantBuffer(sizeof(ChannelCB));
-        if (!g_shared.channelCB.IsValid()) return false;
+        }
+        if (!g_shared.channelCB.IsValid()) {
+            return false;
+        }
         const ChannelCB channelData = BuildChannelCB(desc.material.get(), desc.gpu, desc.channel, desc.showParallax);
         resources.Update(g_shared.channelCB, &channelData, sizeof(channelData));
         materialCBForDraw = g_shared.channelCB;
     } else if (useMaterial) {
         materialCBForDraw = desc.gpu->materialCB;
         if (!desc.showParallax && desc.gpu->parallaxDepthOffset != UINT32_MAX) {
-            /// @note Use a separate buffer so cached materials and subsequent thumbnail draws keep the authored depth.
+            // Use a separate buffer so cached materials and subsequent thumbnail draws keep the authored depth.
             auto bytes = desc.gpu->paramData;
             const float disabled = 0.0f;
             std::memcpy(bytes.data() + desc.gpu->parallaxDepthOffset, &disabled, sizeof(disabled));
             const auto* buffer = resources.Get(g_shared.parallaxOffCB);
             if (!buffer || buffer->GetSize() < bytes.size()) {
-                if (buffer) resources.Release(g_shared.parallaxOffCB);
+                if (buffer) {
+                    resources.Release(g_shared.parallaxOffCB);
+                }
                 g_shared.parallaxOffCB = resources.CreateConstantBuffer(static_cast<std::uint32_t>(bytes.size()));
             }
-            if (!g_shared.parallaxOffCB.IsValid()) return false;
+            if (!g_shared.parallaxOffCB.IsValid()) {
+                return false;
+            }
             resources.Update(g_shared.parallaxOffCB, bytes.data(), bytes.size());
             materialCBForDraw = g_shared.parallaxOffCB;
         }
@@ -2278,13 +2579,17 @@ bool Render(renderer::IRenderer& renderer, renderer::ResourceManager& resources,
     UploadRig(resources, desc.rig, frameState);
 
     if (desc.flavor == Flavor::Water && !channelReady) {
-        /// @note Water samples a real opaque floor and its reversed depth; a 1x1 white depth describes the near plane.
-        if (!EnsureSceneRT(resources)) return false;
+        // Water samples a real opaque floor and its reversed depth; a 1x1 white depth describes the near plane.
+        if (!EnsureSceneRT(resources)) {
+            return false;
+        }
         renderer.SetRenderTarget(g_shared.sceneRT, resources);
         renderer.Clear({0.025f, 0.055f, 0.08f, 1.0f});
         renderer.ClearDepth();
         auto* floor = GridMesh(resources, 8);
-        if (!floor) return false;
+        if (!floor) {
+            return false;
+        }
         UploadObjectCB(resources, math::Matrix4::Translate({0.0f, -3.0f, 0.0f})
             * math::Matrix4::Scale({WATER_PREVIEW_EXTENT, 1.0f, WATER_PREVIEW_EXTENT}));
         DrawNeutralMesh(renderer, resources, *floor, {0.42f, 0.37f, 0.25f, 1.0f});
@@ -2306,46 +2611,53 @@ bool Render(renderer::IRenderer& renderer, renderer::ResourceManager& resources,
                                    : g_shared.fallbackShader;
     drawCall.pipelineState = (wireframe && g_shared.wireframePso.IsValid())
         ? g_shared.wireframePso : g_shared.solidPso;
-    drawCall.constantBuffers[0]  = g_shared.frameCB;
-    drawCall.constantBuffers[1]  = channelReady ? g_shared.objectCB : objectCBForDraw;
-    drawCall.constantBuffers[2]  = materialCBForDraw;
-    drawCall.constantBuffers[3]  = g_shared.lightCB;
-    drawCall.constantBuffers[4]  = g_shared.shadowCB;
-    drawCall.constantBuffers[8]  = g_shared.advancedCB;
-    drawCall.constantBuffers[9]  = g_shared.clusterCB;
-    drawCall.constantBuffers[12] = g_shared.punctualShadowCB;
-    if (desc.flavor == Flavor::Skinned && !channelReady)
-        drawCall.constantBuffers[7] = g_shared.skinningCB;
+    drawCall.constantBuffers[renderer::cb::CAMERA]  = g_shared.frameCB;
+    drawCall.constantBuffers[renderer::cb::OBJECT]  = channelReady ? g_shared.objectCB : objectCBForDraw;
+    drawCall.constantBuffers[renderer::cb::MATERIAL]  = materialCBForDraw;
+    drawCall.constantBuffers[renderer::cb::LIGHT]  = g_shared.lightCB;
+    drawCall.constantBuffers[renderer::cb::SHADOW]  = g_shared.shadowCB;
+    drawCall.constantBuffers[renderer::cb::ADVANCED_GRAPHICS]  = g_shared.advancedCB;
+    drawCall.constantBuffers[renderer::cb::CLUSTER]  = g_shared.clusterCB;
+    drawCall.constantBuffers[renderer::cb::PUNCTUAL_SHADOW] = g_shared.punctualShadowCB;
+    if (desc.flavor == Flavor::Skinned && !channelReady) {
+        drawCall.constantBuffers[renderer::cb::SKINNING] = g_shared.skinningCB;
+    }
 
     if (useMaterial) {
         const std::size_t count = std::min(drawCall.textures.size(), desc.gpu->textures.size());
-        for (std::size_t i = 0; i < count; ++i) drawCall.textures[i] = desc.gpu->textures[i];
+        for (std::size_t i = 0; i < count; ++i) {
+            drawCall.textures[i] = desc.gpu->textures[i];
+        }
         if ((desc.flavor == Flavor::Terrain || desc.flavor == Flavor::Water) &&
             !channelReady && EnsureDefaultTextures(resources)) {
             for (std::uint32_t i = 0; i < static_cast<std::uint32_t>(drawCall.textures.size()); ++i) {
-                if (drawCall.textures[i].IsValid()) continue;
+                if (drawCall.textures[i].IsValid()) {
+                    continue;
+                }
                 drawCall.textures[i] = DefaultTextureForSlot(desc.flavor, i);
             }
         }
-        /// @note t4 は Water ではさざ波タイル。白や黒で埋めると勾配が一様な傾きへ復号され、
-        /// @note プレビューの水面だけ «斜めに倒れた鏡» になるため上書きする。
+        // t4 は Water ではさざ波タイル。白や黒で埋めると勾配が一様な傾きへ復号され、
+        // プレビューの水面だけ «斜めに倒れた鏡» になるため上書きする。
         if (desc.flavor == Flavor::Water && !channelReady) {
-            drawCall.textures[5] = resources.GetDepthTexture(g_shared.sceneRT);
-            drawCall.textures[6] = resources.GetColorTexture(g_shared.sceneRT);
+            drawCall.textures[renderer::srv::WATER_SCENE_DEPTH] = resources.GetDepthTexture(g_shared.sceneRT);
+            drawCall.textures[renderer::srv::WATER_SCENE_COLOR] = resources.GetColorTexture(g_shared.sceneRT);
             const auto& detailNoise = scene::GetWaterDetailNoise(resources);
-            if (detailNoise.texture.IsValid()) drawCall.textures[4] = detailNoise.texture;
-            /// @note t26 は Water では速度場アトラス (Texture3D)。上の穴埋めが 2D の既定を
-            /// @note 差すと宣言と次元が食い違うので、本物のアトラスで上書きする。
-            drawCall.textures[26] = asset::VelocityFieldAtlas::Texture(resources);
+            if (detailNoise.texture.IsValid()) {
+                drawCall.textures[renderer::srv::WATER_DETAIL_NOISE] = detailNoise.texture;
+            }
+            // t26 は Water では速度場アトラス (Texture3D)。上の穴埋めが 2D の既定を
+            // 差すと宣言と次元が食い違うので、本物のアトラスで上書きする。
+            drawCall.textures[renderer::srv::VELOCITY_FIELD] = asset::VelocityFieldAtlas::Texture(resources);
         }
     } else {
-        drawCall.textures[0] = desc.fallbackTexture;
+        drawCall.textures[renderer::srv::ALBEDO] = desc.fallbackTexture;
     }
 
     renderer.Submit(drawCall, resources);
-    /// @note ImGui 描画の途中で一時 RT へ切り替えているため、必ずバックバッファへ戻す。
+    // ImGui 描画の途中で一時 RT へ切り替えているため、必ずバックバッファへ戻す。
     renderer.SetRenderTarget(renderer::ResourceHandle<renderer::RenderTargetTag>{}, resources);
     return true;
 }
 
-} /// @note namespace fbzz::editor::matpreview
+} // namespace fbzz::editor::matpreview

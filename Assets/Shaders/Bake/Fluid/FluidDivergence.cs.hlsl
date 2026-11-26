@@ -5,12 +5,12 @@
 #include "Bake/Fluid/FluidGpuCommon.hlsli"
 #include "Common/BindlessIndices.hlsli"
 
-FBZZ_TEX3D_T(float4, gVelocityIn, 0);
-FBZZ_TEX3D_T(float4, gExpansionIn, 1); // x 燃焼の膨張 (この刻みの Inject が書いたもの)
-FBZZ_TEX3D_T(float4, gSolidIn, 2); // xyz 固体の速度 / w 1 = 固体
-FBZZ_RWTEX3D_T(float4, gDivergenceOut, 0);
+FBZZ_TEX3D_T(float4, gVelocityIn, SRV_FLUID_DIVERGENCE_VELOCITY_IN_SLOT);
+FBZZ_TEX3D_T(float4, gExpansionIn, SRV_FLUID_DIVERGENCE_EXPANSION_IN_SLOT); /// @note x 燃焼の膨張 (この刻みの Inject が書いたもの)
+FBZZ_TEX3D_T(float4, gSolidIn, SRV_FLUID_DIVERGENCE_SOLID_IN_SLOT); /// @note xyz 固体の速度 / w 1 = 固体
+FBZZ_RWTEX3D_T(float4, gDivergenceOut, UAV_FLUID_DIVERGENCE_DIVERGENCE_OUT_SLOT);
 
-// 固体のセルは外力で速度が動いていても障害物の速度として読む (壁の «通さない» はここで効く)。
+/// @note 固体のセルは外力で速度が動いていても障害物の速度として読む (壁の «通さない» はここで効く)。
 float3 V(int3 cell)
 {
     const uint3 k = FluidClampCell(cell);
@@ -30,7 +30,7 @@ void CSMain(uint3 id : SV_DispatchThreadID)
     const int3 c = int3(id);
     const float inverseTwoH = 0.5f / gCellSize;
     float divergence = (V(c + int3(1, 0, 0)).x - V(c - int3(1, 0, 0)).x) * inverseTwoH;
-    // 床は «通り抜けられない壁»。下のゴーストは鏡映 (-vy) で、床へ向かう流れを発散として拾う。
+    /// @note 床は «通り抜けられない壁»。下のゴーストは鏡映 (-vy) で、床へ向かう流れを発散として拾う。
     const float self = gVelocityIn[id].y;
     const float down = c.y > 0 ? V(c - int3(0, 1, 0)).y : (gFloor != 0u ? -self : self);
     divergence += (V(c + int3(0, 1, 0)).y - down) * inverseTwoH;

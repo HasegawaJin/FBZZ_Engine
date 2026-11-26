@@ -17,8 +17,8 @@ RendererBundle CreateRenderer(RendererBackend backend, void* hwnd, uint32_t widt
 #if FBZZ_ENABLE_DX12
         return CreateDX12Backend(hwnd, width, height);
 #else
-        /// @note 設定ファイルの指定でプロセスごと落とさない。倒す先は呼び出し側の判断。
-        /// @note       DX11 撤去後、この構成に生成できるバックエンドは 1 つも無いため引数は捨てる。
+        // 設定ファイルの指定でプロセスごと落とさない。倒す先は呼び出し側の判断。
+        // DX11 撤去後、この構成に生成できるバックエンドは 1 つも無いため引数は捨てる。
         (void)hwnd;
         (void)width;
         (void)height;
@@ -33,4 +33,4 @@ RendererBundle CreateRenderer(RendererBackend backend, void* hwnd, uint32_t widt
     return {};
 }
 
-} /// @note namespace fbzz::renderer
+} // namespace fbzz::renderer

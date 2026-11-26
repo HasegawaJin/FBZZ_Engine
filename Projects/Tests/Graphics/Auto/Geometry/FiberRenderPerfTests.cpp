@@ -4,11 +4,10 @@
 /// @date    2026-10-21
 #include <TestKit/TestKit.hpp>
 #include <Core/Logger/ILogSink.hpp>
-#include <Engine/Asset/Material/ShaderCapabilities.hpp>
+#include <Core/Util/StringUtils.hpp>
 #include <Graphics/Passes/Geometry/Surfaces/FiberRenderPass.hpp>
 #include <Graphics/Pipeline/Culling/OcclusionCuller.hpp>
 #include <Graphics/Passes/Geometry/GeometryPasses.hpp>
-#include <Graphics/Renderer/Resources/AssetPathService.hpp>
 #include <Graphics/Renderer/Geometry/FiberPlacement.hpp>
 #include <Graphics/Renderer/Diagnostics/GpuProfiler.hpp>
 #include <Graphics/Renderer/Shaders/IShader.hpp>
@@ -52,7 +51,9 @@ std::filesystem::path ResolveFiberShader(const std::filesystem::path& requested)
 }
 double Percentile(std::vector<double> values, double fraction)
 {
-    if (values.empty()) return 0;
+    if (values.empty()) {
+        return 0;
+    }
     std::sort(values.begin(), values.end());
     return values[static_cast<size_t>(std::ceil(fraction * static_cast<double>(values.size()))) - 1];
 }
@@ -110,12 +111,8 @@ protected:
         ASSERT_NE(m_bundle.renderer, nullptr);
         m_bundle.renderer->SetRenderWhenOccluded(true);
         m_bundle.renderer->SetVSync(false);
+        // 本番の Fiber パスが内部で要求する相対シェーダーパスを、計測で指定されたルートへ解決する。
         r::SetShaderPathResolver(ResolveFiberShader);
-        r::AssetPathService assetPaths;
-        assetPaths.resolveShaderCapabilities = [](std::string_view reference) {
-            return asset::ResolveShaderCapabilities(ResolveFiberShader(std::filesystem::path(reference)).generic_string());
-        };
-        r::SetAssetPathService(assetPaths);
         m_resources = std::make_unique<r::ResourceManager>(*m_bundle.renderer);
         auto& resources = *m_resources;
         m_color = resources.CreateRenderTarget(WIDTH, HEIGHT, r::CameraDepthTargetDesc(1));
@@ -144,7 +141,6 @@ protected:
         m_scenes.clear(); m_resources.reset(); m_bundle.imguiRenderer.reset();
         if (m_bundle.renderer) m_bundle.renderer->Shutdown();
         m_bundle.renderer.reset(); r::SetShaderPathResolver(nullptr);
-        r::SetAssetPathService({});
         core::Logger::RemoveSink(this);
         if (m_window) DestroyWindow(m_window);
         if (SUCCEEDED(m_com)) CoUninitialize();
@@ -155,7 +151,9 @@ protected:
     {
         auto [entry, inserted] = m_scenes.try_emplace(requested);
         auto& prepared = entry->second;
-        if (!inserted || requested == 0) return prepared;
+        if (!inserted || requested == 0) {
+            return prepared;
+        }
         r::Mesh mesh; mesh.cpuVertices.resize(4);
         mesh.cpuVertices[0].position = {0, 0, 0}; mesh.cpuVertices[1].position = {50, 0, 0};
         mesh.cpuVertices[2].position = {0, 0, 50}; mesh.cpuVertices[3].position = {50, 0, 50};
@@ -232,8 +230,11 @@ protected:
         auto appearance = std::make_shared<r::FiberAppearance>();
         appearance->geometry = r::ShaderVertexContract::FIBER_BLADE;
         constexpr std::array SUFFIXES{"", "GBuffer", "Velocity", "Shadow", "Selection"};
+        // HLSL の実パスを渡し、Engine 標準のサービスが同じディレクトリの .meta を参照できるようにする。
         for (size_t pass = 0; pass < SUFFIXES.size(); ++pass) {
-            const auto shader = m_resources->LoadShader(std::string(shaderStem) + SUFFIXES[pass] + ".hlsl");
+            const auto logicalPath = std::string(shaderStem) + SUFFIXES[pass] + ".hlsl";
+            const auto shaderPath = util::StringUtils::PathToUtf8(ResolveFiberShader(logicalPath));
+            const auto shader = m_resources->LoadShader(shaderPath);
             ASSERT_TRUE(shader);
             EXPECT_EQ(m_resources->GetShaderCapabilities(shader).SupportsInstancedFiberBlade(), instanced);
             appearance->shaders[pass * 2] = shader;
@@ -364,7 +365,9 @@ protected:
     void SaveQaTarget(const std::string& name, r::ResourceHandle<r::RenderTargetTag> target)
     {
         const char* configured = std::getenv("FBZZ_FIBER_QA_OUTPUT");
-        if (!configured || !configured[0]) return;
+        if (!configured || !configured[0]) {
+            return;
+        }
         const auto directory = std::filesystem::path(configured);
         std::error_code error; std::filesystem::create_directories(directory, error); ASSERT_FALSE(error);
         std::vector<uint8_t> png; uint32_t width = 0, height = 0;
@@ -378,7 +381,9 @@ protected:
     {
         for (const auto& [key, value] : metrics) RecordProperty(name + "_" + key, std::to_string(value));
         const char* configured = std::getenv("FBZZ_FIBER_QA_OUTPUT");
-        if (!configured || !configured[0]) return;
+        if (!configured || !configured[0]) {
+            return;
+        }
         const auto directory = std::filesystem::path(configured);
         std::error_code error; std::filesystem::create_directories(directory, error); ASSERT_FALSE(error);
         std::ofstream output(directory / (name + ".json")); ASSERT_TRUE(output); output.precision(12);
@@ -395,7 +400,9 @@ protected:
         for (size_t offset = 0; offset + 3 < reference.size(); offset += 4) {
             const bool before = reference[offset + 3] > 0.5f, after = selected[offset + 3] > 0.5f;
             beforeCovered += before; afterCovered += after; maskDifferences += before != after;
-            if (!before && !after) continue;
+            if (!before && !after) {
+                continue;
+            }
             ++unionCovered; float pixelMaximum = 0;
             for (size_t channel = 0; channel < 3; ++channel) {
                 const float difference = std::abs(reference[offset + channel] - selected[offset + channel]);
@@ -412,7 +419,7 @@ protected:
         SaveQaMetrics(name, {{"beforeCovered", static_cast<double>(beforeCovered)}, {"afterCovered", static_cast<double>(afterCovered)},
             {"unionCovered", static_cast<double>(unionCovered)}, {"coverageRatio", coverageRatio}, {"maskDifferenceRatio", maskRatio},
             {"rgbMaeOnForegroundUnion", mae}, {"rgbBadPixelRatioAbove003", badRatio}, {"rgbMaxDifference", maximumRgbDifference}});
-        /// @note 既定品質との同一性ではなく、短い芝に許容する前景被覆差 2%・RGB 平均差 0.005・大きな RGB 差の画素 2% を検査する。
+        // 既定品質との同一性ではなく、短い芝に許容する前景被覆差 2%・RGB 平均差 0.005・大きな RGB 差の画素 2% を検査する。
         EXPECT_GE(coverageRatio, 0.98); EXPECT_LE(coverageRatio, 1.02);
         EXPECT_LE(maskRatio, 0.02); EXPECT_LE(mae, 0.005); EXPECT_LE(badRatio, 0.02);
     }
@@ -464,13 +471,25 @@ protected:
         const auto collect = [&] {
             m_bundle.renderer->GpuProfCollect();
             const auto& snapshot = m_bundle.renderer->GpuProfGetSnapshot();
-            if (!snapshot.available || !snapshot.complete || snapshot.physicalFrameSerial == lastPhysical) return;
+            if (!snapshot.available || !snapshot.complete || snapshot.physicalFrameSerial == lastPhysical) {
+                return;
+            }
             lastPhysical = snapshot.physicalFrameSerial;
             bool colorAvailable = false, shadowAvailable = !configuration.shadow;
             double colorMs = 0, shadowMs = 0;
             for (const auto& pass : snapshot.passes) {
-                if (!pass.available || pass.metadata.viewId != viewId || pass.metadata.width != WIDTH || pass.metadata.height != HEIGHT
-                    || firstFrame == 0 || pass.metadata.applicationFrameSerial < firstFrame || pass.metadata.applicationFrameSerial > lastFrame) continue;
+                // 同じ計測ビューの結果だけを選び、ウォームアップと読み戻しのフレームを除外する。
+                if (!pass.available || pass.metadata.viewId != viewId) {
+                    continue;
+                }
+                if (pass.metadata.width != WIDTH || pass.metadata.height != HEIGHT) {
+                    continue;
+                }
+                const uint64_t frameSerial = pass.metadata.applicationFrameSerial;
+                const bool inMeasurement = firstFrame != 0 && frameSerial >= firstFrame && frameSerial <= lastFrame;
+                if (!inMeasurement) {
+                    continue;
+                }
                 if (pass.name == "FiberColor") { colorAvailable = true; colorMs = pass.gpuMs; }
                 if (pass.name == "FiberShadow") { shadowAvailable = true; shadowMs = pass.gpuMs; }
             }
@@ -513,7 +532,7 @@ protected:
             }
             collect();
         }
-        /// @note GPU 読戻しと PNG 保存は計測区間の外だけで行う。
+        // GPU 読戻しと PNG 保存は計測区間の外だけで行う。
         std::vector<float> pixels; uint32_t width = 0, height = 0;
         EXPECT_TRUE(m_bundle.renderer->CaptureRenderTargetToLinearRGBA(m_color, *m_resources, pixels, width, height));
         EXPECT_EQ(width, WIDTH); EXPECT_EQ(height, HEIGHT);
@@ -731,8 +750,8 @@ TEST_F(FiberRenderPerfTest, StraightBladeShadowDepthKeepsBoundedCoverageAcrossSe
             + m_light.GetUp() * (y * halfHeight)
             + m_light.GetForward() * (m_light.m_near + depth * depthSpan);
     };
-    /// @note この直交投影の行列式は約 6.25e-7。汎用 Inverse の特異判定を避け、既知の投影を解析的に戻す。
-    ///       GPU 深度を検査する前に、実際の VP に対する往復で画面 Y と深度の向きを確認する。
+    // この直交投影の行列式は約 6.25e-7。汎用 Inverse の特異判定を避け、既知の投影を解析的に戻す。
+    //       GPU 深度を検査する前に、実際の VP に対する往復で画面 Y と深度の向きを確認する。
     for (const auto point : {math::Vector3{0, 0, 0}, math::Vector3{25, HEIGHT * 0.5f, 25}, math::Vector3{50, HEIGHT, 50}}) {
         const auto clip = m_light.GetViewProjection() * math::Vector4{point.x, point.y, point.z, 1};
         const auto restored = unproject(clip.x / clip.w, clip.y / clip.w, clip.z / clip.w);
@@ -740,7 +759,7 @@ TEST_F(FiberRenderPerfTest, StraightBladeShadowDepthKeepsBoundedCoverageAcrossSe
         ASSERT_NEAR(restored.y, point.y, WORLD_TOLERANCE);
         ASSERT_NEAR(restored.z, point.z, WORLD_TOLERANCE);
     }
-    /// @note この経路の PSO の深度バイアスは 0。両画像の同じ画素でも葉の前後が入れ替わるので、同一光線上の高さスラブを深度差の上限にする。
+    // この経路の PSO の深度バイアスは 0。両画像の同じ画素でも葉の前後が入れ替わるので、同一光線上の高さスラブを深度差の上限にする。
     const float depthDifferenceBound = (HEIGHT + 2 * WORLD_TOLERANCE) / std::abs(m_light.GetForward().y) / depthSpan;
     std::vector<float> reference;
     size_t referenceCovered = 0;
@@ -789,7 +808,7 @@ TEST_F(FiberRenderPerfTest, StraightBladeShadowDepthKeepsBoundedCoverageAcrossSe
         SaveQaMetrics(label + "_comparison", {{"maskDifferenceRatio", maskRatio}, {"coverageRatio", coverageRatio},
             {"commonCovered", static_cast<double>(commonCovered)}, {"maximumDepthDifference", maximumDepthDifference},
             {"maximumRayDistanceDifferenceMeters", maximumDepthDifference * depthSpan}, {"analyticDepthDifferenceBound", depthDifferenceBound}});
-        /// @note 0.384 画素以下の細い葉は分割で被覆が変わる。同じ画像とは主張せず、短い芝の被覆差の予算を 2% に制限する。
+        // 0.384 画素以下の細い葉は分割で被覆が変わる。同じ画像とは主張せず、短い芝の被覆差の予算を 2% に制限する。
         EXPECT_LE(maskRatio, 0.02); EXPECT_GE(coverageRatio, 0.98); EXPECT_LE(coverageRatio, 1.02);
         EXPECT_GT(commonCovered, 100u);
         EXPECT_LE(maximumDepthDifference, depthDifferenceBound);

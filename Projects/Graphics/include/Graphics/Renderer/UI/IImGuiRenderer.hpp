@@ -56,4 +56,4 @@ public:
     virtual void* GetImTextureID(ResourceHandle<TextureTag> texture, ResourceManager& resources) = 0;
 };
 
-} /// @note namespace fbzz::renderer
+} // namespace fbzz::renderer

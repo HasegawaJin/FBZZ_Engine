@@ -61,7 +61,9 @@ struct ClusterEdgeCandidate {
 [[nodiscard]] bool HasClusterDisk(uint32_t vertex, const ClusterVertexUse& use,
     std::span<const ClusterTriangle> triangles)
 {
-    if (use.faces.size() != use.neighbors.size() || use.faces.size() < 3) return false;
+    if (use.faces.size() != use.neighbors.size() || use.faces.size() < 3) {
+        return false;
+    }
     uint32_t next = use.neighbors.front();
     for (size_t step = 0; step < use.faces.size(); ++step) {
         const auto face = std::find_if(use.faces.begin(), use.faces.end(), [&](size_t index) {
@@ -69,11 +71,15 @@ struct ClusterEdgeCandidate {
             const size_t corner = std::find(tri.begin(), tri.end(), vertex) - tri.begin();
             return tri[(corner + 1) % 3] == next;
         });
-        if (face == use.faces.end()) return false;
+        if (face == use.faces.end()) {
+            return false;
+        }
         const auto& tri = triangles[*face];
         const size_t corner = std::find(tri.begin(), tri.end(), vertex) - tri.begin();
         next = tri[(corner + 2) % 3];
-        if (next == use.neighbors.front()) return step + 1 == use.faces.size();
+        if (next == use.neighbors.front()) {
+            return step + 1 == use.faces.size();
+        }
     }
     return false;
 }
@@ -84,13 +90,18 @@ struct ClusterEdgeCandidate {
     std::span<const Vector3> positions, bool preserveXZ)
 {
     size_t common = 0;
-    for (uint32_t neighbor : uses[from].neighbors)
+    for (uint32_t neighbor : uses[from].neighbors) {
         common += std::binary_search(uses[to].neighbors.begin(), uses[to].neighbors.end(), neighbor);
-    if (common != 2) return false;
+    }
+    if (common != 2) {
+        return false;
+    }
 
     for (size_t face : uses[from].faces) {
         const ClusterTriangle& source = triangles[face];
-        if (std::find(source.begin(), source.end(), to) != source.end()) continue;
+        if (std::find(source.begin(), source.end(), to) != source.end()) {
+            continue;
+        }
         ClusterTriangle replacement = source;
         *std::find(replacement.begin(), replacement.end(), from) = to;
         auto replacementKey = replacement;
@@ -98,15 +109,21 @@ struct ClusterEdgeCandidate {
         for (size_t neighborFace : uses[to].faces) {
             auto key = triangles[neighborFace];
             std::sort(key.begin(), key.end());
-            if (key == replacementKey) return false;
+            if (key == replacementKey) {
+                return false;
+            }
         }
         const Vector3 before = ClusterNormal(source, positions);
         const Vector3 after = ClusterNormal(replacement, positions);
         if (preserveXZ && !((before.y > 0.0f && after.y > 0.0f)
-            || (before.y < 0.0f && after.y < 0.0f))) return false;
+            || (before.y < 0.0f && after.y < 0.0f))) {
+            return false;
+        }
         const double lengthProduct = static_cast<double>(before.LengthSq()) * after.LengthSq();
         if (!std::isfinite(lengthProduct) || lengthProduct <= 0.0
-            || Vector3::Dot(before, after) <= 0.25 * std::sqrt(lengthProduct)) return false;
+            || Vector3::Dot(before, after) <= 0.25 * std::sqrt(lengthProduct)) {
+            return false;
+        }
     }
     return true;
 }
@@ -138,7 +155,9 @@ struct ClusterEdgeCandidate {
             uses[a].locked = uses[b].locked = true;
         } else {
             const float length = (positions[a] - positions[b]).LengthSq();
-            if (std::isfinite(length) && length > 0.0f) candidates.push_back({a, b, length});
+            if (std::isfinite(length) && length > 0.0f) {
+                candidates.push_back({a, b, length});
+            }
         }
     }
     for (uint32_t i = 0; i < uses.size(); ++i) {
@@ -155,26 +174,48 @@ struct ClusterEdgeCandidate {
     size_t remaining = triangles.size();
     float maxMovement = 0.0f;
     for (const auto& edge : candidates) {
-        if (remaining <= target) break;
+        if (remaining <= target) {
+            break;
+        }
         const auto a = edge.first, b = edge.second;
-        if (uses[a].locked || uses[b].locked || uses[a].reserved || uses[b].reserved) continue;
-        if (!skinGroups.empty() && skinGroups[a] != skinGroups[b]) continue;
-        if (CanCollapseClusterEdge(a, b, uses, triangles, positions, preserveXZ)) remap[a] = b;
-        else if (CanCollapseClusterEdge(b, a, uses, triangles, positions, preserveXZ)) remap[b] = a;
-        else continue;
+        if (uses[a].locked || uses[b].locked || uses[a].reserved || uses[b].reserved) {
+            continue;
+        }
+        if (!skinGroups.empty() && skinGroups[a] != skinGroups[b]) {
+            continue;
+        }
+        if (CanCollapseClusterEdge(a, b, uses, triangles, positions, preserveXZ)) {
+            remap[a] = b;
+        }
+        else if (CanCollapseClusterEdge(b, a, uses, triangles, positions, preserveXZ)) {
+            remap[b] = a;
+        }
+        else {
+            continue;
+        }
         remaining -= 2;
         maxMovement = (std::max)(maxMovement, std::sqrt(edge.lengthSquared));
-        /// @note Disjoint incident faces keep every accepted collapse valid against the original round topology.
+        // Disjoint incident faces keep every accepted collapse valid against the original round topology.
         uses[a].reserved = uses[b].reserved = true;
-        for (uint32_t neighbor : uses[a].neighbors) uses[neighbor].reserved = true;
-        for (uint32_t neighbor : uses[b].neighbors) uses[neighbor].reserved = true;
+        for (uint32_t neighbor : uses[a].neighbors) {
+            uses[neighbor].reserved = true;
+        }
+        for (uint32_t neighbor : uses[b].neighbors) {
+            uses[neighbor].reserved = true;
+        }
     }
-    if (maxMovement == 0.0f) return 0.0f;
+    if (maxMovement == 0.0f) {
+        return 0.0f;
+    }
     size_t write = 0;
     for (auto tri : triangles) {
         const bool originallyDegenerate = ClusterDegenerate(tri);
-        for (uint32_t& vertex : tri) vertex = remap[vertex];
-        if (originallyDegenerate || !ClusterDegenerate(tri)) triangles[write++] = tri;
+        for (uint32_t& vertex : tri) {
+            vertex = remap[vertex];
+        }
+        if (originallyDegenerate || !ClusterDegenerate(tri)) {
+            triangles[write++] = tri;
+        }
     }
     triangles.resize(write);
     return maxMovement;
@@ -193,22 +234,30 @@ struct ClusterEdgeCandidate {
     for (uint32_t id : ids) {
         positions.push_back(sourcePositions[id]);
         protectedVertices.push_back(seams[id]);
-        if (!sourceSkinGroups.empty()) skinGroups.push_back(sourceSkinGroups[id]);
+        if (!sourceSkinGroups.empty()) {
+            skinGroups.push_back(sourceSkinGroups[id]);
+        }
     }
     std::vector<ClusterTriangle> triangles(indices.size() / 3);
-    for (size_t i = 0; i < indices.size(); ++i)
+    for (size_t i = 0; i < indices.size(); ++i) {
         triangles[i / 3][i % 3] = static_cast<uint32_t>(std::lower_bound(ids.begin(), ids.end(), indices[i]) - ids.begin());
+    }
     const size_t target = (std::max)(size_t{1}, triangles.size() / 2);
     float error = 0.0f;
     for (size_t round = 0; round < STATIC_CLUSTER_MAX_ROUNDS && triangles.size() > target; ++round) {
         const float movement = CollapseClusterRound(triangles, positions, protectedVertices, target, preserveXZ, skinGroups);
-        if (movement == 0.0f) break;
+        if (movement == 0.0f) {
+            break;
+        }
         error = std::nextafter(error + movement, std::numeric_limits<float>::infinity());
     }
     if (error > 0.0f) {
         indices.clear();
-        for (const auto& tri : triangles)
-            for (uint32_t index : tri) indices.push_back(ids[index]);
+        for (const auto& tri : triangles) {
+            for (uint32_t index : tri) {
+                indices.push_back(ids[index]);
+            }
+        }
     }
     return error;
 }
@@ -236,7 +285,9 @@ void ExtendClusterBounds(StaticClusterNode& bounds, const Vector3& lo, const Vec
 void EmitCluster(ClusterBranch& branch, StaticClusterBuild& output)
 {
     const auto node = static_cast<uint32_t>(output.nodes.size());
-    for (uint32_t child : branch.roots) output.nodes[child].parent = node;
+    for (uint32_t child : branch.roots) {
+        output.nodes[child].parent = node;
+    }
     branch.roots.assign(1, node);
     output.nodes.push_back(branch.bounds);
     output.indices.insert(output.indices.end(), branch.indices.begin(), branch.indices.end());
@@ -272,8 +323,11 @@ void EmitCluster(ClusterBranch& branch, StaticClusterBuild& output)
         }
     }
     size_t axis = 0;
-    for (size_t i = 1; i < 3; ++i)
-        if (high[i] - low[i] > high[axis] - low[axis]) axis = i;
+    for (size_t i = 1; i < 3; ++i) {
+        if (high[i] - low[i] > high[axis] - low[axis]) {
+            axis = i;
+        }
+    }
     const size_t middle = triangles.size() / 2;
     std::nth_element(triangles.begin(), triangles.begin() + middle, triangles.end(), [axis](const auto& a, const auto& b) {
         return std::tie(a.center[axis], a.ordinal) < std::tie(b.center[axis], b.ordinal);
@@ -283,7 +337,9 @@ void EmitCluster(ClusterBranch& branch, StaticClusterBuild& output)
     branch.roots = std::move(left.roots);
     branch.roots.insert(branch.roots.end(), right.roots.begin(), right.roots.end());
     if (left.indices.empty() || right.indices.empty()
-        || left.indices.size() + right.indices.size() > STATIC_CLUSTER_MAX_PARENT_TRIANGLES * 3) return branch;
+        || left.indices.size() + right.indices.size() > STATIC_CLUSTER_MAX_PARENT_TRIANGLES * 3) {
+        return branch;
+    }
 
     ExtendClusterBounds(branch.bounds, left.bounds.boundsMin, left.bounds.boundsMax);
     ExtendClusterBounds(branch.bounds, right.bounds.boundsMin, right.bounds.boundsMax);
@@ -296,8 +352,12 @@ void EmitCluster(ClusterBranch& branch, StaticClusterBuild& output)
         branch.indices.clear();
     } else if (branch.indices.size() < fineCount) {
         branch.bounds.error = std::nextafter(branch.bounds.error + error, std::numeric_limits<float>::infinity());
-        if (std::isfinite(branch.bounds.error)) EmitCluster(branch, output);
-        else branch.indices.clear();
+        if (std::isfinite(branch.bounds.error)) {
+            EmitCluster(branch, output);
+        }
+        else {
+            branch.indices.clear();
+        }
     }
     return branch;
 }
@@ -309,7 +369,9 @@ bool BuildClusterLod(std::span<const Vector3> positions, std::span<const uint32_
     const size_t triangleCount = indices.size() / 3;
     if (indices.size() % 3 != 0 || triangleCount <= STATIC_CLUSTER_LEAF_TRIANGLES
         || triangleCount > STATIC_CLUSTER_MAX_SOURCE_TRIANGLES || positions.size() > indices.size()
-        || (!protectedVertices.empty() && protectedVertices.size() != positions.size())) return false;
+        || (!protectedVertices.empty() && protectedVertices.size() != positions.size())) {
+        return false;
+    }
 
     std::vector<uint32_t> orderedVertices(positions.size());
     std::iota(orderedVertices.begin(), orderedVertices.end(), 0u);
@@ -317,17 +379,24 @@ bool BuildClusterLod(std::span<const Vector3> positions, std::span<const uint32_
         const auto& pos = positions[index];
         return std::tie(pos.x, pos.y, pos.z);
     };
-    for (const auto& position : positions)
-        if (!ClusterFinite(position)) return false;
+    for (const auto& position : positions) {
+        if (!ClusterFinite(position)) {
+            return false;
+        }
+    }
     std::sort(orderedVertices.begin(), orderedVertices.end(), [&](uint32_t a, uint32_t b) {
         return positionKey(a) < positionKey(b);
     });
     std::vector<uint8_t> seams(positions.size());
-    if (!protectedVertices.empty()) std::copy(protectedVertices.begin(), protectedVertices.end(), seams.begin());
-    /// @note Position duplicates may represent UV or hard-normal seams even when the chart topology differs.
+    if (!protectedVertices.empty()) {
+        std::copy(protectedVertices.begin(), protectedVertices.end(), seams.begin());
+    }
+    // Position duplicates may represent UV or hard-normal seams even when the chart topology differs.
     for (size_t i = 1; i < orderedVertices.size(); ++i) {
         const uint32_t a = orderedVertices[i - 1], b = orderedVertices[i];
-        if (positionKey(a) == positionKey(b)) seams[a] = seams[b] = 1;
+        if (positionKey(a) == positionKey(b)) {
+            seams[a] = seams[b] = 1;
+        }
     }
 
     std::vector<ClusterSourceTriangle> source;
@@ -336,36 +405,44 @@ bool BuildClusterLod(std::span<const Vector3> positions, std::span<const uint32_
         const ClusterTriangle triangle{indices[i], indices[i + 1], indices[i + 2]};
         Vector3 center{};
         for (uint32_t vertex : triangle) {
-            if (vertex >= positions.size()) return false;
+            if (vertex >= positions.size()) {
+                return false;
+            }
             center += positions[vertex] * (1.0f / 3.0f);
         }
         source.push_back({triangle, {center.x, center.y, center.z}, i / 3});
     }
     StaticClusterBuild staged;
     static_cast<void>(BuildClusterBranch(source, positions, seams, staged, preserveXZ, skinGroups));
-    if (!preserveXZ && staged.indices.size() == indices.size()) return false;
+    if (!preserveXZ && staged.indices.size() == indices.size()) {
+        return false;
+    }
     output = std::move(staged);
     return true;
 }
 
-} /// @note namespace
+} // namespace
 
 bool BuildStaticClusterLod(std::span<const Vertex> vertices, std::span<const uint32_t> indices,
     StaticClusterBuild& output)
 {
-    if (vertices.size() > indices.size() || indices.size() / 3 > STATIC_CLUSTER_MAX_SOURCE_TRIANGLES)
+    if (vertices.size() > indices.size() || indices.size() / 3 > STATIC_CLUSTER_MAX_SOURCE_TRIANGLES) {
         return false;
+    }
     std::vector<Vector3> positions;
     positions.reserve(vertices.size());
-    for (const auto& vertex : vertices) positions.push_back(vertex.position);
+    for (const auto& vertex : vertices) {
+        positions.push_back(vertex.position);
+    }
     return BuildClusterLod(positions, indices, {}, false, output);
 }
 
 bool BuildStaticClusterLod(std::span<const SkinnedVertex> vertices, std::span<const uint32_t> indices,
     StaticClusterBuild& output)
 {
-    if (vertices.size() > indices.size() || indices.size() / 3 > STATIC_CLUSTER_MAX_SOURCE_TRIANGLES)
+    if (vertices.size() > indices.size() || indices.size() / 3 > STATIC_CLUSTER_MAX_SOURCE_TRIANGLES) {
         return false;
+    }
     using Influence = std::pair<uint32_t, float>;
     std::map<std::array<Influence, 4>, uint32_t> uniqueGroups;
     std::vector<Vector3> positions;
@@ -377,11 +454,17 @@ bool BuildStaticClusterLod(std::span<const SkinnedVertex> vertices, std::span<co
         float totalWeight = 0.0f;
         for (size_t i = 0; i < influences.size(); ++i) {
             const float weight = vertex.boneWeights[i];
-            if (!std::isfinite(weight) || weight < 0.0f || vertex.boneIndices[i] >= 128u) return false;
+            if (!std::isfinite(weight) || weight < 0.0f || vertex.boneIndices[i] >= 128u) {
+                return false;
+            }
             totalWeight += weight;
-            if (weight > 0.0f) influences[i] = {vertex.boneIndices[i], weight};
+            if (weight > 0.0f) {
+                influences[i] = {vertex.boneIndices[i], weight};
+            }
         }
-        if (std::abs(totalWeight - 1.0f) > 1.0e-6f) return false;
+        if (std::abs(totalWeight - 1.0f) > 1.0e-6f) {
+            return false;
+        }
         std::sort(influences.begin(), influences.end());
         const auto [group, inserted] = uniqueGroups.try_emplace(influences, static_cast<uint32_t>(uniqueGroups.size()));
         static_cast<void>(inserted);
@@ -396,16 +479,23 @@ bool BuildWaterSurfaceClusters(std::span<const WaterVertex> vertices, std::span<
     std::vector<uint32_t>& outIndices)
 {
     if (indices.size() / 3 <= STATIC_CLUSTER_LEAF_TRIANGLES
-        || indices.size() / 3 > STATIC_CLUSTER_MAX_SOURCE_TRIANGLES || vertices.size() > indices.size())
+        || indices.size() / 3 > STATIC_CLUSTER_MAX_SOURCE_TRIANGLES || vertices.size() > indices.size()) {
         return false;
+    }
     std::vector<Vector3> positions;
     positions.reserve(vertices.size());
-    for (const auto& vertex : vertices) positions.push_back(vertex.position);
+    for (const auto& vertex : vertices) {
+        positions.push_back(vertex.position);
+    }
     StaticClusterBuild hierarchy;
-    if (!BuildClusterLod(positions, indices, protectedVertices, true, hierarchy)) return false;
+    if (!BuildClusterLod(positions, indices, protectedVertices, true, hierarchy)) {
+        return false;
+    }
 
     std::vector<WaterSurfaceCluster> clusters(hierarchy.nodes.size());
-    for (uint32_t i = 0; i < clusters.size(); ++i) clusters[i].firstDescendant = i;
+    for (uint32_t i = 0; i < clusters.size(); ++i) {
+        clusters[i].firstDescendant = i;
+    }
     for (uint32_t i = 0; i < clusters.size(); ++i) {
         const auto& node = hierarchy.nodes[i];
         auto& cluster = clusters[i];
@@ -419,7 +509,7 @@ bool BuildWaterSurfaceClusters(std::span<const WaterVertex> vertices, std::span<
     }
     std::vector<uint32_t> orderedIndices;
     orderedIndices.reserve(hierarchy.indices.size());
-    /// @note Contiguous leaf ranges merge into a single draw when all fine clusters are visible.
+    // Contiguous leaf ranges merge into a single draw when all fine clusters are visible.
     for (bool leaves : {true, false}) {
         size_t begin = 0;
         for (const auto& range : hierarchy.ranges) {
@@ -438,4 +528,4 @@ bool BuildWaterSurfaceClusters(std::span<const WaterVertex> vertices, std::span<
     return true;
 }
 
-} /// @note namespace fbzz::renderer
+} // namespace fbzz::renderer

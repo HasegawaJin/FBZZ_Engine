@@ -15,4 +15,4 @@ inline constexpr const char* ERROR_SKINNED_SHADER = "builtin:ErrorSkinned";
     return path == ERROR_SURFACE_SHADER || path == ERROR_SKINNED_SHADER;
 }
 
-} /// @note namespace fbzz::renderer
+} // namespace fbzz::renderer

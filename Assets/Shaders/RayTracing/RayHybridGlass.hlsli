@@ -2,6 +2,7 @@
 /// @brief   Bounded deterministic or single-path Hybrid glass transport over verified ray surfaces.
 /// @author  Hasegawa Jin
 /// @date    2026-10-02
+#include "Common/Binding.hlsli"
 #ifndef FBZZ_RAY_HYBRID_GLASS_HLSLI
 #define FBZZ_RAY_HYBRID_GLASS_HLSLI
 
@@ -43,8 +44,8 @@ bool HybridLoadMedium(uint instanceId, out RayClosedMedium medium)
 {
     medium = (RayClosedMedium)0;
     if (instanceId >= instanceCount) return false;
-    StructuredBuffer<RayHitRecord> records = ResourceDescriptorHeap[FbzzPixelSlot(1)];
-    StructuredBuffer<RaySurfaceRecord> surfaces = ResourceDescriptorHeap[FbzzPixelSlot(2)];
+    StructuredBuffer<RayHitRecord> records = ResourceDescriptorHeap[FbzzPixelSlot(SRV_RAY_HIT_RECORDS_SLOT)];
+    StructuredBuffer<RaySurfaceRecord> surfaces = ResourceDescriptorHeap[FbzzPixelSlot(SRV_RAY_MATERIALS_SLOT)];
     RayHitRecord record = records[instanceId];
     RaySurfaceRecord surface = surfaces[instanceId];
     if (!RayHybridDielectricSupported(surface) || (surface.dielectricFlags & 1u) != 0) return false;
@@ -88,8 +89,8 @@ bool HybridInitializeGlassPath(RayDesc ray, uint mask, out HybridGlassPath path)
     path.ray = ray; path.throughput = 1; path.previousPosition = ray.Origin; path.mask = mask;
     if (!all(isfinite(ray.Origin)) || !all(isfinite(ray.Direction)) || dot(ray.Direction, ray.Direction) <= 0) return false;
     if (!glassEnabled) return true;
-    StructuredBuffer<RayHitRecord> records = ResourceDescriptorHeap[FbzzPixelSlot(1)];
-    StructuredBuffer<RaySurfaceRecord> surfaces = ResourceDescriptorHeap[FbzzPixelSlot(2)];
+    StructuredBuffer<RayHitRecord> records = ResourceDescriptorHeap[FbzzPixelSlot(SRV_RAY_HIT_RECORDS_SLOT)];
+    StructuredBuffer<RaySurfaceRecord> surfaces = ResourceDescriptorHeap[FbzzPixelSlot(SRV_RAY_MATERIALS_SLOT)];
     float exits[8], reverseExits[8];
     RayDesc probe = ray;
     probe.TMin = 0; probe.TMax = 3.402823466e38f;

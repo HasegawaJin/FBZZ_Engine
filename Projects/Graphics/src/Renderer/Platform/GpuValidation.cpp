@@ -40,9 +40,11 @@ bool IsActive()
 
 bool InitializeD3D12()
 {
-    /// @note 関数ローカル static は C++ の同期済み初期化で再生成・複数 context でも一度だけ実行される。
+    // 関数ローカル static は C++ の同期済み初期化で再生成・複数 context でも一度だけ実行される。
     static const bool success = [] {
-        if (!IsEnabled() && !IsExplicitlyRequested()) return true;
+        if (!IsEnabled() && !IsExplicitlyRequested()) {
+            return true;
+        }
 #if defined(FBZZ_GPU_VALIDATION)
         Microsoft::WRL::ComPtr<ID3D12Debug> debug;
         if (SUCCEEDED(D3D12GetDebugInterface(IID_PPV_ARGS(&debug)))) {
@@ -76,12 +78,14 @@ void DrainStoredMessages(ID3D12InfoQueue& queue, const char* tag)
     std::vector<std::max_align_t> buffer;
     for (std::uint64_t i = 0; i < count; ++i) {
         SIZE_T length = 0;
-        if (FAILED(queue.GetMessage(i, nullptr, &length)) || length == 0)
+        if (FAILED(queue.GetMessage(i, nullptr, &length)) || length == 0) {
             continue;
+        }
         buffer.resize((length + sizeof(std::max_align_t) - 1) / sizeof(std::max_align_t));
         auto* message = static_cast<D3D12_MESSAGE*>(static_cast<void*>(buffer.data()));
-        if (FAILED(queue.GetMessage(i, message, &length)))
+        if (FAILED(queue.GetMessage(i, message, &length))) {
             continue;
+        }
 
         FBZZ_LOG_WARN("  [%s] (id=%d) %s",
                       SeverityName(static_cast<int>(message->Severity)),
@@ -97,7 +101,7 @@ bool IsEnabled()
     if constexpr (!kBuiltIn) {
         return false;
     } else {
-        /// @note 起動中に変わるものではないので 1 回だけ読む。
+        // 起動中に変わるものではないので 1 回だけ読む。
         static const bool enabled = [] {
             wchar_t value[8]{};
             const DWORD length = GetEnvironmentVariableW(L"FBZZ_GPU_VALIDATION", value, 8);
@@ -129,8 +133,9 @@ bool ShouldBreakOnError()
 void ReportLiveObjects(const GUID& apiId, const char* label)
 {
 #if defined(FBZZ_GPU_VALIDATION)
-    if (!IsActive())
+    if (!IsActive()) {
         return;
+    }
 
     Microsoft::WRL::ComPtr<IDXGIDebug1> dxgiDebug;
     if (FAILED(DXGIGetDebugInterface1(0, IID_PPV_ARGS(&dxgiDebug)))) {
@@ -138,8 +143,8 @@ void ReportLiveObjects(const GUID& apiId, const char* label)
         return;
     }
 
-    /// @note DETAIL を付けると 1 件ごとに «誰が作ったか» まで出る。終了時の 1 回だけなので、
-    /// @note       内訳が要らない SUMMARY より «どのリソースが残ったか» が分かる方を採る。
+    // DETAIL を付けると 1 件ごとに «誰が作ったか» まで出る。終了時の 1 回だけなので、
+    // 内訳が要らない SUMMARY より «どのリソースが残ったか» が分かる方を採る。
     const auto flags = static_cast<DXGI_DEBUG_RLO_FLAGS>(
         DXGI_DEBUG_RLO_DETAIL | DXGI_DEBUG_RLO_IGNORE_INTERNAL);
     FBZZ_LOG_INFO("GpuValidation: 生存 COM オブジェクトを出力します (%s) — 出力先はデバッガーの出力ウィンドウ",
@@ -151,4 +156,4 @@ void ReportLiveObjects(const GUID& apiId, const char* label)
 #endif
 }
 
-} /// @note namespace fbzz::renderer::gpuvalidation
+} // namespace fbzz::renderer::gpuvalidation

@@ -43,4 +43,4 @@ FBZZ_GRAPHICS_API std::string ResolveAssetPath(const std::string& path);
 [[nodiscard]] FBZZ_GRAPHICS_API std::string NormalizeTextureKey(std::string_view reference);
 [[nodiscard]] FBZZ_GRAPHICS_API TextureMipSettings ResolveTextureMipSettings(std::string_view sourcePath);
 
-} /// @note namespace fbzz::renderer
+} // namespace fbzz::renderer

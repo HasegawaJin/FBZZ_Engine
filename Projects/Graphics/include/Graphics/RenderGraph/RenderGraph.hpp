@@ -62,38 +62,39 @@ public:
     /// @note       とカラーマスクが «同型» と誤判定されていたため。実体の作られ方に効く項目が
     /// @note       抜けていると、貸し回した先で別物になる。
     struct ResourceDesc {
-        ResourceKind kind = ResourceKind::Unknown;
-        uint32_t width = 0;
-        uint32_t height = 0;
-        Format   format = Format::RGBA16F;
+        ResourceKind kind = ResourceKind::Unknown; ///< 資源の種別。生成と共有の可否を決める。
+        uint32_t width = 0; ///< テクスチャまたは描画ターゲットの横幅 [px]。
+        uint32_t height = 0; ///< テクスチャまたは描画ターゲットの縦幅 [px]。
+        Format   format = Format::RGBA16F; ///< テクスチャや描画先を生成する形式。
         /// @note RenderTarget の同時出力カラー数。0 = 深度専用。Texture / Buffer では 1。
-        uint32_t colorCount = 1;
+        uint32_t colorCount = 1; ///< RenderTarget の同時カラー出力数。0 は深度専用。
         /// @note 深度バッファを持つか。RenderTarget 以外では false。
-        bool withDepth = false;
-        bool external = false;
-        bool transient = true;
+        bool withDepth = false; ///< 描画ターゲットに深度面を持たせるかどうか。
+        bool external = false; ///< グラフの外から供給される資源かどうか。
+        bool transient = true; ///< グラフ内のパス間だけに必要な一時資源かどうか。
         /// @note Buffer / AS の総バイト数。Texture / RenderTarget では 0。
-        uint64_t byteSize = 0;
+        uint64_t byteSize = 0; ///< Buffer または加速構造の容量 [byte]。
         /// @note Buffer の頂点・要素幅 [byte]。raw / index Buffer と AS では 0。
-        uint32_t stride = 0;
+        uint32_t stride = 0; ///< Buffer の要素幅 [byte]。raw Buffer、インデックス、加速構造は 0。
         /// @note false の資源と AS は transient でも alias 対象にしない。
-        bool allowAliasing = true;
+        bool allowAliasing = true; ///< 寿命が重ならず、形式が等しい一時資源との共有を許可するかどうか。
     };
 
     using ResourceAccess = RenderResourceAccess;
 
     struct RenderPass {
-        std::string name;
-        std::vector<ResourceAccess> accesses;
-        ExecuteFn execute;
-        bool allowCulling = true;
+        std::string name; ///< 診断に使う登録名。
+        std::vector<ResourceAccess> accesses; ///< このパスが読み書きする論理資源と用途。
+        ExecuteFn execute; ///< 実行順が確定した後に呼ぶパス本体。
+        bool allowCulling = true; ///< 最終出力に寄与しないパスを除外できるかどうか。
 
         [[nodiscard]] std::vector<std::string> Reads() const
         {
             std::vector<std::string> result;
             for (const auto& access : accesses) {
-                if (access.usage == ResourceUsage::Read || access.usage == ResourceUsage::ReadWrite)
+                if (access.usage == ResourceUsage::Read || access.usage == ResourceUsage::ReadWrite) {
                     result.push_back(access.name);
+                }
             }
             return result;
         }
@@ -102,33 +103,34 @@ public:
         {
             std::vector<std::string> result;
             for (const auto& access : accesses) {
-                if (access.usage == ResourceUsage::Write || access.usage == ResourceUsage::ReadWrite)
+                if (access.usage == ResourceUsage::Write || access.usage == ResourceUsage::ReadWrite) {
                     result.push_back(access.name);
+                }
             }
             return result;
         }
     };
 
     struct ResourceLifetime {
-        std::string name;
-        int firstPass = -1;
-        int lastPass = -1;
-        int aliasGroup = -1;
-        ResourceDesc desc;
+        std::string name; ///< 診断に使う登録名。
+        int firstPass = -1; ///< 資源を最初に使うパスの実行順内の位置。未使用は -1。
+        int lastPass = -1; ///< 資源を最後に使うパスの実行順内の位置。
+        int aliasGroup = -1; ///< 物理資源を共有できる論理資源のグループ番号。共有対象外は -1。
+        ResourceDesc desc; ///< 対象となる論理資源の宣言。
     };
 
     struct PassProfile {
-        std::string name;
-        double cpuMilliseconds = 0.0;
+        std::string name; ///< 診断に使う登録名。
+        double cpuMilliseconds = 0.0; ///< CPU でパス本体を記録するのに要した時間 [ms]。
         /// @note -1.0 = 未計測 (GPU フックが未設定 or まだ latency 待ち)
-        double gpuMilliseconds = -1.0;
+        double gpuMilliseconds = -1.0; ///< GPU 上のパス実行時間 [ms]。未計測または結果待ちは -1。
     };
 
     struct ExecutionReport {
-        std::vector<size_t> executionOrder;
-        std::vector<size_t> culledPasses;
-        std::vector<ResourceLifetime> lifetimes;
-        std::vector<PassProfile> profiles;
+        std::vector<size_t> executionOrder; ///< m_passes の添字を実行順に並べた列。
+        std::vector<size_t> culledPasses; ///< 出力への依存がなく除外した m_passes の添字列。
+        std::vector<ResourceLifetime> lifetimes; ///< 実行計画から求めた論理資源の寿命と共有可否。
+        std::vector<PassProfile> profiles; ///< パスごとの CPU と GPU の計測結果。
     };
 
     void Clear()
@@ -155,10 +157,12 @@ public:
     {
         std::vector<ResourceAccess> accesses;
         accesses.reserve(reads.size() + writes.size());
-        for (std::string_view read : reads)
+        for (std::string_view read : reads) {
             accesses.push_back({ std::string(read), ResourceUsage::Read });
-        for (std::string_view write : writes)
+        }
+        for (std::string_view write : writes) {
             accesses.push_back({ std::string(write), ResourceUsage::Write });
+        }
         AddPass(name, std::move(accesses), std::move(execute), allowCulling);
     }
 
@@ -188,8 +192,9 @@ public:
     void DeclareResource(std::string_view name, const ResourceDesc& desc)
     {
         ResourceDesc stored = desc;
-        if (stored.kind == ResourceKind::AccelerationStructure)
+        if (stored.kind == ResourceKind::AccelerationStructure) {
             stored.allowAliasing = false;
+        }
         m_resources[std::string(name)] = stored;
     }
 
@@ -197,8 +202,9 @@ public:
     {
         m_outputs.clear();
         m_outputs.reserve(outputs.size());
-        for (std::string_view output : outputs)
+        for (std::string_view output : outputs) {
             m_outputs.push_back(std::string(output));
+        }
     }
 
     /// @note RenderPipeline など動的にパスを構築する側から呼ぶ。SetOutputs のクリア不要版。
@@ -222,8 +228,9 @@ public:
         m_report = {};
 
         std::vector<size_t> order;
-        if (!BuildExecutionOrder(&m_report.culledPasses, &order))
+        if (!BuildExecutionOrder(&m_report.culledPasses, &order)) {
             return false;
+        }
 
         m_report.executionOrder = order;
         m_report.lifetimes      = AnalyzeLifetimes(order);
@@ -251,31 +258,38 @@ public:
     /// @note Plan() が未呼び出しの場合は内部で Plan() を実行してから進む。
     [[nodiscard]] bool Execute()
     {
-        /// @note 前フレームのプランが残っていない (executionOrder 空) 場合は Plan を走らせる。
+        // 前フレームのプランが残っていない (executionOrder 空) 場合は Plan を走らせる。
         if (m_report.executionOrder.empty()) {
-            if (!Plan()) return false;
+            if (!Plan()) {
+                return false;
+            }
         }
 
         for (size_t passIndex : m_report.executionOrder) {
             auto& pass = m_passes[passIndex];
             if (pass.execute) {
                 const auto start = std::chrono::steady_clock::now();
-                if (m_profilerBegin)
+                if (m_profilerBegin) {
                     m_profilerBegin(pass.name);
-                if (m_gpuProfilerBegin)
+                }
+                if (m_gpuProfilerBegin) {
                     m_gpuProfilerBegin(pass.name);
+                }
 
                 pass.execute();
 
-                if (m_gpuProfilerEnd)
+                if (m_gpuProfilerEnd) {
                     m_gpuProfilerEnd(pass.name);
-                if (m_profilerEnd)
+                }
+                if (m_profilerEnd) {
                     m_profilerEnd(pass.name);
+                }
                 const auto end = std::chrono::steady_clock::now();
                 const std::chrono::duration<double, std::milli> elapsed = end - start;
                 m_report.profiles.push_back({ pass.name, elapsed.count() });
-                if (m_passCompleted)
+                if (m_passCompleted) {
                     m_passCompleted(passIndex);
+                }
             }
         }
 
@@ -365,9 +379,9 @@ public:
                                                                : "RegistrationOrder";
         out += '\n';
 
-        /// @note '+' で繋がず += を並べるのは、const char* / std::string / char が混ざる長い連鎖だと
-        /// @note       オーバーロード解決の候補が組み合わせで膨らむため。実際に MSVC が「'+' を std::string
-        /// @note       に適用できない」と落ちた。+= の並びなら 1 手ずつ解決され足す順序もそのまま見える。
+        // '+' で繋がず += を並べるのは、const char* / std::string / char が混ざる長い連鎖だと
+        // オーバーロード解決の候補が組み合わせで膨らむため。実際に MSVC が「'+' を std::string
+        // に適用できない」と落ちた。+= の並びなら 1 手ずつ解決され足す順序もそのまま見える。
         for (size_t index = 0; index < m_report.executionOrder.size(); ++index) {
             out += "pass ";
             out += std::to_string(index);
@@ -401,9 +415,15 @@ public:
             out += DescribeFormat(lifetime.desc.format);
             out += " colors=";
             out += std::to_string(lifetime.desc.colorCount);
-            if (lifetime.desc.withDepth) out += " depth";
-            if (lifetime.desc.external)  out += " external";
-            if (lifetime.desc.transient) out += " transient";
+            if (lifetime.desc.withDepth) {
+                out += " depth";
+            }
+            if (lifetime.desc.external) {
+                out += " external";
+            }
+            if (lifetime.desc.transient) {
+                out += " transient";
+            }
             if (lifetime.desc.byteSize != 0) {
                 out += " bytes=";
                 out += std::to_string(lifetime.desc.byteSize);
@@ -412,7 +432,9 @@ public:
                 out += " stride=";
                 out += std::to_string(lifetime.desc.stride);
             }
-            if (!lifetime.desc.allowAliasing) out += " noalias";
+            if (!lifetime.desc.allowAliasing) {
+                out += " noalias";
+            }
             out += '\n';
         }
 
@@ -432,10 +454,12 @@ private:
         for (const auto& pass : m_passes) {
             PassInfo info;
             for (const auto& access : pass.accesses) {
-                if (access.usage == ResourceUsage::Read || access.usage == ResourceUsage::ReadWrite)
+                if (access.usage == ResourceUsage::Read || access.usage == ResourceUsage::ReadWrite) {
                     info.reads.push_back(access.name);
-                if (access.usage == ResourceUsage::Write || access.usage == ResourceUsage::ReadWrite)
+                }
+                if (access.usage == ResourceUsage::Write || access.usage == ResourceUsage::ReadWrite) {
                     info.writes.push_back(access.name);
+                }
             }
             infos.push_back(std::move(info));
         }
@@ -452,144 +476,163 @@ private:
         const size_t passCount = m_passes.size();
         const auto infos = BuildPassInfos();
 
-        /// @name 1. 書き手を登録順に集める。これがリソースの世代になる
+        // 1. 書き手を登録順に集める。これがリソースの世代になる
         std::unordered_map<std::string, std::vector<size_t>> writersOf;
         for (size_t pass = 0; pass < passCount; ++pass) {
             for (const auto& write : infos[pass].writes) {
                 auto& writers = writersOf[write];
-                if (writers.empty() || writers.back() != pass)
+                if (writers.empty() || writers.back() != pass) {
                     writers.push_back(pass);
+                }
             }
         }
 
-        /// @name 2. 読み手を世代へ束ね、RAW の依存を張る
-        /// @note readersOfGeneration[R][g] = 世代 g を読むパス。g == 0 はフレーム開始時の中身。
+        // 2. 読み手を世代へ束ね、RAW の依存を張る
+        // readersOfGeneration[R][g] = 世代 g を読むパス。g == 0 はフレーム開始時の中身。
         std::vector<std::vector<size_t>> rawDeps(passCount);
         std::unordered_map<std::string, std::vector<std::vector<size_t>>> readersOfGeneration;
-        for (const auto& [name, writers] : writersOf)
+        for (const auto& [name, writers] : writersOf) {
             readersOfGeneration[name].resize(writers.size() + 1);
+        }
 
-        /// @note 生産者の居ない読み取りは «記録するだけ» にして生存判定の後に生きているパスのぶんだけ
-        /// @note       落とす。刈られるパスの申告漏れまで Plan を失敗させると設定を切った途端に画面が出なく
-        /// @note       なるため、実際に実行されるパスの申告だけを契約とする。
+        // 生産者の居ない読み取りは «記録するだけ» にして生存判定の後に生きているパスのぶんだけ
+        // 落とす。刈られるパスの申告漏れまで Plan を失敗させると設定を切った途端に画面が出なく
+        // なるため、実際に実行されるパスの申告だけを契約とする。
         std::vector<std::pair<size_t, std::string>> unresolvedReads;
 
         for (size_t pass = 0; pass < passCount; ++pass) {
             for (const auto& read : infos[pass].reads) {
                 const auto it = writersOf.find(read);
                 if (it == writersOf.end()) {
-                    if (!IsImportedResource(read))
+                    if (!IsImportedResource(read)) {
                         unresolvedReads.emplace_back(pass, read);
+                    }
                     continue;
                 }
 
                 const auto& writers = it->second;
                 size_t generation = 0;
-                for (size_t index = 0; index < writers.size() && writers[index] < pass; ++index)
+                for (size_t index = 0; index < writers.size() && writers[index] < pass; ++index) {
                     generation = index + 1;
+                }
 
-                /// @note 自分より前に書き手が居ない場合。imported ならフレーム開始時の中身を
-                /// @note       読む意図として通す。そうでなければ最初の書き手へ繋ぐ ── ここが
-                /// @note       «並べ替え» の入口で、登録位置が生産者より前でも順序を作れる。
-                if (generation == 0 && !IsImportedResource(read))
+                // 自分より前に書き手が居ない場合。imported ならフレーム開始時の中身を
+                // 読む意図として通す。そうでなければ最初の書き手へ繋ぐ ── ここが
+                // «並べ替え» の入口で、登録位置が生産者より前でも順序を作れる。
+                if (generation == 0 && !IsImportedResource(read)) {
                     generation = 1;
+                }
 
                 if (generation > 0) {
                     const size_t producer = writers[generation - 1];
-                    if (producer != pass)
+                    if (producer != pass) {
                         rawDeps[pass].push_back(producer);
+                    }
                 }
                 readersOfGeneration[read][generation].push_back(pass);
             }
         }
 
-        /// @name 3. 生存判定。出力へ «データが流れ込むか» だけで決める
-        /// @note RAW だけを辿るのは、WAW/WAR が «順序» の制約であって «必要性» ではないため。
-        /// @note       後続が全面的に上書きするパスは、その結果を誰も読まないなら要らない。
+        // 3. 生存判定。出力へ «データが流れ込むか» だけで決める
+        // RAW だけを辿るのは、WAW/WAR が «順序» の制約であって «必要性» ではないため。
+        // 後続が全面的に上書きするパスは、その結果を誰も読まないなら要らない。
         std::vector<bool> live(passCount, m_outputs.empty());
         if (!m_outputs.empty()) {
             std::vector<size_t> pending;
             const auto mark = [&live, &pending](size_t pass) {
-                if (live[pass])
+                if (live[pass]) {
                     return;
+                }
                 live[pass] = true;
                 pending.push_back(pass);
             };
 
             for (size_t pass = 0; pass < passCount; ++pass) {
-                if (!m_passes[pass].allowCulling)
+                if (!m_passes[pass].allowCulling) {
                     mark(pass);
+                }
             }
 
             for (const auto& output : m_outputs) {
                 const auto it = writersOf.find(output);
                 if (it == writersOf.end() || it->second.empty()) {
-                    /// @note デバッグ用。どの output resource に writer がいないか特定する。
-                    if (m_debugLog)
+                    // デバッグ用。どの output resource に writer がいないか特定する。
+                    if (m_debugLog) {
                         m_debugLog(("RenderGraph: no live pass writes required output \""
                             + output + "\"").c_str());
+                    }
                     return false;
                 }
-                /// @note 出力に残るのは最後の世代。それを作る書き手が起点になる。
+                // 出力に残るのは最後の世代。それを作る書き手が起点になる。
                 mark(it->second.back());
             }
 
             while (!pending.empty()) {
                 const size_t pass = pending.back();
                 pending.pop_back();
-                for (const size_t dep : rawDeps[pass])
+                for (const size_t dep : rawDeps[pass]) {
                     mark(dep);
+                }
             }
         }
 
         for (const auto& [pass, read] : unresolvedReads) {
-            if (!live[pass])
+            if (!live[pass]) {
                 continue;
-            /// @note デバッグ用。どのリソースに producer がいないか特定する。
-            if (m_debugLog)
+            }
+            // デバッグ用。どのリソースに producer がいないか特定する。
+            if (m_debugLog) {
                 m_debugLog(("RenderGraph: pass \"" + m_passes[pass].name
                     + "\" reads \"" + read
                     + "\" but no pass writes it and it is not imported.").c_str());
+            }
             return false;
         }
 
         if (culledPasses) {
             for (size_t pass = 0; pass < passCount; ++pass) {
-                if (!live[pass])
+                if (!live[pass]) {
                     culledPasses->push_back(pass);
+                }
             }
         }
 
-        /// @name 4. 辺を張る (生きているパスだけ)
+        // 4. 辺を張る (生きているパスだけ)
         std::vector<std::unordered_set<size_t>> dependencies(passCount);
         const auto addEdge = [&dependencies, &live](size_t from, size_t to) {
-            if (from == to || !live[from] || !live[to])
+            if (from == to || !live[from] || !live[to]) {
                 return;
+            }
             dependencies[to].insert(from);
         };
 
         for (size_t pass = 0; pass < passCount; ++pass) {
-            if (!live[pass])
+            if (!live[pass]) {
                 continue;
-            for (const size_t dep : rawDeps[pass])
+            }
+            for (const size_t dep : rawDeps[pass]) {
                 addEdge(dep, pass);
+            }
         }
 
         for (const auto& [name, writers] : writersOf) {
-            /// @note WAW: 世代の順序は登録順が決める。生きている書き手だけを鎖にする。
+            // WAW: 世代の順序は登録順が決める。生きている書き手だけを鎖にする。
             std::vector<size_t> liveWriters;
             for (const size_t writer : writers) {
-                if (live[writer])
+                if (live[writer]) {
                     liveWriters.push_back(writer);
+                }
             }
-            for (size_t index = 1; index < liveWriters.size(); ++index)
+            for (size_t index = 1; index < liveWriters.size(); ++index) {
                 addEdge(liveWriters[index - 1], liveWriters[index]);
+            }
 
-            /// @note WAR: 世代 g を読むパスは、次の世代を書くパスより前に置く。
+            // WAR: 世代 g を読むパスは、次の世代を書くパスより前に置く。
             const auto& generations = readersOfGeneration.at(name);
             for (size_t generation = 0; generation < writers.size(); ++generation) {
-                for (const size_t reader : generations[generation])
+                for (const size_t reader : generations[generation]) {
                     addEdge(reader, writers[generation]);
+                }
             }
         }
 
@@ -601,39 +644,46 @@ private:
                 ++indegree[pass];
             }
         }
-        /// @note dependencies は unordered_set なので走査順が決まらない。ここで登録順へ揃える。
-        for (auto& targets : edges)
+        // dependencies は unordered_set なので走査順が決まらない。ここで登録順へ揃える。
+        for (auto& targets : edges) {
             std::sort(targets.begin(), targets.end());
+        }
 
-        /// @name 5. トポロジカルソート
+        // 5. トポロジカルソート
         size_t liveCount = 0;
         for (const bool isLive : live) {
-            if (isLive)
+            if (isLive) {
                 ++liveCount;
+            }
         }
 
         std::vector<size_t> ready;
         for (size_t pass = 0; pass < passCount; ++pass) {
-            if (live[pass] && indegree[pass] == 0)
+            if (live[pass] && indegree[pass] == 0) {
                 ready.push_back(pass);
+            }
         }
 
-        /// @note MinimizeLifetimes の帳簿。remainingUses が 0 になった時点でそのリソースは死ぬ。
+        // MinimizeLifetimes の帳簿。remainingUses が 0 になった時点でそのリソースは死ぬ。
         std::unordered_map<std::string, size_t> remainingUses;
         std::vector<std::vector<std::string>> touches(passCount);
         if (m_policy == SchedulePolicy::MinimizeLifetimes) {
             for (size_t pass = 0; pass < passCount; ++pass) {
-                if (!live[pass])
+                if (!live[pass]) {
                     continue;
+                }
                 std::unordered_set<std::string> unique;
-                for (const auto& read : infos[pass].reads)
+                for (const auto& read : infos[pass].reads) {
                     unique.insert(read);
-                for (const auto& write : infos[pass].writes)
+                }
+                for (const auto& write : infos[pass].writes) {
                     unique.insert(write);
+                }
                 touches[pass].assign(unique.begin(), unique.end());
                 std::sort(touches[pass].begin(), touches[pass].end());
-                for (const auto& name : touches[pass])
+                for (const auto& name : touches[pass]) {
                     ++remainingUses[name];
+                }
             }
         }
         std::unordered_set<std::string> aliveResources;
@@ -647,10 +697,12 @@ private:
                     long long allocated = 0;
                     long long released  = 0;
                     for (const auto& name : touches[ready[index]]) {
-                        if (!aliveResources.contains(name))
+                        if (!aliveResources.contains(name)) {
                             ++allocated;
-                        if (remainingUses[name] == 1)
+                        }
+                        if (remainingUses[name] == 1) {
                             ++released;
+                        }
                     }
                     const long long score = allocated - released;
                     if (index == 0 || score < bestScore
@@ -660,11 +712,12 @@ private:
                     }
                 }
             } else {
-                /// @note 依存が同じなら常に登録順が最小のものを出す。
-                /// @note       これにより «申告が正しければ実行順は登録順に一致する» が保たれる。
+                // 依存が同じなら常に登録順が最小のものを出す。
+                // これにより «申告が正しければ実行順は登録順に一致する» が保たれる。
                 for (size_t index = 1; index < ready.size(); ++index) {
-                    if (ready[index] < ready[chosen])
+                    if (ready[index] < ready[chosen]) {
                         chosen = index;
+                    }
                 }
             }
 
@@ -676,21 +729,24 @@ private:
             if (m_policy == SchedulePolicy::MinimizeLifetimes) {
                 for (const auto& name : touches[pass]) {
                     aliveResources.insert(name);
-                    if (--remainingUses[name] == 0)
+                    if (--remainingUses[name] == 0) {
                         aliveResources.erase(name);
+                    }
                 }
             }
 
             for (const size_t next : edges[pass]) {
-                if (--indegree[next] == 0)
+                if (--indegree[next] == 0) {
                     ready.push_back(next);
+                }
             }
         }
 
         if (outOrder->size() != liveCount) {
-            /// @note 依存が循環すると indegree が 0 に戻らないパスが残る。
-            if (m_debugLog)
+            // 依存が循環すると indegree が 0 に戻らないパスが残る。
+            if (m_debugLog) {
                 m_debugLog("RenderGraph: dependency cycle detected - some passes never became ready.");
+            }
             return false;
         }
         return true;
@@ -711,27 +767,33 @@ private:
             auto touch = [&](const std::string& name) {
                 auto& lt = byName[name];
                 lt.name = name;
-                if (lt.firstPass < 0)
+                if (lt.firstPass < 0) {
                     lt.firstPass = static_cast<int>(orderIndex);
+                }
                 lt.lastPass = static_cast<int>(orderIndex);
-                if (auto desc = m_resources.find(name); desc != m_resources.end())
+                if (auto desc = m_resources.find(name); desc != m_resources.end()) {
                     lt.desc = desc->second;
+                }
             };
 
-            for (const auto& read : infos[passIndex].reads)
+            for (const auto& read : infos[passIndex].reads) {
                 touch(read);
-            for (const auto& write : infos[passIndex].writes)
+            }
+            for (const auto& write : infos[passIndex].writes) {
                 touch(write);
+            }
         }
 
         std::vector<ResourceLifetime> lifetimes;
         lifetimes.reserve(byName.size());
-        for (auto& [_, lifetime] : byName)
+        for (auto& [_, lifetime] : byName) {
             lifetimes.push_back(std::move(lifetime));
+        }
         std::sort(lifetimes.begin(), lifetimes.end(),
             [](const ResourceLifetime& a, const ResourceLifetime& b) {
-                if (a.firstPass != b.firstPass)
+                if (a.firstPass != b.firstPass) {
                     return a.firstPass < b.firstPass;
+                }
                 return a.name < b.name;
             });
 
@@ -785,17 +847,17 @@ private:
                a.stride == b.stride;
     }
 
-    std::vector<RenderPass> m_passes;
-    std::vector<std::string> m_outputs;
-    std::unordered_map<std::string, ResourceDesc> m_resources;
-    ExecutionReport m_report;
-    std::function<void(std::string_view)> m_profilerBegin;
-    std::function<void(size_t)> m_passCompleted;
-    std::function<void(std::string_view)> m_profilerEnd;
-    std::function<void(std::string_view)> m_gpuProfilerBegin;
-    std::function<void(std::string_view)> m_gpuProfilerEnd;
-    std::function<void(const char*)>      m_debugLog;  ///< @note Plan() 失敗診断用
-    SchedulePolicy                        m_policy = SchedulePolicy::RegistrationOrder;
+    std::vector<RenderPass> m_passes; ///< グラフへ登録したパスの列。添字が登録順を表す。
+    std::vector<std::string> m_outputs; ///< 実行計画で生成を保証する論理出力の名前。
+    std::unordered_map<std::string, ResourceDesc> m_resources; ///< 論理資源名ごとの形式、寸法、寿命の宣言。
+    ExecutionReport m_report; ///< 直近の依存解決とパス実行の結果。
+    std::function<void(std::string_view)> m_profilerBegin; ///< パス記録を CPU で計測する際の開始フック。
+    std::function<void(size_t)> m_passCompleted; ///< パス記録が終わったときに m_passes の添字を受け取るフック。
+    std::function<void(std::string_view)> m_profilerEnd; ///< パス記録を CPU で計測する際の終了フック。
+    std::function<void(std::string_view)> m_gpuProfilerBegin; ///< GPU のパス計測を開始するフック。
+    std::function<void(std::string_view)> m_gpuProfilerEnd; ///< GPU のパス計測を終了するフック。
+    std::function<void(const char*)>      m_debugLog; ///< 実行計画を作れない場合に診断を受け取るフック。
+    SchedulePolicy                        m_policy = SchedulePolicy::RegistrationOrder; ///< 依存条件を満たす候補から次のパスを選ぶ方針。
 };
 
-} /// @note namespace fbzz::renderer
+} // namespace fbzz::renderer

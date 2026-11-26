@@ -48,8 +48,9 @@ enum class ProjectionMode : uint8_t {
 [[nodiscard]] inline math::Matrix4 ReverseClipDepth(const math::Matrix4& toClip)
 {
     math::Matrix4 result = toClip;
-    for (int col = 0; col < 4; ++col)
+    for (int col = 0; col < 4; ++col) {
         result.m[2][col] = toClip.m[3][col] - toClip.m[2][col];
+    }
     return result;
 }
 
@@ -102,4 +103,4 @@ public:
     CameraClearMode m_clearMode = CameraClearMode::SolidColor;
 };
 
-} /// @note namespace fbzz::renderer
+} // namespace fbzz::renderer

@@ -203,7 +203,7 @@ protected:
             EXPECT_TRUE(structure.IsValid());
             bottomLevels.push_back(structure);
             const auto instanceId = static_cast<uint32_t>(records.size());
-            /// @note 内部ケースは不透明面だけのラスタ深度を供給する。片面のソリッドは早い出口を GBuffer でカリングするが、光学クエリーには出口境界を残す。
+            // 内部ケースは不透明面だけのラスタ深度を供給する。片面のソリッドは早い出口を GBuffer でカリングするが、光学クエリーには出口境界を残す。
             topDescription.instances.push_back({structure, math::Matrix4::Identity(), instanceId, mask,
                 testCase.hybridCandidatePolicy ? glass : !testCase.cameraInsideGlass});
             renderer::RayHitRecord record;
@@ -255,11 +255,11 @@ protected:
             surfaces.push_back(surface);
             gpu.readBuffers.push_back(buffer);
         };
-        /// @note primary は shadow mask を持たせず、専用 blocker の mask=2 だけで遮蔽を検証する。
+        // primary は shadow mask を持たせず、専用 blocker の mask=2 だけで遮蔽を検証する。
         addTriangle(3, true, 5, testCase.primarySupported, testCase.primaryNormal, testCase.primaryEmission,
             testCase.primaryGlass, 7, testCase.glassAttenuation);
         if (testCase.cameraInsideGlass) {
-            /// @note Camera0 は向かい合う境界面の間にある。ラスタ受光面は z=3 の最初のインデックス付き三角形のまま。
+            // Camera0 は向かい合う境界面の間にある。ラスタ受光面は z=3 の最初のインデックス付き三角形のまま。
             if (!testCase.openGlass)
                 addTriangle(-1, true, 5, true, {0, 0, -1}, {}, true, 7, testCase.glassAttenuation);
             addTriangle(testCase.initialGlassExitZ, false, 5, true, {0, 0, 1}, {}, true, 7, testCase.glassAttenuation);
@@ -270,7 +270,7 @@ protected:
             }
         }
         if (testCase.secondaryOriginInsideGlass) {
-            /// @note Camera0 は外側にあるが、入口は近面 0.1 より手前にあり、z=3 の不透明受光面・二次レイ原点は内側にある。
+            // Camera0 は外側にあるが、入口は近面 0.1 より手前にあり、z=3 の不透明受光面・二次レイ原点は内側にある。
             addTriangle(0.05f, true, 5, true, {0, 0, -1}, {}, true, 8, testCase.glassAttenuation);
             addTriangle(4, false, 5, true, {0, 0, 1}, {}, true, 8, testCase.glassAttenuation);
         }
@@ -284,7 +284,7 @@ protected:
             }
             if (testCase.opaqueInsideGlass)
                 addTriangle(3.5f, true, 5, true, {0, 0, -1}, testCase.glassBackground);
-            /// @note IOR=1 の吸収ケースでは、カメラから見える透過を反射マスクの可視性から分離する。
+            // IOR=1 の吸収ケースでは、カメラから見える透過を反射マスクの可視性から分離する。
             addTriangle(5, true, testCase.glassBackgroundCameraOnly ? 1 : 5,
                 true, {0, 0, -1}, testCase.glassBackground);
         }
@@ -399,7 +399,9 @@ protected:
             static_cast<uint32_t>(testCase.shapes.size()), sizeof(renderer::RayPathShapeRecord));
         EXPECT_TRUE(shared.rayReflectionShader.IsValid() && fill.IsValid() && copy.IsValid()
             && gbuffer.IsValid() && target.IsValid() && gpu.topLevel.IsValid());
-        if (!shared.rayReflectionShader.IsValid() || !fill.IsValid() || !copy.IsValid()) return {};
+        if (!shared.rayReflectionShader.IsValid() || !fill.IsValid() || !copy.IsValid()) {
+            return {};
+        }
         renderer::RenderSettings settings;
         settings.hybridQuality = testCase.quality;
         settings.postProcess.exposure = testCase.exposure;
@@ -452,7 +454,9 @@ protected:
         if (testCase.reconstructionEnabled) {
             const bool prepared = renderer::PrepareRayReflectionReconstruction(context, view, shared);
             EXPECT_TRUE(prepared);
-            if (!prepared) return {};
+            if (!prepared) {
+                return {};
+            }
             EXPECT_EQ(view.rayReflection.reconstruction.constantsData.resolutionDivisor,
                 view.rayReflection.resolutionDivisor);
             if (view.rayReflection.resolutionDivisor == 2) {
@@ -492,7 +496,7 @@ protected:
             }
         }
         if (environment) {
-            /// @note 検証 queue は EndFrame で排出されるため、意図した HDR cube clear の metadata 警告だけをその間許す。
+            // 検証 queue は EndFrame で排出されるため、意図した HDR cube clear の metadata 警告だけをその間許す。
             m_allowIblClearMetadataWarning = true;
             for (uint32_t face = 0; face < 6; ++face) {
                 device.SetRenderTargetFace(environment, face, 0, resources);
@@ -552,14 +556,16 @@ protected:
         if (testCase.verifySsrEarlyOutClearsMetadata || testCase.verifySsrMirrorRetainsMetadata || testCase.verifyGlassMotionMetadata) {
             EXPECT_EQ(renderSize, 1u);
             EXPECT_EQ(rgba.size(), 4u);
-            if (rgba.size() != 4 || renderSize != 1) return {};
-            /// @note 正面視の白い受光面は F0=lerp(0.04,1,metallic)。GBuffer の半精度量子化と有限粗さの Smith 項は読戻し許容差に収まる。
+            if (rgba.size() != 4 || renderSize != 1) {
+                return {};
+            }
+            // 正面視の白い受光面は F0=lerp(0.04,1,metallic)。GBuffer の半精度量子化と有限粗さの Smith 項は読戻し許容差に収まる。
             if (!testCase.verifyGlassMotionMetadata) {
                 const float receiverF0 = 0.04f + 0.96f * testCase.metallic;
                 EXPECT_NEAR(rgba[0], testCase.emission.x * receiverF0, 0.01f);
                 EXPECT_FLOAT_EQ(rgba[3], 1);
             } else EXPECT_FLOAT_EQ(rgba[3], 2);
-            /// @note SSR の確信度が最大なら通常面をクリアし、鏡面に近い面は再追跡する。どちらも前フレームの不正な表面情報を置き換える。
+            // SSR の確信度が最大なら通常面をクリアし、鏡面に近い面は再追跡する。どちらも前フレームの不正な表面情報を置き換える。
             renderer::RayReflectionSurface poison;
             poison.positionDepth = poison.normalRoughness = poison.geometricNormalOffset = {1, 2, 3, 4};
             poison.objectMaterialValid = {7, 9, 1, 1};
@@ -663,19 +669,23 @@ struct Surface {
         }
         if (testCase.rasterPrimary) {
             const size_t offset = (32u * renderSize + 31u) * 4u;
-            if (rgba.size() < offset + 4) return {};
+            if (rgba.size() < offset + 4) {
+                return {};
+            }
             return {rgba[offset], rgba[offset + 1], rgba[offset + 2], rgba[offset + 3]};
         }
         if (testCase.rejectedDispatch != RejectedDispatch::NONE) {
             EXPECT_EQ(rgba.size(), 4u);
-            if (rgba.size() != 4) return rgba;
+            if (rgba.size() != 4) {
+                return rgba;
+            }
             EXPECT_FLOAT_EQ(rgba[3], 1);
             if (testCase.rejectedDispatch == RejectedDispatch::CLOSED_FRAME) {
-                /// @note Graph の CPU 実行成功は GPU dispatch の記録成功とは別。旧 alpha=1 が残っても不採用にする。
+                // Graph の CPU 実行成功は GPU dispatch の記録成功とは別。旧 alpha=1 が残っても不採用にする。
                 EXPECT_TRUE(pipeline.Execute(context));
                 EXPECT_FALSE(context.rayReflectionPassActive);
             } else {
-                /// @note stale handle は前フレーム完了後に作り、通常の mid-frame release 禁止を守る。
+                // stale handle は前フレーム完了後に作り、通常の mid-frame release 禁止を守る。
                 if (testCase.rejectedDispatch == RejectedDispatch::NON_COMPUTE_SHADER)
                     shared.rayReflectionShader = copy;
                 if (testCase.rejectedDispatch == RejectedDispatch::STALE_CONSTANT_BUFFER)
@@ -806,8 +816,10 @@ struct Surface {
 private:
     void OnLog(const core::LogEntry& entry) override
     {
-        /// @note cube の既定 optimized-clear と HDR=(4,4,4,1) の差は性能 metadata のみ。ほかの検証警告は除外しない。
-        if (m_allowIblClearMetadataWarning && entry.message.starts_with("  [WARNING] (id=820) ")) return;
+        // cube の既定 optimized-clear と HDR=(4,4,4,1) の差は性能 metadata のみ。ほかの検証警告は除外しない。
+        if (m_allowIblClearMetadataWarning && entry.message.starts_with("  [WARNING] (id=820) ")) {
+            return;
+        }
         if (entry.message.starts_with("  [WARNING]") || entry.message.starts_with("  [ERROR]")
             || entry.message.starts_with("  [CORRUPTION]")) ADD_FAILURE() << entry.message;
     }
@@ -892,7 +904,7 @@ TEST_F(RayReflectionTest, MatchesRasterizedShallowTriangleAcrossSubpixelPhasesWi
     testCase.secondary = false;
     testCase.primarySlopeX = 20;
     testCase.primaryNormal = math::Vector3{20, 0, -1}.Normalized();
-    /// @note 本番 GBuffer は同じ実頂点バッファを丸めた画面座標と D32 深度に変換する。合成した SV_Depth は使わない。
+    // 本番 GBuffer は同じ実頂点バッファを丸めた画面座標と D32 深度に変換する。合成した SV_Depth は使わない。
     for (const bool orthographic : {false, true}) {
         testCase.orthographic = orthographic;
         for (const float jitter : {0.0f, 0.001f, -0.001f}) {
@@ -918,7 +930,7 @@ TEST_F(RayReflectionTest, RejectsDifferentRasterLayerAndIllConditionedGrazingDep
     testCase.secondary = false;
     testCase.primarySlopeX = 20;
     testCase.primaryNormal = math::Vector3{20, 0, -1}.Normalized();
-    /// @note ラスタ側のコピーだけを平行移動し、法線方向の平面間隔を実際の 1/256 画素丸めと浮動小数点誤差の範囲より大きくする。
+    // ラスタ側のコピーだけを平行移動し、法線方向の平面間隔を実際の 1/256 画素丸めと浮動小数点誤差の範囲より大きくする。
     testCase.rasterLayerOffset = 0.02f;
     for (const bool orthographic : {false, true}) {
         testCase.orthographic = orthographic;
@@ -926,7 +938,7 @@ TEST_F(RayReflectionTest, RejectsDifferentRasterLayerAndIllConditionedGrazingDep
         ASSERT_EQ(differentLayer.size(), 4u);
         for (const float component : differentLayer) EXPECT_FLOAT_EQ(component, 0);
     }
-    /// @note 軸に沿う D と Ng.z=1e-7 では内積の相殺だけで求めた上限が極小になる。正規化の不確かさを含めても 1 m の深度差は棄却する。
+    // 軸に沿う D と Ng.z=1e-7 では内積の相殺だけで求めた上限が極小になる。正規化の不確かさを含めても 1 m の深度差は棄却する。
     testCase = {};
     testCase.primarySlopeX = 1e7f;
     testCase.primaryExtentOverride = 1e-7f;
@@ -1026,7 +1038,7 @@ TEST_F(RayReflectionTest, EvaluatesBoundGlobalIblWithoutScalingEmissionOrApplyin
     testCase.iblDiffuseScale = 1;
     const auto combined = Render(testCase);
     ASSERT_EQ(combined.size(), 4u);
-    /// @note white hit の F0=0.04、LUT=(1,0)、cube=4。primary metal の反射重みはほぼ 1。
+    // white hit の F0=0.04、LUT=(1,0)、cube=4。primary metal の反射重みはほぼ 1。
     for (size_t i = 0; i < 3; ++i) {
         EXPECT_NEAR(floor[i], emission[i] + 0.025f, 0.02f);
         EXPECT_NEAR(diffuse[i] - floor[i], 3.84f, 0.02f);
@@ -1153,7 +1165,7 @@ TEST_F(RayReflectionTest, VirtualAreaAndShapeAreVisibleAndProxyEmissionReplacesM
     testCase.emitters = {emitter};
     const auto proxy = Render(testCase);
     ASSERT_EQ(proxy.size(), 4u); EXPECT_NEAR(proxy[0], 2, 0.03f); EXPECT_NEAR(proxy[1], 4, 0.03f); EXPECT_NEAR(proxy[3], 1, 0.001f);
-    /// @note プロキシが個体の発光を所有する。設定済みの放射輝度を放つのは選択したプリミティブだけ。
+    // プロキシが個体の発光を所有する。設定済みの放射輝度を放つのは選択したプリミティブだけ。
     emitter.primitiveId = 1;
     testCase.emitters = {emitter};
     const auto nonselected = Render(testCase);
@@ -1342,7 +1354,7 @@ TEST_F(RayReflectionTest, PrimaryGeometryPhysicallyOccludesMeshEmissionAndRawEnv
     const auto meshBlocked = Render(testCase);
     ASSERT_EQ(meshBlocked.size(), 4u);
     for (size_t i = 0; i < 3; ++i) EXPECT_NEAR(meshBlocked[i], 0, 0.001f);
-    /// @note PRIMARY 専用の遮蔽物で、物理的可視性をラスタの castShadow mask2 と反射探索 mask4 から分離する。
+    // PRIMARY 専用の遮蔽物で、物理的可視性をラスタの castShadow mask2 と反射探索 mask4 から分離する。
     testCase.meshNee = false; testCase.emitters[0].instanceId = UINT32_MAX;
     testCase.emitters[0].flags = renderer::RAY_PATH_EMITTER_VIRTUAL;
     const auto authoredArea = Render(testCase);
@@ -1376,7 +1388,7 @@ TEST_F(RayReflectionTest, RegularizesTiltedPrimaryNormalMapWithoutChangingTheRef
     testCase.primaryNormalMap = true;
     const auto tilted = Render(testCase);
     ASSERT_EQ(tilted.size(), 4u);
-    /// @note Hybrid はサンプリングと PDF 評価の前に BSDF 法線を調整する。サンプルレイを曲げず、幾何学的な無効サンプルも総数に含める。
+    // Hybrid はサンプリングと PDF 評価の前に BSDF 法線を調整する。サンプルレイを曲げず、幾何学的な無効サンプルも総数に含める。
     for (size_t channel = 0; channel < 3; ++channel) {
         EXPECT_TRUE(std::isfinite(tilted[channel]));
         EXPECT_GT(tilted[channel], 0.5f);
@@ -1389,7 +1401,7 @@ TEST_F(RayReflectionTest, RegularizesSmoothGrazingPrimaryWithoutBlackFallbackInB
 {
     ReflectionCase testCase;
     testCase.sceneLighting = true; testCase.secondary = false; testCase.rawEnvironment = true;
-    /// @note 傾きの浅いポリゴン法線とやや滑らかな頂点法線で凸球の輪郭を再現する。鏡面ローブは Ng より下で Ns より上にある。
+    // 傾きの浅いポリゴン法線とやや滑らかな頂点法線で凸球の輪郭を再現する。鏡面ローブは Ng より下で Ns より上にある。
     testCase.primarySlopeX = std::sqrt(1.0f - 0.05f * 0.05f) / 0.05f;
     testCase.primaryNormal = {std::sqrt(1.0f - 0.01f * 0.01f), 0, -0.01f};
     const auto geometricNormal = math::Vector3{testCase.primarySlopeX, 0, -1}.Normalized();
@@ -1405,7 +1417,7 @@ TEST_F(RayReflectionTest, RegularizesSmoothGrazingPrimaryWithoutBlackFallbackInB
         EXPECT_GT(mismatch[channel], 0.1f);
     }
     EXPECT_NEAR(mismatch[3], 1, 0.001f);
-    /// @note 同じ形状で Ns=Ng の場合も有効で、通常のシェーディング法線は正則化で変わらない。
+    // 同じ形状で Ns=Ng の場合も有効で、通常のシェーディング法線は正則化で変わらない。
     testCase.primaryNormal = geometricNormal;
     const auto matched = Render(testCase);
     ASSERT_EQ(matched.size(), 4u);
@@ -1418,7 +1430,7 @@ TEST_F(RayReflectionTest, ProperBelowShadingNormalGgxNullSamplesRemainValidWitho
     ReflectionCase testCase;
     testCase.sceneLighting = true; testCase.emission = {4, 4, 4};
     testCase.roughness = 1;
-    /// @note frame0 で Ns=Ng、V=N のとき、粗い GGX VNDF の 4 層の NdotL は (.75,.25,-.25,-.75)。無効な 2 個も分母 4 に含め、放射輝度は 4 * (6/7 + 2/5) / 4。
+    // frame0 で Ns=Ng、V=N のとき、粗い GGX VNDF の 4 層の NdotL は (.75,.25,-.25,-.75)。無効な 2 個も分母 4 に含め、放射輝度は 4 * (6/7 + 2/5) / 4。
     const auto rough = Render(testCase);
     ASSERT_EQ(rough.size(), 4u);
     for (size_t channel = 0; channel < 3; ++channel) {
@@ -1436,7 +1448,7 @@ TEST_F(RayReflectionTest, IntegratesPartialHitAndKnownBlackMissWithTheOriginalSa
     testCase.roughness = 1;
     testCase.secondaryExtent = 12;
     testCase.emission = {4, 4, 4};
-    /// @note frame0 では粗い GGX の第 1 層だけが有限発光体に届く。ヒット重み 6/7、黒のミス 0、Ns の無効 2 個はいずれも分母 4 に含める。
+    // frame0 では粗い GGX の第 1 層だけが有限発光体に届く。ヒット重み 6/7、黒のミス 0、Ns の無効 2 個はいずれも分母 4 に含める。
     const auto partial = Render(testCase);
     ASSERT_EQ(partial.size(), 4u);
     for (size_t channel = 0; channel < 3; ++channel) EXPECT_NEAR(partial[channel], 6.0f / 7.0f, 0.005f);
@@ -1543,7 +1555,7 @@ TEST_F(RayReflectionTest, KnownBlackVisibilitySkipPreservesAreaAndShapeSampleStr
         testCase.rawEnvironment = false;
         const auto skipped = Render(testCase);
         ASSERT_EQ(skipped.size(), 4u);
-        /// @note 準備済みの未加工キューブは強度 0 でも同じ 3 サンプルで環境サンプリングと可視性判定をすべて行う。
+        // 準備済みの未加工キューブは強度 0 でも同じ 3 サンプルで環境サンプリングと可視性判定をすべて行う。
         testCase.rawEnvironment = true;
         testCase.environmentIntensity = 0;
         const auto sampled = Render(testCase);
@@ -1758,7 +1770,7 @@ TEST_F(RayReflectionTest, GlassScenePreservesOpaqueBackfaceEnvironmentOcclusion)
     EXPECT_GT(unoccluded[0], 0.01f);
     EXPECT_FLOAT_EQ(unoccluded[3], 1);
 
-    /// @note 反射レイは mask4 を使い、mask1 専用の平面を見ない。不透明受光面の環境 NEE だけがその裏面を検査する。
+    // 反射レイは mask4 を使い、mask1 専用の平面を見ない。不透明受光面の環境 NEE だけがその裏面を検査する。
     testCase.blocker = testCase.blockerBackFace = testCase.blockerSupported = true;
     testCase.blockerMask = 1;
     testCase.blockerZ = -2;
@@ -1799,7 +1811,7 @@ TEST_F(RayReflectionTest, CameraGlassTransmissionSeesVirtualAreaLightAfterTheGBu
     emitter.flags = renderer::RAY_PATH_EMITTER_VIRTUAL;
     emitter.selectionPdf = emitter.selectionCdf = 1;
     testCase.emitters.push_back(emitter);
-    /// @note 一次 GBuffer の照合はメッシュだけで行う。mask1 の継続レイは不透明な背景より前で仮想光源を捉える。
+    // 一次 GBuffer の照合はメッシュだけで行う。mask1 の継続レイは不透明な背景より前で仮想光源を捉える。
     const auto transmitted = Render(testCase);
     ASSERT_EQ(transmitted.size(), 4u);
     EXPECT_FLOAT_EQ(transmitted[0], 2);
@@ -1846,7 +1858,7 @@ TEST_F(RayReflectionTest, RoughUnequalIndexSolidUsesFiniteSharedDielectricTransp
     for (size_t channel = 0; channel < 3; ++channel) {
         EXPECT_TRUE(std::isfinite(radiance[channel]));
         EXPECT_GT(radiance[channel], 0);
-        /// @note 上限付きの決定的サンプルで対象範囲と有限な輸送を確認する。4 サンプルの GGX 推定値との厳密一致は要求しない。
+        // 上限付きの決定的サンプルで対象範囲と有限な輸送を確認する。4 サンプルの GGX 推定値との厳密一致は要求しない。
         EXPECT_LT(radiance[channel], 16);
     }
 }
@@ -1993,7 +2005,7 @@ TEST_F(RayReflectionTest, InsideOpaqueEmissionAndPointLightUseDistinctActualBeer
     const std::array<float, 3> emission{2, 4, 6}, color{0.5f, 0.25f, 1};
     for (size_t channel = 0; channel < 3; ++channel) {
         EXPECT_GT(clear[channel], emission[channel]);
-        /// @note カメラから終端まで 3 m。光源は同じソリッド内の 1 m 先で、どちらの境界よりも手前にある。
+        // カメラから終端まで 3 m。光源は同じソリッド内の 1 m 先で、どちらの境界よりも手前にある。
         const float expected = emission[channel] * std::pow(color[channel], 3.0f)
             + (clear[channel] - emission[channel]) * std::pow(color[channel], 4.0f);
         EXPECT_NEAR(absorbed[channel], expected, 0.007f);
@@ -2001,7 +2013,7 @@ TEST_F(RayReflectionTest, InsideOpaqueEmissionAndPointLightUseDistinctActualBeer
     EXPECT_FLOAT_EQ(clear[3], 2);
     EXPECT_FLOAT_EQ(absorbed[3], 2);
 
-    /// @note 光源を入口境界の奥に移すと、アーティスト設定の影が無効でも直進する NEE の寄与は生じない。
+    // 光源を入口境界の奥に移すと、アーティスト設定の影が無効でも直進する NEE の寄与は生じない。
     testCase.deltaLights[0].position = {0, 0, -2};
     const auto outside = Render(testCase);
     ASSERT_EQ(outside.size(), 4u);
@@ -2046,7 +2058,7 @@ TEST_F(RayReflectionTest, QualitySampleBudgetAndInvalidRuntimeSettingsUseProduct
     testCase.quality.reflectionSamples = 1;
     const auto one = Render(testCase);
     ASSERT_EQ(one.size(), 4u);
-    /// @note シーン照明のクエリーには距離上限がない。NdotL=.25 の層は従来のカメラ遠面距離 20 を越えて T=24 の平面に届く。
+    // シーン照明のクエリーには距離上限がない。NdotL=.25 の層は従来のカメラ遠面距離 20 を越えて T=24 の平面に届く。
     for (size_t channel = 0; channel < 3; ++channel) {
         EXPECT_FLOAT_EQ(one[channel], 0);
         EXPECT_NEAR(four[channel], 6.0f / 7.0f + 2.0f / 5.0f, 0.005f);
@@ -2267,7 +2279,9 @@ TEST_F(RayReflectionTest, HybridCandidatePolicyKeepsSolidThinAndRoughRadiance)
     for (bool secondary : {false, true}) {
         for (float roughness : {0.0f, 0.25f}) {
             for (bool thin : {false, true}) {
-                if (thin && roughness != 0) continue;
+                if (thin && roughness != 0) {
+                    continue;
+                }
                 SCOPED_TRACE(secondary);
                 SCOPED_TRACE(roughness);
                 SCOPED_TRACE(thin);
@@ -2326,7 +2340,9 @@ TEST_F(RayReflectionTest, HybridCandidatePolicyPreservesBackfaceAndAlphaShadowQu
     for (uint8_t mask : {uint8_t{2}, uint8_t{4}}) {
         for (bool backFace : {false, true}) {
             for (bool alpha : {false, true}) {
-                if (mask == 4 && alpha) continue;
+                if (mask == 4 && alpha) {
+                    continue;
+                }
                 SCOPED_TRACE(mask);
                 SCOPED_TRACE(backFace);
                 SCOPED_TRACE(alpha);
@@ -2452,7 +2468,7 @@ TEST_F(RayReflectionTest, HalfRoughTransportKeepsSsrHolesWhenRepresentativeIsScr
     const auto withSsr = Render(testCase, 3);
     ASSERT_EQ(withoutSsr.size(), 36u);
     ASSERT_EQ(withSsr.size(), withoutSsr.size());
-    /// @note 画素 (0,0) と (2,0) は SSR で覆われた代表点、(1,0) は最初のセルにある実際の SSR の穴。
+    // 画素 (0,0) と (2,0) は SSR で覆われた代表点、(1,0) は最初のセルにある実際の SSR の穴。
     EXPECT_FLOAT_EQ(withoutSsr[7], 1);
     EXPECT_FLOAT_EQ(withSsr[7], 1);
     for (size_t channel = 0; channel < 3; ++channel)

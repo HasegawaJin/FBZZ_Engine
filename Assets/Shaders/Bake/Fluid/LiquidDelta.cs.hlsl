@@ -2,14 +2,14 @@
 /// @brief   GPU 液体: 密度拘束の補正 (s_corr 込み) → 床と障害物の押し出し (FluidLiquidSolver::SolveDensity の後半)
 /// @author  Hasegawa Jin
 /// @date    2026-09-12
-//
-// 読む予測位置 (t14) と書く予測位置 (u2) は別のバッファ。全員の補正を今の位置から求めてから動かす (CPU と同じ)。
+///
+/// @note 読む予測位置 (t14) と書く予測位置 (u2) は別のバッファ。全員の補正を今の位置から求めてから動かす (CPU と同じ)。
 #include "Bake/Fluid/LiquidNeighbors.hlsli"
 #include "Common/BindlessIndices.hlsli"
 
-FBZZ_SBUFFER_T(float4, gPredicted, 14);
-FBZZ_SBUFFER_T(float, gLambda, 30);
-FBZZ_RWSBUFFER_T(float4, gPredictedOut, 2);
+FBZZ_SBUFFER_T(float4, gPredicted, SRV_LIQUID_PARTICLES_SLOT);
+FBZZ_SBUFFER_T(float, gLambda, SRV_LIQUID_LAMBDA_SLOT);
+FBZZ_RWSBUFFER_T(float4, gPredictedOut, UAV_LIQUID_DELTA_SLOT);
 
 [numthreads(64, 1, 1)]
 void CSMain(uint3 id : SV_DispatchThreadID)
@@ -44,13 +44,13 @@ void CSMain(uint3 id : SV_DispatchThreadID)
             sum += d * ((lambdaI + gLambda[j] + tensile) * scale * gInverseRest);
         }
     }
-    // 1 反復の補正を粒子半径の半分までに抑える。発生直後の重なりで弾け飛ばないように。
+    /// @note 1 反復の補正を粒子半径の半分までに抑える。発生直後の重なりで弾け飛ばないように。
     const float len = length(sum);
     if (len > gMaxCorrection) sum *= gMaxCorrection / len;
 
     float3 p = pi.xyz + sum;
     if (gFloorEnabled != 0u && p.y < gFloorHeight + gRadius) p.y = gFloorHeight + gRadius;
-    // 障害物の表面から粒子半径ぶん外へ出す。反復ごとに行うので、最後の反復の後は必ず外に居る。
+    /// @note 障害物の表面から粒子半径ぶん外へ出す。反復ごとに行うので、最後の反復の後は必ず外に居る。
     [loop]
     for (uint c = 0u; c < gColliderCount; ++c)
     {

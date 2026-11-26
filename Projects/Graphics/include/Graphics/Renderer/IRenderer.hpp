@@ -44,8 +44,8 @@ enum class RenderTargetTextureKind : uint8_t {
 
 /// @note 複数の描画先が所有するカラー面を、指定順で同じ MRT へ束縛する。
 struct RenderTargetColorAttachment {
-    ResourceHandle<RenderTargetTag> target;
-    uint32_t colorIndex = 0;
+    ResourceHandle<RenderTargetTag> target; ///< MRT へ束縛するカラー面の所有元を指す非所有ハンドル。
+    uint32_t colorIndex = 0; ///< target 内のカラー面の添字。MRT 上の位置は呼び出し元の配列順で決まる。
 };
 
 class IRenderer {
@@ -209,7 +209,7 @@ private:
     virtual std::unique_ptr<ITexture> CreateNativeTextureFromDataMips(
         const TextureMipData*, uint32_t) { return nullptr; }
     /// @note CreateNativeTextureFromDataMips の待たない版。転送を投入して戻る。
-    /// @param outUploadToken 転送完了の判定に IsUploadComplete へ渡す値。0 は完了済み。
+    /// @param[out] outUploadToken 転送完了の判定に IsUploadComplete へ渡す値。0 は完了済み。
     /// @note mips は戻った時点で手放してよい (転送元は内部の upload メモリへ複製済み)。
     /// @note 既定は同期版へ倒す。非同期転送を持たないバックエンドもそのまま動く。
     virtual std::unique_ptr<ITexture> CreateNativeTextureFromDataMipsAsync(
@@ -318,4 +318,4 @@ public:
     virtual bool SetRenderTargetColors(std::span<const RenderTargetColorAttachment>, ResourceManager&) { return false; }
 };
 
-} /// @note namespace fbzz::renderer
+} // namespace fbzz::renderer

@@ -56,4 +56,4 @@ private:
     ResourceHandle<ShaderTag> m_shader;
     ResourceHandle<PipelineStateTag> m_state;
 };
-} /// @note namespace fbzz::renderer
+} // namespace fbzz::renderer

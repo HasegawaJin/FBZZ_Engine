@@ -123,7 +123,7 @@ bool LegacyHybridGlassRadianceWithMotion(HybridGlassPath initial, SurfaceHit fir
         path.previousPosition = hit.position;
         ++path.boundaryCount;
         path.ray.TMin = 0; path.ray.TMax = 3.402823466e38f;
-        /// @note An index-matched thin interface has exactly zero reflected energy; its constant branch needs no scene query or terminal correspondence.
+        // 屈折率が等しい薄い境界では反射エネルギーが 0 になる。この分岐ではシーンの照会と終端の対応付けを省く。
         if (firstThin && environmentMode == 1u && reflectionWeight == 0) {
             motion.reflected = (RayReflectionMotionGuide)0;
             motion.reflected.objectPrimitiveKind.w = 2u;

@@ -1,7 +1,8 @@
 /// @file    GpuInstanceCulling.cpp
-/// @brief   View-scoped GPU instance filtering with an indexed indirect fallback contract.
+/// @brief   ビュー単位の GPU インスタンス選別と、インデックス付き間接描画の準備。
 /// @author  Hasegawa Jin
 /// @date    2026-10-10
+#include <Graphics/Renderer/Commands/ShaderBindingSlots.hpp>
 #include <Graphics/Renderer/Visibility/GpuInstanceCulling.hpp>
 #include "GpuCullDrawQueue.hpp"
 #include <Graphics/Pipeline/Geometry/InstanceBatch.hpp>
@@ -25,38 +26,44 @@ namespace {
 constexpr uint32_t CULL_THREADS_PER_GROUP = 64;
 constexpr uint32_t MAX_CULL_GROUPS = 65535;
 constexpr size_t MAX_QUEUED_INSTANCES = 4096;
-constexpr size_t BOUNDS_SRV_SLOT = 13;
-constexpr size_t INSTANCES_SRV_SLOT = 14;
-constexpr size_t VIEW_SRV_SLOT = 15;
-constexpr size_t VISIBLE_INSTANCES_UAV_SLOT = 0;
-constexpr size_t DRAW_ARGUMENTS_UAV_SLOT = 1;
+constexpr size_t BOUNDS_SRV_SLOT = srv::INSTANCE_BOUNDS;
+constexpr size_t INSTANCES_SRV_SLOT = srv::CULL_CANDIDATES;
+constexpr size_t VIEW_SRV_SLOT = srv::CULL_VIEW;
+constexpr size_t VISIBLE_INSTANCES_UAV_SLOT = StructuredUavIndex(uav::CULL_VISIBLE);
+constexpr size_t DRAW_ARGUMENTS_UAV_SLOT = StructuredUavIndex(uav::CULL_ARGUMENTS);
 
 struct CullView {
-    std::array<math::Vector4, 6> planes{};
-    uint32_t count = 0;
-    std::array<uint32_t, 3> padding{};
+    std::array<math::Vector4, 6> planes{}; ///< ワールド空間の視錐台平面。xyz は単位法線、w は平面定数。
+    uint32_t count = 0; ///< コンピュートシェーダーが照会する配置数。
+    std::array<uint32_t, 3> padding{}; ///< GPU 側の 16 バイト境界に合わせる予約領域。
 };
 static_assert(sizeof(CullView) == 112);
 
 struct IndexedArguments {
-    uint32_t indexCount = 0;
-    uint32_t instanceCount = 0;
-    uint32_t startIndex = 0;
-    int32_t baseVertex = 0;
-    uint32_t startInstance = 0;
+    uint32_t indexCount = 0; ///< 1 インスタンスが読むインデックス数。
+    uint32_t instanceCount = 0; ///< GPU が選別後に書く可視インスタンス数。
+    uint32_t startIndex = 0; ///< 共有インデックスバッファ内の開始位置 [要素]。
+    int32_t baseVertex = 0; ///< 各インデックスへ加える頂点バッファ内の基準位置 [頂点]。
+    uint32_t startInstance = 0; ///< 選別後のバッファ内で描画を始めるインスタンスの添字。
 };
 static_assert(sizeof(IndexedArguments) == 20);
 
 bool IsFiniteCullInstance(const GpuCullInstance& input)
 {
     if (!std::isfinite(input.bounds.x) || !std::isfinite(input.bounds.y)
-        || !std::isfinite(input.bounds.z) || !std::isfinite(input.bounds.w) || input.bounds.w < 0)
+        || !std::isfinite(input.bounds.z) || !std::isfinite(input.bounds.w) || input.bounds.w < 0) {
         return false;
+    }
 
-    for (const auto* matrix : {&input.world, &input.worldInvTranspose})
-        for (const auto& row : matrix->m)
-            for (float component : row)
-                if (!std::isfinite(component)) return false;
+    for (const auto* matrix : {&input.world, &input.worldInvTranspose}) {
+        for (const auto& row : matrix->m) {
+            for (float component : row) {
+                if (!std::isfinite(component)) {
+                    return false;
+                }
+            }
+        }
+    }
     return true;
 }
 
@@ -77,11 +84,19 @@ bool BuildCullView(const math::Frustum& frustum, size_t instanceCount, CullView&
 
 bool IsIndexedCullDraw(const DrawCall& call)
 {
-    return !call.indirectArguments.IsValid() && call.meshGroupCountX == 0
-        && call.indexCount != 0 && call.indexCount % 3 == 0
-        && call.indirectArgumentOffset == 0 && call.indirectCommandCount == 1 && !call.indirectInstanceOffset
-        && call.topology == PrimitiveTopology::TRIANGLE_LIST
-        && call.baseVertex <= static_cast<uint32_t>(std::numeric_limits<int32_t>::max());
+    // 選別は 1 件のインデックス付き描画を間接描画に変換する。
+    if (call.indirectArguments.IsValid() || call.meshGroupCountX != 0) {
+        return false;
+    }
+    if (call.indexCount == 0 || call.indexCount % 3 != 0) {
+        return false;
+    }
+    const bool standardArgumentLayout = call.indirectArgumentOffset == 0
+        && call.indirectCommandCount == 1 && !call.indirectInstanceOffset;
+    if (!standardArgumentLayout || call.topology != PrimitiveTopology::TRIANGLE_LIST) {
+        return false;
+    }
+    return call.baseVertex <= static_cast<uint32_t>(std::numeric_limits<int32_t>::max());
 }
 
 IndexedArguments MakeEmptyDrawArguments(const DrawCall& call)
@@ -89,7 +104,7 @@ IndexedArguments MakeEmptyDrawArguments(const DrawCall& call)
     return {call.indexCount, 0, call.startIndex, static_cast<int32_t>(call.baseVertex), 0};
 }
 
-} /// @note namespace
+} // namespace
 
 struct GpuInstanceCulling::State {
     uint64_t owner = 0;
@@ -118,7 +133,9 @@ struct GpuInstanceCulling::State {
         std::span<const math::Vector4> bounds, DrawCall& call)
     {
         CullView view;
-        if (!BuildCullView(frustum, instances.size(), view)) return false;
+        if (!BuildCullView(frustum, instances.size(), view)) {
+            return false;
+        }
 
         if (!storage->BelongsTo(resources)) {
             storage = std::make_unique<State>();
@@ -129,40 +146,66 @@ struct GpuInstanceCulling::State {
 
         constexpr bool queued = !std::is_same_v<Instance, GpuCullInstance>;
         constexpr bool deformed = std::is_same_v<Instance, GpuDeformedInstance>;
-        auto& cullShader = deformed ? state.deformedShader : queued ? state.queuedShader : state.shader;
+        // 配置の形式ごとに、シェーダーと入力バッファを対応させる。
+        const char* shaderPath = "Assets/Shaders/Pipeline/GpuInstanceCull.cs.hlsl";
+        auto* shaderHandle = &state.shader;
+        auto* inputPool = &state.inputs;
+        if constexpr (deformed) {
+            shaderPath = "Assets/Shaders/Pipeline/GpuDeformedInstanceCull.cs.hlsl";
+            shaderHandle = &state.deformedShader;
+            inputPool = &state.deformedInputs;
+        } else if constexpr (queued) {
+            shaderPath = "Assets/Shaders/Pipeline/GpuQueuedInstanceCull.cs.hlsl";
+            shaderHandle = &state.queuedShader;
+            inputPool = &state.queuedInputs;
+        }
+        auto& cullShader = *shaderHandle;
         if (!resources.Get(cullShader)) {
-            const char* shaderPath = "Assets/Shaders/Pipeline/GpuInstanceCull.cs.hlsl";
-            if constexpr (deformed)
-                shaderPath = "Assets/Shaders/Pipeline/GpuDeformedInstanceCull.cs.hlsl";
-            else if constexpr (queued)
-                shaderPath = "Assets/Shaders/Pipeline/GpuQueuedInstanceCull.cs.hlsl";
             cullShader = resources.LoadShader(shaderPath);
         }
-        if (!resources.Get(cullShader)) return false;
 
-        auto& inputPool = deformed ? state.deformedInputs : queued ? state.queuedInputs : state.inputs;
+        if (!resources.Get(cullShader)) {
+            return false;
+        }
+
+        // GPU で選別を実行する前に、全バッファの確保と記述子を確認する。
         auto& outputPool = deformed ? state.deformedOutputs : state.outputs;
         constexpr size_t outputStride = deformed ? sizeof(GpuDeformedInstance) : sizeof(PerInstanceData);
-        const auto input = inputPool.Acquire(resources, instances.size(), sizeof(Instance));
+        const auto input = inputPool->Acquire(resources, instances.size(), sizeof(Instance));
         const auto spheres = queued ? state.queuedBounds.Acquire(resources, bounds.size(), sizeof(math::Vector4))
             : ResourceHandle<StructuredBufferTag>{};
         const auto viewInput = state.views.Acquire(resources, 1, sizeof(CullView));
         const auto output = outputPool.Acquire(resources, instances.size(), outputStride);
         const auto drawArguments = state.arguments.Acquire(resources, 1, sizeof(IndexedArguments));
         if (!resources.Get(input) || (queued && !resources.Get(spheres)) || !resources.Get(viewInput)
-            || !resources.Get(output) || !resources.Get(drawArguments)) return false;
+            || !resources.Get(output) || !resources.Get(drawArguments)) {
+            return false;
+        }
 
         const auto hasSrv = [&](auto handle) { return resources.Get(handle)->GetBindlessIndex() != INVALID_BINDLESS_INDEX; };
         const auto hasUav = [&](auto handle) { return resources.Get(handle)->GetBindlessUavIndex() != INVALID_BINDLESS_INDEX; };
-        if constexpr (!queued)
-            if (!hasUav(output) || !hasSrv(output)) return false;
-        if (!hasSrv(input) || (queued && !hasSrv(spheres)) || !hasSrv(viewInput)) return false;
-        if constexpr (queued)
-            if (!hasSrv(output) || !hasUav(output)) return false;
-        if (!hasUav(drawArguments)) return false;
+        if constexpr (!queued) {
+            if (!hasUav(output) || !hasSrv(output)) {
+                return false;
+            }
+        }
+        if (!hasSrv(input) || (queued && !hasSrv(spheres)) || !hasSrv(viewInput)) {
+            return false;
+        }
+        if constexpr (queued) {
+            if (!hasSrv(output) || !hasUav(output)) {
+                return false;
+            }
+        }
+        if (!hasUav(drawArguments)) {
+            return false;
+        }
 
+        // 可視インスタンス数は GPU が埋めるため、間接描画引数を 0 件で初期化してから渡す。
         resources.Update(input, instances.data(), instances.size_bytes());
-        if constexpr (queued) resources.Update(spheres, bounds.data(), bounds.size_bytes());
+        if constexpr (queued) {
+            resources.Update(spheres, bounds.data(), bounds.size_bytes());
+        }
         resources.Update(viewInput, &view, sizeof(view));
         const auto initialArguments = MakeEmptyDrawArguments(call);
         resources.Update(drawArguments, &initialArguments, sizeof(initialArguments));
@@ -175,7 +218,7 @@ struct GpuInstanceCulling::State {
         compute.uavBuffers[VISIBLE_INSTANCES_UAV_SLOT] = output;
         compute.uavBuffers[DRAW_ARGUMENTS_UAV_SLOT] = drawArguments;
         if constexpr (queued) {
-            /// @note Native rejection uses the original instance order and bypasses indirect drawing.
+            // Native rejection uses the original instance order and bypasses indirect drawing.
             DrawCall fallback = call;
             fallback.instanceBuffer = input;
             fallback.instanceCount = view.count;
@@ -186,7 +229,9 @@ struct GpuInstanceCulling::State {
             call = std::move(indirect);
         } else {
             compute.dispatchX = (view.count + CULL_THREADS_PER_GROUP - 1) / CULL_THREADS_PER_GROUP;
-            if (!renderer.TryDispatch(compute, resources)) return false;
+            if (!renderer.TryDispatch(compute, resources)) {
+                return false;
+            }
             call.instanceBuffer = output;
             call.instanceCount = view.count;
             call.indirectArguments = drawArguments;
@@ -202,13 +247,19 @@ bool GpuInstanceCulling::Prepare(IRenderer& renderer, ResourceManager& resources
     std::span<const GpuCullInstance> instances, DrawCall& call)
 {
     if (!renderer.SupportsIndirectDraw() || instances.empty() || instances.size() > MAX_CULL_GROUPS * CULL_THREADS_PER_GROUP
-        || !IsIndexedCullDraw(call)) return false;
+        || !IsIndexedCullDraw(call)) {
+        return false;
+    }
 
     const auto* indices = resources.Get(call.indexBuffer);
-    if (!indices || static_cast<uint64_t>(call.startIndex) + call.indexCount > indices->GetSize() / sizeof(uint32_t))
+    if (!indices || static_cast<uint64_t>(call.startIndex) + call.indexCount > indices->GetSize() / sizeof(uint32_t)) {
         return false;
-    for (const auto& instance : instances)
-        if (!IsFiniteCullInstance(instance)) return false;
+    }
+    for (const auto& instance : instances) {
+        if (!IsFiniteCullInstance(instance)) {
+            return false;
+        }
+    }
 
     return State::Cull(m_state, renderer, resources, frustum, instances, {}, call);
 }
@@ -235,7 +286,9 @@ bool GpuInstanceCulling::SubmitDeformed(IRenderer& renderer, ResourceManager& re
 bool GpuInstanceCulling::SubmitStatic(IRenderer& renderer, ResourceManager& resources, const math::Frustum& frustum,
     std::span<const GpuCullInstance> source, DrawCall& call)
 {
-    if (source.empty() || source.size() > MAX_QUEUED_INSTANCES) return false;
+    if (source.empty() || source.size() > MAX_QUEUED_INSTANCES) {
+        return false;
+    }
 
     std::vector<PerInstanceData> transforms;
     std::vector<math::Vector4> spheres;
@@ -246,11 +299,14 @@ bool GpuInstanceCulling::SubmitStatic(IRenderer& renderer, ResourceManager& reso
         spheres.push_back(instance.bounds);
     }
 
-    if (!renderer.SupportsIndirectDraw() || !IsIndexedCullDraw(call) || call.preparedSkinning || !call.indexBuffer.IsValid())
+    if (!renderer.SupportsIndirectDraw() || !IsIndexedCullDraw(call) || call.preparedSkinning || !call.indexBuffer.IsValid()) {
         return false;
+    }
     for (size_t index = 0; index < transforms.size(); ++index) {
         const auto& transform = transforms[index];
-        if (!IsFiniteCullInstance({transform.world, transform.worldInvTranspose, spheres[index]})) return false;
+        if (!IsFiniteCullInstance({transform.world, transform.worldInvTranspose, spheres[index]})) {
+            return false;
+        }
     }
 
     return State::Cull(m_state, renderer, resources, frustum, std::span<const PerInstanceData>(transforms), spheres, call);
@@ -258,7 +314,9 @@ bool GpuInstanceCulling::SubmitStatic(IRenderer& renderer, ResourceManager& reso
 
 void GpuInstanceCulling::Release(ResourceManager& resources)
 {
-    if (!m_state->BelongsTo(resources)) return;
+    if (!m_state->BelongsTo(resources)) {
+        return;
+    }
 
     m_state->queuedInputs.ReleaseAll(resources);
     m_state->deformedInputs.ReleaseAll(resources);
@@ -269,4 +327,4 @@ void GpuInstanceCulling::Release(ResourceManager& resources)
     m_state->outputs.ReleaseAll(resources);
     m_state->arguments.ReleaseAll(resources);
 }
-} /// @note namespace fbzz::renderer
+} // namespace fbzz::renderer

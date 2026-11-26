@@ -62,7 +62,9 @@ struct RenderTrailInput {
 };
 inline bool TrailUsesColorGradient(const RenderTrailInput& trail) { return trail.colorGradientEnabled && trail.colorGradient.keyCount >= 2; }
 inline float TrailWidthAt(const RenderTrailInput& trail, float age, float easedAge) {
-    if (trail.widthCurveEnabled && trail.widthCurve.keyCount >= 2) return trail.widthStart * trail.widthCurve.Evaluate(age);
+    if (trail.widthCurveEnabled && trail.widthCurve.keyCount >= 2) {
+        return trail.widthStart * trail.widthCurve.Evaluate(age);
+    }
     return trail.widthEnd + (trail.widthStart - trail.widthEnd) * easedAge;
 }
 }

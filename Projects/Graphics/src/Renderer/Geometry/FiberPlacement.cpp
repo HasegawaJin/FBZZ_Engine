@@ -25,7 +25,13 @@ math::Vector3 Vector(const math::Matrix4& m, const math::Vector3& p)
 }
 bool Affine(const math::Matrix4& m)
 {
-    for (const auto& row : m.m) for (float value : row) if (!std::isfinite(value)) return false;
+    for (const auto& row : m.m) {
+        for (float value : row) {
+            if (!std::isfinite(value)) {
+                return false;
+            }
+        }
+    }
     const math::Vector3 x{m.m[0][0],m.m[1][0],m.m[2][0]};
     const math::Vector3 y{m.m[0][1],m.m[1][1],m.m[2][1]};
     const math::Vector3 z{m.m[0][2],m.m[1][2],m.m[2][2]};
@@ -66,7 +72,9 @@ bool VisitTiles(const Mesh& mesh, float cellSize, Visitor&& visitor,
         const auto& c = mesh.cpuVertices[mesh.cpuIndices[index+2]];
         const auto ab = b.position-a.position, ac = c.position-a.position;
         const auto cross = math::Vector3::Cross(ab,ac);
-        if (cross.LengthSq() <= 1.0e-16f) continue;
+        if (cross.LengthSq() <= 1.0e-16f) {
+            continue;
+        }
         const float edge = std::max({ab.Length(), ac.Length(), (c.position-b.position).Length()});
         const int divisions = static_cast<int>(std::clamp(std::ceil(edge/cellSize),1.0f,512.0f));
         const float inv = 1.0f/static_cast<float>(divisions);
@@ -76,7 +84,9 @@ bool VisitTiles(const Mesh& mesh, float cellSize, Visitor&& visitor,
             const auto wa = Point(*world,a.position), u = Vector(*world,ab), v = Vector(*world,ac);
             const float uu = math::Vector3::Dot(u,u), uv = math::Vector3::Dot(u,v), vv = math::Vector3::Dot(v,v);
             const float determinant = uu*vv-uv*uv;
-            if (determinant <= 1.0e-16f) continue;
+            if (determinant <= 1.0e-16f) {
+                continue;
+            }
             const auto coordinates = [&](const math::Vector3& p) {
                 const auto delta = p-wa;
                 const float du = math::Vector3::Dot(delta,u), dv = math::Vector3::Dot(delta,v);
@@ -90,18 +100,24 @@ bool VisitTiles(const Mesh& mesh, float cellSize, Visitor&& visitor,
             firstU = std::max(0,bound(std::min(p.x,q.x)-ru)); lastU = std::min(divisions-1,bound(std::max(p.x,q.x)+ru));
             firstV = std::max(0,bound(std::min(p.y,q.y)-rv)); lastV = std::min(divisions-1,bound(std::max(p.y,q.y)+rv));
         }
-        for (int u = firstU; u <= lastU; ++u) for (int v = firstV; v <= lastV && u+v < divisions; ++v) {
-            if (++tiles > FIBER_MAX_PAINT_CELLS) return false;
-            FiberPlacementTile tile;
-            tile.triangle = static_cast<uint32_t>(index/3);
-            tile.divisions = static_cast<uint32_t>(divisions);
-            tile.key = (static_cast<uint64_t>(tile.triangle)<<32) | (static_cast<uint64_t>(u)<<16) | static_cast<uint64_t>(v);
-            tile.origin = a.position + ab*(static_cast<float>(u)*inv) + ac*(static_cast<float>(v)*inv);
-            tile.edgeU = ab*inv; tile.edgeV = ac*inv; tile.normal = normal;
-            tile.uv = a.uv + (b.uv-a.uv)*(static_cast<float>(u)*inv) + (c.uv-a.uv)*(static_cast<float>(v)*inv);
-            tile.uvU = (b.uv-a.uv)*inv; tile.uvV = (c.uv-a.uv)*inv;
-            tile.half = u+v == divisions-1;
-            if (!visitor(tile)) return false;
+        for (int u = firstU; u <= lastU; ++u) {
+            for (int v = firstV; v <= lastV && u+v < divisions; ++v) {
+                if (++tiles > FIBER_MAX_PAINT_CELLS) {
+                    return false;
+                }
+                FiberPlacementTile tile;
+                tile.triangle = static_cast<uint32_t>(index/3);
+                tile.divisions = static_cast<uint32_t>(divisions);
+                tile.key = (static_cast<uint64_t>(tile.triangle)<<32) | (static_cast<uint64_t>(u)<<16) | static_cast<uint64_t>(v);
+                tile.origin = a.position + ab*(static_cast<float>(u)*inv) + ac*(static_cast<float>(v)*inv);
+                tile.edgeU = ab*inv; tile.edgeV = ac*inv; tile.normal = normal;
+                tile.uv = a.uv + (b.uv-a.uv)*(static_cast<float>(u)*inv) + (c.uv-a.uv)*(static_cast<float>(v)*inv);
+                tile.uvU = (b.uv-a.uv)*inv; tile.uvV = (c.uv-a.uv)*inv;
+                tile.half = u+v == divisions-1;
+                if (!visitor(tile)) {
+                    return false;
+                }
+            }
         }
     }
     return true;
@@ -122,8 +138,12 @@ uint64_t OptionsSignature(const FiberPlacementOptions& options)
     uint64_t hash = 1;
     HashFloat(hash,options.density); HashFloat(hash,options.width); HashFloat(hash,options.maxSlope);
     Hash(hash,options.seed); Hash(hash,options.maxBlades);
-    /// @note 平行移動では根元も密度も変わらない。回転と非一様スケールは傾斜・ワールド面積へ影響する。
-    for (int row = 0; row < 3; ++row) for (int col = 0; col < 3; ++col) HashFloat(hash,options.world.m[row][col]);
+    // 平行移動では根元も密度も変わらない。回転と非一様スケールは傾斜・ワールド面積へ影響する。
+    for (int row = 0; row < 3; ++row) {
+        for (int col = 0; col < 3; ++col) {
+            HashFloat(hash,options.world.m[row][col]);
+        }
+    }
     return hash;
 }
 bool GenerateChunk(FiberPlacementChunk& chunk, const FiberPaintData& paint,
@@ -134,12 +154,18 @@ bool GenerateChunk(FiberPlacementChunk& chunk, const FiberPaintData& paint,
     const float slope = std::cos(options.maxSlope*0.017453292519943295f);
     for (const auto& tile : chunk.tiles) {
         const auto value = Value(paint,tile.key);
-        if (value.density <= 0 || value.length <= 0) continue;
-        if (Vector(normalMatrix,tile.normal).Normalized().y < slope) continue;
+        if (value.density <= 0 || value.length <= 0) {
+            continue;
+        }
+        if (Vector(normalMatrix,tile.normal).Normalized().y < slope) {
+            continue;
+        }
         const auto uWorld = Vector(options.world,tile.edgeU), vWorld = Vector(options.world,tile.edgeV);
         const double expected = static_cast<double>(math::Vector3::Cross(uWorld,vWorld).Length())
             * (tile.half ? 0.5 : 1.0) * options.density;
-        if (!std::isfinite(expected) || expected > FIBER_MAX_PLACEMENT_BLADES) return false;
+        if (!std::isfinite(expected) || expected > FIBER_MAX_PLACEMENT_BLADES) {
+            return false;
+        }
         const uint64_t tileSeed = Mix(tile.key ^ (static_cast<uint64_t>(options.seed)<<32));
         const uint32_t count = static_cast<uint32_t>(expected) + (Random(tileSeed,0) < expected-std::floor(expected) ? 1u : 0u);
         const auto axis = std::abs(tile.normal.y) < 0.9f ? math::Vector3{0,1,0} : math::Vector3{1,0,0};
@@ -147,7 +173,9 @@ bool GenerateChunk(FiberPlacementChunk& chunk, const FiberPaintData& paint,
         const auto bitangent = math::Vector3::Cross(tile.normal,tangent);
         for (uint32_t i = 0; i < count; ++i) {
             const uint64_t key = Mix(tileSeed ^ (static_cast<uint64_t>(i)+1)*0x9e3779b97f4a7c15ull);
-            if (Random(key,1) >= value.density) continue;
+            if (Random(key,1) >= value.density) {
+                continue;
+            }
             float u = Random(key,2), v = Random(key,3);
             if (tile.half && u+v > 1) { u = 1-u; v = 1-v; }
             FiberBladeRoot root;
@@ -165,10 +193,12 @@ bool GenerateChunk(FiberPlacementChunk& chunk, const FiberPaintData& paint,
                 (ribbon == 0 ? root.m_side0 : root.m_side1) = side*(options.width*0.5f/worldLength);
             }
             roots.push_back(root);
-            if (roots.size() > options.maxBlades) return false;
+            if (roots.size() > options.maxBlades) {
+                return false;
+            }
         }
     }
-    /// @note 先頭から減らす既存 LOD が特定のセルを丸ごと消さないよう、独立した決定的順位で混ぜる。
+    // 先頭から減らす既存 LOD が特定のセルを丸ごと消さないよう、独立した決定的順位で混ぜる。
     std::stable_sort(roots.begin(),roots.end(),[](const auto& a, const auto& b) { return a.m_rank < b.m_rank; });
     chunk.center = {}; chunk.radius = 0;
     if (!roots.empty()) {
@@ -183,16 +213,20 @@ bool GenerateChunk(FiberPlacementChunk& chunk, const FiberPaintData& paint,
     chunk.roots = std::move(roots); chunk.contentSignature = content; ++chunk.revision;
     return true;
 }
-} /// @note namespace
+} // namespace
 
 uint64_t FiberMeshSignature(const Mesh& mesh)
 {
     if (mesh.isSkinned || mesh.cpuVertices.empty() || mesh.cpuIndices.empty() || mesh.cpuIndices.size()%3 != 0
-        || mesh.cpuIndices.size() > 600000) return 0;
+        || mesh.cpuIndices.size() > 600000) {
+        return 0;
+    }
     uint64_t hash = 1;
     Hash(hash,mesh.cpuVertices.size()); Hash(hash,mesh.cpuIndices.size());
     for (const auto& vertex : mesh.cpuVertices) {
-        if (!Finite(vertex.position)) return 0;
+        if (!Finite(vertex.position)) {
+            return 0;
+        }
         HashFloat(hash,vertex.position.x); HashFloat(hash,vertex.position.y); HashFloat(hash,vertex.position.z);
     }
     for (uint32_t index : mesh.cpuIndices) { if (index >= mesh.cpuVertices.size()) return 0; Hash(hash,index); }
@@ -201,34 +235,67 @@ uint64_t FiberMeshSignature(const Mesh& mesh)
 bool ValidateFiberPaintData(const FiberPaintData& data)
 {
     if (data.meshSignature == 0 || !std::isfinite(data.cellSize) || data.cellSize < 0.0001f || data.cellSize > 16
-        || !ValidValue(data.defaults) || data.cells.size() > FIBER_MAX_PAINT_CELLS) return false;
-    for (const auto& [key,value] : data.cells)
-        if ((key>>32) >= 200000 || ((key>>16)&65535) >= 512 || (key&65535) >= 512 || !ValidValue(value)) return false;
+        || !ValidValue(data.defaults) || data.cells.size() > FIBER_MAX_PAINT_CELLS) {
+        return false;
+    }
+    for (const auto& [key,value] : data.cells) {
+        if ((key>>32) >= 200000 || ((key>>16)&65535) >= 512 || (key&65535) >= 512 || !ValidValue(value)) {
+            return false;
+        }
+    }
     return true;
 }
 bool CreateFiberPaintData(const Mesh& mesh, float cellSize, float density, FiberPaintData& out)
 {
     FiberPaintData result;
     result.meshSignature = FiberMeshSignature(mesh); result.cellSize = cellSize; result.defaults.density = density;
-    if (!ValidateFiberPaintData(result) || !VisitTiles(mesh,cellSize,[](const auto&) { return true; })) return false;
+    if (!ValidateFiberPaintData(result) || !VisitTiles(mesh,cellSize,[](const auto&) { return true; })) {
+        return false;
+    }
     out = std::move(result);
     return true;
 }
 bool UpdateFiberPlacement(const Mesh& mesh, const FiberPaintData& paint, const FiberPlacementOptions& options, FiberPlacementCache& cache)
 {
-    if (!ValidateFiberPaintData(paint) || FiberMeshSignature(mesh) != paint.meshSignature || !Affine(options.world)
-        || !std::isfinite(options.density) || options.density <= 0 || options.density > 2000
-        || !std::isfinite(options.width) || options.width <= 0 || options.width > 0.5f
-        || !std::isfinite(options.chunkSize) || options.chunkSize < 0.025f || options.chunkSize > 128
-        || !std::isfinite(options.maxSlope) || options.maxSlope < 0 || options.maxSlope > 90
-        || options.maxBlades == 0 || options.maxBlades > FIBER_MAX_PLACEMENT_BLADES) return false;
+    // ペイント済みの重心座標を元の三角形に対応付けられることを確かめる。
+    if (!ValidateFiberPaintData(paint) || FiberMeshSignature(mesh) != paint.meshSignature) {
+        return false;
+    }
+    if (!Affine(options.world)) {
+        return false;
+    }
+
+    // ワールド空間での生成寸法と、生成量の上限を確認する。
+    const bool validDensity = std::isfinite(options.density) && options.density > 0 && options.density <= 2000;
+    if (!validDensity) {
+        return false;
+    }
+    const bool validWidth = std::isfinite(options.width) && options.width > 0 && options.width <= 0.5f;
+    if (!validWidth) {
+        return false;
+    }
+    const bool validChunkSize = std::isfinite(options.chunkSize) && options.chunkSize >= 0.025f && options.chunkSize <= 128;
+    if (!validChunkSize) {
+        return false;
+    }
+    const bool validSlope = std::isfinite(options.maxSlope) && options.maxSlope >= 0 && options.maxSlope <= 90;
+    if (!validSlope) {
+        return false;
+    }
+    if (options.maxBlades == 0 || options.maxBlades > FIBER_MAX_PLACEMENT_BLADES) {
+        return false;
+    }
+
     uint64_t layout = paint.meshSignature;
     HashFloat(layout,paint.cellSize); HashFloat(layout,options.chunkSize);
-    /// @note UV はペイント座標へ影響しないが、元の材質マスクを読む根元 UV は更新する。
+    // UV はペイント座標へ影響しないが、元の材質マスクを読む根元 UV は更新する。
     for (const auto& vertex : mesh.cpuVertices) {
-        if (!std::isfinite(vertex.uv.x) || !std::isfinite(vertex.uv.y)) return false;
+        if (!std::isfinite(vertex.uv.x) || !std::isfinite(vertex.uv.y)) {
+            return false;
+        }
         HashFloat(layout,vertex.uv.x); HashFloat(layout,vertex.uv.y);
     }
+    // チャンク配置が変わったときは別のキャッシュを組み、失敗しても呼び出し元の配置を保つ。
     FiberPlacementCache replacement;
     const bool rebuild = cache.layoutSignature != layout;
     auto* working = rebuild ? &replacement : &cache;
@@ -240,16 +307,21 @@ bool UpdateFiberPlacement(const Mesh& mesh, const FiberPaintData& paint, const F
             const float values[]{center.x,center.y,center.z};
             for (size_t axis = 0; axis < 3; ++axis) {
                 const double value = std::floor(static_cast<double>(values[axis])/options.chunkSize);
-                if (value < -1000000000 || value > 1000000000) return false;
+                if (value < -1000000000 || value > 1000000000) {
+                    return false;
+                }
                 cell[axis] = static_cast<int>(value);
             }
             const auto [it,inserted] = lookup.emplace(cell,working->chunks.size());
             if (inserted) { FiberPlacementChunk chunk; chunk.cell = cell; working->chunks.push_back(std::move(chunk)); }
             working->chunks[it->second].tiles.push_back(tile);
             return true;
-        })) return false;
+        })) {
+            return false;
+        }
         replacement.layoutSignature = layout;
     }
+    // ペイント値か生成設定が変わったチャンクを再生成し、全体の本数を数える。
     const uint64_t settings = OptionsSignature(options);
     std::vector<std::pair<size_t,FiberPlacementChunk>> changes;
     uint64_t total = 0;
@@ -260,16 +332,29 @@ bool UpdateFiberPlacement(const Mesh& mesh, const FiberPaintData& paint, const F
         if (chunk.revision == 0 || content != chunk.contentSignature) {
             FiberPlacementChunk update;
             update.cell = chunk.cell; update.tiles = chunk.tiles; update.revision = chunk.revision;
-            if (!GenerateChunk(update,paint,options,content)) return false;
+            if (!GenerateChunk(update,paint,options,content)) {
+                return false;
+            }
             total += update.roots.size();
             changes.emplace_back(i,std::move(update));
-        } else total += chunk.roots.size();
-        if (total > options.maxBlades) return false;
+        } else {
+            total += chunk.roots.size();
+        }
+        if (total > options.maxBlades) {
+            return false;
+        }
     }
-    for (auto& [index,chunk] : changes) working->chunks[index] = std::move(chunk);
-    if (!changes.empty() || rebuild) ++working->revision;
+    // 全チャンクが予算に収まってから、生成済みの差分を反映する。
+    for (auto& [index,chunk] : changes) {
+        working->chunks[index] = std::move(chunk);
+    }
+    if (!changes.empty() || rebuild) {
+        ++working->revision;
+    }
     working->bladeCount = static_cast<uint32_t>(total); working->optionsSignature = settings;
-    if (rebuild) cache = std::move(replacement);
+    if (rebuild) {
+        cache = std::move(replacement);
+    }
     return true;
 }
 bool PaintFiberSurface(const Mesh& mesh, const math::Matrix4& world, const FiberPaintStroke& stroke,
@@ -277,19 +362,43 @@ bool PaintFiberSurface(const Mesh& mesh, const math::Matrix4& world, const Fiber
                        const std::function<bool(const math::Vector3&,uint32_t)>& visible)
 {
     changed = 0;
-    if (!ValidateFiberPaintData(data) || FiberMeshSignature(mesh) != data.meshSignature || !Affine(world)
-        || !Finite(stroke.from) || !Finite(stroke.to) || !std::isfinite(stroke.radius) || stroke.radius <= 0 || stroke.radius > 128
-        || !std::isfinite(stroke.target) || stroke.target < 0 || stroke.target > 1
-        || !std::isfinite(stroke.softness) || stroke.softness < 0 || stroke.softness > 1
-        || !std::isfinite(stroke.maxSlope) || stroke.maxSlope < 0 || stroke.maxSlope > 90
-        || (stroke.mode != FiberPaintMode::DENSITY && stroke.mode != FiberPaintMode::LENGTH && stroke.mode != FiberPaintMode::SMOOTH)) return false;
+    // ブラシを適用する三角形を識別でき、ワールド位置と法線を計算できることを確認する。
+    if (!ValidateFiberPaintData(data) || FiberMeshSignature(mesh) != data.meshSignature) {
+        return false;
+    }
+    if (!Affine(world)) {
+        return false;
+    }
+
+    const bool validBrushVolume = Finite(stroke.from) && Finite(stroke.to)
+        && std::isfinite(stroke.radius) && stroke.radius > 0 && stroke.radius <= 128;
+    if (!validBrushVolume) {
+        return false;
+    }
+    const bool validBrushWeights = std::isfinite(stroke.target) && stroke.target >= 0 && stroke.target <= 1
+        && std::isfinite(stroke.softness) && stroke.softness >= 0 && stroke.softness <= 1;
+    if (!validBrushWeights) {
+        return false;
+    }
+    if (!std::isfinite(stroke.maxSlope) || stroke.maxSlope < 0 || stroke.maxSlope > 90) {
+        return false;
+    }
+    const bool supportedMode = stroke.mode == FiberPaintMode::DENSITY || stroke.mode == FiberPaintMode::LENGTH
+        || stroke.mode == FiberPaintMode::SMOOTH;
+    if (!supportedMode) {
+        return false;
+    }
+
+    // ブラシと交差する可視セルの更新を集めてから、保存するセル数を確認する。
     const auto normalMatrix = math::Matrix4::InverseTransposeAffine(world);
     const float slope = std::cos(stroke.maxSlope*0.017453292519943295f);
     std::vector<std::pair<uint64_t,FiberPaintValue>> changes;
     if (!VisitTiles(mesh,data.cellSize,[&](const auto& tile) {
         const auto center = Point(world,TileCenter(tile));
         const float distance = SegmentDistance(center,stroke.from,stroke.to);
-        if (distance >= stroke.radius || Vector(normalMatrix,tile.normal).Normalized().y < slope || (visible && !visible(center,tile.triangle))) return true;
+        if (distance >= stroke.radius || Vector(normalMatrix,tile.normal).Normalized().y < slope || (visible && !visible(center,tile.triangle))) {
+            return true;
+        }
         const float weight = stroke.softness > 0 ? std::clamp((1-distance/stroke.radius)/stroke.softness,0.0f,1.0f) : 1;
         auto value = Value(data,tile.key);
         const auto before = value;
@@ -299,7 +408,9 @@ bool PaintFiberSurface(const Mesh& mesh, const math::Matrix4& world, const Fiber
             const uint32_t u = static_cast<uint32_t>((tile.key>>16)&65535), v = static_cast<uint32_t>(tile.key&65535);
             for (const auto& offset : {std::array<int,2>{-1,0}, {1,0}, {0,-1}, {0,1}}) {
                 const int nu = static_cast<int>(u)+offset[0], nv = static_cast<int>(v)+offset[1];
-                if (nu < 0 || nv < 0 || nu+nv >= static_cast<int>(tile.divisions)) continue;
+                if (nu < 0 || nv < 0 || nu+nv >= static_cast<int>(tile.divisions)) {
+                    continue;
+                }
                 const auto neighbor = Value(data,(static_cast<uint64_t>(tile.triangle)<<32)|(static_cast<uint64_t>(nu)<<16)|static_cast<uint64_t>(nv));
                 density += neighbor.density; length += neighbor.length; ++count;
             }
@@ -310,18 +421,32 @@ bool PaintFiberSurface(const Mesh& mesh, const math::Matrix4& world, const Fiber
             channel = stroke.target >= channel ? std::max(channel,stroke.target*weight)
                 : std::min(channel,1-(1-stroke.target)*weight);
         }
-        if (!(value == before)) changes.emplace_back(tile.key,value);
+        if (!(value == before)) {
+            changes.emplace_back(tile.key,value);
+        }
         return true;
-    },&world,&stroke)) return false;
+    },&world,&stroke)) {
+        return false;
+    }
     size_t size = data.cells.size();
     for (const auto& [key,value] : changes) {
         const bool present = data.cells.contains(key);
-        if (value == data.defaults && present) --size;
-        if (!(value == data.defaults) && !present) ++size;
+        if (value == data.defaults && present) {
+            --size;
+        }
+        if (!(value == data.defaults) && !present) {
+            ++size;
+        }
     }
-    if (size > FIBER_MAX_PAINT_CELLS) return false;
+    if (size > FIBER_MAX_PAINT_CELLS) {
+        return false;
+    }
     for (const auto& [key,value] : changes) {
-        if (value == data.defaults) data.cells.erase(key); else data.cells[key] = value;
+        if (value == data.defaults) {
+            data.cells.erase(key);
+        } else {
+            data.cells[key] = value;
+        }
     }
     changed = static_cast<uint32_t>(changes.size());
     return true;
@@ -329,12 +454,16 @@ bool PaintFiberSurface(const Mesh& mesh, const math::Matrix4& world, const Fiber
 bool RaycastFiberSurface(const Mesh& mesh, const math::Matrix4& world, const math::Vector3& origin,
                          const math::Vector3& direction, float& distance, uint32_t& triangle)
 {
-    if (!Finite(origin) || !Finite(direction) || !Affine(world) || mesh.isSkinned || mesh.cpuIndices.size()%3 != 0) return false;
+    if (!Finite(origin) || !Finite(direction) || !Affine(world) || mesh.isSkinned || mesh.cpuIndices.size()%3 != 0) {
+        return false;
+    }
     bool hit = false;
     const math::Ray ray{origin,direction};
     for (size_t i = 0; i < mesh.cpuIndices.size(); i += 3) {
         const auto ia = mesh.cpuIndices[i], ib = mesh.cpuIndices[i+1], ic = mesh.cpuIndices[i+2];
-        if (ia >= mesh.cpuVertices.size() || ib >= mesh.cpuVertices.size() || ic >= mesh.cpuVertices.size()) continue;
+        if (ia >= mesh.cpuVertices.size() || ib >= mesh.cpuVertices.size() || ic >= mesh.cpuVertices.size()) {
+            continue;
+        }
         float d = 0;
         if (ray.IntersectTriangle(Point(world,mesh.cpuVertices[ia].position),Point(world,mesh.cpuVertices[ib].position),
             Point(world,mesh.cpuVertices[ic].position),d) && d >= 0 && d < distance) {
@@ -343,4 +472,4 @@ bool RaycastFiberSurface(const Mesh& mesh, const math::Matrix4& world, const mat
     }
     return hit;
 }
-} /// @note namespace fbzz::renderer
+} // namespace fbzz::renderer

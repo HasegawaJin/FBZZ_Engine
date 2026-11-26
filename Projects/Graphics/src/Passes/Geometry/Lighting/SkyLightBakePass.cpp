@@ -20,15 +20,19 @@ namespace fbzz::renderer {
 void ExecuteSkyLightBakePass(RenderPassContext& ctx)
 {
     auto* env = ctx.environmentResources;
-    /// @note SkyCapture が焼き直したフレームのみ
-    if (!env || !env->needsConvolution)        return;
-    if (!ctx.handles.skyEnvCubeRT.IsValid())   return;
+    // SkyCapture が焼き直したフレームのみ
+    if (!env || !env->needsConvolution) {
+        return;
+    }
+    if (!ctx.handles.skyEnvCubeRT.IsValid()) {
+        return;
+    }
 
-    /// @note 畳み込み品質。irradiance は粗くて十分、prefilter は roughness を 5 mip に分割する。
+    // 畳み込み品質。irradiance は粗くて十分、prefilter は roughness を 5 mip に分割する。
     constexpr uint32_t kIrradianceSize = 32;
     constexpr uint32_t kPrefilterSize  = 128;
     constexpr uint32_t kPrefilterMips  = 5;
-    /// @note runtime 用に editor (1024) より控えめ
+    // runtime 用に editor (1024) より控えめ
     constexpr uint32_t kSampleCount    = 128;
 
     std::unique_ptr<renderer::ITexture> irrTex, preTex;
@@ -38,9 +42,13 @@ void ExecuteSkyLightBakePass(RenderPassContext& ctx)
         irrTex, preTex);
 
     if (ok && irrTex && preTex) {
-        /// @note 旧 IBL テクスチャを解放してから差し替える (dirty 毎に焼き直すためリークさせない)。
-        if (env->skyIrradiance.IsValid()) ctx.resources.Release(env->skyIrradiance);
-        if (env->skyPrefilter.IsValid())  ctx.resources.Release(env->skyPrefilter);
+        // 旧 IBL テクスチャを解放してから差し替える (dirty 毎に焼き直すためリークさせない)。
+        if (env->skyIrradiance.IsValid()) {
+            ctx.resources.Release(env->skyIrradiance);
+        }
+        if (env->skyPrefilter.IsValid()) {
+            ctx.resources.Release(env->skyPrefilter);
+        }
         env->skyIrradiance       = ctx.resources.RegisterTexture(std::move(irrTex));
         env->skyPrefilter        = ctx.resources.RegisterTexture(std::move(preTex));
         env->prefilteredMipCount = kPrefilterMips;
@@ -51,15 +59,16 @@ void ExecuteSkyLightBakePass(RenderPassContext& ctx)
         env->immutablePrefilter = env->skyPrefilter;
     }
 
-    /// @note 成否に関わらずフラグを消費する。失敗フレームを毎回リトライして固まらないようにし、
-    /// @note 次に SkyCapture が dirty を検知したときに再度焼き直す。
+    // 成否に関わらずフラグを消費する。失敗フレームを毎回リトライして固まらないようにし、
+    // 次に SkyCapture が dirty を検知したときに再度焼き直す。
     env->needsConvolution = false;
-    /// @note まだ一度も焼けていないのに失敗したら、次フレームの SkyCapture を強制 dirty にする。
-    /// @note ConsumeDirty は SkyCapture の時点で署名を進めるため、ここで何もしないと太陽が 1.5°
-    /// @note 動くか大気設定を触るまで再試行されず IBL が ambient 落ちのままになる。既に焼けた組が
-    /// @note あるなら古い方を使い続ける方がましなので触らない。
-    if (!ok && !env->HasBakedTextures())
+    // まだ一度も焼けていないのに失敗したら、次フレームの SkyCapture を強制 dirty にする。
+    // ConsumeDirty は SkyCapture の時点で署名を進めるため、ここで何もしないと太陽が 1.5°
+    // 動くか大気設定を触るまで再試行されず IBL が ambient 落ちのままになる。既に焼けた組が
+    // あるなら古い方を使い続ける方がましなので触らない。
+    if (!ok && !env->HasBakedTextures()) {
         env->MarkDirty();
+    }
 }
 
-} /// @note namespace fbzz::renderer
+} // namespace fbzz::renderer

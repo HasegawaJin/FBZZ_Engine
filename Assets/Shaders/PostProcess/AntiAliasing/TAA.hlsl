@@ -11,39 +11,39 @@
 #include "Common/BindlessIndices.hlsli"
 #include "Rendering/ToneMap.hlsli"
 #include "Rendering/PostProcess.hlsli"
-FBZZ_TEX2D(texCurrent, TEX_GBUFFER0_SLOT);
+FBZZ_TEX2D(texCurrent, SRV_POST_COLOR_SLOT);
 /// @note Composite 第2面は露出済み HDR。A=1 の画素だけ HDR 履歴を使用できる。
-FBZZ_TEX2D(texCurrentRadiance, 8);
+FBZZ_TEX2D(texCurrentRadiance, SRV_TAA_RADIANCE_SLOT);
 FBZZ_TEX3D(texLUT, TEX_LUT_COLOR_GRADE_SLOT);
 /// @note 現フレームの GBuffer がシーン深度と一致する不透明面だけ空間再構成に使う。
-FBZZ_TEX2D(texSurfaceMaterial, 11);
-FBZZ_TEX2D(texSurfaceNormal, 12);
-FBZZ_TEX2D_T(float, texSurfaceDepth, 13);
+FBZZ_TEX2D(texSurfaceMaterial, SRV_TAA_SURFACE_MATERIAL_SLOT);
+FBZZ_TEX2D(texSurfaceNormal, SRV_TAA_SURFACE_NORMAL_SLOT);
+FBZZ_TEX2D_T(float, texSurfaceDepth, SRV_TAA_SURFACE_DEPTH_SLOT);
 FBZZ_TEX2D(texHistory, TEX_TAA_HISTORY_SLOT);
 /// @note 第2面の R は対数深度。HDR 面は -1-log2(1+depth)、空は -65504、GBA は HDR 色。
 /// @note LDR 面は log2(1+depth)、空は -1。符号で方式変更時の履歴混用を拒否する。
-FBZZ_TEX2D(texHistoryDepth, TEX_GBUFFER1_SLOT);
+FBZZ_TEX2D(texHistoryDepth, SRV_TAA_HISTORY_DEPTH_SLOT);
 FBZZ_TEX2D_T(float, texDepth, TEX_DEPTH_SLOT);
 FBZZ_TEX2D(texVelocity, TEX_VELOCITY_SLOT);
-FBZZ_TEX2D(texReactive, TEX_SSAO_SLOT);
+FBZZ_TEX2D(texReactive, SRV_TAA_REACTIVE_SLOT);
 SamplerState sampLinear : register(SAMPLER_LINEAR_CLAMP);
 SamplerState sampPoint : register(SAMPLER_POINT_CLAMP);
 /// @note 物理スロットをジッター周期へ固定し、現在の書込面は SRV に束縛しない。
-cbuffer TaaCycleConstants : register(b2)
+cbuffer TaaCycleConstants : register(FBZZ_REGISTER(b, CB_TAA_CYCLE_SLOT))
 {
     uint taaPhaseIndex;
     uint taaCycleEnabled;
     uint taaStaticView;
     uint taaCycleReserved;
 };
-FBZZ_TEX2D(texPhase0, 0);
-FBZZ_TEX2D(texPhase1, 1);
-FBZZ_TEX2D(texPhase2, 2);
-FBZZ_TEX2D(texPhase3, 3);
-FBZZ_TEX2D(texPhase4, 4);
-FBZZ_TEX2D(texPhase5, 10);
-FBZZ_TEX2D(texPhase6, 14);
-FBZZ_TEX2D(texPhase7, 15);
+FBZZ_TEX2D(texPhase0, SRV_TAA_PHASE0_SLOT);
+FBZZ_TEX2D(texPhase1, SRV_TAA_PHASE1_SLOT);
+FBZZ_TEX2D(texPhase2, SRV_TAA_PHASE2_SLOT);
+FBZZ_TEX2D(texPhase3, SRV_TAA_PHASE3_SLOT);
+FBZZ_TEX2D(texPhase4, SRV_TAA_PHASE4_SLOT);
+FBZZ_TEX2D(texPhase5, SRV_TAA_PHASE5_SLOT);
+FBZZ_TEX2D(texPhase6, SRV_TAA_PHASE6_SLOT);
+FBZZ_TEX2D(texPhase7, SRV_TAA_PHASE7_SLOT);
 
 FBZZFullscreenVertex VSMain(uint id : SV_VertexID) { return FBZZMakeFullscreenVertex(id); }
 
@@ -110,8 +110,8 @@ bool ResolveCycle(float3 current, float2 uv, out float3 resolved, out float coun
 /// @see https://research.nvidia.com/publication/2017-07_spatiotemporal-variance-guided-filtering-real-time-reconstruction-path-traced Edge-stopping functions for geometry and shading.
 float3 ReconstructSampledRadiance(float3 current, float2 uv, float ndcDepth)
 {
-    if (IsFarDepth(ndcDepth) || !IsBindlessValid(FbzzPixelSlot(11))
-        || !IsBindlessValid(FbzzPixelSlot(12)) || !IsBindlessValid(FbzzPixelSlot(13))) return current;
+    if (IsFarDepth(ndcDepth) || !IsBindlessValid(FbzzPixelSlot(SRV_TAA_SURFACE_MATERIAL_SLOT))
+        || !IsBindlessValid(FbzzPixelSlot(SRV_TAA_SURFACE_NORMAL_SLOT)) || !IsBindlessValid(FbzzPixelSlot(SRV_TAA_SURFACE_DEPTH_SLOT))) return current;
     if (abs(texSurfaceDepth.SampleLevel(sampPoint, uv, 0.0f).r - ndcDepth) > 1e-6f) return current;
     const float4 material = texSurfaceMaterial.SampleLevel(sampPoint, uv, 0.0f);
     const float4 surface = texSurfaceNormal.SampleLevel(sampPoint, uv, 0.0f);
@@ -157,7 +157,7 @@ TAAOutput PSMain(FBZZFullscreenVertex p)
     /// @note Output/history use stable pixel centers; sample the current raster at its jittered location before reconstruction.
     const float2 jitterUV = float2(taaJitterX * 0.5f, -taaJitterY * 0.5f);
     const float2 currentUV = uv + jitterUV;
-    const float4 currentRadiance = IsBindlessValid(FbzzPixelSlot(8))
+    const float4 currentRadiance = IsBindlessValid(FbzzPixelSlot(SRV_TAA_RADIANCE_SLOT))
         ? texCurrentRadiance.SampleLevel(sampLinear, currentUV, 0.0f) : 0.0f;
     const bool hdrHistory = clusterLightMode == FBZZ_LIGHT_MODE_SAMPLED && currentRadiance.a > 0.999f;
     const float ndcDepth = texDepth.SampleLevel(sampPoint, currentUV, 0.0f).r;
@@ -208,7 +208,7 @@ TAAOutput PSMain(FBZZFullscreenVertex p)
         }
     }
     if (any(previousUV < 0.0f) || any(previousUV > 1.0f)) return output;
-    if (!IsBindlessValid(FbzzPixelSlot(TEX_GBUFFER1_SLOT))) return output;
+    if (!IsBindlessValid(FbzzPixelSlot(SRV_TAA_HISTORY_DEPTH_SLOT))) return output;
     float encodedDepth = texHistoryDepth.SampleLevel(sampPoint, previousUV, 0.0f).r;
     if ((encodedDepth < -1.0f) != hdrHistory) return output;
     if (hdrHistory) encodedDepth = encodedDepth < -65000.0f ? -1.0f : -1.0f - encodedDepth;

@@ -81,11 +81,11 @@ public:
     };
 
     struct Snapshot {
-        ResourceHandle<RenderTargetTag> hdrRT;           ///< @note HDR カラーバッファ (フォワード/ディファード共通)
-        ResourceHandle<RenderTargetTag> ldrRT;           ///< @note トーンマップ後 LDR バッファ
-        ResourceHandle<RenderTargetTag> selectionMaskRT; ///< @note 選択オブジェクトマスク
-        ResourceHandle<RenderTargetTag> outlineRT;       ///< @note 選択アウトラインバッファ
-        ResourceHandle<RenderTargetTag> gbufferRT;       ///< @note G-Buffer (ディファードのみ有効)
+        ResourceHandle<RenderTargetTag> hdrRT;           ///< HDR カラーバッファ (フォワード/ディファード共通)
+        ResourceHandle<RenderTargetTag> ldrRT;           ///< トーンマップ後 LDR バッファ
+        ResourceHandle<RenderTargetTag> selectionMaskRT; ///< 選択オブジェクトマスク
+        ResourceHandle<RenderTargetTag> outlineRT;       ///< 選択アウトラインバッファ
+        ResourceHandle<RenderTargetTag> gbufferRT;       ///< G-Buffer (ディファードのみ有効)
 
         /// @note RenderGraph::ExecutionReport::profiles から詰めた {パス名, CPU時間(ms)} リスト。
         /// @note 空のままにするとタイミング表示をスキップする。
@@ -128,4 +128,4 @@ private:
                      const Snapshot& snapshot);
 };
 
-} /// @note namespace fbzz::renderer
+} // namespace fbzz::renderer

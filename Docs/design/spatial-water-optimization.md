@@ -98,18 +98,24 @@ shadow mode・dense policy・update mode・traceはprocess内の初回読取り�
 | 同上 | 未使用の出力file path | 別diagnostic runで有界JSONLを保存 |
 | `FBZZ_WATER_RIPPLE_BAKE_MODE` | 未指定・空・`full`・不明値 | 既定の全texel bake |
 | 同上 | 完全一致の`tiled` | 16×16 tile選択と共通bake kernel |
-| `FBZZ_DX12_UPLOAD_ARENA_MIB` | 未指定 / `16` / `32` / `64` / `128` | 一frame当たりのDX12 upload arena容量。未指定は16 MiB |
+| `FBZZ_DX12_UPLOAD_ARENA_MIB` | 未指定 / `16` / `32` / `64` / `128` | DX12 upload arenaのframe slotごとの初期容量。未指定は16 MiB |
 | 同上 | その他の明示値 | WARNを出し16 MiBへfallback |
 
 文字列は大小文字・余分な空白を補正しない。`auto`の64件とdense比率50%の採否は同条件の計測で判断する。不具合・悪化の切り分けは新processで`linear`、`full`、arena `16`へ戻す。assetやshaderの変更は要らない。
 
 ## DX12 upload arenaとメモリ予算
 
-[DX12Renderer.cpp](../../Projects/Graphics/src/Renderer/Platform/DX12/DX12Renderer.cpp)はrenderer初期化時に`FBZZ_DX12_UPLOAD_ARENA_MIB`を読み、[DX12UploadArenaSizing.hpp](../../Projects/Graphics/src/Renderer/Platform/DX12/Commands/DX12UploadArenaSizing.hpp)の`ParseUploadArenaMiB`で完全一致の4値だけを受ける。符号、単位、空白、先頭ゼロ、空文字、範囲外の数値を変換せず、明示無効値は既定16 MiBとする。初期化後に容量を動的変更しない。
+[DX12Renderer.cpp](../../Projects/Graphics/src/Renderer/Platform/DX12/DX12Renderer.cpp)はrenderer初期化時に`FBZZ_DX12_UPLOAD_ARENA_MIB`を読み、[DX12UploadArenaSizing.hpp](../../Projects/Graphics/src/Renderer/Platform/DX12/Commands/DX12UploadArenaSizing.hpp)の`ParseUploadArenaMiB`で完全一致の4値だけを受ける。符号、単位、空白、先頭ゼロ、空文字、範囲外の数値を変換せず、明示無効値は既定16 MiBとする。
 
-arenaは2frame分のcommitted upload resourceを所有する。既定16 MiB/frameは計32 MiB、比較用64 MiB/frameは計128 MiBで、追加capacityは96 MiBになる。これは確保容量であり、実使用量、process working set、GPU専用memory使用量の実測値ではない。初期化logのbytes/frame・frameCount・totalBytesをrun記録へ残す。
+rendererは2つのframe slotを持つ。初期ページの合計は既定16 MiBで32 MiB、比較用64 MiBで128 MiBとなり、初期容量の差は96 MiB。保持するページで割り当て要求を満たせない場合にページを追加する。設定した初期容量を追加ページの標準サイズとし、それを超える要求も一つのページに収める。追加はslotあたり16ページまでで、初期ページを含む容量は128 MiB以内とする。
 
-容量変更はshaderや描画品質を変更しない。比較ではarena不足の有無と描画結果を確認し、費用の差と追加メモリを併記する。値を大きくすること自体を高速化と見なさず、メモリ予算を満たす条件で選ぶ。
+対応するslotのfence完了後にページ内の割り当て位置を戻し、追加済みのページを次にそのslotを使うframeで再利用する。新しいページを確保するために上限内の空き容量を増やす場合、初期ページを残し、そのframeで未使用の追加ページから必要な分を解放する。バッファーのcopy stagingはslotあたり別の固定4 MiBを使い、超過分はfence付きの一時転送に回す。
+
+比較では、設定で決まる初期容量、追加ページを含む確保済み容量、そのframeで使った容量を分けて記録する。診断出力の`uploadCommittedBytes`はslotが保持するcommitted upload resourceの容量の合計、`uploadUsedBytes`はページ内のアラインメント余白を含むそのframeの使用量。ページ数は`uploadResidentPages`と`uploadPagesUsed`で確認する。process working setとGPU専用memory使用量は別に計測する。同じ描画条件で`failedAllocations`、`rejectedDraws`、`rejectedDispatches`、描画結果、処理時間を確認し、b14の束縛件数は別の診断runで照合する。[b14の診断項目](bindless.md#分離した診断)
+
+固定容量版の`ShadowAllVisible10000`は16 MiBの実行で割り当て不足を起こし、readbackの非背景ピクセル数が0だった。固定容量版で64 MiBを指定した実行では、既定のwarmup 12 frame、計測30 frameの条件で、各計測frameのcolor draw 10,000件、shadow draw 40,000件とreadbackの非背景ピクセル722,500件を確認した。別のb14診断runでは観測した50 frameそれぞれの`visits`と`uploads`がともに50,002件で、割り当て失敗は0件だった。
+
+同じ `ShadowAllVisible10000` をページ追加・b14再利用の実装で検証した。初期16 MiBと64 MiBの両方で、30計測フレームすべてのカラー描画は10,000件、影描画は40,000件。最終画像は固定64 MiB版と同じ722,500非背景ピクセル、同じハッシュ `4789296377656091429` だった。診断した50フレームで `uploads=10002`、`emptyReuses=40000`、描画拒否と確保失敗は0件。16 MiB設定での最大使用量は15,436,464バイトで、全フレームが初期ページ1枚に収まった。別の64 KiB定数を繰り返し更新する回帰テストで追加ページからの描画とフェンス後の再利用を検証している。
 
 ## Waterのbyte契約と既存CPU処理
 

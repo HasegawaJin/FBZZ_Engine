@@ -23,7 +23,9 @@ struct PeImage {
 
     template<class T> bool Read(std::size_t offset, T& value) const
     {
-        if (offset > bytes.size() || sizeof(T) > bytes.size() - offset) return false;
+        if (offset > bytes.size() || sizeof(T) > bytes.size() - offset) {
+            return false;
+        }
         std::memcpy(&value, bytes.data() + offset, sizeof(T));
         return true;
     }
@@ -31,20 +33,29 @@ struct PeImage {
     bool Open(const std::filesystem::path& path)
     {
         std::ifstream stream(path, std::ios::binary);
-        if (!stream) return false;
+        if (!stream) {
+            return false;
+        }
         bytes.assign(std::istreambuf_iterator<char>(stream), {});
         IMAGE_DOS_HEADER dos{};
-        if (!Read(0, dos) || dos.e_magic != IMAGE_DOS_SIGNATURE || dos.e_lfanew < 0) return false;
+        if (!Read(0, dos) || dos.e_magic != IMAGE_DOS_SIGNATURE || dos.e_lfanew < 0) {
+            return false;
+        }
         const auto offset = static_cast<std::size_t>(dos.e_lfanew);
         if (!Read(offset, headers) || headers.Signature != IMAGE_NT_SIGNATURE
             || headers.FileHeader.Machine != IMAGE_FILE_MACHINE_AMD64
             || headers.OptionalHeader.Magic != IMAGE_NT_OPTIONAL_HDR64_MAGIC
-            || headers.FileHeader.SizeOfOptionalHeader < sizeof(IMAGE_OPTIONAL_HEADER64)) return false;
+            || headers.FileHeader.SizeOfOptionalHeader < sizeof(IMAGE_OPTIONAL_HEADER64)) {
+            return false;
+        }
         const auto sectionOffset = offset + sizeof(DWORD) + sizeof(IMAGE_FILE_HEADER)
             + headers.FileHeader.SizeOfOptionalHeader;
         sections.resize(headers.FileHeader.NumberOfSections);
-        for (std::size_t i = 0; i < sections.size(); ++i)
-            if (!Read(sectionOffset + i * sizeof(IMAGE_SECTION_HEADER), sections[i])) return false;
+        for (std::size_t i = 0; i < sections.size(); ++i) {
+            if (!Read(sectionOffset + i * sizeof(IMAGE_SECTION_HEADER), sections[i])) {
+                return false;
+            }
+        }
         return true;
     }
 
@@ -55,9 +66,13 @@ struct PeImage {
             return offset <= bytes.size() && length <= bytes.size() - offset;
         }
         for (const auto& section : sections) {
-            if (rva < section.VirtualAddress) continue;
+            if (rva < section.VirtualAddress) {
+                continue;
+            }
             const auto delta = static_cast<std::size_t>(rva - section.VirtualAddress);
-            if (delta > section.SizeOfRawData || length > section.SizeOfRawData - delta) continue;
+            if (delta > section.SizeOfRawData || length > section.SizeOfRawData - delta) {
+                continue;
+            }
             offset = static_cast<std::size_t>(section.PointerToRawData) + delta;
             return offset <= bytes.size() && length <= bytes.size() - offset;
         }
@@ -75,8 +90,12 @@ struct PeImage {
         value.clear();
         for (std::size_t i = 0; i < 1024; ++i) {
             char character = 0;
-            if (i > MAXDWORD - rva || !ReadRva(rva + static_cast<DWORD>(i), character)) return false;
-            if (character == '\0') return true;
+            if (i > MAXDWORD - rva || !ReadRva(rva + static_cast<DWORD>(i), character)) {
+                return false;
+            }
+            if (character == '\0') {
+                return true;
+            }
             value.push_back(character);
         }
         return false;
@@ -85,21 +104,33 @@ struct PeImage {
     /// @see https://learn.microsoft.com/windows/win32/debug/pe-format Export address and name tables.
     bool Export(const char* name, DWORD& rva) const
     {
-        if (headers.OptionalHeader.NumberOfRvaAndSizes <= IMAGE_DIRECTORY_ENTRY_EXPORT) return false;
+        if (headers.OptionalHeader.NumberOfRvaAndSizes <= IMAGE_DIRECTORY_ENTRY_EXPORT) {
+            return false;
+        }
         const auto& directory = headers.OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_EXPORT];
         IMAGE_EXPORT_DIRECTORY exports{};
-        if (!directory.VirtualAddress || !ReadRva(directory.VirtualAddress, exports)) return false;
-        if (exports.NumberOfNames > bytes.size() / sizeof(DWORD)) return false;
+        if (!directory.VirtualAddress || !ReadRva(directory.VirtualAddress, exports)) {
+            return false;
+        }
+        if (exports.NumberOfNames > bytes.size() / sizeof(DWORD)) {
+            return false;
+        }
         for (DWORD i = 0; i < exports.NumberOfNames; ++i) {
             DWORD nameRva = 0;
             WORD ordinal = 0;
             std::string exportedName;
             if (!ReadRva(exports.AddressOfNames + i * sizeof(DWORD), nameRva)
-                || !String(nameRva, exportedName)) return false;
-            if (exportedName != name) continue;
+                || !String(nameRva, exportedName)) {
+                return false;
+            }
+            if (exportedName != name) {
+                continue;
+            }
             if (!ReadRva(exports.AddressOfNameOrdinals + i * sizeof(WORD), ordinal)
                 || ordinal >= exports.NumberOfFunctions
-                || !ReadRva(exports.AddressOfFunctions + ordinal * sizeof(DWORD), rva)) return false;
+                || !ReadRva(exports.AddressOfFunctions + ordinal * sizeof(DWORD), rva)) {
+                return false;
+            }
             const auto end = static_cast<std::uint64_t>(directory.VirtualAddress) + directory.Size;
             return rva < directory.VirtualAddress || rva >= end;
         }
@@ -149,25 +180,47 @@ bool ValidateGraphicsRuntimePackage(const std::filesystem::path& exePath, std::s
     unsigned int version = 0;
     std::uint64_t pathAddress = 0;
     std::string path;
-    if (!image.Open(exePath) || !image.Export("D3D12SDKVersion", versionRva)
-        || !image.Export("D3D12SDKPath", pathRva) || !image.ReadRva(versionRva, version)
-        || !image.ReadRva(pathRva, pathAddress) || pathAddress < image.headers.OptionalHeader.ImageBase
-        || pathAddress - image.headers.OptionalHeader.ImageBase > MAXDWORD
-        || !image.String(static_cast<DWORD>(pathAddress - image.headers.OptionalHeader.ImageBase), path)
-        || version != runtimecontract::SDK_VERSION || path != runtimecontract::SDK_PATH) {
+    const auto readExports = [&] {
+        // 両方のエクスポートを見つけてから値を読み、失敗時の診断にも読めた値を使う。
+        if (!image.Open(exePath) || !image.Export("D3D12SDKVersion", versionRva)
+            || !image.Export("D3D12SDKPath", pathRva)) {
+            return false;
+        }
+        if (!image.ReadRva(versionRva, version) || !image.ReadRva(pathRva, pathAddress)) {
+            return false;
+        }
+
+        // パスの仮想アドレスを、イメージ基点からの 32 ビット相対アドレスへ変換する。
+        const auto imageBase = image.headers.OptionalHeader.ImageBase;
+        if (pathAddress < imageBase) {
+            return false;
+        }
+        const std::uint64_t relativePathAddress = pathAddress - imageBase;
+        if (relativePathAddress > MAXDWORD) {
+            return false;
+        }
+        return image.String(static_cast<DWORD>(relativePathAddress), path);
+    };
+    if (!readExports() || version != runtimecontract::SDK_VERSION || path != runtimecontract::SDK_PATH) {
         reason = exePath.string() + ": Agility data exports missing or mismatched (found SDK="
             + std::to_string(version) + " path=" + path + "; expected SDK=" + std::to_string(runtimecontract::SDK_VERSION)
             + " path=" + runtimecontract::SDK_PATH + "); apply fbzz_enable_agility_sdk and relink the EXE";
         return false;
     }
+
+    // EXE が要求する SDK に加え、配布先に置かれた DLL の版を照合する。
     const auto root = exePath.parent_path();
     if (!ValidateVersion(root / "D3D12/D3D12Core.dll", runtimecontract::CORE_VERSION, reason)
         || !ValidateVersion(root / "dxcompiler.dll", runtimecontract::DXC_VERSION, reason)
-        || !ValidateVersion(root / "dxil.dll", runtimecontract::DXC_VERSION, reason)) return false;
+        || !ValidateVersion(root / "dxil.dll", runtimecontract::DXC_VERSION, reason)) {
+        return false;
+    }
     std::error_code error;
     const auto layers = root / "D3D12/d3d12SDKLayers.dll";
     if (std::filesystem::exists(layers, error)
-        && !ValidateVersion(layers, runtimecontract::CORE_VERSION, reason)) return false;
+        && !ValidateVersion(layers, runtimecontract::CORE_VERSION, reason)) {
+        return false;
+    }
     return true;
 }
 }

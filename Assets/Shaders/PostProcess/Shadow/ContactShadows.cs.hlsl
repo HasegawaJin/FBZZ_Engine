@@ -12,7 +12,7 @@
 #include "Common/BindlessIndices.hlsli"
 
 /// @note t7 = シーン深度 (Reversed-Z)。u3 = 出力 (半解像度)。b0 Camera / b3 Light / b8 AdvancedGraphics。
-FBZZ_TEX2D_T(float, texDepth, 7);
+FBZZ_TEX2D_T(float, texDepth, TEX_DEPTH_SLOT);
 FBZZ_RWTEX2D_T(float, OutputContactShadow, UAV_CONTACT_SHADOW_SLOT);
 
 /// @brief 自分自身の面を遮蔽物と取り違えないための奥行きの余裕 (視空間 Z に対する比)。

@@ -11,8 +11,8 @@
 #include "Platform/Backend.hlsli"
 #include "Common/BindlessIndices.hlsli"
 
-FBZZ_TEX2D(texSource, TEX_GBUFFER0_SLOT);
-// 全画面フェッチなので clamp 必須 (s0 は DX12 では WRAP)。
+FBZZ_TEX2D(texSource, SRV_POST_COLOR_SLOT);
+/// @note 全画面フェッチなので clamp 必須 (s0 は DX12 では WRAP)。
 SamplerState sampLinear : register(SAMPLER_LINEAR_CLAMP);
 
 FBZZFullscreenVertex VSMain(uint id : SV_VertexID)
@@ -34,7 +34,7 @@ float4 PSMain(FBZZFullscreenVertex p) : SV_Target0
     const float2 w2 = f * (0.5f + f * (2.0f - 1.5f * f));
     const float2 w3 = f * f * (-0.5f + 0.5f * f);
 
-    // 中央 2 タップは重み比の位置で 1 回サンプルすれば足りる (16 タップ → 9 タップ)。
+    /// @note 中央 2 タップは重み比の位置で 1 回サンプルすれば足りる (16 タップ → 9 タップ)。
     const float2 w12      = w1 + w2;
     const float2 offset12 = w2 / max(w12, 1e-5f);
 
@@ -55,7 +55,7 @@ float4 PSMain(FBZZFullscreenVertex p) : SV_Target0
     result += texSource.SampleLevel(sampLinear, float2(texPos12.x, texPos3.y),  0) * (w12.x * w3.y);
     result += texSource.SampleLevel(sampLinear, float2(texPos3.x,  texPos3.y),  0) * (w3.x  * w3.y);
 
-    // Catmull-Rom は負の重みを持つので、強い輪郭の外側が沈んでリンギングになる。
-    // ここは Composite 後の LDR なので [0,1] で閉じてよい。
+    /// @note Catmull-Rom は負の重みを持つので、強い輪郭の外側が沈んでリンギングになる。
+    /// @note ここは Composite 後の LDR なので [0,1] で閉じてよい。
     return float4(saturate(result.rgb), 1.0f);
 }

@@ -73,5 +73,5 @@ private:
 [[nodiscard]] FBZZ_PREPARED_SKINNING_API bool GpuSkinningDemandEnabled() noexcept;
 /// @note 登録済み facade と所有 Manager だけを照合し、仮想呼出し・待機 pump・資源解決は行わない。
 [[nodiscard]] FBZZ_PREPARED_SKINNING_API bool SupportsCapturedSkinning(const IRenderer& renderer, const ResourceManager& resources) noexcept;
-} /// @note namespace fbzz::renderer
+} // namespace fbzz::renderer
 #undef FBZZ_PREPARED_SKINNING_API

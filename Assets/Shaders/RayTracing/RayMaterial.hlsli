@@ -2,6 +2,7 @@
 /// @brief   Canonical PBR textures and candidate opacity with explicit ray LOD.
 /// @author  Hasegawa Jin
 /// @date    2026-10-01
+#include "Common/Binding.hlsli"
 #ifndef FBZZ_RAY_MATERIAL_HLSLI
 #define FBZZ_RAY_MATERIAL_HLSLI
 #ifndef COLOR_HLSLI
@@ -26,7 +27,7 @@ struct RaySurfaceRecord {
 };
 #ifndef FBZZ_RAY_LINEAR_SAMPLER_DEFINED
 #define FBZZ_RAY_LINEAR_SAMPLER_DEFINED
-SamplerState rayLinearSampler : register(s0);
+SamplerState rayLinearSampler : register(SAMPLER_DEFAULT);
 #endif
 
 /// @note Vertex layout is position@0, normal@12, tangent@24, uv@36 (60B); indices are local to firstVertex.

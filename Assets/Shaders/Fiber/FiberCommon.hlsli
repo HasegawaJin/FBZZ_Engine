@@ -2,6 +2,7 @@
 /// @brief   毛皮と芝の根元固定変形、手続き密度、照明。
 /// @author  Hasegawa Jin
 /// @date    2026-09-17
+#include "Common/Binding.hlsli"
 #ifndef FBZZ_FIBER_COMMON_HLSLI
 #define FBZZ_FIBER_COMMON_HLSLI
 #define FBZZ_MATERIAL_CONSTANTS
@@ -38,7 +39,7 @@ float4 FiberMaskFiltered(float2 uv)
     return fiberMaskTexture.Sample(fiberMaskSampler, uv);
 }
 
-cbuffer FiberFrameConstants : register(b5)
+cbuffer FiberFrameConstants : register(FBZZ_REGISTER(b, CB_FIBER_FRAME_SLOT))
 {
     float3 fiberWind;
     float fiberTime;
@@ -74,7 +75,7 @@ float3 FiberLocalFlow(float3 root, float time, bool previous)
 
 /// @note チャンクに届く最大32接触。発生時刻より前の速度評価には接触を適用しない。
 /// @note LAYOUT: FiberRenderPass.hpp の FiberContactCB と一致させる。
-cbuffer FiberContactConstants : register(b10)
+cbuffer FiberContactConstants : register(FBZZ_REGISTER(b, CB_FIBER_CONTACT_SLOT))
 {
     float4 fiberContactCenters[64];
     float4 fiberContactTimes[64];

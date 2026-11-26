@@ -214,8 +214,8 @@ struct ImageQualitySettings {
 /// @note 番号を詰め直さず末尾へ足すのは、.volume が段を整数で持つため。並べ替えると
 /// @note       既に書かれたアセットの «同じ数字» が別の段を指し始める。
 enum class CustomPassStage : uint8_t {
-    SceneHDR    = 0, ///< @note Composite の前 (HDR)。絵が出揃った後。ブルーム・露出が後段に掛かる
-    PostProcess = 1, ///< @note Composite の後 (LDR)。最終画をそのまま作り直す
+    SceneHDR    = 0, ///< Composite の前 (HDR)。絵が出揃った後。ブルーム・露出が後段に掛かる
+    PostProcess = 1, ///< Composite の後 (LDR)。最終画をそのまま作り直す
     /// @note 不透明の直後 (HDR)。デカール・トレイル・パーティクル・半透明はこの «後» に描かれる。
     /// @note SceneHDR と分けるのは、画面を歪める効果を SceneHDR に置くと既に描かれた
     /// @note       パーティクルごと曲がってしまうため。背景だけを歪めてから半透明を重ねられる。
@@ -229,12 +229,12 @@ enum class CustomPassStage : uint8_t {
 /// @note       その深度は書き込み先として押さえられているため。
 enum CustomPassInput : uint32_t {
     CUSTOM_PASS_INPUT_NONE        = 0u,
-    CUSTOM_PASS_INPUT_SCENE_DEPTH = 1u << 0, ///< @note t7  シーン深度
-    CUSTOM_PASS_INPUT_OBJECT_MASK = 1u << 1, ///< @note t6  オブジェクトマスク (+ t8 その深度)
-    CUSTOM_PASS_INPUT_VELOCITY    = 1u << 2, ///< @note t11 モーションベクター (TAA/MotionBlur 有効時)
-    CUSTOM_PASS_INPUT_NORMAL      = 1u << 3, ///< @note t12 GBuffer 法線 (Deferred 系のみ)
-    CUSTOM_PASS_INPUT_BLOOM       = 1u << 4, ///< @note t10 ブルーム (PostProcess 段のみ意味を持つ)
-    CUSTOM_PASS_INPUT_SSAO        = 1u << 5, ///< @note t9  遮蔽
+    CUSTOM_PASS_INPUT_SCENE_DEPTH = 1u << 0, ///< t7  シーン深度
+    CUSTOM_PASS_INPUT_OBJECT_MASK = 1u << 1, ///< t6  オブジェクトマスク (+ t8 その深度)
+    CUSTOM_PASS_INPUT_VELOCITY    = 1u << 2, ///< t11 モーションベクター (TAA/MotionBlur 有効時)
+    CUSTOM_PASS_INPUT_NORMAL      = 1u << 3, ///< t12 GBuffer 法線 (Deferred 系のみ)
+    CUSTOM_PASS_INPUT_BLOOM       = 1u << 4, ///< t10 ブルーム (PostProcess 段のみ意味を持つ)
+    CUSTOM_PASS_INPUT_SSAO        = 1u << 5, ///< t9  遮蔽
 };
 
 struct CustomPostProcessSettings {
@@ -299,7 +299,7 @@ struct PostProcessSettings {
     /// @note 画面フェード — 全ポストプロセス完了後の最終 lerp として適用する。
     /// @note alpha 0=透明(通常), 1=完全にフェード色で塗りつぶし。
     float screenFadeAlpha        = 0.0f;
-    float screenFadeColor[3]     = { 0.0f, 0.0f, 0.0f };  ///< @note RGB (デフォルト黒)
+    float screenFadeColor[3]     = { 0.0f, 0.0f, 0.0f };  ///< RGB (デフォルト黒)
 };
 
 enum class ViewMode : uint8_t {
@@ -356,14 +356,14 @@ struct ShadowSettings {
     /// @note LightComponent::shadowDistance > 0 の手動指定があるときはそちらが優先される。
     /// @note シーン全体へ合わせると広いレベルほどテクセルが粗くなる。
     float    autoFitDistance = 120.0f;
-    int      pcfRadius     = 2;     ///< @note PCF カーネル半径: 0=ハード, 1=3x3, 2=5x5, 3=7x7
+    int      pcfRadius     = 2;     ///< PCF カーネル半径: 0=ハード, 1=3x3, 2=5x5, 3=7x7
     /// @note カスケード可視化 (デバッグ)。1 = 影の色をカスケード番号で塗り分ける。
     /// @note 分割位置と境界ブレンドは数値だけでは詰められない。どこで切り替わっているかを
     /// @note       直接見せるのが、cascadeSplitLambda を調整する唯一の実用的な方法。
     bool     debugVisualizeCascades = false;
     /// @note PCSS (Percentage Closer Soft Shadows) — 距離に応じてペナンブラが変化するソフトシャドウ。
     bool     pcssEnabled     = false;
-    float    pcssLightRadius = 3.0f; ///< @note 仮想ライト半径 (world space): 大きいほどソフト
+    float    pcssLightRadius = 3.0f; ///< 仮想ライト半径 (world space): 大きいほどソフト
 
     /// @name Spot / Point シャドウ
     /// @{
@@ -371,7 +371,7 @@ struct ShadowSettings {
     /// @note CSM は「カメラからの距離帯」で決まるが、こちらは range と円錐角で決まる。
     /// @note 既定 2048² なら 1 タイル 512² で、range 10m の Spot がおよそ 2cm/テクセル。
     uint32_t punctualMapResolution = 2048u;
-    int      punctualPcfRadius     = 1;   ///< @note 0=ハード, 1=3x3, 2=5x5
+    int      punctualPcfRadius     = 1;   ///< 0=ハード, 1=3x3, 2=5x5
     /// @note 影を落とす「全方位ライト」(Point / Sphere / Tube) の上限。
     /// @note 1 個でキューブ 6 面 = 6 タイルを消費する。既定 2 個で 12 タイル、
     /// @note 残り 4 タイルが Spot / Area (1 個 1 タイル) へ回る。
@@ -390,21 +390,21 @@ struct ShadowSettings {
 /// @note 定数 ambient では金属素材がくすんで見えるが、事前畳み込みキューブマップで
 /// @note       環境光を再現することで金属の映り込みが正しく現れる。
 struct IBLSettings {
-    bool        enabled       = false;  ///< @note テクスチャ未ロード時は無効
+    bool        enabled       = false;  ///< テクスチャ未ロード時は無効
     float       intensity     = 1.0f;
     float       diffuseScale  = 1.0f;
     float       specularScale = 1.0f;
-    int         maxMipLevel   = 6;      ///< @note prefilter キューブマップの最大 mip
-    std::string irradiancePath;         ///< @note Diffuse irradiance cubemap (.dds)
-    std::string prefilterPath;          ///< @note Specular prefiltered cubemap (.dds)
+    int         maxMipLevel   = 6;      ///< prefilter キューブマップの最大 mip
+    std::string irradiancePath;         ///< Diffuse irradiance cubemap (.dds)
+    std::string prefilterPath;          ///< Specular prefiltered cubemap (.dds)
 };
 
 /// @note SSRSettings — スクリーンスペース反射。金属・濡れた床・水面の映り込みをリアルタイムに表現。
 /// @note キューブマップでは静的シーンしか反射できないが、SSR は動的オブジェクトも映せる。
 struct SSRSettings {
     bool  enabled     = false;
-    float maxDistance = 50.0f;  ///< @note 最大レイ距離
-    float thickness   = 0.15f;  ///< @note 深度交差判定の厚み
+    float maxDistance = 50.0f;  ///< 最大レイ距離
+    float thickness   = 0.15f;  ///< 深度交差判定の厚み
     int   steps       = 32;
     float intensity   = 0.8f;
 };
@@ -413,7 +413,7 @@ struct SSRSettings {
 struct VolumetricLightSettings {
     bool  enabled    = false;
     int   steps      = 32;
-    float scattering = 0.3f;   ///< @note Henyey-Greenstein 散乱係数 g
+    float scattering = 0.3f;   ///< Henyey-Greenstein 散乱係数 g
     float intensity  = 0.8f;
     float maxDist    = 30.0f;
     /// @note この距離まではレイを積分しない。カメラ直前に薄い靄が張り付くのを避ける。
@@ -423,10 +423,10 @@ struct VolumetricLightSettings {
     float density    = 0.0f;
     /// @note 高度による密度減衰 [1/m]。0 で無効。地表付近ほど濃い霧になり、光芒が床から立ち上がる。
     float heightFalloff = 0.0f;
-    float heightStart   = 0.0f; ///< @note 減衰の基準高度 [world Y]
+    float heightStart   = 0.0f; ///< 減衰の基準高度 [world Y]
     /// @note maxDist 手前でフェードする幅 (割合 [0,1])。0 だと最遠部で光芒が硬く切れる。
     float edgeFade   = 0.2f;
-    float tint[3]    = { 1.0f, 1.0f, 1.0f }; ///< @note 光芒に掛ける色
+    float tint[3]    = { 1.0f, 1.0f, 1.0f }; ///< 光芒に掛ける色
 };
 
 /// @note FroxelFogSettings — 視錐台を 3D グリッドへ切って霧を焼く方式の体積フォグ。
@@ -489,7 +489,7 @@ struct AutoExposureSettings {
 /// @note 前フレームの情報を蓄積してジャギーを消す。静止シーンはほぼ完璧になる。
 struct TAASettings {
     bool  enabled  = false;
-    float feedback = 0.9f;  ///< @note 前フレームブレンド比 (0=無効, 0.9=標準, 1=完全履歴)
+    float feedback = 0.9f;  ///< 前フレームブレンド比 (0=無効, 0.9=標準, 1=完全履歴)
 };
 
 /// @note MotionBlurSettings — カメラモーションブラー。映像的な動きの残像表現。
@@ -503,7 +503,7 @@ struct MotionBlurSettings {
 struct GTAOSettings {
     bool  enabled       = false;
     float intensity     = 1.0f;
-    float radius        = 1.5f;  ///< @note サンプリング半径 (world space)
+    float radius        = 1.5f;  ///< サンプリング半径 (world space)
     int   slices        = 3;
     int   stepsPerSlice = 4;
 };
@@ -531,7 +531,7 @@ struct LensFlareSettings {
 /// @note 外部DDSの色空間・RGB軸順・解像度差を排除し、全プロジェクトで同じルックを再現する。
 struct LUTColorGradingSettings {
     bool        enabled     = false;
-    float       blend       = 1.0f;   ///< @note LUT とオリジナルのブレンド比
+    float       blend       = 1.0f;   ///< LUT とオリジナルのブレンド比
     float       contrast    = 0.0f;
     float       saturation  = 1.0f;
     float       hueShift    = 0.0f;
@@ -572,8 +572,8 @@ struct VolumeSettings {
         post.imageQuality.clarityEnabled       = false;
         post.imageQuality.shadowHighlightEnabled = false;
         post.imageQuality.colorFilterEnabled   = false;
-        /// @note 残りのセクション (fog / vignette / filmGrain / sharpen / dof / lens /
-        /// @note       stylized / ssr / gtao / …) は構造体側の既定が既に false。
+        // 残りのセクション (fog / vignette / filmGrain / sharpen / dof / lens /
+        // stylized / ssr / gtao / …) は構造体側の既定が既に false。
     }
 
     /// @note 排他的な論理スロット (AA: FXAA/TAA, AO: SSAO/GTAO) を正規化する。
@@ -581,8 +581,12 @@ struct VolumeSettings {
     /// @note 既存パス (FXAA / SSAO) を優先する。
     void NormalizeExclusiveSlots()
     {
-        if (taa.enabled && post.fxaaEnabled)                taa.enabled  = false;
-        if (gtao.enabled && post.ambientOcclusion.enabled)  gtao.enabled = false;
+        if (taa.enabled && post.fxaaEnabled) {
+            taa.enabled  = false;
+        }
+        if (gtao.enabled && post.ambientOcclusion.enabled) {
+            gtao.enabled = false;
+        }
     }
 };
 
@@ -590,8 +594,8 @@ struct VolumeSettings {
 /// @note RenderSettings は RenderGraph.hpp を include していない (設定は依存解決器を知らなくて
 /// @note       よい) ため列挙を写す。値の対応は RenderPipeline が付ける。
 enum class RenderGraphSchedulePolicy : uint8_t {
-    RegistrationOrder = 0,  ///< @note 既定。依存が同じなら登録順が最小のものから出す
-    MinimizeLifetimes = 1,  ///< @note 同時に生きる中間 RT を減らす。申告漏れがあると壊れる
+    RegistrationOrder = 0,  ///< 既定。依存が同じなら登録順が最小のものから出す
+    MinimizeLifetimes = 1,  ///< 同時に生きる中間 RT を減らす。申告漏れがあると壊れる
 };
 
 /// @note RenderGraph に載せる 1 パスへの上書き。エディターから編集し、プロジェクトへ保存する。
@@ -599,10 +603,10 @@ enum class RenderGraphSchedulePolicy : uint8_t {
 /// @note       直接書けるようにするとそれが壊れる。動かしたいときは extraReads で «何を待つか»
 /// @note       を足す。結果として実行順は動くが、理由がグラフに残る。
 struct RenderPassOverride {
-    std::string name;                     ///< @note RenderGraph 上のパス名
-    bool enabled = true;                  ///< @note false でこのフレームに載せない
-    bool allowCulling = true;             ///< @note false で «出力へ届かなくても残す»
-    std::vector<std::string> extraReads;  ///< @note 追加で待たせるリソース名
+    std::string name;                     ///< RenderGraph 上のパス名
+    bool enabled = true;                  ///< false でこのフレームに載せない
+    bool allowCulling = true;             ///< false で «出力へ届かなくても残す»
+    std::vector<std::string> extraReads;  ///< 追加で待たせるリソース名
 
     /// @note 既定と同じなら保存もしない。無害な行がプロジェクトに溜まるのを避ける。
     [[nodiscard]] bool IsDefault() const
@@ -781,7 +785,9 @@ struct RenderSettings {
         showUIRects                  = source.showUIRects;
         showSelectionOutline         = source.showSelectionOutline;
         outlineWidth                 = source.outlineWidth;
-        for (int i = 0; i < 4; ++i) outlineColor[i] = source.outlineColor[i];
+        for (int i = 0; i < 4; ++i) {
+            outlineColor[i] = source.outlineColor[i];
+        }
         passViewerEnabled            = source.passViewerEnabled;
         particleOverdrawView         = source.particleOverdrawView;
         particleOverdrawIncludeModels = source.particleOverdrawIncludeModels;
@@ -832,8 +838,11 @@ struct RenderSettings {
     /// @brief エディターで選択中か (selectedObjects は選択の子孫も含む)。
     [[nodiscard]] bool IsSelected(uint32_t index, uint32_t generation) const
     {
-        for (const RenderSelectionID& selected : selectedObjects)
-            if (selected.index == index && selected.generation == generation) return true;
+        for (const RenderSelectionID& selected : selectedObjects) {
+            if (selected.index == index && selected.generation == generation) {
+                return true;
+            }
+        }
         return false;
     }
 
@@ -871,8 +880,11 @@ struct RenderSettings {
     /// @note 登録順で最初の override を採用し、未指定のパスは許可する。
     [[nodiscard]] bool IsPassEnabled(std::string_view name) const
     {
-        for (const auto& override : passOverrides)
-            if (override.name == name) return override.enabled;
+        for (const auto& override : passOverrides) {
+            if (override.name == name) {
+                return override.enabled;
+            }
+        }
         return true;
     }
 
@@ -949,7 +961,9 @@ inline void ResolveRenderResolution(uint32_t nativeWidth, uint32_t nativeHeight,
                         : (scale > kMaxRenderScale) ? kMaxRenderScale
                                                     : scale;
     const auto apply = [clamped](uint32_t native, uint32_t minimum) -> uint32_t {
-        if (native == 0u) return 0u;
+        if (native == 0u) {
+            return 0u;
+        }
         const float scaled = static_cast<float>(native) * clamped + 0.5f;
         const uint32_t value = static_cast<uint32_t>(scaled);
         const uint32_t floorValue = native < minimum ? native : minimum;
@@ -978,4 +992,4 @@ FBZZ_GRAPHICS_API void ApplyQualityPreset(RenderSettings& settings, QualityPrese
 /// @note 直近の (= より軽い側の) プリセットを返す。Option 画面の初期表示に使う。
 [[nodiscard]] FBZZ_GRAPHICS_API QualityPreset DetectQualityPreset(const RenderSettings& settings);
 
-} /// @note namespace fbzz::renderer
+} // namespace fbzz::renderer

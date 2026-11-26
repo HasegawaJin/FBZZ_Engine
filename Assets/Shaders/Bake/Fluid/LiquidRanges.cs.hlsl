@@ -2,13 +2,13 @@
 /// @brief   GPU 液体: 粒子ごとに近傍 27 セルを 9 本の連続した範囲として引いておく
 /// @author  Hasegawa Jin
 /// @date    2026-09-12
-//
-// 近傍は反復の前に 1 回だけ組む (CPU の BuildNeighbors と同じ)。反復・粘性はこの範囲を使い回す。
+///
+/// @note 近傍は反復の前に 1 回だけ組む (CPU の BuildNeighbors と同じ)。反復・粘性はこの範囲を使い回す。
 #include "Bake/Fluid/LiquidGrid.hlsli"
 #include "Common/BindlessIndices.hlsli"
 
-FBZZ_SBUFFER_T(float4, gPredicted, 14);
-FBZZ_RWSBUFFER_T(uint2, gRangesOut, 2);
+FBZZ_SBUFFER_T(float4, gPredicted, SRV_LIQUID_PARTICLES_SLOT);
+FBZZ_RWSBUFFER_T(uint2, gRangesOut, UAV_LIQUID_RANGES_SLOT);
 
 [numthreads(64, 1, 1)]
 void CSMain(uint3 id : SV_DispatchThreadID)

@@ -20,7 +20,7 @@ namespace detail {
 template <typename Tag> struct DynamicBufferFactory;
 
 template <> struct DynamicBufferFactory<BufferTag> {
-    static constexpr std::size_t kMinCapacity = 1024; ///< @note 頂点数
+    static constexpr std::size_t kMinCapacity = 1024; ///< 頂点数
     static ResourceHandle<BufferTag> Create(ResourceManager& resources, std::size_t capacity,
                                             std::uint32_t stride, Where where)
     {
@@ -30,7 +30,7 @@ template <> struct DynamicBufferFactory<BufferTag> {
 
 template <> struct DynamicBufferFactory<StructuredBufferTag> {
     /// @note 力場・スポーン・ライト配列は数本〜数百本。頂点ほど大きく刻むと使わない領域が太る。
-    static constexpr std::size_t kMinCapacity = 16; ///< @note 要素数
+    static constexpr std::size_t kMinCapacity = 16; ///< 要素数
     static ResourceHandle<StructuredBufferTag> Create(ResourceManager& resources, std::size_t capacity,
                                                       std::uint32_t stride, Where where)
     {
@@ -47,7 +47,7 @@ struct WritableStructuredBufferFactory {
     }
 };
 
-} /// @note namespace detail
+} // namespace detail
 
 /// @brief 「CPU で組み直した中身を 1 フレームに何度も Submit / Dispatch する」用途のバッファ
 /// @note        貸出プール。書き換えるたびに Acquire で借り直すこと (使い回し禁止)。
@@ -61,7 +61,7 @@ template <typename Tag, typename Factory = detail::DynamicBufferFactory<Tag>>
 class DynamicBufferPool {
 
 public:
-    /// @param minCapacity 容量クラスの下限 (要素数)。要求はこれ以上の 2 の冪へ切り上げる。
+    /// @param[in] minCapacity 容量クラスの下限 (要素数)。要求はこれ以上の 2 の冪へ切り上げる。
     /// @note UI の矩形のように 1 回が数頂点で本数が多い用途は小さく取る (本数 × 下限が常駐する)。
     explicit DynamicBufferPool(std::size_t minCapacity = Factory::kMinCapacity)
         : m_minCapacity(minCapacity == 0 ? 1 : minCapacity) {}
@@ -87,32 +87,40 @@ public:
                                               std::uint32_t stride,
                                               Where where = Where::current())
     {
-        if (count == 0 || stride == 0) return {};
+        if (count == 0 || stride == 0) {
+            return {};
+        }
 
-        /// @note 別 Manager へ移る場合は旧所有者へ返す。Reset 済みの世代は既に破棄されている。
+        // 別 Manager へ移る場合は旧所有者へ返す。Reset 済みの世代は既に破棄されている。
         if (m_owner != resources.GetInstanceId() || m_resetVersion != resources.GetResetVersion()) {
             ReleaseAll();
             m_owner = resources.GetInstanceId();
             m_resetVersion = resources.GetResetVersion();
             m_buckets.clear();
         }
-        /// @note フレーム単位で巻き戻すのは、エディタが 1 フレームで Scene View と Game View を
-        /// @note       続けて描くため。パス単位で戻すと 2 つのビューが同じバッファを共有してしまう。
+        // フレーム単位で巻き戻すのは、エディタが 1 フレームで Scene View と Game View を
+        // 続けて描くため。パス単位で戻すと 2 つのビューが同じバッファを共有してしまう。
         if (m_frame != resources.FrameStamp()) {
             m_frame = resources.FrameStamp();
             m_lane  = static_cast<std::size_t>(m_frame % kFramesInFlight);
-            for (Bucket& bucket : m_buckets) bucket.next = 0;
+            for (Bucket& bucket : m_buckets) {
+                bucket.next = 0;
+            }
         }
 
-        /// @note 2 の冪へ切り上げて確保し、要素数が少し増えるたびに再確保が走るのを避ける。
+        // 2 の冪へ切り上げて確保し、要素数が少し増えるたびに再確保が走るのを避ける。
         std::size_t capacity = m_minCapacity;
-        while (capacity < count) capacity *= 2;
+        while (capacity < count) {
+            capacity *= 2;
+        }
 
         Bucket& bucket = BucketFor(capacity, stride);
         std::vector<ResourceHandle<Tag>>& lane = bucket.lanes[m_lane];
         if (bucket.next >= lane.size()) {
             const ResourceHandle<Tag> handle = Factory::Create(resources, capacity, stride, where);
-            if (!handle.IsValid()) return {};
+            if (!handle.IsValid()) {
+                return {};
+            }
             lane.push_back(handle);
         }
         return lane[bucket.next++];
@@ -123,10 +131,15 @@ public:
     {
         if (auto* resources = ResourceManager::FindOwner(m_owner);
             resources && m_resetVersion == resources->GetResetVersion()) {
-            for (Bucket& bucket : m_buckets)
-                for (auto& lane : bucket.lanes)
-                    for (ResourceHandle<Tag> handle : lane)
-                        if (handle.IsValid()) resources->Release(handle);
+            for (Bucket& bucket : m_buckets) {
+                for (auto& lane : bucket.lanes) {
+                    for (ResourceHandle<Tag> handle : lane) {
+                        if (handle.IsValid()) {
+                            resources->Release(handle);
+                        }
+                    }
+                }
+            }
         }
         m_buckets.clear();
         m_frame = UINT64_MAX;
@@ -141,8 +154,11 @@ public:
     [[nodiscard]] std::size_t GetBufferCount() const
     {
         std::size_t count = 0;
-        for (const Bucket& bucket : m_buckets)
-            for (const auto& lane : bucket.lanes) count += lane.size();
+        for (const Bucket& bucket : m_buckets) {
+            for (const auto& lane : bucket.lanes) {
+                count += lane.size();
+            }
+        }
         return count;
     }
 
@@ -165,7 +181,7 @@ private:
 
     /// @brief 同じ «容量 × stride» のバッファを並べた列。next はこのフレームで何本貸したか。
     struct Bucket {
-        std::size_t   capacity = 0; ///< @note 要素数
+        std::size_t   capacity = 0; ///< 要素数
         std::uint32_t stride   = 0;
         std::size_t   next     = 0;
         std::array<std::vector<ResourceHandle<Tag>>, kFramesInFlight> lanes;
@@ -173,9 +189,12 @@ private:
 
     [[nodiscard]] Bucket& BucketFor(std::size_t capacity, std::uint32_t stride)
     {
-        for (Bucket& bucket : m_buckets)
-            if (bucket.capacity == capacity && bucket.stride == stride) return bucket;
-        /// @note 容量は 2 の冪なので種類は高々十数個。線形探索で足りる。
+        for (Bucket& bucket : m_buckets) {
+            if (bucket.capacity == capacity && bucket.stride == stride) {
+                return bucket;
+            }
+        }
+        // 容量は 2 の冪なので種類は高々十数個。線形探索で足りる。
         m_buckets.push_back(Bucket{ capacity, stride, 0, {} });
         return m_buckets.back();
     }
@@ -192,4 +211,4 @@ using DynamicVertexBufferPool     = DynamicBufferPool<BufferTag>;
 using DynamicStructuredBufferPool = DynamicBufferPool<StructuredBufferTag>;
 using DynamicRWStructuredBufferPool = DynamicBufferPool<StructuredBufferTag, detail::WritableStructuredBufferFactory>;
 
-} /// @note namespace fbzz::renderer
+} // namespace fbzz::renderer

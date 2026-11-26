@@ -2,6 +2,7 @@
 /// @brief   Material の GPU パラメーター初期化と転送。
 /// @author  Hasegawa Jin
 /// @date    2026-05-21
+#include <Graphics/Renderer/Commands/ShaderBindingSlots.hpp>
 #include "Graphics/Renderer/Materials/Material.hpp"
 #include "Graphics/Renderer/Resources/ResourceManager.hpp"
 #include "Graphics/Renderer/Resources/Buffers/IConstantBuffer.hpp"
@@ -17,13 +18,16 @@ namespace {
 /// @note 作成元が終了済みなら返却せず、別の Manager を経由しない。
 void ReleaseParamsBuffer(ResourceHandle<ConstantBufferTag>& buffer)
 {
-    if (!buffer.IsValid()) return;
-    if (ResourceManager* resources = ResourceManager::FindOwner(buffer.owner))
+    if (!buffer.IsValid()) {
+        return;
+    }
+    if (ResourceManager* resources = ResourceManager::FindOwner(buffer.owner)) {
         resources->Release(buffer);
+    }
     buffer = {};
 }
 
-} /// @note namespace
+} // namespace
 
 namespace material_transfer_detail {
 namespace {
@@ -32,7 +36,9 @@ thread_local MaterialTransferPayloadScope* s_currentMaterialTransfer = nullptr;
 uint64_t PayloadHash(std::span<const uint8_t> bytes)
 {
     uint64_t hash = 14695981039346656037ull;
-    for (const uint8_t value : bytes) hash = (hash ^ value) * 1099511628211ull;
+    for (const uint8_t value : bytes) {
+        hash = (hash ^ value) * 1099511628211ull;
+    }
     return hash;
 }
 
@@ -44,14 +50,16 @@ public:
 private:
     bool& m_busy;
 };
-} /// @note namespace
+} // namespace
 
 MaterialTransferPayloadScope::MaterialTransferPayloadScope(ResourceManager& resources) noexcept
     : m_previous(s_currentMaterialTransfer), m_resources(&resources), m_facade(&resources.m_renderer)
     , m_resourceInstance(resources.GetInstanceId())
 {
-    if (m_previous) m_depth = m_previous->m_depth < MAX_DEPTH
-        ? static_cast<uint8_t>(m_previous->m_depth + 1) : static_cast<uint8_t>(MAX_DEPTH + 1);
+    if (m_previous) {
+        m_depth = m_previous->m_depth < MAX_DEPTH
+            ? static_cast<uint8_t>(m_previous->m_depth + 1) : static_cast<uint8_t>(MAX_DEPTH + 1);
+    }
     m_eligible = m_depth <= MAX_DEPTH && IsRegisteredOwnedTransferProducer(*m_facade);
     s_currentMaterialTransfer = this;
 }
@@ -68,25 +76,31 @@ std::shared_ptr<const OwnedConstantBufferData> MaterialTransferPayloadScope::Cop
     if (!scope || !scope->m_eligible || scope->m_busy || scope->m_resources != &resources
         || scope->m_resourceInstance != resources.GetInstanceId()
         || !resources.IsMaterialTransferProducer(scope->m_facade)
-        || bytes.empty() || bytes.size() > MAX_PAYLOAD_BYTES) return {};
+        || bytes.empty() || bytes.size() > MAX_PAYLOAD_BYTES) {
+        return {};
+    }
     const MaterialTransferBusyScope busy(scope->m_busy);
     const uint64_t hash = PayloadHash(bytes);
     for (size_t i = 0; i < scope->m_count; ++i) {
         const auto& entry = scope->m_entries[i];
         const auto stored = entry.payload->Bytes();
         if (entry.hash == hash && stored.size() == bytes.size()
-            && std::memcmp(stored.data(), bytes.data(), bytes.size()) == 0) return entry.payload;
+            && std::memcmp(stored.data(), bytes.data(), bytes.size()) == 0) {
+            return entry.payload;
+        }
     }
-    if (scope->m_count == MAX_ENTRIES || bytes.size() > MAX_SCOPE_BYTES - scope->m_ownedBytes) return {};
+    if (scope->m_count == MAX_ENTRIES || bytes.size() > MAX_SCOPE_BYTES - scope->m_ownedBytes) {
+        return {};
+    }
     auto payload = std::make_shared<const OwnedConstantBufferData>(bytes);
-    /// @note Hash the owned copy itself; no raw input or entry reference leaves the helper.
+    // Hash the owned copy itself; no raw input or entry reference leaves the helper.
     scope->m_entries[scope->m_count] = {PayloadHash(payload->Bytes()), payload};
     ++scope->m_count;
     scope->m_ownedBytes += payload->Bytes().size();
     return payload;
 }
 
-} /// @note namespace material_transfer_detail
+} // namespace material_transfer_detail
 
 SurfaceMaterialData Material::ResolveRaySurface(const std::array<uint8_t, 96>& canonicalParams,
     bool standardPbr, uint32_t declaredTextureMask, bool unresolvedTexture, bool advancedLobes,
@@ -96,23 +110,31 @@ SurfaceMaterialData Material::ResolveRaySurface(const std::array<uint8_t, 96>& c
     uint32_t mask = 0;
     std::memcpy(&mask, params.data() + 80, sizeof(mask));
     mask |= declaredTextureMask;
-    /// @note Ray hit materials use base UVs. The raster height map does not participate in ray texture validation.
-    constexpr uint32_t PARALLAX_HEIGHT_SLOT = 5;
+    // Ray hit materials use base UVs. The raster height map does not participate in ray texture validation.
+    constexpr uint32_t PARALLAX_HEIGHT_SLOT = srv::PARALLAX_HEIGHT;
     constexpr uint32_t PARALLAX_HEIGHT_BIT = 1u << PARALLAX_HEIGHT_SLOT;
     const bool hasHeightSlot = (mask & PARALLAX_HEIGHT_BIT)
         || (textures.size() > PARALLAX_HEIGHT_SLOT && textures[PARALLAX_HEIGHT_SLOT].IsValid());
     const auto* nativeShader = standardPbr && hasHeightSlot ? resources.Get(shader) : nullptr;
     const bool rasterHeightMap = nativeShader && nativeShader->GetDescriptor().FindVar("parallaxDepth");
-    if (rasterHeightMap) mask &= ~PARALLAX_HEIGHT_BIT;
+    if (rasterHeightMap) {
+        mask &= ~PARALLAX_HEIGHT_BIT;
+    }
     std::array<RayTextureBinding, 5> bindings{};
     for (size_t i = 0; i < textures.size(); ++i) {
-        if (!textures[i]) continue;
-        if (i == PARALLAX_HEIGHT_SLOT && rasterHeightMap) continue;
+        if (!textures[i]) {
+            continue;
+        }
+        if (i == PARALLAX_HEIGHT_SLOT && rasterHeightMap) {
+            continue;
+        }
         if (i >= bindings.size()) { unresolvedTexture = true; continue; }
         mask |= 1u << i;
         const auto* texture = resources.Get(textures[i]);
         if (!texture || !texture->IsRayMaterialTexture()
-            || texture->GetBindlessIndex() == INVALID_BINDLESS_INDEX) continue;
+            || texture->GetBindlessIndex() == INVALID_BINDLESS_INDEX) {
+            continue;
+        }
         bindings[i] = {textures[i], texture->GetContentVersion()};
     }
     std::memcpy(params.data() + 80, &mask, sizeof(mask));
@@ -137,7 +159,9 @@ Material::Material(Material&& other) noexcept
 
 Material& Material::operator=(Material&& other) noexcept
 {
-    if (this == &other) return *this;
+    if (this == &other) {
+        return *this;
+    }
     ReleaseParamsBuffer(paramsBuffer);
     shader       = other.shader;
     textures     = std::move(other.textures);
@@ -162,60 +186,75 @@ Material Material::CloneWithoutGpuResources() const
 
 void Material::Init(ResourceManager& resources, uint32_t cbufferSize, Where where)
 {
-    /// @note 呼び出し側が CPU 配列を先に組み直すため、容量は GPU 実体で判定する。
-    /// @note       DX12 は 256 byte 単位で確保するので、必要量以上なら再利用できる。
-    if (paramData.size() != cbufferSize)
+    // 呼び出し側が CPU 配列を先に組み直すため、容量は GPU 実体で判定する。
+    // DX12 は 256 byte 単位で確保するので、必要量以上なら再利用できる。
+    if (paramData.size() != cbufferSize) {
         paramData.assign(cbufferSize, 0u);
+    }
     const auto* buffer = resources.Get(paramsBuffer);
-    if (buffer && cbufferSize > 0 && buffer->GetSize() >= cbufferSize) return;
+    if (buffer && cbufferSize > 0 && buffer->GetSize() >= cbufferSize) {
+        return;
+    }
     if (paramsBuffer.IsValid()) {
-        /// @note ハンドルの上書きだけでは旧 ConstantBuffer が ResourceManager に残るため、
-        /// @note       シェーダー変更でレイアウトが変わる前に明示的に解放する。
+        // ハンドルの上書きだけでは旧 ConstantBuffer が ResourceManager に残るため、
+        // シェーダー変更でレイアウトが変わる前に明示的に解放する。
         resources.Release(paramsBuffer);
         paramsBuffer = {};
     }
-    if (cbufferSize > 0)
+    if (cbufferSize > 0) {
         paramsBuffer = resources.CreateConstantBuffer(cbufferSize, where);
+    }
 }
 
 void Material::Upload(ResourceManager& resources, const ShaderDescriptor& desc, Where where)
 {
     Init(resources, desc.cbufferSize, where);
-    if (!paramsBuffer.IsValid()) return;
-    if (paramData.size() != desc.cbufferSize) return;
+    if (!paramsBuffer.IsValid()) {
+        return;
+    }
+    if (paramData.size() != desc.cbufferSize) {
+        return;
+    }
 
-    /// @note textureMask を textures の有効性から計算し paramData に書き込む。
-    /// @note       エディターでテクスチャを差し替えても自動反映されるよう毎フレーム再計算する。
+    // textureMask を textures の有効性から計算し paramData に書き込む。
+    // エディターでテクスチャを差し替えても自動反映されるよう毎フレーム再計算する。
     if (desc.textureMaskOffset != UINT32_MAX
         && desc.textureMaskOffset + 4 <= static_cast<uint32_t>(paramData.size()))
     {
         uint32_t mask = 0;
-        for (size_t i = 0; i < textures.size() && i < 8; ++i)
-            if (textures[i].IsValid()) mask |= (1u << i);
+        for (size_t i = 0; i < textures.size() && i < 8; ++i) {
+            if (textures[i].IsValid()) {
+                mask |= (1u << i);
+            }
+        }
         std::memcpy(paramData.data() + desc.textureMaskOffset, &mask, sizeof(uint32_t));
     }
 
-    /// @note bindless の添字を MaterialConstants へ毎フレーム書き込む。添字はテクスチャの生存に
-    /// @note       紐づき、差し替え・再読み込み・ホットリロードで変わるため、焼き込むと前のテクスチャが
-    /// @note       貼られたままになる。未割り当てを INVALID で埋めるのは、0 がヒープ先頭の有効な
-    /// @note       ディスクリプタで「差していない」と区別できないため。シェーダーは添字の有効判定で分岐する。
+    // bindless の添字を MaterialConstants へ毎フレーム書き込む。添字はテクスチャの生存に
+    // 紐づき、差し替え・再読み込み・ホットリロードで変わるため、焼き込むと前のテクスチャが
+    // 貼られたままになる。未割り当てを INVALID で埋めるのは、0 がヒープ先頭の有効な
+    // ディスクリプタで「差していない」と区別できないため。シェーダーは添字の有効判定で分岐する。
     for (const auto& bind : desc.textures) {
         if (bind.constantOffset == UINT32_MAX
-            || bind.constantOffset + sizeof(uint32_t) > paramData.size())
+            || bind.constantOffset + sizeof(uint32_t) > paramData.size()) {
             continue;
+        }
         uint32_t index = INVALID_BINDLESS_INDEX;
         if (bind.slot < textures.size()) {
-            if (const ITexture* texture = resources.Get(textures[bind.slot]))
+            if (const ITexture* texture = resources.Get(textures[bind.slot])) {
                 index = texture->GetBindlessIndex();
+            }
         }
         std::memcpy(paramData.data() + bind.constantOffset, &index, sizeof(uint32_t));
     }
 
-    if (auto payload = material_transfer_detail::MaterialTransferPayloadScope::CopyOrReuse(resources, paramData))
+    if (auto payload = material_transfer_detail::MaterialTransferPayloadScope::CopyOrReuse(resources, paramData)) {
         resources.UpdateOwnedMaterialBytes(paramsBuffer, std::move(payload));
-    else
+    }
+    else {
         resources.Update(paramsBuffer, paramData.data(),
                          static_cast<uint32_t>(paramData.size()));
+    }
 }
 
-} /// @note namespace fbzz::renderer
+} // namespace fbzz::renderer

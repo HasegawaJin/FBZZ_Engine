@@ -9,11 +9,11 @@
 #include "RayTracing/RayMaterial.hlsli"
 #include "RayTracing/RayShape.hlsli"
 #include "RayTracing/RayLight.hlsli"
-#define FBZZ_RAY_ENV_TEXTURE_SLOT 4
-#define FBZZ_RAY_ENV_TABLE_SLOT 7
+#define FBZZ_RAY_ENV_TEXTURE_SLOT SRV_RAY_PATH_ENVIRONMENT_SLOT
+#define FBZZ_RAY_ENV_TABLE_SLOT SRV_RAY_PATH_ENV_TABLE_SLOT
 #include "RayTracing/RayEnvironment.hlsli"
 
-cbuffer RayPathTraceConstants : register(b0)
+cbuffer RayPathTraceConstants : register(FBZZ_REGISTER(b, CB_RAY_PATH_TRACE_SLOT))
 {
     float4 cameraPosition, cameraRight, cameraUp, cameraForward;
     float4 lightDirection, lightRadiance, environmentRadiance;
@@ -25,7 +25,7 @@ cbuffer RayPathTraceConstants : register(b0)
     uint deltaLightCount, shapeCount; uint2 reserved;
     uint envTableCount, envFaceSize; float envRotation, envIntensity;
 };
-cbuffer RayGameTraceConstants : register(b1)
+cbuffer RayGameTraceConstants : register(FBZZ_REGISTER(b, CB_RAY_GAME_TRACE_SLOT))
 {
     uint gameMode, frameSampleIndex; uint2 gameReserved;
 };
@@ -82,7 +82,7 @@ struct PathHit
     RaySurfaceRecord surface;
 };
 struct RayPathHistoryRecord { float3 radianceSum; uint sampleCount; };
-SamplerState linearClamp : register(s2);
+SamplerState linearClamp : register(SAMPLER_LINEAR_CLAMP);
 static const float kInfiniteDistance = 3.402823466e38f;
 
 uint Hash(uint value)
@@ -158,8 +158,8 @@ bool AcceptRayCandidate(uint instance, uint primitive, float2 bary, out bool val
 {
     valid = false;
     if (instance >= instanceCount) return false;
-    StructuredBuffer<RayHitRecord> records = ResourceDescriptorHeap[FbzzPixelSlot(1)];
-    StructuredBuffer<RaySurfaceRecord> surfaces = ResourceDescriptorHeap[FbzzPixelSlot(2)];
+    StructuredBuffer<RayHitRecord> records = ResourceDescriptorHeap[FbzzPixelSlot(SRV_RAY_HIT_RECORDS_SLOT)];
+    StructuredBuffer<RaySurfaceRecord> surfaces = ResourceDescriptorHeap[FbzzPixelSlot(SRV_RAY_MATERIALS_SLOT)];
     RayHitRecord record = records[instance];
     uint3 indices;
     if (!RayIndices(record, primitive, indices)) return false;
@@ -172,7 +172,7 @@ uint TraceMeshSurface(RayDesc ray, out PathHit hit, uint rayFlags = RAY_FLAG_NON
 {
     hit = (PathHit)0;
     if (!instanceCount) return 0;
-    RaytracingAccelerationStructure scene = ResourceDescriptorHeap[FbzzPixelSlot(0)];
+    RaytracingAccelerationStructure scene = ResourceDescriptorHeap[FbzzPixelSlot(SRV_RAY_SCENE_SLOT)];
     RayQuery<RAY_FLAG_SKIP_PROCEDURAL_PRIMITIVES> query;
     query.TraceRayInline(scene, rayFlags, 1u, ray);
     while (query.Proceed()) {
@@ -186,8 +186,8 @@ uint TraceMeshSurface(RayDesc ray, out PathHit hit, uint rayFlags = RAY_FLAG_NON
     hit.instanceId = query.CommittedInstanceID();
     hit.primitiveId = query.CommittedPrimitiveIndex();
     if (hit.instanceId >= instanceCount) return 2;
-    StructuredBuffer<RayHitRecord> records = ResourceDescriptorHeap[FbzzPixelSlot(1)];
-    StructuredBuffer<RaySurfaceRecord> surfaces = ResourceDescriptorHeap[FbzzPixelSlot(2)];
+    StructuredBuffer<RayHitRecord> records = ResourceDescriptorHeap[FbzzPixelSlot(SRV_RAY_HIT_RECORDS_SLOT)];
+    StructuredBuffer<RaySurfaceRecord> surfaces = ResourceDescriptorHeap[FbzzPixelSlot(SRV_RAY_MATERIALS_SLOT)];
     RayHitRecord record = records[hit.instanceId];
     hit.surface = surfaces[hit.instanceId];
     if ((hit.surface.supported != 1u && hit.surface.supported != 2u)
@@ -268,7 +268,7 @@ uint TraceVirtualEmitter(RayDesc ray, uint rayFlags, out PathHit hit)
 {
     hit = (PathHit)0;
     if (!emitterCount) return 0u;
-    StructuredBuffer<RayPathEmitterRecord> emitters = ResourceDescriptorHeap[FbzzPixelSlot(3)];
+    StructuredBuffer<RayPathEmitterRecord> emitters = ResourceDescriptorHeap[FbzzPixelSlot(SRV_RAY_EMITTERS_SLOT)];
     bool found = false;
     for (uint i = 0; i < emitterCount; ++i) {
         RayPathEmitterRecord emitter = emitters[i];
@@ -298,7 +298,7 @@ uint TraceVirtualShape(RayDesc ray, uint rayFlags, out PathHit hit)
 {
     hit = (PathHit)0;
     if (!shapeCount) return 0u;
-    StructuredBuffer<RayPathShapeRecord> shapes = ResourceDescriptorHeap[FbzzPixelSlot(6)];
+    StructuredBuffer<RayPathShapeRecord> shapes = ResourceDescriptorHeap[FbzzPixelSlot(SRV_RAY_PATH_SHAPES_SLOT)];
     bool found = false;
     for (uint i = 0; i < shapeCount; ++i) {
         float distance; float3 normal;
@@ -348,7 +348,7 @@ bool EmitterEndpoint(uint instanceId, uint primitiveId, float hitDistance, uint 
 {
     if (instanceId == targetInstance && primitiveId == targetPrimitive) return true;
     if (!emitterCount || targetError <= 0 || abs(hitDistance - targetDistance) > targetError) return false;
-    StructuredBuffer<RayPathEmitterRecord> emitters = ResourceDescriptorHeap[FbzzPixelSlot(3)];
+    StructuredBuffer<RayPathEmitterRecord> emitters = ResourceDescriptorHeap[FbzzPixelSlot(SRV_RAY_EMITTERS_SLOT)];
     RayPathEmitterRecord target = (RayPathEmitterRecord)0, candidate = (RayPathEmitterRecord)0;
     bool foundTarget = false, foundCandidate = false;
     for (uint i = 0; i < emitterCount; ++i) {
@@ -384,7 +384,7 @@ bool Visible(float3 origin, float3 direction, float distance, uint emitterInstan
         ray.TMax = min(ray.TMax, virtualHit.distance);
     }
     if (!instanceCount) return true;
-    RaytracingAccelerationStructure scene = ResourceDescriptorHeap[FbzzPixelSlot(0)];
+    RaytracingAccelerationStructure scene = ResourceDescriptorHeap[FbzzPixelSlot(SRV_RAY_SCENE_SLOT)];
     RayQuery<RAY_FLAG_SKIP_PROCEDURAL_PRIMITIVES> query;
     query.TraceRayInline(scene, RAY_FLAG_NONE, 1u, ray);
     while (query.Proceed()) {
@@ -680,12 +680,12 @@ float DistanceRangeWindow(float distance, float range)
 float3 HitEmission(PathHit hit, float distance)
 {
     if (hit.virtualShape) {
-        StructuredBuffer<RayPathShapeRecord> shapes = ResourceDescriptorHeap[FbzzPixelSlot(6)];
+        StructuredBuffer<RayPathShapeRecord> shapes = ResourceDescriptorHeap[FbzzPixelSlot(SRV_RAY_PATH_SHAPES_SLOT)];
         RayPathShapeRecord shape = shapes[hit.shapeIndex];
         return hit.frontFace ? shape.emission * DistanceRangeWindow(distance, shape.range) : 0;
     }
     if (!emitterCount) return hit.frontFace ? max(hit.surface.emission, 0) : 0;
-    StructuredBuffer<RayPathEmitterRecord> emitters = ResourceDescriptorHeap[FbzzPixelSlot(3)];
+    StructuredBuffer<RayPathEmitterRecord> emitters = ResourceDescriptorHeap[FbzzPixelSlot(SRV_RAY_EMITTERS_SLOT)];
     bool proxyOwner = false;
     float3 emission = 0;
     for (uint i = 0; i < emitterCount; ++i) {
@@ -703,11 +703,11 @@ float3 HitEmission(PathHit hit, float distance)
 float EmitterPdf(PathHit hit, float3 previousPosition)
 {
     if (hit.virtualShape) {
-        StructuredBuffer<RayPathShapeRecord> shapes = ResourceDescriptorHeap[FbzzPixelSlot(6)];
+        StructuredBuffer<RayPathShapeRecord> shapes = ResourceDescriptorHeap[FbzzPixelSlot(SRV_RAY_PATH_SHAPES_SLOT)];
         return RayShapeSolidAnglePdf(shapes[hit.shapeIndex], previousPosition, hit.position, hit.geometricNormal);
     }
     if (!emitterCount) return 0;
-    StructuredBuffer<RayPathEmitterRecord> emitters = ResourceDescriptorHeap[FbzzPixelSlot(3)];
+    StructuredBuffer<RayPathEmitterRecord> emitters = ResourceDescriptorHeap[FbzzPixelSlot(SRV_RAY_EMITTERS_SLOT)];
     for (uint i = 0; i < emitterCount; ++i) {
         RayPathEmitterRecord emitter = emitters[i];
         if (emitter.instanceId != hit.instanceId || emitter.primitiveId != hit.primitiveId) continue;
@@ -730,7 +730,7 @@ float3 SampleEmitter(PathHit hit, float3 view, inout uint rng, out float3 diffus
 {
     diffuseEstimate = 0;
     if (!emitterCount) return 0;
-    StructuredBuffer<RayPathEmitterRecord> emitters = ResourceDescriptorHeap[FbzzPixelSlot(3)];
+    StructuredBuffer<RayPathEmitterRecord> emitters = ResourceDescriptorHeap[FbzzPixelSlot(SRV_RAY_EMITTERS_SLOT)];
     float selection = Random(rng);
     uint index = 0xFFFFFFFFu;
     for (uint i = 0; i < emitterCount; ++i) {
@@ -753,8 +753,8 @@ float3 SampleEmitter(PathHit hit, float3 view, inout uint rng, out float3 diffus
     }
     float3 emittedRadiance = emitter.emission;
     if (emitter.instanceId != 0xFFFFFFFFu && (emitter.flags & 4u) == 0) {
-        StructuredBuffer<RayHitRecord> records = ResourceDescriptorHeap[FbzzPixelSlot(1)];
-        StructuredBuffer<RaySurfaceRecord> materials = ResourceDescriptorHeap[FbzzPixelSlot(2)];
+        StructuredBuffer<RayHitRecord> records = ResourceDescriptorHeap[FbzzPixelSlot(SRV_RAY_HIT_RECORDS_SLOT)];
+        StructuredBuffer<RaySurfaceRecord> materials = ResourceDescriptorHeap[FbzzPixelSlot(SRV_RAY_MATERIALS_SLOT)];
         RayHitRecord record = records[emitter.instanceId];
         uint3 indices;
         if (!RayIndices(record, emitter.primitiveId, indices)) return asfloat(0x7FC00000u);
@@ -799,7 +799,7 @@ float3 SampleShape(PathHit hit, float3 view, inout uint rng, out float3 diffuseE
 {
     diffuseEstimate = 0;
     if (!shapeCount) return 0;
-    StructuredBuffer<RayPathShapeRecord> shapes = ResourceDescriptorHeap[FbzzPixelSlot(6)];
+    StructuredBuffer<RayPathShapeRecord> shapes = ResourceDescriptorHeap[FbzzPixelSlot(SRV_RAY_PATH_SHAPES_SLOT)];
     float selection = Random(rng);
     uint index = 0xFFFFFFFFu;
     for (uint i = 0; i < shapeCount; ++i) {
@@ -880,7 +880,7 @@ bool DeltaLights(PathHit hit, float3 view, out precise float3 result, out float3
     result = 0;
     diffuseEstimate = 0;
     if (!deltaLightCount) return true;
-    StructuredBuffer<RayPathDeltaRecord> lights = ResourceDescriptorHeap[FbzzPixelSlot(5)];
+    StructuredBuffer<RayPathDeltaRecord> lights = ResourceDescriptorHeap[FbzzPixelSlot(SRV_RAY_PATH_LIGHTS_SLOT)];
     for (uint i = 0; i < deltaLightCount; ++i) {
         RayPathDeltaRecord light = lights[i];
         float3 direction;
@@ -1161,10 +1161,10 @@ bool Integrate(RayDesc ray, inout uint rng, out float3 radiance)
 /// @see https://microsoft.github.io/DirectX-Specs/d3d/Raytracing.html Triangle intersection precision and RayQuery
 uint GamePrimary(uint2 pixel, RayDesc ray, uint status, inout PathHit hit)
 {
-    Texture2D<float4> albedoTexture = ResourceDescriptorHeap[FbzzPixelSlot(8)];
-    Texture2D<float4> normalTexture = ResourceDescriptorHeap[FbzzPixelSlot(9)];
-    Texture2D<float> depthTexture = ResourceDescriptorHeap[FbzzPixelSlot(10)];
-    Texture2D<float4> emissionTexture = ResourceDescriptorHeap[FbzzPixelSlot(11)];
+    Texture2D<float4> albedoTexture = ResourceDescriptorHeap[FbzzPixelSlot(SRV_RAY_PATH_ALBEDO_SLOT)];
+    Texture2D<float4> normalTexture = ResourceDescriptorHeap[FbzzPixelSlot(SRV_RAY_PATH_NORMAL_SLOT)];
+    Texture2D<float> depthTexture = ResourceDescriptorHeap[FbzzPixelSlot(SRV_RAY_PATH_DEPTH_SLOT)];
+    Texture2D<float4> emissionTexture = ResourceDescriptorHeap[FbzzPixelSlot(SRV_RAY_PATH_EMISSION_SLOT)];
     float depth = depthTexture.Load(int3(pixel, 0));
     if (status == 0) return depth == 0 ? 2u : 3u;
     if (status != 1 || hit.surface.supported != 1u || hit.virtualEmitter || hit.virtualShape) return 0xFFFFFFFFu;
@@ -1197,12 +1197,12 @@ uint GamePrimary(uint2 pixel, RayDesc ray, uint status, inout PathHit hit)
 void GameTrace(uint2 pixel)
 {
     uint index = pixel.y * width + pixel.x;
-    RWStructuredBuffer<RayGameTransportRecord> transport = ResourceDescriptorHeap[FbzzUavSlot(2)];
-    RWStructuredBuffer<RayReconstructionSurface> validatedSurface = ResourceDescriptorHeap[FbzzUavSlot(3)];
-    RWTexture2D<float4> output = ResourceDescriptorHeap[FbzzUavSlot(0)];
-    RWTexture2D<float4> surface = ResourceDescriptorHeap[FbzzUavSlot(1)];
-    RWTexture2D<float4> material = ResourceDescriptorHeap[FbzzUavSlot(4)];
-    RWTexture2D<float4> geometry = ResourceDescriptorHeap[FbzzUavSlot(5)];
+    RWStructuredBuffer<RayGameTransportRecord> transport = ResourceDescriptorHeap[FbzzUavSlot(UAV_RAY_GAME_TRANSPORT_SLOT)];
+    RWStructuredBuffer<RayReconstructionSurface> validatedSurface = ResourceDescriptorHeap[FbzzUavSlot(UAV_RAY_GAME_SURFACE_SLOT)];
+    RWTexture2D<float4> output = ResourceDescriptorHeap[FbzzUavSlot(UAV_RAY_RESULT_SLOT)];
+    RWTexture2D<float4> surface = ResourceDescriptorHeap[FbzzUavSlot(UAV_RAY_PATH_SURFACE_SLOT)];
+    RWTexture2D<float4> material = ResourceDescriptorHeap[FbzzUavSlot(UAV_RAY_PATH_MATERIAL_SLOT)];
+    RWTexture2D<float4> geometry = ResourceDescriptorHeap[FbzzUavSlot(UAV_RAY_PATH_GEOMETRY_SLOT)];
     RayGameTransportRecord components = (RayGameTransportRecord)0;
     RayReconstructionSurface reconstruction = (RayReconstructionSurface)0;
     surface[pixel] = 0; material[pixel] = 0; geometry[pixel] = 0;
@@ -1223,10 +1223,10 @@ void GameTrace(uint2 pixel)
         reconstruction.albedoMetallic = float4(hit.surface.baseColor.rgb, hit.surface.metallic);
         reconstruction.geometricNormalHitDistance = float4(hit.geometricNormal, hit.distance);
         reconstruction.objectMaterialValid.xyz = uint3(hit.objectIndex, hit.objectGeneration, hit.instanceId);
-        StructuredBuffer<RayHitRecord> records = ResourceDescriptorHeap[FbzzPixelSlot(1)];
+        StructuredBuffer<RayHitRecord> records = ResourceDescriptorHeap[FbzzPixelSlot(SRV_RAY_HIT_RECORDS_SLOT)];
         RayHitRecord record = records[hit.instanceId];
         reconstruction.sceneFlags.xy = uint2(record.sceneGenerationLow, record.sceneGenerationHigh);
-        StructuredBuffer<RayGameMotionRecord> motion = ResourceDescriptorHeap[FbzzPixelSlot(12)];
+        StructuredBuffer<RayGameMotionRecord> motion = ResourceDescriptorHeap[FbzzPixelSlot(SRV_RAY_GAME_MOTION_SLOT)];
         RayGameMotionRecord transform = motion[hit.instanceId];
         float4 objectPosition = mul(transform.currentWorldInverse, float4(hit.position, 1));
         reconstruction.previousPositionValid = float4(mul(transform.previousWorld, objectPosition).xyz,
@@ -1261,12 +1261,12 @@ void CSMain(uint3 pixel : SV_DispatchThreadID)
     if (pixel.x >= width || pixel.y >= height) return;
     if (gameMode) { GameTrace(pixel.xy); return; }
     uint index = pixel.y * width + pixel.x;
-    RWTexture2D<float4> output = ResourceDescriptorHeap[FbzzUavSlot(0)];
-    RWTexture2D<float4> surface = ResourceDescriptorHeap[FbzzUavSlot(1)];
-    RWStructuredBuffer<RayPathHistoryRecord> history = ResourceDescriptorHeap[FbzzUavSlot(2)];
-    RWStructuredBuffer<uint4> ids = ResourceDescriptorHeap[FbzzUavSlot(3)];
-    RWTexture2D<float4> material = ResourceDescriptorHeap[FbzzUavSlot(4)];
-    RWTexture2D<float4> geometry = ResourceDescriptorHeap[FbzzUavSlot(5)];
+    RWTexture2D<float4> output = ResourceDescriptorHeap[FbzzUavSlot(UAV_RAY_RESULT_SLOT)];
+    RWTexture2D<float4> surface = ResourceDescriptorHeap[FbzzUavSlot(UAV_RAY_PATH_SURFACE_SLOT)];
+    RWStructuredBuffer<RayPathHistoryRecord> history = ResourceDescriptorHeap[FbzzUavSlot(UAV_RAY_PATH_HISTORY_SLOT)];
+    RWStructuredBuffer<uint4> ids = ResourceDescriptorHeap[FbzzUavSlot(UAV_RAY_PATH_IDS_SLOT)];
+    RWTexture2D<float4> material = ResourceDescriptorHeap[FbzzUavSlot(UAV_RAY_PATH_MATERIAL_SLOT)];
+    RWTexture2D<float4> geometry = ResourceDescriptorHeap[FbzzUavSlot(UAV_RAY_PATH_GEOMETRY_SLOT)];
     surface[pixel.xy] = 0; material[pixel.xy] = 0; geometry[pixel.xy] = 0; ids[index] = 0;
     PathHit centerHit;
     RayDesc centerRay = CameraRay(pixel.xy, 0.5f.xx);

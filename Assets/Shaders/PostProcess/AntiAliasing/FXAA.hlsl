@@ -1,15 +1,16 @@
-// FBZZ Engine
-// PostProcess/AntiAliasing/FXAA.hlsl | PostProcess
-// Fast Approximate Anti-Aliasing — FXAA 3.11 console 版の PS 移植
-// 入力: TEX_GBUFFER0 (t5) = Composite 出力 LDR カラー
+/// @file    FXAA.hlsl
+/// @brief   Fast Approximate Anti-Aliasing — FXAA 3.11 console 版の PS 移植
+/// @author  Hasegawa Jin
+/// @date    2026-05-19
+/// @note 入力: TEX_GBUFFER0 (t5) = Composite 出力 LDR カラー
 
 #include "Common/Constants.hlsli"
 #include "Common/Fullscreen.hlsli"
 #include "Platform/Backend.hlsli"
 #include "Common/BindlessIndices.hlsli"
 
-FBZZ_TEX2D(texLDR, TEX_GBUFFER0_SLOT);
-// 全画面フェッチなので clamp 必須 (s0 は DX12 では WRAP)。
+FBZZ_TEX2D(texLDR, SRV_POST_COLOR_SLOT);
+/// @note 全画面フェッチなので clamp 必須 (s0 は DX12 では WRAP)。
 SamplerState sampLinear : register(SAMPLER_LINEAR_CLAMP);
 
 static const float FXAA_SPAN_MAX   = 8.0f;
@@ -28,7 +29,7 @@ float4 PSMain(FBZZFullscreenVertex p) : SV_Target0
     float2 uv  = p.uv;
     float2 rcp = texelSize;
 
-    // 斜め 4 点 + 中心をサンプル
+    /// @note 斜め 4 点 + 中心をサンプル
     float3 cNW = texLDR.SampleLevel(sampLinear, uv + float2(-0.5f, -0.5f) * rcp, 0).rgb;
     float3 cNE = texLDR.SampleLevel(sampLinear, uv + float2( 0.5f, -0.5f) * rcp, 0).rgb;
     float3 cSW = texLDR.SampleLevel(sampLinear, uv + float2(-0.5f,  0.5f) * rcp, 0).rgb;
@@ -39,7 +40,7 @@ float4 PSMain(FBZZFullscreenVertex p) : SV_Target0
     float lumaSW = Luma(cSW), lumaSE = Luma(cSE);
     float lumaM  = Luma(cM);
 
-    // 輝度勾配からエッジ方向ベクトルを推定
+    /// @note 輝度勾配からエッジ方向ベクトルを推定
     float2 dir;
     dir.x = -((lumaNW + lumaNE) - (lumaSW + lumaSE));
     dir.y =  ((lumaNW + lumaSW) - (lumaNE + lumaSE));
@@ -51,7 +52,7 @@ float4 PSMain(FBZZFullscreenVertex p) : SV_Target0
                 float2(-FXAA_SPAN_MAX, -FXAA_SPAN_MAX),
                 float2( FXAA_SPAN_MAX,  FXAA_SPAN_MAX)) * rcp;
 
-    // エッジ方向に 2 段サンプル
+    /// @note エッジ方向に 2 段サンプル
     float3 rgbA = 0.5f * (
         texLDR.SampleLevel(sampLinear, uv + dir * (1.0f / 3.0f - 0.5f), 0).rgb +
         texLDR.SampleLevel(sampLinear, uv + dir * (2.0f / 3.0f - 0.5f), 0).rgb);
@@ -63,7 +64,7 @@ float4 PSMain(FBZZFullscreenVertex p) : SV_Target0
     float lumaMax = max(lumaM, max(max(lumaNW, lumaNE), max(lumaSW, lumaSE)));
     float lumaB   = Luma(rgbB);
 
-    // rgbB が局所コントラスト外にはみ出た場合は rgbA を採用
+    /// @note rgbB が局所コントラスト外にはみ出た場合は rgbA を採用
     float3 result = (lumaB < lumaMin || lumaB > lumaMax) ? rgbA : rgbB;
     return float4(result, 1.0f);
 }

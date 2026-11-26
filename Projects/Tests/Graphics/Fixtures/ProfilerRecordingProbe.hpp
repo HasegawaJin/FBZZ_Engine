@@ -38,7 +38,9 @@ public:
         ++m_result.begins;
         if (m_result.log) m_result.views.push_back(metadata);
         m_result.Event("begin:" + std::to_string(metadata.viewId));
-        if (m_result.reject || m_open) return false;
+        if (m_result.reject || m_open) {
+            return false;
+        }
         m_open = true;
         return true;
     }

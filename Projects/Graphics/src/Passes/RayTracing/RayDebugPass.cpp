@@ -2,6 +2,7 @@
 /// @brief   Inline RayQuery の typed 入力と LDR 診断合成を記録する。
 /// @author  Hasegawa Jin
 /// @date    2026-09-30
+#include <Graphics/Renderer/Commands/ShaderBindingSlots.hpp>
 #include <Graphics/Passes/RayTracing/RayDebugPass.hpp>
 #include <Graphics/Pipeline/Resources/RenderResources.hpp>
 #include <Graphics/Renderer/Commands/ComputeCall.hpp>
@@ -12,11 +13,18 @@
 namespace fbzz::renderer {
 bool MakeRayDebugCameraConstants(const Camera& camera, RayDebugConstants& output)
 {
-    if (!std::isfinite(camera.m_near) || !std::isfinite(camera.m_far)
-        || camera.m_near <= 0 || camera.m_far <= camera.m_near
-        || !std::isfinite(camera.m_aspect) || camera.m_aspect <= 0
-        || !std::isfinite(camera.m_fovY) || camera.m_fovY <= 0 || camera.m_fovY >= 180
-        || !std::isfinite(camera.m_orthoHeight) || camera.m_orthoHeight <= 0) return false;
+    // 診断レイのクリップ距離と、投影に使う画面比率と寸法を検査する。
+    const bool validClipRange = std::isfinite(camera.m_near) && std::isfinite(camera.m_far)
+        && camera.m_near > 0 && camera.m_far > camera.m_near;
+    if (!validClipRange || !std::isfinite(camera.m_aspect) || camera.m_aspect <= 0) {
+        return false;
+    }
+    const bool validPerspectiveFov = std::isfinite(camera.m_fovY) && camera.m_fovY > 0 && camera.m_fovY < 180;
+    if (!validPerspectiveFov || !std::isfinite(camera.m_orthoHeight) || camera.m_orthoHeight <= 0) {
+        return false;
+    }
+
+    // カメラの前方向と上方向から、診断レイの基底を組み立てる。
     auto forward = camera.GetForward();
     auto up = camera.GetUp();
     const auto finite = [](const math::Vector3& value) {
@@ -24,17 +32,24 @@ bool MakeRayDebugCameraConstants(const Camera& camera, RayDebugConstants& output
             && std::isfinite(value.LengthSq());
     };
     if (!finite(forward) || !finite(up) || !finite(camera.m_position)
-        || forward.LengthSq() < 1e-6f || up.LengthSq() < 1e-6f) return false;
+        || forward.LengthSq() < 1e-6f || up.LengthSq() < 1e-6f) {
+        return false;
+    }
     forward = forward.Normalized();
     auto right = math::Vector3::Cross(up, forward);
-    if (right.LengthSq() < 1e-6f) return false;
+    if (right.LengthSq() < 1e-6f) {
+        return false;
+    }
     right = right.Normalized();
     up = math::Vector3::Cross(forward, right);
     const float halfHeight = camera.m_projection == ProjectionMode::Orthographic
         ? camera.m_orthoHeight * 0.5f : std::tan(math::ToRad(camera.m_fovY) * 0.5f);
     const float halfWidth = halfHeight * camera.m_aspect;
     if (!std::isfinite(halfWidth) || halfWidth <= 0 || !std::isfinite(halfHeight)
-        || halfWidth > 1e15f || camera.m_far / forward.Length() > 1e30f) return false;
+        || halfWidth > 1e15f || camera.m_far / forward.Length() > 1e30f) {
+        return false;
+    }
+    // 導出した画面寸法が有限のときだけシェーダーに渡す定数を更新する。
     output.cameraPosition = {camera.m_position.x, camera.m_position.y, camera.m_position.z, 1};
     output.cameraRight = {right.x, right.y, right.z, halfWidth};
     output.cameraUp = {up.x, up.y, up.z, halfHeight};
@@ -52,15 +67,18 @@ void RayDebugPass::Setup(PassBuilder& builder, const RenderPassContext&) const
     if (m_scene.instanceCount) {
         builder.Read("RaySceneTLAS", Purpose::TRACE_READ);
         builder.Read("RayHitRecords", Purpose::SHADER_READ);
-        for (size_t i = 0; i < m_scene.readBuffers.size(); ++i)
+        for (size_t i = 0; i < m_scene.readBuffers.size(); ++i) {
             builder.Read("RayReadBuffer" + std::to_string(i), Purpose::SHADER_READ);
+        }
     }
 }
 
 void RayDebugPass::Execute(PassResources& resources, RenderPassContext& context)
 {
     RayDebugConstants constants{};
-    if (!MakeRayDebugCameraConstants(context.camera, constants)) return;
+    if (!MakeRayDebugCameraConstants(context.camera, constants)) {
+        return;
+    }
     constants.width = context.width;
     constants.height = context.height;
     constants.mode = context.settings.viewMode == ViewMode::RayGeometricNormal ? 1u
@@ -70,15 +88,16 @@ void RayDebugPass::Execute(PassResources& resources, RenderPassContext& context)
     context.resources.Update(m_constants, &constants, sizeof(constants));
     ComputeCall call;
     call.shader = m_shader;
-    call.constantBuffers[0] = m_constants;
-    call.uavOutputs[0] = resources.Texture("RayDebugResult");
+    call.constantBuffers[cb::RAY_DEBUG] = m_constants;
+    call.uavOutputs[uav::RAY_RESULT] = resources.Texture("RayDebugResult");
     call.dispatchX = (context.width + 7) / 8;
     call.dispatchY = (context.height + 7) / 8;
     if (m_scene.instanceCount) {
-        call.accelerationStructures[0] = resources.AccelerationStructure("RaySceneTLAS");
-        call.srvBuffers[1] = resources.StructuredBuffer("RayHitRecords");
-        for (size_t i = 0; i < m_scene.readBuffers.size(); ++i)
+        call.accelerationStructures[srv::RAY_SCENE] = resources.AccelerationStructure("RaySceneTLAS");
+        call.srvBuffers[srv::RAY_HIT_RECORDS] = resources.StructuredBuffer("RayHitRecords");
+        for (size_t i = 0; i < m_scene.readBuffers.size(); ++i) {
             call.indirectReadBuffers.push_back(resources.Buffer("RayReadBuffer" + std::to_string(i)));
+        }
     }
     context.renderer.Dispatch(call, context.resources);
 }
@@ -95,8 +114,8 @@ void RayDebugCopyPass::Execute(PassResources& resources, RenderPassContext& cont
     DrawCall draw;
     draw.shader = m_shader;
     draw.pipelineState = m_state;
-    draw.textures[5] = resources.Texture("RayDebugResult");
+    draw.textures[srv::POST_COLOR] = resources.Texture("RayDebugResult");
     draw.vertexCount = 3;
     context.renderer.Submit(draw, context.resources);
 }
-} /// @note namespace fbzz::renderer
+} // namespace fbzz::renderer

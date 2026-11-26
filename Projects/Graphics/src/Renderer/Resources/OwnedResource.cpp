@@ -9,14 +9,17 @@ namespace {
 template<class Tag>
 void ReleaseOwner(ResourceHandle<Tag> handle)
 {
-    if (handle.IsValid())
-        if (auto* owner = ResourceManager::FindOwner(handle.owner)) owner->Release(handle);
+    if (handle.IsValid()) {
+        if (auto* owner = ResourceManager::FindOwner(handle.owner)) {
+            owner->Release(handle);
+        }
+    }
 }
-} /// @note namespace
+} // namespace
 void ReleaseOwnedResource(ResourceHandle<TextureTag> handle) { ReleaseOwner(handle); }
 void ReleaseOwnedResource(ResourceHandle<BufferTag> handle) { ReleaseOwner(handle); }
 void ReleaseOwnedResource(ResourceHandle<ConstantBufferTag> handle) { ReleaseOwner(handle); }
 void ReleaseOwnedResource(ResourceHandle<StructuredBufferTag> handle) { ReleaseOwner(handle); }
 void ReleaseOwnedResource(ResourceHandle<RenderTargetTag> handle) { ReleaseOwner(handle); }
 void ReleaseOwnedResource(ResourceHandle<PipelineStateTag> handle) { ReleaseOwner(handle); }
-} /// @note namespace fbzz::renderer
+} // namespace fbzz::renderer

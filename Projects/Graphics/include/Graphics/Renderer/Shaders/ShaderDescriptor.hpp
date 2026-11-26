@@ -47,8 +47,9 @@ struct ShaderVarDesc {
         const uint32_t componentCount = static_cast<uint32_t>(rows) * columns;
         const uint32_t element = index / componentCount;
         const uint32_t component = index % componentCount;
-        if (varClass != ShaderVarClass::Matrix)
+        if (varClass != ShaderVarClass::Matrix) {
             return static_cast<uint64_t>(offset) + static_cast<uint64_t>(element) * arrayStride + component * 4u;
+        }
         const uint32_t row = component / columns;
         const uint32_t column = component % columns;
         return static_cast<uint64_t>(offset) + static_cast<uint64_t>(element) * arrayStride
@@ -63,8 +64,8 @@ struct ShaderVarDesc {
 /// @note Material::Upload がそこへ実際の bindless 添字を書き込む。
 /// @see  Docs/design/bindless.md
 struct ShaderTexBindDesc {
-    std::string name;            ///< @note 添字フィールド名 ("texAlbedoIndex")
-    uint32_t    slot;            ///< @note 0=albedo .. 4=ao、5〜7=カスタム汎用枠
+    std::string name;            ///< 添字フィールド名 ("texAlbedoIndex")
+    uint32_t    slot;            ///< 0=albedo .. 4=ao、5〜7=カスタム汎用枠
     /// @note MaterialConstants 内での添字フィールドの位置 [byte]。
     /// @note UINT32_MAX は «枠は宣言されているが書き込み先が無い» = 異常。
     uint32_t    constantOffset = UINT32_MAX;
@@ -77,8 +78,8 @@ struct ShaderTexBindDesc {
 /// @note HLSL の変数名・Inspector の kCanonicalSlots・.mat のキーが別ファイルに分かれていると、
 /// @note ずれても «別のテクスチャが貼られる» としてしか現れない。1 か所へ置いてずれようがなくする。
 struct MaterialTextureSlot {
-    const char* field;  ///< @note MaterialConstants の添字フィールド名
-    const char* key;    ///< @note .mat の [textures] キー
+    const char* field;  ///< MaterialConstants の添字フィールド名
+    const char* key;    ///< .mat の [textures] キー
 };
 inline constexpr MaterialTextureSlot kMaterialTextureSlots[] = {
     { "texAlbedoIndex",   "albedo"   },
@@ -94,28 +95,34 @@ inline constexpr uint32_t kMaterialTextureSlotCount =
     static_cast<uint32_t>(sizeof(kMaterialTextureSlots) / sizeof(kMaterialTextureSlots[0]));
 
 struct ShaderDescriptor {
-    std::vector<ShaderVarDesc>     vars;               ///< @note textureMask・パディングを除いた編集可能変数
-    std::vector<ShaderVarDesc>     postProcessVars;    ///< @note PostProcConstants (b5) の custom* 編集変数
-    std::vector<ShaderTexBindDesc> textures;            ///< @note slot 昇順
+    std::vector<ShaderVarDesc>     vars;               ///< textureMask・パディングを除いた編集可能変数
+    std::vector<ShaderVarDesc>     postProcessVars;    ///< PostProcConstants (b5) の custom* 編集変数
+    std::vector<ShaderTexBindDesc> textures;            ///< slot 昇順
     uint32_t                       cbufferSize      = 0;
-    uint32_t                       textureMaskOffset = UINT32_MAX; ///< @note UINT32_MAX = 未存在
+    uint32_t                       textureMaskOffset = UINT32_MAX; ///< UINT32_MAX = 未存在
 
     bool IsValid() const { return cbufferSize > 0; }
 
     const ShaderVarDesc* FindVar(std::string_view name) const
     {
-        for (auto& v : vars)
-            if (v.name == name) return &v;
+        for (auto& v : vars) {
+            if (v.name == name) {
+                return &v;
+            }
+        }
         return nullptr;
     }
 
     /// @note PostProcConstants のカスタムエフェクト用変数を名前で検索する。
     const ShaderVarDesc* FindPostProcessVar(std::string_view name) const
     {
-        for (const auto& v : postProcessVars)
-            if (v.name == name) return &v;
+        for (const auto& v : postProcessVars) {
+            if (v.name == name) {
+                return &v;
+            }
+        }
         return nullptr;
     }
 };
 
-} /// @note namespace fbzz::renderer
+} // namespace fbzz::renderer

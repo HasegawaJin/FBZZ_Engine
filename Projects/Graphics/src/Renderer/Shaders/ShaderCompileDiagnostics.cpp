@@ -25,7 +25,7 @@ ShaderCompileDiagnosticState& GetState()
     return state;
 }
 
-} /// @note namespace
+} // namespace
 
 void ReportShaderCompileDiagnostic(const std::string& path,
                                    const std::string& entryPoint,
@@ -33,7 +33,9 @@ void ReportShaderCompileDiagnostic(const std::string& path,
                                    const std::string& message,
                                    bool isError)
 {
-    if (message.empty()) return;
+    if (message.empty()) {
+        return;
+    }
     constexpr std::size_t MAX_MESSAGE_BYTES = 64 * 1024;
     const std::string storedMessage = message.size() <= MAX_MESSAGE_BYTES
         ? message : message.substr(message.size() - MAX_MESSAGE_BYTES);
@@ -44,11 +46,14 @@ void ReportShaderCompileDiagnostic(const std::string& path,
             return item.path == path && item.entryPoint == entryPoint && item.target == target
                 && item.message == storedMessage && item.isError == isError;
         });
-    if (duplicate != state.diagnostics.end()) return;
+    if (duplicate != state.diagnostics.end()) {
+        return;
+    }
 
     constexpr std::size_t MAX_DIAGNOSTICS = 128;
-    if (state.diagnostics.size() >= MAX_DIAGNOSTICS)
+    if (state.diagnostics.size() >= MAX_DIAGNOSTICS) {
         state.diagnostics.erase(state.diagnostics.begin());
+    }
     state.diagnostics.push_back({
         state.nextSequence++, path, entryPoint, target, storedMessage, isError
     });
@@ -79,4 +84,4 @@ void ClearShaderCompileDiagnostics()
     state.diagnostics.clear();
 }
 
-} /// @note namespace fbzz::renderer
+} // namespace fbzz::renderer

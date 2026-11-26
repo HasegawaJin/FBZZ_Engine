@@ -16,9 +16,9 @@
 #include "Common/Bindless.hlsli"
 
 /// @note 旧ピクセル SRV テーブル (t0〜t31) と同じ幅。
-#define BINDLESS_PIXEL_SLOT_COUNT  32
-#define BINDLESS_VERTEX_SLOT_COUNT 4
-#define BINDLESS_UAV_SLOT_COUNT    8
+#define BINDLESS_PIXEL_SLOT_COUNT BINDING_COUNT_PIXEL_SRVS
+#define BINDLESS_VERTEX_SLOT_COUNT BINDING_COUNT_VERTEX_SRVS
+#define BINDLESS_UAV_SLOT_COUNT BINDING_COUNT_UAVS
 
 cbuffer BindlessIndicesConstants : register(CB_BINDLESS_INDICES)
 {

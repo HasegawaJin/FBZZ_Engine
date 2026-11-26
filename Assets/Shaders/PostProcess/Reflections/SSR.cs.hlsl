@@ -14,12 +14,12 @@
 
 
 /// @note t5 は SSR / RT をまだ合成していない不変の HDR 入力。
-FBZZ_TEX2D(texHDR, 5);
-FBZZ_TEX2D(texGBuffer0, 0);
-FBZZ_TEX2D(texGBuffer1, 6);
+FBZZ_TEX2D(texHDR, SRV_POST_COLOR_SLOT);
+FBZZ_TEX2D(texGBuffer0, SRV_SSR_GBUFFER0_SLOT);
+FBZZ_TEX2D(texGBuffer1, TEX_GBUFFER1_SLOT);
 /// @note Hybrid-only t22 contains emission RGB and the typed glass marker; legacy Raster never reads it.
-FBZZ_TEX2D(texGBufferEmission, 22);
-FBZZ_TEX2D_T(float, texDepth, 7);
+FBZZ_TEX2D(texGBufferEmission, SRV_GBUFFER_EMISSION_SLOT);
+FBZZ_TEX2D_T(float, texDepth, TEX_DEPTH_SLOT);
 /// @note Raster では Forward 不透明物も含む深度、Hybrid では反射源 HDR と同じ時点の深度。
 FBZZ_TEX2D_T(float, texSceneDepth, TEX_SCENE_DEPTH_SLOT);
 FBZZ_TEXCUBE(texIrradiance, TEX_IBL_IRRADIANCE_SLOT);
@@ -29,7 +29,7 @@ FBZZ_TEX2D_T(float4, texBrdf, TEX_IBL_BRDF_LUT_SLOT);
 /// @note 全画面フェッチなので clamp (s0 は DX12 では WRAP で、画面端が反対側の色を拾う)。
 SamplerState       sampDefault : register(SAMPLER_LINEAR_CLAMP);
 
-FBZZ_RWTEX2D_T(float4, OutputSSR, 3);
+FBZZ_RWTEX2D_T(float4, OutputSSR, UAV_SSR_SLOT);
 
 /// @brief 画面上のレイ補間位置を視空間へ戻す。
 /// @see https://jcgt.org/published/0003/04/04/paper.pdf Section 2: Perspective-Correct Interpolation

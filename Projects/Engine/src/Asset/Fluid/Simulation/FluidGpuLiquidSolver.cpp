@@ -9,6 +9,7 @@
 /// @note 原子加算だと同じセル内の順番が実行ごとに変わり焼くたびに絵が変わるため。
 /// @note x 方向に隣り合う 3 セルは鍵が連続するので、27 セルは 9 本の連続した範囲になる。範囲は刻みの頭に 1 回だけ
 /// @note 二分探索で求め (LiquidRanges)、密度拘束の反復と粘性で使い回す。
+#include <Graphics/Renderer/Commands/ShaderBindingSlots.hpp>
 #include <Engine/Asset/Fluid/Simulation/FluidGpuLiquidSolver.hpp>
 #include <Graphics/Renderer/Resources/OwnedResource.hpp>
 
@@ -52,10 +53,6 @@ constexpr int kDispatchBudgetPerTick = 1024;
 constexpr std::uint32_t kParticleGroupSize = 64;
 constexpr std::uint32_t kVoxelGroupSize = 4;
 /// @note ComputeCall::srvBuffers の添字 = HLSL のレジスタ番号 (LiquidCommon.hlsli の一覧と一致させること)。
-constexpr std::size_t kSlotPositions = 14;
-constexpr std::size_t kSlotSorted = 15;
-constexpr std::size_t kSlotAux = 29;
-constexpr std::size_t kSlotLambda = 30;
 
 constexpr const char* kKernelPaths[] = {
     "Assets/Shaders/Bake/Fluid/LiquidClear.cs.hlsl",
@@ -116,7 +113,7 @@ struct alignas(16) LiquidPassConstants {
     case fluid::FluidSourceShape::Cone:    return kPi * sx * sx * sy / 3.0f;
     case fluid::FluidSourceShape::Ring:    return 2.0f * kPi * kPi * sx * sy * sy;
     case fluid::FluidSourceShape::Cylinder: return 2.0f * kPi * sx * sx * sy;
-    /// @note 両端の半球を合わせると球 1 つ。
+    // 両端の半球を合わせると球 1 つ。
     case fluid::FluidSourceShape::Capsule: return 2.0f * kPi * sx * sx * sy + 4.0f / 3.0f * kPi * sx * sx * sx;
     case fluid::FluidSourceShape::Sphere:
     default:                        return 4.0f / 3.0f * kPi * sx * sx * sx;
@@ -145,14 +142,18 @@ struct alignas(16) LiquidPassConstants {
         const math::Vector3 axis = NormalizeOr(source.direction, math::Vector3{ 0.0f, 1.0f, 0.0f });
         const float along = direction.x * axis.x + direction.y * axis.y + direction.z * axis.z;
         const float across = std::sqrt((std::max)(0.0f, 1.0f - along * along));
-        if (source.shape == fluid::FluidSourceShape::Ring) return 2.0f * (sx * across + sy);
+        if (source.shape == fluid::FluidSourceShape::Ring) {
+            return 2.0f * (sx * across + sy);
+        }
         return (std::max)(0.0f, sy * along + sx * across) + (std::max)(0.0f, -sy * along + sx * across);
     }
     case fluid::FluidSourceShape::Capsule:
     case fluid::FluidSourceShape::Cylinder: {
         const math::Vector3 axis = NormalizeOr(source.direction, math::Vector3{ 0.0f, 1.0f, 0.0f });
         const float along = direction.x * axis.x + direction.y * axis.y + direction.z * axis.z;
-        if (source.shape == fluid::FluidSourceShape::Capsule) return 2.0f * (sy * std::fabs(along) + sx);
+        if (source.shape == fluid::FluidSourceShape::Capsule) {
+            return 2.0f * (sy * std::fabs(along) + sx);
+        }
         const float across = std::sqrt((std::max)(0.0f, 1.0f - along * along));
         return 2.0f * (sy * std::fabs(along) + sx * across);
     }
@@ -175,7 +176,9 @@ struct alignas(16) LiquidPassConstants {
     const float spacing = 2.0f * particleRadius;
     const float needed = inside * spacing * spacing * spacing;
     const float measure = ShapeVolume(source);
-    if (measure <= 1.0e-12f || needed <= measure) return 1.0f;
+    if (measure <= 1.0e-12f || needed <= measure) {
+        return 1.0f;
+    }
     return std::cbrt(needed / measure);
 }
 
@@ -184,11 +187,13 @@ struct alignas(16) LiquidPassConstants {
 {
     std::vector<fluid::FluidSource> sources;
     for (const fluid::FluidSource& source : recipe.sources)
-        if (source.enabled && sources.size() < static_cast<std::size_t>(fluid::kMaxFluidSources)) sources.push_back(source);
+        if (source.enabled && sources.size() < static_cast<std::size_t>(fluid::kMaxFluidSources)) {
+            sources.push_back(source);
+        }
     return sources;
 }
 
-} /// @note namespace
+} // namespace
 
 /// @name FluidGpuLiquidPack.hpp
 
@@ -206,17 +211,21 @@ GpuLiquidKernel MakeGpuLiquidKernel(float particleRadius)
     k.poly6 = 315.0f / (64.0f * kPi * std::pow(k.h, 9.0f));
     k.spikyGradient = -45.0f / (kPi * std::pow(k.h, 6.0f));
     const auto poly6 = [&](float distanceSquared) {
-        if (distanceSquared >= h2) return 0.0f;
+        if (distanceSquared >= h2) {
+            return 0.0f;
+        }
         const float d = h2 - distanceSquared;
         return k.poly6 * d * d * d;
     };
     const auto spikyScale = [&](float distance) {
-        if (distance <= 1.0e-7f || distance >= k.h) return 0.0f;
+        if (distance <= 1.0e-7f || distance >= k.h) {
+            return 0.0f;
+        }
         const float d = k.h - distance;
         return k.spikyGradient * d * d / distance;
     };
 
-    /// @note 静止密度は «粒子が直径の間隔で並んだ状態» で測る (FluidLiquidSolver::Reset と同じ演算順)。
+    // 静止密度は «粒子が直径の間隔で並んだ状態» で測る (FluidLiquidSolver::Reset と同じ演算順)。
     const float spacing = 2.0f * k.radius;
     const int reach = static_cast<int>(std::ceil(k.h / spacing));
     float density = 0.0f;
@@ -229,7 +238,9 @@ GpuLiquidKernel MakeGpuLiquidKernel(float particleRadius)
                 const float dz = static_cast<float>(kz) * spacing;
                 const float r2 = dx * dx + dy * dy + dz * dz;
                 density += poly6(r2);
-                if (i == 0 && j == 0 && kz == 0) continue;
+                if (i == 0 && j == 0 && kz == 0) {
+                    continue;
+                }
                 const float scale = spikyScale(std::sqrt(r2));
                 gradientSquared += (scale * dx) * (scale * dx) + (scale * dy) * (scale * dy)
                                  + (scale * dz) * (scale * dz);
@@ -257,7 +268,9 @@ GpuLiquidGrid MakeGpuLiquidGrid(float particleRadius)
 int GpuLiquidParticleCapacity(const fluid::FluidRecipe& recipe, int limit)
 {
     long long total = 0;
-    for (const fluid::FluidSource& source : PackedSources(recipe)) total += (std::max)(source.count, 0);
+    for (const fluid::FluidSource& source : PackedSources(recipe)) {
+        total += (std::max)(source.count, 0);
+    }
     const long long capacity = (std::min)({ static_cast<long long>((std::max)(recipe.liquid.maxParticles, 1)),
                                             static_cast<long long>((std::max)(limit, 0)), total });
     return static_cast<int>(capacity);
@@ -267,12 +280,14 @@ std::vector<GpuLiquidSpawn> BuildGpuLiquidEmission(const fluid::FluidRecipe& rec
 {
     std::vector<GpuLiquidSpawn> spawns;
     const int capacity = GpuLiquidParticleCapacity(recipe, limit);
-    if (capacity <= 0) return spawns;
+    if (capacity <= 0) {
+        return spawns;
+    }
 
     const float radius = GpuLiquidParticleRadius(recipe.liquid);
     std::vector<fluid::FluidSource> sources = PackedSources(recipe);
-    /// @note 粒子半径まで広げる (FluidLiquidSolver::Reset と同じ)。0 の軸が残ると形の体積が 0 になり、
-    /// @note FittedEmitScale が詰まりすぎを広げられずに全粒を 1 点へ出してしまう。
+    // 粒子半径まで広げる (FluidLiquidSolver::Reset と同じ)。0 の軸が残ると形の体積が 0 になり、
+    // FittedEmitScale が詰まりすぎを広げられずに全粒を 1 点へ出してしまう。
     for (fluid::FluidSource& source : sources) {
         source.size.x = (std::max)(source.size.x, radius);
         source.size.y = (std::max)(source.size.y, radius);
@@ -280,8 +295,12 @@ std::vector<GpuLiquidSpawn> BuildGpuLiquidEmission(const fluid::FluidRecipe& rec
     }
     std::vector<fluid::FluidSourceMask> masks(sources.size());
     for (std::size_t i = 0; i < sources.size(); ++i) {
-        if (sources[i].shape != fluid::FluidSourceShape::Texture || sources[i].texture.empty()) continue;
-        if (!LoadFluidSourceMask(sources[i].texture, masks[i])) masks[i].values.clear();
+        if (sources[i].shape != fluid::FluidSourceShape::Texture || sources[i].texture.empty()) {
+            continue;
+        }
+        if (!LoadFluidSourceMask(sources[i].texture, masks[i])) {
+            masks[i].values.clear();
+        }
     }
 
     struct Event {
@@ -299,7 +318,7 @@ std::vector<GpuLiquidSpawn> BuildGpuLiquidEmission(const fluid::FluidRecipe& rec
             events.push_back({ time, static_cast<std::uint32_t>(e) });
         }
     }
-    /// @note CPU は枠が尽きたら後から湧く粒を出さない。先に湧く粒から枠を渡す (同時刻は発生源の順を保つ)。
+    // CPU は枠が尽きたら後から湧く粒を出さない。先に湧く粒から枠を渡す (同時刻は発生源の順を保つ)。
     std::stable_sort(events.begin(), events.end(), [](const Event& a, const Event& b) { return a.time < b.time; });
     events.resize(static_cast<std::size_t>(capacity));
 
@@ -336,7 +355,7 @@ std::vector<GpuLiquidSpawn> BuildGpuLiquidEmission(const fluid::FluidRecipe& rec
             const float u2 = next();
             point = fluid::SampleFluidSourcePoint(source, pose.center, u0, u1, u2, /*volumetric=*/true);
         }
-        /// @note ばらつきの向きは球面上で一様にする (CPU と同じ引き方)。
+        // ばらつきの向きは球面上で一様にする (CPU と同じ引き方)。
         const float cz = next() * 2.0f - 1.0f;
         const float angle = next() * 2.0f * kPi;
         const float ring = std::sqrt((std::max)(0.0f, 1.0f - cz * cz));
@@ -360,8 +379,12 @@ int PackGpuLiquidForces(const fluid::FluidRecipe& recipe, float time, fluid::Flu
 {
     int count = 0;
     for (const fluid::FluidForce& force : recipe.forces) {
-        if (!force.enabled) continue;
-        if (count >= fluid::kMaxFluidGpuForces) break;
+        if (!force.enabled) {
+            continue;
+        }
+        if (count >= fluid::kMaxFluidGpuForces) {
+            break;
+        }
         fluid::FluidGpuForce& f = out[count++];
         const fluid::FluidOperatorPose pose = fluid::PoseFluidForce(force, time);
         const math::Vector3 direction = NormalizeOr(force.direction, math::Vector3{ 1.0f, 0.0f, 0.0f });
@@ -372,7 +395,7 @@ int PackGpuLiquidForces(const fluid::FluidRecipe& recipe, float time, fluid::Flu
         f.directionStrength[0] = direction.x;
         f.directionStrength[1] = direction.y;
         f.directionStrength[2] = direction.z;
-        /// @note 量のエンベロープは強さへ畳む (CPU の FluidForceDelta と掛ける順を揃える)。
+        // 量のエンベロープは強さへ畳む (CPU の FluidForceDelta と掛ける順を揃える)。
         f.directionStrength[3] =
             fluid::FluidForceActive(force, time) ? force.strength * fluid::FluidForceAmount(force, time) : 0.0f;
         f.params[0] = force.radius;
@@ -380,7 +403,9 @@ int PackGpuLiquidForces(const fluid::FluidRecipe& recipe, float time, fluid::Flu
         f.params[2] = force.noiseFrequency;
         f.params[3] = force.noiseSpeed;
     }
-    for (int i = count; i < fluid::kMaxFluidGpuForces; ++i) out[i] = fluid::FluidGpuForce{};
+    for (int i = count; i < fluid::kMaxFluidGpuForces; ++i) {
+        out[i] = fluid::FluidGpuForce{};
+    }
     return count;
 }
 
@@ -389,8 +414,12 @@ int PackGpuLiquidColliders(const fluid::FluidRecipe& recipe, float time, float d
 {
     int count = 0;
     for (const fluid::FluidCollider& collider : recipe.colliders) {
-        if (!collider.enabled) continue;
-        if (count >= fluid::kMaxFluidGpuColliders) break;
+        if (!collider.enabled) {
+            continue;
+        }
+        if (count >= fluid::kMaxFluidGpuColliders) {
+            break;
+        }
         fluid::FluidGpuCollider& c = out[count++];
         const fluid::FluidOperatorPose pose = fluid::PoseFluidCollider(collider, time);
         const bool sphere = collider.shape == fluid::FluidColliderShape::Sphere;
@@ -413,14 +442,18 @@ int PackGpuLiquidColliders(const fluid::FluidRecipe& recipe, float time, float d
         c.velocity[2] = pose.motionVelocity.z;
         c.velocity[3] = std::exp(-(std::max)(collider.friction, 0.0f) * 10.0f * dt);
     }
-    for (int i = count; i < fluid::kMaxFluidGpuColliders; ++i) out[i] = fluid::FluidGpuCollider{};
+    for (int i = count; i < fluid::kMaxFluidGpuColliders; ++i) {
+        out[i] = fluid::FluidGpuCollider{};
+    }
     return count;
 }
 
 std::uint32_t GpuLiquidSortCount(int particleCount)
 {
     std::uint32_t count = kGpuLiquidSortBlock;
-    while (count < static_cast<std::uint32_t>((std::max)(particleCount, 0))) count <<= 1;
+    while (count < static_cast<std::uint32_t>((std::max)(particleCount, 0))) {
+        count <<= 1;
+    }
     return count;
 }
 
@@ -430,7 +463,7 @@ std::vector<GpuLiquidSortStage> BuildGpuLiquidSortStages(std::uint32_t sortCount
     for (std::uint32_t k = 2u; k <= sortCount; k <<= 1) {
         for (std::uint32_t j = k >> 1; j > 0u; j >>= 1) {
             if (j <= kGpuLiquidSortBlock / 2u) {
-                /// @note 比較の相手が 1 グループ内に収まったら、残る段は全部グループ共有メモリで回す。
+                // 比較の相手が 1 グループ内に収まったら、残る段は全部グループ共有メモリで回す。
                 stages.push_back({ k, j, true });
                 break;
             }
@@ -455,27 +488,19 @@ struct FluidGpuLiquidSolver::Impl {
     };
     std::array<renderer::ResourceHandle<renderer::ShaderTag>, KernelCount> kernels{};
 
-    /// @note 湧かせ方 (float4 × 2 / 粒子)。Initialize で一度だけ上げる。
-    OwnedBuffer spawn;
-    /// @note 粒子の状態 (float4 × 2 / 粒子)。粘性は近傍の速度を読むので 2 本を交互に使う。
-    std::array<OwnedBuffer, 2> state{};
-    /// @note 予測位置 (float4 / 粒子。w = 1 なら生きている)。密度拘束の反復で交互に使う。
-    std::array<OwnedBuffer, 2> predicted{};
+    OwnedBuffer spawn; ///< 湧かせ方 (float4 × 2 / 粒子)。Initialize で一度だけ上げる。
+    std::array<OwnedBuffer, 2> state{}; ///< 粒子の状態 (float4 × 2 / 粒子)。粘性は近傍の速度を読むので 2 本を交互に使う。
+    std::array<OwnedBuffer, 2> predicted{}; ///< 予測位置 (float4 / 粒子。w = 1 なら生きている)。密度拘束の反復で交互に使う。
     OwnedBuffer lambda;
-    /// @note (セル番号, 粒子番号)。sortCount 要素。
-    OwnedBuffer sortBuffer;
-    /// @note 粒子ごとの近傍 9 行ぶんの並べ替え済み範囲 [lo, hi)。
-    OwnedBuffer rangeBuffer;
+    OwnedBuffer sortBuffer; ///< (セル番号, 粒子番号)。sortCount 要素。
+    OwnedBuffer rangeBuffer; ///< 粒子ごとの近傍 9 行ぶんの並べ替え済み範囲 [lo, hi)。
 
-    /// @note 刻みごとの定数 (FluidGpuSolver と同じ理由で刻みの数だけ別に持つ)。
-    std::vector<OwnedConstant> stepConstants;
+    std::vector<OwnedConstant> stepConstants; ///< 刻みごとの定数 (FluidGpuSolver と同じ理由で刻みの数だけ別に持つ)。
     std::size_t nextStepConstant = 0;
     OwnedConstant outputConstants;
-    /// @note 鍵を作る位置の読み方 (予測位置 = 間隔 1 / 状態の位置 = 間隔 2)。中身は作ったときから変えない。
-    OwnedConstant keysFromPredicted;
+    OwnedConstant keysFromPredicted; ///< 鍵を作る位置の読み方 (予測位置 = 間隔 1 / 状態の位置 = 間隔 2)。中身は作ったときから変えない。
     OwnedConstant keysFromState;
-    /// @note 並べ替えの段ごとの (k, j)。フレーム内で書き直さないよう段の数だけ持つ。
-    std::vector<OwnedConstant> sortStageConstants;
+    std::vector<OwnedConstant> sortStageConstants; ///< 並べ替えの段ごとの (k, j)。フレーム内で書き直さないよう段の数だけ持つ。
     std::vector<GpuLiquidSortStage> sortStages;
     std::uint32_t sortStagesFor = 0;
 
@@ -527,8 +552,12 @@ struct FluidGpuLiquidSolver::Impl {
         (void)resources;
         const auto release = [](auto& buffer) { buffer.Reset(); };
         release(spawn);
-        for (auto& buffer : state) release(buffer);
-        for (auto& buffer : predicted) release(buffer);
+        for (auto& buffer : state) {
+            release(buffer);
+        }
+        for (auto& buffer : predicted) {
+            release(buffer);
+        }
         release(lambda);
         release(sortBuffer);
         release(rangeBuffer);
@@ -568,7 +597,7 @@ struct FluidGpuLiquidSolver::Impl {
         c.relaxation = kernel.relaxation;
         c.tensileReference = kernel.tensileReference;
         c.tensileScale = kernel.tensileScale;
-        /// @note 1 反復の補正を粒子半径の半分までに抑える (CPU と同じ)。
+        // 1 反復の補正を粒子半径の半分までに抑える (CPU と同じ)。
         c.maxCorrection = kernel.radius * 0.5f;
         c.lifetime = liquid.particleLifetime;
         c.floorEnabled = liquid.floor ? 1u : 0u;
@@ -603,8 +632,8 @@ struct FluidGpuLiquidSolver::Impl {
     {
         renderer::ComputeCall call;
         call.shader = kernels[k];
-        call.constantBuffers[0] = b0;
-        call.constantBuffers[1] = b1;
+        call.constantBuffers[renderer::cb::LIQUID_STEP] = b0;
+        call.constantBuffers[renderer::cb::LIQUID_PASS] = b1;
         call.dispatchX = (std::max)(groups, 1u);
         return call;
     }
@@ -622,10 +651,10 @@ struct FluidGpuLiquidSolver::Impl {
 
     void ClearState(renderer::IRenderer& renderer, renderer::ResourceManager& resources, ConstantHandle constants)
     {
-        /// @note 作ったばかりの RW バッファの中身は未定義。全粒子を «まだ湧いていない» (0) から始める。
+        // 作ったばかりの RW バッファの中身は未定義。全粒子を «まだ湧いていない» (0) から始める。
         const std::uint32_t elements = static_cast<std::uint32_t>(particleCount) * 2u;
         renderer::ComputeCall clear = Call(Clear, constants, (elements + kParticleGroupSize - 1u) / kParticleGroupSize);
-        clear.uavBuffers[0] = state[currentState];
+        clear.uavBuffers[renderer::StructuredUavIndex(renderer::uav::LIQUID_STATE)] = state[currentState];
         Run(renderer, resources, clear);
         needsClear = false;
     }
@@ -635,14 +664,14 @@ struct FluidGpuLiquidSolver::Impl {
     {
         const std::uint32_t groups = sortCount / kGpuLiquidSortBlock;
         renderer::ComputeCall keys = Call(SortKeys, constants, groups, keyMode);
-        keys.srvBuffers[kSlotPositions] = positions;
-        /// @note u3
-        keys.uavBuffers[1] = sortBuffer;
+        keys.srvBuffers[renderer::srv::LIQUID_PARTICLES] = positions;
+        // u3
+        keys.uavBuffers[renderer::StructuredUavIndex(renderer::uav::LIQUID_SORT)] = sortBuffer;
         Run(renderer, resources, keys);
         for (std::size_t i = 0; i < sortStages.size(); ++i) {
             renderer::ComputeCall stage =
                 Call(sortStages[i].local ? SortLocal : SortStep, constants, groups, sortStageConstants[i]);
-            stage.uavBuffers[1] = sortBuffer;
+            stage.uavBuffers[renderer::StructuredUavIndex(renderer::uav::LIQUID_SORT)] = sortBuffer;
             Run(renderer, resources, stage);
         }
     }
@@ -652,60 +681,62 @@ struct FluidGpuLiquidSolver::Impl {
         const ConstantHandle constants = stepConstants[nextStepConstant++];
         const LiquidStepConstants packed = Pack(time, dt);
         resources.Update(constants, &packed, sizeof(packed));
-        if (needsClear) ClearState(renderer, resources, constants);
+        if (needsClear) {
+            ClearState(renderer, resources, constants);
+        }
 
         const BufferHandle current = state[currentState];
         const BufferHandle next = state[1 - currentState];
         const std::uint32_t groups = ParticleGroups();
 
-        /// @note 湧かせる → 寿命 → 重力・外力 → 位置の予測。
+        // 湧かせる → 寿命 → 重力・外力 → 位置の予測。
         renderer::ComputeCall predict = Call(Predict, constants, groups);
-        predict.srvBuffers[kSlotAux] = spawn;
-        /// @note u2
-        predict.uavBuffers[0] = current;
-        /// @note u3
-        predict.uavBuffers[1] = predicted[0];
+        predict.srvBuffers[renderer::srv::LIQUID_SPAWN] = spawn;
+        // u2
+        predict.uavBuffers[renderer::StructuredUavIndex(renderer::uav::LIQUID_STATE)] = current;
+        // u3
+        predict.uavBuffers[renderer::StructuredUavIndex(renderer::uav::LIQUID_PREDICTION)] = predicted[0];
         Run(renderer, resources, predict);
 
-        /// @note 近傍は反復の前に 1 回だけ組む (CPU と同じ)。
+        // 近傍は反復の前に 1 回だけ組む (CPU と同じ)。
         BuildSort(renderer, resources, constants, keysFromPredicted, predicted[0]);
         renderer::ComputeCall ranges = Call(Ranges, constants, groups);
-        ranges.srvBuffers[kSlotPositions] = predicted[0];
-        ranges.srvBuffers[kSlotSorted] = sortBuffer;
-        ranges.uavBuffers[0] = rangeBuffer;
+        ranges.srvBuffers[renderer::srv::LIQUID_PARTICLES] = predicted[0];
+        ranges.srvBuffers[renderer::srv::LIQUID_SORTED] = sortBuffer;
+        ranges.uavBuffers[renderer::StructuredUavIndex(renderer::uav::LIQUID_RANGES)] = rangeBuffer;
         Run(renderer, resources, ranges);
 
         std::size_t solved = 0;
         for (int iteration = 0; iteration < iterations; ++iteration) {
             renderer::ComputeCall lambdaCall = Call(Lambda, constants, groups);
-            lambdaCall.srvBuffers[kSlotPositions] = predicted[solved];
-            lambdaCall.srvBuffers[kSlotSorted] = sortBuffer;
-            lambdaCall.srvBuffers[kSlotAux] = rangeBuffer;
-            lambdaCall.uavBuffers[0] = lambda;
+            lambdaCall.srvBuffers[renderer::srv::LIQUID_PARTICLES] = predicted[solved];
+            lambdaCall.srvBuffers[renderer::srv::LIQUID_SORTED] = sortBuffer;
+            lambdaCall.srvBuffers[renderer::srv::LIQUID_NEIGHBORS] = rangeBuffer;
+            lambdaCall.uavBuffers[renderer::StructuredUavIndex(renderer::uav::LIQUID_LAMBDA)] = lambda;
             Run(renderer, resources, lambdaCall);
 
-            /// @note 全粒子の補正を読んでから動かす (CPU の «全員分を求めてから足す» と同じ)。書き先は別の予測位置。
+            // 全粒子の補正を読んでから動かす (CPU の «全員分を求めてから足す» と同じ)。書き先は別の予測位置。
             renderer::ComputeCall delta = Call(Delta, constants, groups);
-            delta.srvBuffers[kSlotPositions] = predicted[solved];
-            delta.srvBuffers[kSlotSorted] = sortBuffer;
-            delta.srvBuffers[kSlotAux] = rangeBuffer;
-            delta.srvBuffers[kSlotLambda] = lambda;
-            delta.uavBuffers[0] = predicted[1 - solved];
+            delta.srvBuffers[renderer::srv::LIQUID_PARTICLES] = predicted[solved];
+            delta.srvBuffers[renderer::srv::LIQUID_SORTED] = sortBuffer;
+            delta.srvBuffers[renderer::srv::LIQUID_NEIGHBORS] = rangeBuffer;
+            delta.srvBuffers[renderer::srv::LIQUID_LAMBDA] = lambda;
+            delta.uavBuffers[renderer::StructuredUavIndex(renderer::uav::LIQUID_DELTA)] = predicted[1 - solved];
             Run(renderer, resources, delta);
             solved = 1 - solved;
         }
 
         renderer::ComputeCall velocity = Call(Velocity, constants, groups);
-        velocity.srvBuffers[kSlotPositions] = predicted[solved];
-        velocity.uavBuffers[0] = current;
+        velocity.srvBuffers[renderer::srv::LIQUID_PARTICLES] = predicted[solved];
+        velocity.uavBuffers[renderer::StructuredUavIndex(renderer::uav::LIQUID_STATE)] = current;
         Run(renderer, resources, velocity);
 
-        /// @note 粘性 + 年齢 + 領域外。近傍の «更新後の» 速度を読むので書き先は別の状態バッファ。
+        // 粘性 + 年齢 + 領域外。近傍の «更新後の» 速度を読むので書き先は別の状態バッファ。
         renderer::ComputeCall viscosity = Call(Viscosity, constants, groups);
-        viscosity.srvBuffers[kSlotPositions] = current;
-        viscosity.srvBuffers[kSlotSorted] = sortBuffer;
-        viscosity.srvBuffers[kSlotAux] = rangeBuffer;
-        viscosity.uavBuffers[0] = next;
+        viscosity.srvBuffers[renderer::srv::LIQUID_PARTICLES] = current;
+        viscosity.srvBuffers[renderer::srv::LIQUID_SORTED] = sortBuffer;
+        viscosity.srvBuffers[renderer::srv::LIQUID_NEIGHBORS] = rangeBuffer;
+        viscosity.uavBuffers[renderer::StructuredUavIndex(renderer::uav::LIQUID_STATE)] = next;
         Run(renderer, resources, viscosity);
 
         currentState = 1 - currentState;
@@ -738,8 +769,9 @@ bool FluidGpuLiquidSolver::Initialize(renderer::ResourceManager& resources, cons
     static_assert(sizeof(kKernelPaths) / sizeof(kKernelPaths[0]) == Impl::KernelCount,
                   "kKernelPaths は Kernel の並びと 1:1");
     for (std::size_t i = 0; i < Impl::KernelCount; ++i) {
-        if (!s.kernels[i].IsValid())
+        if (!s.kernels[i].IsValid()) {
             s.kernels[i] = resources.LoadShader(AssetManager::ResolveAssetPath(kKernelPaths[i]));
+        }
         if (!s.kernels[i].IsValid()) {
             outError = std::string("液体の Compute シェーダーを読み込めません: ") + kKernelPaths[i];
             s.ready = false;
@@ -747,7 +779,7 @@ bool FluidGpuLiquidSolver::Initialize(renderer::ResourceManager& resources, cons
         }
     }
 
-    /// @note 粒子の枠と湧かせ方はレシピで決まるので、同じ大きさでも作り直す。
+    // 粒子の枠と湧かせ方はレシピで決まるので、同じ大きさでも作り直す。
     s.ReleaseBuffers(resources);
     std::vector<GpuLiquidSpawn> spawns = BuildGpuLiquidEmission(recipe, kMaxParticles);
     if (spawns.empty()) {
@@ -760,16 +792,24 @@ bool FluidGpuLiquidSolver::Initialize(renderer::ResourceManager& resources, cons
     const auto count = static_cast<std::uint32_t>(s.particleCount);
     constexpr auto kFloat4 = static_cast<std::uint32_t>(sizeof(float) * 4u);
     s.spawn = resources.CreateRWStructuredBuffer(spawns.data(), count * 2u, kFloat4);
-    for (auto& buffer : s.state) buffer = resources.CreateRWStructuredBuffer(nullptr, count * 2u, kFloat4);
-    for (auto& buffer : s.predicted) buffer = resources.CreateRWStructuredBuffer(nullptr, count, kFloat4);
+    for (auto& buffer : s.state) {
+        buffer = resources.CreateRWStructuredBuffer(nullptr, count * 2u, kFloat4);
+    }
+    for (auto& buffer : s.predicted) {
+        buffer = resources.CreateRWStructuredBuffer(nullptr, count, kFloat4);
+    }
     s.lambda = resources.CreateRWStructuredBuffer(nullptr, count, static_cast<std::uint32_t>(sizeof(float)));
     s.sortBuffer = resources.CreateRWStructuredBuffer(nullptr, s.sortCount,
                                                       static_cast<std::uint32_t>(sizeof(std::uint32_t) * 2u));
     s.rangeBuffer = resources.CreateRWStructuredBuffer(nullptr, count * 9u,
                                                        static_cast<std::uint32_t>(sizeof(std::uint32_t) * 2u));
     bool ok = s.spawn.IsValid() && s.lambda.IsValid() && s.sortBuffer.IsValid() && s.rangeBuffer.IsValid();
-    for (const auto& buffer : s.state) ok &= buffer.IsValid();
-    for (const auto& buffer : s.predicted) ok &= buffer.IsValid();
+    for (const auto& buffer : s.state) {
+        ok &= buffer.IsValid();
+    }
+    for (const auto& buffer : s.predicted) {
+        ok &= buffer.IsValid();
+    }
     if (!ok) {
         s.ReleaseBuffers(resources);
         outError = "液体の粒子バッファを作れません (このバックエンドは未対応か、VRAM が足りません)";
@@ -780,27 +820,39 @@ bool FluidGpuLiquidSolver::Initialize(renderer::ResourceManager& resources, cons
     const std::size_t constantCount = static_cast<std::size_t>(kMaxFramesPerTick) * kMaxSubsteps;
     s.stepConstants.resize(constantCount);
     for (auto& constants : s.stepConstants)
-        if (!constants.IsValid()) constants = resources.CreateConstantBuffer(sizeof(LiquidStepConstants));
-    if (!s.outputConstants.IsValid()) s.outputConstants = resources.CreateConstantBuffer(sizeof(LiquidStepConstants));
+        if (!constants.IsValid()) {
+            constants = resources.CreateConstantBuffer(sizeof(LiquidStepConstants));
+        }
+    if (!s.outputConstants.IsValid()) {
+        s.outputConstants = resources.CreateConstantBuffer(sizeof(LiquidStepConstants));
+    }
     const auto makePass = [&](const LiquidPassConstants& value) {
         const Impl::ConstantHandle handle = resources.CreateConstantBuffer(sizeof(LiquidPassConstants));
-        if (handle.IsValid()) resources.Update(handle, &value, sizeof(value));
+        if (handle.IsValid()) {
+            resources.Update(handle, &value, sizeof(value));
+        }
         return handle;
     };
-    if (!s.keysFromPredicted.IsValid()) s.keysFromPredicted = makePass({ 1u, 0u, 0u, 0u });
-    if (!s.keysFromState.IsValid()) s.keysFromState = makePass({ 2u, 0u, 0u, 0u });
+    if (!s.keysFromPredicted.IsValid()) {
+        s.keysFromPredicted = makePass({ 1u, 0u, 0u, 0u });
+    }
+    if (!s.keysFromState.IsValid()) {
+        s.keysFromState = makePass({ 2u, 0u, 0u, 0u });
+    }
     if (s.sortStagesFor != s.sortCount) {
         s.ReleaseSortStageConstants(resources);
         s.sortStages = BuildGpuLiquidSortStages(s.sortCount);
-        for (const GpuLiquidSortStage& stage : s.sortStages)
+        for (const GpuLiquidSortStage& stage : s.sortStages) {
             s.sortStageConstants.push_back(makePass({ stage.k, stage.j, 0u, 0u }));
+        }
         s.sortStagesFor = s.sortCount;
     }
 
     for (std::size_t index = 0; index < s.sortStages.size(); ++index) {
         const auto& stage = s.sortStages[index];
-        if (!s.sortStageConstants[index].IsValid())
+        if (!s.sortStageConstants[index].IsValid()) {
             s.sortStageConstants[index] = makePass({ stage.k, stage.j, 0u, 0u });
+        }
     }
     const auto validConstants = [](const auto& handles) {
         return std::all_of(handles.begin(), handles.end(), [](const auto& handle) { return handle.IsValid(); });
@@ -856,13 +908,17 @@ void FluidGpuLiquidSolver::BeginTick()
 bool FluidGpuLiquidSolver::StepFrame(renderer::IRenderer& renderer, renderer::ResourceManager& resources)
 {
     Impl& s = *m_impl;
-    if (!s.Owned(resources) || !s.ready || s.nextStepConstant + static_cast<std::size_t>(s.substeps) > s.stepConstants.size())
+    if (!s.Owned(resources) || !s.ready || s.nextStepConstant + static_cast<std::size_t>(s.substeps) > s.stepConstants.size()) {
         return false;
-    /// @note 1 コマ目は予算を超えても進める (でないと刻みの多いレシピが永遠に進まない)。
-    if (s.dispatchesThisTick > 0 && s.dispatchesThisTick + s.DispatchesPerFrame() > kDispatchBudgetPerTick)
+    }
+    // 1 コマ目は予算を超えても進める (でないと刻みの多いレシピが永遠に進まない)。
+    if (s.dispatchesThisTick > 0 && s.dispatchesThisTick + s.DispatchesPerFrame() > kDispatchBudgetPerTick) {
         return false;
+    }
     const float stepDt = s.frameDt / static_cast<float>(s.substeps);
-    for (int step = 0; step < s.substeps; ++step) s.Step(renderer, resources, stepDt);
+    for (int step = 0; step < s.substeps; ++step) {
+        s.Step(renderer, resources, stepDt);
+    }
     ++s.steppedFrames;
     return true;
 }
@@ -872,24 +928,28 @@ void FluidGpuLiquidSolver::WriteVolumes(renderer::IRenderer& renderer, renderer:
                                         renderer::ResourceHandle<renderer::TextureTag> velocity)
 {
     Impl& s = *m_impl;
-    if (!s.Owned(resources) || !s.ready || !medium.IsValid() || !velocity.IsValid()) return;
+    if (!s.Owned(resources) || !s.ready || !medium.IsValid() || !velocity.IsValid()) {
+        return;
+    }
     const LiquidStepConstants packed = s.Pack(s.time, 0.0f);
     resources.Update(s.outputConstants, &packed, sizeof(packed));
-    if (s.needsClear) s.ClearState(renderer, resources, s.outputConstants);
+    if (s.needsClear) {
+        s.ClearState(renderer, resources, s.outputConstants);
+    }
 
-    /// @note 格子は最後の刻みの «解く前の» 予測位置で組んである。解いた後の位置で組み直してから塗る。
+    // 格子は最後の刻みの «解く前の» 予測位置で組んである。解いた後の位置で組み直してから塗る。
     const Impl::BufferHandle current = s.state[s.currentState];
     s.BuildSort(renderer, resources, s.outputConstants, s.keysFromState, current);
 
     const std::uint32_t groups = (static_cast<std::uint32_t>(s.resolution) + kVoxelGroupSize - 1u) / kVoxelGroupSize;
     renderer::ComputeCall splat = s.Call(Impl::Splat, s.outputConstants, groups);
     splat.dispatchY = splat.dispatchZ = groups;
-    splat.srvBuffers[kSlotPositions] = current;
-    splat.srvBuffers[kSlotSorted] = s.sortBuffer;
-    splat.srvBuffers[kSlotAux] = s.spawn;
-    splat.uavOutputs[0] = medium;
-    splat.uavOutputs[1] = velocity;
+    splat.srvBuffers[renderer::srv::LIQUID_PARTICLES] = current;
+    splat.srvBuffers[renderer::srv::LIQUID_SORTED] = s.sortBuffer;
+    splat.srvBuffers[renderer::srv::LIQUID_SPAWN] = s.spawn;
+    splat.uavOutputs[renderer::uav::VOLUME_MEDIUM] = medium;
+    splat.uavOutputs[renderer::uav::VOLUME_VELOCITY] = velocity;
     s.Run(renderer, resources, splat);
 }
 
-} /// @note namespace fbzz::asset
+} // namespace fbzz::asset

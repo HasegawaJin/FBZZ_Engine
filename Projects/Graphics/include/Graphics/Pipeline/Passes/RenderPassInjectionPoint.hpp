@@ -16,4 +16,4 @@ enum class UserRenderPassInjectionPoint : uint8_t {
     BeforePostProcess
 };
 
-} /// @note namespace fbzz::renderer
+} // namespace fbzz::renderer

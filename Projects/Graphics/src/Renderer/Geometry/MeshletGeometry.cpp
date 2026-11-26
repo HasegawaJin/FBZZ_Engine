@@ -59,16 +59,18 @@ struct TerrainNormalCone {
 
 [[nodiscard]] bool CheckedMultiply(size_t left, size_t right, size_t& out)
 {
-    if (left != 0 && right > (std::numeric_limits<size_t>::max)() / left)
+    if (left != 0 && right > (std::numeric_limits<size_t>::max)() / left) {
         return false;
+    }
     out = left * right;
     return true;
 }
 
 [[nodiscard]] bool CheckedAdd(size_t left, size_t right, size_t& out)
 {
-    if (right > (std::numeric_limits<size_t>::max)() - left)
+    if (right > (std::numeric_limits<size_t>::max)() - left) {
         return false;
+    }
     out = left + right;
     return true;
 }
@@ -114,9 +116,13 @@ void ResetWorkingMeshlet(WorkingMeshlet& meshlet)
     float coordinateMagnitude = 1.0f;
     for (size_t vertex = 0; vertex < meshlet.vertices.size(); ++vertex) {
         float xyz[3];
-        if (!ReadPosition(vertexData, vertexStride, meshlet.vertices[vertex], xyz)) return false;
+        if (!ReadPosition(vertexData, vertexStride, meshlet.vertices[vertex], xyz)) {
+            return false;
+        }
         positions[vertex] = {xyz[0], xyz[1], xyz[2]};
-        for (float value : xyz) coordinateMagnitude = std::max(coordinateMagnitude, std::abs(value));
+        for (float value : xyz) {
+            coordinateMagnitude = std::max(coordinateMagnitude, std::abs(value));
+        }
     }
 
     constexpr float guard = 128.0f * std::numeric_limits<float>::epsilon();
@@ -127,7 +133,7 @@ void ResetWorkingMeshlet(WorkingMeshlet& meshlet)
         const auto p0 = positions[indices[0]];
         const auto p1 = positions[indices[1]];
         const auto p2 = positions[indices[2]];
-        /// @note Compute oriented normals in double so nearly parallel edges cannot narrow the cone through float cancellation.
+        // Compute oriented normals in double so nearly parallel edges cannot narrow the cone through float cancellation.
         const double ax = static_cast<double>(p1.x) - p0.x;
         const double ay = static_cast<double>(p1.y) - p0.y;
         const double az = static_cast<double>(p1.z) - p0.z;
@@ -139,8 +145,10 @@ void ResetWorkingMeshlet(WorkingMeshlet& meshlet)
         const double nz = ax * by - ay * bx;
         const double length = std::sqrt(nx * nx + ny * ny + nz * nz);
         const double edgeScale = std::max(ax * ax + ay * ay + az * az, bx * bx + by * by + bz * bz);
-        /// @note Fail open for tiny or degenerate triangles whose winding may be unstable after transform.
-        if (!std::isfinite(length) || length <= guard * edgeScale) return false;
+        // Fail open for tiny or degenerate triangles whose winding may be unstable after transform.
+        if (!std::isfinite(length) || length <= guard * edgeScale) {
+            return false;
+        }
         const Vector3 normal{static_cast<float>(nx / length), static_cast<float>(ny / length),
             static_cast<float>(nz / length)};
         normals[primitive] = normal;
@@ -148,7 +156,9 @@ void ResetWorkingMeshlet(WorkingMeshlet& meshlet)
     }
 
     const float sumLength = sum.Length();
-    if (!std::isfinite(sumLength) || sumLength <= guard) return false;
+    if (!std::isfinite(sumLength) || sumLength <= guard) {
+        return false;
+    }
     const auto unitAxis = sum / sumLength;
     const auto quantizeAxis = [](float component) {
         return static_cast<int32_t>(std::lround(std::clamp(component, -1.0f, 1.0f) * 127.0f));
@@ -169,16 +179,20 @@ void ResetWorkingMeshlet(WorkingMeshlet& meshlet)
         const auto normal = normals[primitive];
         const auto point = positions[meshlet.primitives[primitive][0]];
         const float facing = Vector3::Dot(axis, normal);
-        if (!std::isfinite(facing) || facing <= 0.1f) return false;
-        /// @note The decoded axis need not be unit length. Its cross magnitude already scales the cutoff to match its dot product.
+        if (!std::isfinite(facing) || facing <= 0.1f) {
+            return false;
+        }
+        // The decoded axis need not be unit length. Its cross magnitude already scales the cutoff to match its dot product.
         maxCross = std::max(maxCross, Vector3::Cross(axis, normal).Length());
         const float distance = (Vector3::Dot(center - point, normal) + planeGuard) / facing;
-        if (!std::isfinite(distance)) return false;
+        if (!std::isfinite(distance)) {
+            return false;
+        }
         apexDistance = std::max(apexDistance, distance);
     }
 
     const auto apex = center - axis * apexDistance;
-    /// @note Preserve the half-space proof whether the shader contracts the multiply and subtract or keeps them separate.
+    // Preserve the half-space proof whether the shader contracts the multiply and subtract or keeps them separate.
     const Vector3 fusedApex{std::fma(-axis.x, apexDistance, center.x), std::fma(-axis.y, apexDistance, center.y),
         std::fma(-axis.z, apexDistance, center.z)};
     for (size_t primitive = 0; primitive < meshlet.primitives.size(); ++primitive) {
@@ -186,10 +200,14 @@ void ResetWorkingMeshlet(WorkingMeshlet& meshlet)
         const float side = Vector3::Dot(apex - point, normals[primitive]);
         const float fusedSide = Vector3::Dot(fusedApex - point, normals[primitive]);
         if (!std::isfinite(side) || side > -0.5f * planeGuard
-            || !std::isfinite(fusedSide) || fusedSide > -0.5f * planeGuard) return false;
+            || !std::isfinite(fusedSide) || fusedSide > -0.5f * planeGuard) {
+            return false;
+        }
     }
     const uint32_t cutoff = static_cast<uint32_t>(std::ceil((maxCross + guard) * 255.0f));
-    if (cutoff >= 255u) return false;
+    if (cutoff >= 255u) {
+        return false;
+    }
     const auto axisByte = [](int32_t component) { return static_cast<uint32_t>(component) & 0xffu; };
     out = {axisByte(axisX) | (axisByte(axisY) << 8u) | (axisByte(axisZ) << 16u) | (cutoff << 24u), apexDistance};
     return true;
@@ -199,7 +217,9 @@ void ReleaseBlobs(ResourceManager& resources,
                   const std::vector<ResourceHandle<BufferTag>>& handles)
 {
     for (ResourceHandle<BufferTag> handle : handles) {
-        if (handle.IsValid()) resources.Release(handle);
+        if (handle.IsValid()) {
+            resources.Release(handle);
+        }
     }
 }
 
@@ -216,11 +236,13 @@ void ReleaseBlobs(ResourceManager& resources,
                                             std::array<float, 3>& outMin,
                                             std::array<float, 3>& outMax)
 {
+    // GPU へ送る各表のサイズを求め、連結後もオフセットを 32 ビットで表せることを確認する。
     size_t descriptorBytes = 0;
     if (meshletCount == 0 ||
         !CheckedMultiply(meshletCount, sizeof(MeshletDescriptor), descriptorBytes) ||
-        descriptorBytes > blob.size())
+        descriptorBytes > blob.size()) {
         return false;
+    }
 
     std::array<float, 3> boundsMin{
         (std::numeric_limits<float>::max)(),
@@ -237,8 +259,9 @@ void ReleaseBlobs(ResourceManager& resources,
         for (size_t axis = 0; axis < boundsMin.size(); ++axis) {
             if (!std::isfinite(descriptor.boundsMin[axis]) ||
                 !std::isfinite(descriptor.boundsMax[axis]) ||
-                descriptor.boundsMin[axis] > descriptor.boundsMax[axis])
+                descriptor.boundsMin[axis] > descriptor.boundsMax[axis]) {
                 return false;
+            }
             boundsMin[axis] = (std::min)(boundsMin[axis], descriptor.boundsMin[axis]);
             boundsMax[axis] = (std::max)(boundsMax[axis], descriptor.boundsMax[axis]);
         }
@@ -258,8 +281,9 @@ bool BuildMeshlets(const uint8_t* vertexData, size_t vertexDataBytes,
 {
     if (!vertexData || !indexData || vertexCount == 0 || vertexStride < 12 ||
         (vertexStride & 3u) != 0 ||
-        indexCount == 0 || indexCount % 3 != 0)
+        indexCount == 0 || indexCount % 3 != 0) {
         return false;
+    }
 
     size_t requiredVertexBytes = 0;
     size_t requiredIndexBytes = 0;
@@ -268,10 +292,12 @@ bool BuildMeshlets(const uint8_t* vertexData, size_t vertexDataBytes,
         requiredVertexBytes > vertexDataBytes || requiredIndexBytes > indexDataBytes ||
         requiredVertexBytes > kMaximumBlobBytes ||
         requiredVertexBytes > (std::numeric_limits<uint32_t>::max)() ||
-        requiredIndexBytes > kMaximumBlobBytes)
+        requiredIndexBytes > kMaximumBlobBytes) {
         return false;
-    if (vertexCount > kMaximumBlobBytes / sizeof(uint32_t))
+    }
+    if (vertexCount > kMaximumBlobBytes / sizeof(uint32_t)) {
         return false;
+    }
 
     std::vector<StagedDescriptor> stagedDescriptors;
     std::vector<uint32_t> vertexLookup;
@@ -287,12 +313,14 @@ bool BuildMeshlets(const uint8_t* vertexData, size_t vertexDataBytes,
                                          static_cast<size_t>(kMaximumMeshletCount)));
 
     auto flushMeshlet = [&]() -> bool {
-        if (current.primitives.empty())
+        if (current.primitives.empty()) {
             return true;
+        }
         if (stagedDescriptors.size() >= kMaximumMeshletCount ||
             vertexLookup.size() > (std::numeric_limits<uint32_t>::max)() ||
-            primitives.size() > (std::numeric_limits<uint32_t>::max)())
+            primitives.size() > (std::numeric_limits<uint32_t>::max)()) {
             return false;
+        }
 
         StagedDescriptor staged{};
         staged.vertexLookupElementOffset = static_cast<uint32_t>(vertexLookup.size());
@@ -306,13 +334,14 @@ bool BuildMeshlets(const uint8_t* vertexData, size_t vertexDataBytes,
         if (terrainCones) {
             TerrainNormalCone cone;
             if (BuildTerrainNormalCone(current, vertexData, vertexStride, cone)) {
-                /// @note Terrain uses the non-geometric bound lanes; flat static meshlets leave both lanes zero.
+                // Terrain uses the non-geometric bound lanes; flat static meshlets leave both lanes zero.
                 staged.descriptor.boundsMin[3] = std::bit_cast<float>(cone.packedAxisCutoff);
                 staged.descriptor.boundsMax[3] = cone.apexDistance;
             }
         }
-        if (!clusterRanges.empty())
+        if (!clusterRanges.empty()) {
             staged.descriptor.boundsMin[3] = std::bit_cast<float>(clusterRanges[clusterRangeIndex].node);
+        }
         stagedDescriptors.push_back(staged);
         vertexLookup.insert(vertexLookup.end(), current.vertices.begin(), current.vertices.end());
         primitives.insert(primitives.end(), current.primitives.begin(), current.primitives.end());
@@ -325,42 +354,52 @@ bool BuildMeshlets(const uint8_t* vertexData, size_t vertexDataBytes,
             !CheckedMultiply(primitives.size(), sizeof(std::array<uint32_t, 3>), primitiveBytes) ||
             !CheckedAdd(descriptorBytes, lookupBytes, stagedBytes) ||
             !CheckedAdd(stagedBytes, primitiveBytes, stagedBytes) ||
-            stagedBytes > kMaximumBlobBytes)
+            stagedBytes > kMaximumBlobBytes) {
             return false;
-        for (uint32_t vertexIndex : current.vertices)
+        }
+        for (uint32_t vertexIndex : current.vertices) {
             localIndex[vertexIndex] = kUnassignedLocalIndex;
+        }
         ResetWorkingMeshlet(current);
         return true;
     };
 
     for (size_t firstIndex = 0; firstIndex < indexCount; firstIndex += 3) {
         if (!clusterRanges.empty() && firstIndex == clusterRanges[clusterRangeIndex].endIndex) {
-            if (!flushMeshlet()) return false;
+            if (!flushMeshlet()) {
+                return false;
+            }
             ++clusterRangeIndex;
         }
         uint32_t triangle[3]{};
         std::memcpy(triangle, indexData + firstIndex * sizeof(uint32_t),
                     sizeof(triangle));
         for (uint32_t vertexIndex : triangle) {
-            if (vertexIndex >= vertexCount)
+            if (vertexIndex >= vertexCount) {
                 return false;
+            }
         }
 
         uint32_t additionalVertices = 0;
         for (size_t corner = 0; corner < 3; ++corner) {
             const uint32_t candidate = triangle[corner];
-            if (localIndex[candidate] != kUnassignedLocalIndex)
+            if (localIndex[candidate] != kUnassignedLocalIndex) {
                 continue;
+            }
             bool repeated = false;
-            for (size_t earlier = 0; earlier < corner; ++earlier)
+            for (size_t earlier = 0; earlier < corner; ++earlier) {
                 repeated = repeated || triangle[earlier] == candidate;
-            if (!repeated) ++additionalVertices;
+            }
+            if (!repeated) {
+                ++additionalVertices;
+            }
         }
 
         if (current.primitives.size() == kMaximumMeshletPrimitives ||
             current.vertices.size() + additionalVertices > kMaximumMeshletVertices) {
-            if (!flushMeshlet())
+            if (!flushMeshlet()) {
                 return false;
+            }
         }
 
         std::array<uint32_t, 3> localTriangle{};
@@ -369,8 +408,9 @@ bool BuildMeshlets(const uint8_t* vertexData, size_t vertexDataBytes,
             uint8_t local = localIndex[vertexIndex];
             if (local == kUnassignedLocalIndex) {
                 float position[3]{};
-                if (!ReadPosition(vertexData, vertexStride, vertexIndex, position))
+                if (!ReadPosition(vertexData, vertexStride, vertexIndex, position)) {
                     return false;
+                }
                 local = static_cast<uint8_t>(current.vertices.size());
                 localIndex[vertexIndex] = local;
                 current.vertices.push_back(vertexIndex);
@@ -382,22 +422,28 @@ bool BuildMeshlets(const uint8_t* vertexData, size_t vertexDataBytes,
     }
 
     if (!flushMeshlet() || stagedDescriptors.empty() ||
-        stagedDescriptors.size() > kMaximumMeshletCount)
+        stagedDescriptors.size() > kMaximumMeshletCount) {
         return false;
+    }
 
     size_t descriptorBytes = 0;
     size_t vertexLookupBytes = 0;
     size_t primitiveBytes = 0;
     size_t totalBytes = 0;
-    if (!CheckedMultiply(stagedDescriptors.size(), sizeof(MeshletDescriptor), descriptorBytes) ||
-        !CheckedMultiply(vertexLookup.size(), sizeof(uint32_t), vertexLookupBytes) ||
-        !CheckedMultiply(primitives.size(), sizeof(std::array<uint32_t, 3>), primitiveBytes) ||
-        !CheckedAdd(descriptorBytes, vertexLookupBytes, totalBytes) ||
-        !CheckedAdd(totalBytes, primitiveBytes, totalBytes) ||
-        totalBytes == 0 || totalBytes > kMaximumBlobBytes ||
-        totalBytes > (std::numeric_limits<uint32_t>::max)() ||
-        (totalBytes & 3u) != 0)
+    if (!CheckedMultiply(stagedDescriptors.size(), sizeof(MeshletDescriptor), descriptorBytes)
+        || !CheckedMultiply(vertexLookup.size(), sizeof(uint32_t), vertexLookupBytes)
+        || !CheckedMultiply(primitives.size(), sizeof(std::array<uint32_t, 3>), primitiveBytes)) {
         return false;
+    }
+    if (!CheckedAdd(descriptorBytes, vertexLookupBytes, totalBytes)
+        || !CheckedAdd(totalBytes, primitiveBytes, totalBytes)) {
+        return false;
+    }
+    const bool validBlobSize = totalBytes != 0 && totalBytes <= kMaximumBlobBytes
+        && totalBytes <= (std::numeric_limits<uint32_t>::max)() && (totalBytes & 3u) == 0;
+    if (!validBlobSize) {
+        return false;
+    }
 
     std::vector<MeshletDescriptor> descriptors;
     descriptors.reserve(stagedDescriptors.size());
@@ -407,8 +453,9 @@ bool BuildMeshlets(const uint8_t* vertexData, size_t vertexDataBytes,
         const size_t primitiveOffset = descriptorBytes + vertexLookupBytes +
             static_cast<size_t>(staged.primitiveElementOffset) * sizeof(std::array<uint32_t, 3>);
         if (vertexOffset > (std::numeric_limits<uint32_t>::max)() ||
-            primitiveOffset > (std::numeric_limits<uint32_t>::max)())
+            primitiveOffset > (std::numeric_limits<uint32_t>::max)()) {
             return false;
+        }
         MeshletDescriptor descriptor = staged.descriptor;
         descriptor.vertexOffsetBytes = static_cast<uint32_t>(vertexOffset);
         descriptor.primitiveOffsetBytes = static_cast<uint32_t>(primitiveOffset);
@@ -435,7 +482,9 @@ void BuildClusterStream(MeshletClusterData& data, std::span<const StaticClusterN
     auto high = nodes.front().boundsMax;
     for (size_t i = nodes.size(); i > 0; --i) {
         const uint32_t parent = nodes[i - 1].parent;
-        if (parent != UINT32_MAX) depths[i - 1] = depths[parent] + 1u;
+        if (parent != UINT32_MAX) {
+            depths[i - 1] = depths[parent] + 1u;
+        }
         else {
             const auto& node = nodes[i - 1];
             data.streamRootError = (std::max)(data.streamRootError, node.error);
@@ -492,15 +541,21 @@ bool PackClusters(std::span<const VertexType> vertices,
     std::span<const uint32_t> indices, MeshletClusterData& output)
 {
     StaticClusterBuild hierarchy;
-    if (!BuildStaticClusterLod(vertices, indices, hierarchy)) return false;
+    if (!BuildStaticClusterLod(vertices, indices, hierarchy)) {
+        return false;
+    }
     const auto* vertexBytes = static_cast<const uint8_t*>(static_cast<const void*>(vertices.data()));
     const auto* indexBytes = static_cast<const uint8_t*>(static_cast<const void*>(hierarchy.indices.data()));
     MeshletClusterData packed;
     if (!BuildMeshlets(vertexBytes, vertices.size_bytes(), static_cast<uint32_t>(vertices.size()), sizeof(VertexType),
         indexBytes, hierarchy.indices.size() * sizeof(uint32_t), static_cast<uint32_t>(hierarchy.indices.size()),
-        false, packed.bytes, packed.meshletCount, hierarchy.ranges)) return false;
+        false, packed.bytes, packed.meshletCount, hierarchy.ranges)) {
+        return false;
+    }
     const size_t nodeBytes = hierarchy.nodes.size() * sizeof(StaticClusterNode);
-    if (nodeBytes > kMaximumBlobBytes - packed.bytes.size()) return false;
+    if (nodeBytes > kMaximumBlobBytes - packed.bytes.size()) {
+        return false;
+    }
     packed.nodeOffsetBytes = static_cast<uint32_t>(packed.bytes.size());
     packed.bytes.resize(packed.bytes.size() + nodeBytes);
     std::memcpy(packed.bytes.data() + packed.nodeOffsetBytes, hierarchy.nodes.data(), nodeBytes);
@@ -511,12 +566,14 @@ bool PackClusters(std::span<const VertexType> vertices,
             packed.maximumSkinWeightError = (std::max)(packed.maximumSkinWeightError, static_cast<float>(std::abs(sum - 1.0)));
         }
     }
-    if constexpr (std::is_same_v<VertexType, Vertex>) BuildClusterStream(packed, hierarchy.nodes);
+    if constexpr (std::is_same_v<VertexType, Vertex>) {
+        BuildClusterStream(packed, hierarchy.nodes);
+    }
     output = std::move(packed);
     return true;
 }
 
-} /// @note namespace
+} // namespace
 
 bool MeshletGeometryBuilder::BuildClusters(std::span<const Vertex> vertices,
     std::span<const uint32_t> indices, MeshletClusterData& output)
@@ -594,22 +651,36 @@ bool MeshletGeometryCache::PrepareImpl(ResourceManager& resources,
 
     BufferResourceMetadata vertexMetadata{};
     BufferResourceMetadata indexMetadata{};
-    if (!resources.GetBufferMetadata(vertexBuffer, vertexMetadata) ||
-        !resources.GetBufferMetadata(indexBuffer, indexMetadata) ||
-        !vertexMetadata.cpuReadable || vertexMetadata.gpuWritable || vertexMetadata.indexBuffer ||
-        !indexMetadata.cpuReadable || indexMetadata.gpuWritable || !indexMetadata.indexBuffer ||
-        vertexMetadata.stride != vertexStride || vertexMetadata.contentVersion == 0 ||
-        indexMetadata.contentVersion == 0) {
+    if (!resources.GetBufferMetadata(vertexBuffer, vertexMetadata)
+        || !resources.GetBufferMetadata(indexBuffer, indexMetadata)) {
+        return false;
+    }
+
+    // CPU が読める安定した頂点・インデックス列だけを構築元に使う。
+    const bool readableVertexData = vertexMetadata.cpuReadable && !vertexMetadata.gpuWritable
+        && !vertexMetadata.indexBuffer;
+    if (!readableVertexData) {
+        return false;
+    }
+    const bool readableIndexData = indexMetadata.cpuReadable && !indexMetadata.gpuWritable && indexMetadata.indexBuffer;
+    if (!readableIndexData) {
+        return false;
+    }
+    if (vertexMetadata.stride != vertexStride || vertexMetadata.contentVersion == 0 || indexMetadata.contentVersion == 0) {
         return false;
     }
 
     if (terrainCones) {
         const size_t count = vertexMetadata.sizeBytes / vertexStride;
-        if (vertexMetadata.sizeBytes % vertexStride != 0 || count == 0 || count > UINT32_MAX) return false;
+        if (vertexMetadata.sizeBytes % vertexStride != 0 || count == 0 || count > UINT32_MAX) {
+            return false;
+        }
         vertexCount = static_cast<uint32_t>(count);
     }
-    /// @note A packed import hierarchy indexes the original VB/IB contents. Updated buffers use the legacy path.
-    if (clusters && (vertexMetadata.contentVersion != 1 || indexMetadata.contentVersion != 1)) return false;
+    // A packed import hierarchy indexes the original VB/IB contents. Updated buffers use the legacy path.
+    if (clusters && (vertexMetadata.contentVersion != 1 || indexMetadata.contentVersion != 1)) {
+        return false;
+    }
 
     size_t requiredVertexBytes = 0;
     size_t requiredIndexBytes = 0;
@@ -623,13 +694,16 @@ bool MeshletGeometryCache::PrepareImpl(ResourceManager& resources,
         return false;
     }
 
-    if (paged && (!clusters || clusters->streamMetadata.empty())) return false;
+    if (paged && (!clusters || clusters->streamMetadata.empty())) {
+        return false;
+    }
     const InputKey key{ vertexBuffer, indexBuffer, vertexCount, vertexStride, indexCount, terrainCones, clusters != nullptr, paged };
     std::vector<ResourceHandle<BufferTag>> releaseHandles;
     {
         std::lock_guard lock(m_mutex);
-        if (m_releasing)
+        if (m_releasing) {
             return false;
+        }
         if (m_ownerInstanceId == 0) {
             m_ownerInstanceId = resources.GetInstanceId();
             m_resetVersion = resources.GetResetVersion();
@@ -644,22 +718,26 @@ bool MeshletGeometryCache::PrepareImpl(ResourceManager& resources,
             found->second.vertexVersion == vertexMetadata.contentVersion &&
             found->second.indexVersion == indexMetadata.contentVersion) {
             found->second.lastUseStamp = ++m_useStamp;
-            if (found->second.rejected)
+            if (found->second.rejected) {
                 return false;
+            }
             outGeometry = found->second.geometry;
             return true;
         }
         if (found != m_entries.end()) {
             m_cachedBytes -= found->second.blobBytes;
-            if (found->second.geometry.blob.IsValid())
+            if (found->second.geometry.blob.IsValid()) {
                 releaseHandles.push_back(found->second.geometry.blob);
+            }
             m_entries.erase(found);
         }
     }
     ReleaseBlobs(resources, releaseHandles);
 
     IBuffer* sourceVertexBuffer = resources.Get(vertexBuffer);
-    if (!sourceVertexBuffer || sourceVertexBuffer->GetBindlessSrvIndex() == INVALID_BINDLESS_INDEX) return false;
+    if (!sourceVertexBuffer || sourceVertexBuffer->GetBindlessSrvIndex() == INVALID_BINDLESS_INDEX) {
+        return false;
+    }
 
     std::vector<uint8_t> generated;
     uint32_t meshletCount = 0;
@@ -671,7 +749,9 @@ bool MeshletGeometryCache::PrepareImpl(ResourceManager& resources,
         std::vector<uint8_t> indexBytes(requiredIndexBytes);
         IBuffer* sourceIndexBuffer = resources.Get(indexBuffer);
         if (!sourceIndexBuffer || !sourceVertexBuffer->CopyData(0, requiredVertexBytes, vertexBytes.data())
-            || !sourceIndexBuffer->CopyData(0, requiredIndexBytes, indexBytes.data())) return false;
+            || !sourceIndexBuffer->CopyData(0, requiredIndexBytes, indexBytes.data())) {
+            return false;
+        }
         validBlob = BuildMeshlets(vertexBytes.data(), vertexBytes.size(), vertexCount, vertexStride,
             indexBytes.data(), indexBytes.size(), indexCount, terrainCones, generated, meshletCount);
     }
@@ -682,8 +762,9 @@ bool MeshletGeometryCache::PrepareImpl(ResourceManager& resources,
     if (!resources.GetBufferMetadata(vertexBuffer, verifiedVertexMetadata) ||
         !resources.GetBufferMetadata(indexBuffer, verifiedIndexMetadata) ||
         !SameInputVersions(verifiedVertexMetadata, verifiedIndexMetadata,
-                           vertexMetadata.contentVersion, indexMetadata.contentVersion))
+                           vertexMetadata.contentVersion, indexMetadata.contentVersion)) {
         return false;
+    }
 
     if (!validBlob) {
         std::vector<ResourceHandle<BufferTag>> evictedHandles;
@@ -707,8 +788,9 @@ bool MeshletGeometryCache::PrepareImpl(ResourceManager& resources,
                 } else {
                     if (found != m_entries.end()) {
                         m_cachedBytes -= found->second.blobBytes;
-                        if (found->second.geometry.blob.IsValid())
+                        if (found->second.geometry.blob.IsValid()) {
                             evictedHandles.push_back(found->second.geometry.blob);
+                        }
                         m_entries.erase(found);
                     }
                     while (m_entries.size() >= kMaximumCacheEntries && !m_entries.empty()) {
@@ -716,10 +798,13 @@ bool MeshletGeometryCache::PrepareImpl(ResourceManager& resources,
                             [](const auto& left, const auto& right) {
                                 return left.second.lastUseStamp < right.second.lastUseStamp;
                             });
-                        if (oldest == m_entries.end()) break;
+                        if (oldest == m_entries.end()) {
+                            break;
+                        }
                         m_cachedBytes -= oldest->second.blobBytes;
-                        if (oldest->second.geometry.blob.IsValid())
+                        if (oldest->second.geometry.blob.IsValid()) {
                             evictedHandles.push_back(oldest->second.geometry.blob);
+                        }
                         m_entries.erase(oldest);
                     }
                     if (m_entries.size() < kMaximumCacheEntries) {
@@ -735,10 +820,12 @@ bool MeshletGeometryCache::PrepareImpl(ResourceManager& resources,
             }
         }
         ReleaseBlobs(resources, evictedHandles);
-        if (reusedGeometry)
+        if (reusedGeometry) {
             return true;
-        if (rememberedFailure)
+        }
+        if (rememberedFailure) {
             FBZZ_LOG_WARN("MeshletGeometryCache: geometry failed meshlet validation or blob capacity");
+        }
         return false;
     }
 
@@ -750,8 +837,9 @@ bool MeshletGeometryCache::PrepareImpl(ResourceManager& resources,
         return false;
     }
 
-    if (blobBytes.size() > kMaximumCacheBytes)
+    if (blobBytes.size() > kMaximumCacheBytes) {
         return false;
+    }
     ResourceHandle<BufferTag> blob = resources.CreateVertexBuffer(
         blobBytes.data(), blobBytes.size(), sizeof(uint32_t));
     if (!blob.IsValid()) {
@@ -796,8 +884,9 @@ bool MeshletGeometryCache::PrepareImpl(ResourceManager& resources,
             } else {
                 if (found != m_entries.end()) {
                     m_cachedBytes -= found->second.blobBytes;
-                    if (found->second.geometry.blob.IsValid())
+                    if (found->second.geometry.blob.IsValid()) {
                         evictedHandles.push_back(found->second.geometry.blob);
+                    }
                     m_entries.erase(found);
                 }
                 while (!m_entries.empty() &&
@@ -807,10 +896,13 @@ bool MeshletGeometryCache::PrepareImpl(ResourceManager& resources,
                         [](const auto& left, const auto& right) {
                             return left.second.lastUseStamp < right.second.lastUseStamp;
                         });
-                    if (oldest == m_entries.end()) break;
+                    if (oldest == m_entries.end()) {
+                        break;
+                    }
                     m_cachedBytes -= oldest->second.blobBytes;
-                    if (oldest->second.geometry.blob.IsValid())
+                    if (oldest->second.geometry.blob.IsValid()) {
                         evictedHandles.push_back(oldest->second.geometry.blob);
+                    }
                     m_entries.erase(oldest);
                 }
                 if (m_entries.size() < kMaximumCacheEntries &&
@@ -831,8 +923,9 @@ bool MeshletGeometryCache::PrepareImpl(ResourceManager& resources,
         }
     }
     ReleaseBlobs(resources, evictedHandles);
-    if (!stored)
+    if (!stored) {
         resources.Release(blob);
+    }
     return accepted;
 }
 
@@ -856,8 +949,9 @@ void MeshletGeometryCache::Invalidate(ResourceManager& resources,
             }
             m_cachedBytes -= entry->second.blobBytes;
             const ResourceHandle<BufferTag> blob = entry->second.geometry.blob;
-            if (blob.IsValid() && blob != buffer)
+            if (blob.IsValid() && blob != buffer) {
                 releaseHandles.push_back(blob);
+            }
             entry = m_entries.erase(entry);
         }
     }
@@ -879,8 +973,9 @@ void MeshletGeometryCache::Release(ResourceManager& resources)
         releaseHandles.reserve(m_entries.size());
         for (const auto& [key, entry] : m_entries) {
             static_cast<void>(key);
-            if (sameReset && entry.geometry.blob.IsValid())
+            if (sameReset && entry.geometry.blob.IsValid()) {
                 releaseHandles.push_back(entry.geometry.blob);
+            }
         }
         m_entries.clear();
         m_cachedBytes = 0;
@@ -895,4 +990,4 @@ void MeshletGeometryCache::Release(ResourceManager& resources)
     }
 }
 
-} /// @note namespace fbzz::renderer
+} // namespace fbzz::renderer

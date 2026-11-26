@@ -137,9 +137,13 @@ GraphicsQualityShaderTest::TaaSilhouetteReadback GraphicsQualityShaderTest::TaaS
     };
     std::vector<float> pixels;
     for (uint32_t frameIndex = 0u; frameIndex < 24u; ++frameIndex) {
-        if (!renderFrame(frameIndex, Input::STATIC, frameIndex == 0u)) return {};
+        if (!renderFrame(frameIndex, Input::STATIC, frameIndex == 0u)) {
+            return {};
+        }
         if (frameIndex >= 8u) {
-            if (!capture(lastOutput, pixels)) return {};
+            if (!capture(lastOutput, pixels)) {
+                return {};
+            }
             const auto sample = frameIndex - 8u;
             result.phases[sample] = pixels[(4u * 8u + 4u) * 4u];
             for (size_t point = 0; point < EDGE_PIXELS.size(); ++point) {
@@ -148,39 +152,63 @@ GraphicsQualityShaderTest::TaaSilhouetteReadback GraphicsQualityShaderTest::TaaS
             }
         }
     }
-    if (thinGeometry) return result;
-    if (!renderFrame(24u, Input::REVEAL, false) || !capture(lastOutput, pixels)) return {};
+    if (thinGeometry) {
+        return result;
+    }
+    if (!renderFrame(24u, Input::REVEAL, false) || !capture(lastOutput, pixels)) {
+        return {};
+    }
     result.exposedBackground = pixels[(4u * 8u + 4u) * 4u];
-    if (!capture(lastRaw, pixels)) return {};
+    if (!capture(lastRaw, pixels)) {
+        return {};
+    }
     result.exposedHistoryLength = pixels[(4u * 8u + 4u) * 4u + 3u];
 
     for (uint32_t frameIndex = 0u; frameIndex < 32u; ++frameIndex) {
         const auto input = frameIndex < 24u ? Input::STATIC : Input::WHITE;
-        if (!renderFrame(frameIndex, input, frameIndex == 0u)) return {};
+        if (!renderFrame(frameIndex, input, frameIndex == 0u)) {
+            return {};
+        }
         if (frameIndex == 0u) {
-            if (!capture(lastRaw, pixels)) return {};
+            if (!capture(lastRaw, pixels)) {
+                return {};
+            }
             result.freshHistoryLength = pixels[(4u * 8u + 4u) * 4u + 3u];
         }
         if (frameIndex >= 24u) {
-            if (!capture(lastOutput, pixels)) return {};
+            if (!capture(lastOutput, pixels)) {
+                return {};
+            }
             result.changedColor[frameIndex - 24u] = pixels[(4u * 8u + 4u) * 4u];
         }
     }
 
     for (uint32_t frameIndex = 0u; frameIndex < 24u; ++frameIndex)
-        if (!renderFrame(frameIndex, Input::STATIC, frameIndex == 0u)) return {};
-    if (!renderFrame(24u, Input::MOTION, false) || !capture(lastRaw, pixels)) return {};
+        if (!renderFrame(frameIndex, Input::STATIC, frameIndex == 0u)) {
+            return {};
+        }
+    if (!renderFrame(24u, Input::MOTION, false) || !capture(lastRaw, pixels)) {
+        return {};
+    }
     result.movingHistoryLength = pixels[(4u * 8u + 4u) * 4u + 3u];
-    if (!renderFrame(25u, Input::REACTIVE, false) || !capture(lastRaw, pixels)) return {};
+    if (!renderFrame(25u, Input::REACTIVE, false) || !capture(lastRaw, pixels)) {
+        return {};
+    }
     result.reactiveHistoryLength = pixels[(4u * 8u + 4u) * 4u + 3u];
 
     for (uint32_t frameIndex = 0u; frameIndex < 24u; ++frameIndex)
-        if (!renderFrame(frameIndex, Input::STATIC, frameIndex == 0u)) return {};
+        if (!renderFrame(frameIndex, Input::STATIC, frameIndex == 0u)) {
+            return {};
+        }
     hdrMode = !hdr;
     for (uint32_t frameIndex = 24u; frameIndex < 32u; ++frameIndex) {
-        if (!renderFrame(frameIndex, Input::STATIC, false) || !capture(lastOutput, pixels)) return {};
+        if (!renderFrame(frameIndex, Input::STATIC, false) || !capture(lastOutput, pixels)) {
+            return {};
+        }
         result.switchedColor[frameIndex - 24u] = pixels[(4u * 8u + 4u) * 4u];
-        if (!capture(lastRaw, pixels)) return {};
+        if (!capture(lastRaw, pixels)) {
+            return {};
+        }
         result.switchedHistoryLength[frameIndex - 24u] = pixels[(4u * 8u + 4u) * 4u + 3u];
     }
     return result;
@@ -206,7 +234,7 @@ void GraphicsQualityShaderTest::SetUp()
         std::error_code error;
         std::filesystem::create_directories(testRoot, error);
         ASSERT_FALSE(error);
-        /// @note テスト用の Shaders root に本番ヘッダーをそのまま配置し、DXC の include 解決を製品と揃える。
+        // テスト用の Shaders root に本番ヘッダーをそのまま配置し、DXC の include 解決を製品と揃える。
         for (const auto* directory : {"Common", "Rendering", "Platform"}) {
             std::filesystem::copy(root / directory, testRoot / directory, std::filesystem::copy_options::recursive, error);
             ASSERT_FALSE(error);
@@ -219,7 +247,7 @@ void GraphicsQualityShaderTest::SetUp()
         m_fill = m_resources->LoadShader((testRoot / "GraphicsQualityFill.cs.hlsl").generic_string());
         m_taa = m_resources->LoadShader((root / "PostProcess/AntiAliasing/TAA.hlsl").generic_string());
         auto resolveFile = root / "PostProcess/Reflections/SSRResolve.hlsl";
-        /// @note 検出力の確認は一時コピーだけを壊す。本番アセットと他のビルドの入力を変更しない。
+        // 検出力の確認は一時コピーだけを壊す。本番アセットと他のビルドの入力を変更しない。
         if (const char* mutation = std::getenv("FBZZ_GRAPHICS_QUALITY_MUTATION");
             mutation && std::string_view(mutation) == "ssr-alpha") {
             std::ifstream input(resolveFile, std::ios::binary);

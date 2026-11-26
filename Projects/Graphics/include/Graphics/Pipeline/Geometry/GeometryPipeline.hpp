@@ -19,8 +19,8 @@ FBZZ_GRAPHICS_API void BuildGeometryPreparation(RenderPipeline& pipeline, bool c
 /// @note Raster は既存順序を維持し、Hybrid SCREEN_FIRST は baseline と空から SSR 入力を作る。
 /// @see Docs/design/graphics-library.md
 /// @see Docs/design/RayTracing.md
-/// @param deferredSurfaceReady 表面入力が揃った後、照明合成より前に追加するパス。
-/// @param hybridScreenFirst SSR 入力を反射 resolve 前に作る Deferred 専用構成。
+/// @param[in] deferredSurfaceReady 表面入力が揃った後、照明合成より前に追加するパス。
+/// @param[in] hybridScreenFirst SSR 入力を反射 resolve 前に作る Deferred 専用構成。
 FBZZ_GRAPHICS_API void BuildGeometryPipeline(RenderPipeline& pipeline, const renderer::OpaqueRenderPlan& plan,
     const std::function<void()>& deferredSurfaceReady = {}, bool hybridScreenFirst = false);
 
@@ -30,4 +30,4 @@ FBZZ_GRAPHICS_API void BuildGeometryTransparency(RenderPipeline& pipeline, const
 /// @note 水面の背景に使う光芒とコースティクスを先に合成する。
 FBZZ_GRAPHICS_API void BuildWaterComposition(RenderPipeline& pipeline);
 
-} /// @note namespace fbzz::renderer
+} // namespace fbzz::renderer

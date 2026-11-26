@@ -3,6 +3,7 @@
 /// @author  Hasegawa Jin
 /// @date    2026-10-21
 /// @see Docs/design/water-appearance-authoring.md Shared vertex, view/depth and reflected material contracts.
+#include "Common/Binding.hlsli"
 #include "Water/WaterSurface.hlsli"
 #include "Common/MaterialTextures.hlsli"
 
@@ -27,7 +28,7 @@ cbuffer MaterialConstants : register(CB_MATERIAL)
 #if BINDLESS_SUPPORTED
 FBZZ_MATERIAL_TEX(g_projectPattern, texAlbedoIndex);
 #else
-Texture2D g_projectPattern : register(t0);
+Texture2D g_projectPattern : register(TEX_ALBEDO);
 #endif
 
 float ProjectWaterBand(float value, float count)

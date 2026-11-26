@@ -109,4 +109,4 @@ private:
     const std::thread::id m_workerId;
 };
 
-} /// @note namespace fbzz::renderer
+} // namespace fbzz::renderer

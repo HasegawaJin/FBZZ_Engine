@@ -28,8 +28,8 @@ inline constexpr std::uint32_t kTileCells = 64u;
 
 /// @note 焼き上がったタイル。mips[0] が最大解像度。
 struct Tile {
-    std::vector<std::vector<std::uint8_t>> mips;   ///< @note 各段の RGBA8
-    std::vector<std::uint32_t>             sizes;  ///< @note 各段の 1 辺 [texel]
+    std::vector<std::vector<std::uint8_t>> mips;   ///< 各段の RGBA8
+    std::vector<std::uint32_t>             sizes;  ///< 各段の 1 辺 [texel]
     /// @note R/G を [-1,1] へ戻したあとに掛ける係数。シェーダーへは CB 経由で渡す。
     float derivativeScale = 1.0f;
 };
@@ -58,8 +58,8 @@ inline void CellGradient(std::int32_t x, std::int32_t y, std::int32_t period, fl
 
 /// @note タイラブルな 2D 勾配ノイズ (Perlin)。値と解析勾配を同時に返す。
 /// @note 値ノイズでなく勾配ノイズを使う理由: 値ノイズは勾配が格子線上でゼロになり «平らな筋» が残って泡状に見える。
-/// @param px,py セル単位の座標。
-/// @param period 何セルで折り返すか。
+/// @param[in] px,py セル単位の座標。
+/// @param[in] period 何セルで折り返すか。
 /// @param[out] dx,dy ∂h/∂px, ∂h/∂py。
 /// @return 高さ h。おおよそ [-0.7, 0.7]。
 inline float GradientNoise(float px, float py, std::int32_t period, float& dx, float& dy)
@@ -80,8 +80,8 @@ inline float GradientNoise(float px, float py, std::int32_t period, float& dx, f
     const float n01 = g01x * fx         + g01y * (fy - 1.f);
     const float n11 = g11x * (fx - 1.f) + g11y * (fy - 1.f);
 
-    /// @note 5 次のフェード。3 次 (smoothstep) だと 2 階微分が格子で折れ、
-    /// @note 勾配テクスチャにしたとき «筋» として見えてしまう。
+    // 5 次のフェード。3 次 (smoothstep) だと 2 階微分が格子で折れ、
+    // 勾配テクスチャにしたとき «筋» として見えてしまう。
     const float ux  = fx * fx * fx * (fx * (fx * 6.f - 15.f) + 10.f);
     const float uy  = fy * fy * fy * (fy * (fy * 6.f - 15.f) + 10.f);
     const float dux = 30.f * fx * fx * (fx * (fx - 2.f) + 1.f);
@@ -101,7 +101,7 @@ inline float GradientNoise(float px, float py, std::int32_t period, float& dx, f
     return n00 + k1 * ux + k2 * uy + k3 * ux * uy;
 }
 
-} /// @note namespace detail
+} // namespace detail
 
 /// @note さざ波タイルを焼く。起動時に 1 度だけ呼ぶ想定。
 ///
@@ -122,8 +122,8 @@ inline float GradientNoise(float px, float py, std::int32_t period, float& dx, f
     double squareSum = 0.0;
     for (std::uint32_t y = 0; y < size; ++y) {
         for (std::uint32_t x = 0; x < size; ++x) {
-            /// @note テクセル «中心» で標本化する。角で焼くとバイリニア補間が
-            /// @note 半テクセルぶんずれ、勾配と値の位相が食い違う。
+            // テクセル «中心» で標本化する。角で焼くとバイリニア補間が
+            // 半テクセルぶんずれ、勾配と値の位相が食い違う。
             const float px = (static_cast<float>(x) + 0.5f) * cellPerTexel;
             const float py = (static_cast<float>(y) + 0.5f) * cellPerTexel;
             float dx = 0.0f, dy = 0.0f;
@@ -156,7 +156,7 @@ inline float GradientNoise(float px, float py, std::int32_t period, float& dx, f
         };
         level[i * 4u + 0u] = encode(gradX[i] * invGrad);
         level[i * 4u + 1u] = encode(gradY[i] * invGrad);
-        /// @note 高さは泡のムラ用。振幅 0.7 前後なので 1/1.4 で [0,1] へ伸ばす。
+        // 高さは泡のムラ用。振幅 0.7 前後なので 1/1.4 で [0,1] へ伸ばす。
         level[i * 4u + 2u] = encode(height[i] * (1.0f / 0.7f));
         level[i * 4u + 3u] = 255u;
     }
@@ -182,9 +182,11 @@ inline float GradientNoise(float px, float py, std::int32_t period, float& dx, f
         }
         tile.mips.push_back(std::move(dst));
         tile.sizes.push_back(w);
-        if (w == 1u) break;
+        if (w == 1u) {
+            break;
+        }
     }
     return tile;
 }
 
-} /// @note namespace fbzz::renderer::waternoise
+} // namespace fbzz::renderer::waternoise

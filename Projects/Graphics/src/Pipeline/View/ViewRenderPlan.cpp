@@ -62,13 +62,14 @@ ResolvedRenderPlan PrepareViewRenderPlan(ResourceManager& resources, IRenderer& 
         && resources.Get(shared.rayPathShader) && resources.Get(shared.rayPathResolveShader)
         && resources.Get(shared.rayPathResolvePSO) && resources.Get(shared.copyColorShader) && available.rasterPipelineReady;
     const bool gameSurfaceReady = path.game.prepared && available.opaque.depthNormal;
-    if (settings.modeRequest.pathProfile == PathTracingProfile::GAME)
+    if (settings.modeRequest.pathProfile == PathTracingProfile::GAME) {
         available.pathPipelineReady = available.pathPipelineReady && gameSurfaceReady
             && resources.Get(shared.rayGameReconstructionShader);
+    }
     available.rasterSurfaceReady = view.rayPathPrepared && gameSurfaceReady;
 
     view.renderPlan = ResolveRenderPlan(settings, settings.modeRequest, renderer.GetCapabilities(), coverage, available);
     return view.renderPlan;
 }
 
-} /// @note namespace fbzz::renderer
+} // namespace fbzz::renderer

@@ -106,18 +106,34 @@ public:
             const bool sameSphere = index < oldCount && SameSphere(entry.source, source);
             const bool boundsChanged = !sameSphere || (!stable && !sameOwner);
             const bool dynamic = source.dynamic || (!stable && sameOwner && (entry.source.dynamic || boundsChanged));
-            if (!sameOwner) ++diagnostics.changedMembership;
-            if (boundsChanged) ++diagnostics.changedBounds;
-            if ((!stable && !sameOwner) || entry.bounded != bounded || entry.source.dynamic != dynamic) topologyChanged = true;
+            if (!sameOwner) {
+                ++diagnostics.changedMembership;
+            }
+            if (boundsChanged) {
+                ++diagnostics.changedBounds;
+            }
+            if ((!stable && !sameOwner) || entry.bounded != bounded || entry.source.dynamic != dynamic) {
+                topologyChanged = true;
+            }
             entry.source = source;
             entry.source.dynamic = dynamic;
             entry.bounded = bounded;
-            if (boundsChanged) (void)m_dirty.Mark(sceneGeneration, index, uint32_t{1});
-            if (!bounded) ++diagnostics.unboundedSources;
-            else if (dynamic) ++diagnostics.dynamicSources;
-            else ++diagnostics.staticSources;
+            if (boundsChanged) {
+                (void)m_dirty.Mark(sceneGeneration, index, uint32_t{1});
+            }
+            if (!bounded) {
+                ++diagnostics.unboundedSources;
+            }
+            else if (dynamic) {
+                ++diagnostics.dynamicSources;
+            }
+            else {
+                ++diagnostics.staticSources;
+            }
         }
-        if (oldCount > sources.size()) diagnostics.changedMembership += oldCount - sources.size();
+        if (oldCount > sources.size()) {
+            diagnostics.changedMembership += oldCount - sources.size();
+        }
         (void)m_dirty.TakePending(sceneGeneration, m_changes);
         const bool enoughItems = options.mode == QueryMode::BVH || sources.size() >= options.minimumTreeItems;
         const double ratio = sources.empty() ? 0.0 : static_cast<double>(diagnostics.changedBounds) / sources.size();
@@ -149,15 +165,23 @@ public:
         std::span<const uint32_t> ordinals, const IndexOptions& options, UpdateDiagnostics& diagnostics)
     {
         if (options.updateMode != UpdateMode::STABLE || !SameOptions(m_options, options) || !m_current
-            || sceneGeneration == 0 || m_sceneGeneration != sceneGeneration || sources.size() != m_entries.size()) return false;
+            || sceneGeneration == 0 || m_sceneGeneration != sceneGeneration || sources.size() != m_entries.size()) {
+            return false;
+        }
         for (uint32_t ordinal : ordinals) {
-            if (ordinal >= m_entries.size()) return false;
+            if (ordinal >= m_entries.size()) {
+                return false;
+            }
             const auto& entry = m_entries[ordinal];
             const auto& source = sources[ordinal];
             if (entry.bounded != SafeSphere(source) || entry.source.dynamic != source.dynamic
-                || (entry.bounded && entry.leaf == NO_INDEX)) return false;
+                || (entry.bounded && entry.leaf == NO_INDEX)) {
+                return false;
+            }
         }
-        for (uint32_t ordinal : ordinals) (void)m_dirty.Mark(sceneGeneration, ordinal, uint32_t{1});
+        for (uint32_t ordinal : ordinals) {
+            (void)m_dirty.Mark(sceneGeneration, ordinal, uint32_t{1});
+        }
         (void)m_dirty.TakePending(sceneGeneration, m_changes);
         UpdateDiagnostics update;
         update.sources = sources.size();
@@ -175,7 +199,9 @@ public:
         const double ratio = sources.empty() ? 0.0 : static_cast<double>(update.changedBounds) / sources.size();
         const bool dense = ratio > (std::max)(0.0, static_cast<double>(options.denseChangeRatio));
         if (dense && options.denseUpdate == DenseUpdate::REBUILD) { m_changes.clear(); return false; }
-        for (const auto& change : m_changes) m_entries[change.key].source = sources[change.key];
+        for (const auto& change : m_changes) {
+            m_entries[change.key].source = sources[change.key];
+        }
         if (dense && options.denseUpdate == DenseUpdate::LINEAR) {
             m_current = false;
             update.denseLinearFallback = true;
@@ -201,9 +227,13 @@ public:
         diagnostics = {};
         auto* capture = debugRequest && debugRequest->enabled && debugSnapshot
             && debugRequest->sceneGeneration == m_sceneGeneration ? debugSnapshot : nullptr;
-        if (capture) CaptureDebug(*debugRequest, *capture, mode);
+        if (capture) {
+            CaptureDebug(*debugRequest, *capture, mode);
+        }
         if (frusta.empty()) {
-            if (capture) capture->availability = RenderBvhDebugAvailability::NO_SHADOW_VOLUMES;
+            if (capture) {
+                capture->availability = RenderBvhDebugAvailability::NO_SHADOW_VOLUMES;
+            }
             return;
         }
         for (const auto* frustum : frusta) {
@@ -223,12 +253,16 @@ public:
             for (size_t index = 0; index < m_entries.size(); ++index) {
                 ++diagnostics.testedLeaves;
                 const auto& entry = m_entries[index];
-                if (!entry.bounded || SphereMatches(entry.source, frusta)) output.push_back(static_cast<uint32_t>(index));
+                if (!entry.bounded || SphereMatches(entry.source, frusta)) {
+                    output.push_back(static_cast<uint32_t>(index));
+                }
             }
         } else {
             QueryTree(m_static, frusta, output, diagnostics, capture, RenderBvhDebugPartition::STATIC);
             QueryTree(m_dynamic, frusta, output, diagnostics, capture, RenderBvhDebugPartition::DYNAMIC);
-            for (uint32_t index : m_unbounded) output.push_back(index);
+            for (uint32_t index : m_unbounded) {
+                output.push_back(index);
+            }
             std::sort(output.begin(), output.end());
         }
         diagnostics.candidates = output.size();
@@ -280,10 +314,14 @@ private:
     {
         for (int index = 0; index < math::Frustum::PLANE_COUNT; ++index) {
             const auto plane = frustum.GetPlane(index);
-            if (!SafeVector(plane.normal) || !SafeScalar(plane.distance)) return false;
+            if (!SafeVector(plane.normal) || !SafeScalar(plane.distance)) {
+                return false;
+            }
             const double lengthSquared = static_cast<double>(plane.normal.x) * plane.normal.x
                 + static_cast<double>(plane.normal.y) * plane.normal.y + static_cast<double>(plane.normal.z) * plane.normal.z;
-            if (lengthSquared < 0.999999) return false;
+            if (lengthSquared < 0.999999) {
+                return false;
+            }
         }
         return true;
     }
@@ -313,8 +351,11 @@ private:
     }
     static bool SphereMatches(const MeshSource& source, std::span<const math::Frustum* const> frusta)
     {
-        for (const auto* frustum : frusta)
-            if (frustum->IntersectsSphere(source.center, source.radius)) return true;
+        for (const auto* frustum : frusta) {
+            if (frustum->IntersectsSphere(source.center, source.radius)) {
+                return true;
+            }
+        }
         return false;
     }
 
@@ -322,7 +363,9 @@ private:
     {
         while (mask != 0) {
             const auto index = std::countr_zero(mask);
-            if (frusta[index]->IntersectsSphere(source.center, source.radius)) return true;
+            if (frusta[index]->IntersectsSphere(source.center, source.radius)) {
+                return true;
+            }
             mask &= mask - 1;
         }
         return false;
@@ -334,7 +377,9 @@ private:
     {
         const double diameter = (std::min)({static_cast<double>(bounds.high.x) - bounds.low.x,
             static_cast<double>(bounds.high.y) - bounds.low.y, static_cast<double>(bounds.high.z) - bounds.low.z});
-        if (!std::isfinite(diameter) || diameter <= 0.0) return false;
+        if (!std::isfinite(diameter) || diameter <= 0.0) {
+            return false;
+        }
         const float radius = std::nextafter(static_cast<float>(diameter * 0.5), std::numeric_limits<float>::infinity());
         const auto x = _mm_set1_ps(plane.normal.x >= 0 ? bounds.high.x : bounds.low.x);
         const auto y = _mm_set1_ps(plane.normal.y >= 0 ? bounds.high.y : bounds.low.y);
@@ -349,7 +394,9 @@ private:
     /// @note Coordinate magnitudes include both bounds endpoints; a center/radius cancellation can hide float leaf error at the support point.
     static bool BoundsMatch(const Bounds& bounds, const math::Frustum& frustum, bool* excludesDescendants = nullptr)
     {
-        if (excludesDescendants) *excludesDescendants = false;
+        if (excludesDescendants) {
+            *excludesDescendants = false;
+        }
         constexpr double ROUNDING = 16.0 * std::numeric_limits<float>::epsilon();
         for (int index = 0; index < math::Frustum::PLANE_COUNT; ++index) {
             const auto plane = frustum.GetPlane(index);
@@ -366,7 +413,9 @@ private:
                 + std::abs(plane.distance);
             const double margin = ROUNDING * magnitude + 16.0 * std::numeric_limits<float>::denorm_min();
             if (distance < -margin) {
-                if (excludesDescendants) *excludesDescendants = BoundsExcludeDescendantSpheres(bounds, plane);
+                if (excludesDescendants) {
+                    *excludesDescendants = BoundsExcludeDescendantSpheres(bounds, plane);
+                }
                 return false;
             }
         }
@@ -374,29 +423,43 @@ private:
     }
     static bool BoundsMatchAny(const Bounds& bounds, std::span<const math::Frustum* const> frusta)
     {
-        for (const auto* frustum : frusta) if (BoundsMatch(bounds, *frustum)) return true;
+        for (const auto* frustum : frusta) {
+            if (BoundsMatch(bounds, *frustum)) {
+                return true;
+            }
+        }
         return false;
     }
 
     void AppendAll(std::vector<uint32_t>& output) const
     {
         output.reserve(m_entries.size());
-        for (size_t index = 0; index < m_entries.size(); ++index) output.push_back(static_cast<uint32_t>(index));
+        for (size_t index = 0; index < m_entries.size(); ++index) {
+            output.push_back(static_cast<uint32_t>(index));
+        }
     }
 
     void Rebuild(Tree& tree, bool dynamic)
     {
         FBZZ_PROFILE_SCOPE("RenderMeshSpatial::Rebuild");
         tree.nodes.clear(); tree.order.clear(); tree.dirty.clear(); tree.dirtyStamps.clear();
-        if (!dynamic) m_unbounded.clear();
+        if (!dynamic) {
+            m_unbounded.clear();
+        }
         for (size_t index = 0; index < m_entries.size(); ++index) {
             auto& entry = m_entries[index];
             if (!entry.bounded) {
                 entry.leaf = NO_INDEX;
-                if (!dynamic) m_unbounded.push_back(static_cast<uint32_t>(index));
-            } else if (entry.source.dynamic == dynamic) tree.order.push_back(static_cast<uint32_t>(index));
+                if (!dynamic) {
+                    m_unbounded.push_back(static_cast<uint32_t>(index));
+                }
+            } else if (entry.source.dynamic == dynamic) {
+                tree.order.push_back(static_cast<uint32_t>(index));
+            }
         }
-        if (tree.order.empty()) return;
+        if (tree.order.empty()) {
+            return;
+        }
         tree.nodes.reserve(tree.order.size() * 2 - 1);
         (void)BuildNode(tree, 0, tree.order.size(), NO_INDEX);
         tree.dirtyStamps.resize(tree.nodes.size(), 0);
@@ -436,7 +499,7 @@ private:
                 });
             const uint32_t left = BuildNode(tree, begin, middle, nodeIndex);
             const uint32_t right = BuildNode(tree, middle, end, nodeIndex);
-            /// @note Stable splitting uses centroid extent; leaf AABBs are rounded once and merged bottom-up without extra retained scratch.
+            // Stable splitting uses centroid extent; leaf AABBs are rounded once and merged bottom-up without extra retained scratch.
             tree.nodes[nodeIndex].bounds = stable ? Merge(tree.nodes[left].bounds, tree.nodes[right].bounds) : bounds;
         }
         tree.nodes[nodeIndex].escape = static_cast<uint32_t>(tree.nodes.size());
@@ -445,38 +508,53 @@ private:
 
     void Refit(Tree& tree, bool dynamic, UpdateDiagnostics& diagnostics)
     {
-        if (tree.nodes.empty()) return;
+        if (tree.nodes.empty()) {
+            return;
+        }
         FBZZ_PROFILE_SCOPE("RenderMeshSpatial::Refit");
         tree.dirty.clear();
         if (++tree.stamp == 0) { std::fill(tree.dirtyStamps.begin(), tree.dirtyStamps.end(), 0); ++tree.stamp; }
         size_t leafCount = 0;
         for (const auto& change : m_changes) {
-            if (change.reasons == 0 || change.key >= m_entries.size()) continue;
+            if (change.reasons == 0 || change.key >= m_entries.size()) {
+                continue;
+            }
             const auto& entry = m_entries[change.key];
-            if (!entry.bounded || entry.source.dynamic != dynamic || entry.leaf == NO_INDEX) continue;
+            if (!entry.bounded || entry.source.dynamic != dynamic || entry.leaf == NO_INDEX) {
+                continue;
+            }
             auto& leaf = tree.nodes[entry.leaf];
             leaf.bounds = SphereBounds(entry.source);
             ++leafCount;
             for (uint32_t parent = leaf.parent; parent != NO_INDEX; parent = tree.nodes[parent].parent) {
-                if (tree.dirtyStamps[parent] == tree.stamp) break;
+                if (tree.dirtyStamps[parent] == tree.stamp) {
+                    break;
+                }
                 tree.dirtyStamps[parent] = tree.stamp;
                 tree.dirty.push_back(parent);
             }
         }
-        if (leafCount == 0) return;
+        if (leafCount == 0) {
+            return;
+        }
         const auto refitNode = [&tree](uint32_t index) {
             auto& node = tree.nodes[index];
             const auto& left = tree.nodes[index + 1];
             node.bounds = Merge(left.bounds, tree.nodes[left.escape].bounds);
         };
         if (m_updateMode == UpdateMode::STABLE && tree.dirty.size() > tree.nodes.size() / 4) {
-            /// @note Preorder storage puts every child after its parent; reverse scanning preserves refit order and bounds dense work by the node count.
-            for (size_t index = tree.nodes.size(); index-- > 0;)
-                if (tree.dirtyStamps[index] == tree.stamp) refitNode(static_cast<uint32_t>(index));
+            // Preorder storage puts every child after its parent; reverse scanning preserves refit order and bounds dense work by the node count.
+            for (size_t index = tree.nodes.size(); index-- > 0;) {
+                if (tree.dirtyStamps[index] == tree.stamp) {
+                    refitNode(static_cast<uint32_t>(index));
+                }
+            }
             diagnostics.refitScannedNodes += tree.nodes.size();
         } else {
             std::sort(tree.dirty.begin(), tree.dirty.end(), std::greater<uint32_t>{});
-            for (uint32_t index : tree.dirty) refitNode(index);
+            for (uint32_t index : tree.dirty) {
+                refitNode(index);
+            }
             diagnostics.refitSortedAncestors += tree.dirty.size();
         }
         ++diagnostics.refittedTrees;
@@ -487,9 +565,12 @@ private:
         std::vector<uint32_t>& output, QueryDiagnostics& diagnostics, RenderBvhDebugSnapshot* capture,
         RenderBvhDebugPartition partition) const
     {
-        if (frusta.size() > 1 && frusta.size() <= std::numeric_limits<uint64_t>::digits)
+        if (frusta.size() > 1 && frusta.size() <= std::numeric_limits<uint64_t>::digits) {
             QueryTreeVolumes<true>(tree, frusta, output, diagnostics, capture, partition);
-        else QueryTreeVolumes<false>(tree, frusta, output, diagnostics, capture, partition);
+        }
+        else {
+            QueryTreeVolumes<false>(tree, frusta, output, diagnostics, capture, partition);
+        }
     }
 
     template<bool MASKED>
@@ -499,34 +580,44 @@ private:
     {
         constexpr size_t MASK_BITS = std::numeric_limits<uint64_t>::digits;
         uint64_t surviving = 0;
-        if constexpr (MASKED)
+        if constexpr (MASKED) {
             surviving = frusta.size() < MASK_BITS ? (uint64_t{1} << frusta.size()) - 1
                 : std::numeric_limits<uint64_t>::max();
+        }
         struct VolumeScope { uint64_t mask; uint32_t escape; };
-        /// @note Each nested scope removes at least one of at most 64 bits; scopes restore sibling volumes without node-sized scratch or heap allocation.
+        // Each nested scope removes at least one of at most 64 bits; scopes restore sibling volumes without node-sized scratch or heap allocation.
         std::array<VolumeScope, MASKED ? MASK_BITS : 0> scopes;
         size_t scopeCount = 0;
         size_t capturePosition = 0;
         auto* captured = capture && !capture->nodes.empty() ? &capture->nodes : nullptr;
         for (uint32_t index = 0; index < tree.nodes.size();) {
-            if constexpr (MASKED)
-                while (scopeCount != 0 && index >= scopes[scopeCount - 1].escape)
+            if constexpr (MASKED) {
+                while (scopeCount != 0 && index >= scopes[scopeCount - 1].escape) {
                     surviving = scopes[--scopeCount].mask;
+                }
+            }
             const auto& node = tree.nodes[index];
             ++diagnostics.visitedNodes;
             RenderBvhDebugNode* observed = nullptr;
             if (captured) {
-                /// @note Flattened preorder queries only advance (index+1 or escape); every sampled node is passed at most once and skipped descendants stay UNOBSERVED.
+                // Flattened preorder queries only advance (index+1 or escape); every sampled node is passed at most once and skipped descendants stay UNOBSERVED.
                 while (capturePosition < captured->size() && ((*captured)[capturePosition].partition < partition
-                    || ((*captured)[capturePosition].partition == partition && (*captured)[capturePosition].nodeIndex < index)))
+                    || ((*captured)[capturePosition].partition == partition && (*captured)[capturePosition].nodeIndex < index))) {
                     ++capturePosition;
-                if (capturePosition == captured->size() || (*captured)[capturePosition].partition != partition) captured = nullptr;
+                }
+                if (capturePosition == captured->size() || (*captured)[capturePosition].partition != partition) {
+                    captured = nullptr;
+                }
                 else if ((*captured)[capturePosition].nodeIndex == index) {
                     observed = &(*captured)[capturePosition++];
-                    if (capturePosition == captured->size() || (*captured)[capturePosition].partition != partition) captured = nullptr;
+                    if (capturePosition == captured->size() || (*captured)[capturePosition].partition != partition) {
+                        captured = nullptr;
+                    }
                 }
             }
-            if (observed) observed->state = RenderBvhDebugState::VISITED;
+            if (observed) {
+                observed->state = RenderBvhDebugState::VISITED;
+            }
             bool matches = false;
             uint64_t descendants = surviving;
             if constexpr (MASKED) {
@@ -534,28 +625,40 @@ private:
                     const auto volume = std::countr_zero(remaining);
                     bool excludesDescendants = false;
                     if (BoundsMatch(node.bounds, *frusta[volume], &excludesDescendants)) {
-                        /// @note Untested volumes remain active; preserve union short-circuiting when the first volume already accepts this node.
+                        // Untested volumes remain active; preserve union short-circuiting when the first volume already accepts this node.
                         matches = true;
                         break;
                     }
-                    if (excludesDescendants) descendants &= ~(uint64_t{1} << volume);
+                    if (excludesDescendants) {
+                        descendants &= ~(uint64_t{1} << volume);
+                    }
                 }
             } else {
-                /// @note Single volumes and larger unions keep the stackless full-volume method without mask work or fixed-width shifts.
+                // Single volumes and larger unions keep the stackless full-volume method without mask work or fixed-width shifts.
                 matches = BoundsMatchAny(node.bounds, frusta);
             }
             if (!matches) {
-                if (observed) observed->state = RenderBvhDebugState::REJECTED;
+                if (observed) {
+                    observed->state = RenderBvhDebugState::REJECTED;
+                }
                 index = node.escape;
                 continue;
             }
             if (node.IsLeaf()) {
                 ++diagnostics.testedLeaves;
                 bool candidate;
-                if constexpr (MASKED) candidate = SphereMatches(m_entries[node.source].source, frusta, descendants);
-                else candidate = SphereMatches(m_entries[node.source].source, frusta);
-                if (candidate) output.push_back(node.source);
-                if (observed) observed->state = candidate ? RenderBvhDebugState::CANDIDATE : RenderBvhDebugState::REJECTED;
+                if constexpr (MASKED) {
+                    candidate = SphereMatches(m_entries[node.source].source, frusta, descendants);
+                }
+                else {
+                    candidate = SphereMatches(m_entries[node.source].source, frusta);
+                }
+                if (candidate) {
+                    output.push_back(node.source);
+                }
+                if (observed) {
+                    observed->state = candidate ? RenderBvhDebugState::CANDIDATE : RenderBvhDebugState::REJECTED;
+                }
             } else if constexpr (MASKED) {
                 if (descendants != surviving) {
                     assert(scopeCount < scopes.size());
@@ -585,7 +688,9 @@ private:
     static uint32_t NodeDepth(const Tree& tree, uint32_t index)
     {
         uint32_t depth = 0;
-        for (uint32_t parent = tree.nodes[index].parent; parent != NO_INDEX; parent = tree.nodes[parent].parent) ++depth;
+        for (uint32_t parent = tree.nodes[index].parent; parent != NO_INDEX; parent = tree.nodes[parent].parent) {
+            ++depth;
+        }
         return depth;
     }
 
@@ -621,11 +726,15 @@ private:
         capture.unboundedSources = m_population.unboundedSources;
         capture.availability = mode == QueryMode::LINEAR ? RenderBvhDebugAvailability::LINEAR_MODE
             : RenderBvhDebugAvailability::NO_CURRENT_TREE;
-        if (mode == QueryMode::LINEAR || !m_current) return;
+        if (mode == QueryMode::LINEAR || !m_current) {
+            return;
+        }
         capture.availability = RenderBvhDebugAvailability::READY;
         capture.totalNodes = m_static.nodes.size() + m_dynamic.nodes.size();
         const uint32_t limit = (std::min)(request.maxNodes, RENDER_BVH_DEBUG_MAX_NODES);
-        if (request.minDepth > request.maxDepth) return;
+        if (request.minDepth > request.maxDepth) {
+            return;
+        }
         if (limit == 0) {
             capture.selectedLookupTruncated = request.sourceIndex != NO_INDEX && !m_entries.empty();
             capture.truncated = capture.totalNodes != 0 || capture.selectedLookupTruncated;
@@ -649,30 +758,40 @@ private:
             appendTree(m_static, RenderBvhDebugPartition::STATIC);
             appendTree(m_dynamic, RenderBvhDebugPartition::DYNAMIC);
         }
-        if (request.sourceIndex == NO_INDEX) return;
+        if (request.sourceIndex == NO_INDEX) {
+            return;
+        }
         const size_t selectionLimit = (std::min)(m_entries.size(), static_cast<size_t>(RENDER_BVH_DEBUG_MAX_SELECTION_SOURCES));
         for (size_t ordinal = 0; ordinal < selectionLimit; ++ordinal) {
             ++capture.selectionSourcesExamined;
             const auto& entry = m_entries[ordinal];
-            if (entry.source.identity.index != request.sourceIndex || entry.source.identity.generation != request.sourceGeneration) continue;
+            if (entry.source.identity.index != request.sourceIndex || entry.source.identity.generation != request.sourceGeneration) {
+                continue;
+            }
             capture.selectedFound = true;
-            if (!entry.bounded || entry.leaf == NO_INDEX) continue;
+            if (!entry.bounded || entry.leaf == NO_INDEX) {
+                continue;
+            }
             const auto partition = entry.source.dynamic ? RenderBvhDebugPartition::DYNAMIC : RenderBvhDebugPartition::STATIC;
             const auto& tree = entry.source.dynamic ? m_dynamic : m_static;
             if (request.selectedOnly) {
                 for (uint32_t index = entry.leaf; index != NO_INDEX; index = tree.nodes[index].parent) {
                     if (capture.examinedNodes == limit) { capture.truncated = true; break; }
                     ++capture.examinedNodes;
-                    if (!inRange(NodeDepth(tree, index)) || CapturedNode(capture, partition, index)) continue;
+                    if (!inRange(NodeDepth(tree, index)) || CapturedNode(capture, partition, index)) {
+                        continue;
+                    }
                     if (capture.nodes.size() == limit) { capture.truncated = true; continue; }
                     auto node = DebugNode(tree, partition, index);
                     node.selectedPath = true;
                     capture.nodes.insert(std::lower_bound(capture.nodes.begin(), capture.nodes.end(), node, DebugNodeLess), node);
                 }
             } else {
-                for (auto& node : capture.nodes)
-                    if (node.partition == partition && entry.leaf >= node.nodeIndex && entry.leaf < tree.nodes[node.nodeIndex].escape)
+                for (auto& node : capture.nodes) {
+                    if (node.partition == partition && entry.leaf >= node.nodeIndex && entry.leaf < tree.nodes[node.nodeIndex].escape) {
                         node.selectedPath = true;
+                    }
+                }
             }
         }
         capture.selectedLookupTruncated = selectionLimit < m_entries.size();
@@ -697,4 +816,4 @@ private:
     std::vector<DirtySet::Entry> m_changes;
 };
 
-} /// @note namespace fbzz::renderer::spatial_detail
+} // namespace fbzz::renderer::spatial_detail

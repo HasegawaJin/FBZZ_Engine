@@ -5,6 +5,7 @@
 /// @note プローブごとに 6 面を毎フレーム描くとゲーム本体の描画より高価になり得るため、更新間隔と
 /// @note 明示リクエストで間引く。昼夜変化だけを追う用途には DynamicSky、室内・配置物の反射には
 /// @note DynamicScene を使う。
+#include <Graphics/Renderer/Commands/ShaderBindingSlots.hpp>
 #include "../RenderScenePassHelpers.hpp"
 #include <Graphics/Passes/Geometry/Instancing/InstanceRenderPasses.hpp>
 #include <Math/LinearAlgebra/Quaternion.hpp>
@@ -50,19 +51,19 @@ void RenderSkyFace(RenderPassContext& ctx, const math::Vector3& position, uint32
     skyCall.indexCount = h.skyIndexCount;
     skyCall.shader = h.skyShader;
     skyCall.pipelineState = h.skyPSO;
-    skyCall.constantBuffers[0] = h.skyCaptureFrameCB;
-    skyCall.constantBuffers[3] = h.lightCB;
-    skyCall.constantBuffers[5] = h.postprocCB;
-    skyCall.constantBuffers[6] = h.atmosphereCB;
+    skyCall.constantBuffers[cb::CAMERA] = h.skyCaptureFrameCB;
+    skyCall.constantBuffers[cb::LIGHT] = h.lightCB;
+    skyCall.constantBuffers[cb::POSTPROC] = h.postprocCB;
+    skyCall.constantBuffers[cb::ATMOSPHERE] = h.atmosphereCB;
     ctx.renderer.Submit(skyCall, resources);
 }
 
 void RenderSceneFace(RenderPassContext& ctx, const RenderReflectionProbeInput& probeObject,
                      const math::Vector3& position, uint32_t face)
 {
-    /// @note DynamicScene は MeshRenderer の不透明・半透明マテリアルを既存 MaterialComponent 経路で
-    /// @note 描く。キャプチャ自身は反射へ混入させない。スキンドメッシュ・粒子・UI は時間依存でコストも
-    /// @note 大きいため対象外とし、必要なら更新間隔を短くした専用プローブを配置する。
+    // DynamicScene は MeshRenderer の不透明・半透明マテリアルを既存 MaterialComponent 経路で
+    // 描く。キャプチャ自身は反射へ混入させない。スキンドメッシュ・粒子・UI は時間依存でコストも
+    // 大きいため対象外とし、必要なら更新間隔を短くした専用プローブを配置する。
     auto& h = ctx.handles;
     auto& resources = ctx.resources;
     const math::Matrix4 projection = math::Matrix4::Perspective(math::ToRad(90.0f), 1.0f, 0.1f, 500.0f);
@@ -86,27 +87,39 @@ void RenderSceneFace(RenderPassContext& ctx, const RenderReflectionProbeInput& p
     std::vector<CaptureItem> items;
     for (const auto& object : input.Objects()) {
         if (object.skinned || !object.colorEligible || !MatchesView(ctx, object) ||
-            (object.sourceIndex == probeObject.sourceIndex && object.sourceGeneration == probeObject.sourceGeneration)) continue;
+            (object.sourceIndex == probeObject.sourceIndex && object.sourceGeneration == probeObject.sourceGeneration)) {
+            continue;
+        }
         for (uint32_t i = object.firstItem; i < object.firstItem + object.itemCount; ++i) {
             const auto& item = input.items[i];
             if (!item.visible || !item.slotVisible || !HasColorGeometry(item)
-                || !item.material.valid || !item.material.shader.IsValid()) continue;
+                || !item.material.valid || !item.material.shader.IsValid()) {
+                continue;
+            }
             const auto offset = item.boundsCenter - position;
             const auto& forward = kCubeFaces[face].forward;
             items.push_back({ &object, &item, offset.x * forward.x + offset.y * forward.y + offset.z * forward.z });
         }
     }
-    /// @note 捕捉面の視線で透明物を奥から並べる。主カメラの並びや Scene の登録順は使わない。
+    // 捕捉面の視線で透明物を奥から並べる。主カメラの並びや Scene の登録順は使わない。
     std::stable_sort(items.begin(), items.end(), [](const CaptureItem& a, const CaptureItem& b) {
         const bool aTransparent = a.mesh->material.capabilities.blend != BlendMode::OPAQUE_BLEND;
         const bool bTransparent = b.mesh->material.capabilities.blend != BlendMode::OPAQUE_BLEND;
-        if (aTransparent != bTransparent) return !aTransparent;
-        if (a.mesh->material.renderQueue != b.mesh->material.renderQueue)
+        if (aTransparent != bTransparent) {
+            return !aTransparent;
+        }
+        if (a.mesh->material.renderQueue != b.mesh->material.renderQueue) {
             return a.mesh->material.renderQueue < b.mesh->material.renderQueue;
-        if (a.depth != b.depth) return aTransparent ? a.depth > b.depth : a.depth < b.depth;
-        if (a.object->sourceIndex != b.object->sourceIndex) return a.object->sourceIndex < b.object->sourceIndex;
-        if (a.object->sourceGeneration != b.object->sourceGeneration)
+        }
+        if (a.depth != b.depth) {
+            return aTransparent ? a.depth > b.depth : a.depth < b.depth;
+        }
+        if (a.object->sourceIndex != b.object->sourceIndex) {
+            return a.object->sourceIndex < b.object->sourceIndex;
+        }
+        if (a.object->sourceGeneration != b.object->sourceGeneration) {
             return a.object->sourceGeneration < b.object->sourceGeneration;
+        }
         return a.mesh->materialSlot < b.mesh->materialSlot;
     });
     bool instancesDrawn=false;
@@ -118,7 +131,9 @@ void RenderSceneFace(RenderPassContext& ctx, const RenderReflectionProbeInput& p
         instancesDrawn=true;
     };
     for (const auto& entry : items) {
-        if (!instancesDrawn && entry.mesh->material.capabilities.blend!=BlendMode::OPAQUE_BLEND) captureInstances();
+        if (!instancesDrawn && entry.mesh->material.capabilities.blend!=BlendMode::OPAQUE_BLEND) {
+            captureInstances();
+        }
         const auto& object = *entry.object;
         const auto& item = *entry.mesh;
         const auto& material = item.material;
@@ -133,47 +148,61 @@ void RenderSceneFace(RenderPassContext& ctx, const RenderReflectionProbeInput& p
         draw.shader = material.shader;
         draw.pipelineState = GetOrCreateMaterialPSO(resources, material.capabilities.blend,
             material.doubleSided, material.depthBias, material.depthBiasSlope, false);
-        draw.constantBuffers[0] = h.frameCB;
-        draw.constantBuffers[1] = h.objectCB;
-        draw.constantBuffers[2] = material.paramsBuffer;
-        draw.constantBuffers[3] = h.lightCB;
-        draw.constantBuffers[4] = h.reflectionProbeCaptureShadowCB;
-        for (size_t i = 0; i < material.textures.size(); ++i) draw.textures[i] = material.textures[i];
-        /// @note 捕捉ビューはメインカメラのクラスタを使わず、統合ライト配列を全数走査する。
-        BindForwardShadingResources(draw, ctx, true);
-        /// @note 主カメラの atlas/AO は捕捉の視点・現在の shadow provider と一致しないため束縛しない。
-        draw.constantBuffers[12] = h.reflectionProbeCapturePunctualCB;
-        for (const uint32_t slot : {8u, 23u, 24u, 28u, 31u}) draw.textures[slot] = {};
+        draw.constantBuffers[cb::CAMERA] = h.frameCB;
+        draw.constantBuffers[cb::OBJECT] = h.objectCB;
+        draw.constantBuffers[cb::MATERIAL] = material.paramsBuffer;
+        draw.constantBuffers[cb::LIGHT] = h.lightCB;
+        for (size_t i = 0; i < material.textures.size(); ++i) {
+            draw.textures[i] = material.textures[i];
+        }
+        BindProbeCaptureLightingResources(draw, ctx);
         ctx.renderer.Submit(draw, resources);
     }
-    if (!instancesDrawn) captureInstances();
+    if (!instancesDrawn) {
+        captureInstances();
+    }
 }
 
 }
+bool PrepareProbeCaptureShadowConstants(RenderPassContext& ctx)
+{
+    const auto& h = ctx.handles;
+    auto& resources = ctx.resources;
+    const auto* shadowBuffer = resources.Get(h.reflectionProbeCaptureShadowCB);
+    if (!shadowBuffer || shadowBuffer->GetSize() < sizeof(ShadowConstantsCB)) {
+        return false;
+    }
+    const auto* punctualBuffer = resources.Get(h.reflectionProbeCapturePunctualCB);
+    if (!punctualBuffer || punctualBuffer->GetSize() < sizeof(PunctualShadowConstantsCB)) {
+        return false;
+    }
+
+    // ワールド空間の雲影と光源の形状を保持し、メインビューのアトラスを参照する設定を外す。
+    auto shadow = MakeShadowConstants(ctx);
+    shadow.shadowStrength = 0.0f;
+    shadow.cascadeDebugView = 0;
+    auto punctual = MakePunctualShadowConstants(ctx);
+    punctual.punctualShadowCount = 0;
+    punctual.lightCookieCount = 0;
+    for (auto& slots : punctual.legacyPunctualSlots) {
+        slots.x = -1.0f;
+        slots.y = -1.0f;
+    }
+    for (int i = 0; i < punctual.legacyShapedLightCount; ++i) {
+        punctual.legacyShapedLight[i * kLegacyShapedLightStride + 5].z = -1.0f;
+    }
+
+    resources.Update(h.reflectionProbeCaptureShadowCB, &shadow, sizeof(shadow));
+    resources.Update(h.reflectionProbeCapturePunctualCB, &punctual, sizeof(punctual));
+    return true;
+}
+
 bool CaptureReflectionProbe(RenderPassContext& ctx, const RenderReflectionProbeInput& input, RenderReflectionProbeResult& output)
 {
     auto& h = ctx.handles;
     auto& resources = ctx.resources;
-    if (input.captureScene) {
-        const auto* shadowBuffer = resources.Get(h.reflectionProbeCaptureShadowCB);
-        const auto* punctualBuffer = resources.Get(h.reflectionProbeCapturePunctualCB);
-        if (!shadowBuffer || !punctualBuffer || shadowBuffer->GetSize() < sizeof(ShadowConstantsCB)
-            || punctualBuffer->GetSize() < sizeof(PunctualShadowConstantsCB)) return false;
-        auto shadow = MakeShadowConstants(ctx);
-        shadow.shadowStrength = 0.0f;
-        shadow.cascadeDebugView = 0;
-        auto punctual = MakePunctualShadowConstants(ctx);
-        punctual.punctualShadowCount = 0;
-        punctual.lightCookieCount = 0;
-        for (auto& slots : punctual.legacyPunctualSlots) {
-            slots.x = -1.0f;
-            slots.y = -1.0f;
-        }
-        for (int i = 0; i < punctual.legacyShapedLightCount; ++i)
-            punctual.legacyShapedLight[i * kLegacyShapedLightStride + 5].z = -1.0f;
-        /// @note 独立 CB に現在の光源と world-space cloud を保持し、主ビューの b4/b12 は変更しない。
-        resources.Update(h.reflectionProbeCaptureShadowCB, &shadow, sizeof(shadow));
-        resources.Update(h.reflectionProbeCapturePunctualCB, &punctual, sizeof(punctual));
+    if (input.captureScene && !PrepareProbeCaptureShadowConstants(ctx)) {
+        return false;
     }
     resources.Update(h.lightCB, &ctx.lightData, sizeof(ctx.lightData));
     PostProcCB post{}; post.exposure = 1; post.time = ctx.time;
@@ -181,12 +210,16 @@ bool CaptureReflectionProbe(RenderPassContext& ctx, const RenderReflectionProbeI
     resources.Update(h.atmosphereCB, &input.atmosphere, sizeof(input.atmosphere));
     for (uint32_t face = 0; face < 6; ++face) {
         RenderSkyFace(ctx, input.position, face, input.target);
-        if (input.captureScene) RenderSceneFace(ctx, input, input.position, face);
+        if (input.captureScene) {
+            RenderSceneFace(ctx, input, input.position, face);
+        }
     }
     ctx.renderer.SetRenderTarget({}, resources);
     std::unique_ptr<ITexture> irradiance, prefilter;
     if (!ctx.renderer.BakeSkyLight(input.target, resources, 32, input.resolution, 5, 128, irradiance, prefilter)
-        || !irradiance || !prefilter) return false;
+        || !irradiance || !prefilter) {
+        return false;
+    }
     output.irradiance = resources.RegisterTexture(std::move(irradiance));
     output.prefilter = resources.RegisterTexture(std::move(prefilter));
     output.prefilterMipCount = 5;

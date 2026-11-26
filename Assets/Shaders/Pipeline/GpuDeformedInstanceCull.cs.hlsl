@@ -11,11 +11,11 @@ struct Instance { float4x4 world; float4x4 worldInvTranspose; uint vertexIndex; 
 #endif
 struct CullView { float4 planes[6]; uint count; uint3 padding; };
 struct IndexedArguments { uint indexCount; uint instanceCount; uint startIndex; int baseVertex; uint startInstance; };
-FBZZ_SBUFFER_T(float4, g_bounds, 13);
-FBZZ_SBUFFER_T(Instance, g_inputs, SB_SKIN_SRC_VERTICES_SLOT);
-FBZZ_SBUFFER_T(CullView, g_view, SB_SKIN_BONES_SLOT);
-FBZZ_RWSBUFFER_T(Instance, g_output, UAV_CLUSTER_LIGHTS_SLOT);
-FBZZ_RWSBUFFER_T(IndexedArguments, g_arguments, UAV_GPU_SORT_SLOT);
+FBZZ_SBUFFER_T(float4, g_bounds, SRV_INSTANCE_BOUNDS_SLOT);
+FBZZ_SBUFFER_T(Instance, g_inputs, SRV_CULL_CANDIDATES_SLOT);
+FBZZ_SBUFFER_T(CullView, g_view, SRV_CULL_VIEW_SLOT);
+FBZZ_RWSBUFFER_T(Instance, g_output, UAV_CULL_VISIBLE_SLOT);
+FBZZ_RWSBUFFER_T(IndexedArguments, g_arguments, UAV_CULL_ARGUMENTS_SLOT);
 groupshared uint prefix[64];
 groupshared uint completed;
 /// @note One group scans consecutive tiles; stable offsets retain primitive order, including equal-depth overlaps.

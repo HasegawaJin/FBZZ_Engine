@@ -11,10 +11,10 @@
 #include "Rendering/Underwater.hlsli"
 #include "Rendering/WaterMedium.hlsli"
 
-FBZZ_TEX2D(g_causticsTex, TEX_ALBEDO_SLOT);
+FBZZ_TEX2D(g_causticsTex, SRV_CAUSTICS_SLOT);
 FBZZ_TEX2D_T(float, g_depth, TEX_DEPTH_SLOT);
 FBZZ_TEX2D_T(float, texShadow, TEX_SHADOW_SLOT);
-FBZZ_TEX2D_T(float4, g_waterInterface, 13);
+FBZZ_TEX2D_T(float4, g_waterInterface, SRV_WATER_INTERFACE_SLOT);
 SamplerState sampTiling : register(SAMPLER_DEFAULT);
 SamplerState sampDepth : register(SAMPLER_LINEAR_CLAMP);
 SamplerComparisonState sampShadow : register(SAMPLER_SHADOW);
@@ -263,7 +263,7 @@ float4 PSMain(FBZZFullscreenVertex p) : SV_Target0
     {
         bool interfaceValid = true;
 #if BINDLESS_SUPPORTED
-        interfaceValid = IsBindlessValid(FbzzPixelSlot(13));
+        interfaceValid = IsBindlessValid(FbzzPixelSlot(SRV_WATER_INTERFACE_SLOT));
 #endif
         if (!interfaceValid) return float4(0.0f, 0.0f, 0.0f, 1.0f);
         uint interfaceWidth = 0u;

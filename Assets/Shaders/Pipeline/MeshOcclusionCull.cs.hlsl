@@ -23,7 +23,7 @@ struct IndexedArguments
     uint startInstance;
 };
 
-cbuffer OcclusionView : register(b0)
+cbuffer OcclusionView : register(FBZZ_REGISTER(b, CB_MESH_OCCLUSION_VIEW_SLOT))
 {
     float4x4 viewProjection;
     uint2 size;
@@ -31,9 +31,9 @@ cbuffer OcclusionView : register(b0)
     uint padding;
 };
 
-FBZZ_SBUFFER_T(Candidate, g_candidates, SB_SKIN_SRC_VERTICES_SLOT);
-FBZZ_SBUFFER_T(float, g_hierarchy, 28);
-FBZZ_RWSBUFFER_T(IndexedArguments, g_arguments, UAV_CLUSTER_LIGHTS_SLOT);
+FBZZ_SBUFFER_T(Candidate, g_candidates, SRV_CULL_CANDIDATES_SLOT);
+FBZZ_SBUFFER_T(float, g_hierarchy, SRV_TERRAIN_HIZ_SLOT);
+FBZZ_RWSBUFFER_T(IndexedArguments, g_arguments, UAV_MESH_OCCLUSION_ARGUMENTS_SLOT);
 
 [numthreads(64, 1, 1)]
 void CSMain(uint3 id : SV_DispatchThreadID)

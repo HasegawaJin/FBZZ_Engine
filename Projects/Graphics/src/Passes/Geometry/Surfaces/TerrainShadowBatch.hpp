@@ -50,4 +50,4 @@ void SubmitTerrainShadowBatchView(RenderPassContext& ctx, const math::Frustum& f
     const PreparedTerrainShadowBatch& batch, size_t viewIndex, std::span<const uint8_t> receipts,
     bool usesBakedStaticDepth, TerrainShadowCasterFilter filter = TerrainShadowCasterFilter::ALL);
 
-} /// @note namespace fbzz::renderer
+} // namespace fbzz::renderer

@@ -68,22 +68,29 @@ void RegisterRenderer(IRenderer& facade, ThreadedRenderer& owner)
 {
     auto& registry = Registry();
     std::lock_guard lock(registry.mutex);
-    for (auto& entry : registry.entries) if (!entry.facade) { entry = {&facade, &owner}; return; }
+    for (auto& entry : registry.entries) {
+        if (!entry.facade) { entry = {&facade, &owner}; return; }
+    }
 }
 
 void UnregisterRenderer(IRenderer& facade)
 {
     auto& registry = Registry();
     std::lock_guard lock(registry.mutex);
-    for (auto& entry : registry.entries) if (entry.facade == &facade) { entry = {}; return; }
+    for (auto& entry : registry.entries) {
+        if (entry.facade == &facade) { entry = {}; return; }
+    }
 }
 
 ThreadedRenderer* FindRenderer(IRenderer& facade)
 {
     auto& registry = Registry();
     std::lock_guard lock(registry.mutex);
-    for (const auto& entry : registry.entries)
-        if (entry.facade == &facade) return entry.owner;
+    for (const auto& entry : registry.entries) {
+        if (entry.facade == &facade) {
+            return entry.owner;
+        }
+    }
     return nullptr;
 }
 
@@ -100,19 +107,54 @@ void DispatchSequenceNative(IRenderer& renderer, ResourceManager& resources,
     }
 }
 
-/// @note Queue acceptance does not borrow native buffer pointers or drain the producer frame.
+/// @brief 描画を実行する時点のリソースで、間接引数またはインデックスの範囲を検証する。
 bool CullDrawRangeCurrent(const DrawCall& call, ResourceManager& resources)
 {
     if (call.meshGroupCountX != 0) {
+        // Mesh Dispatch の各コマンドは X・Y・Z のグループ数を uint32_t で格納する。
+        constexpr uint32_t MESH_DISPATCH_ARGUMENT_BYTES = 3 * sizeof(uint32_t);
         const auto* arguments = resources.Get(call.indirectArguments);
         const auto* selection = resources.Get(call.meshletSelection);
-        return selection && selection->GetBindlessIndex() != INVALID_BINDLESS_INDEX
-            && arguments && arguments->GetStride() == 12u
-            && call.indirectArgumentOffset <= arguments->GetSize()
-            && call.indirectCommandCount <= (arguments->GetSize() - call.indirectArgumentOffset) / 12u;
+        if (!selection || selection->GetBindlessIndex() == INVALID_BINDLESS_INDEX) {
+            return false;
+        }
+        if (!arguments || arguments->GetStride() != MESH_DISPATCH_ARGUMENT_BYTES) {
+            return false;
+        }
+        const auto bufferBytes = arguments->GetSize();
+        if (call.indirectArgumentOffset > bufferBytes) {
+            return false;
+        }
+        return call.indirectCommandCount <= (bufferBytes - call.indirectArgumentOffset) / MESH_DISPATCH_ARGUMENT_BYTES;
     }
     const auto* indices = resources.Get(call.indexBuffer);
     return indices && static_cast<uint64_t>(call.startIndex) + call.indexCount <= indices->GetSize()/sizeof(uint32_t);
+}
+
+/// @brief 描画を実行するスレッドでカリングを試み、記録できた命令に応じて描画を送信する。
+void ExecuteCullDraw(IRenderer& renderer, ResourceManager& resources, const ComputeCall& compute,
+                     const DrawCall& indirect, const DrawCall& fallback, const ComputeCall* setup)
+{
+    // 通常のインデックス描画は失効した範囲を使えない。メッシュ描画には独立した代替描画がある。
+    const bool rangeCurrent = CullDrawRangeCurrent(indirect, resources);
+    if (!rangeCurrent && indirect.meshGroupCountX == 0) {
+        return;
+    }
+
+    if (rangeCurrent) {
+        // 任意の初期化を先に記録し、それが成功した場合だけカリング結果を間接描画に使う。
+        const bool setupReady = !setup || renderer.TryDispatch(*setup, resources);
+        if (setupReady && renderer.TryDispatch(compute, resources)) {
+            const cpu_trace::SourceScope gpuDrawTrace(cpu_trace::Source::UNKNOWN, "GpuIndirect::NativeDraw");
+            FBZZ_PROFILE_SCOPE("Render::GpuIndirect::NativeDraw");
+            renderer.Submit(indirect, resources);
+            return;
+        }
+    }
+
+    const cpu_trace::SourceScope gpuFallbackTrace(cpu_trace::Source::UNKNOWN, "GpuIndirect::NativeFallback");
+    FBZZ_PROFILE_SCOPE("Render::GpuIndirect::NativeFallback");
+    renderer.Submit(fallback, resources);
 }
 
 class SynchronousScope final {
@@ -132,19 +174,29 @@ public:
     CommandList Acquire()
     {
         size_t selected = 0;
-        for (size_t index = 1; index < m_recycled.size(); ++index)
-            if (m_recycled[index].capacity() > m_recycled[selected].capacity()) selected = index;
+        for (size_t index = 1; index < m_recycled.size(); ++index) {
+            if (m_recycled[index].capacity() > m_recycled[selected].capacity()) {
+                selected = index;
+            }
+        }
         return std::move(m_recycled[selected]);
     }
     /// @pre Capture の破棄が完了した空配列だけを渡す。
     void Recycle(CommandList&& commands)
     {
         assert(commands.empty());
-        if (commands.capacity() == 0 || commands.capacity() > MAX_COMMANDS) return;
+        if (commands.capacity() == 0 || commands.capacity() > MAX_COMMANDS) {
+            return;
+        }
         size_t selected = 0;
-        for (size_t index = 1; index < m_recycled.size(); ++index)
-            if (m_recycled[index].capacity() < m_recycled[selected].capacity()) selected = index;
-        if (commands.capacity() > m_recycled[selected].capacity()) m_recycled[selected] = std::move(commands);
+        for (size_t index = 1; index < m_recycled.size(); ++index) {
+            if (m_recycled[index].capacity() < m_recycled[selected].capacity()) {
+                selected = index;
+            }
+        }
+        if (commands.capacity() > m_recycled[selected].capacity()) {
+            m_recycled[selected] = std::move(commands);
+        }
     }
 private:
     static constexpr size_t MAX_COMMANDS = 16384;
@@ -156,7 +208,7 @@ public:
     RenderCommands(CommandList commands, CommandStoragePool& storage) : m_commands(std::move(commands)), m_storage(storage) {}
     ~RenderCommands() override
     {
-        /// @note 資源 owner と任意 capture は worker で破棄し、空の capacity だけを再貸出しする。
+        // 資源 owner と任意 capture は worker で破棄し、空の capacity だけを再貸出しする。
         m_commands.clear();
         m_storage.Recycle(std::move(m_commands));
     }
@@ -181,7 +233,9 @@ struct ImGuiContextDeleter {
 struct ImGuiDrawListDeleter {
     void operator()(ImDrawList* list) const
     {
-        if (!list) return;
+        if (!list) {
+            return;
+        }
         list->~ImDrawList();
         ImGui::MemFree(list);
     }
@@ -199,7 +253,7 @@ struct OwnedImGuiDrawData {
     }
     void Copy(const ImDrawData& source)
     {
-        /// @note clone の一時確保を UI context の未解放数に加算しない。破棄も別スレッドの context 外で行う。
+        // clone の一時確保を UI context の未解放数に加算しない。破棄も別スレッドの context 外で行う。
         const ImGuiContextScope scope(nullptr);
         data.Valid = source.Valid;
         data.TotalIdxCount = source.TotalIdxCount;
@@ -207,22 +261,30 @@ struct OwnedImGuiDrawData {
         data.DisplayPos = source.DisplayPos;
         data.DisplaySize = source.DisplaySize;
         data.FramebufferScale = source.FramebufferScale;
-        /// @note A conditional value-copy creates an owning temporary whose destructor asserts on borrowed backend userdata.
-        if (source.OwnerViewport) viewport = *source.OwnerViewport;
-        else viewport = ImGuiViewport{};
+        // A conditional value-copy creates an owning temporary whose destructor asserts on borrowed backend userdata.
+        if (source.OwnerViewport) {
+            viewport = *source.OwnerViewport;
+        }
+        else {
+            viewport = ImGuiViewport{};
+        }
         viewport.DrawData = &data;
         data.OwnerViewport = &viewport;
         data.Textures = nullptr;
         data.CmdLists.resize(source.CmdLists.Size);
         for (int index = 0; index < source.CmdLists.Size; ++index) {
             const auto* sourceList = source.CmdLists[index];
-            if (static_cast<size_t>(index) == lists.size()) lists.emplace_back(sourceList->CloneOutput());
+            if (static_cast<size_t>(index) == lists.size()) {
+                lists.emplace_back(sourceList->CloneOutput());
+            }
             auto& list = *lists[index];
             CopyBuffer(list.CmdBuffer, sourceList->CmdBuffer);
             CopyBuffer(list.IdxBuffer, sourceList->IdxBuffer);
             CopyBuffer(list.VtxBuffer, sourceList->VtxBuffer);
             list.Flags = sourceList->Flags;
-            for (auto& command : list.CmdBuffer) command.TexRef = ImTextureRef(command.GetTexID());
+            for (auto& command : list.CmdBuffer) {
+                command.TexRef = ImTextureRef(command.GetTexID());
+            }
             data.CmdLists[index] = &list;
         }
         data.CmdListsCount = data.CmdLists.Size;
@@ -236,9 +298,11 @@ private:
     static void CopyBuffer(ImVector<T>& target, const ImVector<T>& source)
     {
         static_assert(std::is_trivially_copyable_v<T>);
-        /// @note ImVector の代入は既存容量を破棄するため、resize とバイトコピーで完了済みバッファを再利用する。
+        // ImVector の代入は既存容量を破棄するため、resize とバイトコピーで完了済みバッファを再利用する。
         target.resize(source.Size);
-        if (source.Size > 0) std::memcpy(target.Data, source.Data, static_cast<size_t>(source.Size) * sizeof(T));
+        if (source.Size > 0) {
+            std::memcpy(target.Data, source.Data, static_cast<size_t>(source.Size) * sizeof(T));
+        }
     }
 };
 
@@ -252,17 +316,19 @@ struct OwnedImGuiPlatformFrame {
 template<typename T>
 std::shared_ptr<T> AcquireGuiSnapshot(std::vector<std::shared_ptr<T>>& pool)
 {
-    for (const auto& snapshot : pool) if (snapshot.use_count() == 1) {
-        /// @note 参照数は寿命だけを表す。worker の最終アクセスとは release/acquire で同期する。
-        static_cast<void>(snapshot->completed.exchange(false, std::memory_order_acq_rel));
-        return snapshot;
+    for (const auto& snapshot : pool) {
+        if (snapshot.use_count() == 1) {
+            // 参照数は寿命だけを表す。worker の最終アクセスとは release/acquire で同期する。
+            static_cast<void>(snapshot->completed.exchange(false, std::memory_order_acq_rel));
+            return snapshot;
+        }
     }
     auto snapshot = std::make_shared<T>();
     pool.push_back(snapshot);
     return snapshot;
 }
 
-} /// @note namespace
+} // namespace
 
 class ThreadedRenderer final : public IRenderer {
 public:
@@ -283,10 +349,12 @@ public:
     auto Sync(Function&& function, std::source_location caller = std::source_location::current()) -> decltype(function())
     {
         m_bufferReadRevision.fetch_add(1, std::memory_order_relaxed);
-        if (IsRenderThread()) return function();
+        if (IsRenderThread()) {
+            return function();
+        }
         const cpu_trace::SourceScope traceSource(cpu_trace::Source::UNKNOWN, caller.function_name(), true);
         cpu_trace::Count(cpu_trace::Counter::SYNC);
-        /// @note 同期 API の要求元を別 scope に残し、同名の packet 完了待ちから原因の操作を辿れるようにする。
+        // 同期 API の要求元を別 scope に残し、同名の packet 完了待ちから原因の操作を辿れるようにする。
         const profiler::ProfileScope callerScope(profiler::ProfilerMarker(caller.function_name(), "Render synchronization"));
         FBZZ_PROFILE_SCOPE("ThreadedRenderer::Sync");
         cpu_trace::AcquireScope traceAcquire(cpu_trace::AcquireKind::EXECUTION_MUTEX);
@@ -313,7 +381,7 @@ public:
         {
             std::lock_guard lock(m_commandsMutex);
             if (m_cpuFrameOpen) {
-                /// @note Count only the first opaque entry in this pending vector; labels classify diagnostics, never eligibility.
+                // Count only the first opaque entry in this pending vector; labels classify diagnostics, never eligibility.
                 if (!cpuShadowTransfer && m_resourceUpdatesOnly && cpu_trace::HasSelectedFrame()) {
                     const auto& labels = OPAQUE_QUEUE_LABELS[static_cast<size_t>(opaqueOrigin)];
                     const cpu_trace::SourceScope traceOpaque(cpu_trace::Source::UNKNOWN,
@@ -344,7 +412,9 @@ public:
     void WaitForCpuFrame() override
     {
         m_bufferReadRevision.fetch_add(1, std::memory_order_relaxed);
-        if (IsRenderThread()) return;
+        if (IsRenderThread()) {
+            return;
+        }
         FBZZ_PROFILE_SCOPE("ThreadedRenderer::WaitForCpuFrame");
         cpu_trace::Count(cpu_trace::Counter::CPU_FRAME_WAIT);
         cpu_trace::AcquireScope traceAcquire(cpu_trace::AcquireKind::EXECUTION_MUTEX);
@@ -354,9 +424,11 @@ public:
         traceAcquire.Acquired();
         const SynchronousScope synchronousScope(m_synchronousActive);
         {
-            /// @note Keep the queue locked through the idle witness; in-flight work, input destruction and reserved submissions retain the full pump/drain path.
+            // Keep the queue locked through the idle witness; in-flight work, input destruction and reserved submissions retain the full pump/drain path.
             std::lock_guard commandsLock(m_commandsMutex);
-            if (m_commands.empty() && m_thread.TryIsIdle()) return;
+            if (m_commands.empty() && m_thread.TryIsIdle()) {
+                return;
+            }
         }
         Flush();
     }
@@ -373,11 +445,17 @@ public:
     }
     bool TryObserveIdleReadBoundary(uint64_t& submission, uint64_t& revision)
     {
-        if (std::this_thread::get_id() != m_producerThread || IsRenderThread()) return false;
+        if (std::this_thread::get_id() != m_producerThread || IsRenderThread()) {
+            return false;
+        }
         std::unique_lock executionLock(m_executionMutex, std::try_to_lock);
-        if (!executionLock.owns_lock() || m_synchronousActive || m_shutdown) return false;
+        if (!executionLock.owns_lock() || m_synchronousActive || m_shutdown) {
+            return false;
+        }
         std::unique_lock commandsLock(m_commandsMutex, std::try_to_lock);
-        if (!commandsLock.owns_lock() || !m_commands.empty() || !m_thread.TryIsIdle()) return false;
+        if (!commandsLock.owns_lock() || !m_commands.empty() || !m_thread.TryIsIdle()) {
+            return false;
+        }
         submission = m_submissionSerial;
         revision = m_bufferReadRevision.load(std::memory_order_relaxed);
         return true;
@@ -385,7 +463,9 @@ public:
     bool RecordResourceUpdate(std::function<void()> operation) override
     {
         const bool cpuShadowTransfer = ConsumeCpuShadowTransfer(*this);
-        if (IsRenderThread()) return false;
+        if (IsRenderThread()) {
+            return false;
+        }
         Record(std::move(operation), cpuShadowTransfer, OpaqueQueueOrigin::RESOURCE_UPDATE);
         return true;
     }
@@ -393,20 +473,37 @@ public:
     ResourceSubmitOutcome TrySubmitPendingCommands(EarlySubmitKind kind)
     {
         const bool skinning = kind == EarlySubmitKind::SKINNING_READ_AHEAD;
-        if (IsRenderThread() || (skinning && std::this_thread::get_id() != m_producerThread))
+        if (IsRenderThread() || (skinning && std::this_thread::get_id() != m_producerThread)) {
             return ResourceSubmitOutcome::WORKER;
+        }
         std::unique_lock executionLock(m_executionMutex, std::try_to_lock);
-        if (!executionLock.owns_lock()) return ResourceSubmitOutcome::BUSY;
-        if (m_synchronousActive) return ResourceSubmitOutcome::REENTRY;
+        if (!executionLock.owns_lock()) {
+            return ResourceSubmitOutcome::BUSY;
+        }
+        if (m_synchronousActive) {
+            return ResourceSubmitOutcome::REENTRY;
+        }
         std::unique_lock commandsLock(m_commandsMutex, std::try_to_lock);
-        if (!commandsLock.owns_lock()) return ResourceSubmitOutcome::BUSY;
-        if (m_shutdown || !m_cpuFrameOpen || m_commands.empty()) return ResourceSubmitOutcome::NO_QUEUED;
-        if (skinning && m_skinningReadAheadSerial != 0) return ResourceSubmitOutcome::NO_QUEUED;
-        if (!skinning && !m_resourceUpdatesOnly) return ResourceSubmitOutcome::MIXED;
-        if (m_submissionSerial == std::numeric_limits<uint64_t>::max()) return ResourceSubmitOutcome::SERIAL_EXHAUSTED;
+        if (!commandsLock.owns_lock()) {
+            return ResourceSubmitOutcome::BUSY;
+        }
+        if (m_shutdown || !m_cpuFrameOpen || m_commands.empty()) {
+            return ResourceSubmitOutcome::NO_QUEUED;
+        }
+        if (skinning && m_skinningReadAheadSerial != 0) {
+            return ResourceSubmitOutcome::NO_QUEUED;
+        }
+        if (!skinning && !m_resourceUpdatesOnly) {
+            return ResourceSubmitOutcome::MIXED;
+        }
+        if (m_submissionSerial == std::numeric_limits<uint64_t>::max()) {
+            return ResourceSubmitOutcome::SERIAL_EXHAUSTED;
+        }
         const uint64_t serial = m_submissionSerial + 1;
         auto reservation = m_thread.TryReserveSubmission(serial);
-        if (!reservation.IsValid()) return ResourceSubmitOutcome::BUSY;
+        if (!reservation.IsValid()) {
+            return ResourceSubmitOutcome::BUSY;
+        }
         const auto commandCount = m_commands.size();
         auto timelineContext = profiler::frame_timeline::CurrentContext();
         timelineContext.submissionSerial = serial;
@@ -414,10 +511,12 @@ public:
         auto frame = std::make_unique<RenderCommands>(std::move(m_commands), m_commandStorage);
         m_commands = m_commandStorage.Acquire();
         cpu_trace::BindPacket(&m_thread, serial, commandCount);
-        /// @note Commit before publication because the worker may finish immediately after notification.
+        // Commit before publication because the worker may finish immediately after notification.
         m_submissionSerial = serial;
         m_resourceUpdatesOnly = true;
-        if (skinning) m_skinningReadAheadSerial = serial;
+        if (skinning) {
+            m_skinningReadAheadSerial = serial;
+        }
         const bool accepted = reservation.Publish(std::move(frame));
         assert(accepted);
         cpu_trace::PacketAccepted(&m_thread, serial, accepted);
@@ -425,9 +524,13 @@ public:
     }
     void FinishSkinningReadAhead()
     {
-        if (std::this_thread::get_id() != m_producerThread || IsRenderThread()) return;
+        if (std::this_thread::get_id() != m_producerThread || IsRenderThread()) {
+            return;
+        }
         std::lock_guard executionLock(m_executionMutex);
-        if (m_skinningReadAheadSerial == 0) return;
+        if (m_skinningReadAheadSerial == 0) {
+            return;
+        }
         const SynchronousScope synchronousScope(m_synchronousActive);
         const cpu_trace::SourceScope traceSource(cpu_trace::Source::UNKNOWN, "SkinningReadAhead::Join");
         const cpu_trace::WaitKindScope traceWait(cpu_trace::WaitKind::COMPLETION);
@@ -437,7 +540,9 @@ public:
     }
     void Shutdown() override
     {
-        if (m_shutdown) return;
+        if (m_shutdown) {
+            return;
+        }
         WaitForCpuFrame();
         Sync([this] { CloseRecordedGpuViews(); m_native->SetCpuExecutor(nullptr); m_native->Shutdown(); });
         m_thread.Stop();
@@ -475,7 +580,9 @@ public:
         });
         bool submit = false;
         { std::lock_guard lock(m_commandsMutex); submit = std::exchange(m_cpuFrameOpen, false); }
-        if (submit) SubmitCommands();
+        if (submit) {
+            SubmitCommands();
+        }
     }
     void Clear(const math::Vector4& color) override { Record([this, color] { m_native->Clear(color); }); }
     void Submit(const DrawCall& call, ResourceManager& resources) override
@@ -487,16 +594,7 @@ public:
     {
         Record([this, compute, indirect, fallback, &resources,
                 setup = setup ? std::optional<ComputeCall>(*setup) : std::nullopt] {
-            const bool ready = CullDrawRangeCurrent(indirect, resources);
-            if (!ready && !indirect.meshGroupCountX) return;
-            if (ready && (!setup || m_native->TryDispatch(*setup, resources))
-                && m_native->TryDispatch(compute, resources)) {
-                const cpu_trace::SourceScope gpuDrawTrace(cpu_trace::Source::UNKNOWN, "GpuIndirect::NativeDraw");
-                FBZZ_PROFILE_SCOPE("Render::GpuIndirect::NativeDraw"); m_native->Submit(indirect, resources);
-            } else {
-                const cpu_trace::SourceScope gpuFallbackTrace(cpu_trace::Source::UNKNOWN, "GpuIndirect::NativeFallback");
-                FBZZ_PROFILE_SCOPE("Render::GpuIndirect::NativeFallback"); m_native->Submit(fallback, resources);
-            }
+            ExecuteCullDraw(*m_native, resources, compute, indirect, fallback, setup ? &*setup : nullptr);
         });
     }
     void Dispatch(const ComputeCall& call, ResourceManager& resources) override
@@ -508,15 +606,21 @@ public:
     {
         Record([this, compute, target, composite, &resources] {
             FBZZ_PROFILE_SCOPE("Render::ComputeComposite");
-            if (!m_native->TryDispatch(compute, resources)) return;
+            if (!m_native->TryDispatch(compute, resources)) {
+                return;
+            }
             m_native->SetRenderTarget(target, resources);
             m_native->Submit(composite, resources);
         });
-        if (IsRenderThread()) return;
+        if (IsRenderThread()) {
+            return;
+        }
         bool frameOpen = false;
         { std::lock_guard lock(m_commandsMutex); frameOpen = m_cpuFrameOpen; }
-        /// @note Publish at the original dispatch boundary so removing the receipt does not postpone the frame's native work until EndFrame.
-        if (frameOpen) SubmitCommands();
+        // Publish at the original dispatch boundary so removing the receipt does not postpone the frame's native work until EndFrame.
+        if (frameOpen) {
+            SubmitCommands();
+        }
     }
     bool TryDispatch(const ComputeCall& call, ResourceManager& resources) override
     {
@@ -541,7 +645,7 @@ public:
     void SetRenderWhenOccluded(bool enabled) override { Record([this, enabled] { m_native->SetRenderWhenOccluded(enabled); }); }
     void Resize(uint32_t width, uint32_t height) override
     {
-        /// @note WM_SIZE から Present 待ちへ入らない。次の物理フレーム開始前に Render Thread で適用する。
+        // WM_SIZE から Present 待ちへ入らない。次の物理フレーム開始前に Render Thread で適用する。
         m_width = width;
         m_height = height;
         m_resizePending = true;
@@ -556,7 +660,9 @@ public:
     }
     bool SetRenderTargetColors(std::span<const RenderTargetColorAttachment> colors, ResourceManager& resources) override
     {
-        if (colors.empty() || colors.size() > 8u) return false;
+        if (colors.empty() || colors.size() > 8u) {
+            return false;
+        }
         std::array<RenderTargetColorAttachment, 8> owned{};
         std::copy(colors.begin(), colors.end(), owned.begin());
         return Sync([this, owned, count = colors.size(), &resources] {
@@ -586,13 +692,17 @@ public:
     void GpuProfBeginPass(const char* name) override
     {
         Record([this, name = std::string(name ? name : "Unnamed")] {
-            if (m_recordedGpuViews.empty() || m_recordedGpuViews.back()) m_native->GpuProfBeginPass(name.c_str());
+            if (m_recordedGpuViews.empty() || m_recordedGpuViews.back()) {
+                m_native->GpuProfBeginPass(name.c_str());
+            }
         }, false, OpaqueQueueOrigin::GPU_PROFILER);
     }
     void GpuProfEndPass(const char* name) override
     {
         Record([this, name = std::string(name ? name : "Unnamed")] {
-            if (m_recordedGpuViews.empty() || m_recordedGpuViews.back()) m_native->GpuProfEndPass(name.c_str());
+            if (m_recordedGpuViews.empty() || m_recordedGpuViews.back()) {
+                m_native->GpuProfEndPass(name.c_str());
+            }
         }, false, OpaqueQueueOrigin::GPU_PROFILER);
     }
     bool GpuProfBeginView(const GpuProfilerViewMetadata& metadata) override
@@ -602,7 +712,7 @@ public:
     void GpuProfEndView() override { Record([this] { m_native->GpuProfEndView(); }, false, OpaqueQueueOrigin::GPU_PROFILER); }
     bool GpuProfRecordView(const GpuProfilerViewMetadata& metadata) override
     {
-        /// @note Only the worker owns recording success; metadata is copied before producer inputs can change.
+        // Only the worker owns recording success; metadata is copied before producer inputs can change.
         /// @see https://docs.godotengine.org/en/stable/classes/class_renderingserver.html#class-renderingserver-method-call-on-render-thread Queued render-thread calls.
         Record([this, metadata] {
             const bool parentEnabled = m_recordedGpuViews.empty() || m_recordedGpuViews.back();
@@ -615,10 +725,14 @@ public:
     {
         Record([this] {
             assert(!m_recordedGpuViews.empty());
-            if (m_recordedGpuViews.empty()) return;
+            if (m_recordedGpuViews.empty()) {
+                return;
+            }
             const bool opened = m_recordedGpuViews.back();
             m_recordedGpuViews.pop_back();
-            if (opened) m_native->GpuProfEndView();
+            if (opened) {
+                m_native->GpuProfEndView();
+            }
         }, false, OpaqueQueueOrigin::GPU_PROFILER);
     }
     void GpuProfCollect() override { Record([this] { m_native->GpuProfCollect(); }, false, OpaqueQueueOrigin::GPU_PROFILER); }
@@ -655,11 +769,13 @@ public:
 private:
     void CloseRecordedGpuViews()
     {
-        /// @note A synchronous operation may have executed a begin before CancelCpuFrame discarded its pending end.
+        // A synchronous operation may have executed a begin before CancelCpuFrame discarded its pending end.
         while (!m_recordedGpuViews.empty()) {
             const bool opened = m_recordedGpuViews.back();
             m_recordedGpuViews.pop_back();
-            if (opened) m_native->GpuProfEndView();
+            if (opened) {
+                m_native->GpuProfEndView();
+            }
         }
     }
     void ExecuteAndWait(std::function<void()> operation)
@@ -841,7 +957,9 @@ public:
     ~ThreadedImGuiRenderer() override { ImGuiShutdown(); }
     void ImGuiInit(void* window) override
     {
-        if (m_initialized) return;
+        if (m_initialized) {
+            return;
+        }
         m_frontendContext = ImGui::GetCurrentContext();
         m_native->ImGuiInit(window);
         void* backend = ImGui::GetIO().BackendRendererUserData;
@@ -864,14 +982,22 @@ public:
             ImGui::GetPlatformIO().DrawCallback_ResetRenderState = reset;
         });
         PlatformOwners().emplace(m_frontendContext, this);
-        if (m_createWindow) platform.Renderer_CreateWindow = &CreatePlatformWindow;
-        if (m_destroyWindow) platform.Renderer_DestroyWindow = &DestroyPlatformWindow;
-        if (m_resizeWindow) platform.Renderer_SetWindowSize = &ResizePlatformWindow;
+        if (m_createWindow) {
+            platform.Renderer_CreateWindow = &CreatePlatformWindow;
+        }
+        if (m_destroyWindow) {
+            platform.Renderer_DestroyWindow = &DestroyPlatformWindow;
+        }
+        if (m_resizeWindow) {
+            platform.Renderer_SetWindowSize = &ResizePlatformWindow;
+        }
         m_initialized = true;
     }
     void ImGuiShutdown() override
     {
-        if (!m_initialized) return;
+        if (!m_initialized) {
+            return;
+        }
         m_owner.WaitForCpuFrame();
         auto& platform = ImGui::GetPlatformIO();
         platform.Renderer_CreateWindow = m_createWindow;
@@ -880,7 +1006,9 @@ public:
         PlatformOwners().erase(m_frontendContext);
         m_native->ImGuiShutdown();
         m_owner.Sync([this] {
-            if (!m_renderContext) return;
+            if (!m_renderContext) {
+                return;
+            }
             ImGui::SetCurrentContext(m_renderContext.get());
             ImGui::GetIO().BackendRendererUserData = nullptr;
             m_renderContext.reset();
@@ -896,7 +1024,9 @@ public:
     }
     void ImGuiNewFrame() override
     {
-        if (!m_initialized) return;
+        if (!m_initialized) {
+            return;
+        }
         m_owner.Record([this] {
             const ImGuiContextScope scope(m_renderContext.get());
             m_native->ImGuiPrepareGpuFrame();
@@ -906,17 +1036,22 @@ public:
     void ImGuiRenderDrawData() override
     {
         ImDrawData* source = ImGui::GetDrawData();
-        if (!m_initialized || !source) return;
+        if (!m_initialized || !source) {
+            return;
+        }
         if (source->Textures) {
             bool dirty = false;
-            for (const auto* texture : *source->Textures)
+            for (const auto* texture : *source->Textures) {
                 dirty |= texture && texture->Status != ImTextureStatus_OK;
-            if (dirty) m_owner.Sync([this, source] {
-                const ImGuiContextScope scope(m_renderContext.get());
-                m_native->ImGuiPrepareTextures(*source);
-            });
+            }
+            if (dirty) {
+                m_owner.Sync([this, source] {
+                    const ImGuiContextScope scope(m_renderContext.get());
+                    m_native->ImGuiPrepareTextures(*source);
+                });
+            }
         }
-        /// @note 任意の callback の Scene 参照や引数寿命は一般化できないため、既存 callback は producer で同期実行する。
+        // 任意の callback の Scene 参照や引数寿命は一般化できないため、既存 callback は producer で同期実行する。
         if (HasUserCallbacks(*source)) {
             m_owner.WaitForCpuFrame();
             m_native->ImGuiRenderDrawData();
@@ -932,15 +1067,21 @@ public:
     }
     void ImGuiRenderPlatformWindows() override
     {
-        if (!m_initialized || (ImGui::GetIO().ConfigFlags & ImGuiConfigFlags_ViewportsEnable) == 0) return;
-        /// @note 最後の追加 Window が消えたフレームも UpdatePlatformWindows を呼び、native 資源の破棄を確定する。
+        if (!m_initialized || (ImGui::GetIO().ConfigFlags & ImGuiConfigFlags_ViewportsEnable) == 0) {
+            return;
+        }
+        // 最後の追加 Window が消えたフレームも UpdatePlatformWindows を呼び、native 資源の破棄を確定する。
         m_native->ImGuiPreparePlatformWindows();
         const auto& platform = ImGui::GetPlatformIO();
-        if (platform.Viewports.Size <= 1) return;
+        if (platform.Viewports.Size <= 1) {
+            return;
+        }
         bool producerCallbacks = platform.Platform_RenderWindow || platform.Platform_SwapBuffers;
         for (int index = 1; index < platform.Viewports.Size; ++index) {
             const auto* viewport = platform.Viewports[index];
-            if (viewport->DrawData) producerCallbacks |= HasUserCallbacks(*viewport->DrawData);
+            if (viewport->DrawData) {
+                producerCallbacks |= HasUserCallbacks(*viewport->DrawData);
+            }
         }
         if (producerCallbacks) {
             m_owner.WaitForCpuFrame();
@@ -951,16 +1092,26 @@ public:
         frame->count = 0;
         for (int index = 1; index < platform.Viewports.Size; ++index) {
             const auto* viewport = platform.Viewports[index];
-            if (!viewport->DrawData || (viewport->Flags & ImGuiViewportFlags_IsMinimized) != 0) continue;
-            if (frame->count == frame->viewports.size()) frame->viewports.push_back(std::make_unique<OwnedImGuiDrawData>());
+            if (!viewport->DrawData || (viewport->Flags & ImGuiViewportFlags_IsMinimized) != 0) {
+                continue;
+            }
+            if (frame->count == frame->viewports.size()) {
+                frame->viewports.push_back(std::make_unique<OwnedImGuiDrawData>());
+            }
             frame->viewports[frame->count++]->Copy(*viewport->DrawData);
         }
         m_owner.Record([this, frame = std::move(frame)] {
             const ImGuiContextScope scope(m_renderContext.get());
-            for (size_t index = 0; index < frame->count; ++index)
-                if (m_renderWindow) m_renderWindow(&frame->viewports[index]->viewport, nullptr);
-            for (size_t index = 0; index < frame->count; ++index)
-                if (m_swapBuffers) m_swapBuffers(&frame->viewports[index]->viewport, nullptr);
+            for (size_t index = 0; index < frame->count; ++index) {
+                if (m_renderWindow) {
+                    m_renderWindow(&frame->viewports[index]->viewport, nullptr);
+                }
+            }
+            for (size_t index = 0; index < frame->count; ++index) {
+                if (m_swapBuffers) {
+                    m_swapBuffers(&frame->viewports[index]->viewport, nullptr);
+                }
+            }
             frame->completed.store(true, std::memory_order_release);
         });
     }
@@ -973,7 +1124,9 @@ public:
             return found->second;
         }
         void* id = m_owner.Sync([&] { return m_native->GetImTextureID(handle, resources, slot); });
-        if (id) m_textureIds.emplace(key, id);
+        if (id) {
+            m_textureIds.emplace(key, id);
+        }
         return id;
     }
     void* GetImTextureID(ResourceHandle<TextureTag> handle, ResourceManager& resources) override
@@ -985,15 +1138,21 @@ public:
             return found->second;
         }
         void* id = m_owner.Sync([&] { return m_native->GetImTextureID(handle, resources); });
-        if (id) m_textureIds.emplace(key, id);
+        if (id) {
+            m_textureIds.emplace(key, id);
+        }
         return id;
     }
 private:
     static bool HasUserCallbacks(const ImDrawData& data)
     {
-        for (const auto* list : data.CmdLists)
-            for (const auto& command : list->CmdBuffer)
-                if (command.UserCallback && command.UserCallback != ImDrawCallback_ResetRenderState) return true;
+        for (const auto* list : data.CmdLists) {
+            for (const auto& command : list->CmdBuffer) {
+                if (command.UserCallback && command.UserCallback != ImDrawCallback_ResetRenderState) {
+                    return true;
+                }
+            }
+        }
         return false;
     }
     static std::unordered_map<ImGuiContext*, ThreadedImGuiRenderer*>& PlatformOwners()
@@ -1054,7 +1213,7 @@ private:
     bool m_initialized = false;
 };
 
-} /// @note namespace
+} // namespace
 
 std::unique_ptr<IIblBaker> ThreadedRenderer::CreateIblBaker()
 {
@@ -1068,15 +1227,7 @@ void gpu_cull_detail::SubmitCullDraw(IRenderer& renderer, ResourceManager& resou
         owner->CullDraw(compute, indirect, fallback, resources, setup);
         return;
     }
-    const bool ready = CullDrawRangeCurrent(indirect, resources);
-    if (!ready && !indirect.meshGroupCountX) return;
-    if (ready && (!setup || renderer.TryDispatch(*setup, resources)) && renderer.TryDispatch(compute, resources)) {
-        const cpu_trace::SourceScope gpuDrawTrace(cpu_trace::Source::UNKNOWN, "GpuIndirect::NativeDraw");
-        FBZZ_PROFILE_SCOPE("Render::GpuIndirect::NativeDraw"); renderer.Submit(indirect, resources);
-    } else {
-        const cpu_trace::SourceScope gpuFallbackTrace(cpu_trace::Source::UNKNOWN, "GpuIndirect::NativeFallback");
-                FBZZ_PROFILE_SCOPE("Render::GpuIndirect::NativeFallback"); renderer.Submit(fallback, resources);
-    }
+    ExecuteCullDraw(renderer, resources, compute, indirect, fallback, setup);
 }
 
 void gpu_cull_detail::TryDispatchSequence(IRenderer& renderer, ResourceManager& resources,
@@ -1086,16 +1237,24 @@ void gpu_cull_detail::TryDispatchSequence(IRenderer& renderer, ResourceManager& 
         std::fill(receipts.begin(), receipts.end(), uint8_t{0});
         return;
     }
-    if (calls.empty()) return;
-    if (auto* owner = FindRenderer(renderer)) owner->TryDispatchSequence(calls, receipts, resources, stopOnFailure);
-    else DispatchSequenceNative(renderer, resources, calls, receipts, stopOnFailure);
+    if (calls.empty()) {
+        return;
+    }
+    if (auto* owner = FindRenderer(renderer)) {
+        owner->TryDispatchSequence(calls, receipts, resources, stopOnFailure);
+    }
+    else {
+        DispatchSequenceNative(renderer, resources, calls, receipts, stopOnFailure);
+    }
 }
 
 void compute_composite_detail::Submit(IRenderer& renderer, ResourceManager& resources,
     const ComputeCall& compute, ResourceHandle<RenderTargetTag> target, const DrawCall& composite)
 {
     auto* owner = FindRenderer(renderer);
-    if (owner) owner->ComputeComposite(compute, target, composite, resources);
+    if (owner) {
+        owner->ComputeComposite(compute, target, composite, resources);
+    }
     else if (renderer.TryDispatch(compute, resources)) {
         renderer.SetRenderTarget(target, resources);
         renderer.Submit(composite, resources);
@@ -1104,26 +1263,40 @@ void compute_composite_detail::Submit(IRenderer& renderer, ResourceManager& reso
 
 bool material_transfer_detail::IsRegisteredOwnedTransferProducer(IRenderer& renderer)
 {
-    /// @note Optional submit holds this same registry through allocations; nested queries must fail before self try_lock.
-    if (s_resourceSubmitActive) return false;
+    // Optional submit holds this same registry through allocations; nested queries must fail before self try_lock.
+    if (s_resourceSubmitActive) {
+        return false;
+    }
     const SynchronousScope queryScope(s_resourceSubmitActive);
     auto& registry = Registry();
     std::unique_lock lock(registry.mutex, std::try_to_lock);
-    if (!lock.owns_lock()) return false;
-    for (const auto& entry : registry.entries)
-        if (entry.facade == &renderer) return !entry.owner->IsRenderThread();
+    if (!lock.owns_lock()) {
+        return false;
+    }
+    for (const auto& entry : registry.entries) {
+        if (entry.facade == &renderer) {
+            return !entry.owner->IsRenderThread();
+        }
+    }
     return false;
 }
 
 bool buffer_state_detail::TryObserveIdleReadBoundary(IRenderer& renderer, uint64_t& submission, uint64_t& revision)
 {
-    if (s_resourceSubmitActive) return false;
+    if (s_resourceSubmitActive) {
+        return false;
+    }
     const SynchronousScope queryScope(s_resourceSubmitActive);
     auto& registry = Registry();
     std::unique_lock lock(registry.mutex, std::try_to_lock);
-    if (!lock.owns_lock()) return false;
-    for (const auto& entry : registry.entries)
-        if (entry.facade == &renderer) return entry.owner->TryObserveIdleReadBoundary(submission, revision);
+    if (!lock.owns_lock()) {
+        return false;
+    }
+    for (const auto& entry : registry.entries) {
+        if (entry.facade == &renderer) {
+            return entry.owner->TryObserveIdleReadBoundary(submission, revision);
+        }
+    }
     return false;
 }
 
@@ -1135,7 +1308,9 @@ std::unique_ptr<prepared_skinning_detail::NativeWork> prepared_skinning_detail::
     {
         auto& registry = Registry();
         std::lock_guard lock(registry.mutex);
-        for (const auto& entry : registry.entries) if (entry.facade == &facade) { owner = entry.owner; break; }
+        for (const auto& entry : registry.entries) {
+            if (entry.facade == &facade) { owner = entry.owner; break; }
+        }
     }
     return owner ? owner->PrepareSkinning(resources, shader, requests, matrices)
                  : PrepareExactNative(facade, resources, shader, requests, matrices);
@@ -1147,7 +1322,9 @@ bool prepared_skinning_detail::SupportsViaFacade(const IRenderer& facade) noexce
     {
         auto& registry = Registry();
         std::lock_guard lock(registry.mutex);
-        for (const auto& entry : registry.entries) if (entry.facade == &facade) { owner = entry.owner; break; }
+        for (const auto& entry : registry.entries) {
+            if (entry.facade == &facade) { owner = entry.owner; break; }
+        }
     }
     return owner ? owner->SupportsPreparedSkinning() : HasRegisteredBackend(facade);
 }
@@ -1167,10 +1344,16 @@ bool TrySubmitPendingResourceUpdates(IRenderer& renderer)
     auto& registry = Registry();
     std::unique_lock registryLock(registry.mutex, std::try_to_lock);
     auto outcome = ResourceSubmitOutcome::UNKNOWN;
-    if (!registryLock.owns_lock()) outcome = ResourceSubmitOutcome::BUSY;
-    else for (const auto& entry : registry.entries) if (entry.facade == &renderer) {
-        outcome = entry.owner->TrySubmitPendingCommands(EarlySubmitKind::CPU_SHADOW_TRANSFERS);
-        break;
+    if (!registryLock.owns_lock()) {
+        outcome = ResourceSubmitOutcome::BUSY;
+    }
+    else {
+        for (const auto& entry : registry.entries) {
+            if (entry.facade == &renderer) {
+                outcome = entry.owner->TrySubmitPendingCommands(EarlySubmitKind::CPU_SHADOW_TRANSFERS);
+                break;
+            }
+        }
     }
     const cpu_trace::SourceScope traceOutcome(cpu_trace::Source::UNKNOWN,
         RESOURCE_SUBMIT_LABELS[static_cast<size_t>(outcome)]);
@@ -1179,13 +1362,19 @@ bool TrySubmitPendingResourceUpdates(IRenderer& renderer)
 
 bool TryStartOwnedSkinningReadAhead(IRenderer& renderer)
 {
-    if (s_resourceSubmitActive) return false;
+    if (s_resourceSubmitActive) {
+        return false;
+    }
     const SynchronousScope attemptScope(s_resourceSubmitActive);
     auto& registry = Registry();
     std::unique_lock registryLock(registry.mutex, std::try_to_lock);
-    if (!registryLock.owns_lock()) return false;
+    if (!registryLock.owns_lock()) {
+        return false;
+    }
     for (const auto& entry : registry.entries) {
-        if (entry.facade != &renderer) continue;
+        if (entry.facade != &renderer) {
+            continue;
+        }
         const cpu_trace::SourceScope traceSource(cpu_trace::Source::UNKNOWN, "SkinningReadAhead::Submit");
         return entry.owner->TrySubmitPendingCommands(EarlySubmitKind::SKINNING_READ_AHEAD) == ResourceSubmitOutcome::SUCCESS;
     }
@@ -1194,15 +1383,19 @@ bool TryStartOwnedSkinningReadAhead(IRenderer& renderer)
 
 void FinishOwnedSkinningReadAhead(IRenderer& renderer)
 {
-    if (auto* owner = FindRenderer(renderer)) owner->FinishSkinningReadAhead();
+    if (auto* owner = FindRenderer(renderer)) {
+        owner->FinishSkinningReadAhead();
+    }
 }
 
 RendererBundle EnableRenderThread(RendererBundle native)
 {
-    if (!native.renderer || !native.imguiRenderer) return {};
+    if (!native.renderer || !native.imguiRenderer) {
+        return {};
+    }
     auto renderer = std::make_unique<ThreadedRenderer>(std::move(native.renderer));
     auto imgui = std::make_unique<ThreadedImGuiRenderer>(*renderer, std::move(native.imguiRenderer));
     return {std::move(renderer), std::move(imgui)};
 }
 
-} /// @note namespace fbzz::renderer
+} // namespace fbzz::renderer

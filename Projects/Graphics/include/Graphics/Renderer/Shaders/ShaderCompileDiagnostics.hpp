@@ -40,4 +40,4 @@ FBZZ_GRAPHICS_API void ClearShaderCompileDiagnosticsFor(const std::string& path,
 /// @note 明示的な再コンパイル開始時、またはDebugメニューのClearから過去の診断を破棄する。
 FBZZ_GRAPHICS_API void ClearShaderCompileDiagnostics();
 
-} /// @note namespace fbzz::renderer
+} // namespace fbzz::renderer

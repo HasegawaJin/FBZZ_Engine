@@ -2,20 +2,21 @@
 /// @brief   Raw linear HDR cube lookup and shared importance sampling PDF.
 /// @author  Hasegawa Jin
 /// @date    2026-10-01
+#include "Common/Binding.hlsli"
 #ifndef FBZZ_RAY_ENVIRONMENT_HLSLI
 #define FBZZ_RAY_ENVIRONMENT_HLSLI
 #ifndef FBZZ_RAY_ENV_TEXTURE_SLOT
-#define FBZZ_RAY_ENV_TEXTURE_SLOT 4
+#define FBZZ_RAY_ENV_TEXTURE_SLOT SRV_RAY_PATH_ENVIRONMENT_SLOT
 #endif
 #ifndef FBZZ_RAY_ENV_TABLE_SLOT
-#define FBZZ_RAY_ENV_TABLE_SLOT 7
+#define FBZZ_RAY_ENV_TABLE_SLOT SRV_RAY_PATH_ENV_TABLE_SLOT
 #endif
 struct RayEnvironmentRecord { float selectionCdf; float selectionPdf; float solidAngle; uint reserved; };
 static TextureCube<float4> rayEnvironmentTexture = ResourceDescriptorHeap[FbzzPixelSlot(FBZZ_RAY_ENV_TEXTURE_SLOT)];
 static StructuredBuffer<RayEnvironmentRecord> rayEnvironmentTable = ResourceDescriptorHeap[FbzzPixelSlot(FBZZ_RAY_ENV_TABLE_SLOT)];
 #ifndef FBZZ_RAY_LINEAR_SAMPLER_DEFINED
 #define FBZZ_RAY_LINEAR_SAMPLER_DEFINED
-SamplerState rayLinearSampler : register(s0);
+SamplerState rayLinearSampler : register(SAMPLER_DEFAULT);
 #endif
 static const float RAY_ENV_PI = 3.14159265358979323846f;
 float3 RayEnvironmentLocal(float3 d, float rotation)

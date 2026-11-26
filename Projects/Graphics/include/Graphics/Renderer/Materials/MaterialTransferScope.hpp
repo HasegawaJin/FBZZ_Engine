@@ -42,5 +42,5 @@ private:
     bool m_eligible = false, m_busy = false;
 };
 
-} /// @note namespace material_transfer_detail
-} /// @note namespace fbzz::renderer
+} // namespace material_transfer_detail
+} // namespace fbzz::renderer

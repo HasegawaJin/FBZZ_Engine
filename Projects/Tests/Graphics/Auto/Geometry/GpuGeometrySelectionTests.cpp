@@ -193,7 +193,7 @@ TEST_F(GpuGeometrySelectionTest, DispatchesOrderedIndexedArgumentsAndCullsOutsid
     EXPECT_EQ(untouched.candidateCount, 0x1234u);
     EXPECT_EQ(untouched.indirectArgumentOffset, 0x5678u);
 
-    /// @note DX12 rejects dispatches outside an open frame; failure must leave the caller's fallback output intact.
+    // DX12 はフレーム外のディスパッチを拒否する。失敗後も呼び出し側の代替出力が保たれることを確認する。
     EXPECT_FALSE(m_selection.Prepare(device, resources, m_view, m_candidates, 6, 6, untouched));
     EXPECT_EQ(untouched.candidateCount, 0x1234u);
     EXPECT_EQ(untouched.indirectArgumentOffset, 0x5678u);
@@ -303,7 +303,7 @@ TEST_F(GpuGeometrySelectionTest, GpuHiZReducesActualAtlasDepthAndPreservesIndepe
         device.SetViewport(3, 2, 2, 2);
         writeDepth(reversedZ ? 0.75f : 0.25f);
 
-        /// @note 37×9 は最初の段で 10×3。端の未描画列と端数の行を両方含む。
+        // 37×9 は最初の段で 10×3。端の未描画列と端数の行を両方含む。
         device.SetViewport(3, 2, 37, 9);
         const auto first = renderer::BuildGpuHiZ(device, resources, source, 3, 2, 37, 9);
         ASSERT_TRUE(first.depths.IsValid());
@@ -312,7 +312,7 @@ TEST_F(GpuGeometrySelectionTest, GpuHiZReducesActualAtlasDepthAndPreservesIndepe
         EXPECT_EQ(first.reversedZ, reversedZ);
         EXPECT_FALSE(renderer::BuildGpuHiZ(device, resources, source, 42, 0, 2, 1).depths.IsValid());
 
-        /// @note ビルダーが復元した viewport と DSV へ描く。古い貸出のデータはそのまま残る。
+        // ビルダーが復元した viewport と DSV へ描く。古い貸出のデータはそのまま残る。
         writeDepth(reversedZ ? 0.75f : 0.25f);
         const auto second = renderer::BuildGpuHiZ(device, resources, source, 3, 2, 37, 9);
         ASSERT_TRUE(second.depths.IsValid());
@@ -453,7 +453,7 @@ TEST_F(GpuGeometrySelectionTest, DepthPrepassFeedsRegularMeshIndirectDrawsThroug
     ASSERT_TRUE(arguments.IsValid());
     EXPECT_EQ(ctx.statsGpuVisibilityUnknownObjects, 4);
 
-    /// @note Draw each argument on its own viewport without seed depth so a zero count is observable.
+    // 各引数を深度の初期描画がない別々のビューポートで描き、描画数0を観測できるようにする。
     device.SetRenderTarget(m_target, resources);
     device.Clear({0, 0, 0, 1});
     r::DrawCall probe;

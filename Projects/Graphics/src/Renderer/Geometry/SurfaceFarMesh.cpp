@@ -28,8 +28,9 @@ math::Vector2 Maximum(math::Vector2 a, math::Vector2 b)
 }
 
 struct Boundary {
-    float begin = 0.0f, end = 0.0f;
-    size_t leaf = 0;
+    float begin = 0.0f; ///< 基準矩形の辺に沿った区間の始点 UV。
+    float end = 0.0f; ///< 基準矩形の辺に沿った区間の終点 UV。
+    size_t leaf = 0; ///< この区間を覆う innerLeaves のパッチ番号。
 };
 
 bool Complete(std::vector<Boundary>& boundary)
@@ -39,7 +40,9 @@ bool Complete(std::vector<Boundary>& boundary)
     });
     float end = 0.0f;
     for (const auto& part : boundary) {
-        if (part.begin != end || part.end <= part.begin) return false;
+        if (part.begin != end || part.end <= part.begin) {
+            return false;
+        }
         end = part.end;
     }
     return end == 1.0f;
@@ -47,8 +50,9 @@ bool Complete(std::vector<Boundary>& boundary)
 
 bool WorldBoundsFinite(const SurfacePatchSurface& surface, const SurfacePatch& patch)
 {
-    if (!Finite(patch.localMin) || !Finite(patch.localMax) || !Finite(patch.aabbMin) || !Finite(patch.aabbMax))
+    if (!Finite(patch.localMin) || !Finite(patch.localMax) || !Finite(patch.aabbMin) || !Finite(patch.aabbMax)) {
         return false;
+    }
     const auto center = patch.aabbMin * 0.5f + patch.aabbMax * 0.5f;
     const auto extents = patch.aabbMax * 0.5f - patch.aabbMin * 0.5f;
     const auto position = surface.worldMatrix * math::Vector4{center.x, center.y, center.z, 1.0f};
@@ -79,61 +83,119 @@ SurfacePatch MakeFarPatch(const SurfacePatchSurface& inner, math::Vector2 uvMin,
     return patch;
 }
 
-} /// @note namespace
+} // namespace
 
 bool BuildSurfaceFarMesh(const SurfacePatchSurface& inner, std::span<const SurfacePatch> innerLeaves,
     math::Vector2 outerMin, math::Vector2 outerMax, uint32_t cellsPerPatch,
     std::vector<SurfaceFarPatch>& out, bool morphEnabled)
 {
+    // 外周の UV を内側の基準矩形に対して求められるか確認する。
     const auto extent = inner.localMax - inner.localMin;
-    if (!Finite(inner.localMin) || !Finite(inner.localMax) || !Finite(extent)
-        || extent.x <= 0.0f || extent.y <= 0.0f || !Finite(outerMin) || !Finite(outerMax)
-        || outerMin.x > inner.localMin.x || outerMin.y > inner.localMin.y
-        || outerMax.x < inner.localMax.x || outerMax.y < inner.localMax.y
-        || !std::isfinite(inner.minHeight) || !std::isfinite(inner.maxHeight) || inner.minHeight > inner.maxHeight
-        || !std::isfinite(inner.horizontalDisplacement) || inner.horizontalDisplacement < 0.0f
-        || cellsPerPatch < 2 || cellsPerPatch > 256 || (cellsPerPatch & (cellsPerPatch - 1)) != 0
-        || innerLeaves.empty() || innerLeaves.size() > 16384)
+    const bool validInnerRectangle = Finite(inner.localMin) && Finite(inner.localMax) && Finite(extent)
+        && extent.x > 0.0f && extent.y > 0.0f;
+    if (!validInnerRectangle) {
         return false;
-    for (const auto& row : inner.worldMatrix.m)
-        for (float value : row)
-            if (!std::isfinite(value)) return false;
+    }
+    const bool outerContainsInner = Finite(outerMin) && Finite(outerMax)
+        && outerMin.x <= inner.localMin.x && outerMin.y <= inner.localMin.y
+        && outerMax.x >= inner.localMax.x && outerMax.y >= inner.localMax.y;
+    if (!outerContainsInner) {
+        return false;
+    }
+
+    // 外周の描画境界は、内側で使った高さと水平変位の範囲を引き継ぐ。
+    const bool validDisplacement = std::isfinite(inner.minHeight) && std::isfinite(inner.maxHeight)
+        && inner.minHeight <= inner.maxHeight
+        && std::isfinite(inner.horizontalDisplacement) && inner.horizontalDisplacement >= 0.0f;
+    if (!validDisplacement) {
+        return false;
+    }
+    const bool validResolution = cellsPerPatch >= 2 && cellsPerPatch <= 256
+        && (cellsPerPatch & (cellsPerPatch - 1)) == 0;
+    if (!validResolution || innerLeaves.empty() || innerLeaves.size() > 16384) {
+        return false;
+    }
+
+    // ローカル境界をワールド空間へ写すアフィン変換と、XZ のセル幅の換算倍率を確認する。
+    for (const auto& row : inner.worldMatrix.m) {
+        for (float value : row) {
+            if (!std::isfinite(value)) {
+                return false;
+            }
+        }
+    }
     if (inner.worldMatrix.m[3][0] != 0.0f || inner.worldMatrix.m[3][1] != 0.0f
-        || inner.worldMatrix.m[3][2] != 0.0f || inner.worldMatrix.m[3][3] != 1.0f) return false;
+        || inner.worldMatrix.m[3][2] != 0.0f || inner.worldMatrix.m[3][3] != 1.0f) {
+        return false;
+    }
     for (uint32_t column = 0; column < 3; ++column) {
         const math::Vector3 axis{inner.worldMatrix.m[0][column], inner.worldMatrix.m[1][column], inner.worldMatrix.m[2][column]};
         const float lengthSquared = axis.LengthSq();
-        if (!std::isfinite(lengthSquared) || lengthSquared <= 0.0f) return false;
+        if (!std::isfinite(lengthSquared) || lengthSquared <= 0.0f) {
+            return false;
+        }
     }
     const math::Vector3 axisX{inner.worldMatrix.m[0][0], inner.worldMatrix.m[1][0], inner.worldMatrix.m[2][0]};
     const math::Vector3 axisZ{inner.worldMatrix.m[0][2], inner.worldMatrix.m[1][2], inner.worldMatrix.m[2][2]};
     const math::Vector2 axisScale{axisX.Length(), axisZ.Length()};
-    if (!Finite(axisScale) || axisScale.x <= 0.0f || axisScale.y <= 0.0f) return false;
+    if (!Finite(axisScale) || axisScale.x <= 0.0f || axisScale.y <= 0.0f) {
+        return false;
+    }
+
+    // 外周の UV を求め、内側の葉のうち基準矩形の辺に接する区間を集める。
     const math::Vector2 outerUvMin{(outerMin.x - inner.localMin.x) / extent.x,
         (outerMin.y - inner.localMin.y) / extent.y};
     const math::Vector2 outerUvMax{(outerMax.x - inner.localMin.x) / extent.x,
         (outerMax.y - inner.localMin.y) / extent.y};
-    if (!Finite(outerUvMin) || !Finite(outerUvMax)) return false;
+    if (!Finite(outerUvMin) || !Finite(outerUvMax)) {
+        return false;
+    }
     std::array<std::vector<Boundary>, 4> boundaries;
     for (size_t index = 0; index < innerLeaves.size(); ++index) {
         const auto& leaf = innerLeaves[index];
-        if (!Finite(leaf.uvMin) || !Finite(leaf.uvMax) || !Finite(leaf.cellSize)
-            || (morphEnabled && (!Finite(leaf.morphCellSize)
-                || leaf.morphCellSize.x <= 0.0f || leaf.morphCellSize.y <= 0.0f))
-            || leaf.uvMin.x < 0.0f || leaf.uvMin.y < 0.0f || leaf.uvMax.x > 1.0f || leaf.uvMax.y > 1.0f
-            || leaf.uvMin.x >= leaf.uvMax.x || leaf.uvMin.y >= leaf.uvMax.y) return false;
-        for (uint32_t boundary = 0; boundary < 4; ++boundary)
-            if (!Finite(leaf.edgeCellSize[boundary]) || !Finite(leaf.cornerCellSize[boundary])) return false;
-        if (leaf.uvMin.x == 0.0f) boundaries[0].push_back({leaf.uvMin.y, leaf.uvMax.y, index});
-        if (leaf.uvMax.x == 1.0f) boundaries[1].push_back({leaf.uvMin.y, leaf.uvMax.y, index});
-        if (leaf.uvMin.y == 0.0f) boundaries[2].push_back({leaf.uvMin.x, leaf.uvMax.x, index});
-        if (leaf.uvMax.y == 1.0f) boundaries[3].push_back({leaf.uvMin.x, leaf.uvMax.x, index});
+        if (!Finite(leaf.uvMin) || !Finite(leaf.uvMax) || !Finite(leaf.cellSize)) {
+            return false;
+        }
+        const bool validMorphCellSize = !morphEnabled || (Finite(leaf.morphCellSize)
+            && leaf.morphCellSize.x > 0.0f && leaf.morphCellSize.y > 0.0f);
+        if (!validMorphCellSize) {
+            return false;
+        }
+        const bool validLeafRectangle = leaf.uvMin.x >= 0.0f && leaf.uvMin.y >= 0.0f
+            && leaf.uvMax.x <= 1.0f && leaf.uvMax.y <= 1.0f
+            && leaf.uvMin.x < leaf.uvMax.x && leaf.uvMin.y < leaf.uvMax.y;
+        if (!validLeafRectangle) {
+            return false;
+        }
+        for (uint32_t boundary = 0; boundary < 4; ++boundary) {
+            if (!Finite(leaf.edgeCellSize[boundary]) || !Finite(leaf.cornerCellSize[boundary])) {
+                return false;
+            }
+        }
+        if (leaf.uvMin.x == 0.0f) {
+            boundaries[0].push_back({leaf.uvMin.y, leaf.uvMax.y, index});
+        }
+        if (leaf.uvMax.x == 1.0f) {
+            boundaries[1].push_back({leaf.uvMin.y, leaf.uvMax.y, index});
+        }
+        if (leaf.uvMin.y == 0.0f) {
+            boundaries[2].push_back({leaf.uvMin.x, leaf.uvMax.x, index});
+        }
+        if (leaf.uvMax.y == 1.0f) {
+            boundaries[3].push_back({leaf.uvMin.x, leaf.uvMax.x, index});
+        }
     }
-    for (auto& boundary : boundaries) if (!Complete(boundary)) return false;
+    for (auto& boundary : boundaries) {
+        if (!Complete(boundary)) {
+            return false;
+        }
+    }
     std::vector<SurfaceFarPatch> result;
     result.reserve(innerLeaves.size() + 4u);
     auto append = [&](SurfaceFarRegion region, math::Vector2 minimum, math::Vector2 maximum, const SurfacePatch* source) {
-        if (minimum.x == maximum.x || minimum.y == maximum.y) return;
+        if (minimum.x == maximum.x || minimum.y == maximum.y) {
+            return;
+        }
         auto patch = MakeFarPatch(inner, minimum, maximum);
         if (source) {
             patch.depth = source->depth;
@@ -160,10 +222,14 @@ bool BuildSurfaceFarMesh(const SurfacePatchSurface& inner, std::span<const Surfa
     append(SurfaceFarRegion::MAX_X_MAX_Z, {1.0f, 1.0f}, outerUvMax, nullptr);
     math::Vector2 sharedCell{};
     for (const auto& far : result) {
-        if (!WorldBoundsFinite(inner, far.geometry)) return false;
+        if (!WorldBoundsFinite(inner, far.geometry)) {
+            return false;
+        }
         const auto span = far.geometry.localMax - far.geometry.localMin;
         const math::Vector2 cell{span.x / cellsPerPatch * axisScale.x, span.y / cellsPerPatch * axisScale.y};
-        if (!Finite(cell)) return false;
+        if (!Finite(cell)) {
+            return false;
+        }
         sharedCell = Maximum(sharedCell, cell);
     }
     for (auto& far : result) {
@@ -176,7 +242,9 @@ bool BuildSurfaceFarMesh(const SurfacePatchSurface& inner, std::span<const Surfa
     for (uint32_t side = 0; side < 4; ++side) {
         const bool extended = side == 0 ? outerUvMin.x < 0.0f : side == 1 ? outerUvMax.x > 1.0f
             : side == 2 ? outerUvMin.y < 0.0f : outerUvMax.y > 1.0f;
-        if (!extended) continue;
+        if (!extended) {
+            continue;
+        }
         for (const auto& boundary : boundaries[side]) {
             const auto& source = innerLeaves[boundary.leaf];
             auto& far = result[stripIndex++].geometry;
@@ -214,7 +282,7 @@ bool BuildSurfaceFarMesh(const SurfacePatchSurface& inner, std::span<const Surfa
         geometry.morphCellSize = coarsest->morphCellSize;
     }
     if (morphEnabled) {
-        /// @note 近景と同じ階層移動上限で far strip のカリング箱を広げる。
+        // 近景と同じ階層移動上限で far strip のカリング箱を広げる。
         /// @see Docs/design/surface-patch-lod.md Hierarchical parent-map movement bound.
         const math::Vector2 morphPadding{2.0f * extent.x / static_cast<float>(cellsPerPatch),
             2.0f * extent.y / static_cast<float>(cellsPerPatch)};
@@ -225,10 +293,13 @@ bool BuildSurfaceFarMesh(const SurfacePatchSurface& inner, std::span<const Surfa
             far.geometry.aabbMax.z += morphPadding.y;
         }
     }
-    for (const auto& far : result)
-        if (!Finite(far.geometry.morphCellSize) || !WorldBoundsFinite(inner, far.geometry)) return false;
+    for (const auto& far : result) {
+        if (!Finite(far.geometry.morphCellSize) || !WorldBoundsFinite(inner, far.geometry)) {
+            return false;
+        }
+    }
     out = std::move(result);
     return true;
 }
 
-} /// @note namespace fbzz::renderer
+} // namespace fbzz::renderer

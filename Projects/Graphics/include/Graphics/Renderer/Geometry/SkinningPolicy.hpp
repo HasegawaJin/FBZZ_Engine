@@ -13,4 +13,4 @@ class IRenderer;
 [[nodiscard]] FBZZ_GRAPHICS_API bool TryStartOwnedSkinningReadAhead(IRenderer& renderer);
 /// @note Joins the accepted prefix before the producer resumes native descriptor access, without submitting later commands.
 FBZZ_GRAPHICS_API void FinishOwnedSkinningReadAhead(IRenderer& renderer);
-} /// @note namespace fbzz::renderer
+} // namespace fbzz::renderer

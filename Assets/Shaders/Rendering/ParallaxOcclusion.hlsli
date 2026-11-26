@@ -4,6 +4,7 @@
 /// @date    2026-11-13
 #ifndef FBZZ_PARALLAX_OCCLUSION_HLSLI
 #define FBZZ_PARALLAX_OCCLUSION_HLSLI
+#include "Common/Binding.hlsli"
 
 struct ParallaxSurface
 {
@@ -94,7 +95,7 @@ ParallaxSurface TraceParallaxOcclusion(uint heightIndex, SamplerState surfaceSam
 }
 
 /// @note Slot 5 is the height map in the standard material contract. Do not resolve its descriptor before checking the mask.
-static const uint FBZZ_PARALLAX_HEIGHT_SLOT = 5u;
+static const uint FBZZ_PARALLAX_HEIGHT_SLOT = SRV_PARALLAX_HEIGHT_SLOT;
 
 ParallaxSurface ResolveParallaxSurface(uint heightIndex, SamplerState surfaceSampler,
     float2 uv, float2 uvDx, float2 uvDy, float3 worldPos, float3 worldDx, float3 worldDy,

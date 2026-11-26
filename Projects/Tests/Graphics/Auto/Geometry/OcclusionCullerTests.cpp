@@ -195,7 +195,7 @@ TEST_F(OcclusionCullerTest, KeepsPerspectiveCubeEdgesAndUsesOpaqueInteriorsAwayF
         ASSERT_TRUE(culler.TestAndRaster({x, 0, 10}, cube.boundsRadius, cube.occlusionRadius));
 
         EXPECT_FALSE(culler.TestAndRaster({2 * x, 0, 20}, 0.05f));
-        /// @note At z=9 the cube's right edge is (x+1)/9; this target's entire projected sphere lies beyond it.
+        // At z=9 the cube's right edge is (x+1)/9; this target's entire projected sphere lies beyond it.
         EXPECT_TRUE(culler.TestAndRaster({2 * x + 3, 0, 20}, 0.01f));
         EXPECT_TRUE(culler.TestAndRaster({2 * x, 0, 20}, 3.0f));
     }
@@ -476,13 +476,15 @@ TEST_F(OcclusionCullerTest, RasterBoxesMatchTheQueriedSixFaceDepthReferenceAcros
                                 actual->RasterQuad(a,b,c,d); reference->RasterQuad(a,b,c,d);
                             }
                             actual->RasterBox(low,high,mask);
-                            /// @note The reference repeats the former box query and independent face submissions without sharing projected vertices.
+                            // The reference repeats the former box query and independent face submissions without sharing projected vertices.
                             if (reference->TestAabb(low,high)) {
                                 const std::array<math::Vector3,8> vertices{{{low.x,low.y,low.z}, {high.x,low.y,low.z},
                                     {high.x,high.y,low.z}, {low.x,high.y,low.z}, {low.x,low.y,high.z},
                                     {high.x,low.y,high.z}, {high.x,high.y,high.z}, {low.x,high.y,high.z}}};
                                 for (size_t face = 0; face < BOX_FACES.size(); ++face) {
-                                    if (!(mask & (1u << face))) continue;
+                                    if (!(mask & (1u << face))) {
+                                        continue;
+                                    }
                                     const auto& indices = BOX_FACES[face];
                                     reference->RasterQuad(vertices[indices[0]],vertices[indices[1]],vertices[indices[2]],vertices[indices[3]]);
                                 }
@@ -515,7 +517,7 @@ protected:
         auto snapshot = std::make_shared<renderer::RenderScene>();
         renderer::RenderTerrainInput input;
         input.chunkWorldSize = 100;
-        /// @note Rotate the terrain's upward face toward the camera and apply unequal axis scales.
+        // 地形の上面をカメラ側へ向け、軸ごとに異なる倍率を適用する。
         auto& world = input.constants.worldMatrix;
         world = math::Matrix4::Identity();
         world.m[0][0] = 4; world.m[0][3] = -2;

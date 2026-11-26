@@ -55,8 +55,10 @@ protected:
 private:
     void OnLog(const core::LogEntry& entry) override
     {
-        /// @note 既存の HDR キューブは黒の最適化クリア値と異なる (4,4,4,1) でクリアするため、この範囲の性能警告だけを許容する。
-        if (m_allowHdrCubeClearMetadataWarning && entry.message.starts_with("  [WARNING] (id=820) ")) return;
+        // 既存の HDR キューブは黒の最適化クリア値と異なる (4,4,4,1) でクリアするため、この範囲の性能警告だけを許容する。
+        if (m_allowHdrCubeClearMetadataWarning && entry.message.starts_with("  [WARNING] (id=820) ")) {
+            return;
+        }
         if (entry.message.starts_with("  [WARNING]") || entry.message.starts_with("  [ERROR]")
             || entry.message.starts_with("  [CORRUPTION]")) ADD_FAILURE() << entry.message;
     }
@@ -204,7 +206,7 @@ TEST_F(DeferredEmissionTest, ForwardOnlyBackgroundIsCompositedBeforeTransparentF
                 ASSERT_EQ(width, extent);
                 ASSERT_EQ(height, extent);
                 const size_t center = (extent / 2 * extent + extent / 2) * 4u;
-                /// @note 赤いレイヤー越しに奥の不透明面が見え、手前の不透明面は引き続き赤いレイヤーを遮ること。
+                // 赤いレイヤー越しに奥の不透明面が見え、手前の不透明面は引き続き赤いレイヤーを遮ること。
                 EXPECT_NEAR(pixels[center], opaqueOccluder ? 0.0f : 0.5f, 0.003f);
                 EXPECT_NEAR(pixels[center + 1], opaqueOccluder ? 0.0f : 0.25f, 0.003f);
                 EXPECT_NEAR(pixels[center + 2], opaqueOccluder ? 1.0f : 0.25f, 0.003f);
@@ -324,7 +326,7 @@ TEST_F(DeferredEmissionTest, WaterParticleOutputGainKeepsLightingAndEmissionInde
             return math::Vector3{pixels[center], pixels[center + 1], pixels[center + 2]};
         };
 
-        /// @note 水面マテリアルは既存の最終出力ゲイン 1 を使う。自己発光を除くには 6 方向の発光をゼロにする。
+        // 水面マテリアルは既存の最終出力ゲイン 1 を使う。自己発光を除くには 6 方向の発光をゼロにする。
         /// @see https://dev.epicgames.com/documentation/en-us/unreal-engine/niagara-renderers?application_version=4.27 Sprite Renderer の材質と色のバインド。
         for (const auto blend : {renderer::ParticleBlendMode::Additive, renderer::ParticleBlendMode::Alpha}) {
             for (bool maps : {false, true}) {
@@ -334,7 +336,7 @@ TEST_F(DeferredEmissionTest, WaterParticleOutputGainKeepsLightingAndEmissionInde
                 EXPECT_GT(lit.x, 0.1f);
                 EXPECT_GT(lit.y, 0.05f);
                 EXPECT_GT(lit.z, 0.025f);
-                /// @note パーティクルシェーダーが無効な太陽光の強度を無視する問題を検出するため、光の色を非ゼロにする。
+                // パーティクルシェーダーが無効な太陽光の強度を無視する問題を検出するため、光の色を非ゼロにする。
                 /// @see https://pbr-book.org/4ed/Light_Sources/Distant_Lights Distant Lights の SampleLi は放出放射輝度に倍率を一度適用する。
                 EXPECT_VEC3_NEAR(render(0, 1, maps, blend), math::Vector3{}, 0.001f);
                 EXPECT_VEC3_NEAR(render(-1, 1, maps, blend), math::Vector3{}, 0.001f);
@@ -382,7 +384,7 @@ TEST_F(DeferredEmissionTest, SlopedReceiverAvoidsPcfSelfShadowAndPreservesBlocke
         ASSERT_TRUE(shadowShader && geometryShader && lightingShader && shadowTarget && gbuffer && hdr
             && geometryState && lightingState);
 
-        /// @note 実際にラスタライズする面は水平 1 m あたり 1.2 m 上昇する。自己影のケースに遮蔽物はない。
+        // 実際にラスタライズする面は水平 1 m あたり 1.2 m 上昇する。自己影のケースに遮蔽物はない。
         const math::Vector3 normal = math::Vector3{1.2f, 0, -1}.Normalized();
         const math::Vector3 tangent = math::Vector3{1, 0, 1.2f}.Normalized();
         const renderer::Vertex receiver[] = {
@@ -393,7 +395,7 @@ TEST_F(DeferredEmissionTest, SlopedReceiverAvoidsPcfSelfShadowAndPreservesBlocke
             {{-1,  1, 1.8f}, normal, tangent, {0, 0}},
             {{ 1,  1, 4.2f}, normal, tangent, {1, 0}},
         };
-        /// @note 別の不透明な遮蔽物を光源の近くに置き、見える受光面を変えずに影の生成だけを変更する。
+        // 別の不透明な遮蔽物を光源の近くに置き、見える受光面を変えずに影の生成だけを変更する。
         const renderer::Vertex blocker[] = {
             {{-0.7f, -0.7f, 1}, {0, 0, -1}, {1, 0, 0}, {0, 1}},
             {{-0.7f,  0.7f, 1}, {0, 0, -1}, {1, 0, 0}, {0, 0}},
@@ -427,7 +429,7 @@ TEST_F(DeferredEmissionTest, SlopedReceiverAvoidsPcfSelfShadowAndPreservesBlocke
         light.lightDir = {0, 0, 1};
         light.lightColor = {1, 1, 1};
         light.lightIntensity = 1;
-        /// @note 直接光の可視性だけを分離して検証する。不透明遮蔽物の奥にも環境光は残る。
+        // 直接光の可視性だけを分離して検証する。不透明遮蔽物の奥にも環境光は残る。
         light.ambientColor = {};
         renderer::ShadowConstantsCB shadow{};
         shadow.lightViewProjection = lightFrame.viewProjection;
@@ -503,7 +505,7 @@ TEST_F(DeferredEmissionTest, SlopedReceiverAvoidsPcfSelfShadowAndPreservesBlocke
             lighting.textures[5] = resources.GetColorTexture(gbuffer, 0);
             lighting.textures[6] = resources.GetColorTexture(gbuffer, 1);
             lighting.textures[7] = resources.GetDepthTexture(gbuffer);
-            /// @note DeferredLighting.hlsl は平行光の深度を TEX_SHADOW_SLOT (t8) にバインドする。
+            // DeferredLighting.hlsl は平行光の深度を TEX_SHADOW_SLOT (t8) にバインドする。
             lighting.textures[8] = resources.GetDepthTexture(shadowTarget);
             device.Submit(lighting, resources);
             device.SetRenderTarget({}, resources);
@@ -524,7 +526,7 @@ TEST_F(DeferredEmissionTest, SlopedReceiverAvoidsPcfSelfShadowAndPreservesBlocke
             ASSERT_EQ(unshadowed.size(), extent * extent * 4u);
             ASSERT_EQ(selfShadow.size(), unshadowed.size());
             ASSERT_EQ(blocked.size(), unshadowed.size());
-            /// @note ラスタライズの縁を除外する。照合範囲の全域で、3 回とも同じ平面だけを描く。
+            // ラスタライズの縁を除外する。照合範囲の全域で、3 回とも同じ平面だけを描く。
             for (uint32_t y = 16; y < 48; ++y) {
                 for (uint32_t x = 16; x < 48; ++x) {
                     const size_t offset = (y * extent + x) * 4;
@@ -538,7 +540,7 @@ TEST_F(DeferredEmissionTest, SlopedReceiverAvoidsPcfSelfShadowAndPreservesBlocke
                     }
                 }
             }
-            /// @note 遮蔽物は中央の全 PCF タップを覆う。濃い影が残ることを検証し、遮蔽を単に無効にする変更を検出する。
+            // 遮蔽物は中央の全 PCF タップを覆う。濃い影が残ることを検証し、遮蔽を単に無効にする変更を検出する。
             for (uint32_t y = 28; y < 36; ++y) {
                 for (uint32_t x = 28; x < 36; ++x) {
                     const size_t offset = (y * extent + x) * 4;
@@ -559,7 +561,7 @@ TEST_F(DeferredEmissionTest, PreservesHdrTextureAndOcclusionContracts)
     auto bundle = renderer::CreateRenderer(renderer::RendererBackend::DX12, m_window, 64, 64);
     ASSERT_NE(bundle.renderer, nullptr);
     auto& device = *bundle.renderer;
-    /// @note 非表示ウィンドウの読戻しでは、Present がオクルージョンを返した後も記録を続ける。
+    // 非表示ウィンドウの読戻しでは、Present がオクルージョンを返した後も記録を続ける。
     device.SetRenderWhenOccluded(true);
     {
         renderer::ResourceManager resources(device);
@@ -571,7 +573,7 @@ TEST_F(DeferredEmissionTest, PreservesHdrTextureAndOcclusionContracts)
         const auto lightingShader = loadShader("Pipeline/Deferred/DeferredLighting.hlsl");
         ASSERT_TRUE(geometryShader.IsValid());
         ASSERT_TRUE(lightingShader.IsValid());
-        /// @note 共有出力を使う全変種と、独自構造体の地形も新しい MRT 契約でコンパイルできること。
+        // 共有出力を使う全変種と、独自構造体の地形も新しい MRT 契約でコンパイルできること。
         for (const auto* variant : {"Pipeline/Deferred/GBufferInstanced.hlsl",
                 "Pipeline/Deferred/GBufferSkinned.hlsl", "Terrain/TerrainGBuffer.hlsl",
                 "Fiber/FiberShellGBuffer.hlsl", "Fiber/FiberShellSkinnedGBuffer.hlsl",
@@ -692,7 +694,7 @@ TEST_F(DeferredEmissionTest, PreservesHdrTextureAndOcclusionContracts)
             lighting.constantBuffers[4] = shadowCB;
             lighting.constantBuffers[5] = postCB;
             lighting.constantBuffers[8] = advancedCB;
-            /// @note 未指定 b12 の末尾にある legacyShapedLightCount もゼロとして読めることを検証する。
+            // 未指定 b12 の末尾にある legacyShapedLightCount もゼロとして読めることを検証する。
             lighting.textures[3] = resources.GetColorTexture(gbuffer, 2);
             lighting.textures[5] = resources.GetColorTexture(gbuffer, 0);
             lighting.textures[6] = resources.GetColorTexture(gbuffer, 1);
@@ -720,7 +722,7 @@ TEST_F(DeferredEmissionTest, PreservesHdrTextureAndOcclusionContracts)
         GBufferMaterialCB material;
         EXPECT_VEC3_NEAR(drawAndRead(material, false), (math::Vector3{8, 0.5f, 2.25f}), 0.01f);
         material.textureMask = 1u << 3;
-        /// @note Color.hlsli の既存 gamma 2.2 近似に合わせる。HDR の 1 超えをクランプしない。
+        // Color.hlsli の既存 gamma 2.2 近似に合わせる。HDR の 1 超えをクランプしない。
         EXPECT_VEC3_NEAR(drawAndRead(material, false), (math::Vector3{1.756158f, 0.02388788f, 2.25f}), 0.01f);
         material.textureMask = 0;
         EXPECT_VEC3_NEAR(drawAndRead(material, true), math::Vector3{}, 0.001f);
@@ -732,7 +734,7 @@ TEST_F(DeferredEmissionTest, PreservesHdrTextureAndOcclusionContracts)
 
         material.albedo = {0.5f, 0.5f, 0.5f, 1};
         light.lightColor = {1, 1, 1};
-        /// @note HDR の半精度量子化で小さな追加項が失われない光量に保つ。
+        // HDR の半精度量子化で小さな追加項が失われない光量に保つ。
         light.lightIntensity = 1;
         advanced.contactShadowStrength = 0;
         const auto direct = drawAndRead(material, false);
@@ -741,7 +743,7 @@ TEST_F(DeferredEmissionTest, PreservesHdrTextureAndOcclusionContracts)
         const auto directAndEmission = drawAndRead(material, false);
         EXPECT_VEC3_NEAR(directAndEmission, (direct + math::Vector3{8, 0.5f, 2.25f}), 0.01f);
         const math::Vector3 reflected{0.125f, 0.5f, 1.25f};
-        /// @note アルファは有効性を表す。無効化時や無効な画素では直前の照明を維持する。
+        // アルファは有効性を表す。無効化時や無効な画素では直前の照明を維持する。
         EXPECT_VEC3_NEAR(drawAndRead(material, false, {reflected.x, reflected.y, reflected.z, 1}),
             directAndEmission, 0.01f);
         EXPECT_VEC3_NEAR(drawAndRead(material, false, {reflected.x, reflected.y, reflected.z, 0}, true),
@@ -754,7 +756,7 @@ TEST_F(DeferredEmissionTest, PreservesHdrTextureAndOcclusionContracts)
         material.metallic = 1;
         const auto withoutEnvironmentSpecular = drawAndRead(material, false, {0, 0, 0, 1}, true);
         const auto fallback = drawAndRead(material, false, {reflected.x, reflected.y, reflected.z, 0}, true);
-        /// @note 一様な白のキューブと倍率だけの LUT による寄与は 4 * F0 = 2。有効な RT に重ねて加えない。
+        // 一様な白のキューブと倍率だけの LUT による寄与は 4 * F0 = 2。有効な RT に重ねて加えない。
         EXPECT_VEC3_NEAR(fallback, (withoutEnvironmentSpecular + math::Vector3{2, 2, 2}), 0.02f);
         EXPECT_VEC3_NEAR(drawAndRead(material, false, {reflected.x, reflected.y, reflected.z, 1}, true),
             (withoutEnvironmentSpecular + reflected), 0.02f);
@@ -844,7 +846,7 @@ TEST_F(DeferredEmissionTest, ConsumesFinalGBufferRoughnessWithoutFilteringAcross
             EXPECT_EQ(width, extent); EXPECT_EQ(height, extent);
             return pixels;
         };
-        /// @note 2×2 の各クアッドで隣接法線だけを変え、評価点の法線、材質、深度を固定する。ddx で再フィルターすると実際の BRDF 出力が変わる。
+        // 2×2 の各クアッドで隣接法線だけを変え、評価点の法線、材質、深度を固定する。ddx で再フィルターすると実際の BRDF 出力が変わる。
         for (uint8_t roughness : {uint8_t{64}, uint8_t{0}, uint8_t{255}}) {
             const uint8_t materialPixels[] = {128, 128, 128, roughness};
             const auto material = resources.CreateTexture(materialPixels, 1, 1);
@@ -949,7 +951,7 @@ TEST_F(DeferredEmissionTest, CompositeDoesNotReapplyResolvedScreenOrRayReflectio
         };
         const auto original = render(false, 0, 0);
         EXPECT_GT(original.LengthSq(), 0.01f);
-        /// @note 反射合成は SSRResolve と DeferredLighting が担当する。古い入力テクスチャで Composite の HDR を変更しない。
+        // 反射合成は SSRResolve と DeferredLighting が担当する。古い入力テクスチャで Composite の HDR を変更しない。
         /// @see Docs/design/graphics-quality.md 不透明の鏡面反射。
         EXPECT_VEC3_NEAR(render(false, 0, 1), original, 0.002f);
         EXPECT_VEC3_NEAR(render(true, 0, 1), original, 0.002f);
@@ -1064,7 +1066,7 @@ TEST_F(DeferredEmissionTest, ResolvesScreenFirstSpecularWithoutBlendingDirectLig
         light.lightIntensity = 1;
         const auto base = render({}, {0, 0, 0, 1});
         const auto legacyBaseline = render({}, {}, 0, false, false, false);
-        /// @note F0=0.04、一様な放射輝度 4 のキューブ、倍率だけの LUT で 0.16。対象視点のフレネル 5 乗項は半精度の分解能未満。
+        // F0=0.04、一様な放射輝度 4 のキューブ、倍率だけの LUT で 0.16。対象視点のフレネル 5 乗項は半精度の分解能未満。
         const math::Vector3 baselineSpecular{0.16f, 0.16f, 0.16f};
         EXPECT_GT(base.x - diffuseAndEmission.x, 0.05f);
         EXPECT_VEC3_NEAR(legacyBaseline, (base + baselineSpecular), 0.01f);
@@ -1087,7 +1089,7 @@ TEST_F(DeferredEmissionTest, ResolvesScreenFirstSpecularWithoutBlendingDirectLig
         EXPECT_VEC3_NEAR(render({invalid, screen.y, screen.z, 1}, traced), (base + rayRgb), 0.01f);
         EXPECT_VEC3_NEAR(render(screen, {invalid, traced.y, traced.z, 1}, 0), legacyBaseline, 0.01f);
         EXPECT_VEC3_NEAR(render(screen, traced, invalid), (base + rayRgb), 0.01f);
-        /// @note HDR は ACES の前で読む。SSR の確信度が完全でも部分的でも、発光の変更分を全量加算し、照明全体を補間しない。
+        // HDR は ACES の前で読む。SSR の確信度が完全でも部分的でも、発光の変更分を全量加算し、照明全体を補間しない。
         const math::Vector3 extraEmission{0.25f, 0.5f, 1};
         for (float confidence : {0.25f, 1.0f}) {
             const math::Vector4 sampled{screen.x, screen.y, screen.z, confidence};
@@ -1100,7 +1102,7 @@ TEST_F(DeferredEmissionTest, ResolvesScreenFirstSpecularWithoutBlendingDirectLig
         };
         const auto mirrorBase = renderMirror({}, {0, 0, 0, 1});
         const auto mirrorIbl = renderMirror({}, {}, false);
-        /// @note 一様な放射輝度 4 のキューブと倍率だけの LUT は、完全な金属面に albedo*4 を与える。直接光と発光は mirrorBase に残す。
+        // 一様な放射輝度 4 のキューブと倍率だけの LUT は、完全な金属面に albedo*4 を与える。直接光と発光は mirrorBase に残す。
         const math::Vector3 mirrorSpecular{2, 1, 3};
         EXPECT_VEC3_NEAR(mirrorIbl, (mirrorBase + mirrorSpecular), 0.01f);
         EXPECT_VEC3_NEAR(renderMirror(screen, traced), (mirrorBase + rayRgb), 0.01f);
@@ -1114,7 +1116,7 @@ TEST_F(DeferredEmissionTest, ResolvesScreenFirstSpecularWithoutBlendingDirectLig
             (mirrorBase + screenRgb * 0.25f + mirrorSpecular * 0.75f), 0.01f);
         EXPECT_VEC3_NEAR(render(screen, traced, 1, true, true, false, baseEmission, 0.045f, 1),
             (mirrorBase + rayRgb), 0.01f);
-        /// @note 方針のしきい値に隣接する RGBA16F 表現値を用い、クリア時の量子化で境界を越えないことを保証する。
+        // 方針のしきい値に隣接する RGBA16F 表現値を用い、クリア時の量子化で境界を越えないことを保証する。
         struct PolicyBoundary { float roughness, metallic; bool preferRay; };
         for (const auto boundary : {PolicyBoundary{0.2498779296875f, 0.900390625f, true},
                  PolicyBoundary{0.25f, 1, true},
@@ -1136,7 +1138,7 @@ TEST_F(DeferredEmissionTest, ResolvesScreenFirstSpecularWithoutBlendingDirectLig
             bool enabled = true, math::Vector3 glow = math::Vector3{0.5f, 1, 2}, float mode = 1) {
             return render(screen, sampled, 1, true, enabled, true, glow, 0.015f, 0, marker, mode);
         };
-        /// @note 誘電体の全放射輝度はラスタ照明全体を置き換える。SSR の確信度、発光、IBL でエネルギーを二重加算しない。
+        // 誘電体の全放射輝度はラスタ照明全体を置き換える。SSR の確信度、発光、IBL でエネルギーを二重加算しない。
         const math::Vector4 glassSample{0.125f, 0.375f, 1, 2};
         EXPECT_VEC3_NEAR(glassRender(glassSample), rayRgb, 0.001f);
         light.lightIntensity = 50;
@@ -1146,16 +1148,16 @@ TEST_F(DeferredEmissionTest, ResolvesScreenFirstSpecularWithoutBlendingDirectLig
         const auto glassFallback = glassRender({}, 1, false);
         EXPECT_VEC3_NEAR(glassRender(glassSample, 1, false), glassFallback, 0.01f);
         EXPECT_VEC3_NEAR(glassRender({invalid, 0, 0, 2}), glassFallback, 0.01f);
-        /// @note 初期媒質が確定していれば不透明な終端にも全放射輝度を公開する。marker0 は通常の kind1 鏡面応答で扱わない。
+        // 初期媒質が確定していれば不透明な終端にも全放射輝度を公開する。marker0 は通常の kind1 鏡面応答で扱わない。
         EXPECT_VEC3_NEAR(glassRender(glassSample, 0), rayRgb, 0.001f);
         EXPECT_VEC3_NEAR(glassRender(glassSample, 0, true, {32, 16, 8}), rayRgb, 0.001f);
         EXPECT_VEC3_NEAR(glassRender({0, 0, 0, 2}, 0), math::Vector3{}, 0.001f);
         const auto insideOpaqueFallback = glassRender({}, 0, false);
-        /// @note 現在のラスタ受光面を置き換えるには現在の実行記録フラグが必要。古い全放射輝度テクスチャは使わない。
+        // 現在のラスタ受光面を置き換えるには現在の実行記録フラグが必要。古い全放射輝度テクスチャは使わない。
         EXPECT_VEC3_NEAR(glassRender(glassSample, 0, false), insideOpaqueFallback, 0.01f);
         EXPECT_VEC3_NEAR(glassRender({invalid, 0, 0, 2}, 0), glassRender({}, 0), 0.01f);
         EXPECT_VEC3_NEAR(glassRender({-1, 0, 0, 2}, 0), glassRender({}, 0), 0.01f);
-        /// @note 非対応の誘電体 marker2 は、現在の実行記録があっても全放射輝度を受け入れない。
+        // 非対応の誘電体 marker2 は、現在の実行記録があっても全放射輝度を受け入れない。
         EXPECT_VEC3_NEAR(glassRender(glassSample, 2), glassRender({}, 2), 0.01f);
         EXPECT_VEC3_NEAR(glassRender(glassSample, 1, true, {8, 4, 2}, 2), math::Vector3{}, 0.001f);
         EXPECT_VEC3_NEAR(glassRender({}, 2, false, {8, 4, 2}, 2), math::Vector3{}, 0.001f);
@@ -1198,7 +1200,7 @@ TEST_F(DeferredEmissionTest, RejectsStaleSsrReceiptBeforePublishingAnOldResult)
         pass.Setup(builder, context);
         renderer::PassResources passResources(context.resourceRegistry, builder.Accesses(), pass.Name());
         context.passResources = &passResources;
-        /// @note 入力はすべて有効だが、閉じた物理フレームではディスパッチの実行記録を生成できない。
+        // 入力はすべて有効だが、閉じた物理フレームではディスパッチの実行記録を生成できない。
         context.ssrDispatchRecorded = true;
         renderer::ExecuteSSRPass(context);
         EXPECT_FALSE(context.ssrDispatchRecorded);
@@ -1266,7 +1268,7 @@ TEST_F(DeferredEmissionTest, ProducesWeightedSsrWithMaterialIndependentConfidenc
             for (uint32_t y = 0; y < extent; ++y) {
                 for (uint32_t x = 0; x < extent; ++x) {
                     const size_t offset = (y * extent + x) * 4;
-                    /// @note カメラに面した別の対象は z=3.1898-(4/3)*(worldX-worldXAtBoundary)。法線 (-.8,0,-.6) が反射レイを向き、距離 3 以内でレイが届く。
+                    // カメラに面した別の対象は z=3.1898-(4/3)*(worldX-worldXAtBoundary)。法線 (-.8,0,-.6) が反射レイを向き、距離 3 以内でレイが届く。
                     const float targetZ = 3.1898f - static_cast<float>(static_cast<int>(x) - static_cast<int>(targetBoundary)) / 6.0f;
                     const uint8_t targetDepth = targetCase == TargetCase::BACKGROUND ? 0
                         : depthByte(targetCase == TargetCase::THICKNESS_GAP ? 2.4f : targetZ);
@@ -1299,7 +1301,7 @@ TEST_F(DeferredEmissionTest, ProducesWeightedSsrWithMaterialIndependentConfidenc
             device.Submit(fillMarker, resources);
             device.SetViewport(0, 0, extent, extent);
             device.SetRenderTarget(material, resources); device.Clear({0.2f, 0.4f, 0.8f, roughness});
-            /// @note 本来の対象では受光面で N.z=-3/4。SELF は Raster の粗い自己ヒットを再現し、Hybrid で棄却される。
+            // 本来の対象では受光面で N.z=-3/4。SELF は Raster の粗い自己ヒットを再現し、Hybrid で棄却される。
             device.SetRenderTarget(normals, resources);
             device.Clear(targetCase == TargetCase::SELF ? math::Vector4{0.9f, 0.5f, 0.2f, metallic}
                 : math::Vector4{(std::sqrt(7.0f) / 4.0f + 1) * 0.5f, 0.5f, 0.125f, metallic});
@@ -1337,14 +1339,14 @@ TEST_F(DeferredEmissionTest, ProducesWeightedSsrWithMaterialIndependentConfidenc
             const size_t offset = (16u * extent + receiverX) * 4u;
             return math::Vector4{pixels[offset], pixels[offset + 1], pixels[offset + 2], pixels[offset + 3]};
         };
-        /// @note CPU の Schlick 参照値はシェーダーの実装から独立する。誤差は半精度の材質・法線の保存分だけを許容する。
+        // CPU の Schlick 参照値はシェーダーの実装から独立する。誤差は半精度の材質・法線の保存分だけを許容する。
         const float fifthPower = 1.0f / 1024.0f;
         const float dielectricFresnel = 0.04f + 0.96f * fifthPower;
         const auto dielectric = render(0, true);
         EXPECT_NEAR(dielectric.x, incident.x * dielectricFresnel, 0.003f);
         EXPECT_NEAR(dielectric.y, incident.y * dielectricFresnel, 0.005f);
         EXPECT_NEAR(dielectric.z, incident.z * dielectricFresnel, 0.008f);
-        /// @note ポイントサンプルした UNORM 深度の量子化で小さな非ゼロの距離が残る。確信度は 1 に近いが完全交差として扱わない。
+        // ポイントサンプルした UNORM 深度の量子化で小さな非ゼロの距離が残る。確信度は 1 に近いが完全交差として扱わない。
         EXPECT_GT(dielectric.w, 0.98f); EXPECT_LE(dielectric.w, 1);
         const auto metallic = render(1, true);
         EXPECT_NEAR(metallic.x, incident.x * (0.2f + 0.8f * fifthPower), 0.005f);
@@ -1359,7 +1361,7 @@ TEST_F(DeferredEmissionTest, ProducesWeightedSsrWithMaterialIndependentConfidenc
         const auto black = render(0, true, 16, 8, {});
         EXPECT_FLOAT_EQ(black.x, 0); EXPECT_FLOAT_EQ(black.y, 0); EXPECT_FLOAT_EQ(black.z, 0);
         EXPECT_NEAR(black.w, dielectric.w, 0.001f);
-        /// @note IBL 無効時、Raster の符号付き差分はフレネルで重み付けした入射放射輝度に幾何学的な確信度を掛けた値。
+        // IBL 無効時、Raster の符号付き差分はフレネルで重み付けした入射放射輝度に幾何学的な確信度を掛けた値。
         /// @see Docs/design/graphics-quality.md 不透明の鏡面反射。
         const auto raster = render(0, false);
         EXPECT_NEAR(raster.w, 1.0f, 0.001f);
@@ -1395,7 +1397,7 @@ TEST_F(DeferredEmissionTest, ProducesWeightedSsrWithMaterialIndependentConfidenc
             EXPECT_FLOAT_EQ(rejected.z, 0); EXPECT_FLOAT_EQ(rejected.w, 0);
             const auto rasterCandidate = render(0, false, 16, 8, incident, falseHit);
             if (falseHit == TargetCase::SELF || falseHit == TargetCase::BACK_FACE) {
-                /// @note Raster は粗いヒット判定を維持し、重み付き RGB と材質に依存しない確信度を公開する。
+                // Raster は粗いヒット判定を維持し、重み付き RGB と材質に依存しない確信度を公開する。
                 const float remaining = falseHit == TargetCase::SELF ? 0.4f : 0.25f;
                 const float rasterFresnel = 0.04f + 0.96f * remaining * remaining * remaining * remaining * remaining;
                 EXPECT_GT(rasterCandidate.w, 0.01f);

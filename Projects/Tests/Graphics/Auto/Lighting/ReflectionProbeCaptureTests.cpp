@@ -69,7 +69,7 @@ protected:
         r::SetShaderPathResolver(ResolveProbeShader);
         m_resources = std::make_unique<r::ResourceManager>(*m_bundle.renderer);
         ASSERT_TRUE(m_assets.IsValid());
-        /// @note プロジェクト索引は一時領域へ書き、共有 Engine Assets は読み取り専用で IBL パスと GUID を解決する。
+        // プロジェクト索引は一時領域へ書き、共有 Engine Assets は読み取り専用で IBL パスと GUID を解決する。
         asset::AssetManager::Init(*m_resources, m_assets.Path().generic_string() + "/");
         m_assetManagerInitialized = true;
         core::Logger::AddSink(this);
@@ -541,7 +541,7 @@ TEST_F(ReflectionProbeCaptureTest, TransparentCaptureUsesFaceDepthInsteadOfScene
 /// @brief ライトプローブは後続の不透明スロットを捕捉し、非表示のスロットは除外する。
 TEST_F(ReflectionProbeCaptureTest, LightProbeCaptureIncludesLaterOpaqueSlotsAndRespectsHiddenSlots)
 {
-    /// @note スロットの発光だけを画素値で照合するため、Context の既定の環境光 0 を維持する。
+    // スロットの発光だけを画素値で照合するため、Context の既定の環境光 0 を維持する。
     auto context = Context(); context.legacyShapedLightCount = 0;
     const auto root = std::filesystem::path(FBZZ_GRAPHICS_SHADER_ROOT);
     m_handles.lightProbeCaptureFrameCB = m_resources->CreateConstantBuffer(sizeof(r::PerFrameCB));

@@ -5,9 +5,9 @@
 #include "Bake/Fluid/LiquidCommon.hlsli"
 #include "Common/BindlessIndices.hlsli"
 
-FBZZ_SBUFFER_T(float4, gSpawn, 29); // [2i] = xyz 位置 / w 湧く時刻、[2i + 1] = xyz 初速 / w 色の鍵
-FBZZ_RWSBUFFER_T(float4, gState, 2);
-FBZZ_RWSBUFFER_T(float4, gPredicted, 3); // xyz 予測位置 / w 1 = 生きている
+FBZZ_SBUFFER_T(float4, gSpawn, SRV_LIQUID_SPAWN_SLOT); /// @note [2i] = xyz 位置 / w 湧く時刻、[2i + 1] = xyz 初速 / w 色の鍵
+FBZZ_RWSBUFFER_T(float4, gState, UAV_LIQUID_STATE_SLOT);
+FBZZ_RWSBUFFER_T(float4, gPredicted, UAV_LIQUID_PREDICTION_SLOT); /// @note xyz 予測位置 / w 1 = 生きている
 
 [numthreads(64, 1, 1)]
 void CSMain(uint3 id : SV_DispatchThreadID)
@@ -17,7 +17,7 @@ void CSMain(uint3 id : SV_DispatchThreadID)
 
     float4 positionAge = gState[2u * i];
     float4 velocityState = gState[2u * i + 1u];
-    // CPU は刻みの頭で湧かせてから寿命を見る。湧いたばかりの粒は年齢 0 でこの刻みから重力を受ける。
+    /// @note CPU は刻みの頭で湧かせてから寿命を見る。湧いたばかりの粒は年齢 0 でこの刻みから重力を受ける。
     if (velocityState.w < 0.5f)
     {
         const float4 spawn = gSpawn[2u * i];

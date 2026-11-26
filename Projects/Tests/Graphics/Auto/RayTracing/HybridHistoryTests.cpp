@@ -52,7 +52,7 @@ protected:
         std::array<uint8_t, 3 * 3 * 4> previous{};
         constexpr std::array<uint8_t, 4> CURRENT_COLOR{64, 128, 192, 255};
         constexpr std::array<uint8_t, 4> HISTORY_COLOR{192, 64, 32, 255};
-        /// @note 3×3 近傍を現在色 5 点・履歴色 4 点にして両色を YCoCg の統計範囲に収め、履歴の重みだけを測る。
+        // 3×3 近傍を現在色 5 点・履歴色 4 点にして両色を YCoCg の統計範囲に収め、履歴の重みだけを測る。
         for (uint32_t pixel = 0; pixel < 9; ++pixel) {
             const auto& color = (pixel & 1u) != 0 ? HISTORY_COLOR : CURRENT_COLOR;
             for (uint32_t channel = 0; channel < 4; ++channel) {
@@ -152,7 +152,7 @@ protected:
         before.textures[21] = resources.GetColorTexture(view.taaHistoryA, 0);
         before.textures[7] = resources.GetDepthTexture(m_depth);
         device.Submit(before, resources);
-        /// @note TAA 直前の b8 更新は、先行 Submit の 0.8 feedback snapshot を書き換えてはならない。
+        // TAA 直前の b8 更新は、先行 Submit の 0.8 feedback snapshot を書き換えてはならない。
         renderer::PrepareTaaProviderHistory(context, view);
         context.resourceRegistry.BindTarget("LDR", m_source);
         context.resourceRegistry.BindTarget("HDR", m_depth);
@@ -234,7 +234,7 @@ private:
     {
         const std::array<renderer::RenderTargetColorAttachment, 1> depth{{{history, 1u}}};
         ASSERT_TRUE(m_bundle.renderer->SetRenderTargetColors(depth, *m_resources));
-        /// @note HDR の最遠深度をクリアした空の画素には、LDR 履歴の空を示す -1 を対応させる。
+        // HDR の最遠深度をクリアした空の画素には、LDR 履歴の空を示す -1 を対応させる。
         m_bundle.renderer->Clear({-1, 0, 0, 1});
     }
 
@@ -257,7 +257,9 @@ private:
         uint32_t width = 0, height = 0;
         EXPECT_TRUE(m_bundle.renderer->CaptureRenderTargetToLinearRGBA(target, *m_resources, pixels, width, height));
         EXPECT_EQ(width, 3u); EXPECT_EQ(height, 3u); EXPECT_EQ(pixels.size(), 36u);
-        if (pixels.size() != 36) return {};
+        if (pixels.size() != 36) {
+            return {};
+        }
         return {pixels[16], pixels[17], pixels[18]};
     }
 
@@ -334,7 +336,7 @@ TEST_F(HybridHistoryTest, ScreenResolveAndActualSsrChangesResetFeedbackDuringRas
 {
     renderer::RenderViewResources view;
     uint64_t previousEpoch = 0;
-    /// @note 実効モードはラスタ、RT は利用不能のまま。解決方法と実 SSR の実行記録だけが変化し、以前に記録した b8 の値は元のフィードバックを保持する。
+    // 実効モードはラスタ、RT は利用不能のまま。解決方法と実 SSR の実行記録だけが変化し、以前に記録した b8 の値は元のフィードバックを保持する。
     const auto frame = [&](uint64_t stamp, bool resolve, bool screen, bool changed) {
         const auto pixels = Render(view, renderer::RenderMode::RASTER, false, stamp, resolve, screen);
         ExpectBlended(pixels.before);

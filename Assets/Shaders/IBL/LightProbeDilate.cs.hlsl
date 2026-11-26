@@ -10,14 +10,14 @@
 #include "Platform/Backend.hlsli"
 
 /// @note LAYOUT: LightProbeBakePass.cpp の LightProbeDilateCB と一致させること (16 bytes)。
-cbuffer LightProbeDilateConstants : register(b0)
+cbuffer LightProbeDilateConstants : register(FBZZ_REGISTER(b, CB_LIGHT_PROBE_DILATE_SLOT))
 {
     uint3 grid;          ///< 各軸のプローブ数
     float validLimit;    ///< これ以上の有効度を «有効» とみなす
 };
 
-FBZZ_TEX3D_T(float4, gRawSH, 0);
-FBZZ_RWTEX3D_T(float4, gDilatedSH, UAV_OUTPUT_SLOT);
+FBZZ_TEX3D_T(float4, gRawSH, SRV_LIGHT_PROBE_RAW_SH_SLOT);
+FBZZ_RWTEX3D_T(float4, gDilatedSH, UAV_LIGHT_PROBE_SH_SLOT);
 
 static const uint kSlices = 7u;
 

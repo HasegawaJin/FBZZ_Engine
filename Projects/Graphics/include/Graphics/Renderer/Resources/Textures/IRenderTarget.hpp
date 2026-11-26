@@ -24,4 +24,4 @@ namespace fbzz::renderer {
         virtual void* GetNativeSRV(int slot = 0) const = 0;
     };
 
-} /// @note namespace fbzz::renderer
+} // namespace fbzz::renderer

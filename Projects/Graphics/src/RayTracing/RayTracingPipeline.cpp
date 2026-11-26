@@ -23,21 +23,46 @@ bool IsRayDiffuseIndirectReady(const RenderPassContext& context, const RenderVie
     if (!view.advancedGraphicsSnapshotValid || !resources.Get(context.handles.advancedGraphicsCB)
         || !irradiance || irradiance->GetBindlessIndex() == INVALID_BINDLESS_INDEX
         || !std::isfinite(data.iblIntensity) || data.iblIntensity <= 0
-        || !std::isfinite(data.iblDiffuseScale) || data.iblDiffuseScale < 0) return false;
+        || !std::isfinite(data.iblDiffuseScale) || data.iblDiffuseScale < 0) {
+        return false;
+    }
     for (size_t slot = 0; slot < 2; ++slot) {
         const auto& volume = data.probeVolumes[slot];
-        if (!std::isfinite(volume.intensity)) return false;
-        if (volume.intensity <= 0) continue;
+        if (!std::isfinite(volume.intensity)) {
+            return false;
+        }
+        if (volume.intensity <= 0) {
+            continue;
+        }
         const auto* texture = resources.Get(context.handles.lightProbeSH[slot]);
-        if (!texture || texture->GetBindlessIndex() == INVALID_BINDLESS_INDEX
-            || !volume.grid[0] || !volume.grid[1] || !volume.grid[2]
-            || texture->GetWidth() != volume.grid[0] || texture->GetHeight() != volume.grid[1]
-            || texture->GetDepth() / 7u != volume.grid[2] || texture->GetDepth() % 7u != 0
-            || !std::isfinite(volume.fade) || volume.fade < 0 || !std::isfinite(volume.normalBias)) return false;
-        for (float value : {volume.boxMin.x, volume.boxMin.y, volume.boxMin.z})
-            if (!std::isfinite(value)) return false;
-        for (float value : {volume.invSize.x, volume.invSize.y, volume.invSize.z})
-            if (!std::isfinite(value) || value <= 0) return false;
+        if (!texture || texture->GetBindlessIndex() == INVALID_BINDLESS_INDEX) {
+            return false;
+        }
+
+        // SH テクスチャには、各 Z 層に対応する係数が 7 スライスずつ入る。
+        if (!volume.grid[0] || !volume.grid[1] || !volume.grid[2]) {
+            return false;
+        }
+        const bool matchesProbeGrid = texture->GetWidth() == volume.grid[0] && texture->GetHeight() == volume.grid[1]
+            && texture->GetDepth() / 7u == volume.grid[2] && texture->GetDepth() % 7u == 0;
+        if (!matchesProbeGrid) {
+            return false;
+        }
+
+        // ワールド点をプローブ格子へ写すための係数と境界が有限であることを確認する。
+        if (!std::isfinite(volume.fade) || volume.fade < 0 || !std::isfinite(volume.normalBias)) {
+            return false;
+        }
+        for (float value : {volume.boxMin.x, volume.boxMin.y, volume.boxMin.z}) {
+            if (!std::isfinite(value)) {
+                return false;
+            }
+        }
+        for (float value : {volume.invSize.x, volume.invSize.y, volume.invSize.z}) {
+            if (!std::isfinite(value) || value <= 0) {
+                return false;
+            }
+        }
     }
     return true;
 }
@@ -53,27 +78,39 @@ bool PrepareRayDebugView(RenderPassContext& context, RenderViewResources& view, 
     auto& state = view.rayDebug;
     state.gpu = {};
     state.scene = {};
-    if (!context.experimentalRayTracingEnabled) return false;
+    if (!context.experimentalRayTracingEnabled) {
+        return false;
+    }
     shared.rayGeometry.Trim(context.resources, context.frameStamp);
     if (!IsRayDebugView(context.settings.viewMode) || !context.renderer.GetCapabilities().inlineRayQuery
-        || !context.renderScene || !context.width || !context.height) return false;
+        || !context.renderScene || !context.width || !context.height) {
+        return false;
+    }
     RayDebugConstants cameraConstants{};
-    if (!MakeRayDebugCameraConstants(context.camera, cameraConstants)) return false;
-    if (!context.resources.Get(shared.rayDebugShader))
+    if (!MakeRayDebugCameraConstants(context.camera, cameraConstants)) {
+        return false;
+    }
+    if (!context.resources.Get(shared.rayDebugShader)) {
         shared.rayDebugShader = context.resources.LoadShader("Assets/Shaders/RayTracing/RayDebug.cs.hlsl");
+    }
     if (!context.resources.Get(shared.rayDebugShader) || !context.resources.Get(shared.copyColorShader)
-        || !context.resources.Get(shared.postprocPSO)) return false;
+        || !context.resources.Get(shared.postprocPSO)) {
+        return false;
+    }
     if (!context.resources.Get(state.output) || state.width != context.width || state.height != context.height) {
         context.resources.Release(state.output);
         state.output = context.resources.CreateComputeTexture(context.width, context.height);
         state.width = context.width;
         state.height = context.height;
     }
-    if (!context.resources.Get(state.constants))
+    if (!context.resources.Get(state.constants)) {
         state.constants = context.resources.CreateConstantBuffer(sizeof(RayDebugConstants));
+    }
     if (!context.resources.Get(state.output) || !context.resources.Get(state.constants)
         || context.resources.Get(state.output)->GetBindlessIndex() == INVALID_BINDLESS_INDEX
-        || context.resources.Get(state.output)->GetBindlessUavIndex() == INVALID_BINDLESS_INDEX) return false;
+        || context.resources.Get(state.output)->GetBindlessUavIndex() == INVALID_BINDLESS_INDEX) {
+        return false;
+    }
     state.scene = BuildRayScene(*context.renderScene, {context.cullingMask});
     state.gpu = shared.rayGeometry.Prepare(state.scene, context);
     return state.gpu.ready;
@@ -105,9 +142,13 @@ bool PrepareRayReflectionView(RenderPassContext& context, RenderViewResources& v
     const auto capabilities = context.renderer.GetCapabilities();
     if (!context.experimentalRayTracingEnabled || request.mode != RenderMode::HYBRID || !request.rayReflection
         || !capabilities.inlineRayQuery || !capabilities.bindless || !context.renderScene
-        || !context.width || !context.height) return reject();
+        || !context.width || !context.height) {
+        return reject();
+    }
     RayDebugConstants camera{};
-    if (!MakeRayDebugCameraConstants(context.camera, camera)) return reject();
+    if (!MakeRayDebugCameraConstants(context.camera, camera)) {
+        return reject();
+    }
     state.scene = BuildRayScene(*context.renderScene, {context.cullingMask, true});
     view.rayReflectionCovered = state.scene.diagnostics.empty() && state.scene.surfaceDiagnostics.empty()
         && opaquePlan.UsesDeferredLighting() && !context.settings.IsUnlit() && !context.settings.IsWireframe()
@@ -116,9 +157,11 @@ bool PrepareRayReflectionView(RenderPassContext& context, RenderViewResources& v
         && !context.settings.postProcess.fog.enabled && !context.settings.froxelFog.enabled
         && !context.settings.volumetricLight.enabled && !context.environment.cameraUnderwater
         && !context.environment.underwater.enabled && !context.environment.cloudEnabled;
-    for (const auto& override : context.settings.passOverrides)
-        if (!override.enabled && (override.name == "RayReflection" || override.name == "DeferredGBuffer"))
+    for (const auto& override : context.settings.passOverrides) {
+        if (!override.enabled && (override.name == "RayReflection" || override.name == "DeferredGBuffer")) {
             view.rayReflectionCovered = false;
+        }
+    }
     bool hasGlass = false;
     for (const auto& instance : state.scene.instances) {
         hasGlass |= instance.surface.dielectric.transmission != 0.0f;
@@ -131,12 +174,14 @@ bool PrepareRayReflectionView(RenderPassContext& context, RenderViewResources& v
         const auto& key = state.scene.geometries[instance.geometryIndex].key;
         const auto& item = context.renderScene->items[instance.sourceItem];
         if (key.vertexStride != sizeof(Vertex) || key.positionOffset != offsetof(Vertex, position)
-            || context.renderScene->Objects()[item.objectIndex].rayLodSelectionRequired)
+            || context.renderScene->Objects()[item.objectIndex].rayLodSelectionRequired) {
             view.rayReflectionCovered = false;
+        }
     }
-    /// @note Glass-free scenes retain authored instance culling and their existing unsupported-backface fallback.
-    if (hasGlass && view.rayReflectionCovered)
+    // Glass-free scenes retain authored instance culling and their existing unsupported-backface fallback.
+    if (hasGlass && view.rayReflectionCovered) {
         state.scene = BuildRayScene(*context.renderScene, {context.cullingMask, true, true});
+    }
     RayPathLighting lighting;
     lighting.useSceneLights = true;
     lighting.lights = context.rayLights;
@@ -145,7 +190,9 @@ bool PrepareRayReflectionView(RenderPassContext& context, RenderViewResources& v
     state.constantEnvironmentRadiance = {};
     state.constantEnvironmentKnown = ResolveRayConstantEnvironment(context.environment, context.camera,
         state.constantEnvironmentRadiance);
-    if (state.constantEnvironmentKnown) lighting.environmentRadiance = state.constantEnvironmentRadiance;
+    if (state.constantEnvironmentKnown) {
+        lighting.environmentRadiance = state.constantEnvironmentRadiance;
+    }
     if (environment.requested) {
         lighting.supported = lighting.supported && environment.ready && environment.pixels
             && context.resources.Get(environment.rawTexture) && std::isfinite(environment.intensity)
@@ -158,37 +205,53 @@ bool PrepareRayReflectionView(RenderPassContext& context, RenderViewResources& v
     }
     state.pathScene = state.sceneBuilder.Build(state.scene, context.resources, lighting, true);
     view.rayReflectionCovered = view.rayReflectionCovered && state.pathScene.coverageComplete;
-    if (!view.rayReflectionCovered) return reject();
+    if (!view.rayReflectionCovered) {
+        return reject();
+    }
     state.gpu = shared.rayGeometry.Prepare(state.scene, context);
-    if (!state.gpu.ready) return reject();
+    if (!state.gpu.ready) {
+        return reject();
+    }
     state.provenAirOrigin = {camera.cameraPosition.x, camera.cameraPosition.y, camera.cameraPosition.z};
     state.cameraOriginProvenAir = hasGlass && !camera.orthographic
         && state.mediumCache.IsOriginProvenAir(state.scene, context.resources, state.provenAirOrigin);
     auto& resources = context.resources;
     if (state.pathScene.emitters.size() > UINT32_MAX || state.pathScene.deltaLights.size() > UINT32_MAX
-        || state.pathScene.shapes.size() > UINT32_MAX) return reject();
+        || state.pathScene.shapes.size() > UINT32_MAX) {
+        return reject();
+    }
     if (state.emitterRevision != state.pathScene.contentRevision
         || (!state.pathScene.emitters.empty() && !resources.Get(state.emitters))
         || (!state.pathScene.deltaLights.empty() && !resources.Get(state.deltaLights))
         || (!state.pathScene.shapes.empty() && !resources.Get(state.shapes))) {
         resources.Release(state.emitters); resources.Release(state.deltaLights); resources.Release(state.shapes);
         state.emitters = {}; state.deltaLights = {}; state.shapes = {};
-        if (!state.pathScene.emitters.empty()) state.emitters = resources.CreateStructuredBuffer(state.pathScene.emitters.data(),
-            static_cast<uint32_t>(state.pathScene.emitters.size()), sizeof(RayPathEmitterRecord));
-        if (!state.pathScene.deltaLights.empty()) state.deltaLights = resources.CreateStructuredBuffer(state.pathScene.deltaLights.data(),
-            static_cast<uint32_t>(state.pathScene.deltaLights.size()), sizeof(RayPathDeltaRecord));
-        if (!state.pathScene.shapes.empty()) state.shapes = resources.CreateStructuredBuffer(state.pathScene.shapes.data(),
-            static_cast<uint32_t>(state.pathScene.shapes.size()), sizeof(RayPathShapeRecord));
+        if (!state.pathScene.emitters.empty()) {
+            state.emitters = resources.CreateStructuredBuffer(state.pathScene.emitters.data(),
+                static_cast<uint32_t>(state.pathScene.emitters.size()), sizeof(RayPathEmitterRecord));
+        }
+        if (!state.pathScene.deltaLights.empty()) {
+            state.deltaLights = resources.CreateStructuredBuffer(state.pathScene.deltaLights.data(),
+                static_cast<uint32_t>(state.pathScene.deltaLights.size()), sizeof(RayPathDeltaRecord));
+        }
+        if (!state.pathScene.shapes.empty()) {
+            state.shapes = resources.CreateStructuredBuffer(state.pathScene.shapes.data(),
+                static_cast<uint32_t>(state.pathScene.shapes.size()), sizeof(RayPathShapeRecord));
+        }
         state.emitterRevision = state.pathScene.contentRevision;
     }
     if (environment.requested) {
         if (state.environmentDistribution.contentVersion != environment.pixels->contentVersion
             || !resources.Get(state.environmentTable)) {
             RayEnvironmentDistribution distribution;
-            if (!BuildRayEnvironmentDistribution(environment, distribution)) return reject();
+            if (!BuildRayEnvironmentDistribution(environment, distribution)) {
+                return reject();
+            }
             const auto table = resources.CreateStructuredBuffer(distribution.records.data(),
                 static_cast<uint32_t>(distribution.records.size()), sizeof(RayEnvironmentRecord));
-            if (!resources.Get(table)) return reject();
+            if (!resources.Get(table)) {
+                return reject();
+            }
             resources.Release(state.environmentTable);
             state.environmentTable = table;
             state.environmentDistribution = std::move(distribution);
@@ -205,23 +268,29 @@ bool PrepareRayReflectionView(RenderPassContext& context, RenderViewResources& v
         || !tableReady(state.deltaLights, !state.pathScene.deltaLights.empty())
         || !tableReady(state.shapes, !state.pathScene.shapes.empty())
         || !tableReady(state.environmentTable, environment.requested)
-        || (environment.requested && resources.Get(state.environment)->GetBindlessIndex() == INVALID_BINDLESS_INDEX)) return reject();
+        || (environment.requested && resources.Get(state.environment)->GetBindlessIndex() == INVALID_BINDLESS_INDEX)) {
+        return reject();
+    }
     state.sceneLighting = true;
     state.diffuseIndirectEnabled = IsRayDiffuseIndirectReady(context, view);
-    if (!context.resources.Get(shared.rayReflectionShader))
+    if (!context.resources.Get(shared.rayReflectionShader)) {
         shared.rayReflectionShader = context.resources.LoadShader("Assets/Shaders/RayTracing/RayReflection.cs.hlsl");
+    }
     if (!context.resources.Get(state.output) || state.width != context.width || state.height != context.height) {
         context.resources.Release(state.output);
         state.output = context.resources.CreateComputeTexture(context.width, context.height);
         state.width = context.width;
         state.height = context.height;
     }
-    if (!context.resources.Get(state.constants))
+    if (!context.resources.Get(state.constants)) {
         state.constants = context.resources.CreateConstantBuffer(sizeof(RayReflectionConstants));
+    }
     const auto* output = context.resources.Get(state.output);
     if (!context.resources.Get(shared.rayReflectionShader) || !context.resources.Get(state.constants)
         || !output || output->GetBindlessIndex() == INVALID_BINDLESS_INDEX
-        || output->GetBindlessUavIndex() == INVALID_BINDLESS_INDEX) return reject();
+        || output->GetBindlessUavIndex() == INVALID_BINDLESS_INDEX) {
+        return reject();
+    }
     context.handles.rayReflectionResult = state.output;
     context.rayReflectionPassActive = true;
     const auto& quality = context.settings.hybridQuality;
@@ -243,7 +312,9 @@ bool PrepareRayReflectionView(RenderPassContext& context, RenderViewResources& v
         resources.Release(state.halfRaw);
         state.halfRaw = {};
     }
-    if (!PrepareRayReflectionReconstruction(context, view, shared)) restoreFullResolution();
+    if (!PrepareRayReflectionReconstruction(context, view, shared)) {
+        restoreFullResolution();
+    }
     else if (state.resolutionDivisor == 2) {
         const auto* current = resources.Get(state.halfRaw);
         if (!current || current->GetWidth() != state.traceWidth || current->GetHeight() != state.traceHeight) {
@@ -254,7 +325,7 @@ bool PrepareRayReflectionView(RenderPassContext& context, RenderViewResources& v
         if (!halfRaw || halfRaw->GetWidth() != state.traceWidth || halfRaw->GetHeight() != state.traceHeight
             || halfRaw->GetBindlessIndex() == INVALID_BINDLESS_INDEX
             || halfRaw->GetBindlessUavIndex() == INVALID_BINDLESS_INDEX) {
-            /// @note A failed mixed allocation restores full RAW transport and only keeps reconstruction if its smaller working set is ready.
+            // A failed mixed allocation restores full RAW transport and only keeps reconstruction if its smaller working set is ready.
             restoreFullResolution();
             (void)PrepareRayReflectionReconstruction(context, view, shared);
         }
@@ -308,14 +379,16 @@ void BuildRayReflectionPipeline(RenderPipeline& pipeline, RenderViewResources& v
     declareLightingTexture("RayReflectionIrradiance", context.handles.iblIrradiance);
     declareLightingTexture("RayReflectionPrefilter", context.handles.iblPrefilter);
     declareLightingTexture("RayReflectionBrdfLut", context.handles.iblBrdfLut);
-    for (size_t slot = 0; slot < 2; ++slot)
+    for (size_t slot = 0; slot < 2; ++slot) {
         declareLightingTexture("RayReflectionLightProbe" + std::to_string(slot),
             state.diffuseIndirectEnabled && view.advancedGraphicsSnapshot.probeVolumes[slot].intensity > 0
                 ? context.handles.lightProbeSH[slot] : ResourceHandle<TextureTag>{});
-    for (size_t slot = 0; slot < 2; ++slot)
+    }
+    for (size_t slot = 0; slot < 2; ++slot) {
         declareLightingTexture("RayReflectionProbeVisibility" + std::to_string(slot),
             state.diffuseIndirectEnabled && view.advancedGraphicsSnapshot.probeVolumes[slot].intensity > 0
                 ? context.handles.lightProbeVisibility[slot] : ResourceHandle<TextureTag>{});
+    }
     imported.byteSize = state.pathScene.emitters.size() * sizeof(RayPathEmitterRecord);
     imported.stride = sizeof(RayPathEmitterRecord);
     pipeline.DeclareStructuredBuffer("RayReflectionEmitters", state.emitters, imported);
@@ -411,7 +484,7 @@ void BuildRayDebugPipeline(RenderPipeline& pipeline, RenderViewResources& view,
         imported.stride = sizeof(RayHitRecord);
         pipeline.DeclareStructuredBuffer("RayHitRecords", state.gpu.hitRecords, imported);
         for (size_t i = 0; i < state.gpu.readBuffers.size(); ++i) {
-            /// @note 型付きハンドルを個別に申告し、table 背後の Buffer を backend へ渡す。
+            // 型付きハンドルを個別に申告し、table 背後の Buffer を backend へ渡す。
             const auto* buffer = resources.Get(state.gpu.readBuffers[i]);
             imported.byteSize = buffer ? buffer->GetSize() : 0;
             imported.stride = buffer ? buffer->GetStride() : 0;
@@ -421,4 +494,4 @@ void BuildRayDebugPipeline(RenderPipeline& pipeline, RenderViewResources& view,
     pipeline.AddPass<RayDebugPass>(state.gpu, state.constants, shared.rayDebugShader, !state.scene.diagnostics.empty());
     pipeline.AddPass<RayDebugCopyPass>(std::string(outputName), shared.copyColorShader, shared.postprocPSO);
 }
-} /// @note namespace fbzz::renderer
+} // namespace fbzz::renderer

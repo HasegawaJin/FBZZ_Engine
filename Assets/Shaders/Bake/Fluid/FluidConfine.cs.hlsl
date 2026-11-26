@@ -5,9 +5,9 @@
 #include "Bake/Fluid/FluidGpuCommon.hlsli"
 #include "Common/BindlessIndices.hlsli"
 
-FBZZ_TEX3D_T(float4, gVelocityIn, 0);
-FBZZ_TEX3D_T(float4, gCurlIn, 1);
-FBZZ_RWTEX3D_T(float4, gVelocityOut, 0);
+FBZZ_TEX3D_T(float4, gVelocityIn, SRV_FLUID_CONFINE_VELOCITY_IN_SLOT);
+FBZZ_TEX3D_T(float4, gCurlIn, SRV_FLUID_CONFINE_CURL_IN_SLOT);
+FBZZ_RWTEX3D_T(float4, gVelocityOut, UAV_FLUID_CONFINE_VELOCITY_OUT_SLOT);
 
 float CurlLengthDerivative(uint3 id, uint axis)
 {
@@ -28,7 +28,7 @@ void CSMain(uint3 id : SV_DispatchThreadID)
     const float len = length(eta);
     if (len >= 1.0e-6f)
     {
-        // f = ε h (N × ω)。数値拡散で消える細かい渦を、渦度の強い方へ押し戻す。
+        /// @note f = ε h (N × ω)。数値拡散で消える細かい渦を、渦度の強い方へ押し戻す。
         const float3 n = eta / len;
         v += cross(n, gCurlIn[id].xyz) * (gVorticity * gCellSize * gDt);
     }

@@ -20,8 +20,8 @@ namespace fbzz::renderer {
 /// @brief 正規化時間に対する値 1 点。
 /// @note 固定長にして GPU 定数バッファへそのまま転送できるようにする。
 struct ParticleCurveKey {
-    float time = 0.0f;
-    float value = 0.0f;
+    float time = 0.0f; ///< 呼び出し側が与える正規化時刻。0 と 1 は対象区間の始点と終点。
+    float value = 0.0f; ///< このキーの値。単位と適用先はカーブの用途で決まる。
     bool operator==(const ParticleCurveKey&) const = default;
 };
 
@@ -33,20 +33,24 @@ inline constexpr uint32_t kMaxParticleCurveKeys = 8;
 /// @brief キー間の繋ぎ方。キー単位ではなくカーブ単位に持つ。
 /// @note キー単位にすると GPU 側で 1 キーごとに float が増えパッキングが崩れる。混在が要る場合はキーを増やして近似する。
 enum class ParticleCurveInterpolation : uint8_t {
-    Linear = 0, ///< @note 直線
-    Step,       ///< @note 次のキーまで前の値を保持 (フリップブックの段階切替・点滅)
-    Smooth,     ///< @note smoothstep。始点と終点で速度 0 になり、機械的な折れ線に見えない
+    Linear = 0, ///< 直線
+    Step,       ///< 次のキーまで前の値を保持 (フリップブックの段階切替・点滅)
+    Smooth,     ///< smoothstep。始点と終点で速度 0 になり、機械的な折れ線に見えない
 };
 
 /// @brief 補間係数へ曲線モードを適用する。
 /// @note CPU/GPU で必ず同じ式にすること (GPU 側は ParticleGpuSim.cs.hlsl の ApplyCurveInterpolation)。
 inline float ApplyCurveInterpolation(float alpha, ParticleCurveInterpolation mode)
 {
-    /// @note Step は次のキーへ到達した時点で切り替える (区間は [前のキー, 次のキー))。
-    /// @note 評価は「次のキー以下」の区間で行うため、常に 0 だと寿命 0..1 の t=1.0 (最終フレーム) で
-    /// @note フリップブックの最終コマや消え際の点滅が一度も表示されないまま粒子が死ぬ。
-    if (mode == ParticleCurveInterpolation::Step) return alpha >= 1.0f ? 1.0f : 0.0f;
-    if (mode == ParticleCurveInterpolation::Smooth) return alpha * alpha * (3.0f - 2.0f * alpha);
+    // Step は次のキーへ到達した時点で切り替える (区間は [前のキー, 次のキー))。
+    // 評価は「次のキー以下」の区間で行うため、常に 0 だと寿命 0..1 の t=1.0 (最終フレーム) で
+    // フリップブックの最終コマや消え際の点滅が一度も表示されないまま粒子が死ぬ。
+    if (mode == ParticleCurveInterpolation::Step) {
+        return alpha >= 1.0f ? 1.0f : 0.0f;
+    }
+    if (mode == ParticleCurveInterpolation::Smooth) {
+        return alpha * alpha * (3.0f - 2.0f * alpha);
+    }
     return alpha;
 }
 
@@ -55,15 +59,20 @@ struct ParticleCurve {
     std::array<ParticleCurveKey, kMaxParticleCurveKeys> keys{{
         {0.0f, 0.0f}, {1.0f, 1.0f}, {1.0f, 1.0f}, {1.0f, 1.0f},
         {1.0f, 1.0f}, {1.0f, 1.0f}, {1.0f, 1.0f}, {1.0f, 1.0f}
-    }};
-    uint32_t keyCount = 2;
-    ParticleCurveInterpolation interpolation = ParticleCurveInterpolation::Linear;
+    }}; ///< 時刻順のキー。先頭 keyCount 点を評価対象にする。
+    uint32_t keyCount = 2; ///< 配列の先頭から読み取るキー数。
+    ParticleCurveInterpolation interpolation = ParticleCurveInterpolation::Linear; ///< 隣接するキー間の補間方式。
 
     float Evaluate(float time) const
     {
-        const uint32_t count = keyCount < 1 ? 1 : (keyCount > keys.size() ? static_cast<uint32_t>(keys.size()) : keyCount);
-        if (time <= keys[0].time) return keys[0].value;
-        for (uint32_t index = 1; index < count; ++index) {
+        // 保存されたキー数が範囲外でも先頭キーを使い、配列の末尾を越えない。
+        const uint32_t validKeyCount = std::clamp(keyCount, 1u, kMaxParticleCurveKeys);
+        if (time <= keys[0].time) {
+            return keys[0].value;
+        }
+
+        // 時刻を挟む区間を探す。同じ時刻のキーが続いても除数は正に保つ。
+        for (uint32_t index = 1; index < validKeyCount; ++index) {
             if (time <= keys[index].time) {
                 const float span = (std::max)(keys[index].time - keys[index - 1].time, 0.0001f);
                 float alpha = (std::max)(0.0f, (std::min)(1.0f, (time - keys[index - 1].time) / span));
@@ -71,13 +80,13 @@ struct ParticleCurve {
                 return keys[index - 1].value + (keys[index].value - keys[index - 1].value) * alpha;
             }
         }
-        return keys[count - 1].value;
+        return keys[validKeyCount - 1].value;
     }
 };
 
 struct ParticleGradientKey {
-    float time = 0.0f;
-    math::Vector4 color = { 1, 1, 1, 1 };
+    float time = 0.0f; ///< 呼び出し側が与える正規化時刻。0 と 1 は対象区間の始点と終点。
+    math::Vector4 color = { 1, 1, 1, 1 }; ///< オーサリング空間の RGB と不透明度 A。
     bool operator==(const ParticleGradientKey& other) const
     {
         return time == other.time
@@ -95,18 +104,22 @@ struct ParticleGradient {
         {1.0f, {1, 1, 1, 0}}, {1.0f, {1, 1, 1, 0}},
         {1.0f, {1, 1, 1, 0}}, {1.0f, {1, 1, 1, 0}},
         {1.0f, {1, 1, 1, 0}}, {1.0f, {1, 1, 1, 0}}
-    }};
-    uint32_t keyCount = 2;
-    ParticleCurveInterpolation interpolation = ParticleCurveInterpolation::Linear;
-    ParticleColorSpace colorSpace = ParticleColorSpace::Gamma;
+    }}; ///< 時刻順の色キー。先頭 keyCount 点を評価対象にする。
+    uint32_t keyCount = 2; ///< 配列の先頭から読み取る色キー数。
+    ParticleCurveInterpolation interpolation = ParticleCurveInterpolation::Linear; ///< 隣接する色キー間の補間方式。
+    ParticleColorSpace colorSpace = ParticleColorSpace::Gamma; ///< RGB を補間するときの色空間。格納値の色空間とは独立。
 
     /// @brief オーサリング空間 (sRGB) で評価する。
     /// @note Editor のプレビュー帯やカラーピッカーはこちらを使う (ImGui は sRGB 値を受け取る前提)。
     math::Vector4 Evaluate(float time) const
     {
-        const uint32_t count = keyCount < 1 ? 1 : (keyCount > keys.size() ? static_cast<uint32_t>(keys.size()) : keyCount);
-        if (time <= keys[0].time) return keys[0].color;
-        for (uint32_t index = 1; index < count; ++index) {
+        const uint32_t validKeyCount = std::clamp(keyCount, 1u, kMaxParticleCurveKeys);
+        if (time <= keys[0].time) {
+            return keys[0].color;
+        }
+
+        // 区間内の補間率を決めてから、指定された色空間で RGB を混ぜる。
+        for (uint32_t index = 1; index < validKeyCount; ++index) {
             if (time <= keys[index].time) {
                 const float span = (std::max)(keys[index].time - keys[index - 1].time, 0.0001f);
                 float alpha = (std::max)(0.0f, (std::min)(1.0f, (time - keys[index - 1].time) / span));
@@ -114,7 +127,7 @@ struct ParticleGradient {
                 return MixKeys(keys[index - 1].color, keys[index].color, alpha);
             }
         }
-        return keys[count - 1].color;
+        return keys[validKeyCount - 1].color;
     }
 
     /// @brief 描画へ渡すリニア色。シミュレーションが粒子へ書くのは常にこちら。
@@ -155,4 +168,4 @@ struct ParticleGradient {
     }
 };
 
-} /// @note namespace fbzz::renderer
+} // namespace fbzz::renderer

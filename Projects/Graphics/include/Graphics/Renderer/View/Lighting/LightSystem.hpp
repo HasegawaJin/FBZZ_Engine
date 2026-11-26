@@ -14,7 +14,7 @@ namespace fbzz::renderer {
 
 struct DirectionalLight {
     math::Vector3 direction = {  0.0f, -1.0f,  0.5f };
-    float         _pad0     = 0.0f; ///< @note HLSL float3 は 16 バイト境界に整列するため必須
+    float         _pad0     = 0.0f; ///< HLSL float3 は 16 バイト境界に整列するため必須
     math::Vector3 color     = {  1.0f,  1.0f,  1.0f };
     float         intensity = 1.0f;
 };
@@ -31,11 +31,11 @@ struct SpotLight {
     float         range     = 10.0f;
     math::Vector3 direction = { 0.0f, -1.0f, 0.0f };
     /// @note 角度ではなくコサイン値で保存する。HLSL 側で毎フレーム cos() を呼ばなくて済む。
-    float         innerCos  = 0.966f;   ///< @note ~15°
+    float         innerCos  = 0.966f;   ///< ~15°
     math::Vector3 color     = { 1.0f, 1.0f, 1.0f };
-    float         outerCos  = 0.866f;   ///< @note ~30°
+    float         outerCos  = 0.866f;   ///< ~30°
     float         intensity = 1.0f;
-    float         _pad[3]   = {}; ///< @note 合計 64 バイトに揃えるためのパディング
+    float         _pad[3]   = {}; ///< 合計 64 バイトに揃えるためのパディング
 };
 
 /// @note Constants.hlsli の LightConstants cbuffer と完全一致 (560 bytes)
@@ -80,4 +80,4 @@ private:
     std::vector<SpotLight>  m_spotLights;
 };
 
-} /// @note namespace fbzz::renderer
+} // namespace fbzz::renderer

@@ -2,6 +2,7 @@
 /// @brief   一段反射の型付き geometry・表面・GBuffer 入力を記録する。
 /// @author  Hasegawa Jin
 /// @date    2026-10-01
+#include <Graphics/Renderer/Commands/ShaderBindingSlots.hpp>
 #include <Graphics/Passes/RayTracing/RayReflectionPass.hpp>
 #include <Graphics/Passes/RayTracing/RayDebugPass.hpp>
 #include <Graphics/Pipeline/Resources/RenderResources.hpp>
@@ -18,35 +19,51 @@ void RayReflectionPass::Setup(PassBuilder& builder, const RenderPassContext& con
 {
     using Purpose = RenderGraph::ResourceAccessPurpose;
     builder.Read("GBuffer", Purpose::SHADER_READ);
-    if (context.IsHybridSsrPlanned()) builder.Read("SSRResult", Purpose::SHADER_READ);
+    if (context.IsHybridSsrPlanned()) {
+        builder.Read("SSRResult", Purpose::SHADER_READ);
+    }
     builder.Read("RayReflectionIrradiance", Purpose::SHADER_READ);
     builder.Read("RayReflectionPrefilter", Purpose::SHADER_READ);
     builder.Read("RayReflectionBrdfLut", Purpose::SHADER_READ);
     if (m_lighting.diffuseIndirectEnabled) {
         builder.Read("RayReflectionLightProbe0", Purpose::SHADER_READ);
         builder.Read("RayReflectionLightProbe1", Purpose::SHADER_READ);
-        for (size_t slot = 0; slot < 2; ++slot)
-            if (context.handles.lightProbeVisibility[slot].IsValid())
+        for (size_t slot = 0; slot < 2; ++slot) {
+            if (context.handles.lightProbeVisibility[slot].IsValid()) {
                 builder.Read("RayReflectionProbeVisibility" + std::to_string(slot), Purpose::SHADER_READ);
+            }
+        }
     }
-    if (m_lighting.emitterCount) builder.Read("RayReflectionEmitters", Purpose::SHADER_READ);
-    if (m_lighting.deltaLightCount) builder.Read("RayReflectionDeltaLights", Purpose::SHADER_READ);
-    if (m_lighting.shapeCount) builder.Read("RayReflectionShapes", Purpose::SHADER_READ);
+    if (m_lighting.emitterCount) {
+        builder.Read("RayReflectionEmitters", Purpose::SHADER_READ);
+    }
+    if (m_lighting.deltaLightCount) {
+        builder.Read("RayReflectionDeltaLights", Purpose::SHADER_READ);
+    }
+    if (m_lighting.shapeCount) {
+        builder.Read("RayReflectionShapes", Purpose::SHADER_READ);
+    }
     if (m_lighting.environmentTableCount) {
         builder.Read("RayReflectionEnvironment", Purpose::SHADER_READ);
         builder.Read("RayReflectionEnvironmentTable", Purpose::SHADER_READ);
     }
     builder.Write(m_reconstruction ? "RayReflectionRaw" : "RayReflectionResult", Purpose::UAV);
-    if (m_reconstruction && m_halfRaw.IsValid()) builder.Write("RayReflectionHalfRaw", Purpose::UAV);
-    if (m_reconstruction) builder.Write("RayReflectionSurface", Purpose::UAV);
+    if (m_reconstruction && m_halfRaw.IsValid()) {
+        builder.Write("RayReflectionHalfRaw", Purpose::UAV);
+    }
+    if (m_reconstruction) {
+        builder.Write("RayReflectionSurface", Purpose::UAV);
+    }
     if (m_scene.instanceCount) {
         builder.Read("RaySceneTLAS", Purpose::TRACE_READ);
         builder.Read("RayHitRecords", Purpose::SHADER_READ);
         builder.Read("RaySurfaceMaterials", Purpose::SHADER_READ);
-        for (size_t i = 0; i < m_scene.readBuffers.size(); ++i)
+        for (size_t i = 0; i < m_scene.readBuffers.size(); ++i) {
             builder.Read("RayReadBuffer" + std::to_string(i), Purpose::SHADER_READ);
-        for (size_t i = 0; i < m_scene.readTextures.size(); ++i)
+        }
+        for (size_t i = 0; i < m_scene.readTextures.size(); ++i) {
             builder.Read("RayReadTexture" + std::to_string(i), Purpose::SHADER_READ);
+        }
     }
 }
 
@@ -58,7 +75,9 @@ void RayReflectionPass::Execute(PassResources& resources, RenderPassContext& con
         m_reconstruction->temporalSucceeded = false;
     }
     RayDebugConstants camera{};
-    if (!MakeRayDebugCameraConstants(context.camera, camera)) return;
+    if (!MakeRayDebugCameraConstants(context.camera, camera)) {
+        return;
+    }
     RayReflectionConstants constants{};
     const auto quality = IsHybridQualityValid(context.settings.hybridQuality)
         ? context.settings.hybridQuality : HybridQualitySettings{};
@@ -88,7 +107,7 @@ void RayReflectionPass::Execute(PassResources& resources, RenderPassContext& con
     constants.glassEnabled = m_lighting.glassEnabled ? 1u : 0u;
     constants.glassBoundaryLimit = constants.glassEnabled ? quality.glassBoundaryLimit : 0u;
     constants.hybridPolicyFlags = (m_scene.hybridCandidatePolicy ? 1u : 0u) | (quality.glassStochastic ? 2u : 0u);
-    /// @note カメラが変わった場合や正射影の画素別原点では、準備時の透視投影による証明を再利用できない。
+    // カメラが変わった場合や正射影の画素別原点では、準備時の透視投影による証明を再利用できない。
     constants.cameraOriginProvenAir = constants.glassEnabled && !camera.orthographic
         && m_lighting.cameraOriginProvenAir
         && m_lighting.provenAirOrigin.x == camera.cameraPosition.x
@@ -114,9 +133,9 @@ void RayReflectionPass::Execute(PassResources& resources, RenderPassContext& con
     constants.ambientRadiance = {light.ambientColor.x, light.ambientColor.y, light.ambientColor.z, 0};
     ComputeCall call;
     call.shader = m_shader;
-    call.constantBuffers[0] = m_constants;
-    call.constantBuffers[8] = context.handles.advancedGraphicsCB;
-    call.uavOutputs[0] = resources.Texture(m_reconstruction ? "RayReflectionRaw" : "RayReflectionResult");
+    call.constantBuffers[cb::RAY_REFLECTION] = m_constants;
+    call.constantBuffers[cb::ADVANCED_GRAPHICS] = context.handles.advancedGraphicsCB;
+    call.uavOutputs[uav::RAY_RESULT] = resources.Texture(m_reconstruction ? "RayReflectionRaw" : "RayReflectionResult");
     if (m_reconstruction && m_halfRaw.IsValid()) {
         const auto halfRawHandle = resources.Texture("RayReflectionHalfRaw");
         const auto* halfRaw = context.resources.Get(halfRawHandle);
@@ -124,57 +143,77 @@ void RayReflectionPass::Execute(PassResources& resources, RenderPassContext& con
             && halfRaw->GetHeight() == context.height / 2 + context.height % 2
             && halfRaw->GetBindlessIndex() != INVALID_BINDLESS_INDEX
             && halfRaw->GetBindlessUavIndex() != INVALID_BINDLESS_INDEX) {
-            call.uavOutputs[1] = halfRawHandle;
+            call.uavOutputs[uav::RAY_REFLECTION_HALF] = halfRawHandle;
             constants.traceWidth = halfRaw->GetWidth();
             constants.traceHeight = halfRaw->GetHeight();
         }
     }
-    context.handles.rayReflectionResult = call.uavOutputs[0];
-    if (m_reconstruction) call.uavBuffers[0] = resources.StructuredBuffer("RayReflectionSurface");
+    context.handles.rayReflectionResult = call.uavOutputs[uav::RAY_RESULT];
+    if (m_reconstruction) {
+        call.uavBuffers[StructuredUavIndex(uav::RAY_REFLECTION_METADATA)] = resources.StructuredBuffer("RayReflectionSurface");
+    }
     const auto gbuffer = resources.Target("GBuffer");
-    call.srvInputs[5] = context.resources.GetColorTexture(gbuffer, 0);
-    call.srvInputs[6] = context.resources.GetColorTexture(gbuffer, 1);
-    call.srvInputs[7] = context.resources.GetDepthTexture(gbuffer);
-    if (constants.glassEnabled) call.srvInputs[22] = context.resources.GetColorTexture(gbuffer, 2);
-    if (constants.reflectionSsrEnabled) call.srvInputs[23] = ssrResult;
-    call.srvInputs[16] = resources.Texture("RayReflectionIrradiance");
-    call.srvInputs[17] = resources.Texture("RayReflectionPrefilter");
-    call.srvInputs[18] = resources.Texture("RayReflectionBrdfLut");
+    call.srvInputs[srv::GBUFFER0] = context.resources.GetColorTexture(gbuffer, 0);
+    call.srvInputs[srv::GBUFFER1] = context.resources.GetColorTexture(gbuffer, 1);
+    call.srvInputs[srv::DEPTH] = context.resources.GetDepthTexture(gbuffer);
+    if (constants.glassEnabled) {
+        call.srvInputs[srv::GBUFFER_EMISSION] = context.resources.GetColorTexture(gbuffer, 2);
+    }
+    if (constants.reflectionSsrEnabled) {
+        call.srvInputs[srv::SCREEN_REFLECTION] = ssrResult;
+    }
+    call.srvInputs[srv::IBL_IRRADIANCE] = resources.Texture("RayReflectionIrradiance");
+    call.srvInputs[srv::IBL_PREFILTER] = resources.Texture("RayReflectionPrefilter");
+    call.srvInputs[srv::IBL_BRDF_LUT] = resources.Texture("RayReflectionBrdfLut");
     if (constants.diffuseIndirectEnabled) {
-        call.srvInputs[11] = resources.Texture("RayReflectionLightProbe0");
-        call.srvInputs[12] = resources.Texture("RayReflectionLightProbe1");
-        for (size_t slot = 0; slot < 2; ++slot)
-            if (const auto texture = resources.Texture("RayReflectionProbeVisibility" + std::to_string(slot)); texture.IsValid())
+        call.srvInputs[srv::RAY_REFLECTION_PROBE] = resources.Texture("RayReflectionLightProbe0");
+        call.srvInputs[srv::RAY_REFLECTION_PROBE_OUTER] = resources.Texture("RayReflectionLightProbe1");
+        for (size_t slot = 0; slot < 2; ++slot) {
+            if (const auto texture = resources.Texture("RayReflectionProbeVisibility" + std::to_string(slot)); texture.IsValid()) {
                 call.indirectReadTextures.push_back(texture);
+            }
+        }
     }
-    if (m_lighting.emitterCount) call.srvBuffers[3] = resources.StructuredBuffer("RayReflectionEmitters");
-    if (m_lighting.deltaLightCount) call.srvBuffers[4] = resources.StructuredBuffer("RayReflectionDeltaLights");
-    if (m_lighting.shapeCount) call.srvBuffers[10] = resources.StructuredBuffer("RayReflectionShapes");
+    if (m_lighting.emitterCount) {
+        call.srvBuffers[srv::RAY_EMITTERS] = resources.StructuredBuffer("RayReflectionEmitters");
+    }
+    if (m_lighting.deltaLightCount) {
+        call.srvBuffers[srv::RAY_REFLECTION_LIGHTS] = resources.StructuredBuffer("RayReflectionDeltaLights");
+    }
+    if (m_lighting.shapeCount) {
+        call.srvBuffers[srv::RAY_REFLECTION_SHAPES] = resources.StructuredBuffer("RayReflectionShapes");
+    }
     if (m_lighting.environmentTableCount) {
-        call.srvInputs[8] = resources.Texture("RayReflectionEnvironment");
-        call.srvBuffers[9] = resources.StructuredBuffer("RayReflectionEnvironmentTable");
+        call.srvInputs[srv::RAY_REFLECTION_ENVIRONMENT] = resources.Texture("RayReflectionEnvironment");
+        call.srvBuffers[srv::RAY_REFLECTION_ENV_TABLE] = resources.StructuredBuffer("RayReflectionEnvironmentTable");
     }
-    constants.iblReady = call.constantBuffers[8].IsValid() && call.srvInputs[16].IsValid()
-        && call.srvInputs[17].IsValid() && call.srvInputs[18].IsValid();
+    constants.iblReady = call.constantBuffers[cb::ADVANCED_GRAPHICS].IsValid() && call.srvInputs[srv::IBL_IRRADIANCE].IsValid()
+        && call.srvInputs[srv::IBL_PREFILTER].IsValid() && call.srvInputs[srv::IBL_BRDF_LUT].IsValid();
     context.resources.Update(m_constants, &constants, sizeof(constants));
     call.dispatchX = (context.width + 7) / 8;
     call.dispatchY = (context.height + 7) / 8;
     if (m_scene.instanceCount) {
-        call.accelerationStructures[0] = resources.AccelerationStructure("RaySceneTLAS");
-        call.srvBuffers[1] = resources.StructuredBuffer("RayHitRecords");
-        call.srvBuffers[2] = resources.StructuredBuffer("RaySurfaceMaterials");
-        for (size_t i = 0; i < m_scene.readBuffers.size(); ++i)
+        call.accelerationStructures[srv::RAY_SCENE] = resources.AccelerationStructure("RaySceneTLAS");
+        call.srvBuffers[srv::RAY_HIT_RECORDS] = resources.StructuredBuffer("RayHitRecords");
+        call.srvBuffers[srv::RAY_MATERIALS] = resources.StructuredBuffer("RaySurfaceMaterials");
+        for (size_t i = 0; i < m_scene.readBuffers.size(); ++i) {
             call.indirectReadBuffers.push_back(resources.Buffer("RayReadBuffer" + std::to_string(i)));
-        for (size_t i = 0; i < m_scene.readTextures.size(); ++i)
+        }
+        for (size_t i = 0; i < m_scene.readTextures.size(); ++i) {
             call.indirectReadTextures.push_back(resources.Texture("RayReadTexture" + std::to_string(i)));
+        }
     }
-    if (!call.shader.IsValid() || !call.uavOutputs[0].IsValid() || !gbuffer.IsValid()
-        || !call.srvInputs[5].IsValid() || !call.srvInputs[6].IsValid() || !call.srvInputs[7].IsValid()
-        || (constants.glassEnabled && !context.resources.Get(call.srvInputs[22]))) return;
+    if (!call.shader.IsValid() || !call.uavOutputs[uav::RAY_RESULT].IsValid() || !gbuffer.IsValid()
+        || !call.srvInputs[srv::GBUFFER0].IsValid() || !call.srvInputs[srv::GBUFFER1].IsValid() || !call.srvInputs[srv::DEPTH].IsValid()
+        || (constants.glassEnabled && !context.resources.Get(call.srvInputs[srv::GBUFFER_EMISSION]))) {
+        return;
+    }
     context.rayReflectionPassActive = context.renderer.TryDispatch(call, context.resources);
     if (m_reconstruction) {
         m_reconstruction->rawSucceeded = context.rayReflectionPassActive;
-        if (!context.rayReflectionPassActive) m_reconstruction->historyValid = false;
+        if (!context.rayReflectionPassActive) {
+            m_reconstruction->historyValid = false;
+        }
     }
 }
 

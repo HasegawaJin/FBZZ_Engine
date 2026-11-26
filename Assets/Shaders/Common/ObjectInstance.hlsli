@@ -2,6 +2,7 @@
 /// @brief   Shared ordinary and resident instance access for color, depth and motion passes.
 /// @author  Hasegawa Jin
 /// @date    2026-09-20
+#include "Common/Binding.hlsli"
 #ifndef FBZZ_COMMON_OBJECT_INSTANCE_HLSLI
 #define FBZZ_COMMON_OBJECT_INSTANCE_HLSLI
 #include "Binding.hlsli"
@@ -14,7 +15,7 @@ struct ObjectInstanceMotion { float4x4 world; float4x4 prevWorld; };
 struct ResidentInstanceRecord { float4x4 world; float4x4 normal; float4x4 previousWorld; float4 bounds; };
 FBZZ_VS_SBUFFER(ResidentInstanceRecord,g_residentInstances,VS_SB_INSTANCE_SLOT);
 FBZZ_VS_SBUFFER(uint,g_visibleInstanceIds,VS_SB_BUFFER0_SLOT);
-cbuffer InstanceDrawOffset : register(b15) { uint g_instanceIdOffset; };
+cbuffer InstanceDrawOffset : register(FBZZ_REGISTER(b, CB_INSTANCE_DRAW_OFFSET_SLOT)) { uint g_instanceIdOffset; };
 ObjectInstance FbzzObjectInstance(uint id)
 {
     const ResidentInstanceRecord record=g_residentInstances[g_visibleInstanceIds[g_instanceIdOffset+id]];

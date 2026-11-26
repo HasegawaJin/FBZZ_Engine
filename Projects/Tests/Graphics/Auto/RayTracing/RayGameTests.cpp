@@ -86,7 +86,7 @@ protected:
         if (entry.message.find("  [WARNING] (id=") == std::string::npos
             && entry.message.find("  [ERROR] (id=") == std::string::npos
             && entry.message.find("  [CORRUPTION] (id=") == std::string::npos) return;
-        /// @note Existing PathColor clears have no optimized-clear metadata. This one performance-only warning is intentionally scoped to the GPU fixture.
+        // PathColor の既存のクリアは最適化用メタデータを持たない。この性能警告だけを GPU フィクスチャ内で許容する。
         if (entry.message.find("  [WARNING] (id=820) ID3D12CommandList::ClearRenderTargetView: The application did not pass any clear value")
             != std::string::npos) return;
         ++m_validationFailures;
@@ -191,7 +191,9 @@ protected:
         if (disabledPass) settings.passOverrides.push_back({disabledPass, false});
         settings.ibl.enabled = false; settings.postProcess.fog.enabled = false; settings.froxelFog.enabled = false;
         settings.volumetricLight.enabled = false; settings.postProcess.bloom.enabled = false; settings.autoExposure.enabled = false;
-        if (!rendering.PrepareView(view, device, m_target, settings)) return nullptr;
+        if (!rendering.PrepareView(view, device, m_target, settings)) {
+            return nullptr;
+        }
         auto& shared = rendering.Shared();
         if (!m_resources->Get(shared.frameCB)) shared.frameCB = m_resources->CreateConstantBuffer(sizeof(renderer::PerFrameCB));
         if (!m_resources->Get(shared.objectCB)) shared.objectCB = m_resources->CreateConstantBuffer(sizeof(renderer::PerObjectCB));
@@ -220,7 +222,9 @@ protected:
         renderer::PrepareAdvancedConstants(context, view, {});
         const auto plan = renderer::PrepareViewRenderPlan(*m_resources, device, settings, view, shared, handles,
             context.experimentalRayTracingEnabled);
-        if (!plan.IsValid()) return nullptr;
+        if (!plan.IsValid()) {
+            return nullptr;
+        }
         Begin();
         renderer::BuildViewPipeline(view.pipeline, context, view, shared, {plan});
         const auto names = view.pipeline.RegisteredPassNames();
@@ -230,7 +234,7 @@ protected:
             EXPECT_FALSE(context.rayPathPassActive);
             for (const char* name : {"RayPathTrace", "RayGameTemporal", "RayGameSpatial"})
                 EXPECT_EQ(std::find(names.begin(), names.end(), name), names.end());
-            /// @note Only preparation/plan fallback is under test; the fixture's dummy Raster lighting shader must not execute.
+            // 準備処理と描画計画の代替経路を検証する。フィクスチャのダミーのラスタ照明シェーダーは実行しない。
         } else {
             EXPECT_EQ(view.renderPlan.effectiveMode, renderer::RenderMode::PATH_TRACING);
             EXPECT_EQ(std::find(names.begin(), names.end(), "DeferredLighting"), names.end());
@@ -245,7 +249,9 @@ protected:
                 const auto constants = m_resources->CreateConstantBuffer(16);
                 const std::array<float, 4> bias{-0.00002f, 0, 0, 0};
                 m_resources->Update(constants, bias.data(), sizeof(bias));
-                if (!shader || !depthCopy || !depthWriter || !constants) return nullptr;
+                if (!shader || !depthCopy || !depthWriter || !constants) {
+                    return nullptr;
+                }
                 device.SetRenderTarget(depthCopy, *m_resources);
                 renderer::DrawCall draw;
                 draw.shader = m_copy; draw.pipelineState = m_pipeline; draw.vertexCount = 3;
@@ -256,7 +262,7 @@ protected:
                 draw.shader = shader; draw.pipelineState = depthWriter; draw.constantBuffers[0] = constants;
                 draw.textures[5] = m_resources->GetColorTexture(depthCopy, 0);
                 device.Submit(draw, *m_resources);
-                /// @note Re-dispatch the production pass with its original center sample and declarations after a bounded inward depth perturbation.
+                // 深度を許容範囲内で内側にずらし、元の中央サンプルと宣言で本番パスを再実行する。
                 renderer::RayPathTracePass trace(view.rayPath, shared.rayPathShader);
                 renderer::PassBuilder builder;
                 trace.Setup(builder, context);
@@ -466,7 +472,7 @@ TEST_F(RayGameTest, BoundedRasterDepthErrorDoesNotMoveTheVerifiedSpawnInsideTheP
     m_resources->Update(scene->items[0].material.paramsBuffer, scene->items[0].material.gbufferParams.data(), 96);
     renderer::Camera camera; camera.m_position = {}; camera.m_aspect = 4; camera.m_backgroundColor = {0, 0, 0, 1};
     camera.m_projection = renderer::ProjectionMode::Orthographic; camera.m_orthoHeight = 2;
-    /// @note Plane z=2 yields exact half depth=.5. The injected -2e-5 depth moves the reconstruction inward by 40 micrometers, below the unchanged match tolerance.
+    // Plane z=2 yields exact half depth=.5. The injected -2e-5 depth moves the reconstruction inward by 40 micrometers, below the unchanged match tolerance.
     camera.m_near = 1; camera.m_far = 3;
     auto* baseline = RenderScene(scene, camera, 107, 1, renderer::PathTracingProfile::GAME);
     ASSERT_NE(baseline, nullptr);

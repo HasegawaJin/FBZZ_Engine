@@ -27,4 +27,4 @@ FBZZ_GRAPHICS_API bool ReadCapturedImageAsLinearRGBA(const DirectX::ScratchImage
                                    std::vector<float>& outRgba,
                                    std::uint32_t& outWidth, std::uint32_t& outHeight);
 
-} /// @note namespace fbzz::renderer::detail
+} // namespace fbzz::renderer::detail

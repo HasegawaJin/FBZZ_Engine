@@ -12,18 +12,18 @@ namespace {
 constexpr const char* kNeedsClusterRemedy =
     "Pipeline を Forward+ または Deferred+ にしてください";
 
-} /// @note namespace
+} // namespace
 
 std::vector<InertSetting> CollectInertSettings(const RenderSettings& settings)
 {
     std::vector<InertSetting> issues;
 
-    /// @note SSAO / GTAO / SSR / 接触影 は Forward でも GBuffer プリパスを走らせて
-    /// @note       効くようになったため、ここには挙げない。差はコストだけになった。
+    // SSAO / GTAO / SSR / 接触影 は Forward でも GBuffer プリパスを走らせて
+    // 効くようになったため、ここには挙げない。差はコストだけになった。
 
-    /// @note クラスタ設定は "+" でしか読まれない。ライトそのものは全パイプラインで同じ配列から
-    /// @note       供給される (Forward/Deferred は全数走査) ため、効かないのは「カリングの調整値」だけで
-    /// @note       絵は変わらない。
+    // クラスタ設定は "+" でしか読まれない。ライトそのものは全パイプラインで同じ配列から
+    // 供給される (Forward/Deferred は全数走査) ため、効かないのは「カリングの調整値」だけで
+    // 絵は変わらない。
     if (settings.clustered.enabled && !settings.UsesClusteredLighting()) {
         issues.push_back({
             "Clustered Lights",
@@ -43,11 +43,11 @@ std::vector<InertSetting> CollectInertSettings(const RenderSettings& settings)
 
 const char* DescribeInertOverride(const RenderSettings& settings, std::string_view typeName)
 {
-    /// @note 現状、パイプラインで丸ごと無効になる VolumeOverride は無い。判定の置き場所を
-    /// @note       1 か所に決めておくため関数として残しており、対象機能が増えても UI 側は変えずに済む。
+    // 現状、パイプラインで丸ごと無効になる VolumeOverride は無い。判定の置き場所を
+    // 1 か所に決めておくため関数として残しており、対象機能が増えても UI 側は変えずに済む。
     (void)settings;
     (void)typeName;
     return nullptr;
 }
 
-} /// @note namespace fbzz::renderer
+} // namespace fbzz::renderer

@@ -47,16 +47,18 @@ SelectionSignature MakeSelectionSignature(const SurfacePatchSurface& surface,
     const SurfacePatchLodSettings& settings, const SurfacePatchView& view)
 {
     SelectionSignature signature;
-    /// @note Ignore sticky exception flags; rounding, exception masks, DAZ and FTZ change arithmetic behavior across invocations.
+    // Ignore sticky exception flags; rounding, exception masks, DAZ and FTZ change arithmetic behavior across invocations.
     Append(signature, static_cast<uint32_t>(std::fegetround()));
     Append(signature, static_cast<uint32_t>(_mm_getcsr()) & 0x0000ffc0u);
     Append(signature, surface.localMin.x);
     Append(signature, surface.localMin.y);
     Append(signature, surface.localMax.x);
     Append(signature, surface.localMax.y);
-    for (const auto& row : surface.worldMatrix.m)
-        for (float value : row)
+    for (const auto& row : surface.worldMatrix.m) {
+        for (float value : row) {
             Append(signature, value);
+        }
+    }
     Append(signature, surface.minHeight);
     Append(signature, surface.maxHeight);
     Append(signature, surface.horizontalDisplacement);
@@ -91,20 +93,20 @@ SelectionSignature MakeSelectionSignature(const SurfacePatchSurface& surface,
 }
 
 struct Node {
-    uint32_t depth = 0;
-    uint32_t x = 0;
-    uint32_t z = 0;
+    uint32_t depth = 0; ///< 基準矩形を 0 とした四分木の深度。
+    uint32_t x = 0; ///< この深度の格子内での X 方向の位置。
+    uint32_t z = 0; ///< この深度の格子内での Z 方向の位置。
 };
 
 using LeafMap = std::unordered_map<uint64_t, Node>;
 
 struct SelectionContext {
-    const SurfacePatchSurface& surface;
-    const SurfacePatchLodSettings& settings;
-    const SurfacePatchView& view;
-    math::Vector2 extent;
-    math::Vector3 forward;
-    std::array<math::Vector2, MAX_DEPTH + 1u> cellSizes{};
+    const SurfacePatchSurface& surface; ///< 選択中だけ参照する基準矩形と変位範囲。
+    const SurfacePatchLodSettings& settings; ///< 選択中だけ参照する分割設定。
+    const SurfacePatchView& view; ///< 選択中だけ参照するビューと視錐台。
+    math::Vector2 extent; ///< 基準矩形のローカル XZ 幅。
+    math::Vector3 forward; ///< 視線深度を求める正規化済みのワールド前方ベクトル。
+    std::array<math::Vector2, MAX_DEPTH + 1u> cellSizes{}; ///< 四分木深度ごとのワールド空間のセル幅 [m]。
 };
 
 uint64_t NodeKey(const Node& node)
@@ -138,36 +140,79 @@ math::Vector3 Axis(const math::Matrix4& matrix, int column)
     return { matrix.m[0][column], matrix.m[1][column], matrix.m[2][column] };
 }
 
+/// @brief パッチ選択の幾何と投影の前提が成立するか調べる。
+/// @param[in] surface ローカル矩形、変位範囲、ワールド変換。
+/// @param[in] settings 共有格子の解像度、分割予算と分割条件。
+/// @param[in] view ワールド空間のカメラ位置と投影条件。
+/// @return 各前提を満たす場合は true。
 bool ValidInput(const SurfacePatchSurface& surface, const SurfacePatchLodSettings& settings,
                 const SurfacePatchView& view)
 {
-    if (!Finite(surface.localMin) || !Finite(surface.localMax)
-        || surface.localMax.x <= surface.localMin.x || surface.localMax.y <= surface.localMin.y
-        || !std::isfinite(surface.minHeight) || !std::isfinite(surface.maxHeight)
-        || surface.minHeight > surface.maxHeight
-        || !std::isfinite(surface.horizontalDisplacement) || surface.horizontalDisplacement < 0.0f
-        || !ValidResolution(settings.cellsPerPatch) || settings.maxDepth > MAX_DEPTH
-        || settings.maxPatches == 0 || settings.maxPatches > MAX_PATCHES
-        || !std::isfinite(settings.targetCellPixels) || settings.targetCellPixels <= 0.0f
-        || !std::isfinite(settings.nearDistance) || settings.nearDistance < 0.0f
-        || !std::isfinite(settings.nearCellSize) || settings.nearCellSize <= 0.0f
-        || (settings.morphEnabled && (!std::isfinite(settings.morphTransitionWidth)
-            || settings.morphTransitionWidth < 0.01f || settings.morphTransitionWidth > 1.0f))
-        || !Finite(view.cameraPosition) || !Finite(view.cameraForward)
-        || !std::isfinite(view.cameraForward.LengthSq()) || view.cameraForward.LengthSq() <= 1.0e-8f
-        || !std::isfinite(view.projectionScalePixels) || view.projectionScalePixels <= 0.0f
-        || !std::isfinite(view.minProjectionDistance) || view.minProjectionDistance <= 0.0f)
+    // パッチのローカル境界を求められる矩形と変位範囲に限る。
+    const bool validRectangle = Finite(surface.localMin) && Finite(surface.localMax)
+        && surface.localMax.x > surface.localMin.x && surface.localMax.y > surface.localMin.y;
+    if (!validRectangle) {
         return false;
-    for (const auto& row : surface.worldMatrix.m)
-        for (float value : row)
-            if (!std::isfinite(value)) return false;
+    }
+    const bool validDisplacement = std::isfinite(surface.minHeight) && std::isfinite(surface.maxHeight)
+        && surface.minHeight <= surface.maxHeight
+        && std::isfinite(surface.horizontalDisplacement) && surface.horizontalDisplacement >= 0.0f;
+    if (!validDisplacement) {
+        return false;
+    }
+
+    // 四分木の格子と予算を確認してから、分割を判定する画面幅と近景の設定を確認する。
+    const bool validSubdivision = ValidResolution(settings.cellsPerPatch)
+        && settings.maxDepth <= MAX_DEPTH && settings.maxPatches > 0 && settings.maxPatches <= MAX_PATCHES;
+    if (!validSubdivision) {
+        return false;
+    }
+    const bool validLodDistances = std::isfinite(settings.targetCellPixels) && settings.targetCellPixels > 0.0f
+        && std::isfinite(settings.nearDistance) && settings.nearDistance >= 0.0f
+        && std::isfinite(settings.nearCellSize) && settings.nearCellSize > 0.0f;
+    if (!validLodDistances) {
+        return false;
+    }
+    const bool validMorphTransition = !settings.morphEnabled || (std::isfinite(settings.morphTransitionWidth)
+        && settings.morphTransitionWidth >= 0.01f && settings.morphTransitionWidth <= 1.0f);
+    if (!validMorphTransition) {
+        return false;
+    }
+
+    // 視線深度と投影セル幅の計算に使うカメラ値を確認する。
+    if (!Finite(view.cameraPosition) || !Finite(view.cameraForward)) {
+        return false;
+    }
+    const float forwardLengthSquared = view.cameraForward.LengthSq();
+    if (!std::isfinite(forwardLengthSquared) || forwardLengthSquared <= 1.0e-8f) {
+        return false;
+    }
+    const bool validProjection = std::isfinite(view.projectionScalePixels) && view.projectionScalePixels > 0.0f
+        && std::isfinite(view.minProjectionDistance) && view.minProjectionDistance > 0.0f;
+    if (!validProjection) {
+        return false;
+    }
+
+    // ワールド変換は各軸が有限の長さを持つアフィン行列に限る。
+    for (const auto& row : surface.worldMatrix.m) {
+        for (float value : row) {
+            if (!std::isfinite(value)) {
+                return false;
+            }
+        }
+    }
     if (surface.worldMatrix.m[3][0] != 0.0f || surface.worldMatrix.m[3][1] != 0.0f
-        || surface.worldMatrix.m[3][2] != 0.0f || surface.worldMatrix.m[3][3] != 1.0f)
+        || surface.worldMatrix.m[3][2] != 0.0f || surface.worldMatrix.m[3][3] != 1.0f) {
         return false;
-    if (!Finite(surface.localMax - surface.localMin)) return false;
+    }
+    if (!Finite(surface.localMax - surface.localMin)) {
+        return false;
+    }
     for (int column = 0; column < 3; ++column) {
         const float lengthSquared = Axis(surface.worldMatrix, column).LengthSq();
-        if (!std::isfinite(lengthSquared) || lengthSquared <= 0.0f) return false;
+        if (!std::isfinite(lengthSquared) || lengthSquared <= 0.0f) {
+            return false;
+        }
     }
     return true;
 }
@@ -175,11 +220,15 @@ bool ValidInput(const SurfacePatchSurface& surface, const SurfacePatchLodSetting
 bool CacheableInput(const SurfacePatchSurface& surface, const SurfacePatchLodSettings& settings,
     const SurfacePatchView& view)
 {
-    if (!ValidInput(surface, settings, view) || std::fegetround() < 0) return false;
+    if (!ValidInput(surface, settings, view) || std::fegetround() < 0) {
+        return false;
+    }
     if (view.frustum) {
         for (int index = 0; index < math::Frustum::PLANE_COUNT; ++index) {
             const auto plane = view.frustum->GetPlane(index);
-            if (!Finite(plane.normal) || !std::isfinite(plane.distance)) return false;
+            if (!Finite(plane.normal) || !std::isfinite(plane.distance)) {
+                return false;
+            }
         }
     }
     return true;
@@ -202,7 +251,7 @@ SurfacePatch MakePatch(const SelectionContext& context, const Node& node)
                        surface.localMin.y + extent.y * patch.uvMax.y };
     patch.cellSize = context.cellSizes[node.depth];
     patch.morphCellSize = patch.cellSize;
-    /// @note 各階層の移動量は幾何級数で各軸 2 root cell 未満。余白は保守的な視錐台カリング用。
+    // 各階層の移動量は幾何級数で各軸 2 root cell 未満。余白は保守的な視錐台カリング用。
     /// @see Docs/design/surface-patch-lod.md Morph後boundsはカリングに使い、LOD密度は基準タイルで決める。
     const float morphPaddingX = context.settings.morphEnabled
         ? 2.0f * context.extent.x / static_cast<float>(context.settings.cellsPerPatch) : 0.0f;
@@ -235,7 +284,9 @@ void WorldBounds(const SurfacePatchSurface& surface, math::Vector3 localMin, mat
 
 bool Visible(const SurfacePatchSurface& surface, const SurfacePatch& patch, const SurfacePatchView& view)
 {
-    if (!view.frustum) return true;
+    if (!view.frustum) {
+        return true;
+    }
     math::Vector3 center, halfExtents;
     WorldBounds(surface, patch.aabbMin, patch.aabbMax, center, halfExtents);
     return view.frustum->IntersectsAABB(center, halfExtents);
@@ -246,28 +297,34 @@ bool RefinementScore(const SelectionContext& context, const SurfacePatch& patch,
     const auto& surface = context.surface;
     const auto& settings = context.settings;
     const auto& view = context.view;
-    if (!Finite(patch.aabbMin) || !Finite(patch.aabbMax) || !Finite(patch.cellSize)) return false;
+    if (!Finite(patch.aabbMin) || !Finite(patch.aabbMax) || !Finite(patch.cellSize)) {
+        return false;
+    }
     math::Vector3 cullingCenter, cullingHalfExtents;
     WorldBounds(surface, patch.aabbMin, patch.aabbMax, cullingCenter, cullingHalfExtents);
     if (!Finite(cullingCenter) || !Finite(cullingHalfExtents)
-        || !Finite(cullingCenter - cullingHalfExtents) || !Finite(cullingCenter + cullingHalfExtents))
+        || !Finite(cullingCenter - cullingHalfExtents) || !Finite(cullingCenter + cullingHalfExtents)) {
         return false;
+    }
     if (view.frustum && !view.frustum->IntersectsAABB(cullingCenter, cullingHalfExtents)) {
         score = 0.0;
         return true;
     }
-    /// @note Keep morph-expanded bounds for visibility, but score density from the displaced base tile.
+    // Keep morph-expanded bounds for visibility, but score density from the displaced base tile.
     /// @see Docs/design/surface-patch-lod.md Morph bounds are a conservative culling envelope, not the source tile's view distance.
     const math::Vector3 lodMin{ patch.localMin.x - surface.horizontalDisplacement, surface.minHeight,
                                 patch.localMin.y - surface.horizontalDisplacement };
     const math::Vector3 lodMax{ patch.localMax.x + surface.horizontalDisplacement, surface.maxHeight,
                                 patch.localMax.y + surface.horizontalDisplacement };
-    if (!Finite(lodMin) || !Finite(lodMax)) return false;
+    if (!Finite(lodMin) || !Finite(lodMax)) {
+        return false;
+    }
     math::Vector3 center, halfExtents;
     WorldBounds(surface, lodMin, lodMax, center, halfExtents);
-    if (!Finite(center) || !Finite(halfExtents) || !Finite(center - halfExtents) || !Finite(center + halfExtents))
+    if (!Finite(center) || !Finite(halfExtents) || !Finite(center - halfExtents) || !Finite(center + halfExtents)) {
         return false;
-    /// @note 巨大な投影要求は無効な幾何ではない。float の積が溢れても予算で縮退できるよう倍精度で測る。
+    }
+    // 巨大な投影要求は無効な幾何ではない。float の積が溢れても予算で縮退できるよう倍精度で測る。
     const double dx = static_cast<double>(center.x) - view.cameraPosition.x;
     const double dy = static_cast<double>(center.y) - view.cameraPosition.y;
     const double dz = static_cast<double>(center.z) - view.cameraPosition.z;
@@ -277,7 +334,7 @@ bool RefinementScore(const SelectionContext& context, const SurfacePatch& patch,
         - std::abs(forward.y) * static_cast<double>(halfExtents.y)
         - std::abs(forward.z) * static_cast<double>(halfExtents.z);
     const double cell = (std::max)(patch.cellSize.x, patch.cellSize.y);
-    /// @note 分割後の 1 セルが画面で占めるピクセル数を見積もる。透視投影では奥行きが倍なら見かけの幅は半分になり、平行投影では変わらない。
+    // 分割後の 1 セルが画面で占めるピクセル数を見積もる。透視投影では奥行きが倍なら見かけの幅は半分になり、平行投影では変わらない。
     const double projected = cell * view.projectionScalePixels / (view.orthographic
         ? 1.0 : (std::max)(nearestDepth, static_cast<double>(view.minProjectionDistance)));
     score = projected / settings.targetCellPixels;
@@ -290,7 +347,9 @@ bool RefinementScore(const SelectionContext& context, const SurfacePatch& patch,
         double nearWeight = 0.0;
         if (settings.nearDistance > 0.0f) {
             const double fadeEnd = static_cast<double>(settings.nearDistance) * 2.0;
-            if (nearestDistance <= settings.nearDistance) nearWeight = 1.0;
+            if (nearestDistance <= settings.nearDistance) {
+                nearWeight = 1.0;
+            }
             else if (nearestDistance < fadeEnd) {
                 const double t = (nearestDistance - settings.nearDistance) / settings.nearDistance;
                 nearWeight = 1.0 - t * t * (3.0 - 2.0 * t);
@@ -298,21 +357,26 @@ bool RefinementScore(const SelectionContext& context, const SurfacePatch& patch,
         }
         score = (std::max)(score, cell / settings.nearCellSize * nearWeight);
     }
-    else if (settings.nearDistance > 0.0f && nearestDistance < settings.nearDistance)
+    else if (settings.nearDistance > 0.0f && nearestDistance < settings.nearDistance) {
         score = (std::max)(score, cell / settings.nearCellSize);
+    }
     return std::isfinite(score);
 }
 
 const Node* FindLeaf(const LeafMap& leaves, uint32_t maxDepth, int x, int z)
 {
     const int side = static_cast<int>(1u << maxDepth);
-    if (x < 0 || z < 0 || x >= side || z >= side) return nullptr;
+    if (x < 0 || z < 0 || x >= side || z >= side) {
+        return nullptr;
+    }
     for (uint32_t depth = maxDepth + 1u; depth > 0; --depth) {
         const uint32_t level = depth - 1u;
         const uint32_t shift = maxDepth - level;
         const Node probe{ level, static_cast<uint32_t>(x) >> shift, static_cast<uint32_t>(z) >> shift };
         const auto found = leaves.find(NodeKey(probe));
-        if (found != leaves.end()) return &found->second;
+        if (found != leaves.end()) {
+            return &found->second;
+        }
     }
     return nullptr;
 }
@@ -335,12 +399,15 @@ const Node* Neighbor(const LeafMap& leaves, uint32_t maxDepth, const Node& node,
 void PlanBalancedSplit(const LeafMap& leaves, uint32_t maxDepth, const Node& node,
                        std::unordered_set<uint64_t>& planned)
 {
-    if (!planned.insert(NodeKey(node)).second) return;
-    /// @note split 後は子が一段細かくなる。先に隣接 coarse leaf も分ける計画を作り、予算を一括判定する。
+    if (!planned.insert(NodeKey(node)).second) {
+        return;
+    }
+    // split 後は子が一段細かくなる。先に隣接 coarse leaf も分ける計画を作り、予算を一括判定する。
     for (uint32_t edge = 0; edge < 4; ++edge) {
         const Node* adjacent = Neighbor(leaves, maxDepth, node, edge);
-        if (adjacent && adjacent->depth < node.depth)
+        if (adjacent && adjacent->depth < node.depth) {
             PlanBalancedSplit(leaves, maxDepth, *adjacent, planned);
+        }
     }
 }
 
@@ -350,10 +417,13 @@ void ResolveBoundaries(const SelectionContext& context, const LeafMap& leaves,
     const auto& settings = context.settings;
     for (uint32_t edge = 0; edge < 4; ++edge) {
         const Node* adjacent = Neighbor(leaves, settings.maxDepth, node, edge);
-        if (!adjacent) continue;
+        if (!adjacent) {
+            continue;
+        }
         patch.edgeCellSize[edge] = Maximum(patch.cellSize, context.cellSizes[adjacent->depth]);
-        if (adjacent->depth < node.depth)
+        if (adjacent->depth < node.depth) {
             patch.coarseEdgeMask |= static_cast<uint8_t>(1u << edge);
+        }
     }
     const int span = static_cast<int>(1u << (settings.maxDepth - node.depth));
     const int beginX = static_cast<int>(node.x) * span;
@@ -365,12 +435,15 @@ void ResolveBoundaries(const SelectionContext& context, const LeafMap& leaves,
         const int inwardZ = (corner & 2u) ? -1 : 0;
         for (int dz = -1; dz <= 0; ++dz) {
             for (int dx = -1; dx <= 0; ++dx) {
-                /// @note 内側のセルは自身の leaf に属し、その cellSize は MakePatch で設定済み。
-                if (dx == inwardX && dz == inwardZ) continue;
+                // 内側のセルは自身の leaf に属し、その cellSize は MakePatch で設定済み。
+                if (dx == inwardX && dz == inwardZ) {
+                    continue;
+                }
                 const Node* incident = FindLeaf(leaves, settings.maxDepth, cornerX + dx, cornerZ + dz);
-                if (incident)
+                if (incident) {
                     patch.cornerCellSize[corner] = Maximum(patch.cornerCellSize[corner],
                         context.cellSizes[incident->depth]);
+                }
             }
         }
     }
@@ -396,7 +469,9 @@ bool IsSurfacePatchVisible(const SurfacePatchSurface& surface, const SurfacePatc
 bool SelectSurfacePatches(const SurfacePatchSurface& surface, const SurfacePatchLodSettings& settings,
                           const SurfacePatchView& view, SurfacePatchSelection& out)
 {
-    if (!ValidInput(surface, settings, view)) return false;
+    if (!ValidInput(surface, settings, view)) {
+        return false;
+    }
     SelectionContext context{ surface, settings, view, surface.localMax - surface.localMin,
         view.cameraForward.Normalized() };
     const float cells = static_cast<float>(settings.cellsPerPatch);
@@ -404,9 +479,12 @@ bool SelectSurfacePatches(const SurfacePatchSurface& surface, const SurfacePatch
         context.extent.x / cells * Axis(surface.worldMatrix, 0).Length(),
         context.extent.y / cells * Axis(surface.worldMatrix, 2).Length()
     };
-    if (!Finite(rootCell)) return false;
-    for (uint32_t depth = 0; depth <= settings.maxDepth; ++depth)
+    if (!Finite(rootCell)) {
+        return false;
+    }
+    for (uint32_t depth = 0; depth <= settings.maxDepth; ++depth) {
         context.cellSizes[depth] = rootCell * (1.0f / static_cast<float>(1u << depth));
+    }
     const Node root{};
     SurfacePatchSelection result;
     LeafMap leaves;
@@ -415,37 +493,49 @@ bool SelectSurfacePatches(const SurfacePatchSurface& surface, const SurfacePatch
     std::priority_queue<Candidate> candidates;
     auto schedule = [&](const Node& node) {
         double score = 0.0;
-        if (!RefinementScore(context, MakePatch(context, node), score)) return false;
-        if (score <= 1.0) return true;
+        if (!RefinementScore(context, MakePatch(context, node), score)) {
+            return false;
+        }
+        if (score <= 1.0) {
+            return true;
+        }
         if (node.depth >= settings.maxDepth) { result.qualityLimited = true; return true; }
         candidates.push({ score, NodeKey(node) });
         return true;
     };
-    if (!schedule(root)) return false;
+    if (!schedule(root)) {
+        return false;
+    }
     std::unordered_set<uint64_t> planned;
     std::vector<Node> parents;
     while (!candidates.empty()) {
         const Candidate candidate = candidates.top();
         candidates.pop();
         const auto found = leaves.find(candidate.key);
-        if (found == leaves.end()) continue;
+        if (found == leaves.end()) {
+            continue;
+        }
         planned.clear();
         PlanBalancedSplit(leaves, settings.maxDepth, found->second, planned);
         if (leaves.size() + planned.size() * 3u > settings.maxPatches) {
             result.qualityLimited = true;
             continue;
         }
-        /// @note 計画は既存 leaf だけを含む。順序に依らず同じ四分割となり、可視外の境界も維持する。
+        // 計画は既存 leaf だけを含む。順序に依らず同じ四分割となり、可視外の境界も維持する。
         parents.clear();
         parents.reserve(planned.size());
-        for (uint64_t key : planned) parents.push_back(leaves.at(key));
+        for (uint64_t key : planned) {
+            parents.push_back(leaves.at(key));
+        }
         for (const Node& parent : parents) {
             leaves.erase(NodeKey(parent));
             for (uint32_t z = 0; z < 2; ++z) {
                 for (uint32_t x = 0; x < 2; ++x) {
                     const Node child{ parent.depth + 1u, parent.x * 2u + x, parent.z * 2u + z };
                     leaves.emplace(NodeKey(child), child);
-                    if (!schedule(child)) return false;
+                    if (!schedule(child)) {
+                        return false;
+                    }
                 }
             }
         }
@@ -453,7 +543,9 @@ bool SelectSurfacePatches(const SurfacePatchSurface& surface, const SurfacePatch
     result.patches.reserve(leaves.size());
     for (const auto& [key, node] : leaves) {
         SurfacePatch patch = MakePatch(context, node);
-        if (!view.includeCulledPatches && !Visible(surface, patch, view)) continue;
+        if (!view.includeCulledPatches && !Visible(surface, patch, view)) {
+            continue;
+        }
         ResolveBoundaries(context, leaves, node, patch);
         result.patches.push_back(std::move(patch));
     }
@@ -479,7 +571,9 @@ std::shared_ptr<const SurfacePatchSelection> SurfacePatchSelectionCache::FindOwn
     }
     const SelectionSignature signature = MakeSelectionSignature(surface, settings, view);
     for (auto& entry : m_entries) {
-        if (entry.signatureSize != signature.size || entry.signature != signature.words) continue;
+        if (entry.signatureSize != signature.size || entry.signature != signature.words) {
+            continue;
+        }
         entry.lastUse = ++m_useClock;
         return entry.selection;
     }
@@ -491,7 +585,9 @@ void SurfacePatchSelectionCache::Store(const SurfacePatchSurface& surface,
     const SurfacePatchSelection& selection)
 {
     if (!CacheableInput(surface, settings, view)) { Clear(); return; }
-    if (selection.patches.size() > MAX_CACHED_PATCHES) return;
+    if (selection.patches.size() > MAX_CACHED_PATCHES) {
+        return;
+    }
     (void)Store(surface, settings, view, SurfacePatchSelection(selection));
 }
 
@@ -504,10 +600,14 @@ std::shared_ptr<const SurfacePatchSelection> SurfacePatchSelectionCache::Store(c
         return owned;
     }
     const auto capacity = owned->patches.capacity();
-    if (capacity > MAX_CACHED_PATCHES) return owned;
+    if (capacity > MAX_CACHED_PATCHES) {
+        return owned;
+    }
     const SelectionSignature signature = MakeSelectionSignature(surface, settings, view);
     for (auto it = m_entries.begin(); it != m_entries.end(); ++it) {
-        if (it->signatureSize != signature.size || it->signature != signature.words) continue;
+        if (it->signatureSize != signature.size || it->signature != signature.words) {
+            continue;
+        }
         m_cachedPatchCapacity -= it->selection->patches.capacity();
         m_entries.erase(it);
         break;
@@ -553,21 +653,35 @@ SurfacePatchSelectionCacheOwner::Lease::Lease(SurfacePatchSelectionCacheOwner& o
             && slot.key.outputId == key.outputId && slot.key.outputGeneration == key.outputGeneration;
         if (sameOwner && (slot.key.resourceEpoch != key.resourceEpoch
             || (sameView && slot.key.sceneGeneration != key.sceneGeneration))) {
-            if (slot.inUse) slot.discardOnReturn = true;
+            if (slot.inUse) {
+                slot.discardOnReturn = true;
+            }
             else { slot.cache.Clear(); slot.occupied = false; }
         }
-        if (sameView && slot.inUse) busyView = true;
+        if (sameView && slot.inUse) {
+            busyView = true;
+        }
     }
-    if (busyView) return;
+    if (busyView) {
+        return;
+    }
     Slot* chosen = nullptr;
     for (auto& slot : owner.m_slots) {
-        if (slot.inUse) continue;
+        if (slot.inUse) {
+            continue;
+        }
         if (slot.occupied && slot.key == key) { chosen = &slot; break; }
         if (!chosen || (!slot.occupied && chosen->occupied)
-            || (slot.occupied == chosen->occupied && slot.lastUse < chosen->lastUse)) chosen = &slot;
+            || (slot.occupied == chosen->occupied && slot.lastUse < chosen->lastUse)) {
+            chosen = &slot;
+        }
     }
-    if (!chosen) return;
-    if (!chosen->occupied || !(chosen->key == key)) chosen->cache.Clear();
+    if (!chosen) {
+        return;
+    }
+    if (!chosen->occupied || !(chosen->key == key)) {
+        chosen->cache.Clear();
+    }
     chosen->key = key;
     chosen->occupied = chosen->inUse = true;
     chosen->discardOnReturn = false;
@@ -579,7 +693,9 @@ SurfacePatchSelectionCacheOwner::Lease::Lease(SurfacePatchSelectionCacheOwner& o
 
 SurfacePatchSelectionCacheOwner::Lease::~Lease()
 {
-    if (!m_slot) return;
+    if (!m_slot) {
+        return;
+    }
     m_execution->Swap(m_slot->cache);
     if (m_slot->discardOnReturn) {
         m_slot->cache.Clear();
@@ -613,7 +729,7 @@ void VisitSurfacePatchFans(uint32_t cellsPerPatch, uint8_t coarseEdgeMask, Visit
     constexpr std::array<std::array<uint32_t, 2>, 8> perimeterOffsets = {{
         {0, 0}, {0, 1}, {0, 2}, {1, 2}, {2, 2}, {2, 1}, {2, 0}, {1, 0}
     }};
-    /// @note 2x2 セルの中心から辺を扇状に張る。複数辺の縫合が角で交わっても内部 T 接合を作らない。
+    // 2x2 セルの中心から辺を扇状に張る。複数辺の縫合が角で交わっても内部 T 接合を作らない。
     for (uint32_t z = 0; z < cellsPerPatch; z += 2u) {
         for (uint32_t x = 0; x < cellsPerPatch; x += 2u) {
             std::array<uint32_t, 8> perimeter{};
@@ -624,7 +740,9 @@ void VisitSurfacePatchFans(uint32_t cellsPerPatch, uint8_t coarseEdgeMask, Visit
                     || (px == cellsPerPatch && (coarseEdgeMask & 2u))) && (pz & 1u);
                 const bool omitX = ((pz == 0 && (coarseEdgeMask & 4u))
                     || (pz == cellsPerPatch && (coarseEdgeMask & 8u))) && (px & 1u);
-                if (!omitX && !omitZ) perimeter[count++] = pz * columns + px;
+                if (!omitX && !omitZ) {
+                    perimeter[count++] = pz * columns + px;
+                }
             }
             const uint32_t center = (z + 1u) * columns + x + 1u;
             visit(center, std::span<const uint32_t>{perimeter.data(), count});
@@ -632,17 +750,20 @@ void VisitSurfacePatchFans(uint32_t cellsPerPatch, uint8_t coarseEdgeMask, Visit
     }
 }
 
-} /// @note namespace
+} // namespace
 
 bool BuildSurfacePatchIndices(uint32_t cellsPerPatch, uint8_t coarseEdgeMask,
                              std::vector<uint32_t>& outIndices)
 {
-    if (!ValidResolution(cellsPerPatch) || (coarseEdgeMask & ~ALL_EDGES) != 0) return false;
+    if (!ValidResolution(cellsPerPatch) || (coarseEdgeMask & ~ALL_EDGES) != 0) {
+        return false;
+    }
     std::vector<uint32_t> indices;
     indices.reserve(static_cast<size_t>(cellsPerPatch) * cellsPerPatch * 6u);
     VisitSurfacePatchFans(cellsPerPatch, coarseEdgeMask, [&](uint32_t center, std::span<const uint32_t> perimeter) {
-        for (size_t edge = 0; edge < perimeter.size(); ++edge)
+        for (size_t edge = 0; edge < perimeter.size(); ++edge) {
             indices.insert(indices.end(), {center, perimeter[edge], perimeter[(edge + 1u) % perimeter.size()]});
+        }
     });
     outIndices = std::move(indices);
     return true;
@@ -651,23 +772,28 @@ bool BuildSurfacePatchIndices(uint32_t cellsPerPatch, uint8_t coarseEdgeMask,
 bool BuildSurfacePatchStripIndices(uint32_t cellsPerPatch, uint8_t coarseEdgeMask,
     std::vector<uint32_t>& outIndices)
 {
-    if (!ValidResolution(cellsPerPatch) || (coarseEdgeMask & ~ALL_EDGES) != 0) return false;
+    if (!ValidResolution(cellsPerPatch) || (coarseEdgeMask & ~ALL_EDGES) != 0) {
+        return false;
+    }
     constexpr size_t FACES_PER_STRIP = 3;
-    /// @note 8 面の扇は最大 3 本に分かれ、各 Strip に追加 2 頂点と再開値が要る。
+    // 8 面の扇は最大 3 本に分かれ、各 Strip に追加 2 頂点と再開値が要る。
     constexpr size_t MAX_INDICES_PER_FAN = 8 + 3 * 3;
     const size_t fansPerAxis = cellsPerPatch / 2u;
     std::vector<uint32_t> indices;
     indices.reserve(fansPerAxis * fansPerAxis * MAX_INDICES_PER_FAN - 1u);
     VisitSurfacePatchFans(cellsPerPatch, coarseEdgeMask, [&](uint32_t center, std::span<const uint32_t> perimeter) {
         const size_t count = perimeter.size();
-        /// @note List と同じ扇・面順を保つ。中心を 3 番目に置くと交互の巻き順で連続する 3 面を表せる。
+        // List と同じ扇・面順を保つ。中心を 3 番目に置くと交互の巻き順で連続する 3 面を表せる。
         /// @see https://learn.microsoft.com/en-us/windows/win32/direct3d9/triangle-strips Triangle Strips の面の巻き順。
         for (size_t edge = 0; edge < count; edge += FACES_PER_STRIP) {
-            if (!indices.empty()) indices.push_back(STRIP_CUT);
+            if (!indices.empty()) {
+                indices.push_back(STRIP_CUT);
+            }
             indices.insert(indices.end(), {perimeter[edge], perimeter[(edge + 1u) % count], center});
             const size_t end = (std::min)(count, edge + FACES_PER_STRIP);
-            for (size_t next = edge + 1u; next < end; ++next)
+            for (size_t next = edge + 1u; next < end; ++next) {
                 indices.push_back(perimeter[(next + 1u) % count]);
+            }
         }
     });
     outIndices = std::move(indices);
@@ -676,12 +802,16 @@ bool BuildSurfacePatchStripIndices(uint32_t cellsPerPatch, uint8_t coarseEdgeMas
 
 bool BuildRegularSurfaceStripIndices(uint32_t cellsX, uint32_t cellsZ, std::vector<uint32_t>& outIndices)
 {
-    if (cellsX == 0 || cellsZ == 0 || cellsX > 512 || cellsZ > 512) return false;
+    if (cellsX == 0 || cellsZ == 0 || cellsX > 512 || cellsZ > 512) {
+        return false;
+    }
     const uint32_t columns = cellsX + 1u;
     std::vector<uint32_t> strip;
     strip.reserve(static_cast<size_t>(2u * columns + 1u) * cellsZ - 1u);
     for (uint32_t z = 0; z < cellsZ; ++z) {
-        if (z != 0) strip.push_back(STRIP_CUT);
+        if (z != 0) {
+            strip.push_back(STRIP_CUT);
+        }
         for (uint32_t x = 0; x < columns; ++x) {
             strip.push_back(z * columns + x);
             strip.push_back((z + 1u) * columns + x);
@@ -695,12 +825,21 @@ math::Vector2 ResolveSurfacePatchCellSize(const SurfacePatch& patch, math::Vecto
 {
     const bool minX = unitUv.x <= 0.0f, maxX = unitUv.x >= 1.0f;
     const bool minZ = unitUv.y <= 0.0f, maxZ = unitUv.y >= 1.0f;
-    if ((minX || maxX) && (minZ || maxZ))
+    if ((minX || maxX) && (minZ || maxZ)) {
         return patch.cornerCellSize[(maxX ? 1u : 0u) + (maxZ ? 2u : 0u)];
-    if (minX) return patch.edgeCellSize[0];
-    if (maxX) return patch.edgeCellSize[1];
-    if (minZ) return patch.edgeCellSize[2];
-    if (maxZ) return patch.edgeCellSize[3];
+    }
+    if (minX) {
+        return patch.edgeCellSize[0];
+    }
+    if (maxX) {
+        return patch.edgeCellSize[1];
+    }
+    if (minZ) {
+        return patch.edgeCellSize[2];
+    }
+    if (maxZ) {
+        return patch.edgeCellSize[3];
+    }
     return patch.cellSize;
 }
 

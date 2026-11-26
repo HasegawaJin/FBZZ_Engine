@@ -26,7 +26,7 @@ FBZZ_TEX2D(texNormal, TEX_NORMAL_SLOT);
 FBZZ_TEX2D(texMetallicRough, TEX_METALLIC_ROUGH_SLOT);
 FBZZ_TEX2D(texEmissive, TEX_EMISSIVE_SLOT);
 FBZZ_TEX2D(texAO, TEX_AO_SLOT);
-FBZZ_TEX2D(texLeafWetness, 7);
+FBZZ_TEX2D(texLeafWetness, SRV_LEAF_WETNESS_SLOT);
 SamplerState sampDefault      : register(SAMPLER_DEFAULT);
 
 /// @brief 本体。入口だけが変種ごとに違い、変換そのものは 1 か所に置く。

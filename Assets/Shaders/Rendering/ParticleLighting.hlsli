@@ -17,7 +17,7 @@
 #include "Common/BindlessIndices.hlsli"
 
 /// @note 6 方向ライトマップの Negative 側 (左 / 下 / 手前 / 発光マスク)。Positive は albedo (t0)。
-FBZZ_TEX2D(gSixWayNegative, TEX_EMISSIVE_SLOT);
+FBZZ_TEX2D(gSixWayNegative, SRV_PARTICLE_NEGATIVE_SLOT);
 /// @note six-way directional luminance を ramp の色相へ戻す補助アトラス。
 FBZZ_TEX2D(gSixWayAlbedoColor, TEX_PARTICLE_SIX_WAY_COLOR_SLOT);
 /// @note six-way emission RGB。RGB は既に積分・ソフトニー済みで、W の scale だけを適用する。

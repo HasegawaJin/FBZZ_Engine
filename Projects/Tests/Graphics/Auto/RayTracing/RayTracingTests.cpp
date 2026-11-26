@@ -148,7 +148,9 @@ protected:
             renderer::BlendMode::OPAQUE_BLEND, renderer::DepthMode::DEPTH_OFF});
         EXPECT_TRUE(compute.IsValid() && copy.IsValid() && input.IsValid() && output.IsValid()
             && target.IsValid() && state.IsValid());
-        if (!compute.IsValid() || !copy.IsValid() || !target.IsValid()) return {};
+        if (!compute.IsValid() || !copy.IsValid() || !target.IsValid()) {
+            return {};
+        }
         renderer::ComputeCall dispatch;
         dispatch.shader = compute;
         dispatch.accelerationStructures[0] = topLevel;
@@ -168,7 +170,7 @@ protected:
             resources.Release(bottomLevel);
             EXPECT_EQ(resources.Get(topLevel), nullptr);
             EXPECT_EQ(resources.Get(bottomLevel), nullptr);
-            /// @note 同じ Dispatch の stale TLAS は GPU を触る前に拒否される。診断ログは想定内。
+            // 同じ Dispatch の stale TLAS は GPU を触る前に拒否される。診断ログは想定内。
             device.Dispatch(dispatch, resources);
         }
         EndFrame();
@@ -193,7 +195,7 @@ protected:
 private:
     void OnLog(const core::LogEntry& entry) override
     {
-        /// @note GpuValidation::DrainStoredMessages の severity だけを拾い、負のテストの RHI 診断は除く。
+        // GpuValidation::DrainStoredMessages の severity だけを拾い、負のテストの RHI 診断は除く。
         if (entry.message.starts_with("  [WARNING]") || entry.message.starts_with("  [ERROR]")
             || entry.message.starts_with("  [CORRUPTION]"))
             ADD_FAILURE() << entry.message;
@@ -270,7 +272,7 @@ TEST_F(RayTracingTest, BuildsFromTheLatestUpdatedVertexDataAndRejectsRepeatedBui
     const auto updatedBottom = CreateBottomLevel({vertices, {}, 0, 3});
     const auto updatedTop = CreateTopLevel(updatedBottom);
     BeginFrame();
-    /// @note この拒否は immutable AS 契約の検証であり、診断ログが出ても想定内。
+    // この拒否は immutable AS 契約の検証であり、診断ログが出ても想定内。
     EXPECT_FALSE(device.BuildAccelerationStructure(originalBottom, resources));
     ASSERT_TRUE(device.BuildAccelerationStructure(updatedBottom, resources));
     ASSERT_TRUE(device.BuildAccelerationStructure(updatedTop, resources));
@@ -289,7 +291,7 @@ TEST_F(RayTracingTest, RejectsBuildsOutsideDirectFrameAndWithStaleInputs)
     const auto bottomLevel = CreateBottomLevel({vertices, {}, 0, 3});
     const auto topLevel = CreateTopLevel(bottomLevel);
     ASSERT_TRUE(bottomLevel.IsValid() && topLevel.IsValid());
-    /// @note ここでの失敗と診断ログは、frame・queue・世代の契約を意図的に破る負のテスト。
+    // ここでの失敗と診断ログは、frame・queue・世代の契約を意図的に破る負のテスト。
     EXPECT_FALSE(device.BuildAccelerationStructure(bottomLevel, resources));
     BeginFrame();
     EXPECT_FALSE(device.BuildAccelerationStructure(topLevel, resources));
@@ -330,7 +332,7 @@ TEST_F(RayTracingTest, RejectsInvalidGeometryRangesAndInstanceTransforms)
     const auto staleIndexStructure = CreateBottomLevel({vertices, updatedIndexBuffer, 0, 3, 0, 0, 3});
     ASSERT_TRUE(staleIndexStructure.IsValid());
     resources.Update(updatedIndexBuffer, invalidIndices, sizeof(invalidIndices));
-    /// @note 不正な範囲・値は GPU コマンドになる前に拒否される。診断ログは想定内。
+    // 不正な範囲・値は GPU コマンドになる前に拒否される。診断ログは想定内。
     for (const renderer::RayTriangleGeometry invalid : {
             renderer::RayTriangleGeometry{vertices, {}, 1, 3},
             renderer::RayTriangleGeometry{vertices, {}, 0, 2},
@@ -608,9 +610,9 @@ TEST_F(RayTracingTest, FailedTlasRebuildDoesNotRetireReusedImmutableTablesOrPubl
                 std::pair<std::string, std::uint64_t>{allocation.allocatorName, allocation.allocationId});
         return identities;
     };
-    /// @note Allocation identities also detect a leaked candidate masked by retiring an unrelated resource or reusing its address.
+    // Allocation identities also detect a leaked candidate masked by retiring an unrelated resource or reusing its address.
     const auto liveBefore = collectLiveResources();
-    /// @note A rejected DIRECT build retires only its new TLAS and changed table; the reused counterpart and prior entry remain live but are not published as current.
+    // A rejected DIRECT build retires only its new TLAS and changed table; the reused counterpart and prior entry remain live but are not published as current.
     for (const bool changeHit : {false, true}) {
         SCOPED_TRACE(changeHit);
         scene.instances[0].objectId.generation = 7 + (changeHit ? 1u : 0u);
@@ -670,7 +672,10 @@ TEST_F(RayTracingTest, SameHandleTextureReplacementRejectsStaleContentAndUpdates
     context.experimentalRayTracingEnabled = true;
     renderer::RayGeometryCache cache;
     const auto root = std::filesystem::path(FBZZ_GRAPHICS_SHADER_ROOT);
-    const auto shader = resources.LoadShader((root / "../../Projects/Tests/Graphics/Shaders/RayMaterialRead.cs.hlsl").generic_string());
+    // DXC の共有 include を解決できるよう、テストシェーダーのパスに Assets/Shaders からの相対移動を残さない。
+    const auto shaderPath = (root / "../../Projects/Tests/Graphics/Shaders/RayMaterialRead.cs.hlsl").lexically_normal();
+    const auto shader = resources.LoadShader(shaderPath.generic_string());
+    ASSERT_TRUE(shader) << shaderPath.generic_string();
     const auto copy = resources.LoadShader((root / "PostProcess/Color/CopyColor.hlsl").generic_string());
     const auto output = resources.CreateComputeTexture(4, 1);
     const auto target = resources.CreateRenderTarget(4, 1, {1, renderer::Format::RGBA16F, false});
@@ -679,7 +684,7 @@ TEST_F(RayTracingTest, SameHandleTextureReplacementRejectsStaleContentAndUpdates
     struct MaterialConstants { float uv[2]{0.5f, 0.5f}; uint32_t mode = 0, reserved = 0; } constants;
     const auto cb = resources.CreateConstantBuffer(sizeof(constants));
     resources.Update(cb, &constants, sizeof(constants));
-    ASSERT_TRUE(shader && copy && output && target && pipeline && cb && texture && replacement);
+    ASSERT_TRUE(copy && output && target && pipeline && cb && texture && replacement);
     const auto readSurface = [&](const renderer::RaySceneGpu& gpu) {
         renderer::ComputeCall call;
         call.shader = shader; call.constantBuffers[0] = cb;
@@ -716,7 +721,7 @@ TEST_F(RayTracingTest, SameHandleTextureReplacementRejectsStaleContentAndUpdates
     const auto updated = cache.Prepare(scene, context);
     ASSERT_TRUE(updated.ready);
     EXPECT_EQ(updated.topLevel, first.topLevel); EXPECT_EQ(updated.hitRecords, first.hitRecords);
-    /// @note Capture has completed the old fence; descriptor reuse keeps the packed GPU record unchanged without retaining old texture contents.
+    // Capture has completed the old fence; descriptor reuse keeps the packed GPU record unchanged without retaining old texture contents.
     if (resources.Get(texture)->GetBindlessIndex() != firstDescriptor)
         EXPECT_NE(updated.surfaceMaterials, first.surfaceMaterials);
     else EXPECT_EQ(updated.surfaceMaterials, first.surfaceMaterials);

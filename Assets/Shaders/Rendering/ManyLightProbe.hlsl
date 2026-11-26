@@ -2,10 +2,11 @@
 /// @brief   Actual clustered culling and shared PBR light iteration expose HDR energy and evaluation count.
 /// @author  Hasegawa Jin
 /// @date    2026-10-09
+#include "Common/Binding.hlsli"
 #include "Common/Constants.hlsli"
 #include "Common/Fullscreen.hlsli"
 #include "Rendering/Lighting.hlsli"
-cbuffer ManyLightProbeConstants : register(b13)
+cbuffer ManyLightProbeConstants : register(FBZZ_REGISTER(b, CB_MANY_LIGHT_PROBE_SLOT))
 {
     float4 g_probePosition;
     float4 g_probeMaterial;

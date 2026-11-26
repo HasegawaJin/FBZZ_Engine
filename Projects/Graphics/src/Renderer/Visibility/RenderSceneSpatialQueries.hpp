@@ -36,9 +36,13 @@ public:
     {
         auto bounded = request;
         bounded.maxNodes = (std::min)(bounded.maxNodes, RENDER_BVH_DEBUG_MAX_NODES);
-        if (bounded.sceneGeneration == 0) bounded.enabled = false;
+        if (bounded.sceneGeneration == 0) {
+            bounded.enabled = false;
+        }
         std::lock_guard lock(m_mutex);
-        if (bounded == m_request) return false;
+        if (bounded == m_request) {
+            return false;
+        }
         m_request = bounded;
         ++m_revision;
         m_snapshot.reset();
@@ -49,7 +53,9 @@ public:
     [[nodiscard]] BvhDebugCaptureTicket Begin(uint64_t sceneGeneration, uint32_t viewOutputId = 0,
         uint32_t viewOutputGeneration = 0) const
     {
-        if (!m_enabled.load(std::memory_order_acquire)) return {};
+        if (!m_enabled.load(std::memory_order_acquire)) {
+            return {};
+        }
         std::lock_guard lock(m_mutex);
         const bool matchingView = m_request.viewOutputId == 0 || (m_request.viewOutputId == viewOutputId
             && m_request.viewOutputGeneration == viewOutputGeneration);
@@ -59,13 +65,21 @@ public:
 
     void Publish(const BvhDebugCaptureTicket& ticket, std::shared_ptr<const RenderBvhDebugSnapshot> snapshot)
     {
-        if (!snapshot || ticket.revision == 0) return;
+        if (!snapshot || ticket.revision == 0) {
+            return;
+        }
         std::lock_guard lock(m_mutex);
         if (!m_request.enabled || ticket.revision != m_revision || snapshot->requestRevision != ticket.revision
-            || snapshot->sceneGeneration != m_request.sceneGeneration || snapshot->nodes.size() > m_request.maxNodes) return;
+            || snapshot->sceneGeneration != m_request.sceneGeneration || snapshot->nodes.size() > m_request.maxNodes) {
+            return;
+        }
         if (m_request.viewOutputId != 0 && (snapshot->viewOutputId != m_request.viewOutputId
-            || snapshot->viewOutputGeneration != m_request.viewOutputGeneration)) return;
-        if (m_snapshot && snapshot->contextFrameStamp < m_snapshot->contextFrameStamp) return;
+            || snapshot->viewOutputGeneration != m_request.viewOutputGeneration)) {
+            return;
+        }
+        if (m_snapshot && snapshot->contextFrameStamp < m_snapshot->contextFrameStamp) {
+            return;
+        }
         m_snapshot = std::move(snapshot);
     }
 
@@ -116,8 +130,8 @@ struct CandidateBatch {
 /// @note キャッシュの更新後も、返却済みの候補は各候補列が所有するスナップショットを指す。
 class RenderSceneSpatialCache {
 public:
-    /// @param padding 正のワールド境界半径に加える余白 [m]。負値は 0 として扱う。
-    /// @param frusta 候補を集める視錐台の和集合。各視錐台は呼び出し中だけ参照する。
+    /// @param[in] padding 正のワールド境界半径に加える余白 [m]。負値は 0 として扱う。
+    /// @param[in] frusta 候補を集める視錐台の和集合。各視錐台は呼び出し中だけ参照する。
     [[nodiscard]] CandidateBatch Collect(std::shared_ptr<const RenderScene> snapshot, float padding,
         std::span<const math::Frustum* const> frusta, const IndexOptions& options, bool validate = false,
         const RenderBvhDebugRequest* debugRequest = nullptr, RenderBvhDebugSnapshot* debugSnapshot = nullptr)
@@ -137,7 +151,9 @@ public:
             capture->examinedNodes = capture->selectionSourcesExamined = 0;
             capture->truncated = capture->selectedFound = capture->selectedLookupTruncated = false;
         }
-        if (!batch.snapshot || options.mode == QueryMode::LINEAR || batch.snapshot->sceneGeneration == 0) return batch;
+        if (!batch.snapshot || options.mode == QueryMode::LINEAR || batch.snapshot->sceneGeneration == 0) {
+            return batch;
+        }
         auto& slot = SlotFor(batch.snapshot->sceneGeneration);
         const bool sameOwner = !slot.owner.owner_before(batch.snapshot) && !batch.snapshot.owner_before(slot.owner);
         const bool samePublication = batch.snapshot->snapshotSerial != 0 && sameOwner
@@ -154,14 +170,16 @@ public:
                 bool canApply = knownJournal && matchingShape && !journal->fullReplacement && journal->baseVersion != 0
                     && journal->version > journal->baseVersion && slot.geometryVersion == journal->baseVersion;
                 if (canApply) {
-                    for (uint32_t ordinal : journal->changedObjectOrdinals)
+                    for (uint32_t ordinal : journal->changedObjectOrdinals) {
                         if (ordinal >= objects.size()) { canApply = false; break; }
+                    }
                 }
                 if (canApply) {
                     {
                         FBZZ_PROFILE_SCOPE("RenderMeshSpatial::SourceProjection");
-                        for (uint32_t ordinal : journal->changedObjectOrdinals)
+                        for (uint32_t ordinal : journal->changedObjectOrdinals) {
                             slot.sources[ordinal] = Project(objects[ordinal], padding);
+                        }
                     }
                     {
                         FBZZ_PROFILE_SCOPE("RenderMeshSpatial::WitnessAndUpdate");
@@ -174,7 +192,9 @@ public:
                         FBZZ_PROFILE_SCOPE("RenderMeshSpatial::SourceProjection");
                         slot.sources.clear();
                         slot.sources.reserve(objects.size());
-                        for (const auto& object : objects) slot.sources.push_back(Project(object, padding));
+                        for (const auto& object : objects) {
+                            slot.sources.push_back(Project(object, padding));
+                        }
                     }
                     {
                         FBZZ_PROFILE_SCOPE("RenderMeshSpatial::WitnessAndUpdate");
@@ -209,7 +229,9 @@ public:
             std::vector<uint32_t> reference;
             std::vector<MeshSource> currentSources;
             currentSources.reserve(batch.snapshot->Objects().size());
-            for (const auto& object : batch.snapshot->Objects()) currentSources.push_back(Project(object, padding));
+            for (const auto& object : batch.snapshot->Objects()) {
+                currentSources.push_back(Project(object, padding));
+            }
             RenderMeshSpatialIndex referenceIndex;
             auto referenceOptions = options;
             referenceOptions.mode = QueryMode::LINEAR;
@@ -224,7 +246,7 @@ public:
                 }
                 batch.fullScan = true;
                 batch.ordinals.clear();
-                /// @note 検証に失敗した形状の公開版は、後続の差分適用や同一版の再利用の基点にしない。
+                // 検証に失敗した形状の公開版は、後続の差分適用や同一版の再利用の基点にしない。
                 slot.geometryVersion = 0;
                 slot.owner.reset();
                 slot.serial = 0;
@@ -254,11 +276,20 @@ private:
 
     Slot& SlotFor(uint64_t generation)
     {
-        /// @note 最新の公開版が退役したシーンのスロットは、他シーンの問い合わせ時に解放する。
-        for (auto& slot : m_slots)
-            if (slot.generation != 0 && slot.generation != generation && slot.owner.expired()) slot = {};
-        for (auto& slot : m_slots) if (slot.generation == generation) return slot;
-        for (auto& slot : m_slots) if (slot.generation == 0) { slot.generation = generation; return slot; }
+        // 最新の公開版が退役したシーンのスロットは、他シーンの問い合わせ時に解放する。
+        for (auto& slot : m_slots) {
+            if (slot.generation != 0 && slot.generation != generation && slot.owner.expired()) {
+                slot = {};
+            }
+        }
+        for (auto& slot : m_slots) {
+            if (slot.generation == generation) {
+                return slot;
+            }
+        }
+        for (auto& slot : m_slots) {
+            if (slot.generation == 0) { slot.generation = generation; return slot; }
+        }
         auto& slot = m_slots[m_nextSlot];
         m_nextSlot = (m_nextSlot + 1) % m_slots.size();
         slot = {};

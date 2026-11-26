@@ -350,7 +350,7 @@ TEST_F(ThreadedRenderingTest, AdditionalNativeWindowCanRenderResizeAndClose)
     io.IniFilename = nullptr;
     io.ConfigFlags |= ImGuiConfigFlags_ViewportsEnable;
     m_bundle.imguiRenderer->ImGuiInit(m_window);
-    /// @note 実 OS window と swap chain を検証するが、テスト用の追加 window は表示しない。
+    // 実 OS window と swap chain を検証するが、テスト用の追加 window は表示しない。
     ImGui::GetPlatformIO().Platform_ShowWindow = [](ImGuiViewport*) {};
     for (uint64_t frame = 1; frame <= 6; ++frame) {
         Begin(frame);

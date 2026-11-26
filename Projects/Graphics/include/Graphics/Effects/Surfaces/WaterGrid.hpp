@@ -65,10 +65,15 @@ struct WaterGridAxisSample {
     assert(std::isfinite(focus));
     assert(std::isfinite(nearCellSize) && nearCellSize > 0.0f);
     const float half = extent * 0.5f;
-    if (coordinate <= 0.0f) return -half;
-    if (coordinate >= 1.0f) return half;
-    if (extent / static_cast<float>(resolution) <= nearCellSize)
+    if (coordinate <= 0.0f) {
+        return -half;
+    }
+    if (coordinate >= 1.0f) {
+        return half;
+    }
+    if (extent / static_cast<float>(resolution) <= nearCellSize) {
         return (coordinate * 2.0f - 1.0f) * half;
+    }
     const float fineLength = (std::min)(nearCellSize * static_cast<float>(resolution) * 0.5f, half);
     const float limitedFocus = (std::clamp)(focus, -half + fineLength, half - fineLength);
     const float snapped = std::floor(limitedFocus / nearCellSize + 0.5f) * nearCellSize;

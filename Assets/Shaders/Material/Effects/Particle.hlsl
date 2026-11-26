@@ -19,8 +19,8 @@ FBZZ_TEX2D(gParticleTex, TEX_ALBEDO_SLOT);
 /// @note 歪みベクトル専用ノーマルマップ。gEffectsFlags の FBZZ_PFX_DISTORTION_MAP で有効判定する。
 FBZZ_TEX2D(gDistortionTex, TEX_NORMAL_SLOT);
 FBZZ_TEX2D(gSceneDepth, TEX_DEPTH_SLOT);
-FBZZ_TEX2D(gSceneColor, 5);
-FBZZ_TEX2D(gMotionVectors, 6);
+FBZZ_TEX2D(gSceneColor, SRV_PARTICLE_SCENE_COLOR_SLOT);
+FBZZ_TEX2D(gMotionVectors, SRV_PARTICLE_MOTION_SLOT);
 /// @note 自己影の光源側密度 (R=Σα, G=Σα·深度)。ParticleSelfShadowDensity.hlsl が書く。
 FBZZ_TEX2D(gParticleDensity, TEX_PARTICLE_DENSITY_SLOT);
 /// @note 受け影用。Surface/Skinned マテリアルと同じスロット・同じ ComputeShadow を使う。

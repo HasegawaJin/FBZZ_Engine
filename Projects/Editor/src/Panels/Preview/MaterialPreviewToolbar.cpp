@@ -2,6 +2,7 @@
 /// @brief   材質プレビューの形状選択・表示チャンネル・撮影設定。
 /// @author  Hasegawa Jin
 /// @date    2026-11-23
+#include <Graphics/Renderer/Commands/ShaderBindingSlots.hpp>
 #include "MaterialPreviewChoices.hpp"
 #include <Editor/UI/Localization.hpp>
 
@@ -94,26 +95,32 @@ void DrawShapeStrip(mp::Shape& current)
                                    1, static_cast<int>(choices::SHAPES.size()));
     const float tileWidth = std::min(font * 6.0f, std::floor((width - (columns - 1) * gap) / columns));
     float labelWidth = 0.0f;
-    for (const auto shape : choices::SHAPES)
+    for (const auto shape : choices::SHAPES) {
         labelWidth = std::max(labelWidth, ImGui::CalcTextSize(LOCT(mp::ShapeLabel(shape))).x);
+    }
     const bool captions = tileWidth >= labelWidth + gap;
     const float glyphHeight = font * 1.55f;
     const float tileHeight = glyphHeight + style.FramePadding.y * 2.0f
                            + (captions ? font + style.ItemInnerSpacing.y : 0.0f);
     auto& draw = *ImGui::GetWindowDrawList();
     for (size_t index = 0; index < choices::SHAPES.size(); ++index) {
-        if (index % columns != 0) ImGui::SameLine(0.0f, gap);
+        if (index % columns != 0) {
+            ImGui::SameLine(0.0f, gap);
+        }
         const auto shape = choices::SHAPES[index];
         const char* name = mp::ShapeLabel(shape);
-        if (ImGui::InvisibleButton(name, { tileWidth, tileHeight }, ImGuiButtonFlags_EnableNav)) current = shape;
+        if (ImGui::InvisibleButton(name, { tileWidth, tileHeight }, ImGuiButtonFlags_EnableNav)) {
+            current = shape;
+        }
         const bool selected = current == shape;
         const auto min = ImGui::GetItemRectMin(), max = ImGui::GetItemRectMax();
         const auto fill = ImGui::IsItemActive() ? ImGuiCol_ButtonActive :
                           ImGui::IsItemHovered() ? ImGuiCol_ButtonHovered :
                           selected ? ImGuiCol_Header : ImGuiCol_FrameBg;
         draw.AddRectFilled(min, max, ImGui::GetColorU32(fill), style.FrameRounding);
-        if (selected)
+        if (selected) {
             draw.AddRect(min, max, ImGui::GetColorU32(ImGuiCol_CheckMark), style.FrameRounding);
+        }
         const ImVec2 center{ (min.x + max.x) * 0.5f, min.y + style.FramePadding.y + glyphHeight * 0.5f };
         DrawShapeGlyph(shape, center, std::min(glyphHeight, tileWidth) * 0.45f);
         const char* caption = LOCT(name);
@@ -128,11 +135,17 @@ void DrawShapeStrip(mp::Shape& current)
 template<typename T, size_t N>
 void DrawChoice(const char* id, T& current, const std::array<T, N>& options, const char* (*label)(T))
 {
-    if (!ImGui::BeginCombo(id, LOCT(label(current)))) return;
+    if (!ImGui::BeginCombo(id, LOCT(label(current)))) {
+        return;
+    }
     for (const auto value : options) {
         const bool selected = current == value;
-        if (ImGui::Selectable(LOC(label(value)), selected)) current = value;
-        if (selected) ImGui::SetItemDefaultFocus();
+        if (ImGui::Selectable(LOC(label(value)), selected)) {
+            current = value;
+        }
+        if (selected) {
+            ImGui::SetItemDefaultFocus();
+        }
     }
     ImGui::EndCombo();
 }
@@ -147,7 +160,9 @@ void DrawParallaxToggle(bool& enabled, bool hasHeightMap, bool active)
 {
     ImGui::BeginDisabled(!active);
     bool show = active && enabled;
-    if (ImGui::Checkbox(LOC("Parallax (POM)"), &show)) enabled = show;
+    if (ImGui::Checkbox(LOC("Parallax (POM)"), &show)) {
+        enabled = show;
+    }
     ImGui::EndDisabled();
     if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled | ImGuiHoveredFlags_ForTooltip))
         ImGui::SetTooltip("%s", LOCT(!hasHeightMap ? "Assign a Height Map in the Material Inspector." :
@@ -155,7 +170,7 @@ void DrawParallaxToggle(bool& enabled, bool hasHeightMap, bool active)
                       "Compare parallax at the current view angle."));
 }
 
-} /// @note namespace
+} // namespace
 
 void MaterialPreviewView::DrawToolbar(mp::Flavor flavor, bool gpuReady)
 {
@@ -170,13 +185,15 @@ void MaterialPreviewView::DrawToolbar(mp::Flavor flavor, bool gpuReady)
 
     const bool supportsParallax = gpuReady && m_gpu.parallaxDepthOffset != UINT32_MAX
         && (flavor == mp::Flavor::Surface || flavor == mp::Flavor::Skinned);
-    const bool hasHeightMap = supportsParallax && m_gpu.textures.size() > 5 && m_gpu.textures[5].IsValid();
+    const bool hasHeightMap = supportsParallax && m_gpu.textures.size() > 5 && m_gpu.textures[renderer::srv::GBUFFER0].IsValid();
     float depth = 0.0f;
-    if (hasHeightMap)
+    if (hasHeightMap) {
         std::memcpy(&depth, m_gpu.paramData.data() + m_gpu.parallaxDepthOffset, sizeof(depth));
+    }
     const bool parallaxActive = depth > 0.0f;
-    if (!mp::ChannelSupported(flavor, m_channel) || (m_channel == mp::Channel::HeightMap && !hasHeightMap))
+    if (!mp::ChannelSupported(flavor, m_channel) || (m_channel == mp::Channel::HeightMap && !hasHeightMap)) {
         m_channel = mp::Channel::Shaded;
+    }
 
     const auto& style = ImGui::GetStyle();
     const float comboPadding = ImGui::GetFrameHeight() + 2.0f * style.FramePadding.x;
@@ -198,17 +215,25 @@ void MaterialPreviewView::DrawToolbar(mp::Flavor flavor, bool gpuReady)
         ImGui::SetNextItemWidth(sameRow ? ImGui::GetContentRegionAvail().x - settingsWidth - style.ItemSpacing.x : -FLT_MIN);
         if (ImGui::BeginCombo("##Channel", channelCaption)) {
             for (auto channel : choices::CHANNELS) {
-                if (channel == mp::Channel::HeightMap && !hasHeightMap) continue;
+                if (channel == mp::Channel::HeightMap && !hasHeightMap) {
+                    continue;
+                }
                 const bool selected = channel == m_channel;
                 ImGui::BeginDisabled(!mp::ChannelSupported(flavor, channel));
-                if (ImGui::Selectable(LOC(mp::ChannelLabel(channel)), selected)) m_channel = channel;
-                if (selected) ImGui::SetItemDefaultFocus();
+                if (ImGui::Selectable(LOC(mp::ChannelLabel(channel)), selected)) {
+                    m_channel = channel;
+                }
+                if (selected) {
+                    ImGui::SetItemDefaultFocus();
+                }
                 ImGui::EndDisabled();
             }
             ImGui::EndCombo();
         }
         ImGui::SetItemTooltip("%s", LOCT("Channel"));
-        if (sameRow) ImGui::SameLine();
+        if (sameRow) {
+            ImGui::SameLine();
+        }
     }
 
     const auto workSize = ImGui::GetWindowViewport()->WorkSize;
@@ -241,15 +266,23 @@ void MaterialPreviewView::DrawToolbar(mp::Flavor flavor, bool gpuReady)
         }
         if (flavor != mp::Flavor::Unsupported) {
             ImGui::Separator();
-            if (supportsParallax && !parallaxActive) DrawParallaxToggle(m_showParallax, hasHeightMap, false);
-            if (ImGui::Button(LOC("Reset view"), { -FLT_MIN, 0 })) ResetView();
+            if (supportsParallax && !parallaxActive) {
+                DrawParallaxToggle(m_showParallax, hasHeightMap, false);
+            }
+            if (ImGui::Button(LOC("Reset view"), { -FLT_MIN, 0 })) {
+                ResetView();
+            }
             ImGui::SetItemTooltip("%s", LOCT("Restore the camera, lighting, channel and parallax preview."));
         }
         ImGui::EndCombo();
     }
     ImGui::SetItemTooltip("%s", LOCT("Preview settings"));
-    if (parallaxActive) DrawParallaxToggle(m_showParallax, hasHeightMap, true);
-    if (mp::UsesPreviewTime(flavor, true)) ImGui::Checkbox(LOC("Animate"), &m_animateWater);
+    if (parallaxActive) {
+        DrawParallaxToggle(m_showParallax, hasHeightMap, true);
+    }
+    if (mp::UsesPreviewTime(flavor, true)) {
+        ImGui::Checkbox(LOC("Animate"), &m_animateWater);
+    }
 }
 
-} /// @note namespace fbzz::editor
+} // namespace fbzz::editor

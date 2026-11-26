@@ -95,7 +95,7 @@ TEST_F(GraphicsStandaloneTest, EmbeddedErrorShadersDrawWithoutExternalFilesAndRe
             EXPECT_FALSE(resources.GetShaderCapabilities(material->shader).SupportsGBuffer());
             std::array<math::Matrix4, 128> palette;
             palette.fill(math::Matrix4::Identity());
-            /// @note 変形後の全頂点を画面外へ送り、スキニングを無視した診断 shader を検出する。
+            // 変形後の全頂点を画面外へ送り、スキニングを無視した診断 shader を検出する。
             if (variant == 2) palette[0].m[0][3] = 4;
             resources.AdvanceFrame();
             device.BeginFrame();
@@ -199,7 +199,7 @@ TEST_F(GraphicsStandaloneTest, GpuProfilerKeepsPhysicalSubmissionAndViewPlanProv
             if (frame == 1) EXPECT_EQ(firstSource.planGeneration, firstGeneration);
             if (frame == 2) EXPECT_GT(firstSource.planGeneration, firstGeneration);
             if (frame == 3) EXPECT_GT(firstSource.planGeneration, firstGeneration + 1);
-            /// @note Legacy view calls and a second view must not reset or publish the recording query range.
+            // 従来のビュー呼び出しや2つ目のビューが、記録中のクエリ範囲をリセットまたは公開しないことを確認する。
             device.GpuProfEndFrame();
             device.GpuProfCollect();
             device.GpuProfBeginFrame();
@@ -210,7 +210,7 @@ TEST_F(GraphicsStandaloneTest, GpuProfilerKeepsPhysicalSubmissionAndViewPlanProv
             const auto secondSource = second.LastGpuProfilerView();
             device.SetRenderTarget({}, resources);
             device.EndFrame();
-            /// @note Readback verifies correctness and completes submission; no timing value or performance threshold is asserted.
+            // 読み戻しで送信を完了させて結果を照合する。計時値と性能のしきい値は検証対象から外す。
             std::vector<float> pixels;
             uint32_t width = 0, height = 0;
             ASSERT_TRUE(device.CaptureRenderTargetToLinearRGBA(output, resources, pixels, width, height));
@@ -264,7 +264,7 @@ TEST_F(GraphicsStandaloneTest, CubeFacesKeepDepthAcrossRebindsAndClearEachSelect
             if (entry.message.find("  [WARNING] (id=") == std::string::npos
                 && entry.message.find("  [ERROR] (id=") == std::string::npos
                 && entry.message.find("  [CORRUPTION] (id=") == std::string::npos) return;
-            /// @note The ordinary readback target lacks optimized-clear metadata; id820 is not a correctness failure.
+            // 通常の読み戻し先にはクリア最適化用メタデータがないため、ID 820 の警告は描画結果の正否に影響しない。
             if (entry.message.find("  [WARNING] (id=820) ID3D12CommandList::ClearRenderTargetView: The application did not pass any clear value")
                 != std::string::npos) return;
             ++failures;
@@ -316,7 +316,7 @@ TEST_F(GraphicsStandaloneTest, CubeFacesKeepDepthAcrossRebindsAndClearEachSelect
             for (uint32_t face = 0; face < 6; ++face) {
                 device.SetRenderTargetFace(cube, face, mip, resources);
                 device.Clear({});
-                /// @note Increasing depth makes uncleared shared depth reject the next face's geometry.
+                // 各面の深度を順に増やし、共有深度をクリアし忘れると次の面のジオメトリが棄却されるようにする。
                 const float nearDepth = 0.1f + 0.1f * static_cast<float>(face);
                 const float farDepth = nearDepth + 0.05f;
                 submitColor({1, 0, 0}, nearDepth);
@@ -324,7 +324,7 @@ TEST_F(GraphicsStandaloneTest, CubeFacesKeepDepthAcrossRebindsAndClearEachSelect
                     static_cast<void>(device.BeginAsyncCompute(resources));
                     device.EndAsyncCompute();
                 }
-                /// @note Returning from a preview or command-list split must preserve depth, not implicitly clear it.
+                // プレビューから戻った場合やコマンドリストを分割した場合も、それまでの深度を保持する。
                 device.SetRenderTarget(output, resources);
                 device.SetRenderTargetFace(cube, face, mip, resources);
                 submitColor({0, 1, 0}, farDepth);
@@ -404,13 +404,13 @@ TEST_F(GraphicsStandaloneTest, DrawsAndReadsBackWithoutEngine)
     auto bundle = renderer::CreateRenderer(renderer::RendererBackend::DX12, window.handle, 64, 64);
     ASSERT_NE(bundle.renderer, nullptr);
     auto& device = *bundle.renderer;
-    /// @note Hidden-window verification records multiple frames even after DXGI occlusion.
+    // 非表示ウィンドウでも DXGI が遮蔽を検出した後に複数フレームを記録する。
     device.SetRenderWhenOccluded(true);
     const auto capabilities = device.GetCapabilities();
     EXPECT_TRUE(capabilities.bindless);
     {
         renderer::ResourceManager resources(device);
-        /// @note 頂点シェーダーが SV_VertexID から三角形の位置を作るので、メッシュや頂点バッファの準備は不要。
+        // 頂点シェーダーが SV_VertexID から三角形の位置を作るので、メッシュや頂点バッファの準備は不要。
         const auto shader = resources.LoadShader(FBZZ_GRAPHICS_SMOKE_SHADER);
         const auto target = resources.CreateRenderTarget(64, 64);
         const auto state = resources.CreatePipelineState({renderer::RasterizerMode::SOLID,
@@ -421,7 +421,7 @@ TEST_F(GraphicsStandaloneTest, DrawsAndReadsBackWithoutEngine)
             resources.AdvanceFrame();
             device.BeginFrame();
             device.SetRenderTarget(target, resources);
-            /// @note 三角形が覆わない画素を黒で初期化し、描画後に背景が残っているかも調べる。
+            // 三角形が覆わない画素を黒で初期化し、描画後に背景が残っているかも調べる。
             device.Clear({0, 0, 0, 1});
             renderer::DrawCall draw;
             draw.shader = shader;
@@ -432,13 +432,13 @@ TEST_F(GraphicsStandaloneTest, DrawsAndReadsBackWithoutEngine)
             device.SetRenderTarget({}, resources);
             device.EndFrame();
             FBZZ_LOG_INFO("GraphicsStandalone: frame ended");
-            /// @note 提出した描画の結果を、行優先の線形 RGBA として CPU へ読み戻す。
+            // 提出した描画の結果を、行優先の線形 RGBA として CPU へ読み戻す。
             std::vector<float> pixels;
             uint32_t width = 0, height = 0;
             const bool captured = device.CaptureRenderTargetToLinearRGBA(target, resources, pixels, width, height);
             EXPECT_TRUE(captured);
             if (captured && width == 64 && height == 64 && pixels.size() == 64 * 64 * 4) {
-                /// @note 中央は三角形の内側、左上は背景。各画素は RGBA の4成分なので添字を4倍する。
+                // 中央は三角形の内側、左上は背景。各画素は RGBA の4成分なので添字を4倍する。
                 EXPECT_GT(pixels[(32 * 64 + 32) * 4], 0.9f);
                 EXPECT_LT(pixels[(32 * 64 + 32) * 4 + 1], 0.1f);
                 EXPECT_LT(pixels[0], 0.1f);
@@ -462,7 +462,7 @@ TEST_F(GraphicsStandaloneTest, DrawsAndReadsBackWithoutEngine)
         EXPECT_NE(viewA.exposureResult, viewB.exposureResult);
         EXPECT_NE(viewA.advancedGraphicsCB, viewB.advancedGraphicsCB);
         EXPECT_EQ(rendering.FindView(99), nullptr);
-        /// @note 構成の準備に必要な実 GPU 資源。ここではパス登録を検証し、シーンの描画は実行しない。
+        // 構成の準備に必要な実 GPU 資源。ここではパス登録を検証し、シーンの描画は実行しない。
         auto& shared = rendering.Shared();
         shared.frameCB = resources.CreateConstantBuffer(256);
         shared.objectCB = resources.CreateConstantBuffer(256);
@@ -504,7 +504,7 @@ TEST_F(GraphicsStandaloneTest, DrawsAndReadsBackWithoutEngine)
         EXPECT_FALSE(viewA.taaHistoryValid);
         EXPECT_FLOAT_EQ(viewA.prevViewProjection.m[0][0], 2.0f);
 
-        /// @note ホスト拡張の挿入順と露出・ポスト処理の順序は移設で変えない。
+        // ホスト拡張の挿入順と露出・ポスト処理の順序は移設で変えない。
         renderer::Camera camera;
         renderer::RenderPassHandles handles;
         renderer::RenderPassContext context{{}, device, resources, camera, settings, outputB, ~0u, handles};
@@ -539,7 +539,7 @@ TEST_F(GraphicsStandaloneTest, DrawsAndReadsBackWithoutEngine)
                 EXPECT_EQ(passResources.StructuredBuffer("GpuTable"), gpuTable);
             }, false);
 
-            /// @note このパスは GPU work を記録せず buffer と structured buffer の登録経路を確認する。
+            // このパスは GPU work を記録せず buffer と structured buffer の登録経路を確認する。
             resources.AdvanceFrame();
             device.BeginFrame();
             const bool typedPassSucceeded = typedPipeline.Execute(context);
@@ -591,7 +591,7 @@ TEST_F(GraphicsStandaloneTest, DrawsAndReadsBackWithoutEngine)
         EXPECT_LT(position("Bloom"), position("Composite"));
         viewA.pipeline.BeginBuild();
 
-        /// @note 倍率を下げたとき、拡大元や filter が欠けた経路を有効な復帰先とみなさない。
+        // 倍率を下げたとき、拡大元や filter が欠けた経路を有効な復帰先とみなさない。
         settings.renderScale = 0.5f;
         const auto scaledOutput = resources.CreateRenderTarget(1280, 720);
         ASSERT_TRUE(rendering.PrepareView(viewA, device, scaledOutput, settings));

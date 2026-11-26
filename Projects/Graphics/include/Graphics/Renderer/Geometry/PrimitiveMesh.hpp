@@ -26,4 +26,4 @@ public:
     FBZZ_GRAPHICS_API static Mesh* Capsule (ResourceManager& resources, int segments = 24);
 };
 
-} /// @note namespace fbzz::renderer
+} // namespace fbzz::renderer

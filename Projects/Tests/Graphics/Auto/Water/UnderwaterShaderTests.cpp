@@ -219,7 +219,9 @@ protected:
 
     bool SetExtent(uint32_t width, uint32_t height, uint32_t volumeDivisor = 2u)
     {
-        if (width == 0 || height == 0 || width > 1024 || height > 1024 || volumeDivisor == 0u) return false;
+        if (width == 0 || height == 0 || width > 1024 || height > 1024 || volumeDivisor == 0u) {
+            return false;
+        }
         auto& resources = *m_resources;
         m_width = width;
         m_height = height;
@@ -263,7 +265,7 @@ protected:
         shadow.lightViewProjection.m[2][3] = 0.5f;
         shadow.shadowMapTexelSize[0] = shadow.shadowMapTexelSize[1] = 1.0f / EXTENT;
         shadow.cascadeCount = 1;
-        /// @note Medium illumination must use raw geometry visibility even when decorative surface shadow strength is zero.
+        // 表面の演出用の影強度が0でも、媒質の照明には実際のジオメトリの可視性を使う。
         shadow.shadowStrength = 0;
         resources.Update(m_frameCB, &frame, sizeof(frame));
         resources.Update(m_objectCB, &object, sizeof(object));
@@ -415,7 +417,9 @@ protected:
             static_cast<uint32_t>((std::max)(lights.size(), size_t{1})), sizeof(renderer::PunctualLightGPU));
         std::vector<uint32_t> indices(renderer::kClusterCount * renderer::kClusterStride);
         for (uint32_t cell = 0; cell < renderer::kClusterCount; ++cell) {
-            if (farClustersOnly && cell / (renderer::kClusterGridX * renderer::kClusterGridY) < 13u) continue;
+            if (farClustersOnly && cell / (renderer::kClusterGridX * renderer::kClusterGridY) < 13u) {
+                continue;
+            }
             const uint32_t offset = cell * renderer::kClusterStride;
             indices[offset] = static_cast<uint32_t>(lights.size());
             for (size_t index = 0; index < lights.size(); ++index) {
@@ -706,9 +710,13 @@ protected:
             / "Scratch/WaterUnderwater";
         std::error_code error;
         std::filesystem::create_directories(directory, error);
-        if (error) return false;
+        if (error) {
+            return false;
+        }
         std::FILE* file = nullptr;
-        if (_wfopen_s(&file, (directory / filename).c_str(), L"wb") != 0 || !file) return false;
+        if (_wfopen_s(&file, (directory / filename).c_str(), L"wb") != 0 || !file) {
+            return false;
+        }
         const bool written = std::fwrite(png.data(), 1, png.size(), file) == png.size();
         return std::fclose(file) == 0 && written;
     }
@@ -747,7 +755,9 @@ private:
         auto& device = *m_bundle.renderer;
         device.SetRenderTarget(m_shadowTarget, resources);
         device.ClearDepth();
-        if (mask == ShadowMask::OPEN) return;
+        if (mask == ShadowMask::OPEN) {
+            return;
+        }
         renderer::PerFrameCB frame{};
         frame.view = frame.projection = frame.viewProjection = frame.invViewProjection = math::Matrix4::Identity();
         renderer::PerObjectCB object{};
@@ -1273,7 +1283,7 @@ TEST_F(UnderwaterShaderTest, HighExtinctionSingleScatteringIsFiniteAndBoundedByI
     const auto pixels = Shafts(camera, water, sunlight, 8);
     ASSERT_EQ(pixels.size(), EXTENT * EXTENT * 4u);
     float maximum = 0;
-    /// @note Irradiance/pi=1, isotropic phase and albedo=0.5 bound single scattering by 0.25*0.5 before interface/source extinction.
+    // Irradiance/pi=1, isotropic phase and albedo=0.5 bound single scattering by 0.25*0.5 before interface/source extinction.
     /// @see https://pbr-book.org/4ed/Light_Transport_II_Volume_Rendering/Volume_Scattering_Integrators Single scattering and attenuation.
     for (size_t pixel = 0; pixel < EXTENT * EXTENT; ++pixel)
         for (size_t channel = 0; channel < 3; ++channel) {
@@ -1435,7 +1445,7 @@ TEST_F(UnderwaterShaderTest, OddQuarterResolutionExtentsKeepTheFinalRowAndColumn
 /// @brief Underwater room captures show shadowed directional light in the volume.
 TEST_F(UnderwaterShaderTest, UnderwaterRoomCapturesShowShadowedDirectionalLightInTheVolume)
 {
-    /// @note Controlled underwater-room fixture with an authored custom optical material; both captures use the same geometry and display transform.
+    // Controlled underwater-room fixture with an authored custom optical material; both captures use the same geometry and display transform.
     ASSERT_TRUE(SetExtent(512, 384));
     auto camera = Camera(false);
     camera.m_position = {0, -2, -6};
@@ -1612,7 +1622,7 @@ TEST_F(UnderwaterShaderTest, SingleDryIntervalMatchesTheGeneralUnionAcrossTransf
             Begin(camera, water, ambient, 10, {0.3f, 0.5f, 0.7f});
             SetLocalLighting(water, {}, renderer::ClusterLightMode::Linear, false, false, &medium);
             const auto actual = FinishComposite(true, true);
-            /// @note Duplicate boxes retain the same physical union while forcing the general multi-box interval algorithm.
+            // Duplicate boxes retain the same physical union while forcing the general multi-box interval algorithm.
             medium.exclusions.push_back(medium.exclusions.front());
             medium.certifiedDisplacement = -1.0f;
             Begin(camera, water, ambient, 10, {0.3f, 0.5f, 0.7f});

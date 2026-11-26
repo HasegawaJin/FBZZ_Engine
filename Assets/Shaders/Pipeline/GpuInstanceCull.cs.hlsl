@@ -8,10 +8,10 @@ struct CullInstance { float4x4 world; float4x4 worldInvTranspose; float4 bounds;
 struct ObjectInstance { float4x4 world; float4x4 worldInvTranspose; };
 struct CullView { float4 planes[6]; uint count; uint3 padding; };
 struct IndexedArguments { uint indexCount; uint instanceCount; uint startIndex; int baseVertex; uint startInstance; };
-FBZZ_SBUFFER_T(CullInstance, g_inputs, SB_SKIN_SRC_VERTICES_SLOT);
-FBZZ_SBUFFER_T(CullView, g_view, SB_SKIN_BONES_SLOT);
-FBZZ_RWSBUFFER_T(ObjectInstance, g_output, UAV_CLUSTER_LIGHTS_SLOT);
-FBZZ_RWSBUFFER_T(IndexedArguments, g_arguments, UAV_GPU_SORT_SLOT);
+FBZZ_SBUFFER_T(CullInstance, g_inputs, SRV_CULL_CANDIDATES_SLOT);
+FBZZ_SBUFFER_T(CullView, g_view, SRV_CULL_VIEW_SLOT);
+FBZZ_RWSBUFFER_T(ObjectInstance, g_output, UAV_CULL_VISIBLE_SLOT);
+FBZZ_RWSBUFFER_T(IndexedArguments, g_arguments, UAV_CULL_ARGUMENTS_SLOT);
 /// @note InterlockedAdd assigns unique output slots; dispatch completion precedes indirect draw and SRV reads.
 /// @see https://learn.microsoft.com/en-us/windows/win32/direct3dhlsl/interlockedadd - atomic increment semantics.
 [numthreads(64, 1, 1)]

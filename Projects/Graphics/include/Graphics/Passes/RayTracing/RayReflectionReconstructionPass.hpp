@@ -20,4 +20,4 @@ private:
     ResourceHandle<ShaderTag> m_shader;
     bool m_spatial;
 };
-} /// @note namespace fbzz::renderer
+} // namespace fbzz::renderer

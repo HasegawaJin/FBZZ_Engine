@@ -25,7 +25,7 @@ math::Matrix4 Camera::GetProjectionMatrix() const {
 }
 
 math::Matrix4 Camera::GetViewProjection() const {
-    /// @note 列ベクトルには右側の行列から作用する。世界座標をまずカメラから見た座標にしてから、画面に投影する。
+    // 列ベクトルには右側の行列から作用する。世界座標をまずカメラから見た座標にしてから、画面に投影する。
     return GetProjectionMatrix() * GetViewMatrix();
 }
 
@@ -56,8 +56,10 @@ math::Vector3 Camera::GetUp() const {
 
 void Camera::LookAt(const math::Vector3& target) {
     math::Vector3 forward = target - m_position;
-    if (forward.LengthSq() < 1e-6f) return;
+    if (forward.LengthSq() < 1e-6f) {
+        return;
+    }
     m_rotation = math::Quaternion::LookRotation(forward.Normalized());
 }
 
-} /// @note namespace fbzz::renderer
+} // namespace fbzz::renderer

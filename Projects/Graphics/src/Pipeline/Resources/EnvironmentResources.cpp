@@ -11,8 +11,8 @@ namespace fbzz::renderer {
 
 bool EnvironmentResources::SkySignature::AtmosphereApproxEquals(const SkySignature& o, float eps) const
 {
-    /// @note 太陽方向を除く駆動パラメータが許容誤差内なら「(方向以外は) 同じ空」とみなす。太陽方向は連続的に動くため ConsumeDirty の角度閾値で別途扱う。
-    /// @note 引数名に near/far を使わない (`windows.h` が near/far を空マクロとして定義するため)。
+    // 太陽方向を除く駆動パラメータが許容誤差内なら「(方向以外は) 同じ空」とみなす。太陽方向は連続的に動くため ConsumeDirty の角度閾値で別途扱う。
+    // 引数名に near/far を使わない (`windows.h` が near/far を空マクロとして定義するため)。
     auto approx = [eps](float a, float b) { return std::fabs(a - b) <= eps; };
     auto approxVec = [&](const math::Vector3& a, const math::Vector3& b) {
         return approx(a.x, b.x) && approx(a.y, b.y) && approx(a.z, b.z);
@@ -32,13 +32,17 @@ bool EnvironmentResources::SkySignature::AtmosphereApproxEquals(const SkySignatu
 
 bool EnvironmentResources::SkySignature::CloudApproxEquals(const SkySignature& o, float eps) const
 {
-    if (cloudEnabled != o.cloudEnabled) return false;
-    if (!cloudEnabled) return true;
+    if (cloudEnabled != o.cloudEnabled) {
+        return false;
+    }
+    if (!cloudEnabled) {
+        return true;
+    }
     auto approx = [eps](float a, float b) { return std::fabs(a - b) <= eps; };
     auto approxVec = [&](const math::Vector4& a, const math::Vector4& b) {
         return approx(a.x, b.x) && approx(a.y, b.y) && approx(a.z, b.z) && approx(a.w, b.w);
     };
-    /// @note cloudNoise.z は時刻であり設定ではない。風・形の進化が動く場合だけ 2 Hz で更新する。
+    // cloudNoise.z は時刻であり設定ではない。風・形の進化が動く場合だけ 2 Hz で更新する。
     return approxVec(cloud.cloudLayer, o.cloud.cloudLayer)
         && approx(cloud.cloudNoise.x, o.cloud.cloudNoise.x)
         && approx(cloud.cloudNoise.y, o.cloud.cloudNoise.y)
@@ -57,8 +61,10 @@ bool EnvironmentResources::SkySignature::CloudApproxEquals(const SkySignature& o
 bool EnvironmentResources::ConsumeDirty(const SkySignature& current, float currentTimeSeconds,
     uint64_t frameStamp, bool animateCloudSettings)
 {
-    /// @note Scene/Game が同じ環境を使う。後のビューが違うカメラ位置でも同一フレームに捕捉し直さない。
-    if (frameStamp != 0 && frameStamp == m_lastCaptureFrame) return false;
+    // Scene/Game が同じ環境を使う。後のビューが違うカメラ位置でも同一フレームに捕捉し直さない。
+    if (frameStamp != 0 && frameStamp == m_lastCaptureFrame) {
+        return false;
+    }
     auto consume = [&] {
         m_lastSignature = current;
         m_hasSignature = true;
@@ -67,22 +73,22 @@ bool EnvironmentResources::ConsumeDirty(const SkySignature& current, float curre
         m_lastCaptureFrame = frameStamp;
         return true;
     };
-    /// @note 強制 dirty (初回 / MarkDirty / 解像度変更) は間引かず即座にベイクする。
+    // 強制 dirty (初回 / MarkDirty / 解像度変更) は間引かず即座にベイクする。
     if (m_forceDirty || !m_hasSignature) {
         return consume();
     }
 
-    /// @note last frame でなく last "baked" signature と比較する。微小変化の累積を取りこぼさず、ゆっくりした太陽移動でも閾値超過時点で必ず焼き直せる。
-    /// @note 太陽方向は角度閾値、大気パラメータは eps 比較で変化を判定する。
-    /// @note cos(約1.5°): これ以上動いたら再ベイク対象
+    // last frame でなく last "baked" signature と比較する。微小変化の累積を取りこぼさず、ゆっくりした太陽移動でも閾値超過時点で必ず焼き直せる。
+    // 太陽方向は角度閾値、大気パラメータは eps 比較で変化を判定する。
+    // cos(約1.5°): これ以上動いたら再ベイク対象
     constexpr float kSunAngleCosThreshold = 0.99966f;
     constexpr float kParamEps             = 1.0e-4f;
-    /// @note 秒: 時間帯アニメ中の最大ベイク頻度 (約30Hz)
+    // 秒: 時間帯アニメ中の最大ベイク頻度 (約30Hz)
     constexpr float kMinRebakeInterval    = 0.033f;
     constexpr float kCloudRebakeInterval = 0.5f;
     constexpr float kCloudCaptureMove = 50.0f;
 
-    /// @note A/B 計測でプロセス起動時に 0 を指定すると、再生中も雲設定の変更を即時反映する。
+    // A/B 計測でプロセス起動時に 0 を指定すると、再生中も雲設定の変更を即時反映する。
     static const bool throttleCloudAnimation = [] {
 #if defined(_MSC_VER)
         char* value = nullptr;
@@ -98,9 +104,10 @@ bool EnvironmentResources::ConsumeDirty(const SkySignature& current, float curre
     }();
     const bool throttleCloudSettings = animateCloudSettings && throttleCloudAnimation;
     const bool cloudSettingsChanged = !m_lastSignature.CloudApproxEquals(current, kParamEps);
-    /// @note 雲の有効切り替えと Edit の設定変更は間引かない。
-    if (m_lastSignature.cloudEnabled != current.cloudEnabled || (!throttleCloudSettings && cloudSettingsChanged))
+    // 雲の有効切り替えと Edit の設定変更は間引かない。
+    if (m_lastSignature.cloudEnabled != current.cloudEnabled || (!throttleCloudSettings && cloudSettingsChanged)) {
         return consume();
+    }
 
     const float sunCos  = math::Vector3::Dot(m_lastSignature.sunDirection, current.sunDirection);
     const bool atmosphereChanged = (sunCos < kSunAngleCosThreshold)
@@ -114,16 +121,17 @@ bool EnvironmentResources::ConsumeDirty(const SkySignature& current, float curre
         && math::Vector3::Dot(captureMove, captureMove) >= kCloudCaptureMove * kCloudCaptureMove;
     const bool skySettingsChanged = atmosphereChanged || cloudSettingsChanged;
     if (!skySettingsChanged && !cloudTimeChanged && !cloudPositionChanged)
-        /// @note 空が実質変わっていない → キャッシュ済み IBL を再利用
+        // 空が実質変わっていない → キャッシュ済み IBL を再利用
         return false;
 
-    /// @note 変化はあるが、連続変化 (時間帯アニメ) を毎フレーム焼き直さないよう最低間隔で間引く。
-    /// @note 間隔未達なら signature を更新せずに変化を保持し、次の機会にまとめて焼き直す。
+    // 変化はあるが、連続変化 (時間帯アニメ) を毎フレーム焼き直さないよう最低間隔で間引く。
+    // 間隔未達なら signature を更新せずに変化を保持し、次の機会にまとめて焼き直す。
     const float interval = skySettingsChanged ? kMinRebakeInterval : kCloudRebakeInterval;
-    if (currentTimeSeconds - m_lastBakeTime < interval)
+    if (currentTimeSeconds - m_lastBakeTime < interval) {
         return false;
+    }
 
     return consume();
 }
 
-} /// @note namespace fbzz::renderer
+} // namespace fbzz::renderer

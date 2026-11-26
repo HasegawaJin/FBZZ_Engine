@@ -37,23 +37,28 @@ bool StrictDeclarations()
     return strict;
 }
 
-} /// @note namespace
+} // namespace
 
 bool PassResources::IsDeclared(std::string_view name) const
 {
     for (const auto& access : m_accesses) {
-        if (access.name == name)
+        if (access.name == name) {
             return true;
+        }
     }
     return false;
 }
 
 void PassResources::WarnIfUndeclared(std::string_view name) const
 {
-    if (IsDeclared(name)) return;
-    /// @note グラフの外から引いた場合 (反射プローブ捕捉など) は申告する相手が居ない。
-    /// @note 依存も順序も存在しないので、報告する意味が無い。
-    if (m_accesses.empty()) return;
+    if (IsDeclared(name)) {
+        return;
+    }
+    // グラフの外から引いた場合 (反射プローブ捕捉など) は申告する相手が居ない。
+    // 依存も順序も存在しないので、報告する意味が無い。
+    if (m_accesses.empty()) {
+        return;
+    }
 
     const int passLen = static_cast<int>(m_passName.size());
     const int nameLen = static_cast<int>(name.size());
@@ -66,16 +71,18 @@ void PassResources::WarnIfUndeclared(std::string_view name) const
         return;
     }
 
-    /// @note 同じ組み合わせで毎フレーム出すとログが読めなくなるので 1 回だけ。static は診断の «もう言ったか» だけを持ち、GPU の状態は持たない。
+    // 同じ組み合わせで毎フレーム出すとログが読めなくなるので 1 回だけ。static は診断の «もう言ったか» だけを持ち、GPU の状態は持たない。
     static std::unordered_set<std::string> reported;
     std::string key(m_passName);
     key += " -> ";
     key += name;
-    if (!reported.insert(key).second) return;
+    if (!reported.insert(key).second) {
+        return;
+    }
 
     FBZZ_LOG_WARN("PassResources: pass \"%.*s\" が申告していない \"%.*s\" を引きました。"
                   "Setup へ Read/Write を足すこと (依存辺が張られず、順序が偶然に依存します)",
                   passLen, m_passName.data(), nameLen, name.data());
 }
 
-} /// @note namespace fbzz::renderer
+} // namespace fbzz::renderer

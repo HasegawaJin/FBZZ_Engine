@@ -36,17 +36,39 @@ struct HybridQualitySettings {
     bool operator==(const HybridQualitySettings&) const = default;
 };
 
+/// @brief Hybrid 描画の設定が各処理の対応範囲に収まるか調べる。
+/// @param[in] value 反射、再構築、プローブ更新と GPU 時間の予算。
+/// @return すべての設定が有効なら true。
 [[nodiscard]] inline bool IsHybridQualityValid(const HybridQualitySettings& value)
 {
-    if (value.reflectionSamples < 1 || value.reflectionSamples > 64
-        || value.historyLimit < 1 || value.historyLimit > 64 || value.spatialRadius > 2
-        || value.glassBoundaryLimit < 1 || value.glassBoundaryLimit > 16
-        || (value.reflectionResolutionDivisor != 1 && value.reflectionResolutionDivisor != 2)
-        || value.maxHistoryMiB < 1 || value.maxHistoryMiB > 16384 || value.maxProbeCapturesPerFrame > 16
-        || !std::isfinite(value.maxTraceDistance) || value.maxTraceDistance < 0) return false;
+    if (value.reflectionSamples < 1 || value.reflectionSamples > 64) {
+        return false;
+    }
+    if (value.historyLimit < 1 || value.historyLimit > 64 || value.spatialRadius > 2) {
+        return false;
+    }
+    if (value.glassBoundaryLimit < 1 || value.glassBoundaryLimit > 16) {
+        return false;
+    }
+    if (value.reflectionResolutionDivisor != 1 && value.reflectionResolutionDivisor != 2) {
+        return false;
+    }
+
+    // 履歴のメモリ量、プローブ更新数、トレース距離の予算を確かめる。
+    if (value.maxHistoryMiB < 1 || value.maxHistoryMiB > 16384 || value.maxProbeCapturesPerFrame > 16) {
+        return false;
+    }
+    if (!std::isfinite(value.maxTraceDistance) || value.maxTraceDistance < 0) {
+        return false;
+    }
+
+    // 全体と処理ごとの計測時間の目標を同じ範囲 [ms] に揃える。
     for (float target : {value.frameBudgetMs, value.asUpdateBudgetMs, value.traceBudgetMs,
-        value.reconstructionBudgetMs, value.probeUpdateBudgetMs})
-        if (!std::isfinite(target) || target <= 0 || target > 1000) return false;
+        value.reconstructionBudgetMs, value.probeUpdateBudgetMs}) {
+        if (!std::isfinite(target) || target <= 0 || target > 1000) {
+            return false;
+        }
+    }
     return true;
 }
 
@@ -84,9 +106,12 @@ struct HybridQualitySettings {
 [[nodiscard]] inline HybridQualityPreset DetectHybridQualityPreset(const HybridQualitySettings& value)
 {
     for (auto preset : {HybridQualityPreset::LOW, HybridQualityPreset::BALANCED, HybridQualityPreset::HIGH,
-        HybridQualityPreset::PERFORMANCE})
-        if (value == MakeHybridQualityPreset(preset)) return preset;
+        HybridQualityPreset::PERFORMANCE}) {
+        if (value == MakeHybridQualityPreset(preset)) {
+            return preset;
+        }
+    }
     return HybridQualityPreset::CUSTOM;
 }
 
-} /// @note namespace fbzz::renderer
+} // namespace fbzz::renderer

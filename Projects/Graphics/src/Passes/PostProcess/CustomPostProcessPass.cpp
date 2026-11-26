@@ -10,6 +10,7 @@
 /// @note 描き戻す)。加算は入力を読まないので 1 パスで済む。縮小・反復は途中経過を置く RT が
 /// @note 要り、HDR 段の ping-pong 用 2 枚は借りられるが PostProcess 段はその 2 枚を入出力に
 /// @note 使い切っていて 3 枚目が無いため HDR 段限定にする。
+#include <Graphics/Renderer/Commands/ShaderBindingSlots.hpp>
 #include <Graphics/Passes/PostProcess/PostProcessPasses.hpp>
 #include <Graphics/Pipeline/Passes/RenderPassContext.hpp>
 #include <Graphics/Pipeline/Resources/RenderResources.hpp>
@@ -38,7 +39,7 @@ PostProcCB MakeCustomPostProcCB(const renderer::CustomPostProcessSettings& custo
     postData.customPassInfo[0] = uvScaleX;
     postData.customPassInfo[1] = static_cast<float>(iteration);
     postData.customPassInfo[2] = static_cast<float>(iterationCount);
-    /// @note 縮小した RT の幅と高さは別々に切り捨てられるので、縦の倍率は横と一致しない。
+    // 縮小した RT の幅と高さは別々に切り捨てられるので、縦の倍率は横と一致しない。
     postData.customPassInfo[3] = uvScaleY;
     return postData;
 }
@@ -58,30 +59,41 @@ void BindDeclaredInputs(renderer::DrawCall& dc, RenderPassContext& ctx,
 
     if ((inputs & renderer::CUSTOM_PASS_INPUT_OBJECT_MASK) != 0u
         && ctx.objectMaskEnabled && ctx.Res().Target("ObjectMask").IsValid()) {
-        dc.textures[6] = resources.GetColorTexture(ctx.Res().Target("ObjectMask"), 0);
-        if (allowDepth) dc.textures[8] = resources.GetDepthTexture(ctx.Res().Target("ObjectMask"));
+        dc.textures[srv::MASK_COLOR] = resources.GetColorTexture(ctx.Res().Target("ObjectMask"), 0);
+        if (allowDepth) {
+            dc.textures[srv::MASK_DEPTH] = resources.GetDepthTexture(ctx.Res().Target("ObjectMask"));
+        }
     }
-    if ((inputs & renderer::CUSTOM_PASS_INPUT_SCENE_DEPTH) != 0u && allowDepth)
-        dc.textures[7] = resources.GetDepthTexture(ctx.Res().Target("HDR"));
-    if ((inputs & renderer::CUSTOM_PASS_INPUT_SSAO) != 0u && ctx.Res().Texture("SSAO").IsValid())
-        dc.textures[9] = ctx.Res().Texture("SSAO");
-    if ((inputs & renderer::CUSTOM_PASS_INPUT_BLOOM) != 0u && ctx.Res().Texture("Bloom").IsValid())
-        dc.textures[10] = ctx.Res().Texture("Bloom");
-    if ((inputs & renderer::CUSTOM_PASS_INPUT_VELOCITY) != 0u && ctx.velocityWritten && ctx.Res().Target("Velocity").IsValid())
-        dc.textures[11] = resources.GetColorTexture(ctx.Res().Target("Velocity"), 0);
-    if ((inputs & renderer::CUSTOM_PASS_INPUT_NORMAL) != 0u && ctx.Res().Target("GBuffer").IsValid())
-        dc.textures[12] = resources.GetColorTexture(ctx.Res().Target("GBuffer"), 1);
+    if ((inputs & renderer::CUSTOM_PASS_INPUT_SCENE_DEPTH) != 0u && allowDepth) {
+        dc.textures[srv::DEPTH] = resources.GetDepthTexture(ctx.Res().Target("HDR"));
+    }
+    if ((inputs & renderer::CUSTOM_PASS_INPUT_SSAO) != 0u && ctx.Res().Texture("SSAO").IsValid()) {
+        dc.textures[srv::SSAO] = ctx.Res().Texture("SSAO");
+    }
+    if ((inputs & renderer::CUSTOM_PASS_INPUT_BLOOM) != 0u && ctx.Res().Texture("Bloom").IsValid()) {
+        dc.textures[srv::BLOOM] = ctx.Res().Texture("Bloom");
+    }
+    if ((inputs & renderer::CUSTOM_PASS_INPUT_VELOCITY) != 0u && ctx.velocityWritten && ctx.Res().Target("Velocity").IsValid()) {
+        dc.textures[srv::CUSTOM_VELOCITY] = resources.GetColorTexture(ctx.Res().Target("Velocity"), 0);
+    }
+    if ((inputs & renderer::CUSTOM_PASS_INPUT_NORMAL) != 0u && ctx.Res().Target("GBuffer").IsValid()) {
+        dc.textures[srv::CUSTOM_NORMAL] = resources.GetColorTexture(ctx.Res().Target("GBuffer"), 1);
+    }
 }
 
 /// @note blendMode ごとの全画面 PSO。深度は常に切る (全画面三角形に深度の意味が無い)。
 renderer::ResourceHandle<renderer::PipelineStateTag> CustomPassPSO(
     RenderPassContext& ctx, renderer::BlendMode blend)
 {
-    if (blend == renderer::BlendMode::OPAQUE_BLEND) return ctx.handles.postprocPSO;
+    if (blend == renderer::BlendMode::OPAQUE_BLEND) {
+        return ctx.handles.postprocPSO;
+    }
 
     auto& states = ctx.resources.Rendering().Shared().customPassPSO;
     const auto slot = static_cast<std::size_t>(blend);
-    if (slot >= 4) return ctx.handles.postprocPSO;
+    if (slot >= 4) {
+        return ctx.handles.postprocPSO;
+    }
     if (!ctx.resources.Get(states[slot])) {
         states[slot] = ctx.resources.CreatePipelineState(
             { renderer::RasterizerMode::SOLID, blend, renderer::DepthMode::DEPTH_OFF });
@@ -92,28 +104,35 @@ renderer::ResourceHandle<renderer::PipelineStateTag> CustomPassPSO(
 using ResolvedCustomPass = RenderCustomPostInput;
 ResolvedCustomPass ResolveCustomPass(RenderPassContext& ctx, uint32_t index)
 {
-    if (!ctx.renderScene || index >= ctx.renderScene->customPost.size()) return {};
+    if (!ctx.renderScene || index >= ctx.renderScene->customPost.size()) {
+        return {};
+    }
     return ctx.renderScene->customPost[index];
 }
 void BindMaterial(DrawCall& dc, const ResolvedCustomPass& input, ResourceManager& resources)
 {
-    dc.constantBuffers[2] = input.paramsBuffer;
-    if (input.paramsBuffer.IsValid() && !input.parameters.empty())
+    dc.constantBuffers[cb::MATERIAL] = input.paramsBuffer;
+    if (input.paramsBuffer.IsValid() && !input.parameters.empty()) {
         resources.Update(input.paramsBuffer, input.parameters.data(), input.parameters.size());
-    for (size_t i = 0; i < input.textures.size(); ++i) dc.textures[i] = input.textures[i];
+    }
+    for (size_t i = 0; i < input.textures.size(); ++i) {
+        dc.textures[i] = input.textures[i];
+    }
 }
 }
 void ExecuteCustomPostProcessPass(RenderPassContext& ctx, uint32_t customIndex, uint32_t outputIndex)
 {
     auto& h = ctx.handles;
     const auto& pp = ctx.settings.postProcess;
-    if (customIndex >= pp.customEffects.size()) return;
+    if (customIndex >= pp.customEffects.size()) {
+        return;
+    }
 
     const auto& custom = pp.customEffects[customIndex];
     const ResolvedCustomPass resolved = ResolveCustomPass(ctx, customIndex);
     if (!resolved.IsValid()) {
-        /// @note シェーダーも .mat も解決できない要求は、今までここで黙って捨てていた。
-        /// @note 症状が «その効果だけ何も起きない» なので、パス名を名指しで出す。
+        // シェーダーも .mat も解決できない要求は、今までここで黙って捨てていた。
+        // 症状が «その効果だけ何も起きない» なので、パス名を名指しで出す。
         static std::string sLastUnresolved;
         if (sLastUnresolved != custom.name) {
             sLastUnresolved = custom.name;
@@ -126,14 +145,15 @@ void ExecuteCustomPostProcessPass(RenderPassContext& ctx, uint32_t customIndex, 
     }
 
     const bool needsIntermediate = outputIndex < 2;
-    if (needsIntermediate && !h.customPostProcessRT[outputIndex].IsValid())
+    if (needsIntermediate && !h.customPostProcessRT[outputIndex].IsValid()) {
         return;
+    }
 
     auto& r = ctx.renderer;
     auto& resources = ctx.resources;
     r.SetRenderTarget(needsIntermediate ? h.customPostProcessRT[outputIndex] : ctx.chainOutputRT, resources);
 
-    /// @note 縮小も反復もこの段では効かない (理由はファイル冒頭を参照)。uvScale は常に 1。
+    // 縮小も反復もこの段では効かない (理由はファイル冒頭を参照)。uvScale は常に 1。
     const PostProcCB postData = MakeCustomPostProcCB(custom, ctx.time, ctx.width, ctx.height, 1.0f, 1.0f, 0, 1);
     resources.Update(h.postprocCB, &postData, sizeof(PostProcCB));
 
@@ -141,8 +161,8 @@ void ExecuteCustomPostProcessPass(RenderPassContext& ctx, uint32_t customIndex, 
     customDC.shader = resolved.shader;
     customDC.pipelineState = h.postprocPSO;
     customDC.vertexCount = 3;
-    customDC.constantBuffers[5] = h.postprocCB;
-    customDC.textures[5] = h.postProcessInput.IsValid()
+    customDC.constantBuffers[cb::POSTPROC] = h.postprocCB;
+    customDC.textures[srv::POST_COLOR] = h.postProcessInput.IsValid()
         ? h.postProcessInput
         : resources.GetColorTexture(ctx.Res().Target("LDR"), 0);
     BindMaterial(customDC, resolved, resources);
@@ -159,11 +179,15 @@ void ExecuteCustomHdrPass(RenderPassContext& ctx, uint32_t customIndex)
 {
     auto& h = ctx.handles;
     const auto& pp = ctx.settings.postProcess;
-    if (customIndex >= pp.customEffects.size() || !ctx.Res().Target("HDR").IsValid()) return;
+    if (customIndex >= pp.customEffects.size() || !ctx.Res().Target("HDR").IsValid()) {
+        return;
+    }
 
     const auto& custom = pp.customEffects[customIndex];
     const ResolvedCustomPass resolved = ResolveCustomPass(ctx, customIndex);
-    if (!resolved.IsValid()) return;
+    if (!resolved.IsValid()) {
+        return;
+    }
 
     auto& r = ctx.renderer;
     auto& resources = ctx.resources;
@@ -173,20 +197,24 @@ void ExecuteCustomHdrPass(RenderPassContext& ctx, uint32_t customIndex)
     const int  downscale  = std::clamp(custom.downscale, 1, kMaxCustomDownscale);
     const bool reduced    = downscale > 1;
 
-    /// @note 専用の RT を作らずポストプロセスの ping-pong 枠を借りるのは、全 RenderTarget が
-    /// @note RGBA16F (`DX11RenderTarget::Init`) で LDR チェーン用の枠がそのまま HDR の受け皿に
-    /// @note なり、あちらの使用は Composite より後で毎回全画面を書き直すため踏んだ中身が誰にも
-    /// @note 読まれないから。専用に 2 枚持つと使わないプロジェクトでも全解像度分の VRAM を払う。
+    // 専用の RT を作らずポストプロセスの ping-pong 枠を借りるのは、全 RenderTarget が
+    // RGBA16F (`DX11RenderTarget::Init`) で LDR チェーン用の枠がそのまま HDR の受け皿に
+    // なり、あちらの使用は Composite より後で毎回全画面を書き直すため踏んだ中身が誰にも
+    // 読まれないから。専用に 2 枚持つと使わないプロジェクトでも全解像度分の VRAM を払う。
     const auto scratchA = h.customPostProcessRT[0];
     const auto scratchB = h.customPostProcessRT[1];
     const bool needsScratch = replaces || reduced;
-    if (needsScratch && (!scratchA.IsValid() || !h.copyColorShader.IsValid())) return;
-    if (reduced && (!scratchB.IsValid() || !h.customComposeShader.IsValid())) return;
+    if (needsScratch && (!scratchA.IsValid() || !h.copyColorShader.IsValid())) {
+        return;
+    }
+    if (reduced && (!scratchB.IsValid() || !h.customComposeShader.IsValid())) {
+        return;
+    }
 
     const uint32_t reducedW = (std::max)(1u, ctx.width  / static_cast<uint32_t>(downscale));
     const uint32_t reducedH = (std::max)(1u, ctx.height / static_cast<uint32_t>(downscale));
-    /// @note 倍率は «縮小後の画素数 / 実寸の画素数» で縦横別に出す。1/downscale だと割り切れない解像度で
-    /// @note 有効範囲の外 (クリアした 0) まで読み、右端と下端が暗くなる。
+    // 倍率は «縮小後の画素数 / 実寸の画素数» で縦横別に出す。1/downscale だと割り切れない解像度で
+    // 有効範囲の外 (クリアした 0) まで読み、右端と下端が暗くなる。
     const float    uvScaleX = static_cast<float>(reducedW) / static_cast<float>((std::max)(ctx.width, 1u));
     const float    uvScaleY = static_cast<float>(reducedH) / static_cast<float>((std::max)(ctx.height, 1u));
 
@@ -195,7 +223,7 @@ void ExecuteCustomHdrPass(RenderPassContext& ctx, uint32_t customIndex)
         copyDC.shader = h.copyColorShader;
         copyDC.pipelineState = h.postprocPSO;
         copyDC.vertexCount = 3;
-        copyDC.textures[5] = source;
+        copyDC.textures[srv::POST_COLOR] = source;
         r.Submit(copyDC, resources);
     };
 
@@ -205,7 +233,7 @@ void ExecuteCustomHdrPass(RenderPassContext& ctx, uint32_t customIndex)
                 MakeCustomPostProcCB(custom, ctx.time, ctx.width, ctx.height, 1.0f, 1.0f, i, iterations);
             resources.Update(h.postprocCB, &postData, sizeof(PostProcCB));
 
-            /// @note 置き換えるなら «今の HDR» を退避してから描き戻す。
+            // 置き換えるなら «今の HDR» を退避してから描き戻す。
             if (replaces) {
                 r.SetRenderTarget(scratchA, resources);
                 drawCopy(resources.GetColorTexture(ctx.Res().Target("HDR"), 0));
@@ -216,8 +244,10 @@ void ExecuteCustomHdrPass(RenderPassContext& ctx, uint32_t customIndex)
             dc.shader = resolved.shader;
             dc.pipelineState = CustomPassPSO(ctx, resolved.blendMode);
             dc.vertexCount = 3;
-            dc.constantBuffers[5] = h.postprocCB;
-            if (replaces) dc.textures[5] = resources.GetColorTexture(scratchA, 0);
+            dc.constantBuffers[cb::POSTPROC] = h.postprocCB;
+            if (replaces) {
+                dc.textures[srv::POST_COLOR] = resources.GetColorTexture(scratchA, 0);
+            }
             BindMaterial(dc, resolved, resources);
             BindDeclaredInputs(dc, ctx, custom.inputs, false);
             r.Submit(dc, resources);
@@ -225,16 +255,16 @@ void ExecuteCustomHdrPass(RenderPassContext& ctx, uint32_t customIndex)
         return;
     }
 
-    /// @note 縮小して走る。入力を縮小コピー → 反復 → 実寸へ拡大合成。縮小側を先に消すのは、
-    /// @note 加算合成で書かれていない画素は「足さない」でなければならず、前フレームの残りが
-    /// @note 入っているとその分がそのまま光ってしまうため。
+    // 縮小して走る。入力を縮小コピー → 反復 → 実寸へ拡大合成。縮小側を先に消すのは、
+    // 加算合成で書かれていない画素は「足さない」でなければならず、前フレームの残りが
+    // 入っているとその分がそのまま光ってしまうため。
     r.SetRenderTarget(scratchA, resources);
     r.Clear({ 0.0f, 0.0f, 0.0f, 0.0f });
     r.SetRenderTarget(scratchB, resources);
     r.Clear({ 0.0f, 0.0f, 0.0f, 0.0f });
 
     {
-        /// @note 入力の縮小コピー。UV は 0..1 のまま全画面を読み、小さいビューポートへ書く。
+        // 入力の縮小コピー。UV は 0..1 のまま全画面を読み、小さいビューポートへ書く。
         const PostProcCB postData =
             MakeCustomPostProcCB(custom, ctx.time, reducedW, reducedH, uvScaleX, uvScaleY, 0, iterations);
         resources.Update(h.postprocCB, &postData, sizeof(PostProcCB));
@@ -255,11 +285,11 @@ void ExecuteCustomHdrPass(RenderPassContext& ctx, uint32_t customIndex)
 
         renderer::DrawCall dc;
         dc.shader = resolved.shader;
-        /// @note 縮小側は必ず置き換えで書く。加算するかどうかは最後の合成で決まる。
+        // 縮小側は必ず置き換えで書く。加算するかどうかは最後の合成で決まる。
         dc.pipelineState = h.postprocPSO;
         dc.vertexCount = 3;
-        dc.constantBuffers[5] = h.postprocCB;
-        dc.textures[5] = resources.GetColorTexture(source, 0);
+        dc.constantBuffers[cb::POSTPROC] = h.postprocCB;
+        dc.textures[srv::POST_COLOR] = resources.GetColorTexture(source, 0);
         BindMaterial(dc, resolved, resources);
         BindDeclaredInputs(dc, ctx, custom.inputs, false);
         r.Submit(dc, resources);
@@ -267,14 +297,14 @@ void ExecuteCustomHdrPass(RenderPassContext& ctx, uint32_t customIndex)
         source = target;
     }
 
-    /// @note 実寸へ戻す。ここで初めて blendMode が効く (加算ならこの 1 枚を足す)。
+    // 実寸へ戻す。ここで初めて blendMode が効く (加算ならこの 1 枚を足す)。
     r.SetRenderTarget(ctx.Res().Target("HDR"), resources);
     renderer::DrawCall composeDC;
     composeDC.shader = h.customComposeShader;
     composeDC.pipelineState = CustomPassPSO(ctx, resolved.blendMode);
     composeDC.vertexCount = 3;
-    composeDC.constantBuffers[5] = h.postprocCB;
-    composeDC.textures[5] = resources.GetColorTexture(source, 0);
+    composeDC.constantBuffers[cb::POSTPROC] = h.postprocCB;
+    composeDC.textures[srv::POST_COLOR] = resources.GetColorTexture(source, 0);
     r.Submit(composeDC, resources);
 }
 

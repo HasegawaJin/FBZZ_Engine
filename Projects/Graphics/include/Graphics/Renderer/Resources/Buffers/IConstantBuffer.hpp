@@ -22,4 +22,4 @@ namespace fbzz::renderer
         virtual size_t GetSize() const = 0;
     };
 
-} /// @note namespace fbzz::renderer
+} // namespace fbzz::renderer

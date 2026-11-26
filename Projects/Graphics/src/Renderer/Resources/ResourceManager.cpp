@@ -65,7 +65,9 @@ ShaderCapabilities LoadedShaderCapabilities(const IShader& shader, const std::st
         return result;
     }
     auto capabilities = ResolveShaderCapabilities(path);
-    if (!capabilities.IsStandardPbr()) return capabilities;
+    if (!capabilities.IsStandardPbr()) {
+        return capabilities;
+    }
     const auto& descriptor = shader.GetDescriptor();
     const auto matches = [&](std::string_view name, uint8_t columns) {
         const auto* variable = descriptor.FindVar(name);
@@ -84,7 +86,7 @@ ShaderCapabilities LoadedShaderCapabilities(const IShader& shader, const std::st
     return capabilities;
 }
 
-} /// @note namespace
+} // namespace
 
 /// @note テクスチャが占めるバイト数の概算。
 /// @note ITexture が公開するのは寸法だけでフォーマット/ミップ数はバックエンドの内側にあるため、
@@ -118,26 +120,35 @@ ResourceManager::ResourceManager(IRenderer& renderer)
 ResourceManager::~ResourceManager()
 {
     prepared_skinning_detail::InvalidateResourceOwner(m_instanceId);
-    if (!m_rendererDetached) m_renderer.WaitForCpuFrame();
+    if (!m_rendererDetached) {
+        m_renderer.WaitForCpuFrame();
+    }
     LiveResourceManagers().erase(m_instanceId);
-    /// @note 解放より先に数える理由: ReleaseOwnedResourcesForShutdown() は台帳ごと畳むため、
-    /// @note       後で数えると常に 0 になる (以前はここが逆で、報告が出ることは無かった)。
+    // 解放より先に数える理由: ReleaseOwnedResourcesForShutdown() は台帳ごと畳むため、
+    // 後で数えると常に 0 になる (以前はここが逆で、報告が出ることは無かった)。
     LogLiveDebugResources();
-    if (!m_rendererDetached) ReleaseOwnedResourcesForShutdown();
+    if (!m_rendererDetached) {
+        ReleaseOwnedResourcesForShutdown();
+    }
 
-    if (s_activeResourceManager == this)
+    if (s_activeResourceManager == this) {
         s_activeResourceManager = nullptr;
+    }
 }
 
 RenderResources& ResourceManager::Rendering()
 {
-    if (!m_renderResources) m_renderResources = std::make_unique<RenderResources>(*this);
+    if (!m_renderResources) {
+        m_renderResources = std::make_unique<RenderResources>(*this);
+    }
     return *m_renderResources;
 }
 
 void ResourceManager::PrepareRendererShutdown()
 {
-    if (m_rendererDetached) return;
+    if (m_rendererDetached) {
+        return;
+    }
     prepared_skinning_detail::InvalidateResourceOwner(m_instanceId);
     m_renderer.WaitForCpuFrame();
     ReleaseOwnedResourcesForShutdown();
@@ -146,7 +157,9 @@ void ResourceManager::PrepareRendererShutdown()
 
 void ResourceManager::ReleaseRenderView(uint32_t key)
 {
-    if (m_renderResources) m_renderResources->ReleaseView(key);
+    if (m_renderResources) {
+        m_renderResources->ReleaseView(key);
+    }
 }
 
 ResourceManager* ResourceManager::Active()
@@ -156,8 +169,10 @@ ResourceManager* ResourceManager::Active()
 
 ResourceManager* ResourceManager::FindOwner(uint64_t instanceId)
 {
-    /// @note 関数 static の GPU キャッシュは台帳より遅く破棄され得る。終了済みの台帳へ触れない。
-    if (!s_managerRegistryAlive || instanceId == 0) return nullptr;
+    // 関数 static の GPU キャッシュは台帳より遅く破棄され得る。終了済みの台帳へ触れない。
+    if (!s_managerRegistryAlive || instanceId == 0) {
+        return nullptr;
+    }
     const auto& instances = LiveResourceManagers();
     const auto found = instances.find(instanceId);
     return found == instances.end() ? nullptr : found->second;
@@ -172,7 +187,9 @@ namespace {
 /// @note Resolve an asset identity before the backend derives cache filenames; a derived GUID still identifies the original HLSL.
 std::string ResolveShaderSource(const std::string& reference)
 {
-    if (!reference.starts_with("guid:")) return reference;
+    if (!reference.starts_with("guid:")) {
+        return reference;
+    }
     const std::string source = ResolveAssetPath(reference);
     if (source.empty() || source.starts_with("guid:")) {
         FBZZ_LOG_ERROR("Shader asset reference is unresolved: %s", reference.c_str());
@@ -180,27 +197,31 @@ std::string ResolveShaderSource(const std::string& reference)
     }
     return source;
 }
-} /// @note namespace
+} // namespace
 
 ResourceHandle<ShaderTag> ResourceManager::LoadShader(std::string_view path)
 {
-    /// @note LoadTexture と同様にパス区切りを統一し、大文字小文字の違いによる同一シェーダーの
-    /// @note       二重ロードを防ぐ。バックエンドの IShader 内部も同様に正規化する。
+    // LoadTexture と同様にパス区切りを統一し、大文字小文字の違いによる同一シェーダーの
+    // 二重ロードを防ぐ。バックエンドの IShader 内部も同様に正規化する。
     std::string key(path);
     std::replace(key.begin(), key.end(), '\\', '/');
     auto it = m_shaderCache.find(key);
-    if (it != m_shaderCache.end()) return it->second;
+    if (it != m_shaderCache.end()) {
+        return it->second;
+    }
 
     const std::string source = ResolveShaderSource(key);
-    if (source.empty()) return ResourceHandle<ShaderTag>::Null();
+    if (source.empty()) {
+        return ResourceHandle<ShaderTag>::Null();
+    }
     auto shader = m_renderer.CreateNativeShader(source);
     if (!shader) {
         FBZZ_LOG_ERROR("Shader load failed: %s", key.c_str());
         return ResourceHandle<ShaderTag>::Null();
     }
 
-    /// @note 0 バイトとして登録: シェーダーバイトコードの実サイズはバックエンドの内側にあり、
-    /// @note       ITexture/IBuffer のように寸法から復元することもできない。
+    // 0 バイトとして登録: シェーダーバイトコードの実サイズはバックエンドの内側にあり、
+    // ITexture/IBuffer のように寸法から復元することもできない。
     const auto capabilities = LoadedShaderCapabilities(*shader, key);
     ResourceHandle<ShaderTag> handle = m_shaders.Insert(std::move(shader), 0, "Shader", __FILE__, __LINE__);
     m_shaderCache[key] = handle;
@@ -211,7 +232,9 @@ ResourceHandle<ShaderTag> ResourceManager::LoadShader(std::string_view path)
 Material* ResourceManager::GetErrorMaterial(bool skinned)
 {
     auto& material = skinned ? m_skinnedErrorMaterial : m_surfaceErrorMaterial;
-    if (!material) material = std::make_unique<Material>();
+    if (!material) {
+        material = std::make_unique<Material>();
+    }
     material->shaderPath = skinned ? ERROR_SKINNED_SHADER : ERROR_SURFACE_SHADER;
     material->shader = LoadShader(material->shaderPath);
     return Get(material->shader) ? material.get() : nullptr;
@@ -219,7 +242,9 @@ Material* ResourceManager::GetErrorMaterial(bool skinned)
 
 ShaderCapabilities ResourceManager::GetShaderCapabilities(ResourceHandle<ShaderTag> handle) const
 {
-    if (handle.owner != m_instanceId) return {};
+    if (handle.owner != m_instanceId) {
+        return {};
+    }
     const auto found = m_shaderCapabilities.find((static_cast<uint64_t>(handle.gen) << 32) | handle.id);
     return found != m_shaderCapabilities.end() ? found->second : ShaderCapabilities{};
 }
@@ -229,11 +254,14 @@ ResourceHandle<ShaderTag> ResourceManager::ReloadShader(std::string_view path)
     std::string key(path);
     std::replace(key.begin(), key.end(), '\\', '/');
     auto it = m_shaderCache.find(key);
-    if (it == m_shaderCache.end())
+    if (it == m_shaderCache.end()) {
         return LoadShader(path);
+    }
 
     const std::string source = ResolveShaderSource(key);
-    if (source.empty()) return it->second;
+    if (source.empty()) {
+        return it->second;
+    }
     auto newShader = m_renderer.CreateNativeShader(source);
     if (!newShader) {
         FBZZ_LOG_ERROR("ReloadShader failed: %s", key.c_str());
@@ -257,7 +285,9 @@ bool ResourceManager::ReloadAllShaders()
     pending.reserve(m_shaderCache.size());
     for (const auto& [path, handle] : m_shaderCache) {
         const std::string source = ResolveShaderSource(path);
-        if (source.empty()) return false;
+        if (source.empty()) {
+            return false;
+        }
         auto newShader = m_renderer.CreateNativeShader(source);
         if (!newShader) {
             FBZZ_LOG_WARN("ReloadAllShaders: failed to reload %s; keeping all previous shaders", path.c_str());
@@ -266,7 +296,9 @@ bool ResourceManager::ReloadAllShaders()
         capabilities.push_back(LoadedShaderCapabilities(*newShader, path));
         pending.emplace_back(handle, std::move(newShader));
     }
-    if (pending.empty()) return true;
+    if (pending.empty()) {
+        return true;
+    }
     if (!m_renderer.PrepareShaderReload()) {
         FBZZ_LOG_WARN("ReloadAllShaders: renderer rejected reload; keeping all previous shaders");
         return false;
@@ -284,8 +316,8 @@ bool ResourceManager::ReloadAllShaders()
 void ResourceManager::Reset()
 {
     prepared_skinning_detail::InvalidateResourceOwner(m_instanceId);
-    /// @note 所有リソースを全て手放し、ResourceHandle の gen を進めて旧ハンドルを無効化する。
-    /// @note 描画状態も破棄し、旧デバイスのハンドルやビュー履歴を次の描画へ持ち越さない。
+    // 所有リソースを全て手放し、ResourceHandle の gen を進めて旧ハンドルを無効化する。
+    // 描画状態も破棄し、旧デバイスのハンドルやビュー履歴を次の描画へ持ち越さない。
     ReleaseOwnedResourcesForShutdown();
     ++m_resetVersion;
     FBZZ_LOG_INFO("ResourceManager: reset renderer resources (version=%llu)",
@@ -320,8 +352,8 @@ ResourceHandle<TextureTag> ResourceManager::CreateTexture(const uint8_t* rgba, u
         FBZZ_LOG_ERROR("ResourceManager::CreateTexture failed (%ux%u)", width, height);
         return ResourceHandle<TextureTag>::Null();
     }
-    /// @note サイズを先に控える理由: 引数の評価順は未規定で、std::move した後に
-    /// @note       *texture を読むと空のポインタを参照しうる。
+    // サイズを先に控える理由: 引数の評価順は未規定で、std::move した後に
+    // *texture を読むと空のポインタを参照しうる。
     const std::size_t bytes = EstimateTextureBytes(*texture);
     return m_textures.Insert(std::move(texture), bytes, "TextureFromData", where.file_name(), static_cast<int>(where.line()));
 }
@@ -370,14 +402,16 @@ ResourceHandle<TextureTag> ResourceManager::PublishTexture(std::string_view path
 
 bool ResourceManager::ReplaceTextureContents(ResourceHandle<TextureTag> target, ResourceHandle<TextureTag> uploaded)
 {
-    if (target == uploaded || Get(target) == nullptr || Get(uploaded) == nullptr) return false;
+    if (target == uploaded || Get(target) == nullptr || Get(uploaded) == nullptr) {
+        return false;
+    }
     const auto previousVersion = Get(target)->GetContentVersion();
     std::unique_ptr<ITexture> texture = m_textures.Take(uploaded);
     texture->AdoptContentVersion(previousVersion);
     const std::size_t bytes = EstimateTextureBytes(*texture);
-    /// @note 旧実体はここで破棄される。DX12Texture のデストラクタが資源と bindless 枠をフェンス付きで返すので、
-    /// @note       このフレームまでに記録した描画は旧実体を読み終えてから回収される。新しい実体の枠は次に
-    /// @note       添字を引いたときに新しく割り当たる (公開中の枠を上書きしない)。
+    // 旧実体はここで破棄される。DX12Texture のデストラクタが資源と bindless 枠をフェンス付きで返すので、
+    // このフレームまでに記録した描画は旧実体を読み終えてから回収される。新しい実体の枠は次に
+    // 添字を引いたときに新しく割り当たる (公開中の枠を上書きしない)。
     /// @see https://learn.microsoft.com/en-us/windows/win32/direct3d12/fence-based-resource-management Fence-Based Resource Management
     m_textures.Replace(target, std::move(texture), bytes);
     return true;
@@ -396,7 +430,7 @@ std::size_t ResourceManager::GetTextureBytes(ResourceHandle<TextureTag> handle) 
 
 ResourceHandle<TextureTag> ResourceManager::GetWhiteTexture()
 {
-    /// @note Reset() はスロットの世代を進めるため、控えたハンドルの生死で作り直しを判断する。
+    // Reset() はスロットの世代を進めるため、控えたハンドルの生死で作り直しを判断する。
     if (Get(m_whiteTexture) == nullptr) {
         static constexpr uint8_t kWhite[4] = { 255, 255, 255, 255 };
         m_whiteTexture = CreateTexture(kWhite, 1, 1);
@@ -455,7 +489,7 @@ ResourceHandle<ConstantBufferTag> ResourceManager::CreateConstantBuffer(size_t s
 
 ResourceHandle<PipelineStateTag> ResourceManager::CreatePipelineState(const PipelineStateDesc& desc, Where where)
 {
-    /// @note PSO は状態の束で、専有メモリと呼べる実体を持たない。
+    // PSO は状態の束で、専有メモリと呼べる実体を持たない。
     return m_pipelineStates.Insert(m_renderer.CreateNativePipelineState(desc), 0,
                                    "PipelineState", where.file_name(), static_cast<int>(where.line()));
 }
@@ -472,7 +506,9 @@ ResourceHandle<RenderTargetTag> ResourceManager::CreateRenderTarget(uint32_t wid
 {
     const uint32_t colorCount = desc.colorCount;
     auto rt = m_renderer.CreateNativeRenderTarget(width, height, desc);
-    if (!rt) return ResourceHandle<RenderTargetTag>::Null();
+    if (!rt) {
+        return ResourceHandle<RenderTargetTag>::Null();
+    }
 
     std::vector<ResourceHandle<TextureTag>> colors;
     colors.reserve(colorCount);
@@ -486,8 +522,8 @@ ResourceHandle<RenderTargetTag> ResourceManager::CreateRenderTarget(uint32_t wid
                                            "RenderTargetColorTexture", where.file_name(), static_cast<int>(where.line())));
     }
 
-    /// @note 深度を持たない RT では SRV も作らない。GetDepthTexture は無効ハンドルを返し、
-    /// @note       束縛しようとした側で «読めない» ことが分かる。
+    // 深度を持たない RT では SRV も作らない。GetDepthTexture は無効ハンドルを返し、
+    // 束縛しようとした側で «読めない» ことが分かる。
     ResourceHandle<TextureTag> depth = ResourceHandle<TextureTag>::Null();
     if (desc.withDepth) {
         auto depthTexture = m_renderer.CreateNativeTextureFromRenderTarget(
@@ -499,8 +535,8 @@ ResourceHandle<RenderTargetTag> ResourceManager::CreateRenderTarget(uint32_t wid
                                   "RenderTargetDepthTexture", where.file_name(), static_cast<int>(where.line()));
     }
 
-    /// @note 0 バイトとして登録: RT のメモリは上で登録した色/深度テクスチャ側に計上済みで、
-    /// @note       ここでも数えると同じ実体を二重に積む。
+    // 0 バイトとして登録: RT のメモリは上で登録した色/深度テクスチャ側に計上済みで、
+    // ここでも数えると同じ実体を二重に積む。
     ResourceHandle<RenderTargetTag> handle =
         m_renderTargets.Insert(std::move(rt), 0, "RenderTarget", where.file_name(), static_cast<int>(where.line()));
     const uint64_t key = Key(handle);
@@ -513,13 +549,15 @@ ResourceHandle<RenderTargetTag> ResourceManager::CreateCubemapRenderTarget(uint3
                                                                            Where where)
 {
     auto rt = m_renderer.CreateNativeCubemapRenderTarget(size, mipCount);
-    if (!rt) return ResourceHandle<RenderTargetTag>::Null();
+    if (!rt) {
+        return ResourceHandle<RenderTargetTag>::Null();
+    }
 
-    /// @note Cube の色 SRV は通常 RT と同じ解放経路で管理し、face 描画用の内部 depth は backend が所有する。
-    /// @note 内部 depth は公開 SRV として登録しないため、GetDepthTexture は無効ハンドルを返す。
+    // Cube の色 SRV は通常 RT と同じ解放経路で管理し、face 描画用の内部 depth は backend が所有する。
+    // 内部 depth は公開 SRV として登録しないため、GetDepthTexture は無効ハンドルを返す。
     std::vector<ResourceHandle<TextureTag>> colors;
     if (auto cubeTex = m_renderer.CreateNativeCubeTextureFromRenderTarget(*rt)) {
-        /// @note 6 面ぶん。GetWidth/GetHeight は 1 面の寸法しか返さない。
+        // 6 面ぶん。GetWidth/GetHeight は 1 面の寸法しか返さない。
         const std::size_t cubeBytes = EstimateTextureBytes(*cubeTex) * 6u;
         colors.push_back(m_textures.Insert(std::move(cubeTex), cubeBytes,
                                            "CubemapRenderTargetTexture", where.file_name(), static_cast<int>(where.line())));
@@ -533,14 +571,14 @@ ResourceHandle<RenderTargetTag> ResourceManager::CreateCubemapRenderTarget(uint3
 
 ResourceHandle<TextureTag> ResourceManager::GetCubemapTexture(ResourceHandle<RenderTargetTag> rt)
 {
-    /// @note キューブ SRV は index 0 のカラーテクスチャとして登録してある。
+    // キューブ SRV は index 0 のカラーテクスチャとして登録してある。
     return GetColorTexture(rt, 0);
 }
 
 ResourceHandle<TextureTag> ResourceManager::CreateComputeTexture(uint32_t width, uint32_t height, Where where)
 {
     return m_textures.Insert(m_renderer.CreateNativeComputeTexture(width, height),
-                             /// @note RGBA16F
+                             // RGBA16F
                              static_cast<std::size_t>(width) * height * 8u,
                              "ComputeTexture", where.file_name(), static_cast<int>(where.line()));
 }
@@ -554,7 +592,7 @@ ResourceHandle<TextureTag> ResourceManager::CreateComputeTexture3D(
                       width, height, depth);
         return ResourceHandle<TextureTag>::Null();
     }
-    /// @note RGBA16F
+    // RGBA16F
     const std::size_t bytes = EstimateTextureBytes(*texture, 8u);
     return m_textures.Insert(std::move(texture), bytes, "ComputeTexture3D", where.file_name(), static_cast<int>(where.line()));
 }
@@ -563,7 +601,7 @@ ResourceHandle<TextureTag> ResourceManager::CreateDynamicTexture(
     uint32_t width, uint32_t height, DynamicTextureFormat format, Where where)
 {
     ResourceHandle<TextureTag> result;
-    /// @note Initial clearing records a transfer, so creation obeys the same synchronous render-thread boundary as updates.
+    // Initial clearing records a transfer, so creation obeys the same synchronous render-thread boundary as updates.
     m_renderer.ExecuteResourceOperation([&] {
         auto texture = m_renderer.CreateNativeDynamicTexture(width, height, format);
         if (!texture) {
@@ -579,7 +617,9 @@ ResourceHandle<TextureTag> ResourceManager::CreateDynamicTexture(
 ResourceHandle<TextureTag> ResourceManager::RegisterTexture(std::unique_ptr<ITexture> texture, Where where)
 {
     m_renderer.WaitForCpuFrame();
-    if (!texture) return ResourceHandle<TextureTag>::Null();
+    if (!texture) {
+        return ResourceHandle<TextureTag>::Null();
+    }
     const std::size_t bytes = EstimateTextureBytes(*texture);
     return m_textures.Insert(std::move(texture), bytes, "AdoptedTexture", where.file_name(), static_cast<int>(where.line()));
 }
@@ -626,7 +666,7 @@ ITexture* ResourceManager::Get(ResourceHandle<TextureTag> h) { return m_textures
 IBuffer* ResourceManager::Get(ResourceHandle<BufferTag> h)
 {
     const cpu_trace::SourceScope traceSource(cpu_trace::Source::BUFFER_GET, "ResourceManager::Get(Buffer)", true);
-    /// @note Static meshes have no deformed buffer; a null lookup has no shadow/version to synchronize and must not flush the CPU command frame.
+    // Static meshes have no deformed buffer; a null lookup has no shadow/version to synchronize and must not flush the CPU command frame.
     if (!h.IsValid()) { cpu_trace::Count(cpu_trace::Counter::BUFFER_INVALID); return nullptr; }
     SynchronizeBufferAccess(true);
     return m_buffers.Get(h);
@@ -634,9 +674,11 @@ IBuffer* ResourceManager::Get(ResourceHandle<BufferTag> h)
 
 void ResourceManager::SynchronizeBufferAccess(bool nativeRead)
 {
-    /// @note CPU shadow と内容版は転送要求の完了後に読む。Render Thread の再入では待たない。
+    // CPU shadow と内容版は転送要求の完了後に読む。Render Thread の再入では待たない。
     if (!m_rendererDetached && !m_renderer.IsRenderThread()) {
-        if (nativeRead) cpu_trace::Count(cpu_trace::Counter::BUFFER_PRODUCER);
+        if (nativeRead) {
+            cpu_trace::Count(cpu_trace::Counter::BUFFER_PRODUCER);
+        }
         m_renderer.WaitForCpuFrame();
     } else if (nativeRead) {
         cpu_trace::Count(m_rendererDetached ? cpu_trace::Counter::BUFFER_DETACHED : cpu_trace::Counter::BUFFER_WORKER);
@@ -654,11 +696,17 @@ void ResourceManager::ReadBufferStates(std::span<const ResourceHandle<BufferTag>
                                       buffer_state_detail::BufferStateReadScope* scope)
 {
     assert(handles.size() == out.size());
-    if (handles.size() != out.size()) return;
+    if (handles.size() != out.size()) {
+        return;
+    }
     const cpu_trace::SourceScope traceSource(cpu_trace::Source::BUFFER_GET, "ResourceManager::GetBufferStates", true);
     const bool hasValidHandle = std::any_of(handles.begin(), handles.end(), [](const auto handle) { return handle.IsValid(); });
-    if (hasValidHandle) SynchronizeBufferAccess(true);
-    if (scope) scope->CaptureReadBoundary();
+    if (hasValidHandle) {
+        SynchronizeBufferAccess(true);
+    }
+    if (scope) {
+        scope->CaptureReadBoundary();
+    }
     ReadNativeBufferStates(handles, out);
 }
 
@@ -667,8 +715,9 @@ void ResourceManager::ReadNativeBufferStates(std::span<const ResourceHandle<Buff
 {
     const uint64_t instanceId = GetInstanceId(), resetVersion = GetResetVersion(), frame = FrameStamp();
     const auto resolveCurrentBuffer = [&](ResourceHandle<BufferTag> handle) -> const IBuffer* {
-        if (GetInstanceId() != instanceId || GetResetVersion() != resetVersion || FrameStamp() != frame)
+        if (GetInstanceId() != instanceId || GetResetVersion() != resetVersion || FrameStamp() != frame) {
             return nullptr;
+        }
         return m_buffers.Get(handle);
     };
 
@@ -679,10 +728,12 @@ void ResourceManager::ReadNativeBufferStates(std::span<const ResourceHandle<Buff
             continue;
         }
 
-        /// @note getter の再入で資源が差し替わり得るため、毎回の読み取り前と結果の公開前に再解決する。
+        // getter の再入で資源が差し替わり得るため、毎回の読み取り前と結果の公開前に再解決する。
         const auto read = [&](auto getter, auto& value) {
             const auto* buffer = resolveCurrentBuffer(handles[index]);
-            if (!buffer) return false;
+            if (!buffer) {
+                return false;
+            }
             value = (buffer->*getter)();
             return true;
         };
@@ -708,10 +759,16 @@ BufferStateReadScope::~BufferStateReadScope() { s_bufferReadScope = m_previous; 
 
 bool BufferStateReadScope::HasCurrentReadBoundary() const
 {
-    if (!m_armed || m_previous || s_bufferReadScope != this) return false;
-    if (m_resources.m_rendererDetached || &m_resources.m_renderer != &m_facade) return false;
+    if (!m_armed || m_previous || s_bufferReadScope != this) {
+        return false;
+    }
+    if (m_resources.m_rendererDetached || &m_resources.m_renderer != &m_facade) {
+        return false;
+    }
     if (m_resources.GetInstanceId() != m_instance || m_resources.GetResetVersion() != m_epoch
-        || m_resources.FrameStamp() != m_frame) return false;
+        || m_resources.FrameStamp() != m_frame) {
+        return false;
+    }
 
     uint64_t submission = 0;
     uint64_t revision = 0;
@@ -722,29 +779,36 @@ bool BufferStateReadScope::HasCurrentReadBoundary() const
 bool BufferStateReadScope::Read(std::span<const ResourceHandle<BufferTag>> handles, std::span<BufferResourceState> out)
 {
     assert(handles.size() == out.size());
-    if (handles.size() != out.size()) return false;
+    if (handles.size() != out.size()) {
+        return false;
+    }
 
-    /// @note 読み取り中にキューが更新された場合は観測を破棄し、同期した結果で出力を上書きする。
+    // 読み取り中にキューが更新された場合は観測を破棄し、同期した結果で出力を上書きする。
     const auto readWithoutReuse = [&] {
         m_armed = false;
         m_resources.GetBufferStates(handles, out);
         return false;
     };
 
-    /// @note 既存の境界を再利用するときも、前後で同じ境界が見えていることを確認する。
+    // 既存の境界を再利用するときも、前後で同じ境界が見えていることを確認する。
     if (HasCurrentReadBoundary()) {
         const cpu_trace::SourceScope source(cpu_trace::Source::BUFFER_GET, "ResourceManager::ReadCurrentBufferStates", true);
-        if (std::any_of(handles.begin(), handles.end(), [](const auto handle) { return handle.IsValid(); }))
+        if (std::any_of(handles.begin(), handles.end(), [](const auto handle) { return handle.IsValid(); })) {
             cpu_trace::Count(cpu_trace::Counter::BUFFER_PRODUCER);
+        }
         m_resources.ReadNativeBufferStates(handles, out);
-        if (HasCurrentReadBoundary()) return true;
+        if (HasCurrentReadBoundary()) {
+            return true;
+        }
         return readWithoutReuse();
     }
 
-    /// @note 通常の同期読み取りで境界を取得できたときだけ、次回の再利用を許可する。
+    // 通常の同期読み取りで境界を取得できたときだけ、次回の再利用を許可する。
     m_armed = false;
     m_resources.ReadBufferStates(handles, out, this);
-    if (!m_armed || HasCurrentReadBoundary()) return m_armed;
+    if (!m_armed || HasCurrentReadBoundary()) {
+        return m_armed;
+    }
     return readWithoutReuse();
 }
 
@@ -771,24 +835,31 @@ void BufferStateReadScope::CaptureReadBoundary()
         m_armed = true;
     }
 }
-} /// @note namespace buffer_state_detail
+} // namespace buffer_state_detail
 
 bool ResourceManager::GetBufferMetadata(ResourceHandle<BufferTag> handle,
                                         BufferResourceMetadata& out) const
 {
-    if (!handle.IsValid() || handle.owner != m_instanceId) return false;
+    if (!handle.IsValid() || handle.owner != m_instanceId) {
+        return false;
+    }
     std::lock_guard lock(m_bufferMetadataMutex);
-    if (handle.id >= m_bufferMetadata.size()) return false;
+    if (handle.id >= m_bufferMetadata.size()) {
+        return false;
+    }
     const BufferResourceMetadata& metadata = m_bufferMetadata[handle.id];
-    if (!metadata.live || metadata.generation != handle.gen) return false;
+    if (!metadata.live || metadata.generation != handle.gen) {
+        return false;
+    }
     out = metadata;
     return true;
 }
 
 MeshletGeometryCache& ResourceManager::Meshlets()
 {
-    if (!m_meshletGeometryCache)
+    if (!m_meshletGeometryCache) {
         m_meshletGeometryCache = std::make_unique<MeshletGeometryCache>();
+    }
     return *m_meshletGeometryCache;
 }
 
@@ -797,10 +868,13 @@ void ResourceManager::RegisterBufferMetadata(ResourceHandle<BufferTag> handle,
                                              bool cpuReadable, bool gpuWritable,
                                              bool indexBuffer)
 {
-    if (!handle.IsValid()) return;
+    if (!handle.IsValid()) {
+        return;
+    }
     std::lock_guard lock(m_bufferMetadataMutex);
-    if (handle.id >= m_bufferMetadata.size())
+    if (handle.id >= m_bufferMetadata.size()) {
         m_bufferMetadata.resize(static_cast<size_t>(handle.id) + 1);
+    }
     BufferResourceMetadata& metadata = m_bufferMetadata[handle.id];
     metadata.generation = handle.gen;
     metadata.sizeBytes = sizeBytes;
@@ -815,13 +889,18 @@ void ResourceManager::RegisterBufferMetadata(ResourceHandle<BufferTag> handle,
 bool ResourceManager::AdvanceBufferContentVersion(ResourceHandle<BufferTag> handle,
                                                   size_t updateSizeBytes)
 {
-    if (!handle.IsValid() || updateSizeBytes == 0) return false;
+    if (!handle.IsValid() || updateSizeBytes == 0) {
+        return false;
+    }
     std::lock_guard lock(m_bufferMetadataMutex);
-    if (handle.id >= m_bufferMetadata.size()) return false;
+    if (handle.id >= m_bufferMetadata.size()) {
+        return false;
+    }
     BufferResourceMetadata& metadata = m_bufferMetadata[handle.id];
     if (!metadata.live || metadata.generation != handle.gen ||
-        metadata.gpuWritable || updateSizeBytes > metadata.sizeBytes)
+        metadata.gpuWritable || updateSizeBytes > metadata.sizeBytes) {
         return false;
+    }
     ++metadata.contentVersion;
     metadata.cpuReadable = true;
     return true;
@@ -829,12 +908,17 @@ bool ResourceManager::AdvanceBufferContentVersion(ResourceHandle<BufferTag> hand
 
 void ResourceManager::RemoveBufferMetadata(ResourceHandle<BufferTag> handle)
 {
-    if (!handle.IsValid()) return;
+    if (!handle.IsValid()) {
+        return;
+    }
     std::lock_guard lock(m_bufferMetadataMutex);
-    if (handle.id >= m_bufferMetadata.size()) return;
+    if (handle.id >= m_bufferMetadata.size()) {
+        return;
+    }
     BufferResourceMetadata& metadata = m_bufferMetadata[handle.id];
-    if (metadata.live && metadata.generation == handle.gen)
+    if (metadata.live && metadata.generation == handle.gen) {
         metadata.live = false;
+    }
 }
 
 IConstantBuffer* ResourceManager::Get(ResourceHandle<ConstantBufferTag> h) { return m_constantBuffers.Get(h); }
@@ -859,15 +943,21 @@ ResourceHandle<AccelerationStructureTag> ResourceManager::CreateAccelerationStru
 ResourceHandle<TextureTag> ResourceManager::GetColorTexture(ResourceHandle<RenderTargetTag> rt, uint32_t index)
 {
     auto it = m_renderTargetColors.find(Key(rt));
-    if (it == m_renderTargetColors.end()) return ResourceHandle<TextureTag>::Null();
-    if (index >= it->second.size()) return ResourceHandle<TextureTag>::Null();
+    if (it == m_renderTargetColors.end()) {
+        return ResourceHandle<TextureTag>::Null();
+    }
+    if (index >= it->second.size()) {
+        return ResourceHandle<TextureTag>::Null();
+    }
     return it->second[index];
 }
 
 ResourceHandle<TextureTag> ResourceManager::GetDepthTexture(ResourceHandle<RenderTargetTag> rt)
 {
     auto it = m_renderTargetDepths.find(Key(rt));
-    if (it == m_renderTargetDepths.end()) return ResourceHandle<TextureTag>::Null();
+    if (it == m_renderTargetDepths.end()) {
+        return ResourceHandle<TextureTag>::Null();
+    }
     return it->second;
 }
 
@@ -883,7 +973,9 @@ void ResourceManager::Update(ResourceHandle<BufferTag> h, const void* data, size
         std::vector<uint8_t> bytes(sizeBytes);
         std::memcpy(bytes.data(), data, sizeBytes);
         std::function<void()> transfer = [this, h, bytes = std::move(bytes)] {
-            if (IBuffer* buffer = m_buffers.Get(h)) buffer->Update(bytes.data(), bytes.size());
+            if (IBuffer* buffer = m_buffers.Get(h)) {
+                buffer->Update(bytes.data(), bytes.size());
+            }
         };
         if (RecordCpuShadowTransfer(std::move(transfer))) {
             static_cast<void>(AdvanceBufferContentVersion(h, sizeBytes));
@@ -899,16 +991,25 @@ void ResourceManager::Update(ResourceHandle<BufferTag> h, const void* data, size
 bool ResourceManager::DefersResourceUpdates() const { return !m_renderer.IsRenderThread(); }
 void ResourceManager::UpdateConstantBuffers(std::shared_ptr<const ConstantBufferUpdateBatch> batch)
 {
-    if (!batch || batch->entries.empty()) return;
-    for (const auto& entry : batch->entries)
-        if (entry.size == 0 || entry.offset > batch->bytes.size() || entry.size > batch->bytes.size() - entry.offset) return;
+    if (!batch || batch->entries.empty()) {
+        return;
+    }
+    for (const auto& entry : batch->entries) {
+        if (entry.size == 0 || entry.offset > batch->bytes.size() || entry.size > batch->bytes.size() - entry.offset) {
+            return;
+        }
+    }
     if (!m_renderer.IsRenderThread()) {
         std::function<void()> transfer = [this, batch] { UpdateConstantBuffers(batch); };
-        if (RecordCpuShadowTransfer(std::move(transfer))) return;
+        if (RecordCpuShadowTransfer(std::move(transfer))) {
+            return;
+        }
     }
-    for (const auto& entry : batch->entries)
-        if (auto* cb = Get(entry.handle); cb && entry.size <= cb->GetSize())
+    for (const auto& entry : batch->entries) {
+        if (auto* cb = Get(entry.handle); cb && entry.size <= cb->GetSize()) {
             cb->Update(batch->bytes.data() + entry.offset,entry.size);
+        }
+    }
 }
 
 bool ResourceManager::IsMaterialTransferProducer(const IRenderer* expectedFacade) const
@@ -919,17 +1020,23 @@ bool ResourceManager::IsMaterialTransferProducer(const IRenderer* expectedFacade
 void ResourceManager::UpdateOwnedMaterialBytes(ResourceHandle<ConstantBufferTag> handle,
     std::shared_ptr<const material_transfer_detail::OwnedConstantBufferData> payload)
 {
-    if (!payload) return;
+    if (!payload) {
+        return;
+    }
     const auto bytes = payload->Bytes();
     if (!m_renderer.IsRenderThread() && !bytes.empty()) {
-        /// @note Retain this strong owner even if recording unexpectedly rejects; the direct fallback never borrows a dead closure.
+        // Retain this strong owner even if recording unexpectedly rejects; the direct fallback never borrows a dead closure.
         std::function<void()> transfer = [this, handle, payload] {
             const auto ownedBytes = payload->Bytes();
             Update(handle, ownedBytes.data(), ownedBytes.size());
         };
-        if (RecordCpuShadowTransfer(std::move(transfer))) return;
+        if (RecordCpuShadowTransfer(std::move(transfer))) {
+            return;
+        }
     }
-    if (IConstantBuffer* cb = Get(handle)) cb->Update(bytes.data(), bytes.size());
+    if (IConstantBuffer* cb = Get(handle)) {
+        cb->Update(bytes.data(), bytes.size());
+    }
 }
 
 void ResourceManager::Update(ResourceHandle<ConstantBufferTag> h, const void* data, size_t sizeBytes)
@@ -938,10 +1045,13 @@ void ResourceManager::Update(ResourceHandle<ConstantBufferTag> h, const void* da
         std::vector<uint8_t> bytes(sizeBytes);
         std::memcpy(bytes.data(), data, sizeBytes);
         std::function<void()> transfer = [this, h, bytes = std::move(bytes)] { Update(h, bytes.data(), bytes.size()); };
-        if (RecordCpuShadowTransfer(std::move(transfer))) return;
+        if (RecordCpuShadowTransfer(std::move(transfer))) {
+            return;
+        }
     }
-    if (IConstantBuffer* cb = Get(h))
+    if (IConstantBuffer* cb = Get(h)) {
         cb->Update(data, sizeBytes);
+    }
 }
 
 void ResourceManager::Update(ResourceHandle<StructuredBufferTag> h, const void* data, size_t sizeBytes)
@@ -949,19 +1059,25 @@ void ResourceManager::Update(ResourceHandle<StructuredBufferTag> h, const void* 
     if (!m_renderer.IsRenderThread() && data && sizeBytes != 0) {
         std::vector<uint8_t> bytes(sizeBytes);
         std::memcpy(bytes.data(), data, sizeBytes);
-        if (m_renderer.RecordResourceUpdate([this, h, bytes = std::move(bytes)] { Update(h, bytes.data(), bytes.size()); })) return;
+        if (m_renderer.RecordResourceUpdate([this, h, bytes = std::move(bytes)] { Update(h, bytes.data(), bytes.size()); })) {
+            return;
+        }
     }
-    if (IStructuredBuffer* sb = Get(h))
+    if (IStructuredBuffer* sb = Get(h)) {
         sb->Update(data, sizeBytes);
+    }
 }
 
 bool ResourceManager::UpdateRegion(ResourceHandle<StructuredBufferTag> handle, const void* data, size_t bytes, size_t offset)
 {
-    if (!data || bytes==0) return false;
+    if (!data || bytes==0) {
+        return false;
+    }
     bool result=false;
     m_renderer.ExecuteResourceOperation([&] {
-        if (auto* buffer=Get(handle); buffer && offset<=buffer->GetSize() && bytes<=buffer->GetSize()-offset)
+        if (auto* buffer=Get(handle); buffer && offset<=buffer->GetSize() && bytes<=buffer->GetSize()-offset) {
             result=buffer->UpdateRegion(data,bytes,offset);
+        }
     });
     return result;
 }
@@ -969,18 +1085,22 @@ bool ResourceManager::UpdateRegion(ResourceHandle<StructuredBufferTag> handle, c
 template<class Tag, class ReleaseResource>
 void ResourceManager::ReleaseOnRenderThread(ResourceHandle<Tag> handle, const ReleaseResource& releaseResource)
 {
-    /// @note 終了後の所有者のデストラクタから、切り離し済みの renderer を参照しない。
-    if (handle.owner != m_instanceId || m_rendererDetached) return;
-    if (m_renderer.IsRenderThread())
+    // 終了後の所有者のデストラクタから、切り離し済みの renderer を参照しない。
+    if (handle.owner != m_instanceId || m_rendererDetached) {
+        return;
+    }
+    if (m_renderer.IsRenderThread()) {
         releaseResource();
-    else
+    }
+    else {
         m_renderer.ExecuteResourceOperation([&] { ReleaseOnRenderThread(handle, releaseResource); });
+    }
 }
 
 void ResourceManager::Release(ResourceHandle<ShaderTag> h)
 {
     ReleaseOnRenderThread(h, [&] {
-        /// @note Released generations must not survive in the path cache; a later Load/Reload creates a new live handle.
+        // Released generations must not survive in the path cache; a later Load/Reload creates a new live handle.
         std::erase_if(m_shaderCache, [h](const auto& entry) { return entry.second == h; });
         m_shaders.Remove(h);
         m_shaderCapabilities.erase((static_cast<uint64_t>(h.gen) << 32) | h.id);
@@ -993,8 +1113,9 @@ void ResourceManager::Release(ResourceHandle<TextureTag> h)
 void ResourceManager::Release(ResourceHandle<BufferTag> h)
 {
     ReleaseOnRenderThread(h, [&] {
-        if (m_meshletGeometryCache)
+        if (m_meshletGeometryCache) {
             m_meshletGeometryCache->Invalidate(*this, h);
+        }
         RemoveBufferMetadata(h);
         m_buffers.Remove(h);
     });
@@ -1018,11 +1139,14 @@ void ResourceManager::Release(ResourceHandle<AccelerationStructureTag> h)
 void ResourceManager::Release(ResourceHandle<RenderTargetTag> h)
 {
     ReleaseOnRenderThread(h, [&] {
-        if (m_renderResources) m_renderResources->ReleaseOutput(h);
+        if (m_renderResources) {
+            m_renderResources->ReleaseOutput(h);
+        }
         const uint64_t key = Key(h);
         if (auto colors = m_renderTargetColors.find(key); colors != m_renderTargetColors.end()) {
-            for (ResourceHandle<TextureTag> texture : colors->second)
+            for (ResourceHandle<TextureTag> texture : colors->second) {
                 Release(texture);
+            }
             m_renderTargetColors.erase(colors);
         }
         if (auto depth = m_renderTargetDepths.find(key); depth != m_renderTargetDepths.end()) {
@@ -1049,8 +1173,8 @@ void ResourceManager::ReleaseOwnedResourcesForShutdown()
         m_meshletGeometryCache.reset();
     }
     m_renderResources.reset();
-    /// @note RenderTarget 由来の TextureTag は RT の SRV を参照するラッパーなので、
-    /// @note       マップを先に消して shutdown 時の重複解放経路を断つ。
+    // RenderTarget 由来の TextureTag は RT の SRV を参照するラッパーなので、
+    // マップを先に消して shutdown 時の重複解放経路を断つ。
     m_renderTargetColors.clear();
     m_renderTargetDepths.clear();
     m_shaderCache.clear();
@@ -1118,7 +1242,7 @@ void LogOriginTotals(const std::vector<OriginTotal>& totals, std::size_t maxRows
     }
 }
 
-} /// @note namespace
+} // namespace
 
 void ResourceManager::LogLiveDebugResources() const
 {
@@ -1153,15 +1277,16 @@ std::size_t ResourceManager::GetLiveDebugResourceCount() const
 void ResourceManager::TickLeakWatchdog()
 {
 #if defined(FBZZ_GPU_VALIDATION)
-    /// @note 連続で増え続けた «フレーム数» のしきい値。まばらな生成 (シーン読み込み・
-    /// @note       プールの立ち上がり) で鳴らないよう、数秒ぶん増え続けたときだけ疑う。
+    // 連続で増え続けた «フレーム数» のしきい値。まばらな生成 (シーン読み込み・
+    // プールの立ち上がり) で鳴らないよう、数秒ぶん増え続けたときだけ疑う。
     constexpr uint32_t kGrowthFrames = 180;
-    /// @note 同じ実行で何度も出しても読み切れない。上限を決めて黙る。
+    // 同じ実行で何度も出しても読み切れない。上限を決めて黙る。
     constexpr uint32_t kMaxReports = 3;
 
-    /// @note エディタは 1 フレームで Scene / Game の 2 面を描く。フレームが変わったときだけ数える。
-    if (m_watchdogFrame == FrameStamp())
+    // エディタは 1 フレームで Scene / Game の 2 面を描く。フレームが変わったときだけ数える。
+    if (m_watchdogFrame == FrameStamp()) {
         return;
+    }
     m_watchdogFrame = FrameStamp();
 
     const std::size_t bytes = GetLiveDebugResourceBytes();
@@ -1172,8 +1297,9 @@ void ResourceManager::TickLeakWatchdog()
     }
     m_watchdogLastBytes = bytes;
 
-    if (m_watchdogGrowthFrames < kGrowthFrames || m_watchdogReportCount >= kMaxReports)
+    if (m_watchdogGrowthFrames < kGrowthFrames || m_watchdogReportCount >= kMaxReports) {
         return;
+    }
     m_watchdogGrowthFrames = 0;
     ++m_watchdogReportCount;
 
@@ -1218,9 +1344,9 @@ bool SizedRenderTarget::Ensure(ResourceManager& resources,
 {
     const uint64_t resetVersion = resources.GetResetVersion();
     if (m_resetVersion != resetVersion) {
-        /// @note 返さず捨てる理由: リセットではマネージャーが実体ごと畳んでおり、こちらの
-        /// @note       ハンドルは無効で返しても意味が無い (最悪、同じスロットへ入ってきた別の実体を
-        /// @note       巻き添えにする)。控えだけ捨てて作り直す。
+        // 返さず捨てる理由: リセットではマネージャーが実体ごと畳んでおり、こちらの
+        // ハンドルは無効で返しても意味が無い (最悪、同じスロットへ入ってきた別の実体を
+        // 巻き添えにする)。控えだけ捨てて作り直す。
         m_resetVersion = resetVersion;
         m_handle       = {};
         m_width = m_height = 0;
@@ -1228,10 +1354,13 @@ bool SizedRenderTarget::Ensure(ResourceManager& resources,
 
     const bool sameDesc = m_desc.colorCount == desc.colorCount && m_desc.format == desc.format
         && m_desc.withDepth == desc.withDepth && m_desc.reversedZ == desc.reversedZ;
-    if (m_handle.IsValid() && m_width == width && m_height == height && sameDesc)
+    if (m_handle.IsValid() && m_width == width && m_height == height && sameDesc) {
         return false;
+    }
 
-    if (m_handle.IsValid()) resources.Release(m_handle);
+    if (m_handle.IsValid()) {
+        resources.Release(m_handle);
+    }
     m_handle = resources.CreateRenderTarget(width, height, desc, where);
     m_width  = width;
     m_height = height;
@@ -1241,10 +1370,11 @@ bool SizedRenderTarget::Ensure(ResourceManager& resources,
 
 void SizedRenderTarget::Release(ResourceManager& resources)
 {
-    if (m_handle.IsValid() && m_resetVersion == resources.GetResetVersion())
+    if (m_handle.IsValid() && m_resetVersion == resources.GetResetVersion()) {
         resources.Release(m_handle);
+    }
     m_handle = {};
     m_width = m_height = 0;
 }
 
-} /// @note namespace fbzz::renderer
+} // namespace fbzz::renderer

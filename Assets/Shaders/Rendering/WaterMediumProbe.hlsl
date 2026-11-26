@@ -2,10 +2,11 @@
 /// @brief   Water medium lookup test shader that writes probe results into an HDR target.
 /// @author  Hasegawa Jin
 /// @date    2026-10-09
+#include "Common/Binding.hlsli"
 #include "Common/Constants.hlsli"
 #include "Rendering/Lighting.hlsli"
 
-cbuffer WaterMediumProbeConstants : register(b13)
+cbuffer WaterMediumProbeConstants : register(FBZZ_REGISTER(b, CB_WATER_MEDIUM_PROBE_SLOT))
 {
     float4 g_probePointMode;
     float4 g_probeSource;

@@ -28,4 +28,4 @@ struct RenderResourceAccess {
     RenderResourceAccessPurpose purpose = RenderResourceAccessPurpose::UNSPECIFIED;
 };
 
-} /// @note namespace fbzz::renderer
+} // namespace fbzz::renderer

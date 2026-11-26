@@ -28,41 +28,41 @@ public:
     RenderPassCapture& operator=(const RenderPassCapture&) = delete;
 
     struct PassInfo {
-        std::string name;
-        size_t occurrence = 0;
-        size_t graphIndex = 0;
-        bool culled = false;
-        double cpuMs = -1.0;
-        double gpuMs = -1.0;
-        std::vector<renderer::RenderGraph::ResourceAccess> accesses;
+        std::string name; ///< グラフに登録されたパス名。同名のパスは occurrence で区別する。
+        size_t occurrence = 0; ///< 同名パスの中での出現順。
+        size_t graphIndex = 0; ///< 元の RenderGraph でこのパスを指す添字。
+        bool culled = false; ///< このフレームの実行計画から除外されたか。
+        double cpuMs = -1.0; ///< CPU で計測した所要時間（ミリ秒）。負値は計測値なし。
+        double gpuMs = -1.0; ///< GPU で計測した所要時間（ミリ秒）。負値は計測値なし。
+        std::vector<renderer::RenderGraph::ResourceAccess> accesses; ///< パスが申告した論理リソースとそのアクセス方法。
     };
 
     struct OutputInfo {
-        std::string name;
-        renderer::ResourceHandle<renderer::TextureTag> texture;
-        bool depth = false;
-        bool cameraDepth = false;
-        uint32_t width = 0;
-        uint32_t height = 0;
+        std::string name; ///< ビューアーでキャプチャ対象として選ぶ出力名。
+        renderer::ResourceHandle<renderer::TextureTag> texture; ///< 選択した出力の画像を参照するテクスチャ。
+        bool depth = false; ///< 深度画像として表示する出力か。
+        bool cameraDepth = false; ///< カメラの投影条件で線形化できる深度か。
+        uint32_t width = 0; ///< 元の画像の幅（画素）。
+        uint32_t height = 0; ///< 元の画像の高さ（画素）。
     };
 
     enum class DisplayMode { AUTO, RGB, RED, GREEN, BLUE, ALPHA, SIGNED_VECTOR, LINEAR_DEPTH };
 
     /// @note 画像 1 枚の «見せ方»。Preview と Gallery が同じものを使う。
     struct ViewSettings {
-        DisplayMode mode = DisplayMode::AUTO;
-        float exposure = 0.0f;
-        float rangeMin = 0.0f;
-        float rangeMax = 1.0f;
-        bool  gamma = false;
+        DisplayMode mode = DisplayMode::AUTO; ///< RGB、単一チャンネル、深度などの可視化方式。
+        float exposure = 0.0f; ///< プレビュー表示の露出補正（段）。1 段で明るさを 2 倍にする。
+        float rangeMin = 0.0f; ///< プレビュー上で表示範囲の下端に対応させる入力値。
+        float rangeMax = 1.0f; ///< プレビュー上で表示範囲の上端に対応させる入力値。
+        bool  gamma = false; ///< 表示時にガンマ変換を適用するか。
 
         bool operator==(const ViewSettings&) const = default;
     };
 
     struct Request {
-        std::string passName = "Composite";
-        size_t occurrence = 0;
-        std::string outputName;
+        std::string passName = "Composite"; ///< 直後の画像をキャプチャする描画パスの名前。
+        size_t occurrence = 0; ///< 同名のパスのうちキャプチャする回を識別する番号。
+        std::string outputName; ///< キャプチャする論理出力の名前。
         /// @note outputName が「希望」か「指定」か。false (既定) は指定で、名前が無ければ «選べない» として
         /// @note 状態文字列を出す (綴り違いを黙って別の画像で埋めないため)。true は希望で、無ければそのパス
         /// @note の主出力へ落とす。
@@ -70,10 +70,10 @@ public:
         /// @note (深度固定のまま Composite へ進む等)。毎回エラーだと送りが止まるが、手で選んだ名前が
         /// @note 消えたことは知りたい。
         bool outputIsPreference = false;
-        ViewSettings view;
+        ViewSettings view; ///< このキャプチャに適用する露出と表示方式。
     };
 
-    Request request;
+    Request request; ///< 次にプレビューするパス・出力とその表示設定。
 
     /// @note リソース一覧タブ用のサムネイル 1 枚。
     struct GalleryTile {
@@ -83,27 +83,27 @@ public:
         /// @note 原因も直し方も違うため区別して出す。
         enum class Issue {
             None,
-            NotBound,     ///< @note 生きているパスが申告しているのに実体が差さっていない
-            NotDeclared,  ///< @note 実体は差さっているが、このフレームの誰も申告していない
-            NoImage       ///< @note 差さっているが 2D 画像として取り出せない (配列・バッファ等)
+            NotBound,     ///< 生きているパスが申告しているのに実体が差さっていない
+            NotDeclared,  ///< 実体は差さっているが、このフレームの誰も申告していない
+            NoImage       ///< 差さっているが 2D 画像として取り出せない (配列・バッファ等)
         };
 
-        std::string resource;   ///< @note 論理リソース名
-        std::string label;      ///< @note 表示名 (MRT スライスや深度を含む)
-        Issue       issue = Issue::None;
-        uint32_t    sourceWidth = 0;
-        uint32_t    sourceHeight = 0;
-        bool        depth = false;
-        bool        hasImage = false;
-        renderer::SizedRenderTarget image;
-        renderer::ResourceHandle<renderer::ConstantBufferTag> constants;
+        std::string resource;   ///< 論理リソース名
+        std::string label;      ///< 表示名 (MRT スライスや深度を含む)
+        Issue       issue = Issue::None; ///< パスの申告と実リソースの不一致、または画像を取得できない理由。
+        uint32_t    sourceWidth = 0; ///< サムネイル化する前の画像の幅（画素）。
+        uint32_t    sourceHeight = 0; ///< サムネイル化する前の画像の高さ（画素）。
+        bool        depth = false; ///< 元のリソースが深度画像か。
+        bool        hasImage = false; ///< このタイルに表示可能な画像を生成できたか。
+        renderer::SizedRenderTarget image; ///< ギャラリーに表示するサムネイルの描画先。
+        renderer::ResourceHandle<renderer::ConstantBufferTag> constants; ///< このタイルを表示用に変換するときの定数バッファ。
     };
 
     /// @note 一覧を焼くかどうか。タブを開いている間だけ true にする。
     bool galleryEnabled = false;
     /// @note サムネイル 1 枚の横幅 [px]。高さは元の縦横比から決める。
     uint32_t galleryTileWidth = 192;
-    ViewSettings galleryView;
+    ViewSettings galleryView; ///< リソース一覧の各サムネイルに適用する共通の表示設定。
 
     /// @note 描画を飛ばすフレームでも呼び、古い画像を有効なキャプチャとして扱わない。
     FBZZ_GRAPHICS_API void Invalidate();
@@ -153,26 +153,26 @@ private:
     FBZZ_GRAPHICS_API void CaptureGallery(RenderPassContext& ctx);
     FBZZ_GRAPHICS_API void ReleaseGallery(renderer::ResourceManager& resources);
 
-    std::vector<PassInfo> m_passes;
-    std::vector<OutputInfo> m_outputs;
-    std::vector<std::string> m_depthTargets;
+    std::vector<PassInfo> m_passes; ///< 現在のビューで選択できるパスと実行情報。
+    std::vector<OutputInfo> m_outputs; ///< 選択したパスから参照できる出力の一覧。
+    std::vector<std::string> m_depthTargets; ///< 深度画像として公開されている論理リソース名。
     /// @note このフレームに «生きているパスが触れた» リソース名。宣言側の正本。
     std::vector<std::string> m_declared;
-    std::string m_status = "Waiting for the selected view.";
-    std::string m_galleryStatus;
-    Request m_capturedRequest;
-    std::string m_resolvedOutputName;
-    ViewSettings m_capturedGalleryView;
-    bool m_hasPreview = false;
-    size_t m_selectedIndex = static_cast<size_t>(-1);
+    std::string m_status = "Waiting for the selected view."; ///< 選択パスのプレビュー状態を表示するメッセージ。
+    std::string m_galleryStatus; ///< リソース一覧のキャプチャ状態を表示するメッセージ。
+    Request m_capturedRequest; ///< 現在のプレビュー画像を生成したときの要求。
+    std::string m_resolvedOutputName; ///< 実際にプレビューに使った出力名。
+    ViewSettings m_capturedGalleryView; ///< 現在のサムネイル群の生成時に使用した表示設定。
+    bool m_hasPreview = false; ///< 選択パスのプレビュー画像を表示できるか。
+    size_t m_selectedIndex = static_cast<size_t>(-1); ///< キャプチャ対象のパスを指すグラフ内の添字。
     /// @note 実行順の最後のパス。ここでフレーム末尾の状態として一覧を焼く。
     size_t m_lastExecutedIndex = static_cast<size_t>(-1);
-    renderer::SizedRenderTarget m_preview;
-    renderer::ResourceHandle<renderer::ShaderTag> m_shader;
-    renderer::ResourceHandle<renderer::PipelineStateTag> m_pipelineState;
-    renderer::ResourceHandle<renderer::ConstantBufferTag> m_constants;
-    std::vector<GalleryTile> m_gallery;
-    uint64_t m_resetVersion = 0;
+    renderer::SizedRenderTarget m_preview; ///< 選択したパスの出力を表示用に変換した描画ターゲット。
+    renderer::ResourceHandle<renderer::ShaderTag> m_shader; ///< リソースを診断表示用の色に変換するシェーダー。
+    renderer::ResourceHandle<renderer::PipelineStateTag> m_pipelineState; ///< 診断表示の描画に使うパイプライン状態。
+    renderer::ResourceHandle<renderer::ConstantBufferTag> m_constants; ///< プレビューの露出と表示範囲を渡す定数バッファ。
+    std::vector<GalleryTile> m_gallery; ///< フレーム末尾に取得したリソース別の診断情報とサムネイル。
+    uint64_t m_resetVersion = 0; ///< キャプチャ用 GPU 資源を作成した時点の管理器の世代。
 };
 
-} /// @note namespace fbzz::renderer
+} // namespace fbzz::renderer

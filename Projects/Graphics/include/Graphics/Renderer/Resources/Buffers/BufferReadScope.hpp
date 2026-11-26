@@ -31,4 +31,4 @@ private:
     uint64_t m_instance = 0, m_epoch = 0, m_frame = 0, m_submission = 0, m_revision = 0;
     bool m_armed = false;
 };
-} /// @note namespace fbzz::renderer::buffer_state_detail
+} // namespace fbzz::renderer::buffer_state_detail

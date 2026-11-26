@@ -2,6 +2,7 @@
 /// @brief   焼いた Flipbook の «MV なし | MV あり» 比較再生の実装。
 /// @author  Hasegawa Jin
 /// @date    2026-09-11
+#include <Graphics/Renderer/Commands/ShaderBindingSlots.hpp>
 #include "VolumeFlipbookComparePreview.hpp"
 
 #include <Engine/Asset/AssetManager.hpp>
@@ -56,8 +57,9 @@ bool VolumeFlipbookComparePreview::EnsureGpu(renderer::ResourceManager& resource
         m_motionAtlas = {};
         m_resetVersion = resources.GetResetVersion();
     }
-    if (!m_shader.IsValid())
+    if (!m_shader.IsValid()) {
         m_shader = resources.LoadShader(asset::AssetManager::ResolveAssetPath(kCompareShaderPath));
+    }
     if (!m_shader.IsValid()) {
         outError = "比較プレビューのシェーダーを読み込めません";
         return false;
@@ -67,8 +69,9 @@ bool VolumeFlipbookComparePreview::EnsureGpu(renderer::ResourceManager& resource
                                                      renderer::BlendMode::OPAQUE_BLEND,
                                                      renderer::DepthMode::DEPTH_OFF });
     }
-    if (!m_constants.IsValid())
+    if (!m_constants.IsValid()) {
         m_constants = resources.CreateConstantBuffer(sizeof(CompareConstants));
+    }
     return true;
 }
 
@@ -80,7 +83,9 @@ bool VolumeFlipbookComparePreview::Upload(renderer::ResourceManager& resources, 
         return false;
     }
     Release(resources);
-    if (!EnsureGpu(resources, outError)) return false;
+    if (!EnsureGpu(resources, outError)) {
+        return false;
+    }
     m_colorAtlas = resources.CreateTexture(baked.colorRgba8.data(), baked.atlasWidth, baked.atlasHeight);
     m_motionAtlas = resources.CreateTexture(baked.motionRgba8.data(), baked.atlasWidth, baked.atlasHeight);
     m_displayTile = (std::min)(baked.tileSize, kMaxDisplayTile);
@@ -105,9 +110,13 @@ void VolumeFlipbookComparePreview::Render(renderer::IRenderer& renderer, rendere
                                           asset::VolumePreviewBackground background)
 {
     std::string error;
-    if (!HasFlipbook() || !EnsureGpu(resources, error)) return;
-    /// @note デバイスリセットで Atlas も消えた。再ベイクまで描かない。
-    if (!m_colorAtlas.IsValid()) return;
+    if (!HasFlipbook() || !EnsureGpu(resources, error)) {
+        return;
+    }
+    // デバイスリセットで Atlas も消えた。再ベイクまで描かない。
+    if (!m_colorAtlas.IsValid()) {
+        return;
+    }
 
     const int frames = (std::max)(m_grid.frameCount, 1);
     const float position = (std::max)(time, 0.0f) * (std::max)(playbackFps, 0.0f);
@@ -115,7 +124,7 @@ void VolumeFlipbookComparePreview::Render(renderer::IRenderer& renderer, rendere
                                  : (std::min)(position, static_cast<float>(frames - 1));
     m_currentFrame = std::clamp(static_cast<int>(std::floor(framePosition)), 0, frames - 1);
     m_currentBlend = framePosition - static_cast<float>(m_currentFrame);
-    /// @note ParticlePass と同じく、ループしない列の最後は自分自身へ向かって補間する (= 補間なし)。
+    // ParticlePass と同じく、ループしない列の最後は自分自身へ向かって補間する (= 補間なし)。
     const int nextFrame = m_loop ? (m_currentFrame + 1) % frames : (std::min)(m_currentFrame + 1, frames - 1);
 
     CompareConstants constants{};
@@ -133,20 +142,26 @@ void VolumeFlipbookComparePreview::Render(renderer::IRenderer& renderer, rendere
     draw.shader = m_shader;
     draw.pipelineState = m_pipeline;
     draw.vertexCount = 3;
-    draw.constantBuffers[0] = m_constants;
-    draw.textures[0] = m_colorAtlas;
-    draw.textures[1] = m_motionAtlas;
+    draw.constantBuffers[renderer::cb::FLIPBOOK_COMPARE] = m_constants;
+    draw.textures[renderer::srv::FLIPBOOK_COLOR] = m_colorAtlas;
+    draw.textures[renderer::srv::FLIPBOOK_MOTION] = m_motionAtlas;
     renderer.Submit(draw, resources);
-    /// @note DX12 は RT を切り替えたときにシェーダー読み取り状態へ戻す。ImGui 表示はそれを前提にしている。
+    // DX12 は RT を切り替えたときにシェーダー読み取り状態へ戻す。ImGui 表示はそれを前提にしている。
     renderer.SetRenderTarget({}, resources);
 }
 
 void VolumeFlipbookComparePreview::Release(renderer::ResourceManager& resources)
 {
     if (m_resetVersion == resources.GetResetVersion()) {
-        if (m_colorAtlas.IsValid()) resources.Release(m_colorAtlas);
-        if (m_motionAtlas.IsValid()) resources.Release(m_motionAtlas);
-        if (m_target.IsValid()) resources.Release(m_target);
+        if (m_colorAtlas.IsValid()) {
+            resources.Release(m_colorAtlas);
+        }
+        if (m_motionAtlas.IsValid()) {
+            resources.Release(m_motionAtlas);
+        }
+        if (m_target.IsValid()) {
+            resources.Release(m_target);
+        }
     }
     m_colorAtlas = {};
     m_motionAtlas = {};

@@ -55,7 +55,9 @@ UvKey MakeUvKey(math::Vector2 rootUv)
 
 void AddTriangle(std::set<TriangleKey>& triangles, VertexKey a, VertexKey b, VertexKey c)
 {
-    if (a == b || b == c || c == a) return;
+    if (a == b || b == c || c == a) {
+        return;
+    }
     TriangleKey triangle{a, b, c};
     std::sort(triangle.begin(), triangle.end());
     triangles.insert(triangle);
@@ -64,7 +66,9 @@ void AddTriangle(std::set<TriangleKey>& triangles, VertexKey a, VertexKey b, Ver
 bool BuildParentTriangleSet(uint32_t cells, uint8_t edgeMask, std::set<TriangleKey>& out)
 {
     std::vector<uint32_t> indices;
-    if (!renderer::BuildSurfacePatchIndices(cells, edgeMask, indices)) return false;
+    if (!renderer::BuildSurfacePatchIndices(cells, edgeMask, indices)) {
+        return false;
+    }
     const uint32_t stride = cells + 1u;
     for (size_t index = 0; index + 2 < indices.size(); index += 3) {
         const auto key = [&](uint32_t vertex) {
@@ -88,7 +92,9 @@ bool BuildMorphedChildTriangleSet(uint32_t cells, uint8_t childEdgeMask, std::se
             if (patchZ == 0 && (childEdgeMask & 4u)) childMask |= 4u;
             if (patchZ == 1 && (childEdgeMask & 8u)) childMask |= 8u;
             std::vector<uint32_t> indices;
-            if (!renderer::BuildSurfacePatchIndices(cells, childMask, indices)) return false;
+            if (!renderer::BuildSurfacePatchIndices(cells, childMask, indices)) {
+                return false;
+            }
             for (size_t index = 0; index + 2 < indices.size(); index += 3) {
                 std::array<VertexKey, 3> vertices{};
                 for (uint32_t corner = 0; corner < 3; ++corner) {
@@ -160,7 +166,9 @@ TEST_F(SurfacePatchMorphTest, SpatialDensityChildEndpointMatchesMorphingParentTr
         const math::Vector2 uvPerGridX{1.0f / static_cast<float>(gridScale), 0.0f};
         const math::Vector2 uvPerGridZ{0.0f, 1.0f / static_cast<float>(gridScale)};
         std::vector<uint32_t> indices;
-        if (!renderer::BuildSurfacePatchIndices(cells, 0, indices)) return false;
+        if (!renderer::BuildSurfacePatchIndices(cells, 0, indices)) {
+            return false;
+        }
         const uint32_t stride = cells + 1u;
         for (uint32_t patchZ = 0; patchZ < patchesPerAxis; ++patchZ) {
             for (uint32_t patchX = 0; patchX < patchesPerAxis; ++patchX) {

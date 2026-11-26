@@ -110,7 +110,7 @@ protected:
         instance.surface.roughness = 0.045f;
         instance.surface.metallic = metallic;
         instance.surface.emission = emission;
-        /// @note Hybrid shadow/specular opt-out でも Reference の solid transport は PRIMARY で残る。
+        // Hybrid shadow/specular opt-out でも Reference の solid transport は PRIMARY で残る。
         instance.mask = renderer::RAY_PRIMARY_MASK;
         m_state.scene.geometries.push_back(geometry);
         m_state.scene.instances.push_back(instance);
@@ -192,7 +192,9 @@ protected:
         AppendQuad(vertices, {{{e, -e, front}, {e, e, front}, {e, e, back}, {e, -e, back}}}, {1, 0, 0});
         AppendQuad(vertices, {{{-e, -e, front}, {e, -e, front}, {e, -e, back}, {-e, -e, back}}}, {0, -1, 0});
         AppendQuad(vertices, {{{-e, e, front}, {-e, e, back}, {e, e, back}, {e, e, front}}}, {0, 1, 0});
-        if (!splitSubmesh) return AddMesh(vertices, true, ior);
+        if (!splitSubmesh) {
+            return AddMesh(vertices, true, ior);
+        }
         const auto owner = AddMesh({vertices.begin(), vertices.begin() + 6}, true, ior);
         const auto rest = AddMesh({vertices.begin() + 6, vertices.end()}, true, ior);
         m_state.scene.instances[rest].objectId = m_state.scene.instances[owner].objectId;
@@ -321,7 +323,7 @@ protected:
         if (!m_exactCameraRay) {
             pipeline.AddPass<renderer::RayPathTracePass>(m_state, m_shader);
         } else {
-            /// @note Preserve measured FP32 camera bits instead of the pass's normal camera-basis reconstruction.
+            // 計測時の FP32 カメラ値のビットを保持するため、この検証では通常のカメラ基底の再構成を省く。
             renderer::RayPathTracePass declaration(m_state, m_shader);
             renderer::PassBuilder builder;
             declaration.Setup(builder, context);
@@ -432,7 +434,7 @@ TEST_F(RayPathTracingTest, NormalMapUsesPerVertexInverseTransposeAndTangentTrans
         const auto transformed = matrix * math::Vector4(value.x, value.y, value.z, 0);
         return math::Vector3{transformed.x, transformed.y, transformed.z}.Normalized();
     };
-    /// @note Center barycentrics are (1/4,1/2,1/4); Raster normalizes the three transformed vertices before interpolation.
+    // Center barycentrics are (1/4,1/2,1/4); Raster normalizes the three transformed vertices before interpolation.
     math::Vector3 normal{}, tangent{};
     const std::array<float, 3> weights{0.25f, 0.5f, 0.25f};
     for (size_t i = 0; i < vertices.size(); ++i) {
@@ -451,7 +453,7 @@ TEST_F(RayPathTracingTest, NormalMapUsesPerVertexInverseTransposeAndTangentTrans
     ASSERT_EQ(geometry.size(), 4u);
     EXPECT_VEC3_NEAR((math::Vector3{geometry[0], geometry[1], geometry[2]}),
         transform(inverseTranspose, {0, 0, -1}), 0.001f);
-    /// @note firstGeometry and the capture target are RGBA16F; one distance ULP near 3 is 1/512.
+    // firstGeometry and the capture target are RGBA16F; one distance ULP near 3 is 1/512.
     EXPECT_NEAR(geometry[3], 3, 0.002f);
 }
 
@@ -613,7 +615,7 @@ TEST_F(RayPathTracingTest, MatchesClosedSlabFresnelReflectionAndIndexMatchedZero
     for (uint32_t dispatch = 0; dispatch < 16; ++dispatch) reflection = Render(64);
     ASSERT_EQ(reflection.size(), 4u);
     const float boundaryReflection = (1 - 1.5f) * (1 - 1.5f) / ((1 + 1.5f) * (1 + 1.5f));
-    /// @note R + (1-R)^2 R / (1-R^2) = 2R/(1+R)。1024 固定 sample の約 3 sigma を許容する。
+    // R + (1-R)^2 R / (1-R^2) = 2R/(1+R)。1024 固定 sample の約 3 sigma を許容する。
     /// @see https://pbr-book.org/4ed/Reflection_Models/Specular_Reflection_and_Transmission Normal-incidence dielectric Fresnel
     const float slabReflection = 2 * boundaryReflection / (1 + boundaryReflection);
     for (size_t i = 0; i < 3; ++i) EXPECT_NEAR(reflection[i], slabReflection, 0.025f);
@@ -843,7 +845,7 @@ TEST_F(RayPathTracingTest, RoughSolidGgxTransportStaysFiniteAndMatchesNeeMisAndB
     ASSERT_EQ(mis.size(), 4u);
     EXPECT_TRUE(std::isfinite(mis[0]));
     EXPECT_GT(mis[0], 0.5f); EXPECT_LT(mis[0], 1.2f);
-    /// @note Rare microfacet samples in the opposite macro hemisphere are null events, never a different branch with an inconsistent medium stack.
+    // Rare microfacet samples in the opposite macro hemisphere are null events, never a different branch with an inconsistent medium stack.
     const auto misHealthy = Render(1, false, 0, 1);
     ASSERT_EQ(misHealthy.size(), 4u);
     EXPECT_NEAR(misHealthy[0], 0, 0.001f);
@@ -1012,7 +1014,7 @@ TEST_F(RayPathTracingTest, CountsGrazingSmoothNormalNullEventsWithoutStickyOrExc
     m_camera.m_orthoHeight = 0.001f;
     m_state.constantsData.maxBounces = 8;
     m_lighting.environmentRadiance = {1, 1, 1};
-    /// @note Ns は unit で Ng から 60 degrees。Ns 反射の方向が Ng 裏側になる event は寄与 0 として count する。
+    // Ns は unit で Ng から 60 degrees。Ns 反射の方向が Ng 裏側になる event は寄与 0 として count する。
     AddClosedBox(2, 4, 1.5f, 100, false, {0.866025404f, 0, -0.5f});
     const auto first = Render(64, false, 0, 1);
     ASSERT_EQ(first.size(), 4u);
@@ -1070,7 +1072,7 @@ TEST_F(RayPathTracingTest, IndexMatchedGrazingNormalTransmitsWithoutNumericalTot
     m_camera.m_orthoHeight = 0.001f;
     m_state.constantsData.maxBounces = 8;
     m_lighting.environmentRadiance = {1, 1, 1};
-    /// @note Ns dot view=1e-4 では float(1-cos^2)=1。IOR1 を一般 Snell 式へ入れると偽 TIR / null になる。
+    // Ns dot view=1e-4 では float(1-cos^2)=1。IOR1 を一般 Snell 式へ入れると偽 TIR / null になる。
     AddClosedBox(2, 4, 1, 100, false, {1, 0, -0.0001f});
     const auto matched = Render(64, false, 1.0f / 64);
     ASSERT_EQ(matched.size(), 4u);
@@ -1092,7 +1094,7 @@ TEST_F(RayPathTracingTest, UnresolvedSphereEntryExitTieCountsNullSampleWithoutSt
     m_lighting.environmentRadiance = {1, 1, 1};
     m_exactCameraRay = true;
     auto& constants = m_state.constantsData;
-    /// @note Cornell's measured sample281 at (922,713): outside camera, front509/back510 separated by less than a float T ULP.
+    // Cornell's measured sample281 at (922,713): outside camera, front509/back510 separated by less than a float T ULP.
     constants.cameraPosition = {std::bit_cast<float>(0x00000000u), std::bit_cast<float>(0x4019999Au),
         std::bit_cast<float>(0xC0A66666u), 0};
     constants.cameraForward = {std::bit_cast<float>(0x3E29AD33u), std::bit_cast<float>(0xBE9F51BDu),
@@ -1131,7 +1133,7 @@ TEST_F(RayPathTracingTest, EvaluatesAllDirectionalAndPointSpotDeltaSourcesWithDi
     m_lighting.lights = {light};
     const auto point = Render(1);
     ASSERT_EQ(point.size(), 4u);
-    /// @note At normal incidence roughness1 gives (Fresnel-reduced diffuse + dielectric GGX)=(.96+.01)/pi; light I=4*pi at distance2.
+    // At normal incidence roughness1 gives (Fresnel-reduced diffuse + dielectric GGX)=(.96+.01)/pi; light I=4*pi at distance2.
     for (size_t i = 0; i < 3; ++i) EXPECT_NEAR(point[i], 0.97f, 0.002f);
     m_lighting.lights[0].position.z = -1;
     const auto distant = Render(1);
@@ -1419,7 +1421,7 @@ TEST_F(RayPathTracingTest, StopsVirtualAreaVisibilityAtTargetBeforeRearWallWithi
     ASSERT_EQ(baseline.size(), 4u);
     EXPECT_GT(baseline[0], 0.1f);
     std::vector<renderer::Vertex> vertices;
-    /// @note This wall is behind the target by less than the conservative endpoint error, not a coplanar light sibling.
+    // This wall is behind the target by less than the conservative endpoint error, not a coplanar light sibling.
     AppendQuad(vertices, {{{-4, -1, 0.999999f}, {-4, 1, 0.999999f}, {-2, 1, 0.999999f}, {-2, -1, 0.999999f}}}, {0, 0, -1});
     const auto wall = AddMesh(vertices, false);
     m_state.scene.instances[wall].surface.baseColor = {0, 0, 0, 1};
@@ -1447,7 +1449,7 @@ TEST_F(RayPathTracingTest, PreservesFiniteLargeDistancePointSpotEnergyWithoutSqu
     m_lighting.lights = {point};
     const auto distant = Render(1);
     ASSERT_EQ(distant.size(), 4u);
-    /// @note Fresnel-reduced diffuse .96 plus normal GGX .01 gives (.96+.01)*.01 after the authored pi units cancel.
+    // Fresnel-reduced diffuse .96 plus normal GGX .01 gives (.96+.01)*.01 after the authored pi units cancel.
     for (size_t i = 0; i < 3; ++i) EXPECT_NEAR(distant[i], 0.0097f, 0.00003f);
     const auto raw = Render(1, false, 1);
     for (size_t i = 0; i < 3; ++i) EXPECT_NEAR(raw[i], 0.0097f * 2, 0.00006f);
@@ -1516,7 +1518,7 @@ TEST_F(RayPathTracingTest, UsesActualFinitePrimaryAreaDistanceWhenSquaredRangeWo
     for (size_t i = 0; i < 3; ++i) EXPECT_NEAR(unlimited[i], 2, 0.003f);
     m_lighting.lights[0].range = 2e19f;
     const auto ranged = Render(1);
-    /// @note The true d/r=.5 cutoff is (1-.5^4)^2=.87890625 even though range^2 overflows FP32.
+    // The true d/r=.5 cutoff is (1-.5^4)^2=.87890625 even though range^2 overflows FP32.
     for (size_t i = 0; i < 3; ++i) EXPECT_NEAR(ranged[i], 2 * 0.87890625f, 0.003f);
     EXPECT_NEAR(ranged[3], 1, 0.001f);
 }
@@ -1553,14 +1555,14 @@ TEST_F(RayPathTracingTest, PreservesDeltaClampZeroSubnormalRecoveryAndMaximumWhi
     m_lighting.lights[0].position.z = 2.95f;
     m_lighting.lights[0].intensity = 1e-39f / math::PI;
     const auto recovered = Render(1, false, 1e37f);
-    /// @note Subnormal radiant intensity / .01 produces a normal irradiance and a normal RAW sum; only display is rescaled.
+    // Subnormal radiant intensity / .01 produces a normal irradiance and a normal RAW sum; only display is rescaled.
     const uint32_t subnormal = std::bit_cast<uint32_t>(m_state.pathScene.deltaLights[0].radiance[0]);
     EXPECT_NE(subnormal & 0x007FFFFFu, 0u); EXPECT_EQ(subnormal & 0x7F800000u, 0u);
     EXPECT_NEAR(recovered[0], 0.97f / math::PI, 0.001f);
     EXPECT_NEAR(recovered[1], 0, 0.001f); EXPECT_NEAR(recovered[2], 0, 0.001f);
     EXPECT_NEAR(recovered[3], 1, 0.001f);
     const float maximum = (std::numeric_limits<float>::max)();
-    /// @note This authored intensity/color pair rounds the double pi conversion to exact FLT_MAX without exceeding the CPU limit.
+    // This authored intensity/color pair rounds the double pi conversion to exact FLT_MAX without exceeding the CPU limit.
     m_lighting.lights[0].intensity = std::bit_cast<float>(std::bit_cast<uint32_t>(maximum / math::PI) + 2u);
     m_lighting.lights[0].color = {std::bit_cast<float>(0x3F7FFFFEu), 0, 0};
     m_lighting.lights[0].position.z = 2;

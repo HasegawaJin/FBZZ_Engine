@@ -139,7 +139,7 @@ TEST_F(RenderSceneSpatialQueriesTest, PooledPublicationWithSameOwnerRequiresNewS
         const auto initial = Collect(cache, pooled);
         EXPECT_FALSE(initial.ordinals.empty());
     }
-    /// @note The prior batch is retired before the producer reuses its publication storage.
+    // 生成側が公開用の領域を再利用する前に、直前のバッチを解放する。
     pooled->snapshotSerial = 31;
     pooled->frameStamp = 31;
     for (auto& object : pooled->geometry.EditObjects()) object.boundsCenter.x += 10000;

@@ -19,12 +19,16 @@ public:
     RenderObjectSelection(RenderObjectSelection&& other) noexcept : m_flags(std::move(other.EditFlags())) {}
     RenderObjectSelection& operator=(const RenderObjectSelection& other)
     {
-        if (this != &other) EditFlags() = other.m_flags;
+        if (this != &other) {
+            EditFlags() = other.m_flags;
+        }
         return *this;
     }
     RenderObjectSelection& operator=(RenderObjectSelection&& other) noexcept
     {
-        if (this != &other) EditFlags() = std::move(other.EditFlags());
+        if (this != &other) {
+            EditFlags() = std::move(other.EditFlags());
+        }
         return *this;
     }
 
@@ -38,7 +42,9 @@ public:
     void Publish(std::vector<uint32_t> ordinals) { m_ordinals = std::move(ordinals); }
     [[nodiscard]] std::optional<std::span<const uint32_t>> Published() const
     {
-        if (!m_ordinals) return std::nullopt;
+        if (!m_ordinals) {
+            return std::nullopt;
+        }
         return std::span<const uint32_t>(*m_ordinals);
     }
 private:

@@ -16,7 +16,9 @@ class PathMemoryBuffer final : public renderer::IBuffer {
 public:
     void Update(const void* data, size_t size) override
     {
-        if (!data || size == 0 || size > m_bytes.size()) return;
+        if (!data || size == 0 || size > m_bytes.size()) {
+            return;
+        }
         std::memcpy(m_bytes.data(), data, size);
         ++m_version;
     }
@@ -26,7 +28,9 @@ public:
     bool CopyData(size_t offset, size_t size, void* output) const override
     {
         ++m_copyCount;
-        if (!m_readable || !output || offset > m_bytes.size() || size > m_bytes.size() - offset) return false;
+        if (!m_readable || !output || offset > m_bytes.size() || size > m_bytes.size() - offset) {
+            return false;
+        }
         std::memcpy(output, m_bytes.data() + offset, size);
         return true;
     }
@@ -81,8 +85,12 @@ protected:
     renderer::RayPathScene Build(bool respectArtistShadows = false)
     {
         return m_builder.Build(m_scene, [this](renderer::ResourceHandle<renderer::BufferTag> handle) -> const renderer::IBuffer* {
-            if (handle == renderer::ResourceHandle<renderer::BufferTag>{11, 2}) return &m_vertices;
-            if (handle == renderer::ResourceHandle<renderer::BufferTag>{12, 3}) return &m_indices;
+            if (handle == renderer::ResourceHandle<renderer::BufferTag>{11, 2}) {
+                return &m_vertices;
+            }
+            if (handle == renderer::ResourceHandle<renderer::BufferTag>{12, 3}) {
+                return &m_indices;
+            }
             return nullptr;
         }, m_lighting, respectArtistShadows);
     }
@@ -98,7 +106,9 @@ protected:
     bool HasIssue(const renderer::RayPathScene& scene, renderer::RayPathSceneIssue issue)
     {
         for (const auto& diagnostic : scene.diagnostics)
-            if (diagnostic.issue == issue) return true;
+            if (diagnostic.issue == issue) {
+                return true;
+            }
         return false;
     }
 

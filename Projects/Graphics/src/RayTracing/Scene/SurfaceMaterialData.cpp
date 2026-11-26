@@ -54,7 +54,7 @@ bool EqualFloat(float left, float right)
     return std::bit_cast<uint32_t>(left) == std::bit_cast<uint32_t>(right);
 }
 
-} /// @note namespace
+} // namespace
 
 bool SolidDielectricSettings::operator==(const SolidDielectricSettings& other) const
 {
@@ -119,14 +119,17 @@ SurfaceMaterialData ResolveTexturedSurfaceMaterial(const std::array<uint8_t, 96>
     std::memcpy(&textureMask, params.data() + 80, sizeof(textureMask));
     result.textureMask = textureMask;
     bool unavailable = false;
-    for (uint32_t i = 0; i < textures.size(); ++i)
-        if ((textureMask & (1u << i)) && (!textures[i].texture || textures[i].contentVersion == 0)) unavailable = true;
+    for (uint32_t i = 0; i < textures.size(); ++i) {
+        if ((textureMask & (1u << i)) && (!textures[i].texture || textures[i].contentVersion == 0)) {
+            unavailable = true;
+        }
+    }
     const bool valid = FiniteSurface(result) && std::isfinite(emissionScale)
         && std::isfinite(emissionColor.x) && std::isfinite(emissionColor.y) && std::isfinite(emissionColor.z)
         && result.baseColor.x >= 0 && result.baseColor.y >= 0 && result.baseColor.z >= 0
         && result.baseColor.w >= 0 && emissionColor.x >= 0 && emissionColor.y >= 0
         && emissionColor.z >= 0 && emissionScale >= 0 && ValidDielectricSettings(dielectric);
-    /// @note 材質 clamp のみ共有する。RT に画面微分や濡れを暗黙に適用しない。
+    // 材質 clamp のみ共有する。RT に画面微分や濡れを暗黙に適用しない。
     /// @see Assets/Shaders/Material/Surface/PBR.hlsl PSMain の metallic / roughness と emission。
     if (valid && dielectric.transmission == 0) {
         result.metallic = std::clamp(result.metallic, 0.0f, 1.0f);
@@ -147,7 +150,9 @@ SurfaceMaterialData ResolveTexturedSurfaceMaterial(const std::array<uint8_t, 96>
 RaySurfaceRecord MakeRaySurfaceRecord(const SurfaceMaterialData& material)
 {
     RaySurfaceRecord result;
-    if (!FiniteSurface(material)) return result;
+    if (!FiniteSurface(material)) {
+        return result;
+    }
     result.baseColor = {material.baseColor.x, material.baseColor.y, material.baseColor.z, material.baseColor.w};
     result.emission = {material.emission.x, material.emission.y, material.emission.z};
     result.metallic = material.metallic;
@@ -166,8 +171,12 @@ RaySurfaceRecord MakeRaySurfaceRecord(const SurfaceMaterialData& material)
     result.textureMask = material.textureMask;
     result.dielectricFlags = material.dielectric.thinWalled ? 1u : 0u;
     if (material.issue == SurfaceMaterialIssue::NONE && ValidDielectricSettings(material.dielectric)) {
-        if (material.standardSurfaceSupported && material.dielectric.transmission == 0) result.supported = 1;
-        else if (material.solidDielectricSupported && SupportedDielectric(material)) result.supported = 2;
+        if (material.standardSurfaceSupported && material.dielectric.transmission == 0) {
+            result.supported = 1;
+        }
+        else if (material.solidDielectricSupported && SupportedDielectric(material)) {
+            result.supported = 2;
+        }
     }
     return result;
 }
@@ -179,7 +188,9 @@ bool IsHybridRayDielectricSupported(const SurfaceMaterialData& material)
 
 float ResolveHybridRaySurfaceMarker(const SurfaceMaterialData& material)
 {
-    if (material.dielectric.transmission == 0.0f) return 0.0f;
+    if (material.dielectric.transmission == 0.0f) {
+        return 0.0f;
+    }
     return IsHybridRayDielectricSupported(material) ? 1.0f : 2.0f;
 }
 
@@ -207,4 +218,4 @@ const char* DescribeSurfaceMaterialIssue(SurfaceMaterialIssue issue)
     return "Unknown surface material issue";
 }
 
-} /// @note namespace fbzz::renderer
+} // namespace fbzz::renderer

@@ -8,12 +8,12 @@
 #include "Bake/Fluid/FluidGpuCommon.hlsli"
 #include "Common/BindlessIndices.hlsli"
 
-FBZZ_TEX3D_T(float4, gOriginalIn, 0); // 移流前
-FBZZ_TEX3D_T(float4, gForwardIn, 1); // 前進移流
-FBZZ_TEX3D_T(float4, gBackwardIn, 2); // 前進 → 後退で戻したもの
-FBZZ_TEX3D_T(float4, gVelocityIn, 3);
-FBZZ_TEX3D_T(float4, gSolidIn, 4); // w 1 = 固体
-FBZZ_RWTEX3D_T(float4, gFieldOut, 0);
+FBZZ_TEX3D_T(float4, gOriginalIn, SRV_FLUID_CORRECT_ORIGINAL_IN_SLOT); /// @note 移流前
+FBZZ_TEX3D_T(float4, gForwardIn, SRV_FLUID_CORRECT_FORWARD_IN_SLOT); /// @note 前進移流
+FBZZ_TEX3D_T(float4, gBackwardIn, SRV_FLUID_CORRECT_BACKWARD_IN_SLOT); /// @note 前進 → 後退で戻したもの
+FBZZ_TEX3D_T(float4, gVelocityIn, SRV_FLUID_CORRECT_VELOCITY_IN_SLOT);
+FBZZ_TEX3D_T(float4, gSolidIn, SRV_FLUID_CORRECT_SOLID_IN_SLOT); /// @note w 1 = 固体
+FBZZ_RWTEX3D_T(float4, gFieldOut, UAV_FLUID_CORRECT_FIELD_OUT_SLOT);
 
 [numthreads(4, 4, 4)]
 void CSMain(uint3 id : SV_DispatchThreadID)
@@ -22,9 +22,9 @@ void CSMain(uint3 id : SV_DispatchThreadID)
     float4 result = gForwardIn[id];
     if (gSharp != 0u)
     {
-        // 往復させて戻ってこなかった分 (= 数値拡散の見積もり) を半分足し戻す。
+        /// @note 往復させて戻ってこなかった分 (= 数値拡散の見積もり) を半分足し戻す。
         const float4 corrected = result + 0.5f * (gOriginalIn[id] - gBackwardIn[id]);
-        // 補正で元の近傍の範囲を超えると振動 (縞) が出る。範囲へ押し込めて抑える。
+        /// @note 補正で元の近傍の範囲を超えると振動 (縞) が出る。範囲へ押し込めて抑える。
         const float3 grid = clamp(float3(id) - gVelocityIn[id].xyz * (gDt / gCellSize), 0.0f, float(gResolution - 1u));
         const int3 i0 = int3(grid);
         const int3 i1 = min(i0 + 1, int(gResolution) - 1);
@@ -40,8 +40,8 @@ void CSMain(uint3 id : SV_DispatchThreadID)
         }
         result = clamp(corrected, lo, hi);
     }
-    // 散逸。見えない量は 0 にしてしまう (非正規化数へ落ちると遅くなるのは GPU でも同じ)。
-    // 色の質量は密度と同じ率で減らす (違う率だと、止まった煙の色が時間で勝手に移ろう)。
+    /// @note 散逸。見えない量は 0 にしてしまう (非正規化数へ落ちると遅くなるのは GPU でも同じ)。
+    /// @note 色の質量は密度と同じ率で減らす (違う率だと、止まった煙の色が時間で勝手に移ろう)。
     result.x *= gDensityKeep;
     result.y *= gTemperatureKeep;
     result.w *= gDensityKeep;
@@ -49,7 +49,7 @@ void CSMain(uint3 id : SV_DispatchThreadID)
     result.y = result.y < 1.0e-6f ? 0.0f : result.y;
     result.z = max(result.z, 0.0f);
     result.w = result.w < 1.0e-6f ? 0.0f : result.w;
-    // 移流は固体を知らないので、障害物の中へ運ばれた煙はここで消す。
+    /// @note 移流は固体を知らないので、障害物の中へ運ばれた煙はここで消す。
     if (gSolidIn[id].w > 0.5f) result = float4(0.0f, 0.0f, 0.0f, 0.0f);
     gFieldOut[id] = result;
 }

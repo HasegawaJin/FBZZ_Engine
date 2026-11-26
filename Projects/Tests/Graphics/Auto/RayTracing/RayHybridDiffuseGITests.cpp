@@ -25,6 +25,8 @@
 namespace fbzz::tests {
 namespace {
 using Pixels = std::array<math::Vector4, 4>;
+constexpr float SKY_IRRADIANCE = 4.0f;
+constexpr float WHITE_DIELECTRIC_DIFFUSE_WEIGHT = 1.0f - 0.04f;
 
 class RayHybridDiffuseGITest : public testkit::Fixture, private core::ILogSink {
 protected:
@@ -45,13 +47,17 @@ protected:
         const std::filesystem::path root(FBZZ_GRAPHICS_SHADER_ROOT);
         m_source = std::make_unique<testkit::TempDir>("hybrid_point_gi");
         ASSERT_TRUE(m_source->IsValid());
-        /// @note Snapshot production source dependencies under a real shader root; no authored assets or local CSOs are modified.
+        // テスト用シェーダールートに本番の依存ファイルを複製し、元のアセットと既存の CSO を保つ。
         const auto staged = m_source->File("Shaders");
         std::error_code error;
         for (const auto& file : std::filesystem::recursive_directory_iterator(root, error)) {
-            if (!file.is_regular_file(error)) continue;
+            if (!file.is_regular_file(error)) {
+                continue;
+            }
             const auto extension = file.path().extension();
-            if (extension != ".hlsl" && extension != ".hlsli") continue;
+            if (extension != ".hlsl" && extension != ".hlsli") {
+                continue;
+            }
             const auto destination = staged / file.path().lexically_relative(root);
             std::filesystem::create_directories(destination.parent_path(), error);
             ASSERT_FALSE(error) << error.message();
@@ -92,7 +98,7 @@ protected:
         Begin();
         for (uint32_t face = 0; face < 6; ++face) {
             m_bundle.renderer->SetRenderTargetFace(m_cube, face, 0, *m_resources);
-            m_bundle.renderer->Clear({4, 4, 4, 1});
+            m_bundle.renderer->Clear({SKY_IRRADIANCE, SKY_IRRADIANCE, SKY_IRRADIANCE, 1});
             m_bundle.renderer->SetRenderTargetFace(m_prefilterCube, face, 0, *m_resources);
             m_bundle.renderer->Clear({0, 0, 0, 1});
         }
@@ -185,7 +191,7 @@ protected:
     }
     void Expect(const math::Vector4& value, const math::Vector4& expected) const
     {
-        /// @note The final RGBA16F target rounds an otherwise FP32 linear HDR response.
+        // 内部で FP32 計算した線形 HDR の結果は、最後の RGBA16F 出力で丸められる。
         EXPECT_NEAR(value.x, expected.x, 0.008f);
         EXPECT_NEAR(value.y, expected.y, 0.008f);
         EXPECT_NEAR(value.z, expected.z, 0.008f);
@@ -226,26 +232,44 @@ private:
 /// @brief Primary and secondary share diffuse and apply material AO once.
 TEST_F(RayHybridDiffuseGITest, PrimaryAndSecondaryShareDiffuseAndApplyMaterialAoOnce)
 {
-    const auto values = Run(true, 0, 0, 0.5f, 2);
-    const math::Vector4 expected{1.945f, 1.945f, 1.945f, 1};
-    Expect(values[0], expected);
-    Expect(values[1], expected);
-    Expect(values[2], {3.945f, 3.945f, 3.945f, 1});
+    constexpr float MATERIAL_AO = 0.5f;
+    constexpr float EMISSION = 2.0f;
+    const auto values = Run(true, 0, 0, MATERIAL_AO, EMISSION);
+
+    // 白い誘電体は正面で 4% を鏡面反射へ回す。拡散には材質 AO を一度掛け、発光はその後に足す。
+    constexpr float REFLECTED_DIFFUSE = SKY_IRRADIANCE * WHITE_DIELECTRIC_DIFFUSE_WEIGHT * MATERIAL_AO;
+    constexpr float HIT_RADIANCE = REFLECTED_DIFFUSE + EMISSION;
+    const math::Vector4 expectedDiffuse{REFLECTED_DIFFUSE, REFLECTED_DIFFUSE, REFLECTED_DIFFUSE, 1};
+    Expect(values[0], expectedDiffuse);
+    Expect(values[1], expectedDiffuse);
+    Expect(values[2], {HIT_RADIANCE, HIT_RADIANCE, HIT_RADIANCE, 1});
     Expect(values[3], {0, 0, 0, 1});
 }
 
 /// @brief Diffuse lighting samples spherical harmonics at the hit position within the probe volume.
 TEST_F(RayHybridDiffuseGITest, HitPointUsesSpatialShRatherThanCameraSelectedConstant)
 {
-    ActiveVolume(0, ShVolume());
+    constexpr uint8_t SH_RED = 128;
+    constexpr uint8_t SH_GREEN = 64;
+    constexpr uint8_t SH_BLUE = 192;
+    ActiveVolume(0, ShVolume(SH_RED, SH_GREEN, SH_BLUE));
     ASSERT_TRUE(m_handles.lightProbeSH[0]);
+
+    // プローブ内では UNORM8 の定数 SH 係数を、プローブ外では空の放射照度を材質応答に掛ける。
     const auto inside = Run();
-    const math::Vector4 expected{0.96f * 128 / 255 + 0.025f,
-        0.96f * 64 / 255 + 0.025f, 0.96f * 192 / 255 + 0.025f, 1};
-    Expect(inside[0], expected); Expect(inside[1], expected); Expect(inside[2], expected);
+    const math::Vector4 expectedProbeDiffuse{
+        WHITE_DIELECTRIC_DIFFUSE_WEIGHT * (SH_RED / 255.0f),
+        WHITE_DIELECTRIC_DIFFUSE_WEIGHT * (SH_GREEN / 255.0f),
+        WHITE_DIELECTRIC_DIFFUSE_WEIGHT * (SH_BLUE / 255.0f), 1};
+    Expect(inside[0], expectedProbeDiffuse);
+    Expect(inside[1], expectedProbeDiffuse);
+    Expect(inside[2], expectedProbeDiffuse);
+
     const auto outside = Run(true, 3);
-    Expect(outside[0], {3.865f, 3.865f, 3.865f, 1});
-    Expect(outside[1], outside[0]);
+    constexpr float SKY_DIFFUSE = SKY_IRRADIANCE * WHITE_DIELECTRIC_DIFFUSE_WEIGHT;
+    const math::Vector4 expectedSkyDiffuse{SKY_DIFFUSE, SKY_DIFFUSE, SKY_DIFFUSE, 1};
+    Expect(outside[0], expectedSkyDiffuse);
+    Expect(outside[1], expectedSkyDiffuse);
 }
 
 /// @brief Inner probe overrides outer and metal has no diffuse lobe.
@@ -253,15 +277,21 @@ TEST_F(RayHybridDiffuseGITest, InnerProbeOverridesOuterAndMetalHasNoDiffuseLobe)
 {
     ActiveVolume(1, ShVolume(255, 255, 255));
     ActiveVolume(0, ShVolume(0, 0, 0));
+    const math::Vector4 black{0, 0, 0, 1};
+
+    // 内側の暗いプローブが外側の白いプローブに優先し、間接光はゼロになる。
     const auto inside = Run();
-    Expect(inside[1], {0.025f, 0.025f, 0.025f, 1});
+    Expect(inside[1], black);
+
     m_data.probeVolumes[0].intensity = 0;
     const auto outer = Run();
-    Expect(outer[1], {0.985f, 0.985f, 0.985f, 1});
+    constexpr float OUTER_PROBE_DIFFUSE = WHITE_DIELECTRIC_DIFFUSE_WEIGHT;
+    Expect(outer[1], {OUTER_PROBE_DIFFUSE, OUTER_PROBE_DIFFUSE, OUTER_PROBE_DIFFUSE, 1});
+
+    // 鏡面の入力は黒で、純金属は白いプローブからも拡散光を受けない。
     const auto metal = Run(true, 0, 1);
-    /// @note The existing Raster artistic floor remains, but a full metal never receives irradiance diffuse.
-    Expect(metal[0], {0.025f, 0.025f, 0.025f, 1});
-    Expect(metal[1], metal[0]);
+    Expect(metal[0], black);
+    Expect(metal[1], black);
 }
 
 /// @brief Known environment diffuse is replaced not added twice.
@@ -331,7 +361,7 @@ TEST_F(RayHybridDiffuseGITest, PublishedIrradianceHistoryRequiresExactOwnerEpoch
     auto& state = view.rayReflection.reconstruction;
     ASSERT_TRUE(renderer::PrepareRayReflectionReconstruction(context, view, shared));
     EXPECT_EQ(state.constantsData.temporalAllowed, 0u);
-    /// @note Arrange the same explicit immutable publication that a successful fresh bake supplies; this cube is not written again.
+    // Arrange the same explicit immutable publication that a successful fresh bake supplies; this cube is not written again.
     context.iblIrradiancePublication = {m_handles.iblIrradiance, m_resources.get(), m_resources->GetResetVersion()};
     const auto next = [&]() { state.historyValid = true; state.lastFrameStamp = context.frameStamp++; };
     next();

@@ -113,7 +113,7 @@ protected:
         std::error_code error;
         std::filesystem::create_directories(copiedRoot, error);
         ASSERT_FALSE(error);
-        /// @note Compile unchanged production includes in a temporary asset root; no original project scene or shader is edited.
+        // 本番の include 一式を一時アセットルートでコンパイルし、元のプロジェクトのシーンとシェーダーを保つ。
         for (const auto* directory : {"Common", "Platform", "Rendering", "Water"}) {
             std::filesystem::copy(root / directory, copiedRoot / directory, std::filesystem::copy_options::recursive, error);
             ASSERT_FALSE(error);
@@ -206,12 +206,14 @@ protected:
         renderer::RenderScene result;
         scene::ExtractRenderWater(context, result);
         EXPECT_EQ(result.water.size(), 1u);
-        if (result.water.empty()) return {};
+        if (result.water.empty()) {
+            return {};
+        }
         EXPECT_FLOAT_EQ(result.water.front().constants.timeParams.w, time);
         return std::move(result.water.front());
     }
 
-    std::vector<float> Probe(const renderer::RenderWaterInput& input,
+    std::vector<float> Probe(const renderer::RenderWaterInput& input, const renderer::Camera& camera,
         const std::array<math::Vector3, PROBES>& points)
     {
         std::vector<renderer::WaterVertex> vertices;
@@ -231,7 +233,13 @@ protected:
         renderer::PerFrameCB frame{};
         frame.viewProjection = math::Matrix4::Identity();
         resources.Update(m_frameCB, &frame, sizeof(frame));
-        resources.Update(m_waterCB, &input.constants, sizeof(input.constants));
+        // パッチ描画を通らないプローブにも、本番と同じビュー判定で Horizon の波頂補正を適用する。
+        auto constants = input.constants;
+        math::Vector2 horizonMinimum, horizonMaximum;
+        const float horizonFlag = renderer::ResolveWaterHorizonRectangle(input, camera, horizonMinimum, horizonMaximum)
+            ? 1.0f : 0.0f;
+        constants.farOceanParams = {horizonFlag, horizonFlag, input.farOceanRippleFadeDistance, 0.0f};
+        resources.Update(m_waterCB, &constants, sizeof(constants));
         device.SetRenderTarget(m_probeTarget, resources);
         device.Clear({0, 0, 0, 0});
         renderer::DrawCall draw;
@@ -346,6 +354,7 @@ TEST_F(WaterRenderSyncTest, DynamicProductionVertexMatchesWorldQueriesAtMovingSh
         auto& water = *source.GetComponent<scene::WaterComponent>(id);
         if (horizon) water.waveAuthoring.speedMultiplier = 0.65f;
         const auto& pose = source.GetGameObject(id)->transform;
+        const auto camera = DownCamera(pose.worldPosition);
         std::array<float, PROBES> previous{};
         std::array<math::Vector3, PROBES> fixedWorld{};
         std::array<float, PROBES> temporalMinimum{}, temporalMaximum{};
@@ -357,7 +366,7 @@ TEST_F(WaterRenderSyncTest, DynamicProductionVertexMatchesWorldQueriesAtMovingSh
         for (float time : TIMES) {
             std::array<math::Vector3, PROBES> points{};
             for (size_t i = 0; i < PROBES; ++i) {
-                /// @note A moving four-probe hull trajectory is numeric input, not an execution of ShipCombat gameplay.
+                // A moving four-probe hull trajectory is numeric input, not an execution of ShipCombat gameplay.
                 const size_t hull = i / 4, arm = i % 4;
                 points[i] = {static_cast<float>(hull % 4) - 1.5f + time * 0.12f,
                     0, static_cast<float>(hull / 4) - 0.5f + std::sin(time) * 0.3f};
@@ -365,8 +374,8 @@ TEST_F(WaterRenderSyncTest, DynamicProductionVertexMatchesWorldQueriesAtMovingSh
                 points[i].z += arm == 2 ? 0.3f : arm == 3 ? -0.3f : 0.0f;
                 if (horizon) points[i].z += 80.0f;
             }
-            const auto input = Extract(source, DownCamera(pose.worldPosition), time);
-            const auto pixels = Probe(input, points);
+            const auto input = Extract(source, camera, time);
+            const auto pixels = Probe(input, camera, points);
             ASSERT_EQ(pixels.size(), PROBES * 2u * 4u);
             for (size_t i = 0; i < PROBES; ++i) {
                 const size_t p = i * 4, n = (PROBES + i) * 4;
@@ -389,7 +398,7 @@ TEST_F(WaterRenderSyncTest, DynamicProductionVertexMatchesWorldQueriesAtMovingSh
                 previous[i] = pixels[p + 2];
             }
 
-            /// @note Hold displaced world XZ fixed. Only the production inverse map chooses which source vertex reaches it.
+            // Hold displaced world XZ fixed. Only the production inverse map chooses which source vertex reaches it.
             std::array<math::Vector3, PROBES> temporalPoints{};
             for (size_t i = 0; i < PROBES; ++i) {
                 const auto origin = water.SolveUndisplacedXZ(fixedWorld[i].x, fixedWorld[i].z, time,
@@ -398,7 +407,7 @@ TEST_F(WaterRenderSyncTest, DynamicProductionVertexMatchesWorldQueriesAtMovingSh
                     * (math::Vector3{origin.x, pose.worldPosition.y, origin.y} - pose.worldPosition);
                 temporalPoints[i] = {local.x / pose.worldScale.x, 0, local.z / pose.worldScale.z};
             }
-            const auto temporalPixels = Probe(input, temporalPoints);
+            const auto temporalPixels = Probe(input, camera, temporalPoints);
             ASSERT_EQ(temporalPixels.size(), PROBES * 2u * 4u);
             for (size_t i = 0; i < PROBES; ++i) {
                 const size_t p = i * 4;
@@ -431,7 +440,7 @@ TEST_F(WaterRenderSyncTest, DynamicProductionVertexMatchesWorldQueriesAtMovingSh
     }
     EXPECT_EQ(errors.samples, 768u);
     EXPECT_LE(errors.height, 0.003f);
-    /// @note Allow the CPU central difference and the finite inverse solve to differ from the GPU analytic normal.
+    // Allow the CPU central difference and the finite inverse solve to differ from the GPU analytic normal.
     EXPECT_LE(errors.normal, 0.004f);
     EXPECT_GT(maximumChange, 0.1f);
     EXPECT_EQ(temporalSamples, 768u);
@@ -453,6 +462,7 @@ TEST_F(WaterRenderSyncTest, LocalFlowSwellMatchesProductionHeightAndNormal)
     const auto id = AddWater(source, true);
     auto& water = *source.GetComponent<scene::WaterComponent>(id);
     const auto& pose = source.GetGameObject(id)->transform;
+    const auto camera = DownCamera(pose.worldPosition);
     water.enableGerstnerWaves = false;
     scene::FlowFieldSettings settings;
     settings.radius = 18.0f;
@@ -476,8 +486,8 @@ TEST_F(WaterRenderSyncTest, LocalFlowSwellMatchesProductionHeightAndNormal)
         SyncErrors errors;
         float maximumHeight = 0.0f;
         for (float time : {0.0f, 0.7f}) {
-            const auto input = Extract(source, DownCamera(pose.worldPosition), time);
-            const auto pixels = Probe(input, points);
+            const auto input = Extract(source, camera, time);
+            const auto pixels = Probe(input, camera, points);
             ASSERT_EQ(pixels.size(), PROBES * 2u * 4u);
             for (size_t i = 0; i < points.size(); ++i) {
                 const size_t p = i * 4, n = (PROBES + i) * 4;
@@ -511,7 +521,7 @@ TEST_F(WaterRenderSyncTest, ProductionHorizonRasterTracksNearShipHeightAndReport
         auto& water = *source.GetComponent<scene::WaterComponent>(id);
         const auto& pose = source.GetGameObject(id)->transform;
         if (configuration == 4u) {
-            /// @note Changing the ripple footprint must not move the offshore grid or its wave phase.
+            // Changing the ripple footprint must not move the offshore grid or its wave phase.
             water.extentX = water.extentZ = 192.0f;
             water.meshDirty = true;
             scene::PrepareWaterSimulationSurfaces(source);

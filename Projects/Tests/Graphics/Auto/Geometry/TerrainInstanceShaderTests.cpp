@@ -107,7 +107,7 @@ protected:
     prototype.vertexBuffer=resources.CreateVertexBuffer(triangle.data(),sizeof(triangle),sizeof(math::Vector3));
     prototype.indexBuffer=resources.CreateIndexBuffer(indices.data(),3); prototype.indexCount=3;
     prototype.shader=m_directInstance;
-    /// @note Additive output makes a duplicate opaque submission observable even when depth/color overwrite would hide it.
+    // 加算描画を使い、同じ色や深度で上書きされる場合も不透明物の二重送信を検出できるようにする。
     prototype.pipelineState=resources.CreatePipelineState({r::RasterizerMode::SOLID_NOCULL,r::BlendMode::ADDITIVE,r::DepthMode::DEPTH_OFF});
     r::RenderPassHandles handles;
     handles.objectCB=resources.CreateConstantBuffer(sizeof(r::PerObjectCB));

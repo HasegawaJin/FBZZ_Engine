@@ -55,11 +55,15 @@ protected:
         const std::filesystem::path root(FBZZ_GRAPHICS_SHADER_ROOT);
         const auto staged = m_source->File("Shaders");
         std::error_code error;
-        /// @note Compile the current production include tree in temporary storage; authored assets and their compiled shader caches stay untouched.
+        // 本番の include 一式は一時領域にコピーしてコンパイルし、元のアセットとシェーダーキャッシュを保つ。
         for (const auto& file : std::filesystem::recursive_directory_iterator(root, error)) {
-            if (!file.is_regular_file(error)) continue;
+            if (!file.is_regular_file(error)) {
+                continue;
+            }
             const auto extension = file.path().extension();
-            if (extension != ".hlsl" && extension != ".hlsli") continue;
+            if (extension != ".hlsl" && extension != ".hlsli") {
+                continue;
+            }
             const auto destination = staged / file.path().lexically_relative(root);
             std::filesystem::create_directories(destination.parent_path(), error);
             ASSERT_FALSE(error) << error.message();
@@ -157,7 +161,7 @@ protected:
     }
     void ExpectEquivalent(const Report& report, bool success) const
     {
-        /// @note Comparisons happen on FP32/uint bits in the CS; RGBA16F stores only exact Boolean results and bounded event counts.
+        // Compute Shader 内で FP32 または uint のビットを比較し、RGBA16F には正確に表現できる真偽値と上限付きの件数だけを格納する。
         for (size_t pixel = 0; pixel < 2; ++pixel) {
             EXPECT_FLOAT_EQ(report[pixel].x, 1); EXPECT_FLOAT_EQ(report[pixel].y, 1);
             EXPECT_FLOAT_EQ(report[pixel].z, 1); EXPECT_FLOAT_EQ(report[pixel].w, 1);
@@ -276,7 +280,7 @@ TEST_F(RayHybridGlassTraversalTest, FiveHundredTwelveWorkCapRejectsTheSameIncomp
     constants.repeatCount = 1;
     const auto report = Run(constants);
     ExpectEquivalent(report, false);
-    /// @note The first hit is supplied, so 511 subsequent queries prove that the same 512 states were visited before fail-closed truncation.
+    // The first hit is supplied, so 511 subsequent queries prove that the same 512 states were visited before fail-closed truncation.
     EXPECT_FLOAT_EQ(report[2].x, 511);
 }
 
@@ -292,7 +296,7 @@ TEST_F(RayHybridGlassTraversalTest, SinglePathThinFresnelExpectationMatchesTheDe
     EXPECT_LT(reflected[2].y, reflected[2].x); EXPECT_LT(transmitted[2].y, transmitted[2].x);
     EXPECT_FLOAT_EQ(reflected[5].x, 2); EXPECT_FLOAT_EQ(reflected[5].y, 0);
     EXPECT_FLOAT_EQ(transmitted[5].x, 0); EXPECT_FLOAT_EQ(transmitted[5].y, 1);
-    /// @note Exact normal-incidence Fresnel and the thin two-interface series define the discrete expectation independently of the shader chooser.
+    // Exact normal-incidence Fresnel and the thin two-interface series define the discrete expectation independently of the shader chooser.
     /// @see https://pbr-book.org/4ed/Reflection_Models/Dielectric_BSDF ThinDielectricBxDF.
     constexpr float reflection = 0.04f, probability = 2 * reflection / (1 + reflection);
     EXPECT_NEAR(probability * reflected[4].x + (1 - probability) * transmitted[4].x, reflected[3].x, 0.004f);
@@ -307,7 +311,7 @@ TEST_F(RayHybridGlassTraversalTest, SinglePathSolidTransmissionRetainsSnellBeerA
     constants.glassStochastic = 1; constants.forcedChoice = 2;
     const auto report = Run(constants);
     EXPECT_FLOAT_EQ(report[4].w, 1); EXPECT_FLOAT_EQ(report[2].w, 1);
-    /// @note Reciprocal slab eta squared factors cancel; Snell's oblique internal segment defines the Beer exponent independently of the traversal.
+    // Reciprocal slab eta squared factors cancel; Snell's oblique internal segment defines the Beer exponent independently of the traversal.
     const float cosineI = 1 / std::sqrt(1 + 0.6f * 0.6f);
     const float cosineT = std::sqrt(1 - (1 - cosineI * cosineI) / (1.5f * 1.5f));
     const float distanceRatio = 1 / (2 * cosineT);
@@ -340,7 +344,7 @@ TEST_F(RayHybridGlassTraversalTest, SinglePathInsideExitRetainsUncancelledRadian
     constants.glassStochastic = 1; constants.forcedChoice = 2; constants.repeatCount = 1; constants.terminalDraws = 0;
     const auto report = Run(constants);
     EXPECT_FLOAT_EQ(report[4].w, 1); EXPECT_FLOAT_EQ(report[2].w, 1);
-    /// @note A camera already in glass has no paired entry to cancel the exit's radiance-mode eta squared factor.
+    // A camera already in glass has no paired entry to cancel the exit's radiance-mode eta squared factor.
     /// @see https://pbr-book.org/4ed/Reflection_Models/Dielectric_BSDF Radiance transport through a specular BTDF.
     const float cosineI = 1 / std::sqrt(1 + 0.3f * 0.3f);
     const float distanceRatio = 0.5f / (2 * cosineI);

@@ -15,7 +15,9 @@ cbuffer TestPointConstants : register(b1)
 [numthreads(8, 8, 1)]
 void CSMain(uint3 pixel : SV_DispatchThreadID)
 {
-    if (pixel.y || pixel.x >= 4u) return;
+    if (pixel.y || pixel.x >= 4u) {
+        return;
+    }
     SurfaceHit hit = (SurfaceHit)0;
     hit.position = testPositionMetallic.xyz;
     hit.normal = hit.geometricNormal = float3(0, 0, 1);

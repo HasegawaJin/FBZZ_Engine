@@ -39,4 +39,4 @@ public:
     virtual void Execute(PassResources& resources, RenderPassContext& ctx) = 0;
 };
 
-} /// @note namespace fbzz::renderer
+} // namespace fbzz::renderer
