@@ -1,8 +1,9 @@
-# FBZZ Engine — Doxygen 設定
-# 実行: リポジトリ直下で `doxygen Docs/Doxyfile` → build/docs/html/index.html と build/docs/xml/
-# AI 向けの圧縮 Markdown は `python Projects/DevTools/ApiReference/ApiReference.py` が XML から build/docs/api/ へ作る。
-# 対象は公開ヘッダーのみ。規約 (Docs/conventions/comments.md) が守られているかを
-# WARN_IF_DOC_ERROR で検出する。未文書化は警告しない (書かない規約のため)。
+# @file    Doxyfile
+# @brief   公開 C++ ヘッダーの契約から HTML と API リファレンス用 XML を生成する。
+# @author  Hasegawa Jin
+# @date    2026-09-16
+# @note リポジトリ直下で doxygen Docs/Doxyfile を実行すると、build/docs に HTML と XML が出る。
+# @see Docs/conventions/comments.md 引数の方向とメンバー注釈の書き方。
 
 PROJECT_NAME           = "FBZZ Engine"
 PROJECT_BRIEF          = "C++20 自作 3D ゲームエンジン"
@@ -11,22 +12,28 @@ OUTPUT_LANGUAGE        = Japanese
 INPUT_ENCODING         = UTF-8
 
 INPUT                  = Projects/Math/include \
+                         Projects/Core/include \
+                         Projects/Graphics/include \
                          Projects/Physics/include \
                          Projects/Fluid/include \
                          Projects/Engine/include \
                          Projects/Editor/include
 RECURSIVE              = YES
-FILE_PATTERNS          = *.hpp
+FILE_PATTERNS          = *.hpp *.inl
 EXCLUDE_PATTERNS       = */ScriptProxyMembers.inl \
                          */AllScriptProxies.hpp
 
 STRIP_FROM_PATH        = Projects/Math/include \
+                         Projects/Core/include \
+                         Projects/Graphics/include \
                          Projects/Physics/include \
                          Projects/Fluid/include \
                          Projects/Engine/include \
                          Projects/Editor/include
 # $(...) は環境変数の展開で、他タグは参照できない。同じ一覧を繰り返す
 STRIP_FROM_INC_PATH    = Projects/Math/include \
+                         Projects/Core/include \
+                         Projects/Graphics/include \
                          Projects/Physics/include \
                          Projects/Fluid/include \
                          Projects/Engine/include \
@@ -51,6 +58,10 @@ EXPAND_ONLY_PREDEF     = YES
 SKIP_FUNCTION_MACROS   = YES
 PREDEFINED             = FBZZ_ENABLE_DX12 \
                          "__declspec(x)=" \
+                         "FBZZ_MATH_API=" \
+                         "FBZZ_CORE_API=" \
+                         "FBZZ_FLUID_API=" \
+                         "FBZZ_GRAPHICS_API=" \
                          "FBZZ_ENGINE_API=" \
                          "FBZZ_PHYSICS_API=" \
                          "FBZZ_SCRIPT(T)=" \

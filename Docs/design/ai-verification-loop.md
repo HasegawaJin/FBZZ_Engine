@@ -114,11 +114,25 @@ CI の `Run Editor MCP smoke test` は `FBZZEditorLauncher` をビルドし、�
 
 ## 5. 規約の機械化
 
+### C++ の可読性を調べる
+
+VS Code では調べたい C++ ファイルを開き、タスク **C++: clang-tidy (Current File)** を実行する。AI は同じ解析をリポジトリのルートから呼べる。
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File Tools/AgentBuild.ps1 tidy Projects/Core/src/Profiler/PerformanceDescriptorTable.cpp
+```
+
+`tidy` は Visual Studio の C++ Clang ツールを使い、構成済みプロジェクトの定義とインクルードパスで指定した翻訳単位を解析する。ヘッダーを指定すると `check` と同じ方法で読み込み元の C++ ファイルを選ぶ。自作ヘッダー内の指摘もファイル名・行番号付きで表示する。可読性の警告は助言として扱い、解析や構文のエラーは失敗を返す。通常のビルド時間には影響しない。[Visual Studio の Clang-Tidy](https://learn.microsoft.com/cpp/code-quality/clang-tidy)
+
+検査項目は [ルートの .clang-tidy](../../.clang-tidy) にある。命名、数値リテラル、条件の複雑さ、三項演算子の入れ子、波括弧を確認する。変数の説明が正しいか、空行が処理の段階を表しているかは差分を読んで確認する。[コメントの規約](../conventions/comments.md)
+
+### AgentLint
+
 - `node Projects/DevTools/AgentLint/lint.mjs <files...>` / `--changed` (git の差分)。PostToolUse フックでは編集したファイル 1 本を見る。コメント規約の詳細は `Docs/conventions/comments.md`
 - 共有するのは `.claude/settings.json` (フックと AgentBuild / lint の許可) と `.claude/skills/` (verify-cpp / playtest / add-bus-command / add-script-proxy / add-script)。`settings.local.json` は個人設定なので追跡しない
 - **error** (フックが止める): `new` / `delete` 式、`throw`、`dynamic_cast`、`std::ranges`、Coroutine 共通実装外の中断構文・標準 coroutine ABI、`import` モジュール、ヘッダーの `<Windows.h>`、エンジンヘッダーの `using namespace`、`.generated.hpp`、禁止ライブラリの include、生成物 (`ScriptList.inl` / `DataAssetList.inl`) の手編集、4 行ヘッダーの欠落、シェーダー複製の不一致、ツール置き場 (`Tools/` / `Projects/DevTools/` / `<Project>/Tools/`) の索引 `README.md` に無いファイル (`tool-unlisted`。拡張子を問わない)、ASCII 以外を含むのに BOM の無い `.ps1` (`ps1-bom`。Windows PowerShell 5.1 が CP932 で読んで構文エラーになる)。
 - Coroutine の中断構文は `Engine/Scene/Scripting/Coroutine.hpp` と内部 `Scene/CoroutineFrameLoop.cpp` のみに限定する。利用側が Coroutine.hpp を include しても検査の対象外にはならない。所有・待機・停止の境界は [engine-module-boundaries.md](engine-module-boundaries.md) を参照する。
-- **warn** (文脈へ返すだけ): `//` の自由記述コメント (旧コードに大量にあるため止めない)、`reinterpret_cast` (定数バッファ転送のみ可)、テスト `.cpp` の CMake 登録漏れ。
+- **warn** は宣言に付いた通常コメント、方向のない `@param`、`reinterpret_cast`（定数バッファ転送のみ可）、テスト `.cpp` の CMake 登録漏れを知らせる。関数本体の `//` は実装を読むためのコメントとして扱う。
 - 判定はコメントと文字列リテラルを空白に潰してから行う (`= delete` と «new» という単語を誤検出しない)。
 
 ## 6. バスの分割

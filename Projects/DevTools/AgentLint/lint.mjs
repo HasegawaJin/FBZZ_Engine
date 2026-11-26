@@ -68,7 +68,7 @@ export function SplitCode(source) {
         if (ch === '/' && next === '/') {
             const start = i;
             while (i < length && source[i] !== '\n') { code.push(' '); i++; }
-            comments.push({ line, text: source.slice(start, i) });
+            comments.push({ line, start, text: source.slice(start, i) });
             continue;
         }
         if (ch === '/' && next === '*') {
@@ -80,7 +80,7 @@ export function SplitCode(source) {
                 code.push(blank(source[i])); i++;
             }
             code.push('  '); i += 2;
-            comments.push({ line: startLine, text: source.slice(start, i) });
+            comments.push({ line: startLine, start, text: source.slice(start, i) });
             continue;
         }
         if (ch === 'R' && next === '"') {
@@ -113,6 +113,50 @@ export function SplitCode(source) {
     return { code: code.join(''), comments };
 }
 
+/// @brief 宣言用のコメントを検査するため、実装のブロック内にある行コメントを識別する。
+function ImplementationComments(code, comments) {
+    const lineComments = comments.filter(comment => /^\/\/(?![!/])/.test(comment.text));
+    const bodyComments = new Set();
+    if (lineComments.length === 0) {
+        return bodyComments;
+    }
+
+    // マクロ定義中の波括弧を実コードのスコープに数えない。原文の位置は保持する。
+    const content = code.replace(/^[ \t]*#(?:[^\n]*?\\\r?\n)*[^\n]*/gm,
+        directive => directive.replace(/[^\n]/g, ' '));
+    const delimiters = content.matchAll(/[{};]/g);
+    let delimiter = delimiters.next();
+    const scopes = [{ body: false, statementStart: 0 }];
+
+    // 各コメントまでの区切りを一度ずつ処理し、直近のスコープで分類する。
+    for (const comment of lineComments) {
+        while (!delimiter.done && delimiter.value.index < comment.start) {
+            const { 0: token, index } = delimiter.value;
+            const scope = scopes.at(-1);
+            if (token === '{') {
+                const prefix = content.slice(scope.statementStart, index);
+                const opensDeclaration = /\b(?:namespace|class|struct|union|enum)\b[^{};()=]*$/.test(prefix);
+                // コンストラクターの初期化子 value{...} の直後にも本体の { が続く。
+                const memberInitializer = /\)\s*(?:noexcept\s*)?:[\s\S]*[\w>]\s*$/.test(prefix);
+                const body = !opensDeclaration && (scope.body || /[)\]]/.test(prefix));
+                scopes.push({ body, memberInitializer, statementStart: index + 1 });
+            } else if (token === '}' && scopes.length > 1) {
+                const closed = scopes.pop();
+                if (!closed.memberInitializer) {
+                    scopes.at(-1).statementStart = index + 1;
+                }
+            } else {
+                scope.statementStart = index + 1;
+            }
+            delimiter = delimiters.next();
+        }
+        if (scopes.at(-1).body) {
+            bodyComments.add(comment);
+        }
+    }
+    return bodyComments;
+}
+
 /** @return {{severity:'error'|'warn', rule:string, line:number, message:string, key:string}[]} */
 function LintCpp(repoPath, source) {
     const findings = [];
@@ -121,10 +165,10 @@ function LintCpp(repoPath, source) {
     const extension = path.extname(repoPath).toLowerCase();
     const isHeader = extension === '.hpp' || extension === '.h';
     const isRendererBackend = /Renderer\/DX1[12]|RenderDX1[12]|\/DX1[12]\//.test(repoPath);
-    /// @note 中断構文と標準 coroutine ABI は、既存待機型と内部フレームループの実装だけに閉じる。
+    // 中断構文と標準 coroutine ABI は、既存待機型と内部フレームループの実装だけに閉じる。
     const isCoroutinePrimitive = repoPath === 'Projects/Engine/include/Engine/Scene/Scripting/Coroutine.hpp'
         || repoPath === 'Projects/Engine/src/Scene/Scripting/CoroutineFrameLoop.cpp';
-    /// @note `new` は nothrow による確保プリミティブへ限定する (AGENTS.md «絶対制約»)。
+    // `new` は nothrow による確保プリミティブへ限定する (AGENTS.md «絶対制約»)。
     const isAllocationPrimitive = /(^|\/)Memory\/MakeUnique\.hpp$/.test(repoPath);
     /// @note key は HEAD 版と突き合わせて «増えた違反» だけを残すための識別子 (OnlyNew)。
     /// @note コメントの移動や見出し変更を新しい違反と誤認しないよう、規則ごとに不変な部分で比べる。
@@ -132,7 +176,7 @@ function LintCpp(repoPath, source) {
         severity, rule, line, message, key: `${rule}|${keyText.replace(/\s+/g, ' ').trim()}`,
     });
 
-    /// @note 4 行ヘッダー
+    // ファイルの先頭 4 行を確認し、最初に不足したタグを報告する。
     const header = lines.slice(0, 4);
     const expected = [
         new RegExp(`^/// @file\\s+${baseName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\s*$`),
@@ -178,7 +222,7 @@ function LintCpp(repoPath, source) {
         rules.push({ rule: 'no-backend-downcast', re: /\bDX1[12]Renderer\s*[*&]/, message: 'DX11Renderer* / DX12Renderer* 禁止。IRenderer& のみ' });
     }
 
-    /// @note #include は文字列扱いで潰れるので、原文の行で見る規則を分ける。
+    // #include は文字列扱いで潰れるので、原文の行で見る規則を分ける。
     const rawLineRules = new Set(['no-generated-hpp', 'no-banned-lib', 'no-windows-h-in-header', 'no-coroutine-header']);
     for (let n = 0; n < codeLines.length; n++) {
         for (const { rule, re, message, severity } of rules) {
@@ -188,30 +232,42 @@ function LintCpp(repoPath, source) {
         }
     }
 
-    /// @note 長すぎる `///` ブロック (規約: ファイル説明 4 行・クラス 4 行・@note 1〜3 行)。8 行超だけ警告し、圧縮の目印にする。
+    // 長い設計説明を検出する。引数ごとの契約や出典は、引数が多い関数でも省かずに書けるよう別に扱う。
     {
-        let run = 0;
+        let proseLines = 0;
         let start = 0;
-        const flush = (end) => {
-            if (run > 8 && !(start === 1)) add('warn', 'doxygen-long-block', start, `\`///\` が ${run} 行続く。契約と非自明な理由だけ残し 8 行以内に (Docs/conventions/comments.md §4)`);
-            run = 0;
+        const flush = () => {
+            if (proseLines > 8 && start !== 1) {
+                add('warn', 'doxygen-long-block', start, `宣言の説明が ${proseLines} 行ある。長い設計理由は設計資料にまとめる (Docs/conventions/comments.md §4)`);
+            }
+            start = 0;
+            proseLines = 0;
         };
         lines.forEach((text, index) => {
-            if (/^\s*\/\/\/(?!<)/.test(text)) { if (run === 0) start = index + 1; run++; } else flush(index);
+            if (!/^\s*\/\/\/(?!<)/.test(text)) {
+                flush();
+                return;
+            }
+            if (start === 0) start = index + 1;
+            if (!/^\s*\/\/\/\s*[@\\](?:param|tparam|return|see)\b/.test(text)) proseLines++;
         });
-        flush(lines.length);
+        flush();
     }
-    /// @note コメント様式 (Docs/conventions/comments.md): `///` だけ。例外は namespace 閉じ・#endif・clang-format・NOLINT。
+    // 宣言の契約は Doxygen に出し、関数内の段階説明には普通の行コメントを許可する。
+    const implementationComments = ImplementationComments(code, comments);
     for (const comment of comments) {
         const text = comment.text;
         const isDoxygen = text.startsWith('///') || text.startsWith('/**') || text.startsWith('//!');
         if (!isDoxygen) {
-            if (/^\/\/\s*(NOLINT|clang-format|namespace\b)/.test(text)) continue;
-            if (/^\/\*\s*\w*\s*=?\s*\*\/$/.test(text)) continue; /// @note 引数名のコメント `/*unused*/` `/*poolTag=*/`
+            if (implementationComments.has(comment) || /^\/\/\s*(NOLINT|clang-format|namespace\b|@@FBZZ_)/.test(text)) continue;
+            if (/^\/\*\s*\w*\s*=?\s*\*\/$/.test(text)) continue; // 引数名だけを示す `/*unused*/` や `/*poolTag=*/` を調べる。
             const codeBefore = codeLines[comment.line - 1] ?? '';
             if (/^\s*#\s*endif\b/.test(codeBefore)) continue;
-            add('warn', 'doxygen-comment', comment.line, 'コメントは Doxygen 形式 (/// @brief / @note)');
+            add('warn', 'doxygen-comment', comment.line, '宣言は ///、データメンバーの説明は末尾の ///< に書く');
             continue;
+        }
+        if (/^\/\/\/\s*[@\\]param\b(?!\[(?:in|out|in,out)\]\s+\S)/.test(text)) {
+            add('warn', 'doxygen-param-direction', comment.line, '引数の用途を確認し @param[in] / @param[out] / @param[in,out] を使う');
         }
         if (/@ret\b/.test(text)) add('warn', 'doxygen-tag', comment.line, '`@ret` は独自タグ。`@return`');
         if (/@(details|remarks?)\b/.test(text)) add('warn', 'doxygen-tag', comment.line, '`@details` / `@remark` は使わない。`@note` 1 行');
@@ -369,7 +425,9 @@ function RenameSource(repoPath, base) {
                 const [status, from, to] = line.split('\t');
                 if (status?.startsWith('R') && from && to) renames.set(to, from);
             }
-        } catch { /** @note git が使えないときは改名を追わず、従来どおり新規ファイル扱い。 */ }
+        } catch {
+            // Git から改名前のパスが得られない場合は、新規ファイルとして検査する。
+        }
         renameCache.set(base, renames);
     }
     return renameCache.get(base).get(repoPath) ?? null;
@@ -391,7 +449,7 @@ export function LintFile(file, { all = false, base = 'HEAD' } = {}) {
     const absolute = path.join(REPO_ROOT, repoPath);
     if (!existsSync(absolute) || !statSync(absolute).isFile()) return [];
 
-    /// @note 置き場所の検査は拡張子を問わない (.py / .mjs / .ts もツールとして置かれる)。
+    // 置き場所の検査は拡張子を問わない (.py / .mjs / .ts もツールとして置かれる)。
     const findings = LintToolRegistration(repoPath);
     if (!IsLintTarget(repoPath)) return findings.map((finding) => ({ ...finding, file: repoPath }));
 
@@ -463,9 +521,15 @@ async function Main(argv) {
 
     const baseIndex = argv.indexOf('--base');
     const base = baseIndex >= 0 ? argv[baseIndex + 1] : null;
-    const files = base ? ChangedSince(base)
-        : argv.includes('--changed') ? ChangedFiles()
-        : argv.filter((arg, index) => !arg.startsWith('--') && argv[index - 1] !== '--base');
+    let files;
+    if (base) {
+        files = ChangedSince(base);
+    } else if (argv.includes('--changed')) {
+        files = ChangedFiles();
+    } else {
+        files = argv.filter((arg, index) => !arg.startsWith('--') && argv[index - 1] !== '--base');
+    }
+
     if (files.length === 0) {
         console.log('usage: lint.mjs <file...> | --changed | --base <ref> | --hook  [--all]');
         return 2;

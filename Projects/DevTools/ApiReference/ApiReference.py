@@ -1,3 +1,7 @@
+# @file    ApiReference.py
+# @brief   Doxygen XML の宣言と契約を AI 用の Markdown に変換する。
+# @author  Hasegawa Jin
+# @date    2026-09-17
 """FBZZ Engine — Doxygen XML から AI 向けの圧縮 API リファレンス (Markdown) を作る。
 
 使い方 (リポジトリ直下で):
@@ -83,7 +87,7 @@ def inline_text(node: ET.Element | None) -> str:
 class Description:
     brief: str = ""
     detail: list[str] = field(default_factory=list)
-    params: list[tuple[str, str]] = field(default_factory=list)
+    params: list[tuple[str, str, str]] = field(default_factory=list)
     tparams: list[tuple[str, str]] = field(default_factory=list)
     sects: list[tuple[str, str]] = field(default_factory=list)
 
@@ -102,11 +106,17 @@ def parse_description(member: ET.Element) -> Description:
         if text:
             d.detail.append(text)
         for plist in para.findall("parameterlist"):
-            target = d.tparams if plist.get("kind") == "templateparam" else d.params
             for item in plist.findall("parameteritem"):
-                names = [inline_text(n) for n in item.findall("parameternamelist/parametername")]
                 desc = " ".join(inline_text(p) for p in item.findall("parameterdescription/para"))
-                target.append((", ".join(names), desc))
+                for parameter in item.findall("parameternamelist/parametername"):
+                    name = inline_text(parameter)
+                    if plist.get("kind") == "templateparam":
+                        d.tparams.append((name, desc))
+                        continue
+
+                    # Doxygen XML では双方向を inout と表す。Markdown でもソースと同じ方向を読めるようにする。
+                    direction = parameter.get("direction", "")
+                    d.params.append((name, "in,out" if direction == "inout" else direction, desc))
         for sect in para.findall("simplesect"):
             kind = sect.get("kind", "")
             if kind in SKIP_SIMPLESECT:
@@ -190,8 +200,9 @@ def format_docs(d: Description, indent: str) -> list[str]:
         lines.append(f"{indent}{text}")
     for name, desc in d.tparams:
         lines.append(f"{indent}tparam `{name}`: {desc}")
-    for name, desc in d.params:
-        lines.append(f"{indent}param `{name}`: {desc}")
+    for name, direction, desc in d.params:
+        tag = f"param[{direction}]" if direction else "param"
+        lines.append(f"{indent}{tag} `{name}`: {desc}")
     for label, body in d.sects:
         lines.append(f"{indent}{label}: {body}")
     return lines

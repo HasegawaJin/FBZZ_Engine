@@ -14,6 +14,11 @@ add_test(NAME AgentLintCoroutineBoundaries
 set_tests_properties(AgentLintCoroutineBoundaries PROPERTIES
     WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}" TIMEOUT 30 LABELS "Build")
 
+add_test(NAME AgentLintCommentContracts
+    COMMAND node --test "${CMAKE_CURRENT_SOURCE_DIR}/DevTools/AgentLintCommentsTests.mjs")
+set_tests_properties(AgentLintCommentContracts PROPERTIES
+    WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}" TIMEOUT 30 LABELS "Build")
+
 # @note 実際のゲームテンプレートをリンクし、内部 Engine ヘッダーを必要としない起動境界を検証する。
 add_executable(FBZZStandaloneBoundarySmoke EXCLUDE_FROM_ALL
     "${CMAKE_SOURCE_DIR}/Projects/GameHub/Templates/standard/Src/AppMain.cpp")
