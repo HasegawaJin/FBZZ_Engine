@@ -163,16 +163,25 @@ public sealed class ActiveRagdollSampleComponent : Script
             return;
         }
 
+        // 物理の観測値を揃えてから、移動量や足の接地状態を更新する。
         float dt = Time.DeltaSeconds;
-        if (dt <= 0f) return;
+        if (dt <= 0f)
+        {
+            return;
+        }
         var hips = Body(HIPS);
         var torso = Body(TORSO);
         var left = Body(m_feet[0].Bone);
         var right = Body(m_feet[1].Bone);
         m_tripCooldown = MathF.Max(0f, m_tripCooldown - dt);
-        finite &= hips.Valid && torso.Valid && left.Valid && right.Valid &&
-            hips.Position.IsFinite && torso.Position.IsFinite && left.Position.IsFinite && right.Position.IsFinite;
-        if (!finite) return;
+        bool validBodies = hips.Valid && torso.Valid && left.Valid && right.Valid;
+        bool usablePose = validBodies && hips.Position.IsFinite && torso.Position.IsFinite
+            && left.Position.IsFinite && right.Position.IsFinite;
+        finite &= usablePose;
+        if (!finite)
+        {
+            return;
+        }
         forwardTravel = hips.Position.Z - m_origin.Z;
         lateralTravel = hips.Position.X - m_origin.X;
         Vector3 facing = torso.Rotation * Vector3.FORWARD;
@@ -183,6 +192,7 @@ public sealed class ActiveRagdollSampleComponent : Script
         TrackSupport(m_feet[1], right);
         TrackCrate();
 
+        // 入力の立ち上がりを先に取得し、歩行状態から転倒やジャンプに移れるかを調べる。
         bool jump = Pressed(KeyCode.SPACE, ref m_jumpDown);
         bool grab = Pressed(KeyCode.UP, ref m_grabDown);
         bool prone = Pressed(KeyCode.LEFT, ref m_proneDown);
@@ -192,14 +202,25 @@ public sealed class ActiveRagdollSampleComponent : Script
         m_phaseTime += dt;
         if (m_phase == Phase.GROUND)
         {
-            if (grab) ToggleGrip();
-            if (m_swing is null && grounded && !grabbing && !m_reaching)
+            if (grab)
             {
-                if (prone || supine) StartFall(prone);
-                else if (jump && left.Supported && right.Supported) Enter(Phase.CROUCH);
+                ToggleGrip();
+            }
+            bool canLeaveGroundPhase = m_swing is null && grounded && !grabbing && !m_reaching;
+            if (canLeaveGroundPhase)
+            {
+                if (prone || supine)
+                {
+                    StartFall(prone);
+                }
+                else if (jump && left.Supported && right.Supported)
+                {
+                    Enter(Phase.CROUCH);
+                }
             }
         }
 
+        // 遷移後の状態に応じて目標姿勢を更新し、最後にカメラを追従させる。
         switch (m_phase)
         {
             case Phase.GROUND:
@@ -221,23 +242,37 @@ public sealed class ActiveRagdollSampleComponent : Script
 
     private void InitializePose()
     {
-        if (simulationWeight < 1f || m_rig!.ParticleCount != BONES.Length) return;
+        // 全身のシミュレーションが有効になってから、各ボーンの基準姿勢を記録する。
+        if (simulationWeight < 1f || m_rig!.ParticleCount != BONES.Length)
+        {
+            return;
+        }
         for (int i = 0; i < BONES.Length; ++i)
         {
             m_rest[i] = Body(i);
-            if (!m_rest[i].Valid) return;
+            if (!m_rest[i].Valid)
+            {
+                return;
+            }
             m_previous[i] = m_rest[i].Position;
         }
+
+        // 両足の直下にある地面の高さから、立ち姿勢の支持面を決める。
         m_origin = m_rest[HIPS].Position;
         m_center = new Vector3(m_origin.X, 0f, m_origin.Z);
         foreach (Foot foot in m_feet)
         {
-            if (!GroundAt(m_rest[foot.Bone].Position, out float ground)) return;
+            if (!GroundAt(m_rest[foot.Bone].Position, out float ground))
+            {
+                return;
+            }
             var rest = m_rest[foot.Bone];
             foot.Goal = new Vector3(rest.Position.X, ground + TOE_HEIGHT - 0.002f, rest.Position.Z);
             foot.Rotation = rest.Rotation;
             m_center.Y += ground * 0.5f;
         }
+
+        // 支持面が確定したら、追従対象の初期位置を保存して操作入力を受け付ける。
         m_crateOrigin = m_crate?.Position ?? Vector3.ZERO;
         m_supportHeight = m_center.Y;
         m_lastCameraTarget = m_origin;
@@ -261,7 +296,7 @@ public sealed class ActiveRagdollSampleComponent : Script
             m_yaw = Mix(m_yawStart, m_yawEnd, eased);
             float path = Smooth(Clamp01((progress - 0.21f) / 0.57f));
             Vector3 sole = Mix(m_footStart, m_footEnd, path);
-            /// @note 離地時と着地時には高さを 0 にしたいので、立ち上がる曲線と立ち下がる曲線を掛け合わせる。
+            // 離地時と着地時には高さを 0 にしたいので、立ち上がる曲線と立ち下がる曲線を掛け合わせる。
             float arc = Smooth(Clamp01(progress / 0.3f)) * Smooth(Clamp01((1f - progress) / 0.32f));
             float lift = m_tripObstacle ? 0.033f : 0.11f;
             sole.Y += arc * (lift + MathF.Abs(m_footEnd.Y - m_footStart.Y) * 0.65f);
@@ -336,7 +371,7 @@ public sealed class ActiveRagdollSampleComponent : Script
         m_stepDurationSeconds = (m_phase == Phase.TRIP ? 0.41f : STEP_SECONDS) + (grabbing ? 0.13f : 0f);
         m_stepCenterStart = m_center;
         m_stepCenterEnd = (end + stance.Goal) * 0.5f - forward * 0.059f;
-        /// @note 高さは接地の確認後に上げる。腰を先に段差へ動かすと支持足を引っ張る。
+        // 高さは接地の確認後に上げる。腰を先に段差へ動かすと支持足を引っ張る。
         m_stepCenterEnd.Y = m_center.Y;
         Unplant(swing);
     }
@@ -376,7 +411,7 @@ public sealed class ActiveRagdollSampleComponent : Script
 
     private bool CrossesTripBar(Vector3 from, Vector3 to)
     {
-        /// @note 探す距離は歩幅の定数ではなく、足場を探した後の実際の足先の移動距離。
+        // 探す距離は歩幅の定数ではなく、足場を探した後の実際の足先の移動距離。
         Vector3 motion = Horizontal(to - from);
         Vector3 direction = motion.NormalizedOr(Vector3.ZERO);
         return direction.LengthSquared > 0f && Physics.Raycast(
@@ -410,7 +445,7 @@ public sealed class ActiveRagdollSampleComponent : Script
             AbortStep(foot, observed);
             return;
         }
-        /// @note 引っ掛かった足を桟の向こうへ逃がし、接地を確認してから反対側の足を出す。
+        // 引っ掛かった足を桟の向こうへ逃がし、接地を確認してから反対側の足を出す。
         m_footStart = observed.Position;
         m_footEnd = new Vector3(across.X, floor + TOE_HEIGHT - 0.002f, across.Z);
         m_footRotationStart = observed.Rotation;
@@ -511,7 +546,7 @@ public sealed class ActiveRagdollSampleComponent : Script
         Vector3 angular = yaw * Vector3.RIGHT * (forward ? 2.05f : -2.05f);
         Vector3 pivot = (m_feet[0].Goal + m_feet[1].Goal) * 0.5f;
         m_rig!.SetMuscle(0f, 1f, 1f);
-        /// @note 足元を支点に各部位へ同じ回転の速度を与えると、胴だけに力を加えるより姿勢を保って倒れる。
+        // 足元を支点に各部位へ同じ回転の速度を与えると、胴だけに力を加えるより姿勢を保って倒れる。
         for (int i = 0; i < BONES.Length; ++i)
         {
             var body = Body(i);
@@ -548,7 +583,7 @@ public sealed class ActiveRagdollSampleComponent : Script
             ? 0.91f * (1f - Smooth(Clamp01(progress / 0.44f))) + 0.56f * MathF.Sin(MathF.PI * Smooth(progress))
             : -0.87f * (1f - Smooth(Clamp01((progress - 0.32f) / 0.36f))) +
                 0.40f * MathF.Sin(MathF.PI * Smooth(Clamp01((progress - 0.36f) / 0.64f)));
-        /// @note 仰向けでは腰を低く保ち、後ろについた手へ荷重を移してから上体を起こす。
+        // 仰向けでは腰を低く保ち、後ろについた手へ荷重を移してから上体を起こす。
         float crouch = Mix(m_recoverProne ? 0.55f : 0.735f, 0.10f, stand);
         Vector3 forward = Yaw(m_yaw) * Vector3.FORWARD;
         Vector3 leftHand = m_center + forward * (m_recoverProne ? 0.36f : -0.31f) + Yaw(m_yaw) * new Vector3(-0.27f, 0.048f, 0f);
@@ -660,9 +695,9 @@ public sealed class ActiveRagdollSampleComponent : Script
         Vector3 axis = delta.NormalizedOr(frame * -Vector3.UP);
         float distance = Math.Clamp(delta.Length, MathF.Abs(first - second) + 0.008f, first + second - 0.006f);
         Vector3 pole = (bend - axis * Vector3.Dot(bend, axis)).NormalizedOr(frame * Vector3.RIGHT);
-        /// @note 脚や腕の二節と始点・終点を結ぶ線で三角形を作り、余弦定理で関節までの軸方向の距離を求める。
+        // 脚や腕の二節と始点・終点を結ぶ線で三角形を作り、余弦定理で関節までの軸方向の距離を求める。
         float along = (first * first - second * second + distance * distance) / (2f * distance);
-        /// @note 最初の節を斜辺とする直角三角形から、軸に垂直な距離を求め、膝や肘を曲げたい方向に足す。
+        // 最初の節を斜辺とする直角三角形から、軸に垂直な距離を求め、膝や肘を曲げたい方向に足す。
         Vector3 middle = start + axis * along + pole * MathF.Sqrt(MathF.Max(0f, first * first - along * along));
         Quaternion upperRotation = Align(frame, upperRest, middle - start);
         Quaternion lowerRotation = Align(frame, lowerRest, start + axis * distance - middle);
@@ -689,25 +724,52 @@ public sealed class ActiveRagdollSampleComponent : Script
 
     private bool Plant(Foot foot, RagdollBodyState body)
     {
-        if (foot.Planted) return true;
-        if (!body.Supported || Horizontal(body.Position - foot.Goal).Length > 0.105f ||
-            MathF.Abs(body.Position.Y - foot.Goal.Y) > 0.06f) return false;
+        if (foot.Planted)
+        {
+            return true;
+        }
+
+        // 足が支持されていて、予定していた着地点に十分近づいた場合だけ固定する。
+        if (!body.Supported)
+        {
+            return false;
+        }
+        Vector3 offsetFromGoal = body.Position - foot.Goal;
+        bool tooFarFromGoal = Horizontal(offsetFromGoal).Length > 0.105f
+            || MathF.Abs(offsetFromGoal.Y) > 0.06f;
+        if (tooFarFromGoal)
+        {
+            return false;
+        }
+
+        // 地面の高さに近い静止面の接点を平均し、固定位置を決める。
         float expectedGround = foot.Goal.Y - TOE_HEIGHT + 0.002f;
         Vector3 point = Vector3.ZERO;
-        int contacts = 0;
-        for (int i = 0; i < body.ContactCount; ++i)
+        int groundContactCount = 0;
+        for (int contactIndex = 0; contactIndex < body.ContactCount; ++contactIndex)
         {
-            var hit = m_rig!.GetBodyContact(BONES[foot.Bone], i);
-            if (!hit.Valid || hit.Self || hit.Dynamic || hit.Normal.Y < 0.72f ||
-                MathF.Abs(hit.Point.Y - expectedGround) > 0.025f) continue;
+            var hit = m_rig!.GetBodyContact(BONES[foot.Bone], contactIndex);
+            bool staticSurface = hit.Valid && !hit.Self && !hit.Dynamic;
+            if (!staticSurface || hit.Normal.Y < 0.72f || MathF.Abs(hit.Point.Y - expectedGround) > 0.025f)
+            {
+                continue;
+            }
             point += hit.Point;
-            ++contacts;
+            ++groundContactCount;
         }
-        if (contacts == 0) return false;
-        point /= contacts;
+        if (groundContactCount == 0)
+        {
+            return false;
+        }
+
+        // ワールド拘束を作れた時点で、足の状態にアンカーと固定姿勢を記録する。
+        point /= groundContactCount;
         var settings = new RagdollGrabSettings { Frequency = 110f, DampingRatio = 1.15f,
             MaxForce = 4500f, MaxTorque = 260f, ConstrainRotation = true, BreakForce = 0f, MaxReach = 0.29f };
-        if (!m_rig!.GrabWorld(BONES[foot.Bone], point, settings)) return false;
+        if (!m_rig!.GrabWorld(BONES[foot.Bone], point, settings))
+        {
+            return false;
+        }
         foot.Planted = true;
         foot.Anchor = point;
         foot.LocalAnchor = body.Rotation.Inverse() * (point - body.Position);
@@ -747,22 +809,44 @@ public sealed class ActiveRagdollSampleComponent : Script
         return found;
     }
 
-    /// @note 中心だけが段に乗ると足裏が縁を支点に回る。踵とつま先にも同じ高さの足場を要求する。
+    /// @brief 歩幅の候補を順に調べ、足裏の中心と四隅が同じ段に乗る位置を探す。
+    /// @param[in] nominal 足を置こうとするワールド座標 [m]。
+    /// @param[in] direction 候補をずらすワールド空間の方向。
+    /// @param[in] rotation 足のワールド姿勢。
+    /// @param[in] stanceHeight 支持足が乗っている地面のワールド Y 座標 [m]。
+    /// @param[out] target 足を置くワールド座標 [m]。失敗時はゼロ。
+    /// @return 足裏を支えられる高さの候補が見つかれば true。
     private bool TryFoothold(Vector3 nominal, Vector3 direction, Quaternion rotation, float stanceHeight, out Vector3 target)
     {
         Vector3 halfLength = rotation * Vector3.FORWARD * 0.115f;
         Vector3 halfWidth = rotation * Vector3.RIGHT * 0.055f;
         foreach (float distance in FOOT_SEARCH)
         {
+            // 中心の地面が支持足の高さから届く範囲にあるか調べる。
             Vector3 candidate = nominal + direction * distance;
-            if (!GroundAt(candidate, out float floor) || MathF.Abs(floor - stanceHeight) > 0.22f ||
-                !SameFloor(candidate + halfLength + halfWidth, floor) ||
-                !SameFloor(candidate + halfLength - halfWidth, floor) ||
-                !SameFloor(candidate - halfLength + halfWidth, floor) ||
-                !SameFloor(candidate - halfLength - halfWidth, floor)) continue;
+            if (!GroundAt(candidate, out float floor) || MathF.Abs(floor - stanceHeight) > 0.22f)
+            {
+                continue;
+            }
+
+            // つま先と踵の左右も同じ高さに乗る位置を選び、段の縁で足裏が回るのを防ぐ。
+            bool toeSupported = SameFloor(candidate + halfLength + halfWidth, floor)
+                && SameFloor(candidate + halfLength - halfWidth, floor);
+            if (!toeSupported)
+            {
+                continue;
+            }
+            bool heelSupported = SameFloor(candidate - halfLength + halfWidth, floor)
+                && SameFloor(candidate - halfLength - halfWidth, floor);
+            if (!heelSupported)
+            {
+                continue;
+            }
+
             target = new Vector3(candidate.X, floor + TOE_HEIGHT - 0.002f, candidate.Z);
             return true;
         }
+
         target = default;
         return false;
     }

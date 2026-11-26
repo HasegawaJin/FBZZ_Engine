@@ -167,7 +167,7 @@ public static unsafe partial class EntryPoint
                     }
                     else
                     {
-                        /// @note 変更要求は容量不足でも再送しない。借用出力は同期復号で所有値へ変換する。
+                        // 変更要求は容量不足でも再送しない。借用出力は同期復号で所有値へ変換する。
                         fixed (byte* destination = output)
                         {
                             request.Output = destination; request.OutputCapacity = (uint)output.Length;
@@ -228,7 +228,7 @@ public static unsafe partial class EntryPoint
                     reader = new(this, request, rented.AsSpan(0, 65536), scope.SceneLifetime);
                     if (reader.UInt32() != count || reader.UInt32() != count) throw new InvalidDataException("Blend weights changed during a synchronous read.");
                 }
-                /// @note 数値・UTF8・全後続 packet を検証してから caller へ一度だけ公開する。
+                // 数値・UTF8・全後続 packet を検証してから caller へ一度だけ公開する。
                 staged = ArrayPool<BlendWeight>.Shared.Rent(count);
                 for (int index = 0; index < count; index++) staged[index] = new("", reader.Single());
                 for (int index = 0; index < count; index++) staged[index] = new(reader.String(), staged[index].Weight);

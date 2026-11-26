@@ -77,7 +77,7 @@ public static unsafe partial class EntryPoint
                     if (!ValidCrowdStats(result, settings, agents.Length)) throw new InvalidDataException("AiCrowd returned invalid statistics.");
                     foreach (ref readonly AiCrowdAgent agent in snapshot)
                         if (!ValidCrowdAgent(agent, agents.Length, profiles.Length)) throw new InvalidDataException("AiCrowd returned an invalid agent.");
-                    /// @note Validate every slot before copying so a malformed later slot cannot partially change caller state.
+                    // 後続スロットが不正でも呼び出し元の状態を部分更新しないように、全スロットを検証してからコピーする。
                     snapshot.CopyTo(output); stats = result; return true;
                 }
             }

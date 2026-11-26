@@ -75,11 +75,11 @@ public sealed class ScriptSourceGenerator : IIncrementalGenerator
                         "Script declarations must be project-relative *.cs sources with ChecksumAlgorithm=SHA256: " + relative));
                     continue;
                 }
-                /// @note SourceText の checksum はコンパイラが読んだ元のバイト列を対象とし、BOM も含む。
+                // SourceText の checksum はコンパイラが読んだ元のバイト列を対象とし、BOM も含む。
                 /// @see https://learn.microsoft.com/dotnet/api/microsoft.codeanalysis.text.sourcetext.getchecksum SourceText.GetChecksum
                 string hash = Convert.ToHexString(text.GetChecksum().AsSpan()).ToLowerInvariant();
                 int line = tree.GetLineSpan(declaration.Span, context.CancellationToken).StartLinePosition.Line + 1;
-                /// @note 属性に column は無いため、同じ行の合法 partial 宣言は一つの位置として記録する。
+                // 属性に column は無いため、同じ行の合法 partial 宣言は一つの位置として記録する。
                 if (!emitted.Add((relative, line, hash))) continue;
                 output.Append("[assembly: global::Fbzz.ScriptSourceAttribute(")
                     .Append(SymbolDisplay.FormatLiteral(clrName, quote: true)).Append(", ")

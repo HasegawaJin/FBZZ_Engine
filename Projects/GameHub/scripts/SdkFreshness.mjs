@@ -38,10 +38,10 @@ function ParseChangedPaths(statusOutput) {
   const changedPaths = [];
   for (let index = 0; index < entries.length; index += 1) {
     const entry = entries[index];
-    /// @note 各要素は「XY <path>」。末尾の空要素と壊れた行は無視する。
+    // 各要素は「XY <path>」。末尾の空要素と壊れた行は無視する。
     if (entry.length < 4) continue;
     changedPaths.push(entry.slice(3));
-    /// @note rename / copy だけは「新パス\0旧パス」の 2 要素で 1 件。旧パスは変更検出に使わない。
+    // rename / copy だけは「新パス\0旧パス」の 2 要素で 1 件。旧パスは変更検出に使わない。
     if (entry[0] === 'R' || entry[0] === 'C') index += 1;
   }
   return changedPaths;
@@ -53,12 +53,12 @@ async function NewestModifiedTime(target) {
   try {
     info = await stat(target);
   } catch {
-    /// @note 削除済みファイルは git status に現れても stat できない。最新性の判定材料にはしない。
+    // 削除済みファイルは git status に現れても stat できない。最新性の判定材料にはしない。
     return 0;
   }
   if (!info.isDirectory()) return info.mtimeMs;
 
-  /// @note 未追跡ディレクトリは git status がフォルダー単位で 1 行にまとめるため、中身まで見る。
+  // 未追跡ディレクトリは git status がフォルダー単位で 1 行にまとめるため、中身まで見る。
   let newest = info.mtimeMs;
   for (const entry of await readdir(target, { withFileTypes: true })) {
     newest = Math.max(newest, await NewestModifiedTime(path.join(target, entry.name)));
@@ -82,17 +82,27 @@ export async function ResolveExpectedSdkId(repositoryRoot) {
 }
 
 /// @brief 公開状態と必須配置を確認し、配布時には記録された SHA256 も照合する。
-export async function AssertSdkContract(sdkRoot, configuration, { verifyHashes = false } = {}) {
+/// @param[in] sdkRoot 公開済み SDK のルートディレクトリ。
+/// @param[in] configuration 検証する SDK の構成。
+/// @param[in] options verifyHashes が true なら記録された全ファイルの SHA256 を計算して照合する。
+/// @return 検証済みのマニフェスト。契約違反では例外で理由を通知する。
+/// @see Docs/design/shared-engine-sdk.md
+export async function AssertSdkContract(sdkRoot, configuration, options = {}) {
+  const { verifyHashes = false } = options;
   if (!['Debug', 'Development', 'Release'].includes(configuration)) {
     throw new Error(`未対応のSDK構成です: ${configuration}`);
   }
   const manifest = parse(await readFile(path.join(sdkRoot, 'fbzz-sdk.toml'), 'utf8'));
+  const sdk = manifest.sdk;
   const runtime = manifest.runtime;
   const record = manifest.configurations?.[configuration];
-  if (manifest.sdk?.schema !== 2 || manifest.sdk.architecture !== 'x64'
-      || !/^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(manifest.sdk.id ?? '')
-      || typeof runtime?.dx12_enabled !== 'boolean'
-      || !/^[0-9a-f]{64}$/.test(runtime.fingerprint ?? '')) {
+
+  // 公開形式を確認してから、その形式の構成とランタイムを照合する。
+  const supportedSdk = sdk?.schema === 2 && sdk.architecture === 'x64'
+    && /^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(sdk.id ?? '');
+  const validRuntime = supportedSdk && typeof runtime?.dx12_enabled === 'boolean'
+    && /^[0-9a-f]{64}$/.test(runtime.fingerprint ?? '');
+  if (!validRuntime) {
     throw new Error('SDK manifestのschemaまたはランタイム契約が未対応です。SDKを再公開してください。');
   }
   if (record?.validated !== true || record.fingerprint !== runtime.fingerprint) {
@@ -125,9 +135,12 @@ export async function AssertSdkContract(sdkRoot, configuration, { verifyHashes =
   const editorDlls = [...SDK_EDITOR_DLLS, configuration === 'Debug' ? 'assimp-vc145-mtd.dll' : 'assimp-vc145-mt.dll'];
   for (const name of editorDlls) requiredPaths.push(`bin/${configuration}/${name}`, `tools/${configuration}/Editor/${name}`);
   if (runtime.dx12_enabled) {
-    if (!Number.isInteger(runtime.agility_sdk_version) || runtime.agility_sdk_version <= 0
-        || runtime.agility_path !== '.\\D3D12\\' || typeof runtime.core_file_version !== 'string'
-        || !runtime.core_file_version || !runtime.agility_package || !runtime.dxc_version) {
+    // ローダーが使う Agility の版と配置を検証してから、配布版の識別子を確認する。
+    const validAgilityVersion = Number.isInteger(runtime.agility_sdk_version) && runtime.agility_sdk_version > 0;
+    const validAgilityLocation = validAgilityVersion && runtime.agility_path === '.\\D3D12\\';
+    const hasRuntimeVersions = validAgilityLocation && typeof runtime.core_file_version === 'string'
+      && runtime.core_file_version && runtime.agility_package && runtime.dxc_version;
+    if (!hasRuntimeVersions) {
       throw new Error('SDKのAgility/DXC版・配置契約が不完全です。');
     }
     for (const field of ['core', 'layers', 'dxc_exe', 'dxc_compiler', 'dxc_validator']) {
@@ -156,14 +169,21 @@ export async function AssertSdkContract(sdkRoot, configuration, { verifyHashes =
   const files = manifest.files?.[configuration];
   for (const relativePath of requiredPaths) {
     const absolutePath = path.join(sdkRoot, relativePath);
-    if (!await Exists(absolutePath)) missing.push(relativePath);
-    else {
-      const info = await stat(absolutePath);
-      if (relativePath === 'share/fbzz/Assets/Shaders') {
-        if (!info.isDirectory()) throw new Error(`SDKの必須ディレクトリが不正です: ${relativePath}`);
-      } else if (!info.isFile() || !/^[0-9a-f]{64}$/.test(files?.[relativePath] ?? '')) {
-        throw new Error(`SDKの必須ファイルまたは公開ハッシュが不正です: ${relativePath}`);
+    // 欠落はまとめて報告し、存在する項目はここで種類とハッシュ記録を検証する。
+    if (!await Exists(absolutePath)) {
+      missing.push(relativePath);
+      continue;
+    }
+
+    const info = await stat(absolutePath);
+    if (relativePath === 'share/fbzz/Assets/Shaders') {
+      if (!info.isDirectory()) {
+        throw new Error(`SDKの必須ディレクトリが不正です: ${relativePath}`);
       }
+      continue;
+    }
+    if (!info.isFile() || !/^[0-9a-f]{64}$/.test(files?.[relativePath] ?? '')) {
+      throw new Error(`SDKの必須ファイルまたは公開ハッシュが不正です: ${relativePath}`);
     }
   }
   if (missing.length) throw new Error(`SDK ${configuration}が不完全です。不足: ${missing.join(', ')}`);
@@ -241,13 +261,13 @@ export async function AssertSdkIsCurrent(repositoryRoot, configuration) {
     throw new Error(`SDK manifestのIDが一致しません。期待: ${sdkId} / 実際: ${String(manifest.sdk?.id ?? '')}\n${publishHint}`);
   }
 
-  /// @note SDK は同じ ID へ上書きする。公開時刻より新しいソースがあれば古い成果物と見なす。
+  // SDK は同じ ID へ上書きする。公開時刻より新しいソースがあれば古い成果物と見なす。
   const publishedAt = (await stat(path.join(sdkRoot, 'bin', configuration, 'published.stamp'))).mtimeMs;
   const suspectPaths = new Set(changedPaths);
 
   const publishedRevision = String(manifest.sdk?.source_revision ?? '');
   if (publishedRevision !== revision) {
-    /// @note commit だけなら実体は変わらない。pull 等で実体を書き換えた場合に mtime が公開時刻を超える。
+    // commit だけなら実体は変わらない。pull 等で実体を書き換えた場合に mtime が公開時刻を超える。
     let changedSincePublish;
     try {
       changedSincePublish = await RunGit(repositoryRoot, ['diff', '--name-only', '-z', publishedRevision, 'HEAD']);

@@ -117,15 +117,28 @@ public sealed class AiEcologyExample : IDisposable
     public bool AcceptSampledSpawn(AiEcologyHandle handle, Vector3 position, float floor, float ceiling,
         bool habitatSafe, bool cameraVisible, bool poolObjectReserved)
     {
+        // 現在も生成待ちのスロットにだけ、外部で調べた配置結果を適用する。
         RequireLive();
-        if (!Ecology.IsValid(handle) || Ecology.Slots[handle.Slot].State != AiEcologySlotState.PENDING_SPAWN) return false;
-        int species = Ecology.Slots[handle.Slot].SpeciesIndex;
-        if (!habitatSafe || cameraVisible || !poolObjectReserved || !FitsEnvelope(species, position, floor, ceiling)
-            || !Ecology.CommitSpawn(handle, position))
+        if (!Ecology.IsValid(handle))
+        {
+            return false;
+        }
+        ref readonly AiEcologySlot slot = ref Ecology.Slots[handle.Slot];
+        if (slot.State != AiEcologySlotState.PENDING_SPAWN)
+        {
+            return false;
+        }
+
+        // 安全な生息域、画面外の位置、描画用オブジェクトの予約が揃わなければスロットを戻す。
+        bool canPlaceAgent = habitatSafe && !cameraVisible && poolObjectReserved
+            && FitsEnvelope(slot.SpeciesIndex, position, floor, ceiling);
+        if (!canPlaceAgent || !Ecology.CommitSpawn(handle, position))
         {
             Ecology.CancelSpawn(handle);
             return false;
         }
+
+        // 生成が確定した個体を、同じ位置にある群集シミュレーションのスロットと結び付ける。
         BindCrowdSlot(handle, position, floor, ceiling);
         return true;
     }
@@ -134,18 +147,31 @@ public sealed class AiEcologyExample : IDisposable
     /// @note Use a regular owner callback. Clamped long frames are not replayed; all three clocks use the same bounded delta.
     public bool Update(float deltaSeconds)
     {
+        // 全シミュレーションで共通の時間刻みを使い、長いフレームを分割して再実行しない。
         RequireLive();
         EcologyEvaluatedThisUpdate = false;
-        if (!float.IsFinite(deltaSeconds) || deltaSeconds < 0) return false;
+        if (!float.IsFinite(deltaSeconds) || deltaSeconds < 0)
+        {
+            return false;
+        }
         float maximumDelta = Crowd.Settings.MaximumDelta;
-        if (!float.IsFinite(maximumDelta) || maximumDelta <= 0 || maximumDelta > .5f) return false;
-        float dt = MathF.Min(deltaSeconds, maximumDelta);
-        if (!Crowd.Step(dt)) return false;
+        if (!float.IsFinite(maximumDelta) || maximumDelta <= 0 || maximumDelta > .5f)
+        {
+            return false;
+        }
+        float stepSeconds = MathF.Min(deltaSeconds, maximumDelta);
+
+        // ネイティブ側の群集を進め、得られた位置を生態系の判断に使う。
+        if (!Crowd.Step(stepSeconds))
+        {
+            return false;
+        }
         Crowd.CopyPositions(m_positions);
         Ecology.UpdatePositions(m_positions);
         CacheRotations();
-        m_densityElapsed += dt;
-        EcologyEvaluatedThisUpdate = Ecology.Step(dt);
+        // 採餌と密度の更新には、生態系が前回評価されてからの経過時間を使う。
+        m_densityElapsed += stepSeconds;
+        EcologyEvaluatedThisUpdate = Ecology.Step(stepSeconds);
         if (EcologyEvaluatedThisUpdate)
         {
             ApplyEcologyMovements();
@@ -154,8 +180,10 @@ public sealed class AiEcologyExample : IDisposable
             UpdateFilterFeeders(elapsed);
             m_densityElapsed = 0;
         }
+
+        // 移動中の目標位置と、個別に制御する捕食者の判断を更新する。
         RefreshMovingTargets();
-        UpdateSpecialPredators(dt);
+        UpdateSpecialPredators(stepSeconds);
         return true;
     }
 

@@ -181,7 +181,7 @@ public sealed class AiDensityField
             double amount = Math.Min(density * m_cellVolume, remaining);
             double after = Math.Max(0, density - amount / m_cellVolume);
             double removed = (density - after) * m_cellVolume;
-            /// @note Round toward retaining mass when one density ULP would exceed the remaining request.
+            // 密度の最小刻みを引くと要求残量を超える場合は、質量を残す方向に丸める。
             for (int adjustment = 0; removed > remaining && adjustment < 4; adjustment++) {
                 after = Math.BitIncrement(after);
                 removed = (density - after) * m_cellVolume;

@@ -40,7 +40,7 @@ class GeneratedBridgeComponent : Script
         down = Input.GetKeyDown(KeyCode.W);
         up = Input.GetKeyUp(KeyCode.W);
         otherHeld = Input.GetKey(KeyCode.A);
-        /// @note 書き込み後に getter で同期を補わず、native 側で子孫の即時同期を観測する。
+        // 書き込み後に getter で同期を補わず、native 側で子孫の即時同期を観測する。
         switch (operation)
         {
             case 0: Transform.LocalPosition = localDestination; break;

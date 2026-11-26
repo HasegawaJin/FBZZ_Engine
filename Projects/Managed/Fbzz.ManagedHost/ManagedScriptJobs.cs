@@ -103,7 +103,7 @@ public sealed partial class ManagedScriptRuntime : IScriptJobsRuntime
         m_jobs.Add(token, job);
         try
         {
-            /// @note Initial MoveNext also runs in the receiver's fresh JOB scope, never in the registering caller's lifecycle.
+            // 最初の MoveNext から、ジョブを受け取るインスタンスの新しい JOB スコープで実行する。
             bridge.RegisterJob(scope, job.InstanceId, token, 0f, 0f, 1U, false, JobEase.LINEAR, 0f, 0f);
             return new(receiver.Generation, receiver.InstanceId, token);
         }

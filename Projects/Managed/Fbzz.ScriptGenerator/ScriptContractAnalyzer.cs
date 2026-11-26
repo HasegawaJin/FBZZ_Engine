@@ -84,43 +84,103 @@ public sealed class ScriptContractAnalyzer : DiagnosticAnalyzer
     private static void AnalyzeMethod(SymbolAnalysisContext context, IReadOnlyDictionary<string, Lifecycle> callbacks)
     {
         IMethodSymbol method = (IMethodSymbol)context.Symbol;
-        if (method.MethodKind != MethodKind.Ordinary) return;
+        if (method.MethodKind != MethodKind.Ordinary)
+        {
+            return;
+        }
+
+        // EditorAction の宣言を検証した後、型ごとのライフサイクルを確認する。
         AttributeData? action = EditorAction(method);
-        if (action is not null && (!ScriptSourceGenerator.IsScript(method.ContainingType) || method.IsStatic || method.IsGenericMethod
-            || method.IsAsync || !method.ReturnsVoid || method.Parameters.Length != 0 || callbacks.ContainsKey(method.Name)
-            || action.ConstructorArguments.Length == 0 || action.ConstructorArguments[0].Value is not string key || string.IsNullOrWhiteSpace(key)
-            || key.Contains('\0') || method.ContainingType.GetMembers().OfType<IMethodSymbol>().Any(other => !SymbolEqualityComparer.Default.Equals(other, method)
-                && other.GetAttributes().Any(metadata => SdkAttribute(metadata, "Fbzz.EditorActionAttribute") && metadata.ConstructorArguments[0].Value is string otherKey && otherKey == key))))
+        if (action is not null && !IsValidEditorAction(method, action, callbacks))
+        {
             context.ReportDiagnostic(Diagnostic.Create(EDITOR_ACTION, action.ApplicationSyntaxReference?.GetSyntax(context.CancellationToken).GetLocation() ?? FirstLocation(method), method.Name));
-        if (ScriptSourceGenerator.IsDataAsset(method.ContainingType)) {
+        }
+
+        if (ScriptSourceGenerator.IsDataAsset(method.ContainingType))
+        {
             if (method.Name is not ("Reset" or "OnValidate")) return;
             IMethodSymbol root = method;
             while (root.OverriddenMethod is IMethodSymbol parent) root = parent;
-            if (!method.IsOverride || method.DeclaredAccessibility != Accessibility.Protected || method.IsStatic || method.IsGenericMethod
-                || method.IsAsync || !method.ReturnsVoid || method.Parameters.Length != 0 || root.ContainingType.ToDisplayString() != "Fbzz.DataAsset")
+            bool overridesDataAsset = method.IsOverride && method.DeclaredAccessibility == Accessibility.Protected
+                && !method.IsStatic && !method.IsGenericMethod && !method.IsAsync && method.ReturnsVoid
+                && method.Parameters.Length == 0 && root.ContainingType.ToDisplayString() == "Fbzz.DataAsset";
+            if (!overridesDataAsset)
+            {
                 context.ReportDiagnostic(Diagnostic.Create(LIFECYCLE, FirstLocation(method), method.Name, "no parameters"));
+            }
             return;
         }
+
         if (!ScriptSourceGenerator.IsScript(method.ContainingType)) return;
         if (callbacks.TryGetValue(method.Name, out Lifecycle? callback))
         {
+            // 同名のメソッドが SDK の Script を継承し、引数を含むシグネチャに従うか確かめる。
             IMethodSymbol root = method;
             while (root.OverriddenMethod is IMethodSymbol parent) root = parent;
-            bool parameters = callback.Parameter is null ? method.Parameters.Length == 0
-                : method.Parameters.Length == 1 && method.Parameters[0].RefKind == RefKind.None && !method.Parameters[0].IsOptional
-                    && (callback.Parameter == "System.String" ? method.Parameters[0].Type.SpecialType == SpecialType.System_String
-                        : method.Parameters[0].Type.ToDisplayString(SymbolDisplayFormat.CSharpErrorMessageFormat).TrimEnd('?') == callback.Parameter);
+            bool parametersMatch = HasLifecycleParameters(method, callback.Parameter);
             bool valid = method.IsOverride && method.DeclaredAccessibility == Accessibility.Protected && !method.IsStatic && !method.IsGenericMethod && !method.IsAsync && method.ReturnsVoid
-                && root.ContainingType.ToDisplayString() == "Fbzz.Script" && root.ContainingAssembly.Name == "Fbzz.ScriptApi" && parameters;
+                && root.ContainingType.ToDisplayString() == "Fbzz.Script" && root.ContainingAssembly.Name == "Fbzz.ScriptApi" && parametersMatch;
             if (!valid)
                 context.ReportDiagnostic(Diagnostic.Create(LIFECYCLE, FirstLocation(method), method.Name,
                     callback.Parameter is null ? "no parameters" : "one " + callback.Parameter + " parameter passed by value"));
             return;
         }
+
+        // ライフサイクルに見える引数なしのメソッドは、既知の名前に近い場合に警告する。
         if (method.IsOverride || method.IsStatic || method.IsGenericMethod || !method.ReturnsVoid || method.Parameters.Length != 0
             || method.DeclaredAccessibility == Accessibility.Public || method.Name.Length < 5) return;
         string? closest = callbacks.Keys.FirstOrDefault(name => OneEditApart(method.Name, name));
         if (closest is not null) context.ReportDiagnostic(Diagnostic.Create(POSSIBLE_TYPO, FirstLocation(method), method.Name, closest));
+    }
+
+    private static bool IsValidEditorAction(IMethodSymbol method, AttributeData action, IReadOnlyDictionary<string, Lifecycle> callbacks)
+    {
+        // Script の編集アクションに使えるシグネチャは、通常のライフサイクルと重ならない。
+        bool validSignature = ScriptSourceGenerator.IsScript(method.ContainingType)
+            && !method.IsStatic && !method.IsGenericMethod && !method.IsAsync && method.ReturnsVoid
+            && method.Parameters.Length == 0 && !callbacks.ContainsKey(method.Name);
+        if (!validSignature)
+        {
+            return false;
+        }
+
+        // 文字列キーを検証してから、同じ型に付いた他の属性と比較する。
+        if (action.ConstructorArguments.Length == 0 || action.ConstructorArguments[0].Value is not string key)
+        {
+            return false;
+        }
+        if (string.IsNullOrWhiteSpace(key) || key.Contains('\0'))
+        {
+            return false;
+        }
+
+        bool keyAlreadyUsed = method.ContainingType.GetMembers().OfType<IMethodSymbol>().Any(other =>
+            !SymbolEqualityComparer.Default.Equals(other, method)
+            && other.GetAttributes().Any(metadata => SdkAttribute(metadata, "Fbzz.EditorActionAttribute")
+                && metadata.ConstructorArguments[0].Value is string otherKey && otherKey == key));
+        return !keyAlreadyUsed;
+    }
+
+    private static bool HasLifecycleParameters(IMethodSymbol method, string? expectedParameter)
+    {
+        if (expectedParameter is null)
+        {
+            return method.Parameters.Length == 0;
+        }
+        if (method.Parameters.Length != 1)
+        {
+            return false;
+        }
+
+        IParameterSymbol parameter = method.Parameters[0];
+        if (parameter.RefKind != RefKind.None || parameter.IsOptional)
+        {
+            return false;
+        }
+
+        return expectedParameter == "System.String"
+            ? parameter.Type.SpecialType == SpecialType.System_String
+            : parameter.Type.ToDisplayString(SymbolDisplayFormat.CSharpErrorMessageFormat).TrimEnd('?') == expectedParameter;
     }
 
     private static void AnalyzeType(SymbolAnalysisContext context)

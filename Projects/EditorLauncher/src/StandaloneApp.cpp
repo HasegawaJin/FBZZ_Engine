@@ -30,7 +30,9 @@ namespace fbzz::editor_launcher {
 
 void StandaloneApp::FileLogSink::OnLog(const core::LogEntry& entry)
 {
-    if (!file.is_open()) return;
+    if (!file.is_open()) {
+        return;
+    }
     const char* prefix = "";
     switch (entry.level) {
     case core::LogLevel::DEBUG:     prefix = "[DEBUG] "; break;
@@ -56,13 +58,13 @@ StandaloneApp::StandaloneApp(renderer::IRenderer& renderer,
 
 bool StandaloneApp::OnInit()
 {
-    /// @note Standalone は WIN32 サブシステムのためコンソールがなく printf が見えない。OutputDebugString もデバッガが
-    /// @note デバッガがない場合にも game.log を exe 隣に生成し Debug・Release 両方でログを残す。
+    // Standalone は WIN32 サブシステムのためコンソールがなく printf が見えない。OutputDebugString もデバッガが
+    // デバッガがない場合にも game.log を exe 隣に生成し Debug・Release 両方でログを残す。
     const std::filesystem::path logPath =
         util::FileSystem::GetExecutableDirectory() / L"game.log";
     m_logSink.file.open(logPath, std::ios::out | std::ios::trunc);
     if (m_logSink.file.is_open()) {
-        /// @note 起動時刻をヘッダとして書く
+        // 起動時刻をヘッダとして書く
         const auto now = std::chrono::system_clock::now();
         const std::time_t t = std::chrono::system_clock::to_time_t(now);
         char timeBuf[64] = {};
@@ -75,13 +77,13 @@ bool StandaloneApp::OnInit()
     m_runtime.RegisterScenes(m_project.root, m_resources);
     m_runtime.LoadScene(m_project.sceneFile);
     auto& app = core::Application::Get();
-    /// @note StandaloneのProjectRuntimeにもApplication所有のAudioManagerを共有する。
+    // StandaloneのProjectRuntimeにもApplication所有のAudioManagerを共有する。
     m_runtime.GetSceneManager().SetAudioManager(app.GetAudioManager());
     if (auto* audioManager = app.GetAudioManager()) {
         audioManager->SetVoiceLimit(static_cast<size_t>(m_settings.audio.voiceLimit));
         audioManager->ApplyBusLayout(m_settings.audio.BuildBusLayout());
     }
-    /// @note 起動時だけアセットを展開し、以後の graphics 設定は実行用コピーへ適用する。
+    // 起動時だけアセットを展開し、以後の graphics 設定は実行用コピーへ適用する。
     renderer::RenderSettings resolvedSettings;
     (void)asset::ResolveRenderPipelineSettings(m_settings.render,
         m_settings.renderPipelineAssetPath, resolvedSettings);
@@ -94,11 +96,11 @@ bool StandaloneApp::OnInit()
     core::Cursor::ClearClipRegion();
     (void)core::Cursor::AcquireGameInput();
 
-    /// @note プロファイラオーバーレイ用 ImGui を初期化する。StandaloneApp は EditorApp を使わないため ImGui コンテキストが
-    /// @note Editor のコンテキストは存在しないため、Release でも独立したコンテキストを作成する。
+    // プロファイラオーバーレイ用 ImGui を初期化する。StandaloneApp は EditorApp を使わないため ImGui コンテキストが
+    // Editor のコンテキストは存在しないため、Release でも独立したコンテキストを作成する。
     m_imguiCtx = ImGui::CreateContext();
     ImGuiIO& io = ImGui::GetIO();
-    /// @note ini を書かない (スタンドアロンゲームのドキュメントを汚さない)
+    // ini を書かない (スタンドアロンゲームのドキュメントを汚さない)
     io.IniFilename = nullptr;
     m_imguiRenderer.ImGuiInit(core::Application::Get().GetWindow().GetHandle());
 
@@ -107,15 +109,17 @@ bool StandaloneApp::OnInit()
 
 void StandaloneApp::OnUpdate(float dt)
 {
-    if (input::Input::PhysicalKeyHeld(input::KeyCode::SHIFT) && input::Input::PhysicalKeyDown(input::KeyCode::F1))
+    if (input::Input::PhysicalKeyHeld(input::KeyCode::SHIFT) && input::Input::PhysicalKeyDown(input::KeyCode::F1)) {
         core::Cursor::ReleaseGameInput(core::CursorSuspendReason::RELEASED);
-    else if (!core::Cursor::IsGameInputOwned() && core::Cursor::GetState().windowActive
-             && input::Input::PhysicalMouseButtonDown(0))
+    } else if (!core::Cursor::IsGameInputOwned() && core::Cursor::GetState().windowActive
+             && input::Input::PhysicalMouseButtonDown(0)) {
         (void)core::Cursor::AcquireGameInput();
+    }
     core::Cursor::ApplyLock();
-    /// @note F3 でプロファイラオーバーレイをトグルする
-    if (input::Input::KeyDown(input::KeyCode::F3))
+    // F3 でプロファイラオーバーレイをトグルする
+    if (input::Input::KeyDown(input::KeyCode::F3)) {
         m_showProfiler = !m_showProfiler;
+    }
 
     m_runtime.Update(dt, m_settings, true);
 }
@@ -137,8 +141,8 @@ void StandaloneApp::OnRender()
     m_runtime.UpdateScriptViewport(w, h);
     const float aspect = (h > 0) ? (static_cast<float>(w) / static_cast<float>(h)) : 1.0f;
 
-    /// @note LoadScene によるシーン遷移後は SceneManager が新しい Scene を所有するため、ProjectRuntime の Active Scene を
-    /// @note 遷移前 Scene を保持せず ProjectRuntime の Active Scene を参照する。
+    // LoadScene によるシーン遷移後は SceneManager が新しい Scene を所有するため、ProjectRuntime の Active Scene を
+    // 遷移前 Scene を保持せず ProjectRuntime の Active Scene を参照する。
     scene::Scene* activeScene = m_runtime.GetActiveScene();
     if (!activeScene) {
         { FBZZ_PROFILE_SCOPE("Renderer::EndFrame"); m_renderer.EndFrame(); }
@@ -158,7 +162,7 @@ void StandaloneApp::OnRender()
     scene::RenderSystem(*activeScene, m_renderer, m_resources, gameCamera, {}, &m_settings.render,
                         fbzz::Layer::Everything, &uiOptions);
 
-    /// @name プロファイラオーバーレイ (F3 で表示)
+    // プロファイラオーバーレイ (F3 で表示)
     m_imguiRenderer.ImGuiNewFrame();
     ImGui::NewFrame();
 
@@ -179,11 +183,13 @@ void StandaloneApp::OnRender()
 
         const auto& records = profiler::Profiler::GetLastFrameRecords();
         double totalMs = 0.0;
-        for (const auto& r : records) totalMs += r.elapsedMs;
+        for (const auto& r : records) {
+            totalMs += r.elapsedMs;
+        }
         ImGui::Text("Total: %.3f ms", totalMs);
         ImGui::Spacing();
 
-        /// @note カテゴリ別集計
+        // カテゴリ別集計
         struct CatSum { const char* name; double ms; };
         CatSum cats[] = {
             { "Input",   0.0 }, { "Scene",  0.0 }, { "Physics", 0.0 },
@@ -192,19 +198,27 @@ void StandaloneApp::OnRender()
         for (const auto& r : records) {
             auto add = [&](int idx) { cats[idx].ms += r.elapsedMs; };
             std::string_view n = r.name;
-            if (n.find("Input") != std::string_view::npos)                      add(0);
-            else if (n.find("Script") != std::string_view::npos ||
+            if (n.find("Input") != std::string_view::npos) {
+                add(0);
+            } else if (n.find("Script") != std::string_view::npos ||
                      n.find("Transform") != std::string_view::npos ||
-                     n.find("Animator") != std::string_view::npos)              add(1);
-            else if (n.find("Physics") != std::string_view::npos)               add(2);
-            else if (n.find("Render") != std::string_view::npos ||
-                     n.find("Renderer") != std::string_view::npos)              add(3);
-            else if (n.find("Memory") != std::string_view::npos)                add(4);
-            else                                                                  add(5);
+                     n.find("Animator") != std::string_view::npos) {
+                add(1);
+            } else if (n.find("Physics") != std::string_view::npos) {
+                add(2);
+            } else if (n.find("Render") != std::string_view::npos ||
+                     n.find("Renderer") != std::string_view::npos) {
+                add(3);
+            } else if (n.find("Memory") != std::string_view::npos) {
+                add(4);
+            } else {
+                add(5);
+            }
         }
         for (const auto& c : cats) {
-            if (c.ms > 0.0)
+            if (c.ms > 0.0) {
                 ImGui::Text("  %-10s %.3f ms", c.name, c.ms);
+            }
         }
 
         ImGui::End();
@@ -231,4 +245,4 @@ void StandaloneApp::OnShutdown()
     core::Logger::RemoveSink(&m_logSink);
 }
 
-} /// @note namespace fbzz::editor_launcher
+} // namespace fbzz::editor_launcher

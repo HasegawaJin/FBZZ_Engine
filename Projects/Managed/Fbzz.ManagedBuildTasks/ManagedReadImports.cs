@@ -30,14 +30,22 @@ public sealed class ManagedReadImports : Task
 
     public override bool Execute()
     {
+        // 現在のビルド条件を引き継ぎ、AgentBuild が挿入したフックの指定だけを外す。
         Dictionary<string, string> properties = new(StringComparer.OrdinalIgnoreCase);
         foreach (KeyValuePair<string, string> property in ((IBuildEngine6)BuildEngine).GetGlobalProperties())
+        {
             if (!property.Key.Equals("CustomAfterMicrosoftCommonTargets", StringComparison.OrdinalIgnoreCase))
+            {
                 properties[property.Key] = property.Value;
+            }
+        }
+
+        // 同じビルド条件で、以前監視した入力が変わっていなければ評価結果を再利用する。
         string cachePath = Path.Combine(CacheDirectory, "fbzz-imports-cache.json");
         string signature = BuildSignature(properties);
         ImportCache? cache = ReadCache(cachePath);
-        if (cache is not null && cache.Signature == signature && cache.ContentVersion == ContentVersion(cache.Files, cache.Directories, cache.RecursiveDirectories))
+        if (cache is not null && cache.Signature == signature
+            && cache.ContentVersion == ContentVersion(cache.Files, cache.Directories, cache.RecursiveDirectories))
         {
             Log.LogMessage(MessageImportance.High, "FBZZ managed input graph: reused");
             Imports = cache.Files.Select(path => (ITaskItem)new TaskItem(path)).ToArray();
@@ -45,6 +53,8 @@ public sealed class ManagedReadImports : Task
             RecursiveImportDirectories = cache.RecursiveDirectories.Select(path => (ITaskItem)new TaskItem(path)).ToArray();
             return true;
         }
+
+        // プロジェクトを独立したコレクションで評価し、既存のフック指定が競合しないか調べる。
         using ProjectCollection collection = new(properties);
         Log.LogMessage(MessageImportance.High, "FBZZ managed input graph: evaluated");
         Project evaluated = collection.LoadProject(ProjectPath);
@@ -52,13 +62,16 @@ public sealed class ManagedReadImports : Task
         string defaultHook = Path.GetFullPath(Path.Combine(evaluated.GetPropertyValue("MSBuildExtensionsPath"),
             "v" + evaluated.GetPropertyValue("MSBuildToolsVersion"), "Custom.After.Microsoft.Common.targets"));
         string resolvedHook = string.IsNullOrEmpty(previousHook) ? "" : Path.GetFullPath(previousHook, Path.GetDirectoryName(ProjectPath)!);
-        if (!string.IsNullOrEmpty(resolvedHook) &&
-            (!resolvedHook.Equals(defaultHook, StringComparison.OrdinalIgnoreCase) || File.Exists(resolvedHook)))
+        bool hookAlreadyInUse = !string.IsNullOrEmpty(resolvedHook)
+            && (!resolvedHook.Equals(defaultHook, StringComparison.OrdinalIgnoreCase) || File.Exists(resolvedHook));
+        if (hookAlreadyInUse)
         {
             Log.LogError(null, "FBZZ0101", null, ProjectPath, 0, 0, 0, 0,
                 "AgentBuild incremental targets require the CustomAfterMicrosoftCommonTargets hook; move the existing hook to an explicit project Import: " + resolvedHook);
             return false;
         }
+
+        // 実際に読み込まれたファイルを記録し、読み込まれなかった Import の候補も探す。
         HashSet<string> inputs = new(StringComparer.OrdinalIgnoreCase) { ProjectPath };
         HashSet<string> directories = new(StringComparer.OrdinalIgnoreCase);
         HashSet<string> recursiveDirectories = new(StringComparer.OrdinalIgnoreCase);
@@ -70,10 +83,12 @@ public sealed class ManagedReadImports : Task
         }
         foreach (ProjectRootElement root in roots)
         {
-            /// @note import 時点と最終 property 値の差を、作者側 import ディレクトリの保守的な監視で補う。
+            // Import の評価時と最終的なプロパティ値が異なる場合に備え、作者側のディレクトリも監視する。
             string sdkRoot = Path.GetFullPath(evaluated.GetPropertyValue("MSBuildToolsPath")).TrimEnd(Path.DirectorySeparatorChar) + Path.DirectorySeparatorChar;
             if (!root.FullPath.StartsWith(sdkRoot, StringComparison.OrdinalIgnoreCase))
+            {
                 directories.Add(Path.GetDirectoryName(root.FullPath)!);
+            }
             foreach (ProjectImportElement import in root.AllChildren.OfType<ProjectImportElement>())
             {
                 string importPath = import.Project.Replace("$(MSBuildThisFileDirectory)", Path.GetDirectoryName(root.FullPath) + Path.DirectorySeparatorChar)
@@ -81,21 +96,33 @@ public sealed class ManagedReadImports : Task
                     .Replace("$(MSBuildThisFileName)", Path.GetFileNameWithoutExtension(root.FullPath))
                     .Replace("$(MSBuildThisFileExtension)", Path.GetExtension(root.FullPath));
                 string expanded = evaluated.ExpandString(importPath);
-                if (string.IsNullOrEmpty(expanded)) continue;
+                if (string.IsNullOrEmpty(expanded))
+                {
+                    continue;
+                }
+
                 foreach (string path in expanded.Split(';', StringSplitOptions.RemoveEmptyEntries))
                 {
+                    // 明示パスはファイルとして、ワイルドカードは新規ファイルも検出できるようディレクトリとして監視する。
                     int wildcard = path.IndexOfAny(['*', '?']);
                     if (wildcard >= 0)
                     {
                         string prefix = path[..wildcard];
                         string directory = Path.GetDirectoryName(prefix) ?? "";
-                        (path.Contains("**", StringComparison.Ordinal) ? recursiveDirectories : directories)
-                            .Add(Path.GetFullPath(directory, Path.GetDirectoryName(root.FullPath)!));
+                        HashSet<string> watchedDirectories = path.Contains("**", StringComparison.Ordinal)
+                            ? recursiveDirectories
+                            : directories;
+                        watchedDirectories.Add(Path.GetFullPath(directory, Path.GetDirectoryName(root.FullPath)!));
                     }
-                    else inputs.Add(Path.GetFullPath(path, Path.GetDirectoryName(root.FullPath)!));
+                    else
+                    {
+                        inputs.Add(Path.GetFullPath(path, Path.GetDirectoryName(root.FullPath)!));
+                    }
                 }
             }
         }
+
+        // ビルドに渡す一覧と次回の再利用判定に使うスナップショットを、同じ順序で確定する。
         Imports = inputs.OrderBy(path => path, StringComparer.OrdinalIgnoreCase)
             .Select(path => (ITaskItem)new TaskItem(path)).ToArray();
         ImportDirectories = directories.OrderBy(path => path, StringComparer.OrdinalIgnoreCase)

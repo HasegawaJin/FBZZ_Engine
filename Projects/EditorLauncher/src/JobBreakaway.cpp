@@ -19,9 +19,9 @@ namespace {
 constexpr wchar_t kBreakawayMarker[] = L"FBZZ_JOB_BREAKAWAY_DONE";
 
 struct JobStatus {
-    bool inJob       = false;
-    bool killOnClose = false;  ///< Job が閉じると配下ごと殺される
-    bool breakawayOk = false;  ///< CREATE_BREAKAWAY_FROM_JOB が許されている
+    bool inJob = false; ///< このプロセスが起動元の Job Object に属するか。
+    bool killOnClose = false; ///< 最後の Job ハンドルが閉じると配下のプロセスが終了するか。
+    bool breakawayOk = false; ///< CREATE_BREAKAWAY_FROM_JOB を付けて子プロセスを作成できるか。
 };
 
 JobStatus QueryJobStatus()
@@ -29,16 +29,18 @@ JobStatus QueryJobStatus()
     JobStatus status;
 
     BOOL inJob = FALSE;
-    if (!IsProcessInJob(GetCurrentProcess(), nullptr, &inJob) || inJob == FALSE)
+    if (!IsProcessInJob(GetCurrentProcess(), nullptr, &inJob) || inJob == FALSE) {
         return status;
+    }
     status.inJob = true;
 
-    /// @note 第 1 引数 nullptr で「自分が入っている Job」を問い合わせる。
+    // 第 1 引数 nullptr で「自分が入っている Job」を問い合わせる。
     JOBOBJECT_EXTENDED_LIMIT_INFORMATION info{};
     DWORD returned = 0;
     if (!QueryInformationJobObject(nullptr, JobObjectExtendedLimitInformation,
-                                   &info, sizeof(info), &returned))
+                                   &info, sizeof(info), &returned)) {
         return status;
+    }
 
     const DWORD flags = info.BasicLimitInformation.LimitFlags;
     status.killOnClose = (flags & JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE) != 0;
@@ -50,27 +52,29 @@ JobStatus QueryJobStatus()
 
 bool RelaunchOutsideKillOnCloseJob()
 {
-    if (GetEnvironmentVariableW(kBreakawayMarker, nullptr, 0) != 0)
-        /// @note 既に作り直した側
+    // 作り直した側からの再起動を防ぐ。
+    if (GetEnvironmentVariableW(kBreakawayMarker, nullptr, 0) != 0) {
         return false;
+    }
 
+    // 起動元が終了するときに配下のプロセスが終了する Job だけを対象にする。
     const JobStatus status = QueryJobStatus();
-    if (!status.inJob || !status.killOnClose)
-        /// @note 道連れにされない
+    if (!status.inJob || !status.killOnClose) {
         return false;
+    }
 
     if (!status.breakawayOk) {
-        /// @note 抜ける手段が無い。黙って死ぬより «なぜ死ぬのか» を残す方がまだ良い。
+        // 抜ける手段が無い。黙って死ぬより «なぜ死ぬのか» を残す方がまだ良い。
         FBZZ_LOG_WARN("Editor is inside a kill-on-close job that forbids breakaway. "
                       "It will be terminated when its launcher exits "
                       "(this happens with GameHub started via 'npm start').");
         return false;
     }
 
-    /// @note 自分の完全なコマンドラインをそのまま渡す。引数の解析と再構築はしない
-    ///       (パスに空白や日本語が入るので、分解して組み直すと壊す機会が増えるだけ)。
+    // 自分の完全なコマンドラインをそのまま渡す。引数の解析と再構築はしない
+    // (パスに空白や日本語が入るので、分解して組み直すと壊す機会が増えるだけ)。
     std::wstring commandLine = GetCommandLineW();
-    /// @note CreateProcessW は書き換え可能なバッファを要求する
+    // CreateProcessW は書き換え可能なバッファを要求する
     commandLine.push_back(L'\0');
 
     if (!SetEnvironmentVariableW(kBreakawayMarker, L"1")) {
@@ -84,8 +88,8 @@ bool RelaunchOutsideKillOnCloseJob()
                                    CREATE_BREAKAWAY_FROM_JOB | DETACHED_PROCESS,
                                    nullptr, nullptr, &si, &pi);
     if (ok == FALSE) {
-        /// @note 起動できなかったのなら、この プロセスがそのまま続けるしかない。
-        ///       印を消しておかないと、次回の起動でも «作り直し済み» と誤認する。
+        // 起動できなかったのなら、この プロセスがそのまま続けるしかない。
+        // 印を消しておかないと、次回の起動でも «作り直し済み» と誤認する。
         SetEnvironmentVariableW(kBreakawayMarker, nullptr);
         FBZZ_LOG_WARN("Job breakaway failed (error %lu); continuing inside the job.",
                       GetLastError());

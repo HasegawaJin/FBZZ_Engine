@@ -81,7 +81,7 @@ internal static class QuaternionBatchTests
                 Same(output[0], guard, "Slerp leading guard"); Same(output[^1], guard, "Slerp trailing guard");
             }
         }
-        /// @note All four lanes take the dedicated near-equal fast path, including shortest-arc flips, signed zeros and extrapolation.
+        // 短弧への符号反転、符号付きゼロ、外挿を含め、4 レーンすべてが近接時の高速経路を通る。
         Quaternion[] nearFrom = [Quaternion.IDENTITY, new(minusZero, 0, minusZero, 1), new(0, 1, 0, 0), new(1, 0, 0, 0)];
         Quaternion[] nearTo = [Quaternion.IDENTITY, new(0, minusZero, 0, -1), new(0, 1, 0, 0), new(-1, minusZero, minusZero, minusZero)];
         float[] nearFactors = [-0.5f, 2f, minusZero, 0.3f];

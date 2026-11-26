@@ -311,7 +311,7 @@ public static class ScriptCatalogBuilder
                 FieldKeyAttribute? keyMetadata = field.GetCustomAttribute<FieldKeyAttribute>(false);
                 string key = keyMetadata is null ? field.Name : keyMetadata.Key;
                 string[] previousKeys = field.GetCustomAttributes<PreviousFieldKeyAttribute>(false).Select((PreviousFieldKeyAttribute value) => value.Key).ToArray();
-                /// @note Debug 専用 key は継承で隠れた同名 field を保存 field と混同しない。
+                // Debug 専用 key は継承で隠れた同名 field を保存 field と混同しない。
                 if (!isSetting && !reload) key = $"{declaring.FullName}.{field.Name}";
                 if (isSetting || reload)
                 {

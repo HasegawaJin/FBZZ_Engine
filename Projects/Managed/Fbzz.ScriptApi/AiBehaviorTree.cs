@@ -305,7 +305,7 @@ public sealed class BehaviorTreeInstance : IDisposable
             throw new ArgumentOutOfRangeException(nameof(deltaSeconds));
         m_clock += deltaSeconds;
         m_elapsed += deltaSeconds;
-        /// @note Keep an exact interval boundary from slipping a frame due to accumulated double rounding.
+        // double の丸め誤差が累積しても、間隔の境界に達したフレームで評価する。
         bool beforeInterval = m_elapsed < m_interval && m_interval - m_elapsed > m_interval * 1e-12;
         if (!m_requested && m_seenRevision == Blackboard.Revision && beforeInterval) return LastStatus;
         m_busy = true;
@@ -323,7 +323,7 @@ public sealed class BehaviorTreeInstance : IDisposable
             LastStatus = BtStatus.FAILURE;
             if (cleanup is not null)
             {
-                /// @note Custom exceptions can have unwritable Data; preserve the original action fault in that case too.
+                // 独自の例外では Data に書き込めない場合がある。その場合もアクションで発生した元の例外を保持する。
                 try { exception.Data["Fbzz.AI.CleanupFailure"] = cleanup; }
                 catch (Exception) { }
             }

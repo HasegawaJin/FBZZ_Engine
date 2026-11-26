@@ -154,7 +154,7 @@ public sealed partial class ManagedScriptRuntime
             if (target is not null && (!target.Binding.Active || target.Binding.GameObject.Guid != guid)) target = null;
             return target is not null && type.IsInstanceOfType(target.Instance) ? target.Instance : null;
         }
-        /// @note private cache は opaque 寿命を保つ。同 GUID の別実体を再検索して失効 cache を復活させない。
+        // private cache は opaque 寿命を保つ。同 GUID の別実体を再検索して失効 cache を復活させない。
         GameObject reference = new(json.GetProperty("id").GetUInt64(), json.GetProperty("lifetime").GetUInt64(), json.GetProperty("guid").GetString()!);
         if (kind == "go" && type == typeof(GameObject)) return reference;
         if (kind != "native" || type.Assembly != typeof(Script).Assembly) throw new InvalidDataException("Invalid reload component cache type.");

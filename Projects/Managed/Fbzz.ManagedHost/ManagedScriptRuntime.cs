@@ -62,7 +62,7 @@ public sealed partial class ManagedScriptRuntime : IDisposable, IScriptComponent
                 return new(BridgeStatus.PENDING_LIMIT, "Pending generations remain after ten background collection requests. Release retained game references; the current generation is unchanged.");
             m_collectionRequests++;
             m_collectionRequestTotal++;
-            /// @note 実ロード前の準備要求だけで回収を促す。同期 finalizer 待ちをせず、background 要求でも CLR の pause は残る。
+            // 実ロード前の準備要求だけで回収を促す。同期 finalizer 待ちをせず、background 要求でも CLR の pause は残る。
             /// @see https://learn.microsoft.com/en-us/dotnet/api/system.gc.collect#system-gc-collect(system-int32-system-gccollectionmode-system-boolean-system-boolean) blocking=false は background を要求し、非停止を保証しない。
             GC.Collect(GC.MaxGeneration, GCCollectionMode.Forced, blocking: false, compacting: false);
             CollectRetired();
@@ -86,7 +86,7 @@ public sealed partial class ManagedScriptRuntime : IDisposable, IScriptComponent
             ScriptCatalog catalog = result.Catalog!;
             ScriptManifest.Apply(catalog, path, assembly.GetName().Name ?? "", internalMode);
             if (ManagedDiagnostics.Enabled) ManagedDiagnostics.RegisterGame(assembly, generation);
-            /// @note Loading/discovery is passive: initializer defaults are evaluated only by an explicit instance creation action.
+            // ロード時の型探索では初期化子を評価せず、インスタンスの明示的な作成時にだけ実行する。
             foreach (ManagedTypeDescriptor type in catalog.AllTypes)
                 foreach (ScriptFieldDescriptor field in type.Fields.Where(field => field.IsSetting))
                     _ = ManagedFieldSchema.Build(field.ValueType);
@@ -254,7 +254,7 @@ public sealed partial class ManagedScriptRuntime : IDisposable, IScriptComponent
             return new(BridgeStatus.STALE_GENERATION);
         if (!record.Binding.Active || record.Binding.GameObject.SceneLifetime == 0)
             return new(BridgeStatus.INVALID_SCOPE, "The Script owner is not attached to a live scene.");
-        /// @note routine の Dispose が管理フィールドを変える場合もあるため、解除後の値で検証する。
+        // routine の Dispose が管理フィールドを変える場合もあるため、解除後の値で検証する。
         ClearOwnedJobs(generation, instanceId);
         ManagedRuntimeResult valid = ValidateReferences(generation, instanceId);
         if (!valid.Success) return valid;
@@ -414,7 +414,7 @@ public sealed partial class ManagedScriptRuntime : IDisposable, IScriptComponent
             || !m_generations.TryGetValue(scope.Generation, out ScriptGeneration? generation)) throw new InvalidOperationException("Component lookup requires the current Host scope.");
         if (type.Assembly != typeof(Script).Assembly && AssemblyLoadContext.GetLoadContext(type.Assembly) != generation.Context)
             throw new InvalidOperationException("The requested CLR type belongs to an old code generation.");
-        /// @note CLR 型の強参照は所有世代だけへ閉じ、RetireGeneration と同時に解放する。
+        // CLR 型の強参照は所有世代だけへ閉じ、RetireGeneration と同時に解放する。
         if (!generation.ComponentTypes.TryGetValue(type, out HashSet<ScriptTypeDescriptor>? matches))
         {
             matches = new();
@@ -466,7 +466,7 @@ public sealed partial class ManagedScriptRuntime : IDisposable, IScriptComponent
         int required = VisitComponents(scope, target, types, Span<T?>.Empty, false);
         if (required > output.Length) return new(required, 0);
         if (required == 0) return new(0, 0);
-        /// @note count 後の不正な後続 packet でも caller は未変更。pool は CLR 個体を保持しないよう返却時に消去する。
+        // count 後の不正な後続 packet でも caller は未変更。pool は CLR 個体を保持しないよう返却時に消去する。
         T?[] staged = ArrayPool<T?>.Shared.Rent(required);
         try {
             int written = VisitComponents(scope, target, types, staged.AsSpan(0, required), true);

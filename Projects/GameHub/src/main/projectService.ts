@@ -34,29 +34,46 @@ function escapeRegExp(text: string): string {
 /// @note 移動前の絶対パスは Editor の ProjectResolver と同じく、末尾からプロジェクト配下を探す。
 async function ResolveProjectFile(projectRoot: string, filePath: string): Promise<string> {
   const absolute = path.resolve(projectRoot, filePath);
-  if (!path.isAbsolute(filePath) || await exists(absolute)) return absolute;
-  let current = filePath;
+  if (!path.isAbsolute(filePath) || await exists(absolute)) {
+    return absolute;
+  }
+
+  // 移動元の絶対パスが失効しているときは、短い末尾から順に移動後のルートへ足す。
+  let remainingPath = filePath;
   let suffix = '';
-  while (current !== path.dirname(current)) {
-    suffix = path.join(path.basename(current), suffix);
+  while (remainingPath !== path.dirname(remainingPath)) {
+    suffix = path.join(path.basename(remainingPath), suffix);
     const candidate = path.resolve(projectRoot, suffix);
-    if (await exists(candidate)) return candidate;
-    current = path.dirname(current);
+    if (await exists(candidate)) {
+      return candidate;
+    }
+    remainingPath = path.dirname(remainingPath);
   }
   return absolute;
 }
 
 /// @note C# authoring の起動可否は設定とシーンで決まり、native 用 Include / Src は不要。
 async function HasLaunchFiles(projectRoot: string, project: Record<string, unknown>): Promise<boolean> {
+  // Sandbox が直接利用する雛形では未展開の設定パスを、既定の配置に解決する。
   let settingsPath = stringField(project, 'settings_path');
-  if (settingsPath.startsWith('{{')) settingsPath = 'ProjectSettings/ProjectSettings.toml';
-  if (!settingsPath) return false;
+  if (settingsPath.startsWith('{{')) {
+    settingsPath = 'ProjectSettings/ProjectSettings.toml';
+  }
+  if (!settingsPath) {
+    return false;
+  }
+
   try {
+    // 実行時の開始シーンを優先し、省略時は .fbzz_proj の既定シーンを使う。
     const settingsFile = await ResolveProjectFile(projectRoot, settingsPath);
     const settings = parse(await readFile(settingsFile, 'utf8')) as Record<string, unknown>;
     const scenePath = stringField((settings.runtime ?? {}) as Record<string, unknown>, 'start_scene')
       || stringField(project, 'default_scene');
-    if (!scenePath) return false;
+    if (!scenePath) {
+      return false;
+    }
+
+    // 起動時に必要な Assets ディレクトリとシーンファイルの型を確認する。
     const [assets, scene] = await Promise.all([
       stat(path.join(projectRoot, 'Assets')),
       stat(await ResolveProjectFile(projectRoot, scenePath)),
@@ -135,7 +152,7 @@ export class ProjectService {
       empty.engineVersionMismatch = empty.engineVersion !== '-' && empty.engineVersion !== ENGINE_VERSION;
       empty.migrationRequired = empty.engineVersionMismatch || !empty.sdkId;
     } catch {
-      /// @note 壊れたプロジェクトも修復対象として一覧に残す。
+      // 壊れたプロジェクトも修復対象として一覧に残す。
     }
     return empty;
   }
@@ -150,14 +167,24 @@ export class ProjectService {
   }
 
   async openProject(projectPath: string, settings: HubSettings, sdkRoot: string): Promise<void> {
+    // 起動処理中は、同じプロジェクトに対する別の起動要求を受け付けない。
     const projectRoot = path.resolve(projectPath);
-    if (this.launching.has(projectRoot)) throw new Error('このプロジェクトは起動処理中です。');
+    if (this.launching.has(projectRoot)) {
+      throw new Error('このプロジェクトは起動処理中です。');
+    }
     this.launching.add(projectRoot);
+
     try {
-      if (!sdkRoot) throw new Error('プロジェクトが要求するFBZZ SDKがSDK storeにありません。');
+      // 指定された SDK 構成の Editor が利用できるか、起動前に調べる。
+      if (!sdkRoot) {
+        throw new Error('プロジェクトが要求するFBZZ SDKがSDK storeにありません。');
+      }
       const editorPath = await this.resolveEditorPath(settings, sdkRoot);
-      if (!editorPath) throw new Error(`SDK ${settings.sdkConfiguration}用FBZZEditor.exeが見つかりません。同じ構成のSDKを公開してください。`);
-      /// @note 二重起動による .meta とシーンの同時書換えを防ぐ。
+      if (!editorPath) {
+        throw new Error(`SDK ${settings.sdkConfiguration}用FBZZEditor.exeが見つかりません。同じ構成のSDKを公開してください。`);
+      }
+
+      // 開いている Editor との同時編集を避け、起動するバイナリが公開済みの組と一致することを確かめる。
       if (await this.isOpenInEditor(editorPath, projectRoot)) {
         throw new Error(`${path.basename(projectRoot)} は既に Editor で開いています。先に閉じてください。`);
       }
@@ -181,17 +208,17 @@ export class ProjectService {
         stdio: 'ignore',
         windowsHide: true,
         cwd: path.dirname(editorPath),
-        /// @note Editor・CMake・AssetManager は起動先と同じ SDK を使う。
+        // Editor・CMake・AssetManager は起動先と同じ SDK を使う。
         env: {
           ...process.env,
           FBZZ_SDK_ROOT: sdkRoot,
           FBZZ_ENGINE_ASSET_ROOT: path.join(sdkRoot, 'share', 'fbzz', 'Assets'),
-          /// @note Engine 更新は SDK 公開が担当し、部分的な source rebuild を起動しない。
+          // Engine 更新は SDK 公開が担当し、部分的な source rebuild を起動しない。
           FBZZ_SKIP_ENGINE_REBUILD: '1',
         },
       };
-      /// @note Windows の start ブローカーで Editor の寿命を GameHub から切り離す。
-      /// @note shell オプションを使わず引数配列で渡す。
+      // Windows の start ブローカーで Editor の寿命を GameHub から切り離す。
+      // shell オプションを使わず引数配列で渡す。
       const launcher = process.platform === 'win32'
         ? spawn(process.env.ComSpec ?? 'cmd.exe', ['/d', '/c', 'start', '', '/normal', editorPath, ...editorArgs], launchOptions)
         : spawn(editorPath, editorArgs, launchOptions);
@@ -209,7 +236,7 @@ export class ProjectService {
   private async isOpenInEditor(editorPath: string, projectRoot: string): Promise<boolean> {
     if (process.platform !== 'win32') return false;
     const executableName = path.basename(editorPath).replaceAll("'", "''");
-    /// @note 非 ASCII のプロジェクトパスも UTF-8 で照合する。
+    // 非 ASCII のプロジェクトパスも UTF-8 で照合する。
     const script = '[Console]::OutputEncoding = [System.Text.Encoding]::UTF8; '
       + `Get-CimInstance Win32_Process -Filter "Name='${executableName}'" | ForEach-Object { $_.CommandLine }`;
     try {
@@ -218,7 +245,7 @@ export class ProjectService {
         timeout: 5_000,
         encoding: 'utf8',
       });
-      /// @note プロジェクトパスの末尾も照合し、同じ接頭辞の別プロジェクトを除く。
+      // プロジェクトパスの末尾も照合し、同じ接頭辞の別プロジェクトを除く。
       const pattern = new RegExp(`(^|[\\s"])${escapeRegExp(projectRoot)}("|\\s|$)`, 'i');
       return stdout.split(/\r?\n/).some((line) => pattern.test(line));
     } catch (error) {
@@ -237,7 +264,7 @@ export class ProjectService {
   }
 
   private async resolveEditorPath(settings: HubSettings, sdkRoot: string): Promise<string | null> {
-    /// @note legacy editorExe を使わず、解決済みプロジェクト SDK の構成だけを起動する。
+    // legacy editorExe を使わず、解決済みプロジェクト SDK の構成だけを起動する。
     const editorPath = path.resolve(GetSdkEditorPath(sdkRoot, settings.sdkConfiguration));
     try { return (await stat(editorPath)).isFile() ? editorPath : null; } catch { return null; }
   }

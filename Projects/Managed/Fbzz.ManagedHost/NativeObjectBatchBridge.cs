@@ -119,7 +119,7 @@ public static unsafe partial class EntryPoint
                         }
                         if ((uint)valid != reply.Index || count - valid != (int)reply.Flags)
                             throw new InvalidDataException("Native batch slot statuses disagree with its counts.");
-                        /// @note 全 reply の検証完了まで呼出元の Span は変更せず、欠損位置と余剰 tail は保持する。
+                        // 全 reply の検証完了まで呼出元の Span は変更せず、欠損位置と余剰 tail は保持する。
                         for (int index = 0; index < count; index++)
                         {
                             ReadOnlySpan<byte> row = output[(index * outputStride)..];

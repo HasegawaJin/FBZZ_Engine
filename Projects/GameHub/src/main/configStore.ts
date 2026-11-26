@@ -68,19 +68,32 @@ async function exists(target: string): Promise<boolean> {
 }
 
 async function isSdkRoot(candidate: string, configuration: SdkBuildConfiguration = 'Development'): Promise<boolean> {
-  if (!candidate) return false;
+  if (!candidate) {
+    return false;
+  }
+
   try {
+    // SDK の識別情報と、選択した構成が同じランタイム契約で公開済みかを確認する。
     const document = parse(await readFile(path.join(candidate, 'fbzz-sdk.toml'), 'utf8')) as Record<string, unknown>;
     const sdk = document.sdk as Record<string, unknown> | undefined;
     const runtime = document.runtime as Record<string, unknown> | undefined;
     const configurations = document.configurations as Record<string, Record<string, unknown>> | undefined;
     const record = configurations?.[configuration];
     const files = (document.files as Record<string, Record<string, unknown>> | undefined)?.[configuration];
-    if (sdk?.schema !== 2 || sdk.architecture !== 'x64'
-        || !/^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(asString(sdk.id))
-        || typeof runtime?.dx12_enabled !== 'boolean'
-        || !/^[0-9a-f]{64}$/.test(asString(runtime.fingerprint))
-        || record?.validated !== true || record.fingerprint !== runtime.fingerprint) return false;
+    if (sdk?.schema !== 2 || sdk.architecture !== 'x64') {
+      return false;
+    }
+    if (!/^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(asString(sdk.id))) {
+      return false;
+    }
+    if (typeof runtime?.dx12_enabled !== 'boolean' || !/^[0-9a-f]{64}$/.test(asString(runtime.fingerprint))) {
+      return false;
+    }
+    if (record?.validated !== true || record.fingerprint !== runtime.fingerprint) {
+      return false;
+    }
+
+    // SDK の公開成果物を照合し、Editor が同じ構成の DLL を参照することを確かめる。
     const requiredPaths = [
       'cmake/FBZZ/FBZZConfig.cmake', 'cmake/FBZZ/FBZZConfigVersion.cmake', 'cmake/FBZZ/FBZZTargets.cmake',
       'cmake/FBZZ/build.config.in', 'cmake/FBZZ/FBZZAgilitySDK.cmake', 'cmake/FBZZ/AgilitySDKExports.cpp.in',
@@ -99,21 +112,40 @@ async function isSdkRoot(candidate: string, configuration: SdkBuildConfiguration
         `tools/${configuration}/Editor/FBZZ${library}.dll`);
     }
     for (const name of GetSdkEditorDlls(configuration)) {
-      requiredPaths.push(`bin/${configuration}/${name}`, `tools/${configuration}/Editor/${name}`);
-      const binHash = asString(files?.[`bin/${configuration}/${name}`]);
-      if (!/^[0-9a-f]{64}$/.test(binHash) || files?.[`tools/${configuration}/Editor/${name}`] !== binHash) return false;
+      const sdkDllPath = `bin/${configuration}/${name}`;
+      const editorDllPath = `tools/${configuration}/Editor/${name}`;
+      requiredPaths.push(sdkDllPath, editorDllPath);
+      const sdkDllHash = asString(files?.[sdkDllPath]);
+      if (!/^[0-9a-f]{64}$/.test(sdkDllHash) || files?.[editorDllPath] !== sdkDllHash) {
+        return false;
+      }
     }
+
+    // DX12 有効時は Agility SDK、DXC、PIX のファイルと版情報も公開契約に含める。
     if (runtime.dx12_enabled) {
-      if (!Number.isInteger(runtime.agility_sdk_version) || Number(runtime.agility_sdk_version) <= 0
-          || runtime.agility_path !== '.\\D3D12\\' || !asString(runtime.core_file_version)
-          || !asString(runtime.agility_package) || !asString(runtime.dxc_version)) return false;
+      const validAgilityVersion = Number.isInteger(runtime.agility_sdk_version) && Number(runtime.agility_sdk_version) > 0;
+      if (!validAgilityVersion || runtime.agility_path !== '.\\D3D12\\') {
+        return false;
+      }
+      const versionFields = ['core_file_version', 'agility_package', 'dxc_version'];
+      for (const field of versionFields) {
+        if (!asString(runtime[field])) {
+          return false;
+        }
+      }
       for (const field of ['core', 'layers', 'dxc_exe', 'dxc_compiler', 'dxc_validator']) {
-        if (!/^[0-9a-f]{64}$/.test(asString(runtime[`${field}_sha256`]))) return false;
+        if (!/^[0-9a-f]{64}$/.test(asString(runtime[`${field}_sha256`]))) {
+          return false;
+        }
       }
       for (const prefix of [`bin/${configuration}`, `tools/${configuration}/Editor`]) {
         requiredPaths.push(`${prefix}/D3D12/D3D12Core.dll`, `${prefix}/dxcompiler.dll`, `${prefix}/dxil.dll`, `${prefix}/WinPixEventRuntime.dll`);
-        if (configuration !== 'Release') requiredPaths.push(`${prefix}/D3D12/d3d12SDKLayers.dll`);
-        else if (await exists(path.join(candidate, prefix, 'D3D12/d3d12SDKLayers.dll'))) return false;
+        const debugLayersPath = `${prefix}/D3D12/d3d12SDKLayers.dll`;
+        if (configuration !== 'Release') {
+          requiredPaths.push(debugLayersPath);
+        } else if (await exists(path.join(candidate, debugLayersPath))) {
+          return false;
+        }
       }
       for (const name of ['dxc.exe', 'dxcompiler.dll', 'dxil.dll']) requiredPaths.push(`tools/${configuration}/DXC/${name}`);
       for (const name of ['LICENSE', 'LICENSE.txt', 'LICENSE-CODE.txt', 'VERSION', 'distributable files.txt']) requiredPaths.push(`share/fbzz/licenses/AgilitySDK/${name}`);
@@ -147,6 +179,8 @@ async function isSdkRoot(candidate: string, configuration: SdkBuildConfiguration
       }
       if (!agilityVersion.includes(`set(FBZZ_AGILITY_SDK_VERSION ${String(runtime.agility_sdk_version)})`)) return false;
     }
+
+    // 必要な成果物がすべて指定の位置にあり、ファイルは公開時の記録を持つか確認する。
     const checks = await Promise.all(requiredPaths.map(async (relativePath) => {
       const filePath = path.join(candidate, relativePath);
       if (!await exists(filePath)) return false;
@@ -162,25 +196,32 @@ async function isSdkRoot(candidate: string, configuration: SdkBuildConfiguration
 }
 
 /// @brief 起動直前に Editor の DLL 一式を公開 SDK と SHA256 で照合する。
+/// @param[in] sdkRoot 公開済み SDK のルートディレクトリ。
+/// @param[in] configuration Editor を起動する SDK の構成。
 /// @note SDK 探索でも managed 部品の実 SHA256 を確認し、native DLL の実照合は起動境界で行う。
 /// @see Docs/design/shared-engine-sdk.md
 export async function AssertSdkEditorRuntime(sdkRoot: string, configuration: SdkBuildConfiguration): Promise<void> {
   if (!await isSdkRoot(sdkRoot, configuration)) {
     throw new Error(`SDK ${configuration}は未公開、不完全、または Editor と SDK の DLL が一致しません。SDKを再公開してください。`);
   }
+  // SDK の検査後に公開状態が変わっていないか、起動時にマニフェストを読み直す。
   const document = parse(await readFile(path.join(sdkRoot, 'fbzz-sdk.toml'), 'utf8')) as Record<string, unknown>;
   const files = (document.files as Record<string, Record<string, unknown>> | undefined)?.[configuration];
   const runtime = document.runtime as Record<string, unknown> | undefined;
   const record = (document.configurations as Record<string, Record<string, unknown>> | undefined)?.[configuration];
-  if (!files || record?.validated !== true || record.fingerprint !== runtime?.fingerprint) {
+  const stillValidated = files && record?.validated === true && record.fingerprint === runtime?.fingerprint;
+  if (!stillValidated) {
     throw new Error(`SDK ${configuration}の公開状態が変わりました。SDKの公開完了後に起動してください。`);
   }
   for (const name of GetSdkEditorDlls(configuration)) {
-    if (!/^[0-9a-f]{64}$/.test(asString(files[`bin/${configuration}/${name}`]))
-        || files[`bin/${configuration}/${name}`] !== files[`tools/${configuration}/Editor/${name}`]) {
+    const sdkDllHash = files[`bin/${configuration}/${name}`];
+    const editorDllHash = files[`tools/${configuration}/Editor/${name}`];
+    if (!/^[0-9a-f]{64}$/.test(asString(sdkDllHash)) || sdkDllHash !== editorDllHash) {
       throw new Error(`SDK Editorと公開SDKのDLL記録が一致しません: ${name}`);
     }
   }
+
+  // 実ファイルをハッシュ化し、同じ名前で異なる DLL が混ざった場合は起動を止める。
   await Promise.all(GetSdkEditorDlls(configuration).flatMap((name) => [
     `bin/${configuration}/${name}`, `tools/${configuration}/Editor/${name}`,
   ]).map(async (relativePath) => {
@@ -214,7 +255,7 @@ async function readSdkId(sdkRoot: string, configuration: SdkBuildConfiguration =
 
 function asSdkConfiguration(value: unknown): SdkBuildConfiguration {
   if (value === 'Debug' || value === 'Development' || value === 'Release') return value;
-  /// @note 旧構成名は package の構成と独立して Development へ移す。
+  // 旧構成名は package の構成と独立して Development へ移す。
   if (value === 'dev' || value === 'development') return 'Development';
   return GAME_HUB_BUILD_CONFIGURATION;
 }
@@ -233,8 +274,8 @@ async function findLatestSdkInStore(storeRoot: string, preferredVersion = '', co
     const entries = (await readdir(storeRoot, { withFileTypes: true }))
       .filter((entry) => entry.isDirectory());
 
-    /// @note 通常は現行SDKが `SDK/<ENGINE_VERSION>` にある。全候補のmanifestを検証する前に
-    /// @note それだけを確認すると、旧世代SDKが多数残ったstoreでも起動時のI/Oを抑えられる。
+    // 通常は現行SDKが `SDK/<ENGINE_VERSION>` にある。全候補のmanifestを検証する前に
+    // それだけを確認すると、旧世代SDKが多数残ったstoreでも起動時のI/Oを抑えられる。
     const preferredEntry = entries.find((entry) => entry.name === preferredVersion);
     if (preferredEntry) {
       const preferredRoot = path.join(storeRoot, preferredEntry.name);
@@ -260,7 +301,7 @@ async function detectSdkRoot(configuredPath: string, configuration: SdkBuildConf
   const configured = configuredPath ? path.resolve(configuredPath) : '';
   const configuredVersion = configured ? path.join(configured, 'SDK', ENGINE_VERSION) : '';
   if (configured) {
-    /// @note 設定済みパスと、その直下の`SDK/<version>/`は独立しているため同時に確認する。
+    // 設定済みパスと、その直下の`SDK/<version>/`は独立しているため同時に確認する。
     const [configuredValid, versionValid] = await Promise.all([
       isSdkRoot(configured, configuration),
       isSdkRoot(configuredVersion, configuration),
@@ -271,8 +312,8 @@ async function detectSdkRoot(configuredPath: string, configuration: SdkBuildConf
     if (configuredStoreSdk) return configuredStoreSdk;
   }
 
-  /// @note 各起点を一つずつ最上位まで走査すると、存在しないパスへのaccessを最大24段直列に待つ。
-  /// @note 同じ深さの候補を並列確認し、最寄りのSDKが見つかった時点で終了する。
+  // 各起点を一つずつ最上位まで走査すると、存在しないパスへのaccessを最大24段直列に待つ。
+  // 同じ深さの候補を並列確認し、最寄りのSDKが見つかった時点で終了する。
   let currentRoots = [...new Set(
     [process.cwd(), app.getAppPath(), path.dirname(process.execPath)].map((start) => path.resolve(start)),
   )];
@@ -336,7 +377,7 @@ export class ConfigStore {
       };
 
     } catch (error) {
-      /// @note 初回起動時のファイル不存在は正常系。壊れた既存設定は上書きせず既定値で起動する。
+      // 初回起動時のファイル不存在は正常系。壊れた既存設定は上書きせず既定値で起動する。
       if ((error as NodeJS.ErrnoException).code !== 'ENOENT') {
         console.warn('hub_config.tomlを読み込めませんでした。', error);
       }
@@ -346,11 +387,11 @@ export class ConfigStore {
 
     if (shouldSave) await this.save();
 
-    /// @note SDK探索はネットワークドライブや大量の旧SDKを含むと遅くなるため、設定ファイルの
-    /// @note 読み込みとは分離する。GameHubは保存済み設定で即座に画面を出し、探索結果は後から反映する。
+    // SDK探索はネットワークドライブや大量の旧SDKを含むと遅くなるため、設定ファイルの
+    // 読み込みとは分離する。GameHubは保存済み設定で即座に画面を出し、探索結果は後から反映する。
     const generation = this.configGeneration;
     this.sdkResolutionPromise = this.resolveSdkInBackground(generation).catch((error: unknown) => {
-      /// @note 自動検出は補助機能なので、失敗してもGameHubの画面表示や手動設定を止めない。
+      // 自動検出は補助機能なので、失敗してもGameHubの画面表示や手動設定を止めない。
       console.warn('SDKの自動検出に失敗しました。', error);
     });
 
@@ -367,7 +408,7 @@ export class ConfigStore {
   }
 
   async setSettings(settings: HubSettings): Promise<void> {
-    /// @note ユーザーの手動設定を、起動時に残っている自動検出結果で上書きしない。
+    // ユーザーの手動設定を、起動時に残っている自動検出結果で上書きしない。
     this.configGeneration += 1;
     const sdkRoot = settings.sdkRoot.trim();
     const configuration = asSdkConfiguration(settings.sdkConfiguration);

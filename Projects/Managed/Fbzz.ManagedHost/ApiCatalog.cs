@@ -165,7 +165,7 @@ public static class ApiCatalog
         Dictionary<string, string> result = new(StringComparer.Ordinal);
         string path = Path.ChangeExtension(assembly.Location, ".xml");
         if (!File.Exists(path)) return result;
-        /// @note SDK の XML は任意のゲーム file を探索しない。欠損時は署名 catalog と欠損 flag を返す。
+        // SDK の XML は任意のゲーム file を探索しない。欠損時は署名 catalog と欠損 flag を返す。
         XDocument document = XDocument.Load(path);
         foreach (XElement member in document.Descendants("member"))
         {

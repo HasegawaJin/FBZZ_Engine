@@ -234,7 +234,7 @@ static class Program
     {
         using ManagedScriptRuntime runtime = new(new RecordingBridge());
         WeakReference context = LoadAndRetire(runtime, 1);
-        /// @note collectible 解放は協調的なので、実行時間を待たず有限回の GC / finalizer cycle で確認する。
+        // collectible 解放は協調的なので、実行時間を待たず有限回の GC / finalizer cycle で確認する。
         /// @see https://learn.microsoft.com/dotnet/standard/assembly/unloadability unload の検証。
         for (int attempt = 0; attempt < 10 && context.IsAlive; attempt++)
         {
@@ -324,7 +324,7 @@ static class Program
         ManagedRuntimeResult loaded = LoadFixture(runtime, FixturePath("V1"), generation);
         for (int retry = 0; allowCollectionRetry && loaded.Status == BridgeStatus.COLLECTION_PENDING && retry < 10; retry++)
         {
-            /// @note Background GC と finalizer は別スレッドなので、時刻や sleep を使わず有限回だけ実行権を譲る。
+            // Background GC と finalizer は別スレッドなので、時刻や sleep を使わず有限回だけ実行権を譲る。
             for (int poll = 0; poll < 16384 && runtime.PendingUnloadCount >= 3; poll++)
             {
                 Thread.Yield();

@@ -39,27 +39,19 @@ public:
 private:
     /// @brief 配布ゲームの診断を game.log に残す。
     struct FileLogSink final : core::ILogSink {
-        std::ofstream file;
+        std::ofstream file; ///< 実行中のゲームログを書き込むストリーム。
         void OnLog(const core::LogEntry& entry) override;
     };
 
-    /// @note 起動元が所有する描画先。シーン描画とフレームの開始・終了に使う。
-    renderer::IRenderer&             m_renderer;
-    /// @note ゲーム画面にプロファイラーを重ねて表示するために借りる。
-    renderer::IImGuiRenderer&        m_imguiRenderer;
-    /// @note 起動元が所有するリソースを、シーンの読み込みと描画で共有する。
-    renderer::ResourceManager&       m_resources;
-    /// @note アセットの基準になるプロジェクトルートと、最初に開くシーンのパスを借りる。
-    const LaunchProject&             m_project;
-    /// @note 実行中のオプション変更をその場で描画・音声に反映するため、起動元の設定を参照する。
-    ProjectSettings&                 m_settings;
-    /// @note 実行中のシーンとゲームの更新状態をこのアプリの寿命で管理する。
-    scene::ProjectRuntime            m_runtime;
-    /// @note Logger に登録する出力先。終了時に登録を外すまでアドレスが有効である必要がある。
-    FileLogSink                      m_logSink;
-    /// @note 初期化時に作る UI コンテキスト。終了時は描画側を停止してから破棄する。
-    ImGuiContext*                    m_imguiCtx     = nullptr;
-    bool                             m_showProfiler = false;
+    renderer::IRenderer&             m_renderer; ///< 起動元が所有する描画先。シーン描画とフレームの開始・終了に使う。
+    renderer::IImGuiRenderer&        m_imguiRenderer; ///< ゲーム画面にプロファイラーを重ねて表示するために借りる。
+    renderer::ResourceManager&       m_resources; ///< 起動元が所有するリソースを、シーンの読み込みと描画で共有する。
+    const LaunchProject&             m_project; ///< アセットの基準になるプロジェクトルートと、最初に開くシーンのパスを借りる。
+    ProjectSettings&                 m_settings; ///< 実行中のオプション変更をその場で描画・音声に反映するため、起動元の設定を参照する。
+    scene::ProjectRuntime            m_runtime; ///< 実行中のシーンとゲームの更新状態をこのアプリの寿命で管理する。
+    FileLogSink                      m_logSink; ///< Logger に登録する出力先。終了時に登録を外すまでアドレスが有効である必要がある。
+    ImGuiContext*                    m_imguiCtx     = nullptr; ///< 初期化時に作る UI コンテキスト。終了時は描画側を停止してから破棄する。
+    bool                             m_showProfiler = false; ///< ゲーム画面にプロファイラーを重ねて表示するか。
 };
 
-} /// @note namespace fbzz::editor_launcher
+} // namespace fbzz::editor_launcher

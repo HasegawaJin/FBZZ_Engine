@@ -46,7 +46,7 @@ internal static class ManagedPrimitiveCodec
     }
     internal static void Write(Utf8JsonWriter writer, object value, Type type)
     {
-        /// @note Preserve the existing common typed path; enum classification and wide-value conversion are unnecessary per array element.
+        // 配列要素ごとに列挙型の分類や広い数値型への変換を行う必要がない場合は、通常の型別処理を使う。
         if (type == typeof(int)) { writer.WriteNumberValue((int)value); return; }
         if (type == typeof(uint)) { writer.WriteNumberValue((uint)value); return; }
         if (type == typeof(float)) { float number = (float)value; if (!float.IsFinite(number)) throw new InvalidDataException("Float must be finite."); writer.WriteNumberValue(number); return; }

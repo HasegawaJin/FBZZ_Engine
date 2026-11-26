@@ -330,7 +330,7 @@ internal static class StructuredFieldCodec
                 resolveReference, ChildPath(path, member.Key), validate, resolveComponent);
             if (validate) ValidateRange(member, value); prepared.Add(member, value);
         }
-        /// @note Decode never evaluates user constructors; missing members use the same inert schema defaults as authoring.
+        // 復号時にユーザーのコンストラクターは実行しない。欠けたメンバーは編集時と同じスキーマの既定値で補う。
         object result = RuntimeHelpers.GetUninitializedObject(type);
         foreach (Member field in fields) {
             object? value;

@@ -16,9 +16,18 @@ const SHARED_FILES = ['Tools/AgentBuild.ps1', 'Projects/Managed/global.json',
   'share/fbzz/managed/ManagedStarter/AGENTS.md', 'share/fbzz/managed/ManagedStarter/.vscode/launch.json',
   'share/fbzz/managed/ManagedStarter/global.json'];
 
-/// @note 構成の validated/fingerprint は呼出元の既存 SDK 契約で検査する。ABI の推測ではなく公開時の内容 hash を照合する。
+/// @brief managed authoring 部品とコンパイラー設定を公開時の SHA256 で照合する。
+/// @param[in] root 公開済み SDK のルートディレクトリ。
+/// @param[in] configuration 検証する SDK の構成。
+/// @param[in] files マニフェストに記録された構成別のファイル名と SHA256。
+/// @note 呼び出し元で構成の validated と fingerprint を確認する。配置やハッシュの不一致は例外で通知する。
 export async function AssertManagedAuthoringContract(root, configuration, files) {
-  if (!['Debug', 'Development', 'Release'].includes(configuration) || !files) throw new Error('SDK managed configuration is not published.');
+  const configurationPublished = ['Debug', 'Development', 'Release'].includes(configuration) && files;
+  if (!configurationPublished) {
+    throw new Error('SDK managed configuration is not published.');
+  }
+
+  // SDK と Editor の両方を同じ記録で検証できるよう、先にハッシュの一致を確認する。
   const pairs = ['nethost.dll', ...MANAGED_FILES.map((name) => `Managed/${name}`)].map((name) => [
     `bin/${configuration}/${name}`, `tools/${configuration}/Editor/${name}`,
   ]);
@@ -30,6 +39,8 @@ export async function AssertManagedAuthoringContract(root, configuration, files)
   if (files['Projects/Managed/global.json'] !== files['share/fbzz/managed/ManagedStarter/global.json']) {
     throw new Error('SDK and C# starter compiler pin records disagree.');
   }
+
+  // 構成共通の部品と両方の配置に含まれる DLL を、実ファイルから検証する。
   for (const relative of [...SHARED_FILES, ...pairs.flat()]) {
     const expected = files[relative];
     if (!/^[0-9a-f]{64}$/.test(expected ?? '')) throw new Error(`SDK managed publication hash missing: ${relative}`);

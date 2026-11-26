@@ -15,42 +15,55 @@ namespace Fbzz;
 /// @see https://learn.microsoft.com/en-us/dotnet/api/system.runtime.intrinsics.vector128?view=net-10.0 Explicit SIMD arithmetic also has a software fallback.
 public static class QuaternionBatch
 {
-    /// @param forward Continuous directions; their count determines the number of outputs.
-    /// @param up Empty uses Vector3.UP for every direction; otherwise supply at least forward.Length values.
-    /// @param output Only the first forward.Length elements are written. Input/output byte ranges must not overlap.
+    /// @param[in] forward Continuous directions; their count determines the number of outputs.
+    /// @param[in] up Empty uses Vector3.UP for every direction; otherwise supply at least forward.Length values.
+    /// @param[out] output Only the first forward.Length elements are written. Input/output byte ranges must not overlap.
     /// @note Matches Quaternion.LookRotation, including its squared-length threshold and parallel-up recovery. No Engine calls or heap allocation occur.
     [ApiContract(Purity = ApiPurity.MANAGED, Call = "any", Units = "unitless_quaternion_xyzw", Coordinate = "same_as_input_forward_positive_Z",
         Failure = "ArgumentException_before_output_changes_on_short_buffer_or_overlap; float32_propagation",
         ParameterUnits = new[] { "forward=direction", "up=direction", "output=unitless_quaternion_xyzw" })]
     public static void LookRotation(ReadOnlySpan<Vector3> forward, ReadOnlySpan<Vector3> up, Span<Quaternion> output)
     {
+        // 出力を書き始める前に入力と出力の長さ、およびバッファの重なりを確認する。
         int count = forward.Length;
-        if ((!up.IsEmpty && up.Length < count) || output.Length < count)
+        bool useDefaultUp = up.IsEmpty;
+        bool upBufferTooShort = !useDefaultUp && up.Length < count;
+        if (upBufferTooShort || output.Length < count)
+        {
             throw new ArgumentException("Rotation buffers must cover every direction.");
-        Span<Quaternion> active = output[..count];
-        ReadOnlySpan<byte> destination = MemoryMarshal.AsBytes(active);
+        }
+
+        Span<Quaternion> activeOutput = output[..count];
+        ReadOnlySpan<byte> destination = MemoryMarshal.AsBytes(activeOutput);
         if (MemoryMarshal.AsBytes(forward).Overlaps(destination)
-            || (!up.IsEmpty && MemoryMarshal.AsBytes(up[..count]).Overlaps(destination)))
+            || (!useDefaultUp && MemoryMarshal.AsBytes(up[..count]).Overlaps(destination)))
+        {
             throw new ArgumentException("Direction buffers must not overlap the rotation output.");
+        }
+
+        // 独立した方向を SIMD で 4 件ずつ処理し、端数は単体の LookRotation に渡す。
         BatchMathCapture? diagnostics = BatchMathDiagnostics.Capture;
         long started = diagnostics is null ? 0 : Stopwatch.GetTimestamp();
-        int i = 0;
-        for (; i <= count - 4; i += 4)
+        int rotationIndex = 0;
+        for (; rotationIndex <= count - Vector128<float>.Count; rotationIndex += Vector128<float>.Count)
         {
-            Three f = Pack(forward, i);
-            Three u = up.IsEmpty ? new(V.Zero, Vector128.Create(1f), V.Zero) : Pack(up, i);
-            Store(LookFour(f, u), active, i);
+            Three forwardLanes = Pack(forward, rotationIndex);
+            Three upLanes = useDefaultUp ? new(V.Zero, Vector128.Create(1f), V.Zero) : Pack(up, rotationIndex);
+            Store(LookFour(forwardLanes, upLanes), activeOutput, rotationIndex);
         }
-        for (; i < count; ++i)
-            active[i] = Quaternion.LookRotation(forward[i], up.IsEmpty ? Vector3.UP : up[i]);
+        for (; rotationIndex < count; ++rotationIndex)
+        {
+            Vector3 upDirection = useDefaultUp ? Vector3.UP : up[rotationIndex];
+            activeOutput[rotationIndex] = Quaternion.LookRotation(forward[rotationIndex], upDirection);
+        }
         diagnostics?.Complete(BatchMathOperation.LOOK_ROTATION, count, started);
     }
 
-    /// @param from Continuous starting rotations; their count determines the number of outputs.
-    /// @param to Supply at least from.Length ending rotations, with the same normalization precondition as Quaternion.Slerp.
-    /// @param t Supply at least from.Length unclamped interpolation factors.
-    /// @param output May start at exactly the same element as from or to; shifted or cross-type overlaps are rejected before writes.
-    /// @param normalizeOutput Apply the additional Normalized call used by callers that require it, including after the near-equal Lerp path.
+    /// @param[in] from Continuous starting rotations; their count determines the number of outputs.
+    /// @param[in] to Supply at least from.Length ending rotations, with the same normalization precondition as Quaternion.Slerp.
+    /// @param[in] t Supply at least from.Length unclamped interpolation factors.
+    /// @param[out] output May start at exactly the same element as from or to; shifted or cross-type overlaps are rejected before writes.
+    /// @param[in] normalizeOutput Apply the additional Normalized call used by callers that require it, including after the near-equal Lerp path.
     /// @note Preserves shortest-arc signs, scalar trigonometry and the original left-associated float32 arithmetic.
     [ApiContract(Purity = ApiPurity.MANAGED, Call = "any", Units = "unitless_quaternion_xyzw", Coordinate = "same_as_inputs",
         Failure = "ArgumentException_before_output_changes_on_short_buffer_or_shifted_overlap; float32_propagation; t_is_not_clamped",
@@ -58,27 +71,38 @@ public static class QuaternionBatch
     public static void Slerp(ReadOnlySpan<Quaternion> from, ReadOnlySpan<Quaternion> to, ReadOnlySpan<float> t,
         Span<Quaternion> output, bool normalizeOutput = false)
     {
+        // 開始回転の件数を基準に、補間先、補間係数、出力の長さを揃える。
         int count = from.Length;
         if (to.Length < count || t.Length < count || output.Length < count)
+        {
             throw new ArgumentException("Rotation buffers must cover every starting rotation.");
-        Span<Quaternion> active = output[..count];
-        if ((from.Overlaps(active, out int fromOffset) && fromOffset != 0)
-            || (to[..count].Overlaps(active, out int toOffset) && toOffset != 0)
-            || MemoryMarshal.AsBytes(t[..count]).Overlaps(MemoryMarshal.AsBytes(active)))
+        }
+
+        // 始点・終点と同じ先頭位置の出力だけを許可する。ずれた出力は次の入力を上書きする。
+        Span<Quaternion> activeOutput = output[..count];
+        bool overlapsShiftedStart = from.Overlaps(activeOutput, out int fromOffset) && fromOffset != 0;
+        if (overlapsShiftedStart
+            || (to[..count].Overlaps(activeOutput, out int toOffset) && toOffset != 0)
+            || MemoryMarshal.AsBytes(t[..count]).Overlaps(MemoryMarshal.AsBytes(activeOutput)))
+        {
             throw new ArgumentException("Rotation output permits only exact in-place quaternion inputs.");
+        }
+
+        // 同じバッファを出力に使う場合に備え、各グループの入力を先に読み込む。
         BatchMathCapture? diagnostics = BatchMathDiagnostics.Capture;
         long started = diagnostics is null ? 0 : Stopwatch.GetTimestamp();
-        int i = 0;
-        for (; i <= count - 4; i += 4)
+        int rotationIndex = 0;
+        for (; rotationIndex <= count - Vector128<float>.Count; rotationIndex += Vector128<float>.Count)
         {
-            Four a = Pack(from, i), b = Pack(to, i);
-            V factors = Vector128.Create(t[i], t[i + 1], t[i + 2], t[i + 3]);
-            Store(SlerpFour(a, b, factors, normalizeOutput), active, i);
+            Four startLanes = Pack(from, rotationIndex);
+            Four endLanes = Pack(to, rotationIndex);
+            V factors = Vector128.Create(t[rotationIndex], t[rotationIndex + 1], t[rotationIndex + 2], t[rotationIndex + 3]);
+            Store(SlerpFour(startLanes, endLanes, factors, normalizeOutput), activeOutput, rotationIndex);
         }
-        for (; i < count; ++i)
+        for (; rotationIndex < count; ++rotationIndex)
         {
-            Quaternion value = Quaternion.Slerp(from[i], to[i], t[i]);
-            active[i] = normalizeOutput ? value.Normalized() : value;
+            Quaternion value = Quaternion.Slerp(from[rotationIndex], to[rotationIndex], t[rotationIndex]);
+            activeOutput[rotationIndex] = normalizeOutput ? value.Normalized() : value;
         }
         diagnostics?.Complete(BatchMathOperation.SLERP, count, started);
     }

@@ -37,7 +37,7 @@ class LifecycleComponent : Script
 
 static class PlainMovementHelper
 {
-    /// @param delta ローカル空間の移動量 [m]。
+    /// @param[in] delta ローカル空間の移動量 [m]。
     public static void Move(GameObject actor, Vector3 delta)
     {
         actor.Transform.TranslateLocal(delta);

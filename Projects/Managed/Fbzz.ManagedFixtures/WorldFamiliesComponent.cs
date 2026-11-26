@@ -50,7 +50,7 @@ public sealed class WorldFamiliesComponent : Script
         if (terrain is not null && terrain.TrySampleWorld(1, 1, out TerrainSurfaceSample sample))
             Gizmos.Line(sample.Position, sample.Position + sample.Normal);
         if (rejectDrawMutation) {
-            /// @note Deliberate runtime-negative fixture; separate analyzer tests keep production mutation diagnostics strict.
+            // 実行時に変更要求が拒否されることを確かめる。製品コードへの変更診断は別のアナライザーテストで検証する。
 #pragma warning disable FBZZ2010
             GetComponent<VFX>()!.Stop();
 #pragma warning restore FBZZ2010

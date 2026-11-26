@@ -25,7 +25,7 @@ public struct Quaternion : IEquatable<Quaternion>
     public readonly float LengthSquared => Dot(this, this);
     public readonly float Length => MathF.Sqrt(LengthSquared);
 
-    /// @param angleRadians 回転角 [rad]。軸は内部で正規化する。
+    /// @param[in] angleRadians 回転角 [rad]。軸は内部で正規化する。
     /// @see Math/Quaternion.cpp FromAxisAngle。
     [ApiContract(Units = "unitless_quaternion_xyzw", ParameterUnits = new[] { "angleRadians=rad" })]
     public static Quaternion FromAxisAngle(Vector3 axis, float angleRadians)
@@ -142,7 +142,7 @@ public struct Quaternion : IEquatable<Quaternion>
     public static float Dot(Quaternion a, Quaternion b)
     {
         Vector128<float> products = Vector128.Multiply(a.AsVector128(), b.AsVector128());
-        /// @note Keep the scalar X/Y/Z/W reduction order instead of a reassociated horizontal dot intrinsic.
+        // 内積の和はスカラー実装と同じ X、Y、Z、W の順で評価する。
         return ((products.GetElement(0) + products.GetElement(1)) + products.GetElement(2)) + products.GetElement(3);
     }
     /// @see Math/Quaternion.hpp Hamilton 積の成分順。
@@ -154,7 +154,7 @@ public struct Quaternion : IEquatable<Quaternion>
         Vector128<float> second = Vector128.Multiply(Vector128.Create(a.X), Vector128.Shuffle(values, Vector128.Create(3, 2, 1, 0)));
         Vector128<float> third = Vector128.Multiply(Vector128.Create(a.Y), Vector128.Shuffle(values, Vector128.Create(2, 3, 0, 1)));
         Vector128<float> fourth = Vector128.Multiply(Vector128.Create(a.Z), Vector128.Shuffle(values, Vector128.Create(1, 0, 3, 2)));
-        /// @note Each lane keeps its original left-associated Add/Subtract sequence, including finite signed-zero results; no FMA or dot reduction is used.
+        // 各レーンで元の加減算を左から順に評価し、有限値の演算で得る符号付きゼロも保つ。FMA や内積命令にまとめない。
         Vector128<float> result = Vector128.ConditionalSelect(Vector128.Create(-1, 0, -1, 0).AsSingle(),
             Vector128.Add(first, second), Vector128.Subtract(first, second));
         result = Vector128.ConditionalSelect(Vector128.Create(-1, -1, 0, 0).AsSingle(),

@@ -56,7 +56,7 @@ async function bootstrap(): Promise<BootstrapData> {
   return {
     engineVersion: ENGINE_VERSION,
     settings: config.settings,
-    /// @note 実ファイル検証とサムネイル読込はproject:listへ分離し、初期画面を先に返す。
+    // 実ファイル検証とサムネイル読込はproject:listへ分離し、初期画面を先に返す。
     projects: projectService.createPendingProjects(config.projects),
     templates: await templateService.listTemplates(),
   };
@@ -81,7 +81,7 @@ async function checkForUpdate(): Promise<UpdateNotice | null> {
 }
 
 export function registerIpcHandlers(): void {
-  /// @note 読込は開始するが、BrowserWindow生成側をブロックしない。
+  // 読込は開始するが、BrowserWindow生成側をブロックしない。
   void ensureConfigLoaded();
   publishResolvedSettings();
 
@@ -179,7 +179,7 @@ export function registerIpcHandlers(): void {
     try {
       await ensureConfigLoaded();
       const url = configStore.snapshot().update.latestUrl;
-      /// @note renderer から URL を受け取らない。保存済みの値もこのリポジトリのリリースページでなければ開かない。
+      // renderer から URL を受け取らない。保存済みの値もこのリポジトリのリリースページでなければ開かない。
       if (!isReleasePageUrl(url)) throw new Error('リリースページの URL が不正です。');
       await shell.openExternal(url);
       return success();

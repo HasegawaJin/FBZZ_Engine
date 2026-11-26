@@ -248,7 +248,7 @@ public static class RagdollBalanceUtility
         if(!state.Valid||!state.HasSupport)return Vector3.ZERO;
         if(!state.Center.IsFinite||!state.Velocity.IsFinite||!state.SupportVelocity.IsFinite||!state.SupportNormal.IsFinite)
             throw new ArgumentOutOfRangeException(nameof(state));
-        /// @note floatの有限入力でも差分・周波数二乗はoverflowし得るため、上限制限までdoubleで評価する。
+        // floatの有限入力でも差分・周波数二乗はoverflowし得るため、上限制限までdoubleで評価する。
         double nx=state.SupportNormal.X,ny=state.SupportNormal.Y,nz=state.SupportNormal.Z;
         double norm=Math.Sqrt(nx*nx+ny*ny+nz*nz);
         if(norm<1e-8){nx=0;ny=1;nz=0;}else{nx/=norm;ny/=norm;nz/=norm;}

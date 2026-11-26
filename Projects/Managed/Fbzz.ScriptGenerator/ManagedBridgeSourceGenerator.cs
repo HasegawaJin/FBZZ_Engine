@@ -102,7 +102,7 @@ public sealed class ManagedBridgeSourceGenerator : IIncrementalGenerator
         }
         if (!host)
         {
-            /// @note SDK が wire ID を別表に複製せず、Host op 登録簿のサービス部分だけを内部 enum に投影する。
+            // SDK が wire ID を別表に複製せず、Host op 登録簿のサービス部分だけを内部 enum に投影する。
             output.AppendLine("internal enum ScriptServiceKind : uint\n{");
             foreach (EnumValue value in contract.Enums.Single(definition => definition.Target == "HOST" && definition.CsName == "BridgeOp").Values
                 .Where(value => value.CsName.StartsWith("SERVICE_", StringComparison.Ordinal)))
@@ -426,7 +426,7 @@ public sealed class ManagedBridgeSourceGenerator : IIncrementalGenerator
         string digits = value.TrimEnd('U', 'u', 'L', 'l');
         bool hex = digits.StartsWith("0x", StringComparison.OrdinalIgnoreCase);
         string magnitude = digits.StartsWith('-') || digits.StartsWith('+') ? digits[1..] : digits;
-        /// @note 同じ正本を C++ も読むため、C++ で八進数になる非 hex の先頭 0 は受け入れない。
+        // 同じ正本を C++ も読むため、C++ で八進数になる非 hex の先頭 0 は受け入れない。
         if (!hex && magnitude.Length > 1 && magnitude[0] == '0') return false;
         bool signed = type is "int" or "long" or "short" or "sbyte";
         if (type is not ("uint" or "ulong" or "int" or "long" or "ushort" or "short" or "byte" or "sbyte")) return false;

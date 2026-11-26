@@ -64,7 +64,7 @@ class ObjectBatchComponent : Script
                 Capture(Objects.TranslateWorld(new GameObject[] { targets[0], m_foreign }, displacement));
                 break;
         }
-        /// @note 観測する status は先頭 8 件だけ。この表示用要約を元の集合件数の上限にしない。
+        // 観測する status は先頭 8 件だけ。この表示用要約を元の集合件数の上限にしない。
         int observedCount = Math.Min(m_statuses.Length, 8);
         observedStatuses = new int[observedCount];
         for (int i = 0; i < observedCount; i++) observedStatuses[i] = (int)m_statuses[i];

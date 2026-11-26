@@ -11,18 +11,29 @@ import { AssertSdkContract } from './SdkFreshness.mjs';
 const VALID_CONFIGURATIONS = new Set(['Debug', 'Development', 'Release']);
 
 async function Exists(target) {
-  try { await access(target); return true; } catch { return false; }
+  try {
+    await access(target);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 /// @note 未更新構成と公開途中の SDK を除き、検証済み構成の公開時刻で選択する。
 async function FindLatestSdk(sdkStoreRoot, configuration) {
   const candidates = [];
   for (const entry of await readdir(sdkStoreRoot, { withFileTypes: true })) {
-    if (!entry.isDirectory()) continue;
+    if (!entry.isDirectory()) {
+      continue;
+    }
+
+    // 公開マニフェストと選択した構成の Editor が揃う SDK を検証する。
     const root = path.join(sdkStoreRoot, entry.name);
     const manifestPath = path.join(root, 'fbzz-sdk.toml');
     const editorPath = path.join(root, 'tools', configuration, 'Editor', 'FBZZEditor.exe');
-    if (!await Exists(manifestPath) || !await Exists(editorPath)) continue;
+    if (!await Exists(manifestPath) || !await Exists(editorPath)) {
+      continue;
+    }
     let document;
     try {
       document = await AssertSdkContract(root, configuration, { verifyHashes: true });
@@ -30,8 +41,10 @@ async function FindLatestSdk(sdkStoreRoot, configuration) {
       console.warn(`配布対象からSDKを除外しました: ${root}: ${error.message}`);
       continue;
     }
+    // ディレクトリ全体の更新時刻ではなく、この構成を公開した時刻を比較に使う。
     const sdkId = typeof document.sdk?.id === 'string' ? document.sdk.id : entry.name;
-    candidates.push({ root, sdkId, publishedAt: (await stat(path.join(root, 'bin', configuration, 'published.stamp'))).mtimeMs });
+    const publicationStamp = await stat(path.join(root, 'bin', configuration, 'published.stamp'));
+    candidates.push({ root, sdkId, publishedAt: publicationStamp.mtimeMs });
   }
   candidates.sort((left, right) => right.publishedAt - left.publishedAt);
   return candidates[0] ?? null;
@@ -44,16 +57,24 @@ async function Run() {
     return 1;
   }
 
+  // 配布先を更新する前に、ビルド済み GameHub と公開済みの SDK を探す。
   const projectRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
   const repositoryRoot = path.resolve(projectRoot, '..', '..');
   const gameHubRoot = path.join(projectRoot, 'out', configuration, 'FBZZGameHub-win32-x64');
   const sdkStoreRoot = path.join(repositoryRoot, 'SDK');
-  if (!await Exists(gameHubRoot)) throw new Error(`GameHub buildがありません: ${gameHubRoot}`);
-  if (!await Exists(sdkStoreRoot)) throw new Error(`SDK storeがありません: ${sdkStoreRoot}`);
+  if (!await Exists(gameHubRoot)) {
+    throw new Error(`GameHub buildがありません: ${gameHubRoot}`);
+  }
+  if (!await Exists(sdkStoreRoot)) {
+    throw new Error(`SDK storeがありません: ${sdkStoreRoot}`);
+  }
 
   const sdk = await FindLatestSdk(sdkStoreRoot, configuration);
-  if (!sdk) throw new Error(`${configuration}構成を含む公開済みSDKがありません。`);
+  if (!sdk) {
+    throw new Error(`${configuration}構成を含む公開済みSDKがありません。`);
+  }
 
+  // 古い配布物を置き換える前に、成果物ディレクトリの内側であることを確認する。
   const distributionRoot = path.join(repositoryRoot, 'Artifacts', 'Distribution', sdk.sdkId, configuration);
   const artifactsRoot = path.join(repositoryRoot, 'Artifacts');
   if (!path.resolve(distributionRoot).startsWith(`${path.resolve(artifactsRoot)}${path.sep}`)) {
@@ -66,6 +87,8 @@ async function Run() {
     cp(gameHubRoot, path.join(distributionRoot, 'GameHub'), { recursive: true }),
     cp(sdk.root, path.join(distributionRoot, 'SDK', sdk.sdkId), { recursive: true }),
   ]);
+
+  // コピー先の SDK も検証できた段階で、配布物の目録を書く。
   await AssertSdkContract(path.join(distributionRoot, 'SDK', sdk.sdkId), configuration, { verifyHashes: true });
   await writeFile(path.join(distributionRoot, 'distribution.json'), `${JSON.stringify({
     sdkId: sdk.sdkId,

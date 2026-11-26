@@ -7,9 +7,16 @@ import { app } from 'electron';
 import { access, copyFile, mkdir, readFile, readdir, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { parse } from 'smol-toml';
-import type { CreateProjectRequest, ProjectIdentifiers, TemplateInfo } from '../shared/contracts';
-import { ENGINE_VERSION, deriveProjectIdentifiers, isValidProjectIdentifiers, isVersionAtLeast } from '../shared/contracts';
-import type { SdkBuildConfiguration } from '../shared/contracts';
+import {
+  ENGINE_VERSION,
+  deriveProjectIdentifiers,
+  isValidProjectIdentifiers,
+  isVersionAtLeast,
+  type CreateProjectRequest,
+  type ProjectIdentifiers,
+  type SdkBuildConfiguration,
+  type TemplateInfo,
+} from '../shared/contracts';
 import { PrepareManagedStarter, WriteManagedStarter } from './managedStarter';
 
 const TEXT_EXTENSIONS = new Set([
@@ -47,8 +54,9 @@ function applyPlaceholders(text: string, info: ProjectIdentifiers, createdAt: st
 }
 
 function isTextTemplate(filePath: string): boolean {
-  return path.basename(filePath) === 'CMakeLists.txt'
-    || path.basename(filePath) === '.fbzz_proj'
+  const fileName = path.basename(filePath);
+  return fileName === 'CMakeLists.txt'
+    || fileName === '.fbzz_proj'
     || filePath.endsWith('.tmpl')
     || TEXT_EXTENSIONS.has(path.extname(filePath).toLowerCase());
 }
@@ -64,16 +72,18 @@ export class TemplateService {
       path.resolve(process.cwd(), 'Projects/GameHub/Templates'),
     ];
     for (const candidate of candidates) {
-      if (await exists(candidate)) return candidate;
+      if (await exists(candidate)) {
+        return candidate;
+      }
     }
     throw new Error('GameHubのTemplatesディレクトリが見つかりません。');
   }
 
   async listTemplates(): Promise<TemplateInfo[]> {
-    /// @note bootstrap の反復で同じ template.toml を再走査しない。
+    // bootstrap の反復で同じ template.toml を再走査しない。
     if (!this.templatesPromise) {
       this.templatesPromise = this.loadTemplates().catch((error: unknown) => {
-        /// @note 一時的なアクセス失敗は次の要求で再試行する。
+        // 一時的なアクセス失敗は次の要求で再試行する。
         this.templatesPromise = null;
         throw error;
       });
@@ -82,6 +92,7 @@ export class TemplateService {
   }
 
   private async loadTemplates(): Promise<TemplateInfo[]> {
+    // 各テンプレートのメタデータを読み、表示内容と必要な Engine のバージョンを求める。
     const root = await this.resolveTemplatesRoot();
     const entries = await readdir(root, { withFileTypes: true });
     const templates = await Promise.all(entries.filter((entry) => entry.isDirectory()).map(async (entry) => {
@@ -100,12 +111,13 @@ export class TemplateService {
         return null;
       }
     }));
-    /// @note 新規作成は最初の互換テンプレートを選ぶ。既定の Standard をディレクトリの列挙順に依存させない。
+    // 新規作成では最初の互換テンプレートが選ばれるため、既定の Standard を先頭に置く。
     return templates.filter((template): template is TemplateInfo => template !== null)
       .sort((left, right) => Number(right.id === 'standard') - Number(left.id === 'standard'));
   }
 
   async create(request: CreateProjectRequest, sdkId: string, sdkRoot = '', sdkConfiguration: SdkBuildConfiguration = 'Development'): Promise<string> {
+    // ディスクへの書き込み前に、プロジェクト名と選択した SDK の starter を確認する。
     const info = deriveProjectIdentifiers(request.displayName);
     assertValidName(info);
     const managedStarter = await PrepareManagedStarter(sdkRoot, sdkConfiguration);
@@ -113,15 +125,19 @@ export class TemplateService {
     const template = (await this.listTemplates()).find((candidate) => candidate.id === request.templateId);
     const templatesRoot = await this.resolveTemplatesRoot();
     const templateRoot = path.join(templatesRoot, request.templateId);
-    if (!template || !await exists(path.join(templateRoot, 'template.toml'))) {
+    const templateExists = template !== undefined && await exists(path.join(templateRoot, 'template.toml'));
+    if (!templateExists) {
       throw new Error('選択されたテンプレートが見つかりません。');
     }
     if (!template.compatible) {
       throw new Error(`テンプレート ${template.displayName} は Engine ${template.engineVersionMin} 以上が必要です (GameHub は ${ENGINE_VERSION})。`);
     }
 
+    // 新規のフォルダーを作り、テンプレートに続けて共通 C# starter を配置する。
     const projectRoot = path.join(path.resolve(request.destinationRoot), info.targetName);
-    if (await exists(projectRoot)) throw new Error('同名のプロジェクトフォルダーが既に存在します。');
+    if (await exists(projectRoot)) {
+      throw new Error('同名のプロジェクトフォルダーが既に存在します。');
+    }
 
     const createdAt = new Date().toISOString();
     await mkdir(projectRoot, { recursive: false });
@@ -133,24 +149,37 @@ export class TemplateService {
   private async copyTemplateDirectory(sourceRoot: string, projectRoot: string, info: ProjectIdentifiers, createdAt: string, sdkId: string): Promise<void> {
     const walk = async (sourceDirectory: string, relativeDirectory: string): Promise<void> => {
       for (const entry of await readdir(sourceDirectory, { withFileTypes: true })) {
-        if (!relativeDirectory && entry.name === 'template.toml') continue;
-        if (!relativeDirectory && entry.isDirectory() && EXCLUDED_ROOT_DIRECTORIES.has(entry.name)) continue;
-        if (relativeDirectory === 'Src' && entry.isDirectory() && entry.name === 'Scripts') continue;
+        // テンプレート自身の設定、ビルド出力、廃止済みの C++ スクリプトを除く。
+        const isRootEntry = relativeDirectory === '';
+        const isDirectory = entry.isDirectory();
+        const isTemplateMetadata = isRootEntry && entry.name === 'template.toml';
+        const isExcludedRootDirectory = isRootEntry && isDirectory && EXCLUDED_ROOT_DIRECTORIES.has(entry.name);
+        const isLegacyScriptDirectory = relativeDirectory === 'Src' && isDirectory && entry.name === 'Scripts';
+        if (isTemplateMetadata || isExcludedRootDirectory || isLegacyScriptDirectory) {
+          continue;
+        }
+
+        // ファイルとディレクトリの名前にもプロジェクト固有の値を当てはめる。
         const replacedName = applyPlaceholders(entry.name, info, createdAt, sdkId).replace(/\.tmpl$/, '');
         const relativePath = path.join(relativeDirectory, replacedName);
         const sourcePath = path.join(sourceDirectory, entry.name);
         const outputPath = path.join(projectRoot, relativePath);
-        if (entry.isDirectory()) {
+        if (isDirectory) {
           await mkdir(outputPath, { recursive: true });
           await walk(sourcePath, relativePath);
-        } else if (entry.isFile()) {
-          await mkdir(path.dirname(outputPath), { recursive: true });
-          if (isTextTemplate(sourcePath)) {
-            const text = applyPlaceholders(await readFile(sourcePath, 'utf8'), info, createdAt, sdkId);
-            await writeFile(outputPath, text, 'utf8');
-          } else {
-            await copyFile(sourcePath, outputPath);
-          }
+          continue;
+        }
+        if (!entry.isFile()) {
+          continue;
+        }
+
+        // 置換対象のテキストだけを読み、画像などは元のバイト列をコピーする。
+        await mkdir(path.dirname(outputPath), { recursive: true });
+        if (isTextTemplate(sourcePath)) {
+          const text = applyPlaceholders(await readFile(sourcePath, 'utf8'), info, createdAt, sdkId);
+          await writeFile(outputPath, text, 'utf8');
+        } else {
+          await copyFile(sourcePath, outputPath);
         }
       }
     };

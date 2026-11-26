@@ -46,7 +46,7 @@ public sealed partial class ManagedScriptRuntime : IScriptDataAssetRuntime
                 throw new InvalidDataException("DataAsset stored type does not match the requested type.");
             PortableDataAssetDocument.ValidateSchema(descriptor);
             if (root.TryGetProperty("formatVersion", out _)) return (DataAsset)PortableDataAssetDocument.Read(descriptor, root);
-            /// @note Passive reads use explicit schema defaults; initializer defaults run only during an explicit create action.
+            // 参照時はスキーマで指定した既定値を使う。初期化子を評価するのは明示的な作成操作のときだけ。
             DataAsset result = (DataAsset)SettingsDocument.InertValue(descriptor);
             Dictionary<ScriptFieldDescriptor, object?> fields = new();
             foreach (ScriptFieldDescriptor field in descriptor.Fields.Where((ScriptFieldDescriptor field) => field.IsSetting))

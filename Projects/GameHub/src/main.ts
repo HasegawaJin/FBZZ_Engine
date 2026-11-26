@@ -50,7 +50,7 @@ const createWindow = () => {
 // Some APIs can only be used after this event occurs.
 app.whenReady().then(() => {
   // IPC側の設定・SDK探索を待たず、先にウィンドウとRendererを起動する。
-  // WHY: 遅いディスクや切断済みパスがあっても、真っ黒な無反応時間を発生させない。
+  // ディスクが遅い場合やパスに接続できない場合も、ウィンドウをすぐに表示できるようにする。
   registerIpcHandlers();
   createWindow();
 });

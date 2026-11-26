@@ -32,14 +32,14 @@ public static class Mathf
     [ApiContract(ParameterUnits = new[] { "t=ratio" }, Failure = "float32_propagation; t_is_not_clamped")]
     public static float Lerp(float a, float b, float t) => a + (b - a) * t;
 
-    /// @param degrees 角度 [deg]。
+    /// @param[in] degrees 角度 [deg]。
     /// @return 角度 [rad]。
     /// @see Math/MathUtils.hpp ToRad と DEG2RAD。
     /// @see https://github.com/Unity-Technologies/UnityCsReference/blob/master/Runtime/Export/Math/Mathf.cs Deg2Rad の公開形。
     [ApiContract(Units = "rad", ParameterUnits = new[] { "degrees=deg" }, Coordinate = "not_applicable")]
     public static float ToRadians(float degrees) => degrees * DEG2RAD;
 
-    /// @param radians 角度 [rad]。
+    /// @param[in] radians 角度 [rad]。
     /// @return 角度 [deg]。
     /// @see Math/MathUtils.hpp ToDeg と RAD2DEG。
     /// @see https://github.com/Unity-Technologies/UnityCsReference/blob/master/Runtime/Export/Math/Mathf.cs Rad2Deg の公開形。

@@ -81,7 +81,7 @@ public static unsafe partial class EntryPoint
                     }
                     if (valid != applied || count - valid != skipped) throw new InvalidDataException("Aggregate batch slot counts disagree.");
                 }
-                /// @note 全結果を staging へ受信・検証してから固定長 commit。変更後に失敗し得る page を要求しない。
+                // 全結果を staging へ受信・検証してから固定長 commit。変更後に失敗し得る page を要求しない。
                 BridgeRequest publish = BatchPhase(scope, operation, token, 6, activeOnly);
                 status = DispatchBatchPhase(ref publish, out reply);
                 if (status != BatchStatus.OK) return BatchFailure(status, count);

@@ -69,7 +69,7 @@ public static unsafe partial class EntryPoint
                 int count = InputNameCount(ref reader); if (output.Length < count) return new(count, 0);
                 string[] names = ArrayPool<string>.Shared.Rent(Math.Max(1, count));
                 try {
-                    /// @note Validate all packets before touching caller storage, including malformed final UTF-8 names.
+                    // 末尾の名前の UTF-8 も含め、全パケットを検証してから呼び出し元の領域に書き込む。
                     ReadNameValues(ref reader, names.AsSpan(0, count));
                     for (int index = 0; index < count; index++) output[index] = names[index];
                     return new(count, count);

@@ -114,7 +114,7 @@ function ProjectRow({ entry, expanded, openingPath, onToggle, onOpen, onReveal, 
   const opened = formatTimestamp(project.lastOpened);
   const issues = diagnostics.filter((diagnostic) => diagnostic.severity !== 'info').length;
   const open = openButtonState(status, project.path, openingPath);
-  /// @note 「一覧から削除」は 2 段階にする。畳んだら確認状態も捨てる。
+  // 「一覧から削除」は 2 段階にする。畳んだら確認状態も捨てる。
   const [confirmingRemove, setConfirmingRemove] = useState(false);
   useEffect(() => { if (!expanded) setConfirmingRemove(false); }, [expanded]);
 
@@ -238,15 +238,34 @@ function ProjectsPage({ entries, busy, openingPath, onRefresh, onOpen, onReveal,
   }), [entries]);
 
   const visible = useMemo(() => {
-    const needle = query.trim().toLowerCase();
+    // 表示状態を絞り込み、プロジェクト名・パス・SDK 名をまとめて検索する。
+    const searchText = query.trim().toLowerCase();
     return entries
-      .filter((entry) => filter === 'all'
-        || (filter === 'ready' && entry.status === 'ready')
-        || (filter === 'issues' && (entry.status === 'warning' || entry.status === 'error')))
-      .filter((entry) => !needle || `${entry.project.name} ${entry.project.path} ${entry.project.sdkId}`.toLowerCase().includes(needle))
+      .filter(({ status }) => {
+        switch (filter) {
+          case 'all':
+            return true;
+          case 'ready':
+            return status === 'ready';
+          case 'issues':
+            return status === 'warning' || status === 'error';
+        }
+      })
+      .filter(({ project }) => {
+        if (!searchText) {
+          return true;
+        }
+        const searchableFields = `${project.name} ${project.path} ${project.sdkId}`.toLowerCase();
+        return searchableFields.includes(searchText);
+      })
       .sort((left, right) => {
-        if (sort === 'name') return left.project.name.localeCompare(right.project.name, 'ja');
-        if (sort === 'status' && left.status !== right.status) return STATUS_ORDER[left.status] - STATUS_ORDER[right.status];
+        // 状態順で同じ状態の項目は、最終起動が新しいものを先に並べる。
+        if (sort === 'name') {
+          return left.project.name.localeCompare(right.project.name, 'ja');
+        }
+        if (sort === 'status' && left.status !== right.status) {
+          return STATUS_ORDER[left.status] - STATUS_ORDER[right.status];
+        }
         return right.project.lastOpened.localeCompare(left.project.lastOpened);
       });
   }, [entries, query, filter, sort]);
@@ -486,7 +505,7 @@ function CreateDialog({ templates, settings, hubVersion, initialTemplateId, onCl
     return () => window.removeEventListener('keydown', onKeyDown);
   }, [onClose]);
 
-  /// @note main 側と同じ導出規則で、作成前にフォルダー名と識別子を提示する。
+  // main 側と同じ導出規則で、作成前にフォルダー名と識別子を提示する。
   const identifiers = deriveProjectIdentifiers(displayName);
   const nameValid = isValidProjectIdentifiers(identifiers);
   const templateUsable = selectedTemplate?.compatible ?? false;
@@ -595,7 +614,7 @@ export function App() {
   const [page, setPage] = useState<Page>('projects');
   const [creating, setCreating] = useState('');
   const [busy, setBusy] = useState(false);
-  /// @note Editor 起動要求が main で処理中のプロジェクト。連打で同じ Editor を 2 つ立ち上げないための UI 側の門。
+  // Editor 起動要求が main で処理中のプロジェクト。連打で同じ Editor を 2 つ立ち上げないための UI 側の門。
   const [openingPath, setOpeningPath] = useState('');
   const [notice, setNotice] = useState('');
   const [error, setError] = useState('');
@@ -604,20 +623,25 @@ export function App() {
   const resolvedSettings = useRef<HubSettings | null>(null);
 
   const refresh = useCallback(async () => {
+    // 再読み込みが重なった場合は、最新の要求だけが画面の状態を更新する。
     const generation = ++refreshGeneration.current;
     setBusy(true);
     const result = await window.gameHub.bootstrap();
-    if (generation !== refreshGeneration.current) return;
+    if (generation !== refreshGeneration.current) {
+      return;
+    }
     if (!result.ok || !result.value) {
       setBusy(false);
       setError(result.error ?? 'GameHub を初期化できませんでした。');
       return;
     }
 
-    /// @note 設定・テンプレート・仮カードを先に表示し、重い検証結果は後から差し替える。
+    // 設定・テンプレート・仮カードを先に表示し、ディスク検証が済んだ一覧で差し替える。
     setData({ ...result.value, settings: resolvedSettings.current ?? result.value.settings });
     void window.gameHub.listProjects().then((projectsResult) => {
-      if (generation !== refreshGeneration.current) return;
+      if (generation !== refreshGeneration.current) {
+        return;
+      }
       setBusy(false);
       if (projectsResult.ok && projectsResult.value) {
         setData((current) => current ? { ...current, projects: projectsResult.value ?? [] } : current);
@@ -636,13 +660,15 @@ export function App() {
   }, []);
 
   useEffect(() => {
-    /// @note StrictMode による effect の再実行で、IPC とディスク走査を二重に開始させない。
-    if (initialLoadStarted.current) return;
+    // StrictMode で副作用が再実行されても、初回の IPC とディスク走査は一度だけ始める。
+    if (initialLoadStarted.current) {
+      return;
+    }
     initialLoadStarted.current = true;
     void refresh();
   }, [refresh]);
 
-  /// @note 設定で確認を切り替えたときも追従する。確認は main が 1 日 1 回に抑えるので、ここでは何度呼んでもよい。
+  // 設定で確認を切り替えたときも追従する。確認は main が 1 日 1 回に抑えるので、ここでは何度呼んでもよい。
   const checkForUpdates = data?.settings.checkForUpdates;
   useEffect(() => {
     if (checkForUpdates === undefined) return;
@@ -654,11 +680,17 @@ export function App() {
     return () => { cancelled = true; };
   }, [checkForUpdates]);
 
-  /// @note system は CSS に持たせず、ここで実際の配色へ解決する。
   useEffect(() => {
+    // システム設定に従う場合は、OS の配色変更にも追従する。
     const choice = data?.settings.theme ?? 'modern';
     const media = window.matchMedia('(prefers-color-scheme: light)');
-    const apply = () => { document.documentElement.dataset.theme = choice === 'system' ? (media.matches ? 'light' : 'modern') : choice; };
+    const apply = () => {
+      if (choice === 'system') {
+        document.documentElement.dataset.theme = media.matches ? 'light' : 'modern';
+        return;
+      }
+      document.documentElement.dataset.theme = choice;
+    };
     apply();
     media.addEventListener('change', apply);
     return () => media.removeEventListener('change', apply);
@@ -681,7 +713,7 @@ export function App() {
   const run = async (operation: () => Promise<{ ok: boolean; cancelled?: boolean; error?: string }>, message?: string) => {
     setError('');
     const result = await operation();
-    /// @note ダイアログの取りやめは失敗でも完了でもない。何も出さず、再読込もしない。
+    // ダイアログの取りやめは失敗でも完了でもない。何も出さず、再読込もしない。
     if (result.cancelled) return false;
     if (!result.ok) setError(result.error ?? '操作に失敗しました。');
     else { if (message) setNotice(message); await refresh(); }

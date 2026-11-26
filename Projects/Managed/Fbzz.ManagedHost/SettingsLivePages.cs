@@ -36,6 +36,8 @@ public sealed partial class ManagedScriptRuntime
 
 internal static class SettingsLivePages
 {
+    private const int MAX_JSON_BYTES_PER_CODE_UNIT = 6; ///< JSON の `\uXXXX` エスケープに必要な最大バイト数。
+
     internal static string Read(ManagedScriptRuntime.ScriptInstance record, string path, long start, int count, int packetBytes)
         => Read(record.Type, record.Instance, new Dictionary<string, object?> {
             ["generation"] = record.Generation.ToString(CultureInfo.InvariantCulture), ["instanceId"] = record.Binding.InstanceId.ToString(CultureInfo.InvariantCulture),
@@ -64,14 +66,8 @@ internal static class SettingsLivePages
             object? value = location.Value; Type type = location.Type;
             string kind = value is null ? "null" : ManagedFieldSchema.Kind(type);
             result["path"] = location.Path; result["setting"] = location.Field.IsSetting; result["kind"] = kind;
-            if (value is string text && (long)text.Length * 6 > available) {
-                if (start > text.Length || (start < text.Length && start != 0 && char.IsLowSurrogate(text[(int)start]) && char.IsHighSurrogate(text[(int)start - 1])))
-                    throw new InvalidDataException("Settings text start must be a UTF-16 character boundary.");
-                int size = (int)Math.Min(Math.Min((long)count, text.Length - start), available / 6);
-                if (size != 0 && start + size < text.Length && char.IsHighSurrogate(text[(int)start + size - 1]) && char.IsLowSurrogate(text[(int)start + size])) size--;
-                if (size == 0 && start < text.Length && count != 0) throw new InvalidDataException("Text page requires capacity for one complete character.");
-                string chunk = text.Substring((int)start, size); _ = new UTF8Encoding(false, true).GetByteCount(chunk);
-                result["kind"] = "text"; result["text"] = chunk; result["unit"] = "utf16_code_units"; result["total"] = text.Length; Range(result, start, size, text.Length);
+            if (value is string text && (long)text.Length * MAX_JSON_BYTES_PER_CODE_UNIT > available) {
+                WriteTextPage(result, text, start, count, available);
             } else if (value is IList list && ManagedFieldSchema.Element(type) is Type element) {
                 if (start > list.Count) throw new InvalidDataException("Settings collection page is out of range.");
                 List<object?> items = new();
@@ -98,6 +94,48 @@ internal static class SettingsLivePages
         if (bytes.Length > packetBytes) throw new InvalidDataException($"Settings packet capacity insufficient: requiredBytes={bytes.Length}, allocatedBytes={packetBytes}. Request a narrower path or fewer items.");
         return Encoding.UTF8.GetString(bytes);
     }
+
+    /// @brief UTF-16 の文字境界を保って、予算内のテキスト範囲と次の読み出し位置を格納する。
+    /// @param[in,out] result ページ情報を追記する辞書。範囲または文字列の不正は追記前に報告する。
+    /// @param[in] text ページの対象となる文字列。
+    /// @param[in] start 0 始まりの UTF-16 コード単位で表した開始位置。
+    /// @param[in] count 返せる UTF-16 コード単位数の上限。
+    /// @param[in] availableBytes エスケープ済みの文字データに使えるバイト数。
+    static void WriteTextPage(Dictionary<string, object?> result, string text, long start, int count, int availableBytes)
+    {
+        // long の開始位置を確認してから文字列の添字へ変換する。
+        if (start > text.Length || IsInsideSurrogatePair(text, (int)start))
+        {
+            throw new InvalidDataException("Settings text start must be a UTF-16 character boundary.");
+        }
+
+        // JSON に収まる範囲を取り、末尾でサロゲートペアが分かれる場合は次のページへ回す。
+        int startIndex = (int)start;
+        int maxCodeUnits = availableBytes / MAX_JSON_BYTES_PER_CODE_UNIT;
+        int codeUnits = Math.Min(Math.Min(count, text.Length - startIndex), maxCodeUnits);
+        if (codeUnits != 0 && IsInsideSurrogatePair(text, startIndex + codeUnits))
+        {
+            codeUnits--;
+        }
+        if (codeUnits == 0 && startIndex < text.Length && count != 0)
+        {
+            throw new InvalidDataException("Text page requires capacity for one complete character.");
+        }
+
+        // 不正な UTF-16 があれば、JSON に載せる前に strict UTF-8 で検出する。
+        string chunk = text.Substring(startIndex, codeUnits);
+        _ = new UTF8Encoding(false, true).GetByteCount(chunk);
+        result["kind"] = "text";
+        result["text"] = chunk;
+        result["unit"] = "utf16_code_units";
+        result["total"] = text.Length;
+        Range(result, start, codeUnits, text.Length);
+    }
+
+    static bool IsInsideSurrogatePair(string text, int index)
+        => index > 0 && index < text.Length
+            && char.IsHighSurrogate(text[index - 1]) && char.IsLowSurrogate(text[index]);
+
     static void Range(Dictionary<string, object?> result, long start, int returned, long total)
     { result["start"] = start; result["returned"] = returned; result["nextStart"] = start + returned < total ? start + returned : null; }
     static object? Summary(object? value, Type type, string path, ref int bytes, Dictionary<string, object?> references)
@@ -106,7 +144,7 @@ internal static class SettingsLivePages
         string kind = ManagedFieldSchema.Kind(type);
         if (value is IList list && ManagedFieldSchema.Element(type) is not null) return Deferred(path, "list", list.Count, ref bytes);
         if (kind == "object") return Deferred(path, kind, ManagedFieldSchema.Fields(type).Length, ref bytes);
-        if (value is string text && (long)text.Length * 6 > bytes - 64) return Deferred(path, "text", text.Length, ref bytes);
+        if (value is string text && (long)text.Length * MAX_JSON_BYTES_PER_CODE_UNIT > bytes - 64) return Deferred(path, "text", text.Length, ref bytes);
         if (value is GameObject target) {
             bytes -= target.Guid.Length * 12 + path.Length * 6 + 256;
             if (bytes < 0) throw new InvalidDataException("Reference identity exceeds the allocated packet capacity.");

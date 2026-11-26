@@ -28,7 +28,11 @@ public static unsafe partial class EntryPoint
     [UnmanagedCallersOnly(CallConvs = new Type[] { typeof(CallConvCdecl) })]
     public static int Dispatch(BridgeRequest* request, BridgeReply* reply)
     {
-        if (request is null || reply is null) return (int)BridgeStatus.INVALID_ARGUMENT;
+        if (request is null || reply is null)
+        {
+            return (int)BridgeStatus.INVALID_ARGUMENT;
+        }
+
         return DispatchManaged(ref *request, ref *reply);
     }
 
@@ -37,15 +41,33 @@ public static unsafe partial class EntryPoint
     {
         lock (s_gate)
         {
+            // 失敗時も要求と対応付けられるよう、応答の識別子を先に設定する。
             reply = new() { Generation = request.Generation, InstanceId = request.InstanceId, CallId = request.CallId };
             try
             {
-                if (request.AbiVersion != BridgeAbi.VERSION || request.InputBytes > int.MaxValue || request.OutputCapacity > int.MaxValue
-                    || (request.InputBytes != 0 && request.Input is null) || (request.OutputCapacity != 0 && request.Output is null))
+                // ネイティブから受け取ったバッファを、管理側で扱えることを確かめる。
+                bool hasSupportedBufferLengths = request.InputBytes <= int.MaxValue && request.OutputCapacity <= int.MaxValue;
+                bool hasInputBuffer = request.InputBytes == 0 || request.Input is not null;
+                bool hasOutputBuffer = request.OutputCapacity == 0 || request.Output is not null;
+                if (request.AbiVersion != BridgeAbi.VERSION || !hasSupportedBufferLengths || !hasInputBuffer || !hasOutputBuffer)
+                {
                     reply.Status = BridgeStatus.ABI_MISMATCH;
-                else if (request.Op == BridgeOp.INITIALIZE) Initialize(ref request, ref reply);
-                else if (s_runtime is null) reply.Status = BridgeStatus.INVALID_SCOPE;
-                else Execute(s_runtime, ref request, ref reply);
+                    return (int)reply.Status;
+                }
+
+                // 初期化以外の要求には、常駐ランタイムが必要になる。
+                if (request.Op == BridgeOp.INITIALIZE)
+                {
+                    Initialize(ref request, ref reply);
+                }
+                else if (s_runtime is null)
+                {
+                    reply.Status = BridgeStatus.INVALID_SCOPE;
+                }
+                else
+                {
+                    Execute(s_runtime, ref request, ref reply);
+                }
             }
             catch (Exception exception)
             {
@@ -58,15 +80,29 @@ public static unsafe partial class EntryPoint
 
     static void Initialize(ref BridgeRequest request, ref BridgeReply reply)
     {
-        if (!BridgeAbi.HasExpectedLayout() || request.Generation != BridgeAbi.SCHEMA_HASH
-            || request.Index != BridgeAbi.REQUEST_SIZE || request.Flags != BridgeAbi.REPLY_SIZE || request.Integer == 0)
-        { reply.Status = BridgeStatus.ABI_MISMATCH; return; }
+        // ABI の配置と交換したサイズ・ハッシュを確認してから、ネイティブ側へ接続する。
+        bool matchesSchema = BridgeAbi.HasExpectedLayout() && request.Generation == BridgeAbi.SCHEMA_HASH
+            && request.Index == BridgeAbi.REQUEST_SIZE && request.Flags == BridgeAbi.REPLY_SIZE;
+        if (!matchesSchema || request.Integer == 0)
+        {
+            reply.Status = BridgeStatus.ABI_MISMATCH;
+            return;
+        }
+
+        // 初期化済みのランタイムは、最初に接続したネイティブ入口と共に使う。
         nint address = unchecked((nint)request.Integer);
-        if (s_runtime is not null && s_nativeAddress != address) { reply.Status = BridgeStatus.INVALID_SCOPE; return; }
+        if (s_runtime is not null && s_nativeAddress != address)
+        {
+            reply.Status = BridgeStatus.INVALID_SCOPE;
+            return;
+        }
+
         s_nativeAddress = address;
         ManagedDiagnostics.Initialize();
         s_runtime ??= new ManagedScriptRuntime(new NativeBridge(address));
-        reply.Index = BridgeAbi.REQUEST_SIZE; reply.Flags = BridgeAbi.REPLY_SIZE; reply.Generation = BridgeAbi.SCHEMA_HASH;
+        reply.Index = BridgeAbi.REQUEST_SIZE;
+        reply.Flags = BridgeAbi.REPLY_SIZE;
+        reply.Generation = BridgeAbi.SCHEMA_HASH;
     }
 
     static void Execute(ManagedScriptRuntime runtime, ref BridgeRequest request, ref BridgeReply reply)
@@ -87,9 +123,9 @@ public static unsafe partial class EntryPoint
                 ScriptTypeDescriptor type = catalog.Types[(int)request.Index];
                 reply.Flags = type.ExecuteAlways ? 1U : 0U;
                 if (request.Flags == 0) {
-                    /// @note bit 1 は optional Gizmo metadata の対応印。旧 Host の Integer=0 と「両方なし」を区別する。
+                    // bit 1 は optional Gizmo metadata の対応印。旧 Host の Integer=0 と「両方なし」を区別する。
                     reply.Flags |= 2U | 4U;
-                    /// @note bit 2 は optional 更新 metadata の対応印、bit 3/4/5 は Update/FixedUpdate/LateUpdate。旧 Gizmo Integer は変更しない。
+                    // bit 2 は optional 更新 metadata の対応印、bit 3/4/5 は Update/FixedUpdate/LateUpdate。旧 Gizmo Integer は変更しない。
                     foreach (ScriptCallbackDescriptor declared in type.Callbacks) {
                         if (declared.Callback == ScriptCallback.DRAW_GIZMOS) reply.Integer |= 1L;
                         else if (declared.Callback == ScriptCallback.DRAW_GIZMOS_SELECTED) reply.Integer |= 2L;
@@ -353,7 +389,7 @@ public static unsafe partial class EntryPoint
                 | (metadata.Visible ? 0 : BridgeAbi.FIELD_HIDDEN) | (metadata.Range is not null ? BridgeAbi.FIELD_RANGE : 0)
                 | (metadata.RequiredReference ? BridgeAbi.FIELD_REQUIRED : 0);
             if (metadata.IsReloadState) reply.Flags |= BridgeAbi.FIELD_RELOAD_STATE;
-            /// @note Legacy scalar storage exposes approximate float bounds; the recursive schema is the exact editing contract.
+            // 従来のスカラー形式は float に丸めた上下限を返す。編集で使う正確な制約は再帰スキーマから取得する。
             if (metadata.Range is ValueRangeAttribute range && metadata.ElementKind is ScriptFieldKind.FLOAT or ScriptFieldKind.INT) {
                 var bounds = ManagedPrimitiveCodec.Range(metadata.ElementType, range);
                 reply.X = Convert.ToSingle(bounds.Minimum, System.Globalization.CultureInfo.InvariantCulture);
@@ -501,7 +537,7 @@ public static unsafe partial class EntryPoint
     /// @note 診断は UTF8 境界で印付き切り詰めし、失敗 status と最初の原因を保つ。変更操作は再送しない。
     static void WriteMessage(ref BridgeRequest request, ref BridgeReply reply, string value)
     {
-        /// @note 例外本文の不正 UTF16 は診断だけで置換する。設定・通常出力の strict codec は変更しない。
+        // 例外本文の不正 UTF16 は診断だけで置換する。設定・通常出力の strict codec は変更しない。
         byte[] bytes = Encoding.UTF8.GetBytes(value);
         if (bytes.Length <= request.OutputCapacity)
         {
@@ -602,41 +638,83 @@ public static unsafe partial class EntryPoint
         }
         public int GetManagedComponents(ScriptExecutionScope scope, ulong objectId, Span<ulong> destination)
         {
+            // 出力を書き換える前に全件数を調べ、収まらなければ必要な容量だけを返す。
             Span<ulong> pageIds = stackalloc ulong[64];
-            uint offset = 0; int count = 0;
-            while (true) {
+            uint offset = 0;
+            int count = 0;
+            while (true)
+            {
                 ManagedComponentPage page = ReadManagedComponents(scope, objectId, offset, pageIds);
                 count = checked(count + page.Written);
-                if (page.Complete) break;
+                if (page.Complete)
+                {
+                    break;
+                }
                 offset = page.NextOffset;
             }
-            if (count > destination.Length) return count;
-            offset = 0; int written = 0;
-            while (true) {
+            if (count > destination.Length)
+            {
+                return count;
+            }
+
+            // 同じページ列を先頭から読み直し、呼び出し元の出力に連結する。
+            offset = 0;
+            int written = 0;
+            while (true)
+            {
                 ManagedComponentPage page = ReadManagedComponents(scope, objectId, offset, pageIds);
-                pageIds[..page.Written].CopyTo(destination[written..]); written += page.Written;
-                if (page.Complete) return count;
+                pageIds[..page.Written].CopyTo(destination[written..]);
+                written += page.Written;
+                if (page.Complete)
+                {
+                    return count;
+                }
                 offset = page.NextOffset;
             }
         }
         public ManagedComponentPage ReadManagedComponents(ScriptExecutionScope scope, ulong objectId, uint offset, Span<ulong> destination)
         {
             if (destination.IsEmpty) throw new ArgumentException("A component page requires output capacity.", nameof(destination));
+
+            // ネイティブに指定できる件数を、受信用バッファと呼び出し元の容量に収める。
             Span<byte> bytes = stackalloc byte[512];
-            int capacity = Math.Min(destination.Length, bytes.Length / 8);
+            int capacity = Math.Min(destination.Length, bytes.Length / sizeof(ulong));
             BridgeRequest request = Request(scope, objectId, BridgeOp.MANAGED_COMPONENTS);
-            request.Flags = 1; request.Index = offset;
-            fixed (byte* output = bytes) {
-                request.Output = output; request.OutputCapacity = (uint)(capacity * 8);
-                BridgeReply reply = default; int status = m_dispatch(&request, &reply);
-                if (status == (int)BridgeStatus.NOT_FOUND && reply.Status == BridgeStatus.NOT_FOUND) return new(0, offset, true);
+            request.Flags = 1;
+            request.Index = offset;
+            fixed (byte* output = bytes)
+            {
+                request.Output = output;
+                request.OutputCapacity = (uint)(capacity * sizeof(ulong));
+                BridgeReply reply = default;
+                int status = m_dispatch(&request, &reply);
+                if (status == (int)BridgeStatus.NOT_FOUND && reply.Status == BridgeStatus.NOT_FOUND)
+                {
+                    return new(0, offset, true);
+                }
                 RequireSuccess(status, reply.Status);
-                if (reply.Index > capacity || reply.OutputBytes != reply.Index * 8 || reply.Flags > 1
-                    || reply.Integer < 0 || (ulong)reply.Integer > uint.MaxValue || (uint)reply.Integer < offset
-                    || (reply.Flags == 0 && (uint)reply.Integer == offset)) throw new InvalidDataException("Invalid component page reply.");
-                for (int index = 0; index < (int)reply.Index; index++)
-                    destination[index] = BinaryPrimitives.ReadUInt64LittleEndian(bytes.Slice(index * 8, 8));
-                return new((int)reply.Index, (uint)reply.Integer, reply.Flags == 1);
+
+                // 範囲外の応答や、未完了のまま同じ位置を返す応答で出力を書き換えない。
+                bool validPayload = reply.Index <= capacity && reply.OutputBytes == reply.Index * sizeof(ulong) && reply.Flags <= 1;
+                bool validOffset = reply.Integer >= 0 && (ulong)reply.Integer <= uint.MaxValue;
+                if (!validPayload || !validOffset)
+                {
+                    throw new InvalidDataException("Invalid component page reply.");
+                }
+
+                uint nextOffset = (uint)reply.Integer;
+                bool complete = reply.Flags == 1;
+                if (nextOffset < offset || (!complete && nextOffset == offset))
+                {
+                    throw new InvalidDataException("Invalid component page reply.");
+                }
+
+                for (int componentIndex = 0; componentIndex < (int)reply.Index; ++componentIndex)
+                {
+                    destination[componentIndex] = BinaryPrimitives.ReadUInt64LittleEndian(
+                        bytes.Slice(componentIndex * sizeof(ulong), sizeof(ulong)));
+                }
+                return new((int)reply.Index, nextOffset, complete);
             }
         }
         public string GetObjectName(ScriptExecutionScope scope, ulong objectId)

@@ -35,6 +35,7 @@ async function BuildVite(projectRoot) {
   };
   const generator = new ViteConfigGenerator(pluginConfig, projectRoot, true);
 
+  // 以前の生成物を取り除き、main・preload をビルドしてから renderer を作る。
   await rm(path.join(projectRoot, '.vite'), { recursive: true, force: true });
   const buildConfigs = await generator.getBuildConfigs();
   await Promise.all(buildConfigs.map((config) => BuildViteBundle(config)));
@@ -44,6 +45,7 @@ async function BuildVite(projectRoot) {
 
 /// @note EnableEmbeddedAsarIntegrityValidation を有効にする Release では起動時にこのリソースが必須。
 function AddAsarIntegrity(entries, packageRoot, asarPath) {
+  // Electron が起動時に参照する相対パスと ASAR ヘッダーのハッシュを求める。
   const { headerString } = getRawHeader(asarPath);
   const integrity = [{
     file: path.win32.relative(packageRoot, asarPath),
@@ -51,6 +53,7 @@ function AddAsarIntegrity(entries, packageRoot, asarPath) {
     value: createHash('SHA256').update(headerString).digest('hex'),
   }];
 
+  // PE リソースの言語とコードページを、既存のバージョン情報に揃える。
   const versionInfo = Resource.VersionInfo.fromEntries(entries);
   if (versionInfo.length !== 1) {
     throw new Error('Electron本体のバージョンリソースを特定できませんでした。');
@@ -92,19 +95,23 @@ async function WriteExecutableResources(executablePath, iconPath, packageRoot, a
 }
 
 async function AssemblePackage(projectRoot, configuration) {
+  // 構成ごとに出力先を分け、Release に限ってアプリ本体を ASAR へまとめる。
   const configurationRoot = path.join(projectRoot, 'out', configuration);
   const packageRoot = path.join(configurationRoot, 'FBZZGameHub-win32-x64');
   const stagingRoot = path.join(configurationRoot, '.app-staging');
   const resourcesRoot = path.join(packageRoot, 'resources');
   const executablePath = path.join(packageRoot, 'FBZZGameHub.exe');
   const iconPath = path.join(projectRoot, 'Branding', 'GameHub.ico');
-  const asarPath = configuration === 'Release' ? path.join(resourcesRoot, 'app.asar') : null;
+  const isRelease = configuration === 'Release';
+  const asarPath = isRelease ? path.join(resourcesRoot, 'app.asar') : null;
 
+  // Electron の実行環境をコピーし、配布時の実行ファイル名に変更する。
   await rm(configurationRoot, { recursive: true, force: true });
   await mkdir(configurationRoot, { recursive: true });
   await cp(path.join(projectRoot, 'node_modules', 'electron', 'dist'), packageRoot, { recursive: true });
   await rename(path.join(packageRoot, 'electron.exe'), executablePath);
 
+  // Vite の成果物と、実行に必要な項目だけを持つ package.json を配置する。
   await mkdir(stagingRoot, { recursive: true });
   await cp(path.join(projectRoot, '.vite'), path.join(stagingRoot, '.vite'), { recursive: true });
   const sourcePackage = JSON.parse(await readFile(path.join(projectRoot, 'package.json'), 'utf8'));
@@ -119,14 +126,16 @@ async function AssemblePackage(projectRoot, configuration) {
   };
   await writeFile(path.join(stagingRoot, 'package.json'), `${JSON.stringify(runtimePackage, null, 2)}\n`, 'utf8');
 
+  // テンプレートの原本を、アプリ本体とは別の resources 配下に配置する。
   const templatesRoot = path.join(projectRoot, 'Templates');
   const excludedTemplateRoots = new Set(['Binaries', 'Build', 'Include', 'Lib', 'Library']);
   await cp(templatesRoot, path.join(resourcesRoot, 'Templates'), {
     recursive: true,
-    /// @note ローカル生成物と廃止済みの C++ Script 用ヘッダーは配布テンプレートに含めない。
     filter: (source) => {
+      // Templates/{種類} の直下にあるローカル生成物と旧 C++ Script ヘッダーを除く。
       const relativeParts = path.relative(templatesRoot, source).split(path.sep);
-      return !(relativeParts.length >= 2 && excludedTemplateRoots.has(relativeParts[1]));
+      const isExcluded = relativeParts.length >= 2 && excludedTemplateRoots.has(relativeParts[1]);
+      return !isExcluded;
     },
   });
   if (asarPath) {
@@ -137,15 +146,16 @@ async function AssemblePackage(projectRoot, configuration) {
   }
   await rm(path.join(resourcesRoot, 'default_app.asar'), { force: true });
 
+  // 実行ファイルを再生成するリソース更新を先に行い、その後に Electron の Fuse を設定する。
   await WriteExecutableResources(executablePath, iconPath, packageRoot, asarPath);
   await flipFuses(executablePath, {
     version: FuseVersion.V1,
     [FuseV1Options.RunAsNode]: false,
     [FuseV1Options.EnableCookieEncryption]: true,
     [FuseV1Options.EnableNodeOptionsEnvironmentVariable]: false,
-    [FuseV1Options.EnableNodeCliInspectArguments]: configuration !== 'Release',
-    [FuseV1Options.EnableEmbeddedAsarIntegrityValidation]: configuration === 'Release',
-    [FuseV1Options.OnlyLoadAppFromAsar]: configuration === 'Release',
+    [FuseV1Options.EnableNodeCliInspectArguments]: !isRelease,
+    [FuseV1Options.EnableEmbeddedAsarIntegrityValidation]: isRelease,
+    [FuseV1Options.OnlyLoadAppFromAsar]: isRelease,
   });
   return executablePath;
 }

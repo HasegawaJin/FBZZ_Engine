@@ -425,7 +425,7 @@ public sealed class AiEcology
     void BuildGrid()
     {
         Array.Fill(m_heads, -1);
-        /// @note Rotate stable insertion order to avoid permanently hiding later bodies or sites in dense buckets.
+        // 要素が密なバケットで登録順の後方にある個体や地点にも検索が届くよう、固定の登録順を保ったまま走査開始位置をずらす。
         int nodes = Capacity + m_siteCount;
         for (int n = nodes - 1; n >= 0; --n) {
             int i = (m_gridCursor + n) % nodes;
@@ -720,7 +720,7 @@ public sealed class AiEcology
         for (int i = 0; i < snapshot.EventCount; ++i) if (!ValidEvent(snapshot.Events[i], snapshot.SiteCount, false)) return false;
         for (int i = 0; i < snapshot.QueuedEventCount; ++i) if (!ValidEvent(snapshot.QueuedEvents[i], snapshot.SiteCount, true)) return false;
         ref var stats = ref snapshot.Stats;
-        /// @note Counters describe the previous completed step; settings may have changed since that step.
+        // カウンターは完了済みの前回のステップに対応する。その後で設定が変わっている場合がある。
         if (stats.Decisions < 0 || stats.Decisions > Capacity || stats.CandidateTests < 0 ||
             stats.CandidateTests > stats.Decisions * 64 || stats.CaptureAttempts < 0 || stats.CaptureAttempts > 4096 ||
             stats.Captures < 0 || stats.Captures > stats.CaptureAttempts || stats.SpawnRequests < 0 || stats.SpawnRequests > 64 ||

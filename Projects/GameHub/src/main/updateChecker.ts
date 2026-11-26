@@ -77,7 +77,7 @@ export function noticeFrom(state: UpdateState, currentVersion: string): UpdateNo
  */
 export async function fetchLatestRelease(): Promise<Pick<UpdateState, 'latestVersion' | 'latestUrl' | 'latestNotes'> | null> {
   try {
-    /** @note net.fetch は OS のプロキシ設定に従う。renderer の CSP を広げずに済むよう main で問い合わせる。 */
+    // OS のプロキシ設定を使い、renderer の CSP を広げずに済むよう main から問い合わせる。
     const response = await net.fetch(LATEST_RELEASE_API, {
       headers: { Accept: 'application/vnd.github+json', 'User-Agent': 'FBZZ-GameHub' },
       signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),

@@ -44,7 +44,7 @@ public struct Vector3 : IEquatable<Vector3>
     public static float Dot(Vector3 a, Vector3 b)
     {
         Vector128<float> products = Vector128.Multiply(a.AsVector128(), b.AsVector128());
-        /// @note Keep the original left-associated float32 sum; the unused fourth lane never joins the reduction.
+        // 元の float32 の和を左から順に評価し、使っていない第 4 レーンは加算しない。
         return (products.GetElement(0) + products.GetElement(1)) + products.GetElement(2);
     }
 
