@@ -9,6 +9,7 @@
 # @see Docs/design/ai-verification-loop.md
 
 # @note check <file...> [-Preset <p>]: 変更したファイルだけコンパイルする (リンクしない)。
+# @note tidy <file...> は選んだ翻訳単位の可読性を clang-tidy で検査する。
 # @note build <target...> [-Preset <p>] [-BuildDirectory <dir>]: エンジンまたは構成済み SDK consumer をビルドする。
 # @note test [-Filter <regex>] [-Preset <p>]: ctest を回す。
 # @note configure [-Preset <p>]: CMake を作り直す (GLOB に新規ファイルを載せる)。
@@ -17,7 +18,7 @@
 [CmdletBinding()]
 param(
     [Parameter(Mandatory = $true, Position = 0)]
-    [ValidateSet('check', 'build', 'test', 'configure', 'managed-build', 'managed-test')]
+    [ValidateSet('check', 'tidy', 'build', 'test', 'configure', 'managed-build', 'managed-test')]
     [string] $Verb,
 
     [Parameter(Position = 1, ValueFromRemainingArguments = $true)]
@@ -270,6 +271,12 @@ Reset-TestDiagnosticContext
 function Read-DiagnosticLine([string] $line) {
     # @note 末尾の .vcxproj 注記はプロジェクトごとに同じ診断を重複させるので落とす。
     $text = $line -replace '\s+\[[^\]]+\.(vcxproj|csproj)\]\s*$', ''
+    if ($Verb -eq 'tidy' -and $text -match '^\s*(?<file>.+?):(?<line>\d+):(?<col>\d+): (?<sev>warning|(?:fatal )?error): (?<msg>.*) \[(?<check>[^\]]+)\]$') {
+        $location = "$(ConvertTo-RepoPath $Matches.file):$($Matches.line):$($Matches.col)"
+        $severity = if ($Matches.sev -eq 'warning') { 'WARN' } else { 'ERROR' }
+        Add-Diagnostic $severity "$location $($Matches.check) $($Matches.msg)"
+        return
+    }
     # @note abort は gtest FAILED 行まで到達しない。実行中の test と ctest failure footer も記録する。
     if ($text -match '^\s*(?:\[\s*RUN\s*\]\s+|Start\s+\d+:\s+)(?<name>\S+)') {
         $script:ActiveTestName = $Matches.name
@@ -390,7 +397,7 @@ function Write-Summary([int] $exitCode, [string] $extra = '') {
         $shown++
     }
     if ($script:Errors.Count -gt $shown) { Write-Line "... $($script:Errors.Count - $shown) more errors (see log)" }
-    if ($ShowWarnings) {
+    if ($ShowWarnings -or $Verb -eq 'tidy') {
         $shownWarnings = 0
         foreach ($entry in $script:Warnings) {
             if ($shownWarnings -ge $MaxDiagnostics) { break }
@@ -449,10 +456,30 @@ function Find-Includers([string] $headerPath) {
     return , $result
 }
 
-# @brief 指定ファイル (ヘッダーは include 元の .cpp) を所有プロジェクトごとに ClCompile だけ回す。
+# @brief 生成済みプロジェクトの定義と include パスを使い、指定した翻訳単位だけを解析する。
+# @see https://learn.microsoft.com/cpp/code-quality/clang-tidy Visual Studio の Clang-Tidy
+function Invoke-ClangTidy([string] $project, $units) {
+    $result = 0
+    foreach ($unit in $units) {
+        Write-Line "[AgentBuild] clang-tidy $(ConvertTo-RepoPath $unit)"
+        $arguments = @($project, '/t:SelectClCompile;ClangTidy', "/p:SelectedFiles=$unit",
+            "/p:Configuration=$Configuration", '/p:Platform=x64', '/p:SelectedFilesBuildPCH=false',
+            '/p:ClangTidyChecks=', '/nologo', '/v:m', '/m:1')
+        if ((Invoke-Logged 'msbuild' $arguments) -ne 0) { $result = 1 }
+    }
+    return $result
+}
+
+# @note check は従来どおり対象外をスキップする。明示した解析対象が欠けた tidy は成功扱いにしない。
+function Write-SkippedUnit([string] $path, [string] $reason) {
+    if ($Verb -eq 'tidy') { Add-Diagnostic 'ERROR' "$path NOT-ANALYZED $reason" }
+    else { Write-Line "SKIP $path ($reason)" }
+}
+
+# @brief 指定ファイルを所有プロジェクトに対応付け、コンパイルまたは静的解析を実行する。
 function Invoke-Check {
     if ($Items.Count -eq 0) {
-        Write-Line 'RESULT env-error check にはファイルが必要です'
+        Write-Line "RESULT env-error $Verb にはファイルが必要です"
         exit 2
     }
     if (-not (Test-Path -LiteralPath (Join-Path $BinaryDirectory 'CMakeCache.txt'))) {
@@ -463,7 +490,7 @@ function Invoke-Check {
     $unitPaths = New-Object 'System.Collections.Generic.HashSet[string]' ([System.StringComparer]::OrdinalIgnoreCase)
     foreach ($item in $Items) {
         $full = if ([System.IO.Path]::IsPathRooted($item)) { $item } else { Join-Path $RepositoryRoot $item }
-        if (-not (Test-Path -LiteralPath $full)) { Write-Line "SKIP $item (not found)"; continue }
+        if (-not (Test-Path -LiteralPath $full -PathType Leaf)) { Write-SkippedUnit $item 'not found'; continue }
         $full = (Resolve-Path -LiteralPath $full).Path
         $extension = [System.IO.Path]::GetExtension($full).ToLowerInvariant()
         if ($extension -in @('.cpp', '.cc', '.cxx', '.c')) {
@@ -471,17 +498,21 @@ function Invoke-Check {
         }
         elseif ($extension -in @('.hpp', '.h', '.inl')) {
             $includers = Find-Includers $full
-            if ($includers.Count -eq 0) { Write-Line "SKIP $item (no .cpp includes it)"; continue }
+            if ($includers.Count -eq 0) { Write-SkippedUnit $item 'no .cpp includes it'; continue }
             foreach ($unit in $includers) {
                 if ($unitPaths.Add($unit)) { $units.Add($unit) }
             }
             Write-Line "[AgentBuild] $(ConvertTo-RepoPath $full) -> $(( $includers | ForEach-Object { ConvertTo-RepoPath $_ }) -join ', ')"
         }
         else {
-            Write-Line "SKIP $item (not a C++ source)"
+            Write-SkippedUnit $item 'not a C++ source'
         }
     }
-    if ($units.Count -eq 0) { Write-Summary 0 'units=0'; exit 0 }
+    if ($units.Count -eq 0) {
+        Write-Summary 0 'units=0'
+        if ($script:Errors.Count -gt 0) { exit 1 }
+        exit 0
+    }
 
     $index = Get-ProjectIndex
     $missing = @($units | Where-Object { -not $index.ContainsKey($_.ToLowerInvariant()) })
@@ -495,7 +526,7 @@ function Invoke-Check {
     $byProject = @{}
     foreach ($unit in $units) {
         $key = $unit.ToLowerInvariant()
-        if (-not $index.ContainsKey($key)) { Write-Line "SKIP $(ConvertTo-RepoPath $unit) (not compiled by any target)"; continue }
+        if (-not $index.ContainsKey($key)) { Write-SkippedUnit (ConvertTo-RepoPath $unit) 'not compiled by any target'; continue }
         $project = $index[$key]
         if (-not $byProject.ContainsKey($project)) { $byProject[$project] = New-Object System.Collections.Generic.List[string] }
         $byProject[$project].Add($unit)
@@ -503,6 +534,11 @@ function Invoke-Check {
 
     $exitCode = 0
     foreach ($project in $byProject.Keys) {
+        if ($Verb -eq 'tidy') {
+            $code = Invoke-ClangTidy $project $byProject[$project]
+            if ($code -ne 0) { $exitCode = 1 }
+            continue
+        }
         $selected = New-Object System.Collections.Generic.List[string]
         $selected.AddRange($byProject[$project])
         # @note PCH がまだ無いツリーでは、PCH 生成用の TU も先頭に選ばないと C1083 で止まる。
@@ -806,6 +842,7 @@ if ($running.Count -gt 0) {
 
 switch ($Verb) {
     'check'     { Invoke-Check }
+    'tidy'      { Invoke-Check }
     'build'     { Invoke-Build }
     'test'      { Invoke-Test }
     'managed-build' { Invoke-Managed }

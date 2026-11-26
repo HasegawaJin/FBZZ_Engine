@@ -1,0 +1,27 @@
+# @file    .clang-tidy
+# @brief   FBZZ Engine の C++ を読むときに見落としやすい命名・分岐・数値を検査する。
+# @author  Hasegawa Jin
+# @date    2026-11-24
+# @see https://clang.llvm.org/extra/clang-tidy/ Clang-Tidy の設定ファイル
+Checks: >
+  -*,
+  readability-identifier-naming,
+  readability-magic-numbers,
+  readability-function-cognitive-complexity,
+  readability-avoid-nested-conditional-operator,
+  readability-braces-around-statements
+HeaderFilterRegex: '(^|[/\\])Projects[/\\]'
+CheckOptions:
+  readability-function-cognitive-complexity.Threshold: '15'
+  readability-identifier-naming.ClassCase: CamelCase
+  readability-identifier-naming.StructCase: CamelCase
+  readability-identifier-naming.FunctionCase: CamelCase
+  readability-identifier-naming.VariableCase: camelBack
+  readability-identifier-naming.PrivateMemberCase: camelBack
+  readability-identifier-naming.PrivateMemberPrefix: 'm_'
+  readability-identifier-naming.ProtectedMemberCase: camelBack
+  readability-identifier-naming.ProtectedMemberPrefix: 'm_'
+  readability-identifier-naming.ConstexprVariableCase: UPPER_CASE
+  readability-identifier-naming.ClassConstantCase: UPPER_CASE
+  readability-identifier-naming.GlobalConstantCase: UPPER_CASE
+  readability-identifier-naming.EnumConstantCase: UPPER_CASE

@@ -15,7 +15,7 @@
 
 | 名前 | 役割 | 呼び出し元 |
 |------|------|-----------|
-| `AgentBuild.ps1` | C++ / C# の compile・build・test、構成済み SDK consumer の build を同じ排他で実行 | AGENTS.md、Editor、`.claude/skills/`、`.claude/settings.json` |
+| `AgentBuild.ps1` | C++ のコンパイル・clang-tidy、C++ / C# のビルド・テスト、構成済み SDK consumer のビルドを直列に実行 | AGENTS.md、Editor、VS Code の clang-tidy タスク、`.claude/skills/`、`.claude/settings.json` |
 | `VsEnvironment.ps1` | Visual Studio の開発環境を解決する唯一の場所 | `AgentBuild.ps1`、`VcBuild.ps1` |
 | `VcBuild.ps1` | 人が使う VS Code タスクのビルド入口。全体ビルド後に同構成の SDK を公開 | `.vscode/tasks.json` |
 | `BenchCompare.ps1` | 基準と候補の TestBench をビルドして交互に計測し、比較レポートを作る | `Docs/design/benchmark-report.md` |
