@@ -21,10 +21,12 @@ namespace fbzz::renderer {
 
 DX12Texture::~DX12Texture()
 {
-    if (m_tracker) m_tracker->Remove(m_resource.Get());
+    if (m_tracker) {
+        m_tracker->Remove(m_resource.Get());
+    }
     if (m_context) {
-        /// @note リソース本体と同じフェンスで守る。先に枠を返すと、まだこのテクスチャを読む
-        /// @note       記録済みコマンドが、再利用された別テクスチャを読むことになる。
+        // リソース本体と同じフェンスで守る。先に枠を返すと、まだこのテクスチャを読む
+        // 記録済みコマンドが、再利用された別テクスチャを読むことになる。
         m_context->FreeBindlessSlot(m_bindlessIndex);
         m_context->FreeBindlessSlot(m_bindlessUavIndex);
         m_context->DeferRelease(m_resource);
@@ -39,14 +41,17 @@ static_assert(INVALID_BINDLESS_INDEX == DX12Context::INVALID_BINDLESS_INDEX,
 
 uint32_t DX12Texture::GetBindlessIndex() const
 {
-    if (m_bindlessIndex != INVALID_BINDLESS_INDEX)
+    if (m_bindlessIndex != INVALID_BINDLESS_INDEX) {
         return m_bindlessIndex;
-    if (!m_context || !m_srvHeap || !m_context->SupportsBindless())
+    }
+    if (!m_context || !m_srvHeap || !m_context->SupportsBindless()) {
         return INVALID_BINDLESS_INDEX;
+    }
 
     const uint32_t slot = m_context->AllocateBindlessSlot();
-    if (slot == DX12Context::INVALID_BINDLESS_INDEX)
+    if (slot == DX12Context::INVALID_BINDLESS_INDEX) {
         return INVALID_BINDLESS_INDEX;
+    }
 
     m_context->GetDevice()->CopyDescriptorsSimple(
         1, m_context->GetBindlessCpu(slot), GetSrvCpu(),
@@ -57,16 +62,19 @@ uint32_t DX12Texture::GetBindlessIndex() const
 
 uint32_t DX12Texture::GetBindlessUavIndex() const
 {
-    if (m_bindlessUavIndex != INVALID_BINDLESS_INDEX)
+    if (m_bindlessUavIndex != INVALID_BINDLESS_INDEX) {
         return m_bindlessUavIndex;
-    /// @note m_hasUav が false のテクスチャは GetUavCpu() が SRV 枠を指すため、ここで弾かないと
-    /// @note       「RWTexture として書けるつもりの SRV」を配ってしまう。
-    if (!m_context || !m_hasUav || !m_srvHeap || !m_context->SupportsBindless())
+    }
+    // m_hasUav が false のテクスチャは GetUavCpu() が SRV 枠を指すため、ここで弾かないと
+    // 「RWTexture として書けるつもりの SRV」を配ってしまう。
+    if (!m_context || !m_hasUav || !m_srvHeap || !m_context->SupportsBindless()) {
         return INVALID_BINDLESS_INDEX;
+    }
 
     const uint32_t slot = m_context->AllocateBindlessSlot();
-    if (slot == DX12Context::INVALID_BINDLESS_INDEX)
+    if (slot == DX12Context::INVALID_BINDLESS_INDEX) {
         return INVALID_BINDLESS_INDEX;
+    }
 
     m_context->GetDevice()->CopyDescriptorsSimple(
         1, m_context->GetBindlessCpu(slot), GetUavCpu(),
@@ -77,14 +85,17 @@ uint32_t DX12Texture::GetBindlessUavIndex() const
 
 bool DX12Texture::Init(DX12Context* context, const std::string& path)
 {
-    if (!context)
+    if (!context) {
         return false;
+    }
     if (util::StringUtils::EndsWith(util::StringUtils::ToLower(path), ".dds")) {
         DirectX::TexMetadata metadata{};
         if (SUCCEEDED(DirectX::GetMetadataFromDDSFile(util::StringUtils::ToWide(path).c_str(),
-            DirectX::DDS_FLAGS_NONE, metadata)) && metadata.IsCubemap()) return InitDdsCube(context, path);
+            DirectX::DDS_FLAGS_NONE, metadata)) && metadata.IsCubemap()) {
+            return InitDdsCube(context, path);
+        }
     }
-    /// @note 展開は非同期ストリーミングと同じ関数を通す。経路ごとに変換を書くと同じ画像の画素が食い違う。
+    // 展開は非同期ストリーミングと同じ関数を通す。経路ごとに変換を書くと同じ画像の画素が食い違う。
     DecodedTextureRGBA8 decoded;
     std::string error;
     if (!DecodeTextureFileRGBA8(path, decoded, &error)
@@ -107,18 +118,35 @@ bool DX12Texture::InitDdsCube(DX12Context* context, const std::string& path)
     DirectX::TexMetadata metadata{};
     DirectX::ScratchImage image;
     if (FAILED(DirectX::LoadFromDDSFile(util::StringUtils::ToWide(path).c_str(),
-        DirectX::DDS_FLAGS_NONE, &metadata, image)) || !metadata.IsCubemap() || metadata.arraySize != 6
-        || metadata.dimension != DirectX::TEX_DIMENSION_TEXTURE2D || metadata.width != metadata.height
-        || metadata.width == 0 || metadata.width > D3D12_REQ_TEXTURECUBE_DIMENSION
-        || metadata.mipLevels == 0 || metadata.mipLevels > D3D12_REQ_MIP_LEVELS
-        || DirectX::IsTypeless(metadata.format) || DirectX::IsDepthStencil(metadata.format)) return false;
+        DirectX::DDS_FLAGS_NONE, &metadata, image))) {
+        return false;
+    }
+
+    // 1 個のキューブとして扱うため、正方形の 2D テクスチャ 6 面の DDS に限る。
+    const bool singleCube = metadata.IsCubemap() && metadata.arraySize == 6
+        && metadata.dimension == DirectX::TEX_DIMENSION_TEXTURE2D && metadata.width == metadata.height;
+    if (!singleCube) {
+        return false;
+    }
+    if (metadata.width == 0 || metadata.width > D3D12_REQ_TEXTURECUBE_DIMENSION
+        || metadata.mipLevels == 0 || metadata.mipLevels > D3D12_REQ_MIP_LEVELS) {
+        return false;
+    }
+    if (DirectX::IsTypeless(metadata.format) || DirectX::IsDepthStencil(metadata.format)) {
+        return false;
+    }
+
     auto* device = context->GetDevice();
-    if (!device || !context->GetCommandQueue()) return false;
-    /// @note Native cube/SampleLevel の形式能力を要求し、planar と非 shader-readable view を発行前に拒否する。
+    if (!device || !context->GetCommandQueue()) {
+        return false;
+    }
+    // Native cube/SampleLevel の形式能力を要求し、planar と非 shader-readable view を発行前に拒否する。
     D3D12_FEATURE_DATA_FORMAT_SUPPORT support{metadata.format};
     if (FAILED(device->CheckFeatureSupport(D3D12_FEATURE_FORMAT_SUPPORT, &support, sizeof(support)))
         || (support.Support1 & D3D12_FORMAT_SUPPORT1_TEXTURECUBE) == 0
-        || (support.Support1 & D3D12_FORMAT_SUPPORT1_SHADER_SAMPLE) == 0) return false;
+        || (support.Support1 & D3D12_FORMAT_SUPPORT1_SHADER_SAMPLE) == 0) {
+        return false;
+    }
     D3D12_HEAP_PROPERTIES heap{};
     heap.Type = D3D12_HEAP_TYPE_DEFAULT;
     D3D12_RESOURCE_DESC description{};
@@ -128,14 +156,18 @@ bool DX12Texture::InitDdsCube(DX12Context* context, const std::string& path)
     description.Format = metadata.format; description.SampleDesc.Count = 1;
     Microsoft::WRL::ComPtr<ID3D12Resource> texture;
     if (FAILED(device->CreateCommittedResource(&heap, D3D12_HEAP_FLAG_NONE, &description,
-        D3D12_RESOURCE_STATE_COPY_DEST, nullptr, IID_PPV_ARGS(&texture)))) return false;
+        D3D12_RESOURCE_STATE_COPY_DEST, nullptr, IID_PPV_ARGS(&texture)))) {
+        return false;
+    }
     const UINT count = static_cast<UINT>(metadata.mipLevels * 6);
     std::vector<D3D12_PLACED_SUBRESOURCE_FOOTPRINT> layouts(count);
     std::vector<UINT> rows(count);
     std::vector<UINT64> rowBytes(count);
     UINT64 bytes = 0;
     device->GetCopyableFootprints(&description, 0, count, 0, layouts.data(), rows.data(), rowBytes.data(), &bytes);
-    if (bytes == 0 || bytes == UINT64_MAX) return false;
+    if (bytes == 0 || bytes == UINT64_MAX) {
+        return false;
+    }
     heap.Type = D3D12_HEAP_TYPE_UPLOAD;
     D3D12_RESOURCE_DESC uploadDescription{};
     uploadDescription.Dimension = D3D12_RESOURCE_DIMENSION_BUFFER;
@@ -144,27 +176,36 @@ bool DX12Texture::InitDdsCube(DX12Context* context, const std::string& path)
     uploadDescription.Layout = D3D12_TEXTURE_LAYOUT_ROW_MAJOR;
     Microsoft::WRL::ComPtr<ID3D12Resource> upload;
     if (FAILED(device->CreateCommittedResource(&heap, D3D12_HEAP_FLAG_NONE, &uploadDescription,
-        D3D12_RESOURCE_STATE_GENERIC_READ, nullptr, IID_PPV_ARGS(&upload)))) return false;
+        D3D12_RESOURCE_STATE_GENERIC_READ, nullptr, IID_PPV_ARGS(&upload)))) {
+        return false;
+    }
     for (UINT subresource = 0; subresource < count; ++subresource) {
         const auto* source = image.GetImage(subresource % metadata.mipLevels, subresource / metadata.mipLevels, 0);
         if (!source || source->rowPitch == 0 || source->rowPitch < rowBytes[subresource]
-            || source->slicePitch / source->rowPitch < rows[subresource]) return false;
+            || source->slicePitch / source->rowPitch < rows[subresource]) {
+            return false;
+        }
     }
     void* mapped = nullptr;
-    if (FAILED(upload->Map(0, nullptr, &mapped))) return false;
+    if (FAILED(upload->Map(0, nullptr, &mapped))) {
+        return false;
+    }
     auto* destination = static_cast<uint8_t*>(mapped);
     for (UINT subresource = 0; subresource < count; ++subresource) {
         const auto* source = image.GetImage(subresource % metadata.mipLevels, subresource / metadata.mipLevels, 0);
-        for (UINT row = 0; row < rows[subresource]; ++row)
+        for (UINT row = 0; row < rows[subresource]; ++row) {
             std::memcpy(destination + layouts[subresource].Offset + static_cast<size_t>(row) * layouts[subresource].Footprint.RowPitch,
                 source->pixels + static_cast<size_t>(row) * source->rowPitch, static_cast<size_t>(rowBytes[subresource]));
+        }
     }
     upload->Unmap(0, nullptr);
     Microsoft::WRL::ComPtr<ID3D12CommandAllocator> allocator;
     Microsoft::WRL::ComPtr<ID3D12GraphicsCommandList> commands;
     if (FAILED(device->CreateCommandAllocator(D3D12_COMMAND_LIST_TYPE_DIRECT, IID_PPV_ARGS(&allocator)))
         || FAILED(device->CreateCommandList(0, D3D12_COMMAND_LIST_TYPE_DIRECT, allocator.Get(), nullptr,
-            IID_PPV_ARGS(&commands)))) return false;
+            IID_PPV_ARGS(&commands)))) {
+        return false;
+    }
     for (UINT subresource = 0; subresource < count; ++subresource) {
         D3D12_TEXTURE_COPY_LOCATION target{};
         target.pResource = texture.Get(); target.Type = D3D12_TEXTURE_COPY_TYPE_SUBRESOURCE_INDEX;
@@ -180,12 +221,16 @@ bool DX12Texture::InitDdsCube(DX12Context* context, const std::string& path)
     barrier.Transition.StateBefore = D3D12_RESOURCE_STATE_COPY_DEST;
     barrier.Transition.StateAfter = D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
     commands->ResourceBarrier(1, &barrier);
-    if (FAILED(commands->Close())) return false;
+    if (FAILED(commands->Close())) {
+        return false;
+    }
     ID3D12CommandList* lists[] = {commands.Get()};
     context->GetCommandQueue()->ExecuteCommandLists(1, lists);
     context->Flush();
     if (!InitCubeFromResource(context, texture.Get(), metadata.format,
-        static_cast<uint32_t>(metadata.width), static_cast<uint32_t>(metadata.mipLevels))) return false;
+        static_cast<uint32_t>(metadata.width), static_cast<uint32_t>(metadata.mipLevels))) {
+        return false;
+    }
     m_contentVersion = 1;
     return true;
 }
@@ -194,13 +239,15 @@ bool DX12Texture::InitFromDataMipsAsync(DX12Context* context, const TextureMipDa
                                         uint64_t& outUploadFence)
 {
     outUploadFence = 0;
-    if (!context || !mips || mipCount == 0)
+    if (!context || !mips || mipCount == 0) {
         return false;
+    }
     std::vector<DX12Context::TextureMip> levels;
     levels.reserve(mipCount);
     for (uint32_t level = 0; level < mipCount; ++level) {
-        if (!mips[level].rgba || mips[level].width == 0 || mips[level].height == 0)
+        if (!mips[level].rgba || mips[level].width == 0 || mips[level].height == 0) {
             return false;
+        }
         levels.push_back({ mips[level].rgba, mips[level].width, mips[level].height,
                            static_cast<std::size_t>(mips[level].width) * 4u });
     }
@@ -213,7 +260,9 @@ bool DX12Texture::InitFromDataMipsAsync(DX12Context* context, const TextureMipDa
     m_width = mips[0].width;
     m_height = mips[0].height;
     m_mipLevels = mipCount;
-    if (!CreateSrv(context)) return false;
+    if (!CreateSrv(context)) {
+        return false;
+    }
     m_contentVersion = 1;
     return true;
 }
@@ -228,7 +277,9 @@ bool DX12Texture::InitFromData(
     m_context = context;
     m_width = width;
     m_height = height;
-    if (!CreateSrv(context)) return false;
+    if (!CreateSrv(context)) {
+        return false;
+    }
     m_contentVersion = 1;
     return true;
 }
@@ -236,13 +287,15 @@ bool DX12Texture::InitFromData(
 bool DX12Texture::InitFromDataMips(
     DX12Context* context, const TextureMipData* mips, uint32_t mipCount)
 {
-    if (!context || !mips || mipCount == 0)
+    if (!context || !mips || mipCount == 0) {
         return false;
+    }
     std::vector<DX12Context::TextureMip> levels;
     levels.reserve(mipCount);
     for (uint32_t level = 0; level < mipCount; ++level) {
-        if (!mips[level].rgba || mips[level].width == 0 || mips[level].height == 0)
+        if (!mips[level].rgba || mips[level].width == 0 || mips[level].height == 0) {
             return false;
+        }
         levels.push_back({ mips[level].rgba, mips[level].width, mips[level].height,
                            static_cast<std::size_t>(mips[level].width) * 4u });
     }
@@ -255,7 +308,9 @@ bool DX12Texture::InitFromDataMips(
     m_width = mips[0].width;
     m_height = mips[0].height;
     m_mipLevels = mipCount;
-    if (!CreateSrv(context)) return false;
+    if (!CreateSrv(context)) {
+        return false;
+    }
     m_contentVersion = 1;
     return true;
 }
@@ -263,14 +318,16 @@ bool DX12Texture::InitFromDataMips(
 bool DX12Texture::InitFromData3D(
     DX12Context* context, const uint8_t* rgba, uint32_t width, uint32_t height, uint32_t depth)
 {
-    if (!context || !rgba || width == 0 || height == 0 || depth == 0)
+    if (!context || !rgba || width == 0 || height == 0 || depth == 0) {
         return false;
+    }
     m_context = context;
     ID3D12Device* device = context->GetDevice();
-    if (!device || !context->GetCommandQueue())
+    if (!device || !context->GetCommandQueue()) {
         return false;
+    }
 
-    /// @note R8G8B8A8_UNORM の 3D テクスチャを DEFAULT ヒープに作り、COPY_DEST で開始する。
+    // R8G8B8A8_UNORM の 3D テクスチャを DEFAULT ヒープに作り、COPY_DEST で開始する。
     D3D12_HEAP_PROPERTIES defaultHeap{};
     defaultHeap.Type = D3D12_HEAP_TYPE_DEFAULT;
     D3D12_RESOURCE_DESC desc{};
@@ -287,7 +344,7 @@ bool DX12Texture::InitFromData3D(
         return false;
     }
 
-    /// @note アップロードバッファへ「深度スライス × 行」を GPU 要求ピッチ (256B) に合わせて詰める。
+    // アップロードバッファへ「深度スライス × 行」を GPU 要求ピッチ (256B) に合わせて詰める。
     D3D12_PLACED_SUBRESOURCE_FOOTPRINT footprint{};
     UINT rowCount = 0;
     UINT64 rowSize = 0;
@@ -306,13 +363,15 @@ bool DX12Texture::InitFromData3D(
     uploadDesc.Layout = D3D12_TEXTURE_LAYOUT_ROW_MAJOR;
     Microsoft::WRL::ComPtr<ID3D12Resource> upload;
     if (FAILED(device->CreateCommittedResource(&uploadHeap, D3D12_HEAP_FLAG_NONE, &uploadDesc,
-            D3D12_RESOURCE_STATE_GENERIC_READ, nullptr, IID_PPV_ARGS(&upload))))
+            D3D12_RESOURCE_STATE_GENERIC_READ, nullptr, IID_PPV_ARGS(&upload)))) {
         return false;
+    }
     void* mappedData = nullptr;
-    if (FAILED(upload->Map(0, nullptr, &mappedData)))
+    if (FAILED(upload->Map(0, nullptr, &mappedData))) {
         return false;
+    }
     auto* mapped = static_cast<uint8_t*>(mappedData);
-    /// @note RGBA8
+    // RGBA8
     const size_t sourceRowPitch = static_cast<size_t>(width) * 4u;
     for (uint32_t z = 0; z < depth; ++z) {
         for (uint32_t y = 0; y < rowCount; ++y) {
@@ -325,13 +384,14 @@ bool DX12Texture::InitFromData3D(
     }
     upload->Unmap(0, nullptr);
 
-    /// @note 専用コマンドリストで同期コピー → PIXEL_SHADER_RESOURCE へ遷移 (DX11 の即時 Immutable 相当)。
+    // 専用コマンドリストで同期コピー → PIXEL_SHADER_RESOURCE へ遷移 (DX11 の即時 Immutable 相当)。
     Microsoft::WRL::ComPtr<ID3D12CommandAllocator> allocator;
     Microsoft::WRL::ComPtr<ID3D12GraphicsCommandList> list;
     if (FAILED(device->CreateCommandAllocator(D3D12_COMMAND_LIST_TYPE_DIRECT, IID_PPV_ARGS(&allocator)))
         || FAILED(device->CreateCommandList(0, D3D12_COMMAND_LIST_TYPE_DIRECT, allocator.Get(), nullptr,
-                                            IID_PPV_ARGS(&list))))
+                                            IID_PPV_ARGS(&list)))) {
         return false;
+    }
     D3D12_TEXTURE_COPY_LOCATION dst{};
     dst.pResource = m_resource.Get();
     dst.Type = D3D12_TEXTURE_COPY_TYPE_SUBRESOURCE_INDEX;
@@ -348,8 +408,9 @@ bool DX12Texture::InitFromData3D(
     barrier.Transition.StateBefore = D3D12_RESOURCE_STATE_COPY_DEST;
     barrier.Transition.StateAfter = D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
     list->ResourceBarrier(1, &barrier);
-    if (FAILED(list->Close()))
+    if (FAILED(list->Close())) {
         return false;
+    }
     ID3D12CommandList* lists[] = {list.Get()};
     context->GetCommandQueue()->ExecuteCommandLists(1, lists);
     context->Flush();
@@ -357,13 +418,14 @@ bool DX12Texture::InitFromData3D(
     m_width = width;
     m_height = height;
 
-    /// @note Texture3D SRV。シェーダーの Texture3D スロット (雲ノイズ / 3D LUT) と次元を一致させる。
+    // Texture3D SRV。シェーダーの Texture3D スロット (雲ノイズ / 3D LUT) と次元を一致させる。
     D3D12_DESCRIPTOR_HEAP_DESC heapDesc{};
     heapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
     heapDesc.NumDescriptors = 1;
-    /// @note CopyDescriptors のコピー元は shader-visible ヒープにできないため CPU staging に置く。
-    if (FAILED(device->CreateDescriptorHeap(&heapDesc, IID_PPV_ARGS(&m_srvHeap))))
+    // CopyDescriptors のコピー元は shader-visible ヒープにできないため CPU staging に置く。
+    if (FAILED(device->CreateDescriptorHeap(&heapDesc, IID_PPV_ARGS(&m_srvHeap)))) {
         return false;
+    }
     D3D12_SHADER_RESOURCE_VIEW_DESC srv{};
     srv.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
     srv.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE3D;
@@ -378,8 +440,9 @@ bool DX12Texture::InitFromData3D(
 bool DX12Texture::InitFromResource(DX12Context* context, ID3D12Resource* resource,
                                    DXGI_FORMAT srvFormat, uint32_t width, uint32_t height)
 {
-    if (!context || !resource || width == 0 || height == 0)
+    if (!context || !resource || width == 0 || height == 0) {
         return false;
+    }
     m_context = context;
     m_resource = resource;
     m_width = width;
@@ -390,7 +453,9 @@ bool DX12Texture::InitFromResource(DX12Context* context, ID3D12Resource* resourc
 bool DX12Texture::InitCubeFromResource(DX12Context* context, ID3D12Resource* resource,
                                        DXGI_FORMAT srvFormat, uint32_t size, uint32_t mipCount)
 {
-    if (!context || !resource || size == 0 || mipCount == 0) return false;
+    if (!context || !resource || size == 0 || mipCount == 0) {
+        return false;
+    }
     m_context = context;
     m_resource = resource;
     m_width = m_height = size;
@@ -400,7 +465,9 @@ bool DX12Texture::InitCubeFromResource(DX12Context* context, ID3D12Resource* res
     D3D12_DESCRIPTOR_HEAP_DESC heapDesc{};
     heapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
     heapDesc.NumDescriptors = 1;
-    if (FAILED(context->GetDevice()->CreateDescriptorHeap(&heapDesc, IID_PPV_ARGS(&m_srvHeap)))) return false;
+    if (FAILED(context->GetDevice()->CreateDescriptorHeap(&heapDesc, IID_PPV_ARGS(&m_srvHeap)))) {
+        return false;
+    }
     D3D12_SHADER_RESOURCE_VIEW_DESC srv{};
     srv.Format = srvFormat;
     srv.ViewDimension = D3D12_SRV_DIMENSION_TEXTURECUBE;
@@ -415,8 +482,9 @@ bool DX12Texture::CreateSrv(DX12Context* context, DXGI_FORMAT format)
     D3D12_DESCRIPTOR_HEAP_DESC heapDesc{};
     heapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
     heapDesc.NumDescriptors = 1;
-    if (FAILED(context->GetDevice()->CreateDescriptorHeap(&heapDesc, IID_PPV_ARGS(&m_srvHeap))))
+    if (FAILED(context->GetDevice()->CreateDescriptorHeap(&heapDesc, IID_PPV_ARGS(&m_srvHeap)))) {
         return false;
+    }
     D3D12_SHADER_RESOURCE_VIEW_DESC srvDesc{};
     srvDesc.Format = format;
     srvDesc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
@@ -429,13 +497,17 @@ bool DX12Texture::CreateSrv(DX12Context* context, DXGI_FORMAT format)
 void DX12Texture::RegisterState(DX12StateTracker* tracker, D3D12_RESOURCE_STATES state)
 {
     m_tracker = tracker;
-    if (m_tracker) m_tracker->Register(m_resource.Get(), state);
+    if (m_tracker) {
+        m_tracker->Register(m_resource.Get(), state);
+    }
 }
 
 bool DX12Texture::InitForCompute(
     DX12Context* context, DX12StateTracker* tracker, uint32_t width, uint32_t height)
 {
-    if (!context || !tracker || width == 0 || height == 0) return false;
+    if (!context || !tracker || width == 0 || height == 0) {
+        return false;
+    }
     m_context = context;
     D3D12_HEAP_PROPERTIES heap{};
     heap.Type = D3D12_HEAP_TYPE_DEFAULT;
@@ -445,7 +517,7 @@ bool DX12Texture::InitForCompute(
     desc.Height = height;
     desc.DepthOrArraySize = 1;
     desc.MipLevels = 1;
-    /// @note Typed UAV Store は機種依存のため、Debug Layer で拒否される形式を事前に避ける。
+    // Typed UAV Store は機種依存のため、Debug Layer で拒否される形式を事前に避ける。
     m_format = DXGI_FORMAT_R16G16B16A16_FLOAT;
     D3D12_FEATURE_DATA_FORMAT_SUPPORT formatSupport{m_format};
     if (FAILED(context->GetDevice()->CheckFeatureSupport(
@@ -464,11 +536,15 @@ bool DX12Texture::InitForCompute(
     desc.SampleDesc.Count = 1;
     desc.Flags = D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS;
     if (FAILED(context->GetDevice()->CreateCommittedResource(&heap, D3D12_HEAP_FLAG_NONE, &desc,
-            D3D12_RESOURCE_STATE_UNORDERED_ACCESS, nullptr, IID_PPV_ARGS(&m_resource)))) return false;
+            D3D12_RESOURCE_STATE_UNORDERED_ACCESS, nullptr, IID_PPV_ARGS(&m_resource)))) {
+        return false;
+    }
     D3D12_DESCRIPTOR_HEAP_DESC heapDesc{};
     heapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
     heapDesc.NumDescriptors = 2;
-    if (FAILED(context->GetDevice()->CreateDescriptorHeap(&heapDesc, IID_PPV_ARGS(&m_srvHeap)))) return false;
+    if (FAILED(context->GetDevice()->CreateDescriptorHeap(&heapDesc, IID_PPV_ARGS(&m_srvHeap)))) {
+        return false;
+    }
     m_descriptorIncrement = context->GetDevice()->GetDescriptorHandleIncrementSize(
         D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
     D3D12_SHADER_RESOURCE_VIEW_DESC srv{};
@@ -477,9 +553,9 @@ bool DX12Texture::InitForCompute(
     srv.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
     srv.Texture2D.MipLevels = 1;
     context->GetDevice()->CreateShaderResourceView(m_resource.Get(), &srv, GetSrvCpu());
-    /// @note 単一 Mip・単一 Array の Texture2D なので既定 UAV を使う。手動で ViewDimension/Format を
-    /// @note       指定すると GPU ごとの Typed UAV 制約や Mip 記述子不整合で Debug Layer がエラーにしやすい。
-    /// @note       GetUavCpu() は UAV ビューの存在フラグを検査するため、生成呼び出し前に m_hasUav を有効化する。
+    // 単一 Mip・単一 Array の Texture2D なので既定 UAV を使う。手動で ViewDimension/Format を
+    // 指定すると GPU ごとの Typed UAV 制約や Mip 記述子不整合で Debug Layer がエラーにしやすい。
+    // GetUavCpu() は UAV ビューの存在フラグを検査するため、生成呼び出し前に m_hasUav を有効化する。
     m_hasUav = true;
     context->GetDevice()->CreateUnorderedAccessView(
         m_resource.Get(), nullptr, nullptr, GetUavCpu());
@@ -493,10 +569,12 @@ bool DX12Texture::InitForCompute3D(
     DX12Context* context, DX12StateTracker* tracker,
     uint32_t width, uint32_t height, uint32_t depth)
 {
-    if (!context || !tracker || width == 0 || height == 0 || depth == 0) return false;
+    if (!context || !tracker || width == 0 || height == 0 || depth == 0) {
+        return false;
+    }
     m_context = context;
 
-    /// @note Typed UAV Store の対応は機種依存。2D 版と同じ順で試し、どちらも駄目なら諦める。
+    // Typed UAV Store の対応は機種依存。2D 版と同じ順で試し、どちらも駄目なら諦める。
     m_format = DXGI_FORMAT_R16G16B16A16_FLOAT;
     const auto supportsTypedStore = [&](DXGI_FORMAT format) {
         D3D12_FEATURE_DATA_FORMAT_SUPPORT support{ format };
@@ -533,8 +611,9 @@ bool DX12Texture::InitForCompute3D(
     D3D12_DESCRIPTOR_HEAP_DESC heapDesc{};
     heapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
     heapDesc.NumDescriptors = 2;
-    if (FAILED(context->GetDevice()->CreateDescriptorHeap(&heapDesc, IID_PPV_ARGS(&m_srvHeap))))
+    if (FAILED(context->GetDevice()->CreateDescriptorHeap(&heapDesc, IID_PPV_ARGS(&m_srvHeap)))) {
         return false;
+    }
     m_descriptorIncrement = context->GetDevice()->GetDescriptorHandleIncrementSize(
         D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
 
@@ -545,8 +624,8 @@ bool DX12Texture::InitForCompute3D(
     srv.Texture3D.MipLevels     = 1;
     context->GetDevice()->CreateShaderResourceView(m_resource.Get(), &srv, GetSrvCpu());
 
-    /// @note UAV は 2D 版と同じ理由で既定ビュー (リソース記述から生成) を使う。
-    /// @note       GetUavCpu() が存在フラグを見るので、生成呼び出しより前に立てる。
+    // UAV は 2D 版と同じ理由で既定ビュー (リソース記述から生成) を使う。
+    // GetUavCpu() が存在フラグを見るので、生成呼び出しより前に立てる。
     m_hasUav = true;
     context->GetDevice()->CreateUnorderedAccessView(
         m_resource.Get(), nullptr, nullptr, GetUavCpu());
@@ -565,7 +644,9 @@ D3D12_CPU_DESCRIPTOR_HANDLE DX12Texture::GetSrvCpu() const
 
 D3D12_CPU_DESCRIPTOR_HANDLE DX12Texture::GetUavCpu() const
 {
-    if (!m_srvHeap || !m_hasUav) return {};
+    if (!m_srvHeap || !m_hasUav) {
+        return {};
+    }
     auto handle = m_srvHeap->GetCPUDescriptorHandleForHeapStart();
     handle.ptr += m_descriptorIncrement;
     return handle;
@@ -573,16 +654,21 @@ D3D12_CPU_DESCRIPTOR_HANDLE DX12Texture::GetUavCpu() const
 
 void DX12Texture::TransitionForPixelRead(ID3D12GraphicsCommandList* commands)
 {
-    if (m_tracker)
+    if (m_tracker) {
         m_tracker->Transition(commands, m_resource.Get(), D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
+    }
 }
 
 bool DX12Texture::InitDynamic(DX12Context* context, DX12StateTracker* tracker,
                               uint32_t width, uint32_t height, DynamicTextureFormat format)
 {
-    if (!context || width == 0 || height == 0) return false;
+    if (!context || width == 0 || height == 0) {
+        return false;
+    }
     ID3D12Device* device = context->GetDevice();
-    if (!device) return false;
+    if (!device) {
+        return false;
+    }
 
     m_context        = context;
     m_isDynamic      = true;
@@ -598,7 +684,7 @@ bool DX12Texture::InitDynamic(DX12Context* context, DX12StateTracker* tracker,
     desc.Width            = width;
     desc.Height           = height;
     desc.DepthOrArraySize = 1;
-    /// @note 動的アトラスはミップを持たない
+    // 動的アトラスはミップを持たない
     desc.MipLevels        = 1;
     desc.Format           = m_format;
     desc.SampleDesc.Count = 1;
@@ -613,18 +699,21 @@ bool DX12Texture::InitDynamic(DX12Context* context, DX12StateTracker* tracker,
     m_width  = width;
     m_height = height;
 
-    /// @note 生成直後は COPY_DEST。ゼロクリアを 1 回流してから PIXEL_SHADER_RESOURCE へ移す
-    /// @note       (DEFAULT ヒープの中身は未定義で、まだ焼いていない領域のゴミがフォントアトラスでは
-    /// @note       「字の周りの謎の模様」として見えてしまう)。
+    // 生成直後は COPY_DEST。ゼロクリアを 1 回流してから PIXEL_SHADER_RESOURCE へ移す
+    // (DEFAULT ヒープの中身は未定義で、まだ焼いていない領域のゴミがフォントアトラスでは
+    // 「字の周りの謎の模様」として見えてしまう)。
     RegisterState(tracker, D3D12_RESOURCE_STATE_COPY_DEST);
     const std::vector<uint8_t> zeros(
         static_cast<size_t>(width) * height * m_bytesPerPixel, 0u);
     if (!UploadRegionInternal(0, 0, width, height, zeros.data(),
                               width * m_bytesPerPixel,
-                              D3D12_RESOURCE_STATE_COPY_DEST))
+                              D3D12_RESOURCE_STATE_COPY_DEST)) {
         return false;
+    }
 
-    if (!CreateSrv(context, m_format)) return false;
+    if (!CreateSrv(context, m_format)) {
+        return false;
+    }
     m_contentVersion = 1;
     return true;
 }
@@ -637,8 +726,12 @@ bool DX12Texture::UpdateRegion(uint32_t x, uint32_t y, uint32_t width, uint32_t 
         m_context->GetCpuExecutor()->ExecuteResourceOperation([&] { updated = UpdateRegion(x, y, width, height, pixels, srcRowPitch); });
         return updated;
     }
-    if (!m_isDynamic || !m_resource || !m_context || !pixels) return false;
-    if (width == 0 || height == 0) return true;
+    if (!m_isDynamic || !m_resource || !m_context || !pixels) {
+        return false;
+    }
+    if (width == 0 || height == 0) {
+        return true;
+    }
 
     if (x + width > m_width || y + height > m_height) {
         FBZZ_LOG_ERROR("DX12Texture::UpdateRegion: region (%u,%u,%u,%u) exceeds texture %ux%u",
@@ -646,9 +739,11 @@ bool DX12Texture::UpdateRegion(uint32_t x, uint32_t y, uint32_t width, uint32_t 
         return false;
     }
 
-    /// @note 通常運用時のリソース状態は PIXEL_SHADER_RESOURCE。そこから COPY_DEST へ落として戻す。
+    // 通常運用時のリソース状態は PIXEL_SHADER_RESOURCE。そこから COPY_DEST へ落として戻す。
     if (!UploadRegionInternal(x, y, width, height, pixels, srcRowPitch,
-        D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE)) return false;
+        D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE)) {
+        return false;
+    }
     ++m_contentVersion;
     return true;
 }
@@ -659,10 +754,12 @@ bool DX12Texture::UploadRegionInternal(uint32_t x, uint32_t y, uint32_t width, u
 {
     ID3D12Device* device = m_context->GetDevice();
     ID3D12CommandQueue* queue = m_context->GetCommandQueue();
-    if (!device || !queue) return false;
+    if (!device || !queue) {
+        return false;
+    }
 
-    /// @note 更新矩形ぶんだけのフットプリントを作る。アトラス全面ではなく矩形だけをアップロード
-    /// @note       バッファに詰めることで、2048x2048 のアトラスでもグリフ 1 個の追記が数 KB の転送で済む。
+    // 更新矩形ぶんだけのフットプリントを作る。アトラス全面ではなく矩形だけをアップロード
+    // バッファに詰めることで、2048x2048 のアトラスでもグリフ 1 個の追記が数 KB の転送で済む。
     D3D12_RESOURCE_DESC regionDesc{};
     regionDesc.Dimension        = D3D12_RESOURCE_DIMENSION_TEXTURE2D;
     regionDesc.Width            = width;
@@ -692,12 +789,14 @@ bool DX12Texture::UploadRegionInternal(uint32_t x, uint32_t y, uint32_t width, u
 
     Microsoft::WRL::ComPtr<ID3D12Resource> upload;
     if (FAILED(device->CreateCommittedResource(&uploadHeap, D3D12_HEAP_FLAG_NONE, &uploadDesc,
-            D3D12_RESOURCE_STATE_GENERIC_READ, nullptr, IID_PPV_ARGS(&upload))))
+            D3D12_RESOURCE_STATE_GENERIC_READ, nullptr, IID_PPV_ARGS(&upload)))) {
         return false;
+    }
 
     void* mapped = nullptr;
-    if (FAILED(upload->Map(0, nullptr, &mapped)))
+    if (FAILED(upload->Map(0, nullptr, &mapped))) {
         return false;
+    }
     {
         auto* destination = static_cast<uint8_t*>(mapped) + footprint.Offset;
         const auto* source = static_cast<const uint8_t*>(pixels);
@@ -710,11 +809,13 @@ bool DX12Texture::UploadRegionInternal(uint32_t x, uint32_t y, uint32_t width, u
     }
     upload->Unmap(0, nullptr);
 
-    /// @note In-frame updates preserve recorded draw/update/draw order without a CPU fence wait.
+    // In-frame updates preserve recorded draw/update/draw order without a CPU fence wait.
     /// @see https://learn.microsoft.com/en-us/windows/win32/direct3d12/uploading-resources Upload storage must outlive GPU consumption.
     if (m_context->IsFrameOpen() && !m_context->IsComputeListOpen() && m_tracker) {
         auto* commands = m_context->GetCommandList();
-        if (!commands) return false;
+        if (!commands) {
+            return false;
+        }
         m_tracker->Transition(commands, m_resource.Get(), D3D12_RESOURCE_STATE_COPY_DEST);
         D3D12_TEXTURE_COPY_LOCATION destination{};
         destination.pResource = m_resource.Get();
@@ -734,8 +835,9 @@ bool DX12Texture::UploadRegionInternal(uint32_t x, uint32_t y, uint32_t width, u
     Microsoft::WRL::ComPtr<ID3D12GraphicsCommandList> list;
     if (FAILED(device->CreateCommandAllocator(D3D12_COMMAND_LIST_TYPE_DIRECT, IID_PPV_ARGS(&allocator)))
         || FAILED(device->CreateCommandList(0, D3D12_COMMAND_LIST_TYPE_DIRECT, allocator.Get(),
-                                            nullptr, IID_PPV_ARGS(&list))))
+                                            nullptr, IID_PPV_ARGS(&list)))) {
         return false;
+    }
 
     const bool needsTransition = (currentState != D3D12_RESOURCE_STATE_COPY_DEST);
     D3D12_RESOURCE_BARRIER barrier{};
@@ -763,20 +865,22 @@ bool DX12Texture::UploadRegionInternal(uint32_t x, uint32_t y, uint32_t width, u
     barrier.Transition.StateAfter  = D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
     list->ResourceBarrier(1, &barrier);
 
-    if (FAILED(list->Close()))
+    if (FAILED(list->Close())) {
         return false;
+    }
     ID3D12CommandList* lists[] = { list.Get() };
     queue->ExecuteCommandLists(1, lists);
 
-    /// @note 同期 Flush。アップロードバッファをこの関数の寿命で解放するため GPU が読み終わるまで待つ。
-    /// @note       呼び出しはフレームに 1 回以下 (DynamicFontSource がダーティ矩形をまとめてから流す) に
-    /// @note       抑えられているため、既存の UploadTexture2D と同じ同期方式で十分と判断した。
+    // 同期 Flush。アップロードバッファをこの関数の寿命で解放するため GPU が読み終わるまで待つ。
+    // 呼び出しはフレームに 1 回以下 (DynamicFontSource がダーティ矩形をまとめてから流す) に
+    // 抑えられているため、既存の UploadTexture2D と同じ同期方式で十分と判断した。
     m_context->Flush();
 
-    /// @note ステートトラッカーへ現在状態を伝え、以降のパスが二重遷移しないようにする。
-    if (m_tracker)
+    // ステートトラッカーへ現在状態を伝え、以降のパスが二重遷移しないようにする。
+    if (m_tracker) {
         m_tracker->Register(m_resource.Get(), D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
+    }
     return true;
 }
 
-} /// @note namespace fbzz::renderer
+} // namespace fbzz::renderer

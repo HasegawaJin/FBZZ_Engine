@@ -15,12 +15,16 @@ namespace fbzz::renderer {
 DX12RenderTarget::~DX12RenderTarget()
 {
     if (m_tracker) {
-        for (auto& color : m_colors) m_tracker->Remove(color.Get());
+        for (auto& color : m_colors) {
+            m_tracker->Remove(color.Get());
+        }
         m_tracker->Remove(m_depth.Get());
         m_tracker->Remove(m_cube.Get());
     }
     if (m_context) {
-        for (auto& color : m_colors) m_context->DeferRelease(color);
+        for (auto& color : m_colors) {
+            m_context->DeferRelease(color);
+        }
         m_context->DeferRelease(m_depth);
         m_context->DeferRelease(m_cube);
     }
@@ -29,7 +33,9 @@ DX12RenderTarget::~DX12RenderTarget()
 bool DX12RenderTarget::InitCubemap(
     DX12Context* context, DX12StateTracker* tracker, uint32_t size, uint32_t mipCount)
 {
-    if (!context || !tracker || size == 0) return false;
+    if (!context || !tracker || size == 0) {
+        return false;
+    }
     m_tracker = tracker;
     m_context = context;
     m_width = m_height = size;
@@ -40,15 +46,21 @@ bool DX12RenderTarget::InitCubemap(
     D3D12_DESCRIPTOR_HEAP_DESC rtvHeap{};
     rtvHeap.Type = D3D12_DESCRIPTOR_HEAP_TYPE_RTV;
     rtvHeap.NumDescriptors = 6 * m_mipCount;
-    if (FAILED(device->CreateDescriptorHeap(&rtvHeap, IID_PPV_ARGS(&m_rtvHeap)))) return false;
+    if (FAILED(device->CreateDescriptorHeap(&rtvHeap, IID_PPV_ARGS(&m_rtvHeap)))) {
+        return false;
+    }
     D3D12_DESCRIPTOR_HEAP_DESC srvHeap{};
     srvHeap.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
     srvHeap.NumDescriptors = 2;
-    if (FAILED(device->CreateDescriptorHeap(&srvHeap, IID_PPV_ARGS(&m_srvHeap)))) return false;
+    if (FAILED(device->CreateDescriptorHeap(&srvHeap, IID_PPV_ARGS(&m_srvHeap)))) {
+        return false;
+    }
     D3D12_DESCRIPTOR_HEAP_DESC dsvHeap{};
     dsvHeap.Type = D3D12_DESCRIPTOR_HEAP_TYPE_DSV;
     dsvHeap.NumDescriptors = m_mipCount;
-    if (FAILED(device->CreateDescriptorHeap(&dsvHeap, IID_PPV_ARGS(&m_dsvHeap)))) return false;
+    if (FAILED(device->CreateDescriptorHeap(&dsvHeap, IID_PPV_ARGS(&m_dsvHeap)))) {
+        return false;
+    }
     m_rtvIncrement = device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_RTV);
     m_dsvIncrement = device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_DSV);
     m_srvIncrement = device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
@@ -67,7 +79,9 @@ bool DX12RenderTarget::InitCubemap(
     D3D12_CLEAR_VALUE clear{};
     clear.Format = desc.Format;
     if (FAILED(device->CreateCommittedResource(&heap, D3D12_HEAP_FLAG_NONE, &desc,
-            D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE, &clear, IID_PPV_ARGS(&m_cube)))) return false;
+            D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE, &clear, IID_PPV_ARGS(&m_cube)))) {
+        return false;
+    }
     for (uint32_t face = 0; face < 6; ++face) {
         for (uint32_t mip = 0; mip < m_mipCount; ++mip) {
             D3D12_RENDER_TARGET_VIEW_DESC rtv{};
@@ -86,7 +100,7 @@ bool DX12RenderTarget::InitCubemap(
     srv.TextureCube.MipLevels = m_mipCount;
     device->CreateShaderResourceView(m_cube.Get(), &srv, GetCubeSrv());
     tracker->Register(m_cube.Get(), D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
-    /// @note A shared 2D depth mip chain matches each face RTV's dimensions without allocating six redundant depth faces.
+    // A shared 2D depth mip chain matches each face RTV's dimensions without allocating six redundant depth faces.
     D3D12_RESOURCE_DESC depthDescription = desc;
     depthDescription.DepthOrArraySize = 1;
     depthDescription.Format = DXGI_FORMAT_R32_TYPELESS;
@@ -95,7 +109,9 @@ bool DX12RenderTarget::InitCubemap(
     depthClear.Format = DXGI_FORMAT_D32_FLOAT;
     depthClear.DepthStencil.Depth = 1.0f;
     if (FAILED(device->CreateCommittedResource(&heap, D3D12_HEAP_FLAG_NONE, &depthDescription,
-        D3D12_RESOURCE_STATE_DEPTH_WRITE, &depthClear, IID_PPV_ARGS(&m_depth)))) return false;
+        D3D12_RESOURCE_STATE_DEPTH_WRITE, &depthClear, IID_PPV_ARGS(&m_depth)))) {
+        return false;
+    }
     for (uint32_t mip = 0; mip < m_mipCount; ++mip) {
         D3D12_DEPTH_STENCIL_VIEW_DESC dsv{};
         dsv.Format = DXGI_FORMAT_D32_FLOAT;
@@ -134,8 +150,9 @@ bool DX12RenderTarget::Init(DX12Context* context, DX12StateTracker* tracker,
     const uint32_t colorCount = desc.colorCount;
     assert(colorCount <= MAX_COLOR);
     assert((colorCount > 0 || desc.withDepth) && "カラーも深度も無い RT は作れない");
-    if (!context || !tracker || width == 0 || height == 0 || colorCount > MAX_COLOR)
+    if (!context || !tracker || width == 0 || height == 0 || colorCount > MAX_COLOR) {
         return false;
+    }
     m_tracker = tracker;
     m_context = context;
     m_width = width;
@@ -145,15 +162,21 @@ bool DX12RenderTarget::Init(DX12Context* context, DX12StateTracker* tracker,
     D3D12_DESCRIPTOR_HEAP_DESC heap{};
     heap.Type = D3D12_DESCRIPTOR_HEAP_TYPE_RTV;
     heap.NumDescriptors = colorCount > 0 ? colorCount : 1;
-    if (FAILED(device->CreateDescriptorHeap(&heap, IID_PPV_ARGS(&m_rtvHeap)))) return false;
+    if (FAILED(device->CreateDescriptorHeap(&heap, IID_PPV_ARGS(&m_rtvHeap)))) {
+        return false;
+    }
     if (desc.withDepth) {
         heap.Type = D3D12_DESCRIPTOR_HEAP_TYPE_DSV;
         heap.NumDescriptors = 1;
-        if (FAILED(device->CreateDescriptorHeap(&heap, IID_PPV_ARGS(&m_dsvHeap)))) return false;
+        if (FAILED(device->CreateDescriptorHeap(&heap, IID_PPV_ARGS(&m_dsvHeap)))) {
+            return false;
+        }
     }
     heap.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
     heap.NumDescriptors = colorCount + 1;
-    if (FAILED(device->CreateDescriptorHeap(&heap, IID_PPV_ARGS(&m_srvHeap)))) return false;
+    if (FAILED(device->CreateDescriptorHeap(&heap, IID_PPV_ARGS(&m_srvHeap)))) {
+        return false;
+    }
     m_rtvIncrement = device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_RTV);
     m_dsvIncrement = device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_DSV);
     m_srvIncrement = device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
@@ -172,8 +195,9 @@ bool DX12RenderTarget::Init(DX12Context* context, DX12StateTracker* tracker,
     colorDesc.Flags = D3D12_RESOURCE_FLAG_ALLOW_RENDER_TARGET;
     for (uint32_t index = 0; index < colorCount; ++index) {
         if (FAILED(device->CreateCommittedResource(&defaultHeap, D3D12_HEAP_FLAG_NONE, &colorDesc,
-                D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE, nullptr, IID_PPV_ARGS(&m_colors[index]))))
+                D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE, nullptr, IID_PPV_ARGS(&m_colors[index])))) {
             return false;
+        }
         device->CreateRenderTargetView(m_colors[index].Get(), nullptr, GetRtv(index));
         D3D12_SHADER_RESOURCE_VIEW_DESC srv{};
         srv.Format = colorDesc.Format;
@@ -184,8 +208,9 @@ bool DX12RenderTarget::Init(DX12Context* context, DX12StateTracker* tracker,
         tracker->Register(m_colors[index].Get(), D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
     }
 
-    if (!desc.withDepth)
+    if (!desc.withDepth) {
         return true;
+    }
     m_reversedZ = desc.reversedZ;
 
     D3D12_RESOURCE_DESC depthDesc = colorDesc;
@@ -195,8 +220,9 @@ bool DX12RenderTarget::Init(DX12Context* context, DX12StateTracker* tracker,
     depthClear.Format = DXGI_FORMAT_D32_FLOAT;
     depthClear.DepthStencil.Depth = FarDepth(m_reversedZ);
     if (FAILED(device->CreateCommittedResource(&defaultHeap, D3D12_HEAP_FLAG_NONE, &depthDesc,
-            D3D12_RESOURCE_STATE_DEPTH_WRITE, &depthClear, IID_PPV_ARGS(&m_depth))))
+            D3D12_RESOURCE_STATE_DEPTH_WRITE, &depthClear, IID_PPV_ARGS(&m_depth)))) {
         return false;
+    }
     D3D12_DEPTH_STENCIL_VIEW_DESC dsv{};
     dsv.Format = DXGI_FORMAT_D32_FLOAT;
     dsv.ViewDimension = D3D12_DSV_DIMENSION_TEXTURE2D;
@@ -221,7 +247,9 @@ D3D12_CPU_DESCRIPTOR_HANDLE DX12RenderTarget::GetRtv(uint32_t index) const
 /// @note 深度を持たない RT では DSV ヒープ自体を作らない。呼び出し側は HasDepth() で分岐する。
 D3D12_CPU_DESCRIPTOR_HANDLE DX12RenderTarget::GetDsv(uint32_t mip) const
 {
-    if (!m_dsvHeap || mip >= m_mipCount) return {};
+    if (!m_dsvHeap || mip >= m_mipCount) {
+        return {};
+    }
     auto handle = m_dsvHeap->GetCPUDescriptorHandleForHeapStart();
     handle.ptr += static_cast<SIZE_T>(mip) * m_dsvIncrement;
     return handle;
@@ -246,30 +274,38 @@ D3D12_GPU_DESCRIPTOR_HANDLE DX12RenderTarget::GetColorSrvGpu(uint32_t index) con
 }
 ID3D12Resource* DX12RenderTarget::GetColorResource(uint32_t index) const
 {
-    if (m_isCubemap) return index == 0 ? m_cube.Get() : nullptr;
+    if (m_isCubemap) {
+        return index == 0 ? m_cube.Get() : nullptr;
+    }
     return index < m_colorCount ? m_colors[index].Get() : nullptr;
 }
 
 D3D12_CPU_DESCRIPTOR_HANDLE DX12RenderTarget::GetFaceRtv(uint32_t face, uint32_t mip) const
 {
-    if (!m_isCubemap || face >= 6 || mip >= m_mipCount) return {};
+    if (!m_isCubemap || face >= 6 || mip >= m_mipCount) {
+        return {};
+    }
     auto handle = m_rtvHeap->GetCPUDescriptorHandleForHeapStart();
     handle.ptr += static_cast<SIZE_T>(face * m_mipCount + mip) * m_rtvIncrement;
     return handle;
 }
 void* DX12RenderTarget::GetNativeSRV(int slot) const
 {
-    if (slot < 0 || static_cast<uint32_t>(slot) >= m_colorCount) return nullptr;
-    if (m_isCubemap)
+    if (slot < 0 || static_cast<uint32_t>(slot) >= m_colorCount) {
+        return nullptr;
+    }
+    if (m_isCubemap) {
         return std::bit_cast<void*>(m_srvHeap->GetGPUDescriptorHandleForHeapStart().ptr);
+    }
     return std::bit_cast<void*>(GetColorSrvGpu(static_cast<uint32_t>(slot)).ptr);
 }
 
 void DX12RenderTarget::TransitionColorForRead(ID3D12GraphicsCommandList* commands, uint32_t index)
 {
-    if (m_tracker && index < m_colorCount)
+    if (m_tracker && index < m_colorCount) {
         m_tracker->Transition(commands, m_isCubemap ? m_cube.Get() : m_colors[index].Get(),
                               D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
+    }
 }
 
-} /// @note namespace fbzz::renderer
+} // namespace fbzz::renderer

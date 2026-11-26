@@ -2,6 +2,7 @@
 /// @brief   TextureCube SRVから面×mip UAVへIBL Computeを記録する。
 /// @author  Hasegawa Jin
 /// @date    2026-07-15
+#include <Graphics/Renderer/Commands/ShaderBindingSlots.hpp>
 #include "DX12IblBaker.hpp"
 
 #include "../DX12Context.hpp"
@@ -49,7 +50,9 @@ DX12IblBaker::DX12IblBaker(DX12Context* context, DX12StateTracker* tracker,
 bool DX12IblBaker::EnsureShaders()
 {
     const auto ensure = [this](std::unique_ptr<DX12Shader>& shader, const char* assetPath) {
-        if (shader) return true;
+        if (shader) {
+            return true;
+        }
         const std::string resolved = ResolveAssetPath(assetPath);
         auto created = std::make_unique<DX12Shader>();
         if (!created->Init(resolved)) {
@@ -68,7 +71,7 @@ bool DX12IblBaker::EnsureShaders()
         || !ensure(m_prefilterShader, "Assets/Shaders/IBL/PrefilteredEnvMap.cs.hlsl")) {
         return false;
     }
-    /// @note 揃ったら次の失敗をまた報告できるようにする。
+    // 揃ったら次の失敗をまた報告できるようにする。
     m_shaderFailureReported = false;
     return true;
 }
@@ -90,11 +93,15 @@ bool DX12IblBaker::CreateOutput(uint32_t size, uint32_t mipCount, CubeOutput& ou
     desc.SampleDesc.Count = 1;
     desc.Flags = D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS;
     if (FAILED(device->CreateCommittedResource(&heap, D3D12_HEAP_FLAG_NONE, &desc,
-            D3D12_RESOURCE_STATE_UNORDERED_ACCESS, nullptr, IID_PPV_ARGS(&output.resource)))) return false;
+            D3D12_RESOURCE_STATE_UNORDERED_ACCESS, nullptr, IID_PPV_ARGS(&output.resource)))) {
+        return false;
+    }
     D3D12_DESCRIPTOR_HEAP_DESC descriptors{};
     descriptors.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
     descriptors.NumDescriptors = 6 * mipCount;
-    if (FAILED(device->CreateDescriptorHeap(&descriptors, IID_PPV_ARGS(&output.descriptors)))) return false;
+    if (FAILED(device->CreateDescriptorHeap(&descriptors, IID_PPV_ARGS(&output.descriptors)))) {
+        return false;
+    }
     output.increment = device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
     for (uint32_t mip = 0; mip < mipCount; ++mip) {
         for (uint32_t face = 0; face < 6; ++face) {
@@ -116,10 +123,12 @@ bool DX12IblBaker::CreateOutput(uint32_t size, uint32_t mipCount, CubeOutput& ou
 bool DX12IblBaker::DispatchIrradiance(DX12RenderTarget& environment, CubeOutput& output)
 {
     ID3D12PipelineState* pso = m_psoCache->GetOrCreateCompute(*m_irradianceShader);
-    if (!pso) return false;
+    if (!pso) {
+        return false;
+    }
     ID3D12GraphicsCommandList* commands = m_context->GetCommandList();
-    /// @note 共有コマンドリストへ compute のルートシグネチャ・PSO を設定するため、
-    /// @note       DX12Renderer::Submit 側の状態キャッシュを無効化させる。
+    // 共有コマンドリストへ compute のルートシグネチャ・PSO を設定するため、
+    // DX12Renderer::Submit 側の状態キャッシュを無効化させる。
     m_context->MarkPipelineStateDirty();
     commands->SetComputeRootSignature(m_psoCache->GetComputeRootSignature());
     commands->SetPipelineState(pso);
@@ -129,20 +138,24 @@ bool DX12IblBaker::DispatchIrradiance(DX12RenderTarget& environment, CubeOutput&
     for (uint32_t face = 0; face < 6; ++face) {
         const FaceConstants constants{face, output.size, 64, 16};
         const auto cb = m_uploadArena->Allocate(sizeof(constants), D3D12_CONSTANT_BUFFER_DATA_PLACEMENT_ALIGNMENT);
-        if (!cb) return false;
+        if (!cb) {
+            return false;
+        }
         std::memcpy(cb.cpu, &constants, sizeof(constants));
-        commands->SetComputeRootConstantBufferView(0, cb.gpu);
-        /// @note bindless: 面ごとの UAV は «リソース自身の添字» を持てない一時ビューなので、
-        /// @note       その場で枠へ発行し、ベイク終了後にまとめて返す。
+        commands->SetComputeRootConstantBufferView(cb::IBL_FACE, cb.gpu);
+        // bindless: 面ごとの UAV は «リソース自身の添字» を持てない一時ビューなので、
+        // その場で枠へ発行し、ベイク終了後にまとめて返す。
         BindlessIndicesConstants indices;
         indices.Reset();
-        indices.pixel[0] = PublishTransient(environment.GetCubeSrv());
+        indices.pixel[srv::IBL_SOURCE] = PublishTransient(environment.GetCubeSrv());
         auto faceUav = output.descriptors->GetCPUDescriptorHandleForHeapStart();
         faceUav.ptr += static_cast<SIZE_T>(face) * output.increment;
-        indices.uav[0] = PublishTransient(faceUav);
+        indices.uav[uav::IBL_FACE] = PublishTransient(faceUav);
         const auto indexBlock = m_uploadArena->Allocate(
             sizeof(indices), D3D12_CONSTANT_BUFFER_DATA_PLACEMENT_ALIGNMENT);
-        if (!indexBlock) return false;
+        if (!indexBlock) {
+            return false;
+        }
         std::memcpy(indexBlock.cpu, &indices, sizeof(indices));
         commands->SetComputeRootConstantBufferView(kBindlessIndicesRootParam, indexBlock.gpu);
         DX12ScopedPixEvent event(*m_context, commands,
@@ -156,10 +169,12 @@ bool DX12IblBaker::DispatchPrefilter(
     DX12RenderTarget& environment, CubeOutput& output, uint32_t sampleCount)
 {
     ID3D12PipelineState* pso = m_psoCache->GetOrCreateCompute(*m_prefilterShader);
-    if (!pso) return false;
+    if (!pso) {
+        return false;
+    }
     ID3D12GraphicsCommandList* commands = m_context->GetCommandList();
-    /// @note 共有コマンドリストへ compute のルートシグネチャ・PSO を設定するため、
-    /// @note       DX12Renderer::Submit 側の状態キャッシュを無効化させる。
+    // 共有コマンドリストへ compute のルートシグネチャ・PSO を設定するため、
+    // DX12Renderer::Submit 側の状態キャッシュを無効化させる。
     m_context->MarkPipelineStateDirty();
     commands->SetComputeRootSignature(m_psoCache->GetComputeRootSignature());
     commands->SetPipelineState(pso);
@@ -170,18 +185,22 @@ bool DX12IblBaker::DispatchPrefilter(
         for (uint32_t face = 0; face < 6; ++face) {
             const PrefilterConstants constants{face, mipSize, roughness, sampleCount, 1, {0, 0, 0}};
             const auto cb = m_uploadArena->Allocate(sizeof(constants), D3D12_CONSTANT_BUFFER_DATA_PLACEMENT_ALIGNMENT);
-            if (!cb) return false;
+            if (!cb) {
+                return false;
+            }
             std::memcpy(cb.cpu, &constants, sizeof(constants));
-            commands->SetComputeRootConstantBufferView(0, cb.gpu);
+            commands->SetComputeRootConstantBufferView(cb::IBL_PREFILTER, cb.gpu);
             BindlessIndicesConstants indices;
             indices.Reset();
-            indices.pixel[0] = PublishTransient(environment.GetCubeSrv());
+            indices.pixel[srv::IBL_SOURCE] = PublishTransient(environment.GetCubeSrv());
             auto faceUav = output.descriptors->GetCPUDescriptorHandleForHeapStart();
             faceUav.ptr += static_cast<SIZE_T>(mip * 6 + face) * output.increment;
-            indices.uav[0] = PublishTransient(faceUav);
+            indices.uav[uav::IBL_FACE] = PublishTransient(faceUav);
             const auto indexBlock = m_uploadArena->Allocate(
                 sizeof(indices), D3D12_CONSTANT_BUFFER_DATA_PLACEMENT_ALIGNMENT);
-            if (!indexBlock) return false;
+            if (!indexBlock) {
+                return false;
+            }
             std::memcpy(indexBlock.cpu, &indices, sizeof(indices));
             commands->SetComputeRootConstantBufferView(kBindlessIndicesRootParam, indexBlock.gpu);
             DX12ScopedPixEvent event(*m_context, commands,
@@ -196,17 +215,19 @@ bool DX12IblBaker::DispatchPrefilter(
 uint32_t DX12IblBaker::PublishTransient(D3D12_CPU_DESCRIPTOR_HANDLE source)
 {
     const uint32_t slot = m_context->PublishBindlessDescriptor(source);
-    if (slot != DX12Context::INVALID_BINDLESS_INDEX)
+    if (slot != DX12Context::INVALID_BINDLESS_INDEX) {
         m_transientBindless.push_back(slot);
+    }
     return slot;
 }
 
 void DX12IblBaker::ReleaseTransients()
 {
-    /// @note FreeBindlessSlot はフェンス通過まで再利用させないので、記録済みの Dispatch が
-    /// @note       まだこの添字を読んでいても安全。
-    for (const uint32_t slot : m_transientBindless)
+    // FreeBindlessSlot はフェンス通過まで再利用させないので、記録済みの Dispatch が
+    // まだこの添字を読んでいても安全。
+    for (const uint32_t slot : m_transientBindless) {
         m_context->FreeBindlessSlot(slot);
+    }
     m_transientBindless.clear();
 }
 bool DX12IblBaker::Convolve(
@@ -214,8 +235,8 @@ bool DX12IblBaker::Convolve(
     uint32_t prefilterMips, uint32_t sampleCount,
     std::unique_ptr<DX12Texture>& irradiance, std::unique_ptr<DX12Texture>& prefilter)
 {
-    /// @note 3 つの要因を 1 行にまとめると、IBL が焼かれない理由が画面からも Console からも
-    /// @note       分からなくなる。環境光が丸ごと落ちる経路なので、どれで抜けたかは残す。
+    // 3 つの要因を 1 行にまとめると、IBL が焼かれない理由が画面からも Console からも
+    // 分からなくなる。環境光が丸ごと落ちる経路なので、どれで抜けたかは残す。
     if (!m_context->IsFrameOpen()) {
         FBZZ_LOG_WARN("DX12IblBaker: フレーム外から呼ばれたため IBL を焼けません");
         return false;
@@ -224,10 +245,12 @@ bool DX12IblBaker::Convolve(
         FBZZ_LOG_WARN("DX12IblBaker: 環境レンダーターゲットがキューブマップではありません");
         return false;
     }
-    if (!EnsureShaders()) return false;
+    if (!EnsureShaders()) {
+        return false;
+    }
 
-    /// @note スコープガードにする理由: 以降の失敗経路が 3 つあり、どれかで返し忘れると
-    /// @note       ベイクを繰り返すたびに bindless 枠が減り続ける (最後は枯渇して IBL が焼けなくなる)。
+    // スコープガードにする理由: 以降の失敗経路が 3 つあり、どれかで返し忘れると
+    // ベイクを繰り返すたびに bindless 枠が減り続ける (最後は枯渇して IBL が焼けなくなる)。
     struct TransientGuard {
         DX12IblBaker* baker;
         ~TransientGuard() { baker->ReleaseTransients(); }
@@ -246,7 +269,9 @@ bool DX12IblBaker::Convolve(
         return false;
     }
     D3D12_RESOURCE_BARRIER barriers[2]{};
-    for (uint32_t index = 0; index < 2; ++index) barriers[index].Type = D3D12_RESOURCE_BARRIER_TYPE_UAV;
+    for (uint32_t index = 0; index < 2; ++index) {
+        barriers[index].Type = D3D12_RESOURCE_BARRIER_TYPE_UAV;
+    }
     barriers[0].UAV.pResource = irradianceOutput.resource.Get();
     barriers[1].UAV.pResource = prefilterOutput.resource.Get();
     m_context->GetCommandList()->ResourceBarrier(2, barriers);
@@ -270,4 +295,4 @@ bool DX12IblBaker::Convolve(
     return true;
 }
 
-} /// @note namespace fbzz::renderer
+} // namespace fbzz::renderer

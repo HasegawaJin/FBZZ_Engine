@@ -77,8 +77,8 @@ private:
     FBZZ_GRAPHICS_API D3D12_GPU_VIRTUAL_ADDRESS PushConstants(const void* data, size_t size);
 
     /// @note GPU リソース生成 (すべて committed / DEFAULT ヒープ)。
-    FBZZ_GRAPHICS_API Resource CreateCubemap(uint32_t size, uint32_t mipCount);   ///< @note R16G16B16A16F, 6 面, UAV 可, 初期状態 UAV
-    FBZZ_GRAPHICS_API Resource CreateLut(uint32_t size);                          ///< @note R16G16B16A16F, 2D, UAV 可, 初期状態 UAV
+    FBZZ_GRAPHICS_API Resource CreateCubemap(uint32_t size, uint32_t mipCount);   ///< R16G16B16A16F, 6 面, UAV 可, 初期状態 UAV
+    FBZZ_GRAPHICS_API Resource CreateLut(uint32_t size);                          ///< R16G16B16A16F, 2D, UAV 可, 初期状態 UAV
 
     /// @note ビュー作成 (割当済みスロットの CPU ハンドルへ) して table バインド用 GPU ハンドルを返す。
     FBZZ_GRAPHICS_API uint32_t CreateEquirectSrv(ID3D12Resource* equirect);
@@ -97,8 +97,8 @@ private:
     FBZZ_GRAPHICS_API void Transition(ID3D12Resource* resource, D3D12_RESOURCE_STATES before,
                     D3D12_RESOURCE_STATES after);
     /// @brief CS を 1 回記録する。
-    /// @param srvIndex SRV の bindless 添字 (t0 相当)。SRV を読まない CS は INVALID_BINDLESS_INDEX。
-    /// @param uavIndex UAV の bindless 添字 (u0 相当)。
+    /// @param[in] srvIndex SRV の bindless 添字 (t0 相当)。SRV を読まない CS は INVALID_BINDLESS_INDEX。
+    /// @param[in] uavIndex UAV の bindless 添字 (u0 相当)。
     /// @note 添字は «このベイカーが束縛している自前ヒープ» 内の位置。
     /// @note       ResourceDescriptorHeap[] は束縛中のヒープを引くので、共有ヒープへ複製する必要がない。
     /// @see  Docs/design/bindless.md
@@ -135,4 +135,4 @@ private:
     std::string m_loadedCompiledDir;
 };
 
-} /// @note namespace fbzz::renderer
+} // namespace fbzz::renderer

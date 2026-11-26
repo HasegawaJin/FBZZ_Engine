@@ -21,10 +21,10 @@ public:
     FBZZ_GRAPHICS_API bool Init(DX12Context* context, const std::string& path);
     FBZZ_GRAPHICS_API bool InitFromData(DX12Context* context, const uint8_t* rgba, uint32_t width, uint32_t height);
     /// @note CPU で焼いたミップ連鎖 (RGBA8) をそのまま全段転送する。
-    /// @param mips 0 段目から順。行ピッチは width*4 固定。
+    /// @param[in] mips 0 段目から順。行ピッチは width*4 固定。
     FBZZ_GRAPHICS_API bool InitFromDataMips(DX12Context* context, const TextureMipData* mips, uint32_t mipCount);
     /// @brief InitFromDataMips の待たない版。転送を graphics queue へ投入して戻る。
-    /// @param outUploadFence 転送完了で通過するフェンス値。
+    /// @param[out] outUploadFence 転送完了で通過するフェンス値。
     /// @note 同じキューの後続コマンドは転送の後に実行されるので、状態は生成直後から PIXEL_SHADER_RESOURCE として扱える。
     FBZZ_GRAPHICS_API bool InitFromDataMipsAsync(DX12Context* context, const TextureMipData* mips, uint32_t mipCount,
                                uint64_t& outUploadFence);
@@ -53,7 +53,9 @@ public:
     bool IsRayMaterialTexture() const override { return m_contentVersion != 0 && !m_isDynamic
         && !m_isCube && m_depth == 1 && m_format == DXGI_FORMAT_R8G8B8A8_UNORM; }
     void AdoptContentVersion(uint64_t previousVersion) override {
-        if (m_contentVersion) m_contentVersion = previousVersion == UINT64_MAX ? 0 : previousVersion + 1;
+        if (m_contentVersion) {
+            m_contentVersion = previousVersion == UINT64_MAX ? 0 : previousVersion + 1;
+        }
     }
     bool IsRayEnvironmentTexture() const override { return m_contentVersion != 0 && m_isCube
         && (m_format == DXGI_FORMAT_R16G16B16A16_FLOAT || m_format == DXGI_FORMAT_R32G32B32A32_FLOAT
@@ -115,4 +117,4 @@ private:
     mutable uint32_t m_bindlessUavIndex = INVALID_BINDLESS_INDEX;
 };
 
-} /// @note namespace fbzz::renderer
+} // namespace fbzz::renderer

@@ -1,22 +1,23 @@
 /// @file    ErrorMaterial.hlsl
-/// @brief   外部 include・材質定数・テクスチャを持たないマゼンタ診断描画。
+/// @brief   ビルド時に埋め込む、通常・スキニング描画用のマゼンタ診断シェーダー。
 /// @author  Hasegawa Jin
 /// @date    2026-10-05
 
 /// @note Camera b0 の viewProjection は 128 byte、Object b1 の world は先頭に格納する。
 /// @see Docs/design/render-fallbacks.md
-cbuffer CameraConstants : register(b0)
+#include "Common/Binding.hlsli"
+cbuffer CameraConstants : register(CB_CAMERA)
 {
     float4x4 view;
     float4x4 projection;
     float4x4 viewProjection;
 };
-cbuffer ObjectConstants : register(b1)
+cbuffer ObjectConstants : register(CB_OBJECT)
 {
     float4x4 world;
 };
 #if FBZZ_ERROR_SKINNED
-cbuffer SkinningConstants : register(b7)
+cbuffer SkinningConstants : register(CB_SKINNING)
 {
     float4x4 boneMatrices[128];
 };

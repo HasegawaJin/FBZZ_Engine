@@ -86,4 +86,4 @@ private:
     DX12Context* m_context = nullptr;
 };
 
-} /// @note namespace fbzz::renderer
+} // namespace fbzz::renderer

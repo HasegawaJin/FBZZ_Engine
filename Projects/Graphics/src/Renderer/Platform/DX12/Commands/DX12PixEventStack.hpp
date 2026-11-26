@@ -20,17 +20,24 @@ public:
     template<class Emit>
     void Resume(Emit&& emit)
     {
-        if (m_recording) return;
+        if (m_recording) {
+            return;
+        }
         m_recording = true;
-        for (const auto& event : m_events) emit(true, event.color, event.name);
+        for (const auto& event : m_events) {
+            emit(true, event.color, event.name);
+        }
     }
 
     template<class Emit>
     void Suspend(Emit&& emit)
     {
-        if (!m_recording) return;
-        for (auto i = m_events.size(); i != 0; --i)
+        if (!m_recording) {
+            return;
+        }
+        for (auto i = m_events.size(); i != 0; --i) {
             emit(false, m_events[i - 1].color, m_events[i - 1].name);
+        }
         m_recording = false;
     }
 
@@ -44,7 +51,9 @@ public:
     template<class Emit>
     [[nodiscard]] uint64_t Begin(std::string_view name, uint64_t color, Emit&& emit)
     {
-        if (!m_recording || m_nextToken == 0) return 0;
+        if (!m_recording || m_nextToken == 0) {
+            return 0;
+        }
         const uint64_t token = m_nextToken++;
         m_events.push_back({std::string(name), color, token});
         emit(true, color, m_events.back().name);
@@ -55,8 +64,12 @@ public:
     template<class Emit>
     bool End(uint64_t token, Emit&& emit)
     {
-        if (token == 0 || m_events.empty() || m_events.back().token != token) return false;
-        if (m_recording) emit(false, m_events.back().color, m_events.back().name);
+        if (token == 0 || m_events.empty() || m_events.back().token != token) {
+            return false;
+        }
+        if (m_recording) {
+            emit(false, m_events.back().color, m_events.back().name);
+        }
         m_events.pop_back();
         return true;
     }
@@ -75,4 +88,4 @@ private:
     bool m_recording = false;
 };
 
-} /// @note namespace fbzz::renderer
+} // namespace fbzz::renderer

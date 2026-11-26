@@ -60,7 +60,7 @@ private:
     /// @note 回収済みディスクリプタ。GPU が読み終わるまで再利用へ回せない。
     struct RetiredDescriptor {
         uint32_t index = 0;
-        uint64_t frame = 0;  ///< @note 回収した ImGui フレーム番号
+        uint64_t frame = 0;  ///< 回収した ImGui フレーム番号
     };
 
     FBZZ_GRAPHICS_API void* CacheDescriptor(const CacheKey& key, D3D12_CPU_DESCRIPTOR_HANDLE source);
@@ -76,4 +76,4 @@ private:
     bool m_reportedHeapExhaustion = false;
 };
 
-} /// @note namespace fbzz::renderer
+} // namespace fbzz::renderer

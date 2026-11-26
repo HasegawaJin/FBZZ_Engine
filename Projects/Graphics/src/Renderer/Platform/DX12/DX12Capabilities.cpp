@@ -8,8 +8,9 @@ namespace fbzz::renderer {
 
 GraphicsCapabilities DX12Renderer::GetCapabilities() const
 {
-    if (!m_context.GetDevice())
+    if (!m_context.GetDevice()) {
         return {};
+    }
 
     /// @see https://devblogs.microsoft.com/directx/dxr-1-1/ Inline Raytracing と DXR Tier 1.1。
     return { m_context.SupportsBindless(), m_context.SupportsInlineRaytracing(),

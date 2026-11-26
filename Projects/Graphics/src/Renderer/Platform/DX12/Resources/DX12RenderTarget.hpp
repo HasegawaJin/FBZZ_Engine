@@ -69,4 +69,4 @@ private:
     bool m_reversedZ = false;
 };
 
-} /// @note namespace fbzz::renderer
+} // namespace fbzz::renderer

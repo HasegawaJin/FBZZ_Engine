@@ -52,4 +52,4 @@ private:
     uint64_t m_cacheIdentity = 0;
 };
 
-} /// @note namespace fbzz::renderer
+} // namespace fbzz::renderer

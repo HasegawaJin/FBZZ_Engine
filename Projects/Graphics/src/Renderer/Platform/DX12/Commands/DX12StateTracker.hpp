@@ -20,7 +20,9 @@ public:
     [[nodiscard]] bool ReadState(ID3D12Resource* resource, D3D12_RESOURCE_STATES& state) const
     {
         const auto found = m_states.find(resource);
-        if (found == m_states.end()) return false;
+        if (found == m_states.end()) {
+            return false;
+        }
         state = found->second;
         return true;
     }
@@ -52,4 +54,4 @@ private:
     std::vector<D3D12_RESOURCE_BARRIER> m_pendingBarriers;
 };
 
-} /// @note namespace fbzz::renderer
+} // namespace fbzz::renderer

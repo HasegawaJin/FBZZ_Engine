@@ -25,31 +25,31 @@ namespace {
 std::array<D3D12_STATIC_SAMPLER_DESC, 9> MakeStaticSamplers()
 {
     struct Preset {
+        UINT shaderRegister;
         D3D12_FILTER filter;
         D3D12_TEXTURE_ADDRESS_MODE address;
         UINT maxAnisotropy;
         D3D12_COMPARISON_FUNC comparison;
     };
-    /// @note s6 / s8 は現状どのシェーダーも宣言していない予約枠。
     constexpr Preset kPresets[9] = {
-        /// @note s0 SAMPLER_DEFAULT      : メッシュテクスチャのタイリングが主用途
-        { D3D12_FILTER_ANISOTROPIC,                       D3D12_TEXTURE_ADDRESS_MODE_WRAP,   16, D3D12_COMPARISON_FUNC_NEVER },
-        /// @note s1 SAMPLER_SHADOW       : SamplerComparisonState (PCF)
-        { D3D12_FILTER_COMPARISON_MIN_MAG_LINEAR_MIP_POINT, D3D12_TEXTURE_ADDRESS_MODE_BORDER, 1, D3D12_COMPARISON_FUNC_LESS_EQUAL },
-        /// @note s2 SAMPLER_LINEAR_CLAMP : IBL BRDF LUT / 3D LUT / スプラットマップ
-        { D3D12_FILTER_MIN_MAG_MIP_LINEAR,                D3D12_TEXTURE_ADDRESS_MODE_CLAMP,   1, D3D12_COMPARISON_FUNC_NEVER },
-        /// @note s3 SAMPLER_POINT_CLAMP  : TAA 再投影ルックアップ
-        { D3D12_FILTER_MIN_MAG_MIP_POINT,                 D3D12_TEXTURE_ADDRESS_MODE_CLAMP,   1, D3D12_COMPARISON_FUNC_NEVER },
-        /// @note s4 SAMPLER_WRAP_LINEAR  : ボリューメトリック雲のタイラブル 3D ノイズ
-        { D3D12_FILTER_MIN_MAG_MIP_LINEAR,                D3D12_TEXTURE_ADDRESS_MODE_WRAP,    1, D3D12_COMPARISON_FUNC_NEVER },
-        /// @note s5                      : UI スプライト / テキスト
-        { D3D12_FILTER_MIN_MAG_MIP_LINEAR,                D3D12_TEXTURE_ADDRESS_MODE_CLAMP,   1, D3D12_COMPARISON_FUNC_NEVER },
-        { D3D12_FILTER_MIN_MAG_MIP_POINT,                 D3D12_TEXTURE_ADDRESS_MODE_CLAMP,   1, D3D12_COMPARISON_FUNC_NEVER },
-        /// @note s7 SAMPLER_SHADOW_PUNCTUAL : Spot / Point 用の 2 本目の比較サンプラー。
-        /// @note 設定は s1 と同一。別スロットにするのは、共有ヘッダー (PunctualShadow.hlsli) が
-        /// @note 自前の名前で宣言する必要があり、s1 は各マテリアルシェーダーが既に占有しているため。
-        { D3D12_FILTER_COMPARISON_MIN_MAG_LINEAR_MIP_POINT, D3D12_TEXTURE_ADDRESS_MODE_BORDER, 1, D3D12_COMPARISON_FUNC_LESS_EQUAL },
-        { D3D12_FILTER_ANISOTROPIC,                       D3D12_TEXTURE_ADDRESS_MODE_WRAP,    4, D3D12_COMPARISON_FUNC_NEVER },
+        // s0 SAMPLER_DEFAULT      : メッシュテクスチャのタイリングが主用途
+        { samplerSlot::DEFAULT, D3D12_FILTER_ANISOTROPIC,                       D3D12_TEXTURE_ADDRESS_MODE_WRAP,   16, D3D12_COMPARISON_FUNC_NEVER },
+        // s1 SAMPLER_SHADOW       : SamplerComparisonState (PCF)
+        { samplerSlot::SHADOW, D3D12_FILTER_COMPARISON_MIN_MAG_LINEAR_MIP_POINT, D3D12_TEXTURE_ADDRESS_MODE_BORDER, 1, D3D12_COMPARISON_FUNC_LESS_EQUAL },
+        // s2 SAMPLER_LINEAR_CLAMP : IBL BRDF LUT / 3D LUT / スプラットマップ
+        { samplerSlot::LINEAR_CLAMP, D3D12_FILTER_MIN_MAG_MIP_LINEAR,                D3D12_TEXTURE_ADDRESS_MODE_CLAMP,   1, D3D12_COMPARISON_FUNC_NEVER },
+        // s3 SAMPLER_POINT_CLAMP  : TAA 再投影ルックアップ
+        { samplerSlot::POINT_CLAMP, D3D12_FILTER_MIN_MAG_MIP_POINT,                 D3D12_TEXTURE_ADDRESS_MODE_CLAMP,   1, D3D12_COMPARISON_FUNC_NEVER },
+        // s4 SAMPLER_WRAP_LINEAR  : ボリューメトリック雲のタイラブル 3D ノイズ
+        { samplerSlot::WRAP_LINEAR, D3D12_FILTER_MIN_MAG_MIP_LINEAR,                D3D12_TEXTURE_ADDRESS_MODE_WRAP,    1, D3D12_COMPARISON_FUNC_NEVER },
+        // s5                      : UI スプライト / テキスト
+        { samplerSlot::UI, D3D12_FILTER_MIN_MAG_MIP_LINEAR,                D3D12_TEXTURE_ADDRESS_MODE_CLAMP,   1, D3D12_COMPARISON_FUNC_NEVER },
+        { samplerSlot::UI_POINT, D3D12_FILTER_MIN_MAG_MIP_POINT,                 D3D12_TEXTURE_ADDRESS_MODE_CLAMP,   1, D3D12_COMPARISON_FUNC_NEVER },
+        // s7 SAMPLER_SHADOW_PUNCTUAL : Spot / Point 用の 2 本目の比較サンプラー。
+        // 設定は s1 と同一。別スロットにするのは、共有ヘッダー (PunctualShadow.hlsli) が
+        // 自前の名前で宣言する必要があり、s1 は各マテリアルシェーダーが既に占有しているため。
+        { samplerSlot::SHADOW_PUNCTUAL, D3D12_FILTER_COMPARISON_MIN_MAG_LINEAR_MIP_POINT, D3D12_TEXTURE_ADDRESS_MODE_BORDER, 1, D3D12_COMPARISON_FUNC_LESS_EQUAL },
+        { samplerSlot::WRAP_ANISO4, D3D12_FILTER_ANISOTROPIC,                       D3D12_TEXTURE_ADDRESS_MODE_WRAP,    4, D3D12_COMPARISON_FUNC_NEVER },
     };
 
     std::array<D3D12_STATIC_SAMPLER_DESC, 9> samplers{};
@@ -59,10 +59,10 @@ std::array<D3D12_STATIC_SAMPLER_DESC, 9> MakeStaticSamplers()
         sampler.AddressU = sampler.AddressV = sampler.AddressW = kPresets[slot].address;
         sampler.MaxAnisotropy = kPresets[slot].maxAnisotropy;
         sampler.ComparisonFunc = kPresets[slot].comparison;
-        /// @note ライト錐台外のシャドウサンプルは「照らされている」に倒す。
+        // ライト錐台外のシャドウサンプルは「照らされている」に倒す。
         sampler.BorderColor = D3D12_STATIC_BORDER_COLOR_OPAQUE_WHITE;
         sampler.MaxLOD = D3D12_FLOAT32_MAX;
-        sampler.ShaderRegister = slot;
+        sampler.ShaderRegister = kPresets[slot].shaderRegister;
         sampler.ShaderVisibility = D3D12_SHADER_VISIBILITY_ALL;
     }
     return samplers;
@@ -108,10 +108,14 @@ size_t DX12PsoCache::KeyHash::operator()(const Key& key) const
 
 bool DX12PsoCache::Initialize(ID3D12Device* device, bool bindlessEnabled)
 {
-    if (!device) return false;
+    if (!device) {
+        return false;
+    }
     m_device = device;
     m_bindlessEnabled = bindlessEnabled;
-    if (!CreateRootSignature() || !CreateComputeRootSignature()) return false;
+    if (!CreateRootSignature() || !CreateComputeRootSignature()) {
+        return false;
+    }
     CreateIndexedInstanceOffsetCommandSignature();
     return true;
 }
@@ -141,9 +145,9 @@ void DX12PsoCache::CreateIndexedInstanceOffsetCommandSignature()
 
 D3D12_ROOT_SIGNATURE_FLAGS DX12PsoCache::BaseRootSignatureFlags() const
 {
-    /// @note 既存のディスクリプタテーブルを残したまま立てる理由: このフラグは «ヒープを直接引ける»
-    /// @note という許可を足すだけで、テーブル経由の束縛を無効化しない。144 本のシェーダーを
-    /// @note 一斉に書き換えずに、bindless へ移したものから順に切り替えられる。
+    // 既存のディスクリプタテーブルを残したまま立てる理由: このフラグは «ヒープを直接引ける»
+    // という許可を足すだけで、テーブル経由の束縛を無効化しない。144 本のシェーダーを
+    // 一斉に書き換えずに、bindless へ移したものから順に切り替えられる。
     return m_bindlessEnabled
         ? D3D12_ROOT_SIGNATURE_FLAG_CBV_SRV_UAV_HEAP_DIRECTLY_INDEXED
         : D3D12_ROOT_SIGNATURE_FLAG_NONE;
@@ -167,10 +171,10 @@ void DX12PsoCache::ClearPipelines()
 
 bool DX12PsoCache::CreateComputeRootSignature()
 {
-    /// @note 並びは描画側と揃える (param 14 = bindless 添字ブロック b14)。
-    /// @note SRV / UAV テーブルは撤去済み。CS も ResourceDescriptorHeap から直接引く。
-    std::array<D3D12_ROOT_PARAMETER1, 15> parameters{};
-    for (UINT slot = 0; slot < 14; ++slot) {
+    // 並びは描画側と揃える (param 14 = bindless 添字ブロック b14)。
+    // SRV / UAV テーブルは撤去済み。CS も ResourceDescriptorHeap から直接引く。
+    std::array<D3D12_ROOT_PARAMETER1, kBindlessIndicesRootParam + 1> parameters{};
+    for (UINT slot = 0; slot < bindingCount::CONSTANT_BUFFERS; ++slot) {
         parameters[slot].ParameterType = D3D12_ROOT_PARAMETER_TYPE_CBV;
         parameters[slot].Descriptor.ShaderRegister = slot;
         parameters[slot].Descriptor.Flags = D3D12_ROOT_DESCRIPTOR_FLAG_DATA_VOLATILE;
@@ -201,28 +205,28 @@ bool DX12PsoCache::CreateComputeRootSignature()
 
 bool DX12PsoCache::CreateRootSignature()
 {
-    /// @note param 0〜13 : 定数バッファ b0〜b13 (root CBV)
-    /// @note param 14    : bindless 添字ブロック b14 (root CBV)
-    /// @note param 15    : 間接 instance offset b15 (1 DWORD root constant)。
-    /// @note かつてここに「ピクセル SRV テーブル (t0〜t31)」と「頂点 SRV テーブル」があったが、
-    /// @note 全シェーダーが ResourceDescriptorHeap から直接引くようになったため撤去した。
-    /// @note ディスクリプタテーブルが 1 つも無いので、ドローごとの CopyDescriptors も消えている。
-    /// @note       @see Docs/design/bindless.md
-    std::array<D3D12_ROOT_PARAMETER1, 16> parameters{};
-    for (UINT slot = 0; slot < 14; ++slot) {
+    // param 0〜13 : 定数バッファ b0〜b13 (root CBV)
+    // param 14    : bindless 添字ブロック b14 (root CBV)
+    // param 15    : 間接 instance offset b15 (1 DWORD root constant)。
+    // かつてここに「ピクセル SRV テーブル (t0〜t31)」と「頂点 SRV テーブル」があったが、
+    // 全シェーダーが ResourceDescriptorHeap から直接引くようになったため撤去した。
+    // ディスクリプタテーブルが 1 つも無いので、ドローごとの CopyDescriptors も消えている。
+    // @see Docs/design/bindless.md
+    std::array<D3D12_ROOT_PARAMETER1, kIndirectInstanceOffsetRootParam + 1> parameters{};
+    for (UINT slot = 0; slot < bindingCount::CONSTANT_BUFFERS; ++slot) {
         parameters[slot].ParameterType = D3D12_ROOT_PARAMETER_TYPE_CBV;
         parameters[slot].Descriptor.ShaderRegister = slot;
         parameters[slot].Descriptor.Flags = D3D12_ROOT_DESCRIPTOR_FLAG_DATA_VOLATILE;
         parameters[slot].ShaderVisibility = D3D12_SHADER_VISIBILITY_ALL;
     }
-    /// @note bindless 添字ブロック (b14)。VS / PS / GS / MS / AS のどこからでも引くため ALL 可視。
+    // bindless 添字ブロック (b14)。VS / PS / GS / MS / AS のどこからでも引くため ALL 可視。
     /// @see https://github.com/microsoft/DirectX-Specs/blob/master/d3d/MeshShader.md Mesh Shader root signature visibility.
     parameters[kBindlessIndicesRootParam].ParameterType = D3D12_ROOT_PARAMETER_TYPE_CBV;
     parameters[kBindlessIndicesRootParam].Descriptor.ShaderRegister = kBindlessIndicesRegister;
     parameters[kBindlessIndicesRootParam].Descriptor.Flags = D3D12_ROOT_DESCRIPTOR_FLAG_DATA_VOLATILE;
     parameters[kBindlessIndicesRootParam].ShaderVisibility = D3D12_SHADER_VISIBILITY_ALL;
     parameters[kIndirectInstanceOffsetRootParam].ParameterType = D3D12_ROOT_PARAMETER_TYPE_32BIT_CONSTANTS;
-    parameters[kIndirectInstanceOffsetRootParam].Constants.ShaderRegister = kIndirectInstanceOffsetRootParam;
+    parameters[kIndirectInstanceOffsetRootParam].Constants.ShaderRegister = cb::INSTANCE_DRAW_OFFSET;
     parameters[kIndirectInstanceOffsetRootParam].Constants.RegisterSpace = 0;
     parameters[kIndirectInstanceOffsetRootParam].Constants.Num32BitValues = 1;
     parameters[kIndirectInstanceOffsetRootParam].ShaderVisibility = D3D12_SHADER_VISIBILITY_ALL;
@@ -256,8 +260,9 @@ ID3D12PipelineState* DX12PsoCache::GetOrCreate(
     const Key key{shader.GetCacheIdentity(), state.rasterizer, state.blend, state.depth, topology,
                   renderTargetFormat, renderTargetCount, reversedZ,
                   state.depthBias, state.depthBiasSlope};
-    if (const auto found = m_cache.find(key); found != m_cache.end())
+    if (const auto found = m_cache.find(key); found != m_cache.end()) {
         return found->second.Get();
+    }
 
     D3D12_GRAPHICS_PIPELINE_STATE_DESC desc{};
     desc.pRootSignature = m_rootSignature.Get();
@@ -269,14 +274,16 @@ ID3D12PipelineState* DX12PsoCache::GetOrCreate(
     desc.SampleDesc.Count = 1;
     desc.NumRenderTargets = renderTargetCount;
     desc.BlendState.IndependentBlendEnable = renderTargetCount > 1;
-    for (uint32_t index = 0; index < renderTargetCount; ++index)
+    for (uint32_t index = 0; index < renderTargetCount; ++index) {
         desc.RTVFormats[index] = renderTargetFormat;
+    }
     desc.DSVFormat = DX12Context::DEPTH_FORMAT;
     desc.PrimitiveTopologyType = topology == PrimitiveTopology::LINE_LIST
         ? D3D12_PRIMITIVE_TOPOLOGY_TYPE_LINE : D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
     /// @see https://learn.microsoft.com/en-us/windows/win32/api/d3d12/ne-d3d12-d3d12_index_buffer_strip_cut_value D3D12_INDEX_BUFFER_STRIP_CUT_VALUE.
-    if (topology == PrimitiveTopology::TRIANGLE_STRIP)
+    if (topology == PrimitiveTopology::TRIANGLE_STRIP) {
         desc.IBStripCutValue = D3D12_INDEX_BUFFER_STRIP_CUT_VALUE_0xFFFFFFFF;
+    }
 
     /// @see https://learn.microsoft.com/en-us/windows/win32/api/d3d12/ns-d3d12-d3d12_rasterizer_desc FillMode と CullMode は独立した状態。
     desc.RasterizerState.FillMode = (state.rasterizer == RasterizerMode::WIREFRAME
@@ -288,25 +295,25 @@ ID3D12PipelineState* DX12PsoCache::GetOrCreate(
         ? D3D12_CULL_MODE_FRONT : D3D12_CULL_MODE_BACK;
     desc.RasterizerState.FrontCounterClockwise = FALSE;
     desc.RasterizerState.DepthClipEnable = TRUE;
-    /// @note PipelineStateDesc のバイアスは «正で手前»。手前ほど深度が大きい Reversed-Z ではそのまま、通常の Z では符号を裏返す。
+    // PipelineStateDesc のバイアスは «正で手前»。手前ほど深度が大きい Reversed-Z ではそのまま、通常の Z では符号を裏返す。
     /// @see https://learn.microsoft.com/en-us/windows/win32/api/d3d12/ns-d3d12-d3d12_rasterizer_desc (D3D12_RASTERIZER_DESC)
     desc.RasterizerState.DepthBias = reversedZ ? state.depthBias : -state.depthBias;
     desc.RasterizerState.SlopeScaledDepthBias = reversedZ ? state.depthBiasSlope : -state.depthBiasSlope;
 
-    /// @note GBuffer などの MRT は RT1 以降にも法線・材質値を書き込む。D3D12 の初期値は
-    /// @note WriteMask=0 なので、RT0 だけ設定すると Deferred Lighting 入力が消える。
+    // GBuffer などの MRT は RT1 以降にも法線・材質値を書き込む。D3D12 の初期値は
+    // WriteMask=0 なので、RT0 だけ設定すると Deferred Lighting 入力が消える。
     for (uint32_t index = 0; index < renderTargetCount; ++index) {
         auto& blend = desc.BlendState.RenderTarget[index];
         blend.RenderTargetWriteMask = D3D12_COLOR_WRITE_ENABLE_ALL;
         if (state.blend != BlendMode::OPAQUE_BLEND) {
             blend.BlendEnable = TRUE;
-            /// @note 方程式は RenderState.hpp の BlendMode が正本。ここはその翻訳でしかない。
-            /// @note PREMULTIPLIED は src.rgb に alpha が乗った値なので SrcBlend=ONE、
-            /// @note 背景側は (1-src.a) で残す (DX11 側の同名ケースと同じ方程式)。
+            // 方程式は RenderState.hpp の BlendMode が正本。ここはその翻訳でしかない。
+            // PREMULTIPLIED は src.rgb に alpha が乗った値なので SrcBlend=ONE、
+            // 背景側は (1-src.a) で残す (DX11 側の同名ケースと同じ方程式)。
             switch (state.blend) {
             case BlendMode::ADDITIVE:
-                /// @note SrcBlend は ONE ではない。ONE にすると出力アルファがブレンド方程式から
-                /// @note 消え、非事前乗算で書かれた PS (Particle.hlsl 等) が寿命フェードを失う。
+                // SrcBlend は ONE ではない。ONE にすると出力アルファがブレンド方程式から
+                // 消え、非事前乗算で書かれた PS (Particle.hlsl 等) が寿命フェードを失う。
                 blend.SrcBlend  = D3D12_BLEND_SRC_ALPHA;
                 blend.DestBlend = D3D12_BLEND_ONE;
                 break;
@@ -314,7 +321,7 @@ ID3D12PipelineState* DX12PsoCache::GetOrCreate(
                 blend.SrcBlend  = D3D12_BLEND_ONE;
                 blend.DestBlend = D3D12_BLEND_INV_SRC_ALPHA;
                 break;
-            /// @note ALPHA_BLEND
+            // ALPHA_BLEND
             default:
                 blend.SrcBlend  = D3D12_BLEND_SRC_ALPHA;
                 blend.DestBlend = D3D12_BLEND_INV_SRC_ALPHA;
@@ -330,7 +337,7 @@ ID3D12PipelineState* DX12PsoCache::GetOrCreate(
     desc.DepthStencilState.DepthEnable = state.depth != DepthMode::DEPTH_OFF;
     desc.DepthStencilState.DepthWriteMask = state.depth == DepthMode::DEPTH_ON
         ? D3D12_DEPTH_WRITE_MASK_ALL : D3D12_DEPTH_WRITE_MASK_ZERO;
-    /// @note Reversed-Z の RT では手前ほど深度が大きいので比較を裏返す。DepthMode は «手前が勝つ» の意味で書く。
+    // Reversed-Z の RT では手前ほど深度が大きいので比較を裏返す。DepthMode は «手前が勝つ» の意味で書く。
     /// @see https://learn.microsoft.com/en-us/windows/win32/api/d3d12/ne-d3d12-d3d12_comparison_func (D3D12_COMPARISON_FUNC)
     if (reversedZ) {
         desc.DepthStencilState.DepthFunc = state.depth == DepthMode::DEPTH_SKY
@@ -369,10 +376,11 @@ ID3D12PipelineState* DX12PsoCache::GetOrCreateMesh(
     const Key key{shader.GetCacheIdentity(), state.rasterizer, state.blend, state.depth, topology,
                   renderTargetFormat, renderTargetCount, reversedZ,
                   state.depthBias, state.depthBiasSlope};
-    if (const auto found = m_meshCache.find(key); found != m_meshCache.end())
+    if (const auto found = m_meshCache.find(key); found != m_meshCache.end()) {
         return found->second.Get();
+    }
 
-    /// @note Mesh PSOs omit VS and input layout; the mesh stage declares its output topology in HLSL.
+    // Mesh PSOs omit VS and input layout; the mesh stage declares its output topology in HLSL.
     /// @see https://github.com/microsoft/DirectX-Specs/blob/master/d3d/MeshShader.md Mesh Shader, CreatePipelineState.
     MeshPipelineStream stream{};
     stream.rootSignature.value = m_rootSignature.Get();
@@ -384,8 +392,9 @@ ID3D12PipelineState* DX12PsoCache::GetOrCreateMesh(
     stream.depthFormat.value = DX12Context::DEPTH_FORMAT;
     stream.sampleDesc.value.Count = 1;
     stream.renderTargets.value.NumRenderTargets = renderTargetCount;
-    for (uint32_t index = 0; index < renderTargetCount; ++index)
+    for (uint32_t index = 0; index < renderTargetCount; ++index) {
         stream.renderTargets.value.RTFormats[index] = renderTargetFormat;
+    }
 
     D3D12_RASTERIZER_DESC& rasterizer = stream.rasterizer.value;
     rasterizer.FillMode = state.rasterizer == RasterizerMode::WIREFRAME
@@ -411,7 +420,9 @@ ID3D12PipelineState* DX12PsoCache::GetOrCreateMesh(
         blend.DestBlendAlpha = D3D12_BLEND_ZERO;
         blend.BlendOpAlpha = D3D12_BLEND_OP_ADD;
         blend.LogicOp = D3D12_LOGIC_OP_NOOP;
-        if (state.blend == BlendMode::OPAQUE_BLEND) continue;
+        if (state.blend == BlendMode::OPAQUE_BLEND) {
+            continue;
+        }
         blend.BlendEnable = TRUE;
         if (state.blend == BlendMode::ADDITIVE) {
             blend.SrcBlend = D3D12_BLEND_SRC_ALPHA;
@@ -468,8 +479,9 @@ ID3D12PipelineState* DX12PsoCache::GetOrCreateMesh(
 ID3D12PipelineState* DX12PsoCache::GetOrCreateCompute(const DX12Shader& shader)
 {
     const uint64_t identity = shader.GetCacheIdentity();
-    if (const auto found = m_computeCache.find(identity); found != m_computeCache.end())
+    if (const auto found = m_computeCache.find(identity); found != m_computeCache.end()) {
         return found->second.Get();
+    }
     D3D12_COMPUTE_PIPELINE_STATE_DESC desc{};
     desc.pRootSignature = m_computeRootSignature.Get();
     desc.CS = shader.GetComputeBytecode();

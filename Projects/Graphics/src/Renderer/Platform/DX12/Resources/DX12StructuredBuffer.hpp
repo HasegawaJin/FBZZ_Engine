@@ -57,4 +57,4 @@ private:
     mutable uint32_t m_bindlessUavIndex = INVALID_BINDLESS_INDEX;
 };
 
-} /// @note namespace fbzz::renderer
+} // namespace fbzz::renderer

@@ -17,4 +17,4 @@ private:
     PipelineStateDesc m_desc;
 };
 
-} /// @note namespace fbzz::renderer
+} // namespace fbzz::renderer

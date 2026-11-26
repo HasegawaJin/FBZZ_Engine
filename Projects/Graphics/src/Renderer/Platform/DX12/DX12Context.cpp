@@ -9,7 +9,6 @@
 #include "../GpuValidation.hpp"
 
 #include <Core/Logger/Logger.hpp>
-#include <Core/Util/HResult.hpp>
 #include <Core/Profiler/ProfileScope.hpp>
 #include <Graphics/Renderer/Platform/RuntimePackageValidation.hpp>
 #include <Core/Util/StringUtils.hpp>
@@ -39,14 +38,19 @@ constexpr size_t BUFFER_COPY_ARENA_BYTES_PER_FRAME = 4u * 1024u * 1024u;
 void EmitPixEvent(ID3D12GraphicsCommandList* commands, bool begin,
                   uint64_t color, const std::string& name)
 {
-    if (begin) PIXBeginEvent(commands, color, "%s", name.c_str());
-    else PIXEndEvent(commands);
+    if (begin) {
+        PIXBeginEvent(commands, color, "%s", name.c_str());
+    }
+    else {
+        PIXEndEvent(commands);
+    }
 }
 
 bool CheckResult(HRESULT result, const char* operation)
 {
-    if (SUCCEEDED(result))
+    if (SUCCEEDED(result)) {
         return true;
+    }
     FBZZ_LOG_ERROR("DX12Context: %s に失敗しました (HRESULT=0x%08X)", operation,
                    static_cast<unsigned int>(result));
     return false;
@@ -78,7 +82,7 @@ void LogLoadedRuntime()
     }
 }
 
-} /// @note namespace
+} // namespace
 
 DX12Context::~DX12Context()
 {
@@ -89,32 +93,44 @@ void DX12Context::RetainPreparedSkinning(std::shared_ptr<const PreparedSkinningT
 {
     if (m_frameOpen && ticket) {
         auto& owners = m_frames[m_frameIndex].preparedSkinning;
-        if (owners.empty() || owners.back() != ticket) owners.push_back(std::move(ticket));
+        if (owners.empty() || owners.back() != ticket) {
+            owners.push_back(std::move(ticket));
+        }
     }
 }
 
 uint64_t DX12Context::BeginPixEvent(ID3D12GraphicsCommandList* commands,
                                    std::string_view name, uint64_t color)
 {
-    if (!commands) return 0;
+    if (!commands) {
+        return 0;
+    }
     const auto emit = [commands](bool begin, uint64_t eventColor, const std::string& eventName) {
         EmitPixEvent(commands, begin, eventColor, eventName);
     };
-    if (commands == m_computeList.Get() && m_computeListOpen)
+    if (commands == m_computeList.Get() && m_computeListOpen) {
         return m_computePixEvents.Begin(name, color, emit);
-    if (commands == m_commandList.Get() && m_frameOpen)
+    }
+    if (commands == m_commandList.Get() && m_frameOpen) {
         return m_graphicsPixEvents.Begin(name, color, emit);
+    }
     return 0;
 }
 
 void DX12Context::EndPixEvent(ID3D12GraphicsCommandList* commands, uint64_t token)
 {
-    if (!commands || token == 0) return;
+    if (!commands || token == 0) {
+        return;
+    }
     const auto emit = [commands](bool begin, uint64_t color, const std::string& name) {
         EmitPixEvent(commands, begin, color, name);
     };
-    if (commands == m_computeList.Get()) m_computePixEvents.End(token, emit);
-    else if (commands == m_commandList.Get()) m_graphicsPixEvents.End(token, emit);
+    if (commands == m_computeList.Get()) {
+        m_computePixEvents.End(token, emit);
+    }
+    else if (commands == m_commandList.Get()) {
+        m_graphicsPixEvents.End(token, emit);
+    }
 }
 
 bool DX12Context::Initialize(HWND hwnd, uint32_t width, uint32_t height)
@@ -137,12 +153,14 @@ bool DX12Context::Initialize(HWND hwnd, uint32_t width, uint32_t height)
         FBZZ_LOG_ERROR("DX12Context: FBZZ_GPU_VALIDATION=1 requires D3D12/d3d12SDKLayers.dll beside the host");
         return false;
     }
-    if (!gpuvalidation::InitializeD3D12()) return false;
+    if (!gpuvalidation::InitializeD3D12()) {
+        return false;
+    }
     FBZZ_LOG_INFO("DX12Context: requested Agility %s (SDK=%u), validation=%s",
         runtimecontract::PACKAGE_VERSION, runtimecontract::SDK_VERSION, gpuvalidation::IsActive() ? "active" : "inactive");
 
-    /// @note 各ステップの成否をログに残す。起動時サイレントクラッシュの切り分け用に、
-    /// @note       「直前に出た INFO の次の段階で落ちている」と特定できるようにする。
+    // 各ステップの成否をログに残す。起動時サイレントクラッシュの切り分け用に、
+    // 「直前に出た INFO の次の段階で落ちている」と特定できるようにする。
     if (!CreateFactoryAndDevice(hwnd)) { FBZZ_LOG_ERROR("DX12Context: CreateFactoryAndDevice 失敗"); return false; }
     FBZZ_LOG_INFO("DX12Context: [1/6] Factory/Device/Queue OK");
     if (!CreateSwapChain(hwnd))        { FBZZ_LOG_ERROR("DX12Context: CreateSwapChain 失敗"); return false; }
@@ -154,8 +172,10 @@ bool DX12Context::Initialize(HWND hwnd, uint32_t width, uint32_t height)
     if (!CreateDepthBuffer())          { FBZZ_LOG_ERROR("DX12Context: CreateDepthBuffer 失敗"); return false; }
     FBZZ_LOG_INFO("DX12Context: [5/6] Depth Buffer OK");
     if (!CreateCommandsAndFence())     { FBZZ_LOG_ERROR("DX12Context: CreateCommandsAndFence 失敗"); return false; }
-    /// @note 確保できないときは転送ごとの Upload Heap で継続する。
-    (void)m_bufferCopyArena.Initialize(m_device.Get(), BUFFER_COPY_ARENA_BYTES_PER_FRAME);
+    // 確保できないときは転送ごとの Upload Heap で継続する。
+    // バッファー転送は固定予算を保ち、超過分は従来どおりフェンス付きの一時転送へ回す。
+    (void)m_bufferCopyArena.Initialize(m_device.Get(), BUFFER_COPY_ARENA_BYTES_PER_FRAME,
+        BUFFER_COPY_ARENA_BYTES_PER_FRAME);
     FBZZ_LOG_INFO("DX12Context: [6/6] Commands/Fence OK — Initialize 完了");
     return true;
 }
@@ -165,8 +185,9 @@ bool DX12Context::CreateFactoryAndDevice(HWND hwnd)
     (void)hwnd;
     UINT flags = 0;
 #if defined(FBZZ_GPU_VALIDATION)
-    if (gpuvalidation::IsActive())
+    if (gpuvalidation::IsActive()) {
         flags |= DXGI_CREATE_FACTORY_DEBUG;
+    }
 #endif
     HRESULT factoryResult = CreateDXGIFactory2(flags, IID_PPV_ARGS(&m_factory));
 #if defined(FBZZ_GPU_VALIDATION)
@@ -175,29 +196,31 @@ bool DX12Context::CreateFactoryAndDevice(HWND hwnd)
             FBZZ_LOG_ERROR("DX12Context: explicitly requested DXGI validation unavailable (HRESULT=0x%08X)", static_cast<unsigned int>(factoryResult));
             return false;
         }
-        /// @note 検証つきの Factory は «グラフィックス ツール» が入っていない機械では作れない。
-        /// @note       検証が無いだけで動く構成を、起動できない構成にしない。
+        // 検証つきの Factory は «グラフィックス ツール» が入っていない機械では作れない。
+        // 検証が無いだけで動く構成を、起動できない構成にしない。
         FBZZ_LOG_WARN("DX12Context: 検証つき DXGI Factory を作れません "
                       "(オプション機能「グラフィックス ツール」未導入?)。検証なしで続行します");
         flags &= ~static_cast<UINT>(DXGI_CREATE_FACTORY_DEBUG);
         factoryResult = CreateDXGIFactory2(flags, IID_PPV_ARGS(&m_factory));
     }
 #endif
-    if (!CheckResult(factoryResult, "DXGI Factory の生成"))
+    if (!CheckResult(factoryResult, "DXGI Factory の生成")) {
         return false;
+    }
     FBZZ_LOG_INFO("DX12Context: DXGI Factory 生成 OK (flags=0x%X)", flags);
 
     Microsoft::WRL::ComPtr<IDXGIAdapter1> adapter;
     HRESULT deviceResult = S_OK;
     const auto createDevice = [this, &deviceResult](IDXGIAdapter* candidate) {
         deviceResult = D3D12CreateDevice(candidate, D3D_FEATURE_LEVEL_11_0, IID_PPV_ARGS(&m_device));
-        if (deviceResult == D3D12_ERROR_INVALID_REDIST)
+        if (deviceResult == D3D12_ERROR_INVALID_REDIST) {
             FBZZ_LOG_ERROR("DX12Context: D3D12_ERROR_INVALID_REDIST; requested Agility=%s SDK=%u path=%s HRESULT=0x%08X",
                 runtimecontract::PACKAGE_VERSION, runtimecontract::SDK_VERSION, runtimecontract::SDK_PATH,
                 static_cast<unsigned int>(deviceResult));
+        }
         return SUCCEEDED(deviceResult);
     };
-    /// @note --warp はソフトウェアラスタライザ。GPU の無い CI で Playtest を回すための口 (Docs/design/ai-verification-loop.md)。
+    // --warp はソフトウェアラスタライザ。GPU の無い CI で Playtest を回すための口 (Docs/design/ai-verification-loop.md)。
     if (wcsstr(GetCommandLineW(), L"--warp") != nullptr) {
         Microsoft::WRL::ComPtr<IDXGIAdapter> warp;
         if (SUCCEEDED(m_factory->EnumWarpAdapter(IID_PPV_ARGS(&warp)))
@@ -219,7 +242,9 @@ bool DX12Context::CreateFactoryAndDevice(HWND hwnd)
                           static_cast<unsigned long long>(desc.DedicatedVideoMemory / (1024ull * 1024ull)));
             break;
         }
-        if (deviceResult == D3D12_ERROR_INVALID_REDIST) return false;
+        if (deviceResult == D3D12_ERROR_INVALID_REDIST) {
+            return false;
+        }
         adapter.Reset();
     }
     if (!m_device && !createDevice(nullptr)) {
@@ -230,7 +255,7 @@ bool DX12Context::CreateFactoryAndDevice(HWND hwnd)
     LogLoadedRuntime();
     Microsoft::WRL::ComPtr<IDXGIAdapter1> selectedAdapter;
     LARGE_INTEGER driverVersion{};
-    /// @note IDXGIDevice の UMD 版は WDDM 2.3 以降 D3D9 / 11 / 12 の共通ドライバー版を返す。
+    // IDXGIDevice の UMD 版は WDDM 2.3 以降 D3D9 / 11 / 12 の共通ドライバー版を返す。
     /// @see https://learn.microsoft.com/windows/win32/api/dxgi/nf-dxgi-idxgiadapter-checkinterfacesupport pUMDVersion.
     if (SUCCEEDED(m_factory->EnumAdapterByLuid(m_device->GetAdapterLuid(), IID_PPV_ARGS(&selectedAdapter)))
         && SUCCEEDED(selectedAdapter->CheckInterfaceSupport(__uuidof(IDXGIDevice), &driverVersion))) {
@@ -241,8 +266,8 @@ bool DX12Context::CreateFactoryAndDevice(HWND hwnd)
         FBZZ_LOG_INFO("DX12Context: driver version=unavailable");
     }
 
-    /// @note OS/runtime は未知の Shader Model を `E_INVALIDARG` で拒否するため新しい順に照会する。
-    /// @note       コンパイル可能な SM と実機で実行可能な SM は別物で、DXR パスの安全な縮退に使う。
+    // OS/runtime は未知の Shader Model を `E_INVALIDARG` で拒否するため新しい順に照会する。
+    // コンパイル可能な SM と実機で実行可能な SM は別物で、DXR パスの安全な縮退に使う。
     constexpr D3D_SHADER_MODEL shaderModels[] = {
         D3D_SHADER_MODEL_6_8, D3D_SHADER_MODEL_6_7, D3D_SHADER_MODEL_6_6,
         D3D_SHADER_MODEL_6_5, D3D_SHADER_MODEL_6_4, D3D_SHADER_MODEL_6_3,
@@ -259,22 +284,25 @@ bool DX12Context::CreateFactoryAndDevice(HWND hwnd)
     }
     D3D12_FEATURE_DATA_D3D12_OPTIONS5 raytracingOptions{};
     if (SUCCEEDED(m_device->CheckFeatureSupport(
-            D3D12_FEATURE_D3D12_OPTIONS5, &raytracingOptions, sizeof(raytracingOptions))))
+            D3D12_FEATURE_D3D12_OPTIONS5, &raytracingOptions, sizeof(raytracingOptions)))) {
         m_raytracingTier = raytracingOptions.RaytracingTier;
+    }
 
     /// @see https://learn.microsoft.com/en-us/windows/win32/api/d3d12/ns-d3d12-d3d12_feature_data_d3d12_options7 MeshShaderTier.
     D3D12_FEATURE_DATA_D3D12_OPTIONS7 meshOptions{};
     if (SUCCEEDED(m_device->CheckFeatureSupport(
-            D3D12_FEATURE_D3D12_OPTIONS7, &meshOptions, sizeof(meshOptions))))
+            D3D12_FEATURE_D3D12_OPTIONS7, &meshOptions, sizeof(meshOptions)))) {
         m_meshShaderTier = meshOptions.MeshShaderTier;
+    }
 
-    /// @note bindless (`ResourceDescriptorHeap`) は «SM 6.6 以上» と «Resource Binding Tier 3»
-    /// @note       の両方が要る。片方でも欠けるとルートシグネチャの生成自体が `E_INVALIDARG` で
-    /// @note       落ちるため、フラグを立てる前に実機能力で確定させる。
+    // bindless (`ResourceDescriptorHeap`) は «SM 6.6 以上» と «Resource Binding Tier 3»
+    // の両方が要る。片方でも欠けるとルートシグネチャの生成自体が `E_INVALIDARG` で
+    // 落ちるため、フラグを立てる前に実機能力で確定させる。
     D3D12_FEATURE_DATA_D3D12_OPTIONS bindingOptions{};
     if (SUCCEEDED(m_device->CheckFeatureSupport(
-            D3D12_FEATURE_D3D12_OPTIONS, &bindingOptions, sizeof(bindingOptions))))
+            D3D12_FEATURE_D3D12_OPTIONS, &bindingOptions, sizeof(bindingOptions)))) {
         m_resourceBindingTier = bindingOptions.ResourceBindingTier;
+    }
 
     const unsigned int shaderModelMajor = (static_cast<unsigned int>(m_highestShaderModel) >> 4u) & 0xFu;
     const unsigned int shaderModelMinor = static_cast<unsigned int>(m_highestShaderModel) & 0xFu;
@@ -294,9 +322,9 @@ bool DX12Context::CreateFactoryAndDevice(HWND hwnd)
                        "この GPU / ドライバーでは起動できません (DirectX 11 サポートは v1.0 で終了)");
         return false;
     }
-    /// @note マテリアルシェーダーは `ResourceDescriptorHeap` を `FBZZ_TEX2D` 経由で無条件に引く。
-    /// @note       非対応のまま起動を許すと、原因が見えない «何も貼られていない» 描画になるため、
-    /// @note       起動時に不足を名指しして止める。
+    // マテリアルシェーダーは `ResourceDescriptorHeap` を `FBZZ_TEX2D` 経由で無条件に引く。
+    // 非対応のまま起動を許すと、原因が見えない «何も貼られていない» 描画になるため、
+    // 起動時に不足を名指しして止める。
     if (!SupportsBindless()) {
         FBZZ_LOG_ERROR("DX12Context: このエンジンは bindless (Resource Binding Tier 3) を要求します。"
                        "この GPU / ドライバーは Tier %u までです (Docs/design/bindless.md)",
@@ -307,12 +335,12 @@ bool DX12Context::CreateFactoryAndDevice(HWND hwnd)
 #if defined(FBZZ_GPU_VALIDATION)
     Microsoft::WRL::ComPtr<ID3D12InfoQueue> infoQueue;
     if (gpuvalidation::IsActive() && SUCCEEDED(m_device.As(&infoQueue))) {
-        /// @note DX11 と同じ方針: 検証は維持し読み出しは終了時の 1 回だけにする。D3D12 は
-        /// @note       リソース遷移・ディスクリプタ操作の通知が多く、毎フレーム読み出すと
-        /// @note       Development/Debug の CPU コストが Release と大きく離れる。
+        // DX11 と同じ方針: 検証は維持し読み出しは終了時の 1 回だけにする。D3D12 は
+        // リソース遷移・ディスクリプタ操作の通知が多く、毎フレーム読み出すと
+        // Development/Debug の CPU コストが Release と大きく離れる。
         const BOOL breakOnError = gpuvalidation::ShouldBreakOnError() ? TRUE : FALSE;
-        /// @note メッセージ 1 件ごとの `OutputDebugString` はデバッガー接続時ミリ秒級のため、
-        /// @note       溜めて `Shutdown()` で一度に読む (DX11 側と同じ理由)。
+        // メッセージ 1 件ごとの `OutputDebugString` はデバッガー接続時ミリ秒級のため、
+        // 溜めて `Shutdown()` で一度に読む (DX11 側と同じ理由)。
         infoQueue->SetMuteDebugOutput(TRUE);
         infoQueue->SetMessageCountLimit(
             static_cast<UINT64>(gpuvalidation::kMaxStoredMessages));
@@ -323,7 +351,7 @@ bool DX12Context::CreateFactoryAndDevice(HWND hwnd)
         infoQueue->SetBreakOnSeverity(D3D12_MESSAGE_SEVERITY_INFO, FALSE);
         infoQueue->SetBreakOnSeverity(D3D12_MESSAGE_SEVERITY_MESSAGE, FALSE);
 
-        /// @note WARNING 以上は残す (解放漏れ・状態違反はここに出る)。実況になる 2 つだけ止める。
+        // WARNING 以上は残す (解放漏れ・状態違反はここに出る)。実況になる 2 つだけ止める。
         D3D12_MESSAGE_SEVERITY denySeverities[] = {
             D3D12_MESSAGE_SEVERITY_INFO,
             D3D12_MESSAGE_SEVERITY_MESSAGE,
@@ -338,8 +366,9 @@ bool DX12Context::CreateFactoryAndDevice(HWND hwnd)
     D3D12_COMMAND_QUEUE_DESC queueDesc{};
     queueDesc.Type = D3D12_COMMAND_LIST_TYPE_DIRECT;
     if (!CheckResult(m_device->CreateCommandQueue(&queueDesc, IID_PPV_ARGS(&m_commandQueue)),
-                     "Direct Queue の生成"))
+                     "Direct Queue の生成")) {
         return false;
+    }
 
     BOOL tearing = FALSE;
     m_allowTearing = SUCCEEDED(m_factory->CheckFeatureSupport(
@@ -363,8 +392,9 @@ bool DX12Context::CreateSwapChain(HWND hwnd)
 
     Microsoft::WRL::ComPtr<IDXGISwapChain1> swapChain;
     if (!CheckResult(m_factory->CreateSwapChainForHwnd(
-            m_commandQueue.Get(), hwnd, &desc, nullptr, nullptr, &swapChain), "SwapChain の生成"))
+            m_commandQueue.Get(), hwnd, &desc, nullptr, nullptr, &swapChain), "SwapChain の生成")) {
         return false;
+    }
     m_factory->MakeWindowAssociation(hwnd, DXGI_MWA_NO_ALT_ENTER);
     return CheckResult(swapChain.As(&m_swapChain), "IDXGISwapChain3 の取得");
 }
@@ -374,30 +404,34 @@ bool DX12Context::CreateDescriptorHeaps()
     D3D12_DESCRIPTOR_HEAP_DESC rtvDesc{};
     rtvDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_RTV;
     rtvDesc.NumDescriptors = BACK_BUFFER_COUNT;
-    if (!CheckResult(m_device->CreateDescriptorHeap(&rtvDesc, IID_PPV_ARGS(&m_rtvHeap)), "RTV Heap の生成"))
+    if (!CheckResult(m_device->CreateDescriptorHeap(&rtvDesc, IID_PPV_ARGS(&m_rtvHeap)), "RTV Heap の生成")) {
         return false;
+    }
 
     D3D12_DESCRIPTOR_HEAP_DESC dsvDesc{};
     dsvDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_DSV;
     dsvDesc.NumDescriptors = 1;
-    if (!CheckResult(m_device->CreateDescriptorHeap(&dsvDesc, IID_PPV_ARGS(&m_dsvHeap)), "DSV Heap の生成"))
+    if (!CheckResult(m_device->CreateDescriptorHeap(&dsvDesc, IID_PPV_ARGS(&m_dsvHeap)), "DSV Heap の生成")) {
         return false;
+    }
 
     D3D12_DESCRIPTOR_HEAP_DESC srvDesc{};
     srvDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
     srvDesc.NumDescriptors = IMGUI_DESCRIPTOR_CAPACITY;
     srvDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
-    if (!CheckResult(m_device->CreateDescriptorHeap(&srvDesc, IID_PPV_ARGS(&m_imguiSrvHeap)), "ImGui SRV Heap の生成"))
+    if (!CheckResult(m_device->CreateDescriptorHeap(&srvDesc, IID_PPV_ARGS(&m_imguiSrvHeap)), "ImGui SRV Heap の生成")) {
         return false;
+    }
 
-    /// @note bindless 一本になったので、このヒープは永続レンジそのもの。
-    /// @note       添字はヒープ先頭からの位置 (`BINDLESS_HEAP_BASE` = 0)。
+    // bindless 一本になったので、このヒープは永続レンジそのもの。
+    // 添字はヒープ先頭からの位置 (`BINDLESS_HEAP_BASE` = 0)。
     srvDesc.NumDescriptors = BINDLESS_HEAP_BASE + BINDLESS_DESCRIPTOR_CAPACITY;
-    if (!CheckResult(m_device->CreateDescriptorHeap(&srvDesc, IID_PPV_ARGS(&m_resourceSrvHeap)), "Resource SRV Heap の生成"))
+    if (!CheckResult(m_device->CreateDescriptorHeap(&srvDesc, IID_PPV_ARGS(&m_resourceSrvHeap)), "Resource SRV Heap の生成")) {
         return false;
+    }
 
-    /// @note bindless では «束縛されていない» を添字 `INVALID_BINDLESS_INDEX` で表すため、
-    /// @note       null ビューは要らない。
+    // bindless では «束縛されていない» を添字 `INVALID_BINDLESS_INDEX` で表すため、
+    // null ビューは要らない。
 
     m_srvIncrement = m_device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
 
@@ -410,8 +444,9 @@ bool DX12Context::CreateBackBuffers()
     D3D12_CPU_DESCRIPTOR_HANDLE handle = m_rtvHeap->GetCPUDescriptorHandleForHeapStart();
     for (uint32_t index = 0; index < BACK_BUFFER_COUNT; ++index) {
         if (!CheckResult(m_swapChain->GetBuffer(index, IID_PPV_ARGS(&m_backBuffers[index])),
-                         "BackBuffer の取得"))
+                         "BackBuffer の取得")) {
             return false;
+        }
         m_device->CreateRenderTargetView(m_backBuffers[index].Get(), nullptr, handle);
         handle.ptr += m_rtvIncrement;
     }
@@ -438,8 +473,9 @@ bool DX12Context::CreateDepthBuffer()
     clear.DepthStencil.Depth = 1.0f;
     if (!CheckResult(m_device->CreateCommittedResource(
             &heap, D3D12_HEAP_FLAG_NONE, &desc, D3D12_RESOURCE_STATE_DEPTH_WRITE, &clear,
-            IID_PPV_ARGS(&m_depthBuffer)), "DepthBuffer の生成"))
+            IID_PPV_ARGS(&m_depthBuffer)), "DepthBuffer の生成")) {
         return false;
+    }
     m_device->CreateDepthStencilView(m_depthBuffer.Get(), nullptr, GetDsv());
     return true;
 }
@@ -472,32 +508,42 @@ bool DX12Context::CreateCommandsAndFence()
 
     for (FrameResource& frame : m_frames) {
         if (!CheckResult(m_device->CreateCommandAllocator(
-                D3D12_COMMAND_LIST_TYPE_DIRECT, IID_PPV_ARGS(&frame.allocator)), "CommandAllocator の生成"))
+                D3D12_COMMAND_LIST_TYPE_DIRECT, IID_PPV_ARGS(&frame.allocator)), "CommandAllocator の生成")) {
             return false;
+        }
     }
     if (!CheckResult(m_device->CreateCommandList(0, D3D12_COMMAND_LIST_TYPE_DIRECT,
-            m_frames[0].allocator.Get(), nullptr, IID_PPV_ARGS(&m_commandList)), "CommandList の生成"))
+            m_frames[0].allocator.Get(), nullptr, IID_PPV_ARGS(&m_commandList)), "CommandList の生成")) {
         return false;
+    }
     m_commandList->Close();
-    if (!CheckResult(m_device->CreateFence(0, D3D12_FENCE_FLAG_NONE, IID_PPV_ARGS(&m_fence)), "Fence の生成"))
+    if (!CheckResult(m_device->CreateFence(0, D3D12_FENCE_FLAG_NONE, IID_PPV_ARGS(&m_fence)), "Fence の生成")) {
         return false;
+    }
     m_fenceEvent = CreateEventW(nullptr, FALSE, FALSE, nullptr);
-    if (m_fenceEvent == nullptr) return false;
-    if (!CheckResult(m_device->CreateFence(0, D3D12_FENCE_FLAG_NONE,
-            IID_PPV_ARGS(&m_synchronousFence)), "Synchronous Fence の生成"))
+    if (m_fenceEvent == nullptr) {
         return false;
+    }
+    if (!CheckResult(m_device->CreateFence(0, D3D12_FENCE_FLAG_NONE,
+            IID_PPV_ARGS(&m_synchronousFence)), "Synchronous Fence の生成")) {
+        return false;
+    }
     m_synchronousFenceEvent = CreateEventW(nullptr, FALSE, FALSE, nullptr);
-    if (m_synchronousFenceEvent == nullptr) return false;
+    if (m_synchronousFenceEvent == nullptr) {
+        return false;
+    }
     m_nextSynchronousFenceValue = 1;
 
-    /// @note 非同期テクスチャ転送の専用コピーキュー。作れなくても起動は止めず、描画キューでの転送へ倒す。
-    /// @note       `FBZZ_COPY_QUEUE=0` で使わない構成を試せる (検証レイヤーでの切り分け用)。
+    // 非同期テクスチャ転送の専用コピーキュー。作れなくても起動は止めず、描画キューでの転送へ倒す。
+    // `FBZZ_COPY_QUEUE=0` で使わない構成を試せる (検証レイヤーでの切り分け用)。
     D3D12_COMMAND_QUEUE_DESC copyDesc{};
     copyDesc.Type = D3D12_COMMAND_LIST_TYPE_COPY;
     if (SUCCEEDED(m_device->CreateCommandQueue(&copyDesc, IID_PPV_ARGS(&m_copyQueue)))
         && SUCCEEDED(m_device->CreateFence(0, D3D12_FENCE_FLAG_NONE, IID_PPV_ARGS(&m_copyFence)))) {
         wchar_t value[8]{};
-        if (GetEnvironmentVariableW(L"FBZZ_COPY_QUEUE", value, 8) > 0 && value[0] == L'0') m_useCopyQueue = false;
+        if (GetEnvironmentVariableW(L"FBZZ_COPY_QUEUE", value, 8) > 0 && value[0] == L'0') {
+            m_useCopyQueue = false;
+        }
         FBZZ_LOG_INFO("DX12Context: コピーキュー %s", m_useCopyQueue ? "有効" : "無効 (FBZZ_COPY_QUEUE=0)");
     } else {
         m_copyQueue.Reset();
@@ -505,9 +551,9 @@ bool DX12Context::CreateCommandsAndFence()
         FBZZ_LOG_WARN("DX12Context: コピーキューを作れません。テクスチャ転送は描画キューで行います");
     }
 
-    /// @note 画面空間 Compute をジオメトリ描画と重ねるためのキュー。使うかどうかを決めるのは
-    /// @note       RenderSettings::asyncCompute (既定 false) で、ここは «機械が持っているか» だけを見る。
-    /// @note       `FBZZ_ASYNC_COMPUTE=0` は機械側の強制停止 (検証レイヤーでの切り分け用)。
+    // 画面空間 Compute をジオメトリ描画と重ねるためのキュー。使うかどうかを決めるのは
+    // RenderSettings::asyncCompute (既定 false) で、ここは «機械が持っているか» だけを見る。
+    // `FBZZ_ASYNC_COMPUTE=0` は機械側の強制停止 (検証レイヤーでの切り分け用)。
     /// @see Docs/design/async-compute.md
     D3D12_COMMAND_QUEUE_DESC computeDesc{};
     computeDesc.Type = D3D12_COMMAND_LIST_TYPE_COMPUTE;
@@ -526,19 +572,24 @@ bool DX12Context::CreateCommandsAndFence()
         computeReady = SUCCEEDED(m_device->CreateCommandList(
             0, D3D12_COMMAND_LIST_TYPE_COMPUTE, m_computeAllocators[0].Get(), nullptr,
             IID_PPV_ARGS(&m_computeList)));
-        if (computeReady) m_computeList->Close();
+        if (computeReady) {
+            m_computeList->Close();
+        }
     }
     if (computeReady) {
         wchar_t value[8]{};
-        if (GetEnvironmentVariableW(L"FBZZ_ASYNC_COMPUTE", value, 8) > 0 && value[0] == L'0')
+        if (GetEnvironmentVariableW(L"FBZZ_ASYNC_COMPUTE", value, 8) > 0 && value[0] == L'0') {
             m_useAsyncCompute = false;
+        }
         FBZZ_LOG_INFO("DX12Context: コンピュートキュー %s",
                       m_useAsyncCompute ? "利用可" : "無効 (FBZZ_ASYNC_COMPUTE=0)");
     } else {
         m_computeQueue.Reset();
         m_computeFence.Reset();
         m_computeList.Reset();
-        for (auto& allocator : m_computeAllocators) allocator.Reset();
+        for (auto& allocator : m_computeAllocators) {
+            allocator.Reset();
+        }
         FBZZ_LOG_WARN("DX12Context: コンピュートキューを作れません。Compute は描画キューで行います");
     }
     return true;
@@ -546,32 +597,37 @@ bool DX12Context::CreateCommandsAndFence()
 
 uint64_t DX12Context::SplitGraphicsList()
 {
-    if (!m_frameOpen) return 0;
+    if (!m_frameOpen || m_computeListOpen) {
+        return 0;
+    }
     const auto emit = [this](bool begin, uint64_t color, const std::string& name) {
         EmitPixEvent(m_commandList.Get(), begin, color, name);
     };
-    /// @note PIX GPU scopes may not span lists; only logical names survive a successful Reset.
+    // PIX GPU scopes may not span lists; only logical names survive a successful Reset.
     /// @see https://learn.microsoft.com/en-us/windows/win32/api/d3d12/nf-d3d12-id3d12graphicscommandlist-close Command-list recording boundary.
     m_graphicsPixEvents.Suspend(emit);
     if (!CheckResult(m_commandList->Close(), "CommandList::Close (分割)")) {
-        m_graphicsPixEvents.Discard(emit);
+        AbortFrameRecording();
+        (void)SignalFrameFence();
         return 0;
     }
 
     ID3D12CommandList* lists[] = { m_commandList.Get() };
     m_commandQueue->ExecuteCommandLists(1, lists);
-    const uint64_t value = m_nextFenceValue++;
-    m_commandQueue->Signal(m_fence.Get(), value);
-
-    /// @note アロケーターは Reset しない。投入したリストがまだその記録メモリを読んでいる。
-    if (!CheckResult(m_commandList->Reset(m_frames[m_frameIndex].allocator.Get(), nullptr),
-                     "CommandList::Reset (分割)")) {
-        /// @note ここで失敗するとフレームの記録先が閉じたままになる。以降の記録を捨てる。
-        m_frameOpen = false;
-        m_graphicsPixEvents.Discard(emit);
+    // 次の Reset が失敗しても、投入済みの描画と先行するコンピュートの待機を回収できるようにする。
+    const uint64_t value = SignalFrameFence();
+    if (value == 0) {
+        AbortFrameRecording();
         return 0;
     }
-    /// @note Reset で全パイプライン状態が落ちた。束縛の記憶を持つ側へ知らせる。
+
+    // アロケーターは Reset しない。投入したリストがまだその記録メモリを読んでいる。
+    if (!CheckResult(m_commandList->Reset(m_frames[m_frameIndex].allocator.Get(), nullptr),
+                     "CommandList::Reset (分割)")) {
+        AbortFrameRecording();
+        return 0;
+    }
+    // Reset で全パイプライン状態が落ちた。束縛の記憶を持つ側へ知らせる。
     ++m_graphicsCommandListSerial;
     MarkPipelineStateDirty();
     m_graphicsPixEvents.Resume(emit);
@@ -580,12 +636,19 @@ uint64_t DX12Context::SplitGraphicsList()
 
 ID3D12GraphicsCommandList* DX12Context::BeginComputeList(uint64_t waitGraphicsFenceValue)
 {
-    if (!SupportsAsyncCompute() || m_computeListOpen || !m_frameOpen) return nullptr;
-    if (!CheckResult(m_computeList->Reset(m_computeAllocators[m_frameIndex].Get(), nullptr),
-                     "ComputeList::Reset"))
+    if (!SupportsAsyncCompute() || m_computeListOpen || !m_frameOpen) {
         return nullptr;
-    if (waitGraphicsFenceValue != 0)
-        m_computeQueue->Wait(m_fence.Get(), waitGraphicsFenceValue);
+    }
+    if (!CheckResult(m_computeList->Reset(m_computeAllocators[m_frameIndex].Get(), nullptr),
+                     "ComputeList::Reset")) {
+        return nullptr;
+    }
+    if (waitGraphicsFenceValue != 0 && !CheckResult(m_computeQueue->Wait(m_fence.Get(), waitGraphicsFenceValue),
+            "ComputeQueue::Wait (graphics)")) {
+        // 投入前なので、この区間は描画キューで記録し直せる。
+        (void)CheckResult(m_computeList->Close(), "ComputeList::Close (wait failed)");
+        return nullptr;
+    }
     m_computeListOpen = true;
     m_computePixEvents.Resume([this](bool begin, uint64_t color, const std::string& name) {
         EmitPixEvent(m_computeList.Get(), begin, color, name);
@@ -595,61 +658,119 @@ ID3D12GraphicsCommandList* DX12Context::BeginComputeList(uint64_t waitGraphicsFe
 
 void DX12Context::EndComputeList()
 {
-    if (!m_computeListOpen) return;
+    if (!m_computeListOpen) {
+        return;
+    }
     m_computePixEvents.Discard([this](bool begin, uint64_t color, const std::string& name) {
         EmitPixEvent(m_computeList.Get(), begin, color, name);
     });
     m_computeListOpen = false;
-    if (!CheckResult(m_computeList->Close(), "ComputeList::Close")) return;
+    if (!CheckResult(m_computeList->Close(), "ComputeList::Close")) {
+        AbortFrameRecording();
+        (void)SignalFrameFence();
+        return;
+    }
 
     ID3D12CommandList* lists[] = { m_computeList.Get() };
     m_computeQueue->ExecuteCommandLists(1, lists);
+    m_computeSubmissionPending = true;
+    if (!JoinSubmittedCompute()) {
+        AbortFrameRecording();
+    }
+}
+
+bool DX12Context::JoinSubmittedCompute()
+{
+    if (!m_computeSubmissionPending) {
+        return true;
+    }
+
     const uint64_t value = m_nextComputeFenceValue++;
-    m_computeQueue->Signal(m_computeFence.Get(), value);
-    /// @note この後に投入される描画だけが待つ。区間の結果を読むのは区間より後の描画なので足りる。
-    m_commandQueue->Wait(m_computeFence.Get(), value);
+    if (!CheckResult(m_computeQueue->Signal(m_computeFence.Get(), value), "ComputeQueue::Signal")) {
+        return false;
+    }
+    // Signal できた値だけを待つ。以降の描画フェンスはコンピュート完了も含む。
+    if (!CheckResult(m_commandQueue->Wait(m_computeFence.Get(), value), "CommandQueue::Wait (compute)")) {
+        return false;
+    }
+    m_computeSubmissionPending = false;
+    return true;
+}
+
+uint64_t DX12Context::SignalFrameFence()
+{
+    const uint64_t value = m_nextFenceValue++;
+    if (!CheckResult(m_commandQueue->Signal(m_fence.Get(), value), "CommandQueue::Signal (frame)")) {
+        return 0;
+    }
+    m_frames[m_frameIndex].fenceValue = value;
+    return value;
+}
+
+void DX12Context::AbortFrameRecording()
+{
+    m_graphicsPixEvents.Discard([this](bool begin, uint64_t color, const std::string& name) {
+        EmitPixEvent(m_commandList.Get(), begin, color, name);
+    });
+    if (m_computeListOpen) {
+        m_computePixEvents.Discard([this](bool begin, uint64_t color, const std::string& name) {
+            EmitPixEvent(m_computeList.Get(), begin, color, name);
+        });
+        m_computeListOpen = false;
+    }
+
+    // 捨てたリストの遷移が CPU 側の追跡に残るため、同じコンテキストでの記録再開を止める。
+    m_frameOpen = false;
+    m_frameSubmissionFailed = true;
 }
 
 bool DX12Context::BeginFrame()
 {
     FBZZ_PROFILE_SCOPE("DX12Frame::Begin");
-    if (m_frameOpen || !m_swapChain || m_suspended)
+    if (m_frameOpen || m_frameSubmissionFailed || !m_swapChain || m_suspended) {
         return false;
-    /// @note 通常は遮蔽中の記録を止める。バッチの画面外出力では Present-test を迂回して処理を続ける。
+    }
+    // 通常は遮蔽中の記録を止める。バッチの画面外出力では Present-test を迂回して処理を続ける。
     if (m_occluded && !m_renderWhenOccluded) {
-        /// @note `DXGI_PRESENT_TEST` は実 Present せず可視性だけ確認する。
-        if (m_swapChain->Present(kPresentSyncIntervalNoVsync, DXGI_PRESENT_TEST) != S_OK)
+        // `DXGI_PRESENT_TEST` は実 Present せず可視性だけ確認する。
+        if (m_swapChain->Present(kPresentSyncIntervalNoVsync, DXGI_PRESENT_TEST) != S_OK) {
             return false;
+        }
         m_occluded = false;
     }
     if (m_resizePending) {
         const uint32_t width = m_pendingWidth;
         const uint32_t height = m_pendingHeight;
         m_resizePending = false;
-        if (!ApplyResize(width, height)) return false;
+        if (!ApplyResize(width, height)) {
+            return false;
+        }
     }
     FrameResource& frame = m_frames[m_frameIndex];
     {
         FBZZ_PROFILE_SCOPE("DX12Frame::WaitForFence");
-        WaitForFence(frame.fenceValue);
+        if (!WaitForFence(frame.fenceValue)) {
+            return false;
+        }
     }
     {
         FBZZ_PROFILE_SCOPE("DX12Frame::RetireResources");
         CollectDeferredReleases();
     }
+    // 描画フェンスがコンピュートの完了も含むので、両方のアロケーターを再利用できる。
+    if (auto* computeAllocator = m_computeAllocators[m_frameIndex].Get();
+        computeAllocator && !CheckResult(computeAllocator->Reset(), "ComputeAllocator::Reset")) {
+        return false;
+    }
+    if (!CheckResult(frame.allocator->Reset(), "CommandAllocator::Reset")
+        || !CheckResult(m_commandList->Reset(frame.allocator.Get(), nullptr), "CommandList::Reset")) {
+        return false;
+    }
     m_transientUploads[m_frameIndex].clear();
     m_bufferCopyArena.BeginFrame(m_frameIndex);
     frame.preparedSkinning.clear();
-    if (!CheckResult(frame.allocator->Reset(), "CommandAllocator::Reset")
-        || !CheckResult(m_commandList->Reset(frame.allocator.Get(), nullptr), "CommandList::Reset"))
-        return false;
     ++m_graphicsCommandListSerial;
     m_backBufferWritten = false;
-    /// @note このフレームのコンピュート用アロケーターもここで 1 回だけ巻き戻す。同じフレームの
-    /// @note       描画フェンスを待った後なので、そのフレームのコンピュートも既に終わっている
-    /// @note       (描画キューが区間の完了を待ってから最後の Signal を出すため)。
-    if (m_computeAllocators[m_frameIndex])
-        m_computeAllocators[m_frameIndex]->Reset();
     RecordPostCopyBarriers();
 
     m_backBufferIndex = m_swapChain->GetCurrentBackBufferIndex();
@@ -671,14 +792,23 @@ bool DX12Context::BeginFrame()
 uint64_t DX12Context::EndFrame()
 {
     FBZZ_PROFILE_SCOPE("DX12Frame::End");
-    if (!m_frameOpen)
+    if (!m_frameOpen) {
         return 0;
+    }
+    if (m_computeListOpen) {
+        FBZZ_LOG_ERROR("DX12Context: コンピュートの記録を閉じる前にフレームが終了しました");
+        AbortFrameRecording();
+        (void)SignalFrameFence();
+        return 0;
+    }
     TransitionBackBuffer(D3D12_RESOURCE_STATE_RENDER_TARGET, D3D12_RESOURCE_STATE_PRESENT);
     m_graphicsPixEvents.Discard([this](bool begin, uint64_t color, const std::string& name) {
         EmitPixEvent(m_commandList.Get(), begin, color, name);
     });
     if (!CheckResult(m_commandList->Close(), "CommandList::Close")) {
-        m_frameOpen = false;
+        AbortFrameRecording();
+        // 未提出の描画は捨てるが、既に積んだコンピュート待機まではフェンスで回収する。
+        (void)SignalFrameFence();
         return 0;
     }
     ID3D12CommandList* lists[] = {m_commandList.Get()};
@@ -686,12 +816,13 @@ uint64_t DX12Context::EndFrame()
         const profiler::frame_timeline::Scope timelineSubmit(profiler::frame_timeline::Event::QUEUE_SUBMIT);
         m_commandQueue->ExecuteCommandLists(1, lists);
     }
-    const uint64_t fenceValue = m_nextFenceValue++;
-    const HRESULT signalResult = m_commandQueue->Signal(m_fence.Get(), fenceValue);
+    const uint64_t fenceValue = SignalFrameFence();
+    if (fenceValue == 0) {
+        AbortFrameRecording();
+        return 0;
+    }
     m_frameOpen = false;
-    FBZZ_HR_CHECK(signalResult);
-    m_frames[m_frameIndex].fenceValue = fenceValue;
-    /// @note 画面外出力を継続する呼び手では、表示更新のないフレームも GPU 送信とフェンス更新は完了させる。
+    // 画面外出力を継続する呼び手では、表示更新のないフレームも GPU 送信とフェンス更新は完了させる。
     /// @see https://learn.microsoft.com/en-us/windows/win32/api/dxgi/nf-dxgi-idxgiswapchain-present Present submits the next image for display.
     if (m_renderWhenOccluded && !m_backBufferWritten) {
         m_frameIndex = (m_frameIndex + 1) % FRAME_COUNT;
@@ -706,7 +837,7 @@ uint64_t DX12Context::EndFrame()
         presentResult = m_swapChain->Present(syncInterval, presentFlags);
     }
     if (presentResult == DXGI_STATUS_OCCLUDED) {
-        /// @note 遮蔽開始。次フレームは `BeginFrame` の Present-test 復帰待ちへ回す (エラーではない)。
+        // 遮蔽開始。次フレームは `BeginFrame` の Present-test 復帰待ちへ回す (エラーではない)。
         m_occluded = true;
     } else if (FAILED(presentResult)) {
         const HRESULT removedReason = m_device ? m_device->GetDeviceRemovedReason() : presentResult;
@@ -722,7 +853,9 @@ uint64_t DX12Context::EndFrame()
 
 void DX12Context::Resize(uint32_t width, uint32_t height)
 {
-    if (!m_swapChain) return;
+    if (!m_swapChain) {
+        return;
+    }
     if (width == 0 || height == 0) {
         m_suspended = true;
         m_pendingWidth = width;
@@ -731,9 +864,9 @@ void DX12Context::Resize(uint32_t width, uint32_t height)
     }
     m_suspended = false;
     if (width == m_width && height == m_height) {
-        /// @note リサイズドラッグ中は 1 フレームに何度も `WM_SIZE` が届く。途中サイズで
-        /// @note       `m_resizePending` を立てた後に元の寸法へ戻された場合、ここで素通しすると
-        /// @note       古い中間サイズが次の `BeginFrame` で適用されてしまう。
+        // リサイズドラッグ中は 1 フレームに何度も `WM_SIZE` が届く。途中サイズで
+        // `m_resizePending` を立てた後に元の寸法へ戻された場合、ここで素通しすると
+        // 古い中間サイズが次の `BeginFrame` で適用されてしまう。
         m_resizePending = false;
         return;
     }
@@ -749,15 +882,21 @@ void DX12Context::Resize(uint32_t width, uint32_t height)
 
 bool DX12Context::ApplyResize(uint32_t width, uint32_t height)
 {
-    if (!m_swapChain || width == 0 || height == 0) return false;
-    Flush();
+    if (!m_swapChain || m_frameSubmissionFailed || width == 0 || height == 0) {
+        return false;
+    }
+    if (!TryFlush()) {
+        return false;
+    }
     m_depthBuffer.Reset();
-    for (auto& buffer : m_backBuffers)
+    for (auto& buffer : m_backBuffers) {
         buffer.Reset();
+    }
     const UINT flags = m_allowTearing ? DXGI_SWAP_CHAIN_FLAG_ALLOW_TEARING : 0;
     if (!CheckResult(m_swapChain->ResizeBuffers(BACK_BUFFER_COUNT, width, height, BACK_BUFFER_FORMAT, flags),
-                     "SwapChain::ResizeBuffers"))
+                     "SwapChain::ResizeBuffers")) {
         return false;
+    }
     m_width = width;
     m_height = height;
     return CreateBackBuffers() && CreateDepthBuffer();
@@ -765,16 +904,30 @@ bool DX12Context::ApplyResize(uint32_t width, uint32_t height)
 
 void DX12Context::Flush()
 {
-    if (!m_commandQueue || !m_fence)
-        return;
-    /// @note The open list is unsubmitted; completing its reserved retirement value would release recorded resources early.
+    (void)TryFlush();
+}
+
+bool DX12Context::TryFlush()
+{
+    if (!m_commandQueue || !m_fence) {
+        return false;
+    }
+    // The open list is unsubmitted; completing its reserved retirement value would release recorded resources early.
     if (m_frameOpen) {
-        WaitForSynchronousQueue();
-        return;
+        return WaitForSynchronousQueue();
+    }
+
+    // 同期に失敗したフレームの破棄時も、投入済みコンピュートを描画フェンスで待てるようにする。
+    if (m_frameSubmissionFailed) {
+        if (!JoinSubmittedCompute()) {
+            return false;
+        }
+        const uint64_t value = SignalFrameFence();
+        return value != 0 && WaitForFence(value);
     }
     const uint64_t value = m_nextFenceValue++;
-    if (SUCCEEDED(m_commandQueue->Signal(m_fence.Get(), value)))
-        WaitForFence(value);
+    return CheckResult(m_commandQueue->Signal(m_fence.Get(), value), "CommandQueue::Signal (flush)")
+        && WaitForFence(value);
 }
 
 void DX12Context::Shutdown()
@@ -786,8 +939,9 @@ void DX12Context::Shutdown()
         EmitPixEvent(m_commandList.Get(), begin, color, name);
     });
     m_computeListOpen = false;
-    if (m_commandQueue)
+    if (m_commandQueue) {
         Flush();
+    }
     FlushCopyQueue();
     m_pendingPostCopyBarriers.clear();
     m_copyFence.Reset();
@@ -801,10 +955,14 @@ void DX12Context::Shutdown()
         m_synchronousFenceEvent = nullptr;
     }
     m_frameOpen = false;
+    m_frameSubmissionFailed = false;
+    m_computeSubmissionPending = false;
     m_depthBuffer.Reset();
     m_dispatchMeshCommandSignature.Reset();
     m_drawIndexedCommandSignature.Reset();
-    for (auto& buffer : m_backBuffers) buffer.Reset();
+    for (auto& buffer : m_backBuffers) {
+        buffer.Reset();
+    }
     m_imguiSrvHeap.Reset();
     m_resourceSrvHeap.Reset();
     m_cpuResourceDescriptorPages.clear();
@@ -815,13 +973,19 @@ void DX12Context::Shutdown()
     m_fence.Reset();
     m_synchronousFence.Reset();
     m_commandList.Reset();
-    for (auto& frame : m_frames) { frame.preparedSkinning.clear(); frame.allocator.Reset(); }
-    for (auto& uploads : m_transientUploads) uploads.clear();
+    for (auto& frame : m_frames) {
+        frame.preparedSkinning.clear();
+        frame.allocator.Reset();
+        frame.fenceValue = 0;
+    }
+    for (auto& uploads : m_transientUploads) {
+        uploads.clear();
+    }
     m_bufferCopyArena.Shutdown();
     m_deferredResources.clear();
     m_pendingUploads.clear();
-    /// @note 永続 bindless の台帳もヒープと一緒に捨てる。残すと再初期化後に «存在しないヒープの
-    /// @note       添字» を配ってしまい、デバイスロストからの復帰で真っ黒に描画される形で出る。
+    // 永続 bindless の台帳もヒープと一緒に捨てる。残すと再初期化後に «存在しないヒープの
+    // 添字» を配ってしまい、デバイスロストからの復帰で真っ黒に描画される形で出る。
     m_bindlessNextSlot = 0;
     m_bindlessExhaustionReported = false;
     m_bindlessFreeList.clear();
@@ -830,11 +994,12 @@ void DX12Context::Shutdown()
     m_commandQueue.Reset();
 
 #if defined(FBZZ_GPU_VALIDATION)
-    /// @note デバイスを手放す前に、溜まった検証メッセージを回収する。
+    // デバイスを手放す前に、溜まった検証メッセージを回収する。
     if (m_device) {
         Microsoft::WRL::ComPtr<ID3D12InfoQueue> infoQueue;
-        if (SUCCEEDED(m_device.As(&infoQueue)))
+        if (SUCCEEDED(m_device.As(&infoQueue))) {
             gpuvalidation::DrainStoredMessages(*infoQueue.Get(), "DX12Context");
+        }
     }
 #endif
 
@@ -847,27 +1012,55 @@ void DX12Context::Shutdown()
 #endif
 }
 
-void DX12Context::WaitForFence(uint64_t value)
+bool DX12Context::WaitForFence(uint64_t value)
 {
-    if (value == 0 || m_fence->GetCompletedValue() >= value)
-        return;
+    if (!m_fence || !m_fenceEvent) {
+        return false;
+    }
+    // デバイス削除の通知は、フェンスが要求値に到達したという意味ではない。
+    /// @see https://learn.microsoft.com/en-us/windows/win32/api/d3d12/nf-d3d12-id3d12fence-getcompletedvalue ID3D12Fence::GetCompletedValue の戻り値。
+    uint64_t completed = m_fence->GetCompletedValue();
+    if (completed == UINT64_MAX) {
+        FBZZ_LOG_ERROR("DX12Context: 描画フェンスの確認中にデバイスが削除されました");
+        return false;
+    }
+    if (completed >= value) {
+        return true;
+    }
+
     auto context = profiler::frame_timeline::CurrentContext();
     context.targetSerial = value;
     const profiler::frame_timeline::Scope timelineWait(profiler::frame_timeline::Event::FENCE_WAIT, context);
-    if (SUCCEEDED(m_fence->SetEventOnCompletion(value, m_fenceEvent)))
-        WaitForSingleObject(m_fenceEvent, INFINITE);
+    if (!CheckResult(m_fence->SetEventOnCompletion(value, m_fenceEvent), "Fence::SetEventOnCompletion")) {
+        return false;
+    }
+    const DWORD waitResult = WaitForSingleObject(m_fenceEvent, INFINITE);
+    completed = m_fence->GetCompletedValue();
+    if (waitResult == WAIT_OBJECT_0 && completed != UINT64_MAX && completed >= value) {
+        return true;
+    }
+    FBZZ_LOG_ERROR("DX12Context: 描画フェンスの完了待機に失敗しました (wait=0x%08X, completed=%llu, target=%llu)",
+        static_cast<unsigned int>(waitResult), static_cast<unsigned long long>(completed),
+        static_cast<unsigned long long>(value));
+    return false;
 }
 
 bool DX12Context::WaitForSynchronousQueue()
 {
-    if (!m_commandQueue || !m_synchronousFence || !m_synchronousFenceEvent) return false;
+    if (!m_commandQueue || !m_synchronousFence || !m_synchronousFenceEvent) {
+        return false;
+    }
     const uint64_t value = m_nextSynchronousFenceValue++;
     if (!CheckResult(m_commandQueue->Signal(m_synchronousFence.Get(), value),
-            "Synchronous Fence::Signal")) return false;
-    /// @note Signal follows submitted upload lists on this queue; it does not include the still-recording graphics list.
+            "Synchronous Fence::Signal")) {
+        return false;
+    }
+    // Signal follows submitted upload lists on this queue; it does not include the still-recording graphics list.
     /// @see https://learn.microsoft.com/en-us/windows/win32/api/d3d12/nf-d3d12-id3d12commandqueue-signal ID3D12CommandQueue::Signal.
     uint64_t completed = m_synchronousFence->GetCompletedValue();
-    if (completed != UINT64_MAX && completed >= value) return true;
+    if (completed != UINT64_MAX && completed >= value) {
+        return true;
+    }
     if (completed == UINT64_MAX) {
         FBZZ_LOG_ERROR("DX12Context: 同期転送の待機中にデバイスが削除されました");
         return false;
@@ -876,10 +1069,14 @@ bool DX12Context::WaitForSynchronousQueue()
     context.targetSerial = value;
     const profiler::frame_timeline::Scope timelineWait(profiler::frame_timeline::Event::SYNCHRONOUS_FENCE_WAIT, context);
     if (!CheckResult(m_synchronousFence->SetEventOnCompletion(value, m_synchronousFenceEvent),
-            "Synchronous Fence::SetEventOnCompletion")) return false;
+            "Synchronous Fence::SetEventOnCompletion")) {
+        return false;
+    }
     const DWORD waitResult = WaitForSingleObject(m_synchronousFenceEvent, INFINITE);
     completed = m_synchronousFence->GetCompletedValue();
-    if (waitResult == WAIT_OBJECT_0 && completed != UINT64_MAX && completed >= value) return true;
+    if (waitResult == WAIT_OBJECT_0 && completed != UINT64_MAX && completed >= value) {
+        return true;
+    }
     FBZZ_LOG_ERROR("DX12Context: 同期転送の完了待機に失敗しました (wait=0x%08X)",
         static_cast<unsigned int>(waitResult));
     return false;
@@ -934,13 +1131,17 @@ D3D12_GPU_DESCRIPTOR_HANDLE DX12Context::GetImGuiSrvGpu(uint32_t index) const
 
 uint32_t DX12Context::AllocateCpuResourceDescriptor()
 {
-    if (!m_device) return INVALID_BINDLESS_INDEX;
+    if (!m_device) {
+        return INVALID_BINDLESS_INDEX;
+    }
     if (!m_cpuResourceDescriptorFreeList.empty()) {
         const uint32_t index = m_cpuResourceDescriptorFreeList.back();
         m_cpuResourceDescriptorFreeList.pop_back();
         return index;
     }
-    if (m_cpuResourceDescriptorNext == INVALID_BINDLESS_INDEX) return INVALID_BINDLESS_INDEX;
+    if (m_cpuResourceDescriptorNext == INVALID_BINDLESS_INDEX) {
+        return INVALID_BINDLESS_INDEX;
+    }
     if (m_cpuResourceDescriptorNext / CPU_RESOURCE_DESCRIPTOR_PAGE_SIZE >= m_cpuResourceDescriptorPages.size()) {
         D3D12_DESCRIPTOR_HEAP_DESC desc{};
         desc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
@@ -948,7 +1149,9 @@ uint32_t DX12Context::AllocateCpuResourceDescriptor()
         Microsoft::WRL::ComPtr<ID3D12DescriptorHeap> page;
         /// @see https://learn.microsoft.com/en-us/windows/win32/direct3d12/creating-descriptor-heaps CPU-only descriptor staging.
         if (!CheckResult(m_device->CreateDescriptorHeap(&desc, IID_PPV_ARGS(&page)),
-                         "CreateDescriptorHeap (CPU resource page)")) return INVALID_BINDLESS_INDEX;
+                         "CreateDescriptorHeap (CPU resource page)")) {
+            return INVALID_BINDLESS_INDEX;
+        }
         m_cpuResourceDescriptorPages.push_back(std::move(page));
         FBZZ_LOG_INFO("DX12Context: CPU resource descriptor page allocated (pages=%zu descriptorsPerPage=%u)",
             m_cpuResourceDescriptorPages.size(), CPU_RESOURCE_DESCRIPTOR_PAGE_SIZE);
@@ -958,13 +1161,17 @@ uint32_t DX12Context::AllocateCpuResourceDescriptor()
 
 void DX12Context::FreeCpuResourceDescriptor(uint32_t index)
 {
-    if (index == INVALID_BINDLESS_INDEX || index >= m_cpuResourceDescriptorNext) return;
+    if (index == INVALID_BINDLESS_INDEX || index >= m_cpuResourceDescriptorNext) {
+        return;
+    }
     m_cpuResourceDescriptorFreeList.push_back(index);
 }
 
 D3D12_CPU_DESCRIPTOR_HANDLE DX12Context::GetCpuResourceDescriptor(uint32_t index) const
 {
-    if (index == INVALID_BINDLESS_INDEX || index >= m_cpuResourceDescriptorNext) return {};
+    if (index == INVALID_BINDLESS_INDEX || index >= m_cpuResourceDescriptorNext) {
+        return {};
+    }
     auto handle = m_cpuResourceDescriptorPages[index / CPU_RESOURCE_DESCRIPTOR_PAGE_SIZE]->GetCPUDescriptorHandleForHeapStart();
     handle.ptr += static_cast<SIZE_T>(index % CPU_RESOURCE_DESCRIPTOR_PAGE_SIZE) * m_srvIncrement;
     return handle;
@@ -978,7 +1185,7 @@ uint32_t DX12Context::AllocateBindlessSlot()
         return reused;
     }
     if (m_bindlessNextSlot >= BINDLESS_DESCRIPTOR_CAPACITY) {
-        /// @note 枯渇は縮退であって異常終了ではない。ログの洪水を避けて一度だけ報告する。
+        // 枯渇は縮退であって異常終了ではない。ログの洪水を避けて一度だけ報告する。
         if (!m_bindlessExhaustionReported) {
             FBZZ_LOG_ERROR("DX12Context: bindless ディスクリプタ枯渇 (capacity=%u)。"
                            "以降のテクスチャはディスクリプタテーブル経路で描画します",
@@ -992,11 +1199,12 @@ uint32_t DX12Context::AllocateBindlessSlot()
 
 void DX12Context::FreeBindlessSlot(uint32_t index)
 {
-    if (index == INVALID_BINDLESS_INDEX || index >= BINDLESS_DESCRIPTOR_CAPACITY)
+    if (index == INVALID_BINDLESS_INDEX || index >= BINDLESS_DESCRIPTOR_CAPACITY) {
         return;
-    /// @note 直前まで記録したコマンドリストがこの添字を読む可能性があるため、フェンスを
-    /// @note       通過するまで再利用させない。寿命規則は `DeferRelease` と完全に揃える
-    /// @note       (フレーム記録中は次に Signal される値、フレーム外は最後に Signal 済みの値)。
+    }
+    // 直前まで記録したコマンドリストがこの添字を読む可能性があるため、フェンスを
+    // 通過するまで再利用させない。寿命規則は `DeferRelease` と完全に揃える
+    // (フレーム記録中は次に Signal される値、フレーム外は最後に Signal 済みの値)。
     const uint64_t fenceValue = m_frameOpen ? m_nextFenceValue
         : (m_nextFenceValue > 0 ? m_nextFenceValue - 1 : 0);
     m_bindlessPendingFrees.push_back({index, fenceValue});
@@ -1004,9 +1212,13 @@ void DX12Context::FreeBindlessSlot(uint32_t index)
 
 uint32_t DX12Context::PublishBindlessDescriptor(D3D12_CPU_DESCRIPTOR_HANDLE source)
 {
-    if (source.ptr == 0) return INVALID_BINDLESS_INDEX;
+    if (source.ptr == 0) {
+        return INVALID_BINDLESS_INDEX;
+    }
     const uint32_t slot = AllocateBindlessSlot();
-    if (slot == INVALID_BINDLESS_INDEX) return INVALID_BINDLESS_INDEX;
+    if (slot == INVALID_BINDLESS_INDEX) {
+        return INVALID_BINDLESS_INDEX;
+    }
     m_device->CopyDescriptorsSimple(1, GetBindlessCpu(slot), source,
                                     D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
     return slot;
@@ -1015,8 +1227,9 @@ uint32_t DX12Context::PublishBindlessDescriptor(D3D12_CPU_DESCRIPTOR_HANDLE sour
 D3D12_CPU_DESCRIPTOR_HANDLE DX12Context::GetBindlessCpu(uint32_t index) const
 {
     auto handle = m_resourceSrvHeap->GetCPUDescriptorHandleForHeapStart();
-    if (index == INVALID_BINDLESS_INDEX || index >= BINDLESS_DESCRIPTOR_CAPACITY)
+    if (index == INVALID_BINDLESS_INDEX || index >= BINDLESS_DESCRIPTOR_CAPACITY) {
         return handle;
+    }
     handle.ptr += static_cast<SIZE_T>(BINDLESS_HEAP_BASE + index) * m_srvIncrement;
     return handle;
 }
@@ -1032,10 +1245,11 @@ bool DX12Context::UploadTexture2DMips(std::span<const TextureMip> mips,
                                       Microsoft::WRL::ComPtr<ID3D12Resource>& texture)
 {
     PendingUpload upload;
-    if (!SubmitTexture2DUpload(mips, texture, upload, false))
+    if (!SubmitTexture2DUpload(mips, texture, upload, false)) {
         return false;
+    }
     if (!WaitForSynchronousQueue()) {
-        /// @note A failed wait cannot prove GPU completion; retain submitted resources until a later frame fence or Shutdown.
+        // A failed wait cannot prove GPU completion; retain submitted resources until a later frame fence or Shutdown.
         upload.fenceValue = m_nextFenceValue;
         m_pendingUploads.push_back(std::move(upload));
         texture.Reset();
@@ -1046,25 +1260,34 @@ bool DX12Context::UploadTexture2DMips(std::span<const TextureMip> mips,
 
 void DX12Context::FlushCopyQueue()
 {
-    if (!m_copyQueue || !m_copyFence) return;
+    if (!m_copyQueue || !m_copyFence) {
+        return;
+    }
     const uint64_t value = m_nextCopyFenceValue++;
-    if (FAILED(m_copyQueue->Signal(m_copyFence.Get(), value))) return;
-    if (m_copyFence->GetCompletedValue() >= value) return;
-    if (SUCCEEDED(m_copyFence->SetEventOnCompletion(value, m_fenceEvent)))
+    if (FAILED(m_copyQueue->Signal(m_copyFence.Get(), value))) {
+        return;
+    }
+    if (m_copyFence->GetCompletedValue() >= value) {
+        return;
+    }
+    if (SUCCEEDED(m_copyFence->SetEventOnCompletion(value, m_fenceEvent))) {
         WaitForSingleObject(m_fenceEvent, INFINITE);
+    }
 }
 
 void DX12Context::RecordPostCopyBarriers()
 {
-    /// @note コピーキューで書き終えた転送先を PIXEL_SHADER_RESOURCE へ移す。フレームの頭に置くので、
-    /// @note       その後の描画は遷移済みの状態で読む。公開 (Pump) はフェンス通過を見てから行うので、
-    /// @note       公開済みのテクスチャは必ずここで遷移している。
+    // コピーキューで書き終えた転送先を PIXEL_SHADER_RESOURCE へ移す。フレームの頭に置くので、
+    // その後の描画は遷移済みの状態で読む。公開 (Pump) はフェンス通過を見てから行うので、
+    // 公開済みのテクスチャは必ずここで遷移している。
     const uint64_t completed = m_copyFence ? m_copyFence->GetCompletedValue() : 0;
     std::vector<D3D12_RESOURCE_BARRIER> barriers;
     const auto firstPending = std::remove_if(
         m_pendingPostCopyBarriers.begin(), m_pendingPostCopyBarriers.end(),
         [&](const PostCopyBarrier& entry) {
-            if (entry.copyFenceValue > completed) return false;
+            if (entry.copyFenceValue > completed) {
+                return false;
+            }
             D3D12_RESOURCE_BARRIER barrier{};
             barrier.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
             barrier.Transition.pResource = entry.resource.Get();
@@ -1074,10 +1297,13 @@ void DX12Context::RecordPostCopyBarriers()
             barriers.push_back(barrier);
             return true;
         });
-    if (!barriers.empty())
+    if (!barriers.empty()) {
         m_commandList->ResourceBarrier(static_cast<UINT>(barriers.size()), barriers.data());
-    /// @note 遷移を記録したフレームが終わるまで転送先を生かす (記録したコマンドがまだ指している)。
-    for (auto it = firstPending; it != m_pendingPostCopyBarriers.end(); ++it) DeferRelease(it->resource);
+    }
+    // 遷移を記録したフレームが終わるまで転送先を生かす (記録したコマンドがまだ指している)。
+    for (auto it = firstPending; it != m_pendingPostCopyBarriers.end(); ++it) {
+        DeferRelease(it->resource);
+    }
     m_pendingPostCopyBarriers.erase(firstPending, m_pendingPostCopyBarriers.end());
 }
 
@@ -1087,7 +1313,7 @@ bool DX12Context::UploadTexture2DMipsAsync(std::span<const TextureMip> mips,
 {
     outFenceValue = 0;
     PendingUpload upload;
-    /// @note 専用コピーキューがあればそちらへ流す。描画キューのフレームと並んで走り、描画を待たせない。
+    // 専用コピーキューがあればそちらへ流す。描画キューのフレームと並んで走り、描画を待たせない。
     if (m_copyQueue && m_useCopyQueue && SubmitTexture2DUpload(mips, texture, upload, true)) {
         upload.fenceValue = m_nextCopyFenceValue++;
         if (FAILED(m_copyQueue->Signal(m_copyFence.Get(), upload.fenceValue))) {
@@ -1101,18 +1327,19 @@ bool DX12Context::UploadTexture2DMipsAsync(std::span<const TextureMip> mips,
         return true;
     }
     texture.Reset();
-    if (!SubmitTexture2DUpload(mips, texture, upload, false))
+    if (!SubmitTexture2DUpload(mips, texture, upload, false)) {
         return false;
-    /// @note フレーム記録中は新しい値を Signal しない。DeferRelease / FreeBindlessSlot は記録中の
-    /// @note       m_nextFenceValue を «このフレームの終わり» とみなしているため、途中で値を消費すると
-    /// @note       まだ記録中のコマンドが読む資源を早く返してしまう。転送は同じキューで先に実行されるので、
-    /// @note       フレーム末尾の値を待てば転送完了も保証される。
+    }
+    // フレーム記録中は新しい値を Signal しない。DeferRelease / FreeBindlessSlot は記録中の
+    // m_nextFenceValue を «このフレームの終わり» とみなしているため、途中で値を消費すると
+    // まだ記録中のコマンドが読む資源を早く返してしまう。転送は同じキューで先に実行されるので、
+    // フレーム末尾の値を待てば転送完了も保証される。
     if (m_frameOpen) {
         upload.fenceValue = m_nextFenceValue;
     } else {
         upload.fenceValue = m_nextFenceValue++;
         if (FAILED(m_commandQueue->Signal(m_fence.Get(), upload.fenceValue))) {
-            /// @note Signal できなければ完了を知る手段が無い。待って同期転送へ倒す。
+            // Signal できなければ完了を知る手段が無い。待って同期転送へ倒す。
             Flush();
             outFenceValue = 0;
             return true;
@@ -1125,12 +1352,14 @@ bool DX12Context::UploadTexture2DMipsAsync(std::span<const TextureMip> mips,
 
 bool DX12Context::IsFenceComplete(uint64_t fenceValue) const
 {
-    /// @note デバイス削除後の GetCompletedValue は UINT64_MAX を返すので、ロスト中も待ち続けない。
+    // デバイス削除後の GetCompletedValue は UINT64_MAX を返すので、ロスト中も待ち続けない。
     /// @see https://learn.microsoft.com/en-us/windows/win32/api/d3d12/nf-d3d12-id3d12fence-getcompletedvalue ID3D12Fence::GetCompletedValue
-    if (fenceValue == 0) return true;
+    if (fenceValue == 0) {
+        return true;
+    }
     if ((fenceValue & kCopyQueueTokenBit) != 0) {
-        /// @note コピーキューのフェンスで判定する。描画側の遷移は、公開 (フレーム外の Pump) の後に来る
-        /// @note       BeginFrame の頭で RecordPostCopyBarriers が記録するので、公開済みの描画は遷移の後に並ぶ。
+        // コピーキューのフェンスで判定する。描画側の遷移は、公開 (フレーム外の Pump) の後に来る
+        // BeginFrame の頭で RecordPostCopyBarriers が記録するので、公開済みの描画は遷移の後に並ぶ。
         const uint64_t copyValue = fenceValue & ~kCopyQueueTokenBit;
         return m_copyFence && m_copyFence->GetCompletedValue() >= copyValue;
     }
@@ -1141,11 +1370,14 @@ bool DX12Context::SubmitTexture2DUpload(std::span<const TextureMip> mips,
                                         Microsoft::WRL::ComPtr<ID3D12Resource>& texture,
                                         PendingUpload& outUpload, bool onCopyQueue)
 {
-    if (mips.empty() || !mips[0].rgba || mips[0].width == 0 || mips[0].height == 0 || !m_device || !m_commandQueue)
+    if (mips.empty() || !mips[0].rgba || mips[0].width == 0 || mips[0].height == 0 || !m_device || !m_commandQueue) {
         return false;
-    if (onCopyQueue && !m_copyQueue) return false;
-    /// @note コピーキューで使う資源は COMMON から暗黙に COPY_DEST へ昇格させ、実行後は COMMON へ戻る (decay)。
-    /// @note       遷移の命令はコピーキューに記録できないので、PIXEL_SHADER_RESOURCE への遷移は描画側で行う。
+    }
+    if (onCopyQueue && !m_copyQueue) {
+        return false;
+    }
+    // コピーキューで使う資源は COMMON から暗黙に COPY_DEST へ昇格させ、実行後は COMMON へ戻る (decay)。
+    // 遷移の命令はコピーキューに記録できないので、PIXEL_SHADER_RESOURCE への遷移は描画側で行う。
     /// @see https://learn.microsoft.com/en-us/windows/win32/direct3d12/using-resource-barriers-to-synchronize-resource-states-in-direct3d-12 «Implicit state transitions»
     const D3D12_COMMAND_LIST_TYPE listType = onCopyQueue ? D3D12_COMMAND_LIST_TYPE_COPY : D3D12_COMMAND_LIST_TYPE_DIRECT;
     const D3D12_RESOURCE_STATES initialState = onCopyQueue ? D3D12_RESOURCE_STATE_COMMON : D3D12_RESOURCE_STATE_COPY_DEST;
@@ -1162,8 +1394,9 @@ bool DX12Context::SubmitTexture2DUpload(std::span<const TextureMip> mips,
     textureDesc.SampleDesc.Count = 1;
     textureDesc.Layout = D3D12_TEXTURE_LAYOUT_UNKNOWN;
     if (FAILED(m_device->CreateCommittedResource(&defaultHeap, D3D12_HEAP_FLAG_NONE, &textureDesc,
-            initialState, nullptr, IID_PPV_ARGS(&texture))))
+            initialState, nullptr, IID_PPV_ARGS(&texture)))) {
         return false;
+    }
 
     std::vector<D3D12_PLACED_SUBRESOURCE_FOOTPRINT> footprints(mipCount);
     std::vector<UINT> rowCounts(mipCount);
@@ -1183,27 +1416,31 @@ bool DX12Context::SubmitTexture2DUpload(std::span<const TextureMip> mips,
     uploadDesc.Layout = D3D12_TEXTURE_LAYOUT_ROW_MAJOR;
     Microsoft::WRL::ComPtr<ID3D12Resource> upload;
     if (FAILED(m_device->CreateCommittedResource(&uploadHeap, D3D12_HEAP_FLAG_NONE, &uploadDesc,
-            D3D12_RESOURCE_STATE_GENERIC_READ, nullptr, IID_PPV_ARGS(&upload))))
+            D3D12_RESOURCE_STATE_GENERIC_READ, nullptr, IID_PPV_ARGS(&upload)))) {
         return false;
+    }
     void* mapped = nullptr;
-    if (FAILED(upload->Map(0, nullptr, &mapped)))
+    if (FAILED(upload->Map(0, nullptr, &mapped))) {
         return false;
+    }
     for (UINT level = 0; level < mipCount; ++level) {
         const TextureMip& mip = mips[level];
         auto* destination = static_cast<uint8_t*>(mapped) + footprints[level].Offset;
         const std::size_t rowBytes = (std::min)(static_cast<std::size_t>(rowSizes[level]),
                                                 static_cast<std::size_t>(mip.width) * 4);
-        for (UINT row = 0; row < rowCounts[level]; ++row)
+        for (UINT row = 0; row < rowCounts[level]; ++row) {
             std::memcpy(destination + static_cast<std::size_t>(row) * footprints[level].Footprint.RowPitch,
                         mip.rgba + static_cast<std::size_t>(row) * mip.rowPitch, rowBytes);
+        }
     }
     upload->Unmap(0, nullptr);
 
     Microsoft::WRL::ComPtr<ID3D12CommandAllocator> allocator;
     Microsoft::WRL::ComPtr<ID3D12GraphicsCommandList> list;
     if (FAILED(m_device->CreateCommandAllocator(listType, IID_PPV_ARGS(&allocator)))
-        || FAILED(m_device->CreateCommandList(0, listType, allocator.Get(), nullptr, IID_PPV_ARGS(&list))))
+        || FAILED(m_device->CreateCommandList(0, listType, allocator.Get(), nullptr, IID_PPV_ARGS(&list)))) {
         return false;
+    }
     for (UINT level = 0; level < mipCount; ++level) {
         D3D12_TEXTURE_COPY_LOCATION destinationLocation{};
         destinationLocation.pResource = texture.Get();
@@ -1224,13 +1461,14 @@ bool DX12Context::SubmitTexture2DUpload(std::span<const TextureMip> mips,
         barrier.Transition.StateAfter = D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
         list->ResourceBarrier(1, &barrier);
     }
-    if (FAILED(list->Close()))
+    if (FAILED(list->Close())) {
         return false;
+    }
     ID3D12CommandList* lists[] = {list.Get()};
     (onCopyQueue ? m_copyQueue : m_commandQueue)->ExecuteCommandLists(1, lists);
-    /// @note アロケーター・upload バッファ・転送先は GPU が読み書きし終えるまで生かす。呼び出し側がフェンスを決める。
-    /// @note       転送先まで持つのは、転送中に候補が捨てられても (DeferRelease は描画キューのフェンスしか見ない)
-    /// @note       コピーキューが書き終えるまで実体を消さないため。
+    // アロケーター・upload バッファ・転送先は GPU が読み書きし終えるまで生かす。呼び出し側がフェンスを決める。
+    // 転送先まで持つのは、転送中に候補が捨てられても (DeferRelease は描画キューのフェンスしか見ない)
+    // コピーキューが書き終えるまで実体を消さないため。
     /// @see https://learn.microsoft.com/en-us/windows/win32/direct3d12/fence-based-resource-management Fence-Based Resource Management
     outUpload.allocator = std::move(allocator);
     outUpload.list = std::move(list);
@@ -1243,7 +1481,9 @@ bool DX12Context::SubmitTexture2DUpload(std::span<const TextureMip> mips,
 bool DX12Context::CreateDefaultBuffer(
     const void* data, size_t sizeBytes, Microsoft::WRL::ComPtr<ID3D12Resource>& buffer)
 {
-    if (sizeBytes == 0) return false;
+    if (sizeBytes == 0) {
+        return false;
+    }
     D3D12_RESOURCE_DESC desc{};
     desc.Dimension = D3D12_RESOURCE_DIMENSION_BUFFER;
     desc.Width = sizeBytes;
@@ -1255,26 +1495,36 @@ bool DX12Context::CreateDefaultBuffer(
     desc.Flags = D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS;
     D3D12_HEAP_PROPERTIES defaultHeap{};
     defaultHeap.Type = D3D12_HEAP_TYPE_DEFAULT;
-    /// @note Buffer は COMMON で生成し、最初の CopyBufferRegion で COPY_DEST へ暗黙昇格する。
+    // Buffer は COMMON で生成し、最初の CopyBufferRegion で COPY_DEST へ暗黙昇格する。
     /// @see https://learn.microsoft.com/en-us/windows/win32/direct3d12/using-resource-barriers-to-synchronize-resource-states-in-direct3d-12 Common state promotion
     if (FAILED(m_device->CreateCommittedResource(&defaultHeap, D3D12_HEAP_FLAG_NONE, &desc,
-            D3D12_RESOURCE_STATE_COMMON, nullptr, IID_PPV_ARGS(&buffer)))) return false;
-    if (!data) return true;
+            D3D12_RESOURCE_STATE_COMMON, nullptr, IID_PPV_ARGS(&buffer)))) {
+        return false;
+    }
+    if (!data) {
+        return true;
+    }
     D3D12_HEAP_PROPERTIES uploadHeap{};
     uploadHeap.Type = D3D12_HEAP_TYPE_UPLOAD;
     desc.Flags = D3D12_RESOURCE_FLAG_NONE;
     Microsoft::WRL::ComPtr<ID3D12Resource> upload;
     if (FAILED(m_device->CreateCommittedResource(&uploadHeap, D3D12_HEAP_FLAG_NONE, &desc,
-            D3D12_RESOURCE_STATE_GENERIC_READ, nullptr, IID_PPV_ARGS(&upload)))) return false;
+            D3D12_RESOURCE_STATE_GENERIC_READ, nullptr, IID_PPV_ARGS(&upload)))) {
+        return false;
+    }
     void* mapped = nullptr;
-    if (FAILED(upload->Map(0, nullptr, &mapped))) return false;
+    if (FAILED(upload->Map(0, nullptr, &mapped))) {
+        return false;
+    }
     std::memcpy(mapped, data, sizeBytes);
     upload->Unmap(0, nullptr);
     Microsoft::WRL::ComPtr<ID3D12CommandAllocator> allocator;
     Microsoft::WRL::ComPtr<ID3D12GraphicsCommandList> list;
     if (FAILED(m_device->CreateCommandAllocator(D3D12_COMMAND_LIST_TYPE_DIRECT, IID_PPV_ARGS(&allocator)))
         || FAILED(m_device->CreateCommandList(0, D3D12_COMMAND_LIST_TYPE_DIRECT, allocator.Get(), nullptr,
-                                              IID_PPV_ARGS(&list)))) return false;
+                                              IID_PPV_ARGS(&list)))) {
+        return false;
+    }
     list->CopyBufferRegion(buffer.Get(), 0, upload.Get(), 0, sizeBytes);
     D3D12_RESOURCE_BARRIER barrier{};
     barrier.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
@@ -1283,7 +1533,9 @@ bool DX12Context::CreateDefaultBuffer(
     barrier.Transition.StateBefore = D3D12_RESOURCE_STATE_COPY_DEST;
     barrier.Transition.StateAfter = D3D12_RESOURCE_STATE_COMMON;
     list->ResourceBarrier(1, &barrier);
-    if (FAILED(list->Close())) return false;
+    if (FAILED(list->Close())) {
+        return false;
+    }
     ID3D12CommandList* lists[] = {list.Get()};
     m_commandQueue->ExecuteCommandLists(1, lists);
     Flush();
@@ -1293,10 +1545,21 @@ bool DX12Context::CreateDefaultBuffer(
 bool DX12Context::StageBufferCopy(
     ID3D12Resource* destination, const void* data, size_t sizeBytes, size_t destinationOffset)
 {
-    if (!m_frameOpen || !destination || !data || sizeBytes == 0) return false;
-    const auto destinationBytes=destination->GetDesc().Width;
-    if (destinationOffset>destinationBytes || sizeBytes>destinationBytes-destinationOffset) return false;
-    if (m_bufferCopyArena.TryStageCopy(*m_commandList.Get(), *destination, destinationOffset, data, sizeBytes)) return true;
+    if (!m_frameOpen || !destination || !data || sizeBytes == 0) {
+        return false;
+    }
+    if (m_bufferCopyArena.TryStageCopy(*m_commandList.Get(), *destination, destinationOffset, data, sizeBytes)) {
+        return true;
+    }
+
+    // 専用の転送領域へ切り替える場合も、同じバッファ範囲にだけコピーする。
+    const auto destinationDesc = destination->GetDesc();
+    if (destinationDesc.Dimension != D3D12_RESOURCE_DIMENSION_BUFFER || destinationOffset > destinationDesc.Width) {
+        return false;
+    }
+    if (sizeBytes > destinationDesc.Width - destinationOffset) {
+        return false;
+    }
     D3D12_HEAP_PROPERTIES heap{};
     heap.Type = D3D12_HEAP_TYPE_UPLOAD;
     D3D12_RESOURCE_DESC desc{};
@@ -1309,22 +1572,28 @@ bool DX12Context::StageBufferCopy(
     desc.Layout = D3D12_TEXTURE_LAYOUT_ROW_MAJOR;
     Microsoft::WRL::ComPtr<ID3D12Resource> upload;
     if (FAILED(m_device->CreateCommittedResource(&heap, D3D12_HEAP_FLAG_NONE, &desc,
-            D3D12_RESOURCE_STATE_GENERIC_READ, nullptr, IID_PPV_ARGS(&upload)))) return false;
+            D3D12_RESOURCE_STATE_GENERIC_READ, nullptr, IID_PPV_ARGS(&upload)))) {
+        return false;
+    }
     void* mapped = nullptr;
-    if (FAILED(upload->Map(0, nullptr, &mapped))) return false;
+    if (FAILED(upload->Map(0, nullptr, &mapped))) {
+        return false;
+    }
     std::memcpy(mapped, data, sizeBytes);
     upload->Unmap(0, nullptr);
     m_commandList->CopyBufferRegion(destination, destinationOffset, upload.Get(), 0, sizeBytes);
-    /// @note GPU 実行完了まで Upload リソースをフレームスロットに保持する。
+    // GPU 実行完了まで Upload リソースをフレームスロットに保持する。
     m_transientUploads[m_frameIndex].push_back(std::move(upload));
     return true;
 }
 
 void DX12Context::DeferRelease(Microsoft::WRL::ComPtr<ID3D12Resource>& resource)
 {
-    if (!resource) return;
-    /// @note フレーム記録中は次に Signal される Fence まで GPU 参照が残る。
-    /// @note       フレーム外では最後に Signal 済みの Fence を待てば安全に解放できる。
+    if (!resource) {
+        return;
+    }
+    // フレーム記録中は次に Signal される Fence まで GPU 参照が残る。
+    // フレーム外では最後に Signal 済みの Fence を待てば安全に解放できる。
     const uint64_t fenceValue = m_frameOpen ? m_nextFenceValue
         : (m_nextFenceValue > 0 ? m_nextFenceValue - 1 : 0);
     m_deferredResources.push_back({std::move(resource), fenceValue});
@@ -1346,15 +1615,17 @@ void DX12Context::CollectDeferredReleases()
         });
     m_pendingUploads.erase(firstUploading, m_pendingUploads.end());
 
-    /// @note 通過済みの bindless 枠をフリーリストへ戻す。リソース本体と同じフェンスで守る。
+    // 通過済みの bindless 枠をフリーリストへ戻す。リソース本体と同じフェンスで守る。
     const auto firstLive = std::remove_if(
         m_bindlessPendingFrees.begin(), m_bindlessPendingFrees.end(),
         [this, completed](const PendingBindlessFree& entry) {
-            if (entry.fenceValue > completed) return false;
+            if (entry.fenceValue > completed) {
+                return false;
+            }
             m_bindlessFreeList.push_back(entry.index);
             return true;
         });
     m_bindlessPendingFrees.erase(firstLive, m_bindlessPendingFrees.end());
 }
 
-} /// @note namespace fbzz::renderer
+} // namespace fbzz::renderer

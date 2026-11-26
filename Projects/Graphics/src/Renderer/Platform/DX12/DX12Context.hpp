@@ -81,7 +81,7 @@ public:
     FBZZ_GRAPHICS_API bool UploadTexture2D(const uint8_t* rgba, uint32_t width, uint32_t height,
                          Microsoft::WRL::ComPtr<ID3D12Resource>& texture);
     /// @brief UploadTexture2DMips の待たない版。転送を投入して戻る。
-    /// @param outFenceValue 転送完了で通過するフェンス値。0 なら投入時に完了済み。
+    /// @param[out] outFenceValue 転送完了で通過するフェンス値。0 なら投入時に完了済み。
     /// @note upload バッファとアロケーターはフェンス通過まで内部で保持し、CollectDeferredReleases で返す。
     /// @see https://learn.microsoft.com/en-us/windows/win32/direct3d12/fence-based-resource-management Fence-Based Resource Management
     FBZZ_GRAPHICS_API bool UploadTexture2DMipsAsync(std::span<const TextureMip> mips,
@@ -241,7 +241,7 @@ private:
     static constexpr uint32_t BINDLESS_HEAP_BASE = 0;
     struct FrameResource {
         Microsoft::WRL::ComPtr<ID3D12CommandAllocator> allocator;
-        uint64_t fenceValue = 0;
+        uint64_t fenceValue = 0; ///< このスロットで最後に Signal できた描画フェンス値。
         std::vector<std::shared_ptr<const PreparedSkinningTicket>> preparedSkinning;
     };
 
@@ -252,7 +252,20 @@ private:
     FBZZ_GRAPHICS_API bool CreateDepthBuffer();
     FBZZ_GRAPHICS_API bool CreateCommandsAndFence();
     FBZZ_GRAPHICS_API bool ApplyResize(uint32_t width, uint32_t height);
-    FBZZ_GRAPHICS_API void WaitForFence(uint64_t value);
+    /// @brief 描画キューに投入済みの仕事を待ち、リソースを再利用できるかを返す。
+    [[nodiscard]] bool TryFlush();
+    /// @brief 現在のスロットに、描画キューの投入とキュー間待機を含むフェンスを記録する。
+    /// @return Signal に成功したフェンス値。失敗時は既存の値を保ち 0 を返す。
+    [[nodiscard]] uint64_t SignalFrameFence();
+    /// @brief 投入済みのコンピュートを描画キューのフェンスで回収できるようにする。
+    /// @return 未同期の投入がないか、描画キューに待機を積めた場合は true。
+    [[nodiscard]] bool JoinSubmittedCompute();
+    /// @brief 破棄するリストの資源状態を次のフレームで使わないよう、記録を停止する。
+    void AbortFrameRecording();
+    /// @brief 描画フェンスが指定値に到達したことを確認する。
+    /// @param[in] value Signal に成功した値。0 はこのスロットに投入がないことを表す。
+    /// @return デバイスが有効で、待機が完了した場合は true。
+    [[nodiscard]] bool WaitForFence(uint64_t value);
     /// @brief Wait for already submitted DIRECT work without completing the recording frame's retirement fence.
     /// @see https://learn.microsoft.com/en-us/windows/win32/direct3d12/user-mode-heap-synchronization Fences: one progress timeline per fence.
     FBZZ_GRAPHICS_API bool WaitForSynchronousQueue();
@@ -280,7 +293,7 @@ private:
         uint64_t copyFenceValue = 0;
     };
     /// @brief 転送を記録してキューへ投入する。待機もフェンスの Signal もしない。
-    /// @param onCopyQueue true ならコピーキューへ (遷移は記録しない)。コピーキューが無ければ失敗する。
+    /// @param[in] onCopyQueue true ならコピーキューへ (遷移は記録しない)。コピーキューが無ければ失敗する。
     FBZZ_GRAPHICS_API bool SubmitTexture2DUpload(std::span<const TextureMip> mips,
                                Microsoft::WRL::ComPtr<ID3D12Resource>& texture,
                                PendingUpload& outUpload, bool onCopyQueue);
@@ -343,20 +356,22 @@ private:
     /// @note 機械が持っているか (作れたか + 強制停止していないか)。«使うか» は RenderSettings。
     bool m_useAsyncCompute = true;
     bool m_computeListOpen = false;
+    bool m_computeSubmissionPending = false; ///< 投入済みで、描画キューに完了待機を積めていないコンピュートがあるか。
     std::vector<PostCopyBarrier> m_pendingPostCopyBarriers;
     uint32_t m_width = 0;
     uint32_t m_height = 0;
     bool m_allowTearing = false;
     bool m_vsync = false;
     bool m_frameOpen = false;
+    bool m_frameSubmissionFailed = false; ///< 記録・同期の失敗後、コンテキストを再作成するまでフレーム開始を止める。
     bool m_backBufferWritten = false;
     DX12PixEventStack m_graphicsPixEvents;
     DX12PixEventStack m_computePixEvents;
     uint64_t m_graphicsCommandListSerial = 0;
     uint64_t m_pipelineStateGeneration = 0;
     bool m_suspended = false;
-    bool m_occluded = false;   ///< @note 直前の Present が DXGI_STATUS_OCCLUDED (ウィンドウ遮蔽) を返した
-    bool m_renderWhenOccluded = false; ///< @note バッチのオフスクリーン描画中は occlusion 待ちを止める。
+    bool m_occluded = false;   ///< 直前の Present が DXGI_STATUS_OCCLUDED (ウィンドウ遮蔽) を返した
+    bool m_renderWhenOccluded = false; ///< バッチのオフスクリーン描画中は occlusion 待ちを止める。
     bool m_resizePending = false;
     uint32_t m_pendingWidth = 0;
     uint32_t m_pendingHeight = 0;
@@ -383,4 +398,4 @@ private:
     uint64_t m_token = 0;
 };
 
-} /// @note namespace fbzz::renderer
+} // namespace fbzz::renderer

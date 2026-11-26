@@ -15,6 +15,7 @@
 #include <filesystem>
 #include <memory>
 #include <array>
+#include <cstdlib>
 #include <string>
 #include <vector>
 #include <fstream>
@@ -141,6 +142,338 @@ protected:
     bool m_frameOpen = false;
 };
 
+class DX12UploadArenaTest : public BufferReadTest {
+protected:
+    void SetUp() override
+    {
+        // 製品と同じ設定で 16 MiB の初期領域を選び、他のフィクスチャには元の値を引き継ぐ。
+        constexpr const char* ARENA_SIZE_VARIABLE = "FBZZ_DX12_UPLOAD_ARENA_MIB";
+        char* previousValue = nullptr;
+        size_t previousLength = 0;
+        const auto readConfiguration = _dupenv_s(&previousValue, &previousLength, ARENA_SIZE_VARIABLE);
+        const std::unique_ptr<char, decltype(&std::free)> previous(previousValue, &std::free);
+        ASSERT_EQ(readConfiguration, 0);
+        ASSERT_EQ(_putenv_s(ARENA_SIZE_VARIABLE, "16"), 0);
+        BufferReadTest::SetUp();
+        EXPECT_EQ(_putenv_s(ARENA_SIZE_VARIABLE, previous ? previous.get() : ""), 0);
+        ASSERT_FALSE(HasFatalFailure());
+        m_bundle.renderer->SetRenderWhenOccluded(true);
+
+        // ピクセルに定数をそのまま出力し、提出時に束縛した値を GPU から読み戻す。
+        ASSERT_TRUE(m_temporary.IsValid());
+        const auto probePath = m_temporary.File("UploadConstants.hlsl");
+        {
+            std::ofstream stream(probePath, std::ios::binary);
+            stream << R"hlsl(/// @file    UploadConstants.hlsl
+/// @brief   定数バッファのスナップショットをピクセルへ出力する。
+/// @author  Hasegawa Jin
+/// @date    2026-11-25
+cbuffer Probe : register(b0) { float4 value; };
+float4 VSMain(uint id : SV_VertexID) : SV_Position
+{
+    return float4(id == 2 ? 3 : -1, id == 1 ? 3 : -1, 0, 1);
+}
+float4 PSMain() : SV_Target0 { return value; }
+)hlsl";
+            ASSERT_TRUE(stream.good());
+        }
+        m_probe = m_resources->LoadShader(probePath.generic_string());
+        ASSERT_TRUE(m_probe);
+    }
+
+    /// @brief 1 ピクセルのビューポートに定数の値を描く。
+    /// @param[in] column 描画先の左端からのピクセル位置。
+    /// @param[in] constants シェーダーの b0 に指定する定数バッファ。
+    void DrawConstant(uint32_t column, renderer::ResourceHandle<renderer::ConstantBufferTag> constants)
+    {
+        renderer::DrawCall draw;
+        draw.shader = m_probe;
+        draw.pipelineState = m_state;
+        draw.vertexCount = 3;
+        draw.constantBuffers[0] = constants;
+        m_bundle.renderer->SetViewport(column, 0, 1, 1);
+        m_bundle.renderer->Submit(draw, *m_resources);
+    }
+
+    /// @brief 定数の値と Dispatch 実行の有無をピクセルに書くシェーダーを読み込む。
+    /// @return 読み込んだシェーダー。ファイル作成またはロードに失敗した場合は無効。
+    renderer::ResourceHandle<renderer::ShaderTag> LoadComputeConstantProbe()
+    {
+        const auto computePath = m_temporary.File("UploadConstants.cs.hlsl");
+        std::ofstream stream(computePath, std::ios::binary);
+        stream << R"hlsl(/// @file    UploadConstants.cs.hlsl
+/// @brief   定数の値と Dispatch 実行の有無を別々に読み戻せるようにする。
+/// @author  Hasegawa Jin
+/// @date    2026-11-25
+cbuffer Probe : register(b0) { float4 value; };
+cbuffer Destination : register(b1) { uint column; };
+cbuffer Indices : register(b14) { uint4 pixel[8]; uint4 vertex[1]; uint4 uav[2]; };
+[numthreads(1, 1, 1)] void CSMain(uint3 id : SV_DispatchThreadID)
+{
+    RWTexture2D<float4> output = ResourceDescriptorHeap[uav[0].x];
+    output[uint2(column + id.x, 0)] = float4(value.xyz, 1);
+}
+)hlsl";
+        stream.close();
+        if (!stream) {
+            ADD_FAILURE() << "Could not write compute constant probe: " << computePath;
+            return {};
+        }
+        return m_resources->LoadShader(computePath.generic_string());
+    }
+
+    testkit::TempDir m_temporary{"graphics_upload_arena"}; ///< 定数検証用シェーダーとそのコンパイル結果を置く。
+    renderer::ResourceHandle<renderer::ShaderTag> m_probe; ///< b0 の値を描くシェーダー。
+};
+
+/// @brief 初期領域を超えた Draw と同じスロットの再利用を経ても、提出済みの定数を保持する。
+TEST_F(DX12UploadArenaTest, OverflowAndSlotReusePreserveSubmittedConstants)
+{
+    constexpr uint32_t DRAWS_PER_HEAVY_FRAME = 260;
+    constexpr uint32_t DRAWS_PER_LIGHT_FRAME = 2;
+    constexpr size_t CONSTANT_BUFFER_BYTES = 64u * 1024u;
+    constexpr std::array drawCounts{
+        DRAWS_PER_HEAVY_FRAME, DRAWS_PER_HEAVY_FRAME, DRAWS_PER_LIGHT_FRAME, DRAWS_PER_HEAVY_FRAME};
+    static_assert(DRAWS_PER_HEAVY_FRAME * CONSTANT_BUFFER_BYTES > 16u * 1024u * 1024u);
+
+    const auto constants = m_resources->CreateConstantBuffer(CONSTANT_BUFFER_BYTES);
+    ASSERT_TRUE(constants);
+    std::array<renderer::ResourceHandle<renderer::RenderTargetTag>, drawCounts.size()> targets;
+    for (size_t frame = 0; frame < targets.size(); ++frame) {
+        targets[frame] = m_resources->CreateRenderTarget(drawCounts[frame], 1,
+            {1, renderer::Format::RGBA16F, false});
+        ASSERT_TRUE(targets[frame]);
+    }
+
+    // フレームごとに別の出力を使い、フレームスロットを一周してから全結果を読む。
+    auto& device = *m_bundle.renderer;
+    for (size_t frame = 0; frame < targets.size(); ++frame) {
+        BeginFrame();
+        device.SetRenderTarget(targets[frame], *m_resources);
+        device.Clear({0, 0, 0, 0});
+        for (uint32_t column = 0; column < drawCounts[frame]; ++column) {
+            const math::Vector4 value{static_cast<float>(column + 1), static_cast<float>(frame + 1), 0.25f, 1.0f};
+            m_resources->Update(constants, &value, sizeof(value));
+            DrawConstant(column, constants);
+        }
+        device.SetRenderTarget({}, *m_resources);
+        device.EndFrame();
+        m_frameOpen = false;
+    }
+
+    for (size_t frame = 0; frame < targets.size(); ++frame) {
+        SCOPED_TRACE(frame);
+        std::vector<float> rgba;
+        uint32_t width = 0;
+        uint32_t height = 0;
+        ASSERT_TRUE(device.CaptureRenderTargetToLinearRGBA(targets[frame], *m_resources, rgba, width, height));
+        ASSERT_EQ(width, drawCounts[frame]);
+        ASSERT_EQ(height, 1u);
+        ASSERT_EQ(rgba.size(), static_cast<size_t>(width) * 4u);
+        for (uint32_t column = 0; column < width; ++column) {
+            SCOPED_TRACE(column);
+            const size_t pixel = static_cast<size_t>(column) * 4u;
+            ASSERT_EQ(rgba[pixel], static_cast<float>(column + 1));
+            ASSERT_EQ(rgba[pixel + 1], static_cast<float>(frame + 1));
+            ASSERT_EQ(rgba[pixel + 2], 0.25f);
+            ASSERT_EQ(rgba[pixel + 3], 1.0f);
+        }
+    }
+}
+
+/// @brief 指定された定数を準備できない処理は出力に触れず、省略できる定数は既定値で処理する。
+TEST_F(DX12UploadArenaTest, RequestedInvalidConstantsRejectDrawAndDispatchWithoutChangingOutput)
+{
+    const auto computeShader = LoadComputeConstantProbe();
+    ASSERT_TRUE(computeShader);
+
+    // 初期化前の有効なバッファと解放済みのハンドルを用意し、どちらも明示的に要求する。
+    const auto ready = m_resources->CreateConstantBuffer(sizeof(math::Vector4));
+    const auto uninitialized = m_resources->CreateConstantBuffer(sizeof(math::Vector4));
+    const auto retired = m_resources->CreateConstantBuffer(sizeof(math::Vector4));
+    const auto destination = m_resources->CreateConstantBuffer(sizeof(uint32_t));
+    ASSERT_TRUE(ready && uninitialized && retired && destination);
+    m_resources->Release(retired);
+    ASSERT_EQ(m_resources->Get(retired), nullptr);
+    constexpr math::Vector4 MARKER{1.0f, 0.5f, 0.25f, 1.0f};
+    constexpr math::Vector4 CLEAR{0.25f, 0.5f, 0.75f, 1.0f};
+    m_resources->Update(ready, &MARKER, sizeof(MARKER));
+
+    auto& device = *m_bundle.renderer;
+    const auto drawTarget = m_resources->CreateRenderTarget(5, 1, {1, renderer::Format::RGBA16F, false});
+    ASSERT_TRUE(drawTarget);
+    BeginFrame();
+    device.SetRenderTarget(drawTarget, *m_resources);
+    device.Clear(CLEAR);
+    DrawConstant(0, ready);
+    DrawConstant(1, retired);
+    DrawConstant(2, uninitialized);
+    DrawConstant(3, {});
+    DrawConstant(4, ready);
+
+    // 3 ピクセルを目印で埋めた後、2 種類の失敗と定数省略を各ピクセルに試す。
+    renderer::ComputeCall dispatch;
+    dispatch.shader = computeShader;
+    dispatch.uavOutputs[0] = m_output;
+    dispatch.constantBuffers[0] = ready;
+    dispatch.constantBuffers[1] = destination;
+    uint32_t column = 0;
+    m_resources->Update(destination, &column, sizeof(column));
+    dispatch.dispatchX = 3;
+    ASSERT_TRUE(device.TryDispatch(dispatch, *m_resources));
+
+    dispatch.dispatchX = 1;
+    dispatch.constantBuffers[0] = retired;
+    EXPECT_FALSE(device.TryDispatch(dispatch, *m_resources));
+    column = 1;
+    m_resources->Update(destination, &column, sizeof(column));
+    dispatch.constantBuffers[0] = uninitialized;
+    EXPECT_FALSE(device.TryDispatch(dispatch, *m_resources));
+    column = 2;
+    m_resources->Update(destination, &column, sizeof(column));
+    dispatch.constantBuffers[0] = {};
+    ASSERT_TRUE(device.TryDispatch(dispatch, *m_resources));
+
+    const auto computeResult = FinishAndReadback();
+    ASSERT_EQ(computeResult.size(), 3u);
+    EXPECT_VEC4_NEAR(computeResult[0], MARKER, 0.0f);
+    EXPECT_VEC4_NEAR(computeResult[1], MARKER, 0.0f);
+    EXPECT_VEC4_NEAR(computeResult[2], (math::Vector4{0, 0, 0, 1}), 0.0f);
+
+    std::vector<float> rgba;
+    uint32_t width = 0;
+    uint32_t height = 0;
+    ASSERT_TRUE(device.CaptureRenderTargetToLinearRGBA(drawTarget, *m_resources, rgba, width, height));
+    ASSERT_EQ(width, 5u);
+    ASSERT_EQ(height, 1u);
+    ASSERT_EQ(rgba.size(), 20u);
+    constexpr std::array expected{MARKER, CLEAR, CLEAR, math::Vector4{0, 0, 0, 0}, MARKER};
+    for (size_t pixel = 0; pixel < expected.size(); ++pixel) {
+        SCOPED_TRACE(pixel);
+        EXPECT_FLOAT_EQ(rgba[pixel * 4], expected[pixel].x);
+        EXPECT_FLOAT_EQ(rgba[pixel * 4 + 1], expected[pixel].y);
+        EXPECT_FLOAT_EQ(rgba[pixel * 4 + 2], expected[pixel].z);
+        EXPECT_FLOAT_EQ(rgba[pixel * 4 + 3], expected[pixel].w);
+    }
+}
+
+/// @brief スロットの128 MiB上限では、定数やリソース添字を準備できない処理を拒否する。
+TEST_F(DX12UploadArenaTest, HardCapRejectsRedirtiedConstantsAndKeepsOptionalDraws)
+{
+    constexpr uint32_t CONSTANT_BUFFER_BYTES = 64u * 1024u;
+    constexpr uint32_t SLOT_CAP_BYTES = 128u * 1024u * 1024u;
+    constexpr uint32_t FILL_DRAWS = SLOT_CAP_BYTES / CONSTANT_BUFFER_BYTES;
+    constexpr uint32_t PAGE_BYTES = 16u * 1024u * 1024u;
+    constexpr uint32_t BINDLESS_ALIGNMENT_BYTES = 256u;
+    constexpr uint32_t MAX_TAIL_ATTEMPTS = (SLOT_CAP_BYTES / PAGE_BYTES)
+        * (CONSTANT_BUFFER_BYTES / BINDLESS_ALIGNMENT_BYTES) + 1u;
+    // 上限直前の確認点には、フレーム既定値とページ末尾の余白ぶんだけ余裕を取る。
+    constexpr uint32_t LATE_FILL_COLUMN = FILL_DRAWS - 16u;
+    constexpr math::Vector4 CLEAR{0.25f, 0.5f, 0.75f, 1.0f};
+    constexpr math::Vector4 ORIGINAL{0.5f, 1.0f, 0.25f, 1.0f};
+    constexpr math::Vector4 UPDATED{1.0f, 0.0f, 0.5f, 1.0f};
+
+    const auto compute = LoadComputeConstantProbe();
+    const auto fill = m_resources->CreateConstantBuffer(CONSTANT_BUFFER_BYTES);
+    const auto requested = m_resources->CreateConstantBuffer(CONSTANT_BUFFER_BYTES);
+    const auto computeSeed = m_resources->CreateConstantBuffer(sizeof(ORIGINAL));
+    const auto fillTarget = m_resources->CreateRenderTarget(FILL_DRAWS, 1, {1, renderer::Format::RGBA16F, false});
+    const auto drawProbe = m_resources->CreateRenderTarget(5, 1, {1, renderer::Format::RGBA16F, false});
+    const auto tailOutput = m_resources->CreateComputeTexture(1, 1);
+    ASSERT_TRUE(compute && fill && requested && computeSeed && fillTarget && drawProbe && tailOutput);
+
+    // 同じハンドルの元の定数が使えることを描画し、Compute の出力にも上限前の目印を残す。
+    auto& device = *m_bundle.renderer;
+    BeginFrame();
+    device.SetRenderTarget(drawProbe, *m_resources);
+    device.Clear(CLEAR);
+    m_resources->Update(requested, &ORIGINAL, sizeof(ORIGINAL));
+    DrawConstant(0, requested);
+
+    renderer::ComputeCall dispatch;
+    dispatch.shader = compute;
+    dispatch.uavOutputs[0] = m_output;
+    dispatch.constantBuffers[0] = computeSeed;
+    dispatch.dispatchX = 3;
+    m_resources->Update(computeSeed, &ORIGINAL, sizeof(ORIGINAL));
+    ASSERT_TRUE(device.TryDispatch(dispatch, *m_resources));
+
+    // 毎回異なる値を提出して同じスロットを使い切る。描画済みの値は終端近くまで読み戻す。
+    device.SetRenderTarget(fillTarget, *m_resources);
+    device.Clear(CLEAR);
+    for (uint32_t column = 0; column < FILL_DRAWS; ++column) {
+        const math::Vector4 value{static_cast<float>(column + 1), 0.5f, 0.25f, 1.0f};
+        m_resources->Update(fill, &value, sizeof(value));
+        DrawConstant(column, fill);
+    }
+
+    // 元の64 KiB定数を更新して再提出する。省略した定数にはフレーム開始時の既定値が使える。
+    device.SetRenderTarget(drawProbe, *m_resources);
+    m_resources->Update(requested, &UPDATED, sizeof(UPDATED));
+    DrawConstant(1, requested);
+    dispatch.constantBuffers[0] = requested;
+    dispatch.dispatchX = 1;
+    EXPECT_FALSE(device.TryDispatch(dispatch, *m_resources));
+
+    // 大きな定数が入らなくても、小さな b14 が残っている間はテクスチャを使う描画が通る。
+    renderer::DrawCall copy;
+    copy.shader = m_copy;
+    copy.pipelineState = m_state;
+    copy.vertexCount = 3;
+    copy.textures[5] = m_output;
+    device.SetViewport(2, 0, 1, 1);
+    device.Submit(copy, *m_resources);
+
+    // 毎回同じ定数を再利用し、ページ末尾の空きを b14 の確保だけで使い切る。
+    dispatch.constantBuffers[0] = computeSeed;
+    dispatch.uavOutputs[0] = tailOutput;
+    uint32_t tailDispatches = 0;
+    while (tailDispatches < MAX_TAIL_ATTEMPTS && device.TryDispatch(dispatch, *m_resources)) {
+        ++tailDispatches;
+    }
+    ASSERT_GT(tailDispatches, 0u);
+    ASSERT_LT(tailDispatches, MAX_TAIL_ATTEMPTS);
+
+    // 残りがない状態で別のテクスチャを指定すると b14 が必要になる。空の束縛表は再利用できる。
+    device.SetRenderTarget(drawProbe, *m_resources);
+    copy.textures[5] = tailOutput;
+    device.SetViewport(3, 0, 1, 1);
+    device.Submit(copy, *m_resources);
+    DrawConstant(4, {});
+    device.SetRenderTarget({}, *m_resources);
+    device.EndFrame();
+    m_frameOpen = false;
+
+    // 読み戻しに使うテクスチャコピーの束縛は、空きのある次のフレームで準備する。
+    BeginFrame();
+    const auto computeResult = FinishAndReadback();
+    ASSERT_EQ(computeResult.size(), 3u);
+    for (const auto& pixel : computeResult) {
+        EXPECT_VEC4_NEAR(pixel, ORIGINAL, 0.0f);
+    }
+
+    std::vector<float> rgba;
+    uint32_t width = 0;
+    uint32_t height = 0;
+    ASSERT_TRUE(device.CaptureRenderTargetToLinearRGBA(drawProbe, *m_resources, rgba, width, height));
+    ASSERT_EQ(width, 5u);
+    ASSERT_EQ(height, 1u);
+    ASSERT_EQ(rgba.size(), 20u);
+    constexpr std::array expected{ORIGINAL, CLEAR, ORIGINAL, CLEAR, math::Vector4{0, 0, 0, 0}};
+    for (size_t column = 0; column < expected.size(); ++column) {
+        SCOPED_TRACE(column);
+        const size_t pixel = column * 4u;
+        EXPECT_VEC4_NEAR((math::Vector4{rgba[pixel], rgba[pixel + 1], rgba[pixel + 2], rgba[pixel + 3]}),
+            expected[column], 0.0f);
+    }
+
+    ASSERT_TRUE(device.CaptureRenderTargetToLinearRGBA(fillTarget, *m_resources, rgba, width, height));
+    ASSERT_EQ(width, FILL_DRAWS);
+    ASSERT_EQ(height, 1u);
+    ASSERT_EQ(rgba.size(), static_cast<size_t>(width) * 4u);
+    EXPECT_FLOAT_EQ(rgba[LATE_FILL_COLUMN * 4u], static_cast<float>(LATE_FILL_COLUMN + 1u));
+}
+
 /// @brief Input assembly bindings follow buffer snapshots topology and frame changes.
 TEST_F(BufferReadTest, InputAssemblyBindingsFollowBufferSnapshotsTopologyAndFrameChanges)
 {
@@ -205,7 +538,7 @@ cbuffer Indices : register(b14) { uint4 pixel[8]; uint4 vertex[1]; uint4 uav[2];
     }
     m_bundle.renderer->SetRenderWhenOccluded(true);
 
-    /// @note Read back only after all rows: earlier draws must retain old CPU-updated snapshots across the frame ring.
+    // Read back only after all rows: earlier draws must retain old CPU-updated snapshots across the frame ring.
     for (uint32_t frame = 0; frame < 4; ++frame) {
         SCOPED_TRACE(frame);
         m_resources->Update(secondVertices, green.data(), sizeof(green));
@@ -245,7 +578,9 @@ cbuffer Indices : register(b14) { uint4 pixel[8]; uint4 vertex[1]; uint4 uav[2];
                 : row == 2 ? math::Vector4{0, 1, 0, 1} : row == 10 ? math::Vector4{1, 1, 0, 1} : math::Vector4{0, 0, 1, 1};
             uint32_t colored = 0;
             for (size_t pixel = 0; pixel < rgba.size(); pixel += 4) {
-                if (rgba[pixel + 3] == 0) continue;
+                if (rgba[pixel + 3] == 0) {
+                    continue;
+                }
                 ++colored;
                 EXPECT_FLOAT_EQ(rgba[pixel], expected.x); EXPECT_FLOAT_EQ(rgba[pixel + 1], expected.y);
                 EXPECT_FLOAT_EQ(rgba[pixel + 2], expected.z); EXPECT_FLOAT_EQ(rgba[pixel + 3], 1);
@@ -317,7 +652,7 @@ cbuffer Indices : register(b14) { uint4 pixel[8]; uint4 vertex[1]; uint4 uav[2];
         for (const uint32_t index : indices) result = (result * 17 + index % 251) % 251;
         return static_cast<float>(result);
     };
-    /// @note Four frames cross the frame ring; readback occurs after all draws to detect overwritten prior payloads.
+    // Four frames cross the frame ring; readback occurs after all draws to detect overwritten prior payloads.
     for (uint32_t frame = 0; frame < 4; ++frame) {
         SCOPED_TRACE(frame);
         BeginFrame();
@@ -384,7 +719,7 @@ class SynchronousUploadTest : public BufferReadTest, private core::ILogSink {
 protected:
     void SetUp() override
     {
-        /// @note Force the existing DIRECT fallback only during renderer creation, then restore the process environment.
+        // レンダラー生成中だけ既存の DIRECT 代替経路を選び、その後はプロセスの環境を元に戻す。
         struct CopyQueueEnvironment {
             std::wstring previous;
             bool hadValue = false;
@@ -492,7 +827,7 @@ TEST_F(SynchronousUploadTest, TextureAndBufferWaitsKeepRecordingFrameRetirementP
     const auto pending = m_resources->BeginTextureUpload(&mip, 1, pendingToken);
     ASSERT_TRUE(pending);
     ASSERT_NE(pendingToken, 0u);
-    /// @note DIRECT fallback tokens share the frame submission boundary, including the retired texture's recorded draw.
+    // DIRECT fallback tokens share the frame submission boundary, including the retired texture's recorded draw.
     EXPECT_FALSE(m_resources->IsUploadComplete(pendingToken));
     const auto newTexture = m_resources->CreateTexture(blue.data(), 1, 1);
     ASSERT_TRUE(newTexture);
@@ -598,7 +933,7 @@ TEST_F(BufferReadTest, StaleIndirectDependenciesRejectTheDispatchBeforeWriting)
     const math::Vector3 replacement{4, 5, 6};
     const auto currentVertices = m_resources->CreateVertexBuffer(&replacement, sizeof(replacement), sizeof(replacement));
     ASSERT_TRUE(currentVertices.IsValid());
-    /// @note 無効な間接依存の拒否で診断ログが出るのは想定内。以前の pixel 値を保存することを確認する。
+    // 無効な間接依存の拒否で診断ログが出るのは想定内。以前の pixel 値を保存することを確認する。
     Read(currentVertices, indices, 2, true, staleVertices);
     const auto result = FinishAndReadback();
     ASSERT_EQ(result.size(), 3u);

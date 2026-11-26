@@ -61,7 +61,9 @@ DxcCreateInstanceProc GetDxcCreateInstance()
     static HMODULE module = [] {
         wchar_t hostPath[32768]{};
         const DWORD length = GetModuleFileNameW(nullptr, hostPath, static_cast<DWORD>(std::size(hostPath)));
-        if (length == 0 || length >= std::size(hostPath)) return static_cast<HMODULE>(nullptr);
+        if (length == 0 || length >= std::size(hostPath)) {
+            return static_cast<HMODULE>(nullptr);
+        }
         const auto dllPath = std::filesystem::path(hostPath).parent_path() / "dxcompiler.dll";
         HMODULE loaded = LoadLibraryExW(dllPath.c_str(), nullptr,
             LOAD_LIBRARY_SEARCH_DLL_LOAD_DIR | LOAD_LIBRARY_SEARCH_SYSTEM32);
@@ -72,11 +74,17 @@ DxcCreateInstanceProc GetDxcCreateInstance()
             FreeLibrary(loaded);
             return static_cast<HMODULE>(nullptr);
         }
-        if (loaded) FBZZ_LOG_INFO("DX12Shader: actual DXC compiler=%ls package=%s", actualPath, runtimecontract::DXC_PACKAGE_VERSION);
-        else FBZZ_LOG_ERROR("DX12Shader: DXC load failed: %s (error=%lu)", dllPath.string().c_str(), GetLastError());
+        if (loaded) {
+            FBZZ_LOG_INFO("DX12Shader: actual DXC compiler=%ls package=%s", actualPath, runtimecontract::DXC_PACKAGE_VERSION);
+        }
+        else {
+            FBZZ_LOG_ERROR("DX12Shader: DXC load failed: %s (error=%lu)", dllPath.string().c_str(), GetLastError());
+        }
         return loaded;
     }();
-    if (!module) return nullptr;
+    if (!module) {
+        return nullptr;
+    }
     return std::bit_cast<DxcCreateInstanceProc>(GetProcAddress(module, "DxcCreateInstance"));
 }
 
@@ -84,8 +92,12 @@ bool CreateDxcServices(Microsoft::WRL::ComPtr<IDxcUtils>& utils,
                        Microsoft::WRL::ComPtr<IDxcCompiler3>* compiler = nullptr)
 {
     const DxcCreateInstanceProc createInstance = GetDxcCreateInstance();
-    if (!createInstance) return false;
-    if (FAILED(createInstance(CLSID_DxcUtils, IID_PPV_ARGS(&utils)))) return false;
+    if (!createInstance) {
+        return false;
+    }
+    if (FAILED(createInstance(CLSID_DxcUtils, IID_PPV_ARGS(&utils)))) {
+        return false;
+    }
     return !compiler || SUCCEEDED(createInstance(
         CLSID_DxcCompiler, IID_PPV_ARGS(compiler->ReleaseAndGetAddressOf())));
 }
@@ -106,16 +118,21 @@ Microsoft::WRL::ComPtr<ID3D12ShaderReflection> CreateShaderReflection(
     const std::vector<uint8_t>& blob)
 {
     Microsoft::WRL::ComPtr<ID3D12ShaderReflection> reflection;
-    if (SUCCEEDED(D3DReflect(blob.data(), blob.size(), IID_PPV_ARGS(&reflection))))
+    if (SUCCEEDED(D3DReflect(blob.data(), blob.size(), IID_PPV_ARGS(&reflection)))) {
         return reflection;
+    }
 
     Microsoft::WRL::ComPtr<IDxcUtils> utils;
-    if (!CreateDxcServices(utils)) return {};
+    if (!CreateDxcServices(utils)) {
+        return {};
+    }
     DxcBuffer buffer{};
     buffer.Ptr = blob.data();
     buffer.Size = blob.size();
     buffer.Encoding = DXC_CP_ACP;
-    if (FAILED(utils->CreateReflection(&buffer, IID_PPV_ARGS(&reflection)))) return {};
+    if (FAILED(utils->CreateReflection(&buffer, IID_PPV_ARGS(&reflection)))) {
+        return {};
+    }
     return reflection;
 }
 
@@ -131,9 +148,13 @@ public:
 
     HRESULT STDMETHODCALLTYPE LoadSource(LPCWSTR filename, IDxcBlob** source) override
     {
-        if (!filename || !source) return E_INVALIDARG;
+        if (!filename || !source) {
+            return E_INVALIDARG;
+        }
         *source = nullptr;
-        if (m_default && SUCCEEDED(m_default->LoadSource(filename, source))) return S_OK;
+        if (m_default && SUCCEEDED(m_default->LoadSource(filename, source))) {
+            return S_OK;
+        }
         const std::filesystem::path requested(filename);
         std::filesystem::path logical;
         bool shaderRelative = false;
@@ -142,16 +163,22 @@ public:
             std::transform(name.begin(), name.end(), name.begin(),
                 [](wchar_t value) { return static_cast<wchar_t>(std::towlower(value)); });
             if (!shaderRelative && name == L"shaders") { shaderRelative = true; continue; }
-            if (shaderRelative) logical /= part;
+            if (shaderRelative) {
+                logical /= part;
+            }
         }
         if (!shaderRelative) {
-            if (requested.is_absolute()) return HRESULT_FROM_WIN32(ERROR_FILE_NOT_FOUND);
+            if (requested.is_absolute()) {
+                return HRESULT_FROM_WIN32(ERROR_FILE_NOT_FOUND);
+            }
             logical = requested;
         }
         const auto resolved = ResolveShaderFilePath(std::filesystem::path(L"Assets/Shaders") / logical);
         Microsoft::WRL::ComPtr<IDxcBlobEncoding> blob;
         const HRESULT result = m_utils->LoadFile(resolved.c_str(), nullptr, &blob);
-        if (FAILED(result)) return result;
+        if (FAILED(result)) {
+            return result;
+        }
         *source = blob.Detach();
         return S_OK;
     }
@@ -198,7 +225,9 @@ std::vector<uint8_t> CompileShader(
     arguments.push_back(L"-O3");
 #endif
     const auto includeHandler = Microsoft::WRL::Make<ShaderIncludeHandler>(utils.Get());
-    if (!includeHandler) return {};
+    if (!includeHandler) {
+        return {};
+    }
     DxcBuffer sourceBuffer{};
     sourceBuffer.Ptr = source->GetBufferPointer();
     sourceBuffer.Size = source->GetBufferSize();
@@ -219,19 +248,22 @@ std::vector<uint8_t> CompileShader(
     result->GetStatus(&status);
     if (errors && errors->GetStringLength() > 0) {
         const std::string message(errors->GetStringPointer(), errors->GetStringLength());
-        if (FAILED(status))
+        if (FAILED(status)) {
             FBZZ_LOG_ERROR("DX12Shader: DXCコンパイル失敗 %s (%s/%s)\n%s",
                            path.c_str(), entryPoint, target, message.c_str());
-        else
+        }
+        else {
             FBZZ_LOG_WARN("DX12Shader: DXCコンパイル警告 %s\n%s",
                           path.c_str(), message.c_str());
+        }
         ReportShaderCompileDiagnostic(path, entryPoint, target, message, FAILED(status));
     }
     Microsoft::WRL::ComPtr<IDxcBlob> code;
-    if (FAILED(status) || FAILED(result->GetOutput(DXC_OUT_OBJECT, IID_PPV_ARGS(&code), nullptr)) || !code)
+    if (FAILED(status) || FAILED(result->GetOutput(DXC_OUT_OBJECT, IID_PPV_ARGS(&code), nullptr)) || !code) {
         return {};
+    }
 
-    /// @note 再コンパイル結果を保存し、次回起動時のコンパイルを避ける。
+    // 再コンパイル結果を保存し、次回起動時のコンパイルを避ける。
     if (!csoSavePath.empty()) {
         std::filesystem::path output = shader_dependency::ResolveExistingPath(
             util::StringUtils::ToWide(csoSavePath));
@@ -253,7 +285,7 @@ std::vector<uint8_t> CompileShader(
                     normalized.substr(anchorIndex + anchor.size()));
         }
         error.clear();
-        /// @note A resolver may map an asset identity back to its source; cache writes must never target HLSL.
+        // A resolver may map an asset identity back to its source; cache writes must never target HLSL.
         if (output.extension() != L".cso") {
             FBZZ_LOG_WARN("DX12Shader: rejected non-CSO cache destination: %s", csoSavePath.c_str());
             const auto* begin = static_cast<const uint8_t*>(code->GetBufferPointer());
@@ -284,12 +316,16 @@ std::vector<uint8_t> CompileShader(
     return {begin, begin + code->GetBufferSize()};
 }
 
-} /// @note namespace
+} // namespace
 
 std::string DX12Shader::CompiledBase(const std::string& path)
 {
     std::string normalized = path;
-    for (char& c : normalized) if (c == '\\') c = '/';
+    for (char& c : normalized) {
+        if (c == '\\') {
+            c = '/';
+        }
+    }
     std::string lower = normalized;
     std::transform(lower.begin(), lower.end(), lower.begin(),
         [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
@@ -304,23 +340,53 @@ std::string DX12Shader::CompiledBase(const std::string& path)
     std::string base = normalized.substr(0, anchorIndex + anchor.size());
     std::string relative = normalized.substr(anchorIndex + anchor.size());
 
-    /// @note 既存アセットの互換エイリアスを DX11 と同じ CSO 名へ正規化する。
-    if (relative == "Debug.hlsl") relative = "Debug/DebugDraw.hlsl";
-    else if (relative == "Material/Unlit.hlsl") relative = "Material/Surface/Unlit.hlsl";
-    else if (relative == "Material/Lit.hlsl") relative = "Material/Surface/Lit.hlsl";
-    else if (relative == "Material/Phong.hlsl") relative = "Material/Surface/Phong.hlsl";
-    else if (relative == "Material/BlinnPhong.hlsl") relative = "Material/Surface/BlinnPhong.hlsl";
-    else if (relative == "Material/PBR.hlsl") relative = "Material/Surface/PBR.hlsl";
-    else if (relative == "Material/Toon.hlsl") relative = "Material/Surface/Toon.hlsl";
-    else if (relative == "Material/SkinnedPBR.hlsl") relative = "Material/Skinned/SkinnedPBR.hlsl";
-    else if (relative == "Material/Particle.hlsl") relative = "Material/Effects/Particle.hlsl";
-    else if (relative == "Pipeline/GBuffer.hlsl") relative = "Pipeline/Deferred/GBuffer.hlsl";
-    else if (relative == "Pipeline/DeferredLighting.hlsl") relative = "Pipeline/Deferred/DeferredLighting.hlsl";
-    else if (relative == "Pipeline/ShadowMap.hlsl") relative = "Pipeline/Shadow/ShadowMap.hlsl";
+    // 既存アセットの互換エイリアスを DX11 と同じ CSO 名へ正規化する。
+    if (relative == "Debug.hlsl") {
+        relative = "Debug/DebugDraw.hlsl";
+    }
+    else if (relative == "Material/Unlit.hlsl") {
+        relative = "Material/Surface/Unlit.hlsl";
+    }
+    else if (relative == "Material/Lit.hlsl") {
+        relative = "Material/Surface/Lit.hlsl";
+    }
+    else if (relative == "Material/Phong.hlsl") {
+        relative = "Material/Surface/Phong.hlsl";
+    }
+    else if (relative == "Material/BlinnPhong.hlsl") {
+        relative = "Material/Surface/BlinnPhong.hlsl";
+    }
+    else if (relative == "Material/PBR.hlsl") {
+        relative = "Material/Surface/PBR.hlsl";
+    }
+    else if (relative == "Material/Toon.hlsl") {
+        relative = "Material/Surface/Toon.hlsl";
+    }
+    else if (relative == "Material/SkinnedPBR.hlsl") {
+        relative = "Material/Skinned/SkinnedPBR.hlsl";
+    }
+    else if (relative == "Material/Particle.hlsl") {
+        relative = "Material/Effects/Particle.hlsl";
+    }
+    else if (relative == "Pipeline/GBuffer.hlsl") {
+        relative = "Pipeline/Deferred/GBuffer.hlsl";
+    }
+    else if (relative == "Pipeline/DeferredLighting.hlsl") {
+        relative = "Pipeline/Deferred/DeferredLighting.hlsl";
+    }
+    else if (relative == "Pipeline/ShadowMap.hlsl") {
+        relative = "Pipeline/Shadow/ShadowMap.hlsl";
+    }
 
     const size_t dot = relative.find_last_of('.');
-    if (dot != std::string::npos) relative.resize(dot);
-    for (char& c : relative) if (c == '/' || c == '\\') c = '.';
+    if (dot != std::string::npos) {
+        relative.resize(dot);
+    }
+    for (char& c : relative) {
+        if (c == '/' || c == '\\') {
+            c = '.';
+        }
+    }
     return base + "compiled_dx12/" + relative;
 }
 
@@ -329,8 +395,11 @@ namespace {
 /// @note 添字フィールド名 → マテリアルのテクスチャ枠番号。該当しなければ UINT32_MAX。
 uint32_t MaterialTextureSlotOf(std::string_view field)
 {
-    for (uint32_t slot = 0; slot < kMaterialTextureSlotCount; ++slot)
-        if (field == kMaterialTextureSlots[slot].field) return slot;
+    for (uint32_t slot = 0; slot < kMaterialTextureSlotCount; ++slot) {
+        if (field == kMaterialTextureSlots[slot].field) {
+            return slot;
+        }
+    }
     return UINT32_MAX;
 }
 
@@ -340,14 +409,17 @@ uint32_t MaterialTextureSlotOf(std::string_view field)
 uint32_t ReflectedExtent(ID3D12ShaderReflectionType* type, bool array = true)
 {
     D3D12_SHADER_TYPE_DESC desc{};
-    if (!type || FAILED(type->GetDesc(&desc))) return 0;
+    if (!type || FAILED(type->GetDesc(&desc))) {
+        return 0;
+    }
     uint32_t size = 0;
     if (desc.Class == D3D_SVC_STRUCT) {
         for (UINT i = 0; i < desc.Members; ++i) {
             auto* member = type->GetMemberTypeByIndex(i);
             D3D12_SHADER_TYPE_DESC child{};
-            if (member && SUCCEEDED(member->GetDesc(&child)))
+            if (member && SUCCEEDED(member->GetDesc(&child))) {
                 size = (std::max)(size, child.Offset + ReflectedExtent(member));
+            }
         }
     } else {
         const uint32_t scalarSize = desc.Type == D3D_SVT_DOUBLE
@@ -358,10 +430,13 @@ uint32_t ReflectedExtent(ID3D12ShaderReflectionType* type, bool array = true)
             const uint32_t minor = rowMajor ? desc.Columns : desc.Rows;
             const uint32_t stride = (minor * scalarSize + 15u) & ~15u;
             size = major ? (major - 1u) * stride + minor * scalarSize : 0;
-        } else size = desc.Rows * desc.Columns * scalarSize;
+        } else {
+            size = desc.Rows * desc.Columns * scalarSize;
+        }
     }
-    if (array && desc.Elements)
+    if (array && desc.Elements) {
         size = (desc.Elements - 1u) * ((size + 15u) & ~15u) + size;
+    }
     return size;
 }
 
@@ -369,7 +444,9 @@ void AppendReflectedVariables(ID3D12ShaderReflectionType* type, const std::strin
                               uint32_t offset, uint32_t size, std::vector<ShaderVarDesc>& variables)
 {
     D3D12_SHADER_TYPE_DESC desc{};
-    if (!type || FAILED(type->GetDesc(&desc))) return;
+    if (!type || FAILED(type->GetDesc(&desc))) {
+        return;
+    }
     if (desc.Class == D3D_SVC_STRUCT) {
         const uint32_t stride = (ReflectedExtent(type, false) + 15u) & ~15u;
         for (uint32_t element = 0; element < (desc.Elements ? desc.Elements : 1u); ++element) {
@@ -378,7 +455,9 @@ void AppendReflectedVariables(ID3D12ShaderReflectionType* type, const std::strin
                 auto* member = type->GetMemberTypeByIndex(i);
                 const char* memberName = type->GetMemberTypeName(i);
                 D3D12_SHADER_TYPE_DESC child{};
-                if (!memberName || !member || FAILED(member->GetDesc(&child))) continue;
+                if (!memberName || !member || FAILED(member->GetDesc(&child))) {
+                    continue;
+                }
                 AppendReflectedVariables(member, prefix + "." + memberName,
                     offset + element * stride + child.Offset, ReflectedExtent(member), variables);
             }
@@ -415,18 +494,20 @@ void AppendReflectedVariables(ID3D12ShaderReflectionType* type, const std::strin
     variables.push_back(std::move(value));
 }
 
-} /// @note namespace
+} // namespace
 
 ShaderDescriptor DX12Shader::BuildDescriptor(const std::vector<uint8_t>& psBlob)
 {
-    /// @note DXBC / DXIL の PS reflection を共通化し、DX11 と同じ descriptor を構築する。
-    /// @note Inspector / SyncMaterial / サムネイルへバックエンド差を漏らさないため。
+    // DXBC / DXIL の PS reflection を共通化し、DX11 と同じ descriptor を構築する。
+    // Inspector / SyncMaterial / サムネイルへバックエンド差を漏らさないため。
     ShaderDescriptor desc;
 
     Microsoft::WRL::ComPtr<ID3D12ShaderReflection> refl = CreateShaderReflection(psBlob);
-    if (!refl) return desc;
+    if (!refl) {
+        return desc;
+    }
 
-    /// @name MaterialConstants (b2) から編集可能変数を列挙
+    // MaterialConstants (b2) から編集可能変数を列挙
     auto* cb = refl->GetConstantBufferByName("MaterialConstants");
     if (cb)
     {
@@ -439,23 +520,31 @@ ShaderDescriptor DX12Shader::BuildDescriptor(const std::vector<uint8_t>& psBlob)
                 auto* var = cb->GetVariableByIndex(i);
                 D3D12_SHADER_VARIABLE_DESC vDesc{};
                 D3D12_SHADER_TYPE_DESC     tDesc{};
-                if (FAILED(var->GetDesc(&vDesc))) continue;
-                if (FAILED(var->GetType()->GetDesc(&tDesc))) continue;
-                if (!vDesc.Name) continue;
+                if (FAILED(var->GetDesc(&vDesc))) {
+                    continue;
+                }
+                if (FAILED(var->GetType()->GetDesc(&tDesc))) {
+                    continue;
+                }
+                if (!vDesc.Name) {
+                    continue;
+                }
 
-                /// @note D3D Reflection は最適化済みシェーダーや匿名パディング相当の変数で Name が null になりうる。
-                /// @note std::string_view(nullptr) は MSVC STL の strlen 経路でクラッシュするため、
-                /// @note null は編集対象外として捨てる。
+                // D3D Reflection は最適化済みシェーダーや匿名パディング相当の変数で Name が null になりうる。
+                // std::string_view(nullptr) は MSVC STL の strlen 経路でクラッシュするため、
+                // null は編集対象外として捨てる。
                 std::string_view n = vDesc.Name;
-                /// @note パディング変数はスキップ
-                if (n.starts_with("_")) continue;
-                /// @note textureMask は Inspector に出さないが offset を記録する
+                // パディング変数はスキップ
+                if (n.starts_with("_")) {
+                    continue;
+                }
+                // textureMask は Inspector に出さないが offset を記録する
                 if (n == "textureMask") {
                     desc.textureMaskOffset = vDesc.StartOffset;
                     continue;
                 }
-                /// @note テクスチャ添字フィールドは «編集可能変数» ではなくテクスチャ枠。
-                /// @note Inspector の数値欄に uint が並ぶのを避け、代わりにテクスチャ枠として出す。
+                // テクスチャ添字フィールドは «編集可能変数» ではなくテクスチャ枠。
+                // Inspector の数値欄に uint が並ぶのを避け、代わりにテクスチャ枠として出す。
                 if (const uint32_t slot = MaterialTextureSlotOf(n); slot != UINT32_MAX) {
                     ShaderTexBindDesc bind;
                     bind.name = vDesc.Name;
@@ -470,8 +559,8 @@ ShaderDescriptor DX12Shader::BuildDescriptor(const std::vector<uint8_t>& psBlob)
         }
     }
 
-    /// @name PostProcConstants (b5) から custom* 変数を列挙
-    /// @note 共通 PostProcess Inspector が実際にシェーダーで使用される入力だけを表示するため。
+    // PostProcConstants (b5) から custom* 変数を列挙
+    // 共通 PostProcess Inspector が実際にシェーダーで使用される入力だけを表示するため。
     if (auto* postCb = refl->GetConstantBufferByName("PostProcConstants"))
     {
             D3D12_SHADER_BUFFER_DESC cbDesc{};
@@ -482,20 +571,23 @@ ShaderDescriptor DX12Shader::BuildDescriptor(const std::vector<uint8_t>& psBlob)
                 auto* var = postCb->GetVariableByIndex(i);
                 D3D12_SHADER_VARIABLE_DESC vDesc{};
                 D3D12_SHADER_TYPE_DESC tDesc{};
-                if (FAILED(var->GetDesc(&vDesc)) || FAILED(var->GetType()->GetDesc(&tDesc)) || !vDesc.Name)
+                if (FAILED(var->GetDesc(&vDesc)) || FAILED(var->GetType()->GetDesc(&tDesc)) || !vDesc.Name) {
                     continue;
+                }
                 const std::string_view name = vDesc.Name;
-                if (!name.starts_with("custom")) continue;
+                if (!name.starts_with("custom")) {
+                    continue;
+                }
 
                 AppendReflectedVariables(var->GetType(), vDesc.Name, vDesc.StartOffset, vDesc.Size, desc.postProcessVars);
             }
         }
     }
 
-    /// @note かつてここで D3D_SIT_TEXTURE の束縛 (t0〜t4) を列挙していた。bindless では
-    /// @note ResourceDescriptorHeap から引くテクスチャが DXIL に束縛情報を残さないため、
-    /// @note この経路は «どのシェーダーでもテクスチャ 0 件» になる。枠の正本は
-    /// @note MaterialConstants の添字フィールドへ移した (上のループ)。
+    // かつてここで D3D_SIT_TEXTURE の束縛 (t0〜t4) を列挙していた。bindless では
+    // ResourceDescriptorHeap から引くテクスチャが DXIL に束縛情報を残さないため、
+    // この経路は «どのシェーダーでもテクスチャ 0 件» になる。枠の正本は
+    // MaterialConstants の添字フィールドへ移した (上のループ)。
     std::sort(desc.textures.begin(), desc.textures.end(),
         [](const auto& a, const auto& b) { return a.slot < b.slot; });
 
@@ -504,10 +596,11 @@ ShaderDescriptor DX12Shader::BuildDescriptor(const std::vector<uint8_t>& psBlob)
 
 std::vector<uint8_t> DX12Shader::LoadBinary(const std::string& path)
 {
-    /// @note CSO も HLSL と同じ解決規則に通す (SDK の共有 asset だけが実体を持つ構成があるため)。
+    // CSO も HLSL と同じ解決規則に通す (SDK の共有 asset だけが実体を持つ構成があるため)。
     std::ifstream file(ResolveShaderPath(path), std::ios::binary | std::ios::ate);
-    if (!file.is_open())
+    if (!file.is_open()) {
         return {};
+    }
     const size_t size = static_cast<size_t>(file.tellg());
     file.seekg(0);
     std::vector<uint8_t> bytes(size);
@@ -524,7 +617,7 @@ bool DX12Shader::Init(const std::string& path)
     m_pixelBlob.clear();
     m_computeBlob.clear();
     if (IsErrorShader(path)) {
-        /// @note 固定入力の offset は CPU 頂点型から取得し、DXC DLL の reflection を呼ばない。
+        // 固定入力の offset は CPU 頂点型から取得し、DXC DLL の reflection を呼ばない。
         /// @see https://learn.microsoft.com/windows/win32/api/d3d12/ns-d3d12-d3d12_input_element_desc AlignedByteOffset.
         const bool skinned = path == ERROR_SKINNED_SHADER;
         const auto* vertex = skinned ? ERROR_SKINNED_BYTECODE : ERROR_SURFACE_BYTECODE;
@@ -550,8 +643,8 @@ bool DX12Shader::Init(const std::string& path)
     if (path.ends_with(".ms.hlsl")) {
         const std::string msPath = base + ".cso";
         const std::string psPath = base + ".ps.cso";
-        /// @note The renderer's VS/PS/CS path currently requires SM 6.8; keep MS on that profile so
-        /// @note ResourceDescriptorHeap bindings are available to geometry and pixel stages alike.
+        // The renderer's VS/PS/CS path currently requires SM 6.8; keep MS on that profile so
+        // ResourceDescriptorHeap bindings are available to geometry and pixel stages alike.
         /// @see https://github.com/microsoft/DirectX-Specs/blob/master/d3d/MeshShader.md Mesh Shader DXIL pipeline.
         const bool msStale = shader_dependency::IsBinaryStale(path, msPath)
             || !HasCompilerSignature(msPath, "MSMain", "ms_6_8");
@@ -559,11 +652,15 @@ bool DX12Shader::Init(const std::string& path)
             || !HasCompilerSignature(psPath, "PSMain", "ps_6_8");
         m_meshBlob = msStale ? std::vector<uint8_t>{} : LoadBinary(msPath);
         m_pixelBlob = psStale ? std::vector<uint8_t>{} : LoadBinary(psPath);
-        if (m_meshBlob.empty())
+        if (m_meshBlob.empty()) {
             m_meshBlob = CompileShader(path, "MSMain", "ms_6_8", msPath);
-        if (m_pixelBlob.empty())
+        }
+        if (m_pixelBlob.empty()) {
             m_pixelBlob = CompileShader(path, "PSMain", "ps_6_8", psPath);
-        if (m_meshBlob.empty() || m_pixelBlob.empty()) return false;
+        }
+        if (m_meshBlob.empty() || m_pixelBlob.empty()) {
+            return false;
+        }
         m_descriptor = BuildDescriptor(m_pixelBlob);
         m_semanticNames.clear();
         m_inputElements.clear();
@@ -582,9 +679,10 @@ bool DX12Shader::Init(const std::string& path)
             FBZZ_LOG_WARN("DX12Shader: CSO欠落/期限切れ、HLSLからコンパイル: %s", path.c_str());
             m_computeBlob = CompileShader(path, "CSMain", "cs_6_8", csoPath);
         }
-        if (!m_computeBlob.empty())
+        if (!m_computeBlob.empty()) {
             FBZZ_LOG_DEBUG("DX12Shader: CS準備完了 [%s] source=%s bytes=%zu",
                           path.c_str(), loadedCso ? "compiled_dx12" : "runtime", m_computeBlob.size());
+        }
         return !m_computeBlob.empty();
     }
     const std::string vsPath = base + ".vs.cso";
@@ -596,17 +694,21 @@ bool DX12Shader::Init(const std::string& path)
     m_vertexBlob = vsStale ? std::vector<uint8_t>{} : LoadBinary(vsPath);
     m_pixelBlob = psStale ? std::vector<uint8_t>{} : LoadBinary(psPath);
     const bool loadedCso = !m_vertexBlob.empty() && !m_pixelBlob.empty();
-    if (m_vertexBlob.empty())
+    if (m_vertexBlob.empty()) {
         m_vertexBlob = CompileShader(path, "VSMain", "vs_6_8", vsPath);
-    if (m_pixelBlob.empty())
+    }
+    if (m_pixelBlob.empty()) {
         m_pixelBlob = CompileShader(path, "PSMain", "ps_6_8", psPath);
-    if (m_vertexBlob.empty() || m_pixelBlob.empty()) return false;
+    }
+    if (m_vertexBlob.empty() || m_pixelBlob.empty()) {
+        return false;
+    }
     FBZZ_LOG_DEBUG("DX12Shader: VS/PS準備完了 [%s] source=%s vs=%zu ps=%zu",
                   path.c_str(), loadedCso ? "compiled_dx12" : "runtime",
                   m_vertexBlob.size(), m_pixelBlob.size());
-    /// @note PS バイトコードから MaterialConstants とテクスチャバインドを取得する。Material Inspector・
-    /// @note SyncMaterial・AssetBrowser サムネイルは ShaderDescriptor を頼りに Material CB を構築するため、
-    /// @note 省くとマテリアル値が反映されずプレビューも生成できない (DX11 と同じ処理が必須)。
+    // PS バイトコードから MaterialConstants とテクスチャバインドを取得する。Material Inspector・
+    // SyncMaterial・AssetBrowser サムネイルは ShaderDescriptor を頼りに Material CB を構築するため、
+    // 省くとマテリアル値が反映されずプレビューも生成できない (DX11 と同じ処理が必須)。
     m_descriptor = BuildDescriptor(m_pixelBlob);
     if (!ReflectVertexInput()) {
         FBZZ_LOG_ERROR("DX12Shader: Vertex Input Reflection失敗 [%s]", path.c_str());
@@ -621,18 +723,22 @@ bool DX12Shader::ReflectVertexInput()
 {
     Microsoft::WRL::ComPtr<ID3D12ShaderReflection> reflection =
         CreateShaderReflection(m_vertexBlob);
-    if (!reflection) return false;
-    D3D12_SHADER_DESC shaderDesc{};
-    if (FAILED(reflection->GetDesc(&shaderDesc)))
+    if (!reflection) {
         return false;
+    }
+    D3D12_SHADER_DESC shaderDesc{};
+    if (FAILED(reflection->GetDesc(&shaderDesc))) {
+        return false;
+    }
     m_semanticNames.reserve(shaderDesc.InputParameters);
     m_inputElements.reserve(shaderDesc.InputParameters);
     UINT byteOffset = 0;
     for (UINT index = 0; index < shaderDesc.InputParameters; ++index) {
         D3D12_SIGNATURE_PARAMETER_DESC parameter{};
         if (FAILED(reflection->GetInputParameterDesc(index, &parameter))
-            || parameter.SystemValueType != D3D_NAME_UNDEFINED)
+            || parameter.SystemValueType != D3D_NAME_UNDEFINED) {
             continue;
+        }
         m_semanticNames.emplace_back(parameter.SemanticName);
         D3D12_INPUT_ELEMENT_DESC element{};
         element.SemanticName = m_semanticNames.back().c_str();
@@ -646,8 +752,8 @@ bool DX12Shader::ReflectVertexInput()
         else if (parameter.Mask <= 0x7) { element.Format = isUInt ? DXGI_FORMAT_R32G32B32_UINT : DXGI_FORMAT_R32G32B32_FLOAT; byteOffset += 12; }
         else { element.Format = isUInt ? DXGI_FORMAT_R32G32B32A32_UINT : DXGI_FORMAT_R32G32B32A32_FLOAT; byteOffset += 16; }
         m_inputElements.push_back(element);
-        /// @note 診断: リフレクションが決めた各要素のオフセットを残す。実バッファのレイアウトと
-        /// @note ずれていた場合 (パディングや宣言順の差)、ここのログが照合の起点になる。
+        // 診断: リフレクションが決めた各要素のオフセットを残す。実バッファのレイアウトと
+        // ずれていた場合 (パディングや宣言順の差)、ここのログが照合の起点になる。
         FBZZ_LOG_DEBUG("DX12Shader:   input[%zu] %s%u offset=%u mask=0x%X %s",
                       m_inputElements.size() - 1, parameter.SemanticName, parameter.SemanticIndex,
                       element.AlignedByteOffset, parameter.Mask, isUInt ? "uint" : "float");
@@ -676,4 +782,4 @@ D3D12_SHADER_BYTECODE DX12Shader::GetComputeBytecode() const
     return {m_computeBlob.data(), m_computeBlob.size()};
 }
 
-} /// @note namespace fbzz::renderer
+} // namespace fbzz::renderer

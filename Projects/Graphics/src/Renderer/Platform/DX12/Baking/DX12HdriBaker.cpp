@@ -16,6 +16,7 @@
 /// @note DirectXTex が WIC を使う経路のための保険。
 #pragma comment(lib, "ole32.lib")
 
+#include <Graphics/Renderer/Commands/ShaderBindingSlots.hpp>
 #include "DX12HdriBaker.hpp"
 
 #include <Graphics/Renderer/Resources/BindlessIndices.hpp>
@@ -44,7 +45,7 @@ namespace {
 struct alignas(16) CbIblFace {
     uint32_t faceIndex;
     uint32_t textureSize;
-    uint32_t phiSteps;   ///< @note IrradianceConvolution の半球積分分割数 (Equirect は 0)
+    uint32_t phiSteps;   ///< IrradianceConvolution の半球積分分割数 (Equirect は 0)
     uint32_t thetaSteps;
 };
 struct alignas(16) CbPrefilter {
@@ -57,7 +58,7 @@ struct alignas(16) CbPrefilter {
 };
 
 /// @note Compute Root Signature の固定スロット割り当て (DX12PsoCache と一致)
-constexpr uint32_t ROOT_CB0        = 0;   ///< @note root CBV b0
+static_assert(cb::IBL_FACE == cb::IBL_PREFILTER);
 /// @note SRV / UAV テーブルは bindless 移行で撤去済み。添字は b14 (kBindlessIndicesRootParam) で配る。
 
 
@@ -80,7 +81,7 @@ D3D12_HEAP_PROPERTIES HeapProps(D3D12_HEAP_TYPE type)
     return props;
 }
 
-} /// @note namespace
+} // namespace
 
 DX12HdriBaker::DX12HdriBaker(ID3D12Device* device, ID3D12RootSignature* rootSignature)
     : m_device(device), m_rootSignature(rootSignature)
@@ -89,8 +90,12 @@ DX12HdriBaker::DX12HdriBaker(ID3D12Device* device, ID3D12RootSignature* rootSign
 
 DX12HdriBaker::~DX12HdriBaker()
 {
-    if (m_constantUpload && m_constantMapped) m_constantUpload->Unmap(0, nullptr);
-    if (m_fenceEvent) CloseHandle(m_fenceEvent);
+    if (m_constantUpload && m_constantMapped) {
+        m_constantUpload->Unmap(0, nullptr);
+    }
+    if (m_fenceEvent) {
+        CloseHandle(m_fenceEvent);
+    }
 }
 
 /// @note メインエントリー
@@ -111,35 +116,45 @@ bool DX12HdriBaker::Bake(
         FBZZ_LOG_ERROR("DX12HdriBaker: DX12 デバイスまたはルート署名が無効です");
         return false;
     }
-    if (!EnsureCommon() || !EnsurePipelines(input.compiledShadersDir))
+    if (!EnsureCommon() || !EnsurePipelines(input.compiledShadersDir)) {
         return false;
+    }
 
     const auto report = [&](int percent) { return !input.reportProgress || input.reportProgress(percent); };
-    if (!report(25)) return false;
+    if (!report(25)) {
+        return false;
+    }
 
-    /// @name Phase 1: Equirect → Env Cubemap mip0
+    // 正距円筒画像から環境キューブマップの mip 0 を生成する。
     Resource equirectTex;
-    /// @note GPU 完了まで生存させる upload バッファ
+    // GPU 完了まで生存させる upload バッファ
     Resource equirectUpload;
     Resource envMip0 = CreateCubemap(input.envCubemapSize, 1);
-    if (!envMip0) return false;
+    if (!envMip0) {
+        return false;
+    }
 
     BeginRecording();
-    if (!UploadEquirect(input.pixels, input.equirectW, input.equirectH, equirectTex, equirectUpload))
+    if (!UploadEquirect(input.pixels, input.equirectW, input.equirectH, equirectTex, equirectUpload)) {
         return false;
+    }
     {
         const uint32_t equirectSrv = CreateEquirectSrv(equirectTex.Get());
         for (uint32_t face = 0; face < 6; ++face) {
             const CbIblFace cb{face, input.envCubemapSize, 0, 0};
             const auto cbVA = PushConstants(&cb, sizeof(cb));
             const auto uav  = CreateFaceUav(envMip0.Get(), face, 0);
-            if (!cbVA || equirectSrv == INVALID_BINDLESS_INDEX || uav == INVALID_BINDLESS_INDEX) return false;
+            if (!cbVA || equirectSrv == INVALID_BINDLESS_INDEX || uav == INVALID_BINDLESS_INDEX) {
+                return false;
+            }
             Dispatch(m_psoEquirect.Get(), cbVA, equirectSrv, uav, input.envCubemapSize);
         }
     }
-    if (!ExecuteAndWait()) return false;
+    if (!ExecuteAndWait()) {
+        return false;
+    }
 
-    /// @note env mip0 を読み戻し、CPU で mip 連鎖を生成する (DX12 は GenerateMips が無いため)。
+    // env mip0 を読み戻し、CPU で mip 連鎖を生成する (DX12 は GenerateMips が無いため)。
     DirectX::ScratchImage envMip0Image;
     if (FAILED(DirectX::CaptureTexture(
             m_queue.Get(), envMip0.Get(), /*isCubeMap*/ true, envMip0Image,
@@ -147,14 +162,14 @@ bool DX12HdriBaker::Bake(
         FBZZ_LOG_ERROR("DX12HdriBaker: Env Cubemap の CaptureTexture に失敗しました");
         return false;
     }
-    /// @note 大きい HDRI では equirect / mip0 で数百 MB になり得るため、Phase 2 の割当前に解放する
-    /// @note       (CaptureTexture は同期完了済みなので GPU が触り終えている)。
+    // 大きい HDRI では equirect / mip0 で数百 MB になり得るため、Phase 2 の割当前に解放する
+    // (CaptureTexture は同期完了済みなので GPU が触り終えている)。
     equirectTex.Reset();
     equirectUpload.Reset();
     envMip0.Reset();
 
     DirectX::ScratchImage envChain;
-    /// @note FANT(=box) の非 WIC パスを強制する。WIC/COM 初期化状態に依存せず、FP16 cube を確実に処理する。
+    // FANT(=box) の非 WIC パスを強制する。WIC/COM 初期化状態に依存せず、FP16 cube を確実に処理する。
     const auto mipFilter = static_cast<DirectX::TEX_FILTER_FLAGS>(
         DirectX::TEX_FILTER_FANT | DirectX::TEX_FILTER_FORCE_NON_WIC);
     if (FAILED(DirectX::GenerateMipMaps(
@@ -173,11 +188,15 @@ bool DX12HdriBaker::Bake(
     const std::string prefilterPath = makePath("_prefilter");
     const std::string brdfPath      = makePath("_brdf");
 
-    if (!report(55)) return false;
+    if (!report(55)) {
+        return false;
+    }
 
-    /// @note 畳み込み用に mip 連鎖付き env cube を GPU へ再アップロードする。
+    // 畳み込み用に mip 連鎖付き env cube を GPU へ再アップロードする。
     Resource envCube = CreateCubemap(input.envCubemapSize, envMipCount);
-    if (!envCube) return false;
+    if (!envCube) {
+        return false;
+    }
     std::vector<D3D12_SUBRESOURCE_DATA> envSubresources;
     if (FAILED(DirectX::PrepareUpload(
             m_device.Get(), envChain.GetImages(), envChain.GetImageCount(),
@@ -186,35 +205,42 @@ bool DX12HdriBaker::Bake(
         return false;
     }
 
-    /// @name Phase 2: Irradiance / Prefilter / BRDF LUT
+    // Phase 2: Irradiance / Prefilter / BRDF LUT
     Resource irradianceCube = CreateCubemap(input.irradianceSize, 1);
     Resource prefilterCube  = CreateCubemap(input.prefilteredSize, input.prefilteredMipCount);
     Resource brdfLut        = CreateLut(input.brdfLutSize);
-    if (!irradianceCube || !prefilterCube || !brdfLut) return false;
+    if (!irradianceCube || !prefilterCube || !brdfLut) {
+        return false;
+    }
 
-    /// @note env の subresource upload バッファ (GPU 完了まで生存)
+    // env の subresource upload バッファ (GPU 完了まで生存)
     Resource envUpload;
     BeginRecording();
-    /// @note env cube は CreateCubemap が UAV 状態で作るので、アップロードのため COPY_DEST へ戻す。
+    // env cube は CreateCubemap が UAV 状態で作るので、アップロードのため COPY_DEST へ戻す。
     Transition(envCube.Get(), D3D12_RESOURCE_STATE_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_COPY_DEST);
     if (!RecordUpload(envCube.Get(), envSubresources.data(),
-                      static_cast<uint32_t>(envSubresources.size()), envUpload))
+                      static_cast<uint32_t>(envSubresources.size()), envUpload)) {
         return false;
+    }
     Transition(envCube.Get(), D3D12_RESOURCE_STATE_COPY_DEST,
                D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
 
     const uint32_t envSrv = CreateCubeSrv(envCube.Get(), envMipCount);
-    if (envSrv == INVALID_BINDLESS_INDEX) return false;
+    if (envSrv == INVALID_BINDLESS_INDEX) {
+        return false;
+    }
 
-    /// @note Irradiance (6 面)
+    // Irradiance (6 面)
     for (uint32_t face = 0; face < 6; ++face) {
         const CbIblFace cb{face, input.irradianceSize, IRRADIANCE_PHI, IRRADIANCE_THETA};
         const auto cbVA = PushConstants(&cb, sizeof(cb));
         const auto uav  = CreateFaceUav(irradianceCube.Get(), face, 0);
-        if (!cbVA || uav == INVALID_BINDLESS_INDEX) return false;
+        if (!cbVA || uav == INVALID_BINDLESS_INDEX) {
+            return false;
+        }
         Dispatch(m_psoIrradiance.Get(), cbVA, envSrv, uav, input.irradianceSize);
     }
-    /// @note Prefilter (面 × mip)。roughness は mip を [0,1] に均等割りする。
+    // Prefilter (面 × mip)。roughness は mip を [0,1] に均等割りする。
     for (uint32_t mip = 0; mip < input.prefilteredMipCount; ++mip) {
         const uint32_t mipSize = (std::max)(1u, input.prefilteredSize >> mip);
         const float roughness = input.prefilteredMipCount > 1
@@ -223,23 +249,33 @@ bool DX12HdriBaker::Bake(
             const CbPrefilter cb{face, mipSize, roughness, input.sampleCount, envMipCount, 0, 0, 0};
             const auto cbVA = PushConstants(&cb, sizeof(cb));
             const auto uav  = CreateFaceUav(prefilterCube.Get(), face, mip);
-            if (!cbVA || uav == INVALID_BINDLESS_INDEX) return false;
+            if (!cbVA || uav == INVALID_BINDLESS_INDEX) {
+                return false;
+            }
             Dispatch(m_psoPrefilter.Get(), cbVA, envSrv, uav, mipSize);
         }
     }
-    /// @note BRDF LUT (1 回。CB 無し / SRV 無し。シェーダーは GetDimensions で寸法を得る)
+    // BRDF LUT (1 回。CB 無し / SRV 無し。シェーダーは GetDimensions で寸法を得る)
     {
         const auto uav = CreateLutUav(brdfLut.Get());
-        if (uav == INVALID_BINDLESS_INDEX) return false;
+        if (uav == INVALID_BINDLESS_INDEX) {
+            return false;
+        }
         Dispatch(m_psoBrdf.Get(), 0, INVALID_BINDLESS_INDEX, uav, input.brdfLutSize);
     }
-    if (!ExecuteAndWait()) return false;
+    if (!ExecuteAndWait()) {
+        return false;
+    }
 
-    /// @note ここまでを中止可能とする。書き出し開始後は最後まで一連の出力を確定させる。
-    if (!report(90)) return false;
+    // ここまでを中止可能とする。書き出し開始後は最後まで一連の出力を確定させる。
+    if (!report(90)) {
+        return false;
+    }
     std::error_code ec;
     fs::create_directories(util::StringUtils::ToWide(outputDir), ec);
-    if (ec) return false;
+    if (ec) {
+        return false;
+    }
 
     if (FAILED(DirectX::SaveToDDSFile(
             envChain.GetImages(), envChain.GetImageCount(), envChain.GetMetadata(),
@@ -248,10 +284,16 @@ bool DX12HdriBaker::Bake(
         return false;
     }
 
-    /// @note 読み戻して DDS 保存 (irradiance / prefilter は cube、brdf は 2D)。
-    if (!SaveDds(irradianceCube.Get(), true, irrPath)) return false;
-    if (!SaveDds(prefilterCube.Get(), true, prefilterPath)) return false;
-    if (!SaveDds(brdfLut.Get(), false, brdfPath)) return false;
+    // 読み戻して DDS 保存 (irradiance / prefilter は cube、brdf は 2D)。
+    if (!SaveDds(irradianceCube.Get(), true, irrPath)) {
+        return false;
+    }
+    if (!SaveDds(prefilterCube.Get(), true, prefilterPath)) {
+        return false;
+    }
+    if (!SaveDds(brdfLut.Get(), false, brdfPath)) {
+        return false;
+    }
 
     output.envCubemapPath      = envPath;
     output.irradiancePath      = irrPath;
@@ -265,14 +307,18 @@ bool DX12HdriBaker::Bake(
 
 bool DX12HdriBaker::EnsureCommon()
 {
-    /// @note 構築済み
-    if (m_commandList) return true;
+    // 構築済み
+    if (m_commandList) {
+        return true;
+    }
 
-    /// @note 描画用のキュー・コンテキストを待たせず、ベイク所有のコマンドとリソースだけを実行する。
+    // 描画用のキュー・コンテキストを待たせず、ベイク所有のコマンドとリソースだけを実行する。
     /// @see https://learn.microsoft.com/en-us/windows/win32/direct3d12/user-mode-heap-synchronization Multi-engine synchronization
     D3D12_COMMAND_QUEUE_DESC queueDesc{};
     queueDesc.Type = D3D12_COMMAND_LIST_TYPE_DIRECT;
-    if (FAILED(m_device->CreateCommandQueue(&queueDesc, IID_PPV_ARGS(&m_queue)))) return false;
+    if (FAILED(m_device->CreateCommandQueue(&queueDesc, IID_PPV_ARGS(&m_queue)))) {
+        return false;
+    }
 
     if (FAILED(m_device->CreateCommandAllocator(
             D3D12_COMMAND_LIST_TYPE_DIRECT, IID_PPV_ARGS(&m_allocator)))) {
@@ -285,7 +331,7 @@ bool DX12HdriBaker::EnsureCommon()
         FBZZ_LOG_ERROR("DX12HdriBaker: コマンドリスト生成失敗");
         return false;
     }
-    /// @note 記録は BeginRecording で開始する
+    // 記録は BeginRecording で開始する
     m_commandList->Close();
 
     if (FAILED(m_device->CreateFence(0, D3D12_FENCE_FLAG_NONE, IID_PPV_ARGS(&m_fence)))) {
@@ -335,7 +381,7 @@ bool DX12HdriBaker::EnsureCommon()
 bool DX12HdriBaker::EnsurePipelines(const std::string& compiledShadersDir)
 {
     if (m_psoEquirect && m_loadedCompiledDir == compiledShadersDir)
-        /// @note 同じディレクトリで構築済み
+        // 同じディレクトリで構築済み
         return true;
 
     m_psoEquirect   = LoadComputePso(compiledShadersDir + "IBL.EquirectToCubemap.cs.cso");
@@ -409,7 +455,7 @@ DX12HdriBaker::Descriptor DX12HdriBaker::AllocateDescriptor()
     Descriptor result;
     if (m_descriptorOffset >= DESCRIPTOR_CAPACITY) {
         FBZZ_LOG_ERROR("DX12HdriBaker: ディスクリプタヒープ枯渇");
-        /// @note ptr == 0 で失敗を伝える
+        // ptr == 0 で失敗を伝える
         return result;
     }
     const SIZE_T shift = static_cast<SIZE_T>(m_descriptorOffset) * m_descriptorIncrement;
@@ -424,7 +470,7 @@ DX12HdriBaker::Descriptor DX12HdriBaker::AllocateDescriptor()
 
 D3D12_GPU_VIRTUAL_ADDRESS DX12HdriBaker::PushConstants(const void* data, size_t size)
 {
-    /// @note root CBV は 256B アラインが必須。
+    // root CBV は 256B アラインが必須。
     constexpr size_t kAlign = D3D12_CONSTANT_BUFFER_DATA_PLACEMENT_ALIGNMENT;
     const size_t offset = (m_constantOffset + kAlign - 1) & ~(kAlign - 1);
     if (offset + size > CONSTANT_CAPACITY) {
@@ -466,7 +512,7 @@ DX12HdriBaker::Resource DX12HdriBaker::CreateLut(uint32_t size)
     desc.Height = size;
     desc.DepthOrArraySize = 1;
     desc.MipLevels = 1;
-    /// @note 実行時 ComputeTexture と同じ RGBA16F。利用側は RG のみ読む
+    // 実行時 ComputeTexture と同じ RGBA16F。利用側は RG のみ読む
     desc.Format = CUBE_FORMAT;
     desc.SampleDesc.Count = 1;
     desc.Flags = D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS;
@@ -484,7 +530,9 @@ DX12HdriBaker::Resource DX12HdriBaker::CreateLut(uint32_t size)
 uint32_t DX12HdriBaker::CreateEquirectSrv(ID3D12Resource* equirect)
 {
     const Descriptor slot = AllocateDescriptor();
-    if (!slot.cpu.ptr) return INVALID_BINDLESS_INDEX;
+    if (!slot.cpu.ptr) {
+        return INVALID_BINDLESS_INDEX;
+    }
     D3D12_SHADER_RESOURCE_VIEW_DESC srv{};
     srv.Format = EQUIRECT_FORMAT;
     srv.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
@@ -497,7 +545,9 @@ uint32_t DX12HdriBaker::CreateEquirectSrv(ID3D12Resource* equirect)
 uint32_t DX12HdriBaker::CreateCubeSrv(ID3D12Resource* cube, uint32_t mipCount)
 {
     const Descriptor slot = AllocateDescriptor();
-    if (!slot.cpu.ptr) return INVALID_BINDLESS_INDEX;
+    if (!slot.cpu.ptr) {
+        return INVALID_BINDLESS_INDEX;
+    }
     D3D12_SHADER_RESOURCE_VIEW_DESC srv{};
     srv.Format = CUBE_FORMAT;
     srv.ViewDimension = D3D12_SRV_DIMENSION_TEXTURECUBE;
@@ -512,9 +562,11 @@ uint32_t DX12HdriBaker::CreateFaceUav(
     ID3D12Resource* cube, uint32_t face, uint32_t mip)
 {
     const Descriptor slot = AllocateDescriptor();
-    if (!slot.cpu.ptr) return INVALID_BINDLESS_INDEX;
-    /// @note Cubemap の各面 = Texture2DArray の 1 スライス。シェーダーは g_output[uint3(x,y,0)] を書くため
-    /// @note       ArraySize=1 のビューにすることでスライス 0 = 対象面へ写る。
+    if (!slot.cpu.ptr) {
+        return INVALID_BINDLESS_INDEX;
+    }
+    // Cubemap の各面 = Texture2DArray の 1 スライス。シェーダーは g_output[uint3(x,y,0)] を書くため
+    // ArraySize=1 のビューにすることでスライス 0 = 対象面へ写る。
     D3D12_UNORDERED_ACCESS_VIEW_DESC uav{};
     uav.Format = CUBE_FORMAT;
     uav.ViewDimension = D3D12_UAV_DIMENSION_TEXTURE2DARRAY;
@@ -528,7 +580,9 @@ uint32_t DX12HdriBaker::CreateFaceUav(
 uint32_t DX12HdriBaker::CreateLutUav(ID3D12Resource* lut)
 {
     const Descriptor slot = AllocateDescriptor();
-    if (!slot.cpu.ptr) return INVALID_BINDLESS_INDEX;
+    if (!slot.cpu.ptr) {
+        return INVALID_BINDLESS_INDEX;
+    }
     D3D12_UNORDERED_ACCESS_VIEW_DESC uav{};
     uav.Format = CUBE_FORMAT;
     uav.ViewDimension = D3D12_UAV_DIMENSION_TEXTURE2D;
@@ -571,7 +625,7 @@ bool DX12HdriBaker::RecordUpload(
         return false;
     }
     auto* mapped = static_cast<uint8_t*>(mappedData);
-    /// @note GPU の要求する行ピッチ (256B アライン) に合わせて subresource を行単位でコピーする。
+    // GPU の要求する行ピッチ (256B アライン) に合わせて subresource を行単位でコピーする。
     for (uint32_t i = 0; i < count; ++i) {
         const D3D12_PLACED_SUBRESOURCE_FOOTPRINT& layout = layouts[i];
         const auto* src = static_cast<const uint8_t*>(subs[i].pData);
@@ -619,11 +673,12 @@ bool DX12HdriBaker::UploadEquirect(
     }
     D3D12_SUBRESOURCE_DATA data{};
     data.pData = pixels;
-    /// @note RGBA float
+    // RGBA float
     data.RowPitch = static_cast<LONG_PTR>(width) * 4 * sizeof(float);
     data.SlicePitch = data.RowPitch * height;
-    if (!RecordUpload(out.Get(), &data, 1, uploadKeepAlive))
+    if (!RecordUpload(out.Get(), &data, 1, uploadKeepAlive)) {
         return false;
+    }
     Transition(out.Get(), D3D12_RESOURCE_STATE_COPY_DEST,
                D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
     return true;
@@ -646,23 +701,26 @@ void DX12HdriBaker::Dispatch(
     uint32_t srvIndex, uint32_t uavIndex, uint32_t size)
 {
     m_commandList->SetPipelineState(pso);
-    if (cb) m_commandList->SetComputeRootConstantBufferView(ROOT_CB0, cb);
-    /// @note IBL の CS は SRV を t0 (pixel[0])、UAV を u0 (uav[0]) で宣言している。
-    /// @note       添字は «このベイカーが束縛している自前ヒープ» 内の位置。
+    if (cb) {
+        m_commandList->SetComputeRootConstantBufferView(cb::IBL_FACE, cb);
+    }
+    // IBL の CS は SRV を t0 (pixel[0])、UAV を u0 (uav[0]) で宣言している。
+    // 添字は «このベイカーが束縛している自前ヒープ» 内の位置。
     BindlessIndicesConstants indices;
     indices.Reset();
-    indices.pixel[0] = srvIndex;
-    indices.uav[0]   = uavIndex;
+    indices.pixel[srv::IBL_SOURCE] = srvIndex;
+    indices.uav[uav::IBL_FACE]   = uavIndex;
     const auto indexBlock = PushConstants(&indices, sizeof(indices));
-    if (indexBlock)
+    if (indexBlock) {
         m_commandList->SetComputeRootConstantBufferView(kBindlessIndicesRootParam, indexBlock);
+    }
     const uint32_t groups = (size + 7u) / 8u;
     m_commandList->Dispatch(groups, groups, 1);
 }
 
 bool DX12HdriBaker::SaveDds(ID3D12Resource* resource, bool isCubeMap, const std::string& absPath)
 {
-    /// @note 直前の Dispatch 出力先。ExecuteAndWait 済みでアイドルかつ UAV 状態のまま読み戻す。
+    // 直前の Dispatch 出力先。ExecuteAndWait 済みでアイドルかつ UAV 状態のまま読み戻す。
     DirectX::ScratchImage image;
     if (FAILED(DirectX::CaptureTexture(
             m_queue.Get(), resource, isCubeMap, image,
@@ -682,7 +740,9 @@ bool DX12HdriBaker::SaveDds(ID3D12Resource* resource, bool isCubeMap, const std:
 std::vector<uint8_t> DX12HdriBaker::LoadBinary(const std::string& path)
 {
     std::ifstream file(util::StringUtils::ToWide(path), std::ios::binary | std::ios::ate);
-    if (!file.is_open()) return {};
+    if (!file.is_open()) {
+        return {};
+    }
     const auto size = static_cast<size_t>(file.tellg());
     file.seekg(0);
     std::vector<uint8_t> bytes(size);
@@ -690,4 +750,4 @@ std::vector<uint8_t> DX12HdriBaker::LoadBinary(const std::string& path)
     return bytes;
 }
 
-} /// @note namespace fbzz::renderer
+} // namespace fbzz::renderer

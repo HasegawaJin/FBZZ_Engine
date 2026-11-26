@@ -20,4 +20,4 @@ FBZZ_GRAPHICS_API std::unique_ptr<prepared_skinning_detail::NativeWork> PrepareD
     DX12PsoCache& pipelines, DX12StateTracker& tracker, ResourceManager& resources,
     ResourceHandle<ShaderTag> shader, std::span<const CapturedSkinningRequest> requests,
     std::span<const math::Matrix4> matrices);
-} /// @note namespace fbzz::renderer
+} // namespace fbzz::renderer

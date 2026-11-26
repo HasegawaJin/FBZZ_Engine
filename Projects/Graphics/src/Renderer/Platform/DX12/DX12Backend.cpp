@@ -36,4 +36,4 @@ RendererBundle CreateDX12Backend(void* hwnd, uint32_t width, uint32_t height)
     return bundle;
 }
 
-} /// @note namespace fbzz::renderer
+} // namespace fbzz::renderer

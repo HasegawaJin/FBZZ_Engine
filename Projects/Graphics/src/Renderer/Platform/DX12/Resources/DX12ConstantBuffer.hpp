@@ -37,4 +37,4 @@ private:
     bool m_dirty = true;
 };
 
-} /// @note namespace fbzz::renderer
+} // namespace fbzz::renderer

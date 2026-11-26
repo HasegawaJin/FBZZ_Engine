@@ -18,7 +18,7 @@ class DX12Shader;
 class DX12PsoCache final {
 public:
     /// @brief ルートシグネチャと PSO キャッシュを初期化する。
-    /// @param bindlessEnabled シェーダーから ResourceDescriptorHeap を引けるか
+    /// @param[in] bindlessEnabled シェーダーから ResourceDescriptorHeap を引けるか
     /// @note        (DX12Context::SupportsBindless)。true のときだけルートシグネチャへ
     /// @note        CBV_SRV_UAV_HEAP_DIRECTLY_INDEXED を立てる。非対応機で立てると生成が失敗する。
     /// @see  Docs/design/bindless.md
@@ -31,7 +31,7 @@ public:
     ID3D12CommandSignature* GetIndexedInstanceOffsetCommandSignature() const {
         return m_indexedInstanceOffsetCommandSignature.Get();
     }
-    /// @param reversedZ 束縛中の RT の深度が Reversed-Z か。深度比較の向き (GREATER / LESS) を決める。
+    /// @param[in] reversedZ 束縛中の RT の深度が Reversed-Z か。深度比較の向き (GREATER / LESS) を決める。
     FBZZ_GRAPHICS_API ID3D12PipelineState* GetOrCreate(const DX12Shader& shader, const PipelineStateDesc& state,
                                     PrimitiveTopology topology, DXGI_FORMAT renderTargetFormat,
                                     uint32_t renderTargetCount, bool reversedZ);
@@ -76,4 +76,4 @@ private:
     std::unordered_map<uint64_t, Microsoft::WRL::ComPtr<ID3D12PipelineState>> m_computeCache;
 };
 
-} /// @note namespace fbzz::renderer
+} // namespace fbzz::renderer

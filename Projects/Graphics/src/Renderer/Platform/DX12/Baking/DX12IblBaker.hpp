@@ -57,4 +57,4 @@ private:
     bool m_shaderFailureReported = false;
 };
 
-} /// @note namespace fbzz::renderer
+} // namespace fbzz::renderer

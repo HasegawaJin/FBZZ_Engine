@@ -20,15 +20,17 @@ namespace fbzz::renderer {
 
 DX12Buffer::~DX12Buffer()
 {
-    if (m_resource && m_mapped)
+    if (m_resource && m_mapped) {
         m_resource->Unmap(0, nullptr);
+    }
     m_mapped = nullptr;
-    /// @note 状態追跡から外してから解放する。残すと同アドレスへ載った別リソースの状態を誤認する。
-    if (m_tracker && (!m_preparedWriteVersion || m_preparedWriteVersion.use_count() == 1))
+    // 状態追跡から外してから解放する。残すと同アドレスへ載った別リソースの状態を誤認する。
+    if (m_tracker && (!m_preparedWriteVersion || m_preparedWriteVersion.use_count() == 1)) {
         m_tracker->Remove(m_resource.Get());
+    }
     if (m_context) {
         m_context->FreeCpuResourceDescriptor(m_uavCpuIndex);
-        /// @note リソース本体と同じフェンスで守る (DX12Texture のデストラクタと同じ理由)。
+        // リソース本体と同じフェンスで守る (DX12Texture のデストラクタと同じ理由)。
         m_context->FreeBindlessSlot(m_bindlessUavIndex);
         m_context->FreeBindlessSlot(m_bindlessSrvIndex);
         m_context->DeferRelease(m_srvResource);
@@ -38,8 +40,9 @@ DX12Buffer::~DX12Buffer()
 
 bool DX12Buffer::Init(DX12Context* context, const void* data, size_t sizeBytes, uint32_t stride, Kind kind)
 {
-    if (!context || sizeBytes == 0)
+    if (!context || sizeBytes == 0) {
         return false;
+    }
     m_context = context;
     ID3D12Device* device = context->GetDevice();
     m_size = sizeBytes;
@@ -65,16 +68,18 @@ bool DX12Buffer::Init(DX12Context* context, const void* data, size_t sizeBytes, 
         return false;
     }
     m_mapped = static_cast<uint8_t*>(mapped);
-    if (data)
+    if (data) {
         std::memcpy(m_mapped, data, sizeBytes);
+    }
     return true;
 }
 
 bool DX12Buffer::InitGpuWritableVertex(DX12Context* context, DX12StateTracker* tracker,
                                        size_t sizeBytes, uint32_t stride)
 {
-    if (!context || !tracker || sizeBytes == 0 || stride == 0)
+    if (!context || !tracker || sizeBytes == 0 || stride == 0) {
         return false;
+    }
 
     m_context = context;
     m_tracker = tracker;
@@ -82,18 +87,21 @@ bool DX12Buffer::InitGpuWritableVertex(DX12Context* context, DX12StateTracker* t
     m_stride  = stride;
     m_kind    = Kind::Vertex;
 
-    /// @note CreateDefaultBuffer は ALLOW_UNORDERED_ACCESS 付きで DEFAULT ヒープへ作る。
-    /// @note       data=nullptr なので初期状態は COMMON。CPU からは触らない (m_mapped は null のまま)。
-    if (!context->CreateDefaultBuffer(nullptr, sizeBytes, m_resource))
+    // CreateDefaultBuffer は ALLOW_UNORDERED_ACCESS 付きで DEFAULT ヒープへ作る。
+    // data=nullptr なので初期状態は COMMON。CPU からは触らない (m_mapped は null のまま)。
+    if (!context->CreateDefaultBuffer(nullptr, sizeBytes, m_resource)) {
         return false;
+    }
     tracker->Register(m_resource.Get(), D3D12_RESOURCE_STATE_COMMON);
 
     ID3D12Device* device = context->GetDevice();
     m_uavCpuIndex = context->AllocateCpuResourceDescriptor();
-    if (m_uavCpuIndex == INVALID_BINDLESS_INDEX) return false;
+    if (m_uavCpuIndex == INVALID_BINDLESS_INDEX) {
+        return false;
+    }
 
     D3D12_UNORDERED_ACCESS_VIEW_DESC uav{};
-    /// @note Structured は UNKNOWN 固定
+    // Structured は UNKNOWN 固定
     uav.Format                      = DXGI_FORMAT_UNKNOWN;
     uav.ViewDimension               = D3D12_UAV_DIMENSION_BUFFER;
     uav.Buffer.NumElements          = static_cast<UINT>(sizeBytes / stride);
@@ -109,14 +117,17 @@ D3D12_CPU_DESCRIPTOR_HANDLE DX12Buffer::GetUav() const
 
 uint32_t DX12Buffer::GetBindlessUavIndex() const
 {
-    if (m_bindlessUavIndex != INVALID_BINDLESS_INDEX)
+    if (m_bindlessUavIndex != INVALID_BINDLESS_INDEX) {
         return m_bindlessUavIndex;
-    if (!m_context || !IsGpuWritable() || !m_context->SupportsBindless())
+    }
+    if (!m_context || !IsGpuWritable() || !m_context->SupportsBindless()) {
         return INVALID_BINDLESS_INDEX;
+    }
 
     const uint32_t slot = m_context->AllocateBindlessSlot();
-    if (slot == DX12Context::INVALID_BINDLESS_INDEX)
+    if (slot == DX12Context::INVALID_BINDLESS_INDEX) {
         return INVALID_BINDLESS_INDEX;
+    }
 
     m_context->GetDevice()->CopyDescriptorsSimple(
         1, m_context->GetBindlessCpu(slot), GetUav(),
@@ -127,21 +138,28 @@ uint32_t DX12Buffer::GetBindlessUavIndex() const
 
 uint32_t DX12Buffer::GetBindlessSrvIndex() const
 {
-    /// @note GPU 出力の descriptor は同じ実体を指す。再 Dispatch の内容版だけで枠を再確保しない。
-    if (IsGpuWritable() && m_bindlessSrvIndex != INVALID_BINDLESS_INDEX)
+    // GPU 出力の descriptor は同じ実体を指す。再 Dispatch の内容版だけで枠を再確保しない。
+    if (IsGpuWritable() && m_bindlessSrvIndex != INVALID_BINDLESS_INDEX) {
         return m_bindlessSrvIndex;
-    if (m_bindlessSrvIndex != INVALID_BINDLESS_INDEX && m_srvContentVersion == m_contentVersion)
+    }
+    if (m_bindlessSrvIndex != INVALID_BINDLESS_INDEX && m_srvContentVersion == m_contentVersion) {
         return m_bindlessSrvIndex;
+    }
     const size_t readableBytes = GetDataSize();
     if (!m_context || !m_resource || !m_context->SupportsBindless() || readableBytes == 0
         || readableBytes % sizeof(uint32_t) != 0
-        || readableBytes / sizeof(uint32_t) > (std::numeric_limits<UINT>::max)())
+        || readableBytes / sizeof(uint32_t) > (std::numeric_limits<UINT>::max)()) {
         return INVALID_BINDLESS_INDEX;
+    }
 
     Microsoft::WRL::ComPtr<ID3D12Resource> readable;
-    if (!CreateRawReadSnapshot(readableBytes, readable)) return INVALID_BINDLESS_INDEX;
+    if (!CreateRawReadSnapshot(readableBytes, readable)) {
+        return INVALID_BINDLESS_INDEX;
+    }
     const uint32_t slot = m_context->AllocateBindlessSlot();
-    if (slot == INVALID_BINDLESS_INDEX) return INVALID_BINDLESS_INDEX;
+    if (slot == INVALID_BINDLESS_INDEX) {
+        return INVALID_BINDLESS_INDEX;
+    }
     D3D12_SHADER_RESOURCE_VIEW_DESC srv{};
     srv.Format = DXGI_FORMAT_R32_TYPELESS;
     srv.ViewDimension = D3D12_SRV_DIMENSION_BUFFER;
@@ -165,7 +183,7 @@ bool DX12Buffer::CreateRawReadSnapshot(size_t readableBytes,
         readable = m_resource;
         return true;
     }
-    /// @note Update は GPU が使う元実体へ書かない。内容版ごとに新しい immutable snapshot へ公開する。
+    // Update は GPU が使う元実体へ書かない。内容版ごとに新しい immutable snapshot へ公開する。
     /// @see https://learn.microsoft.com/en-us/windows/win32/direct3d12/upload-and-readback-of-texture-data#mapping-and-unmapping D3D12 resource renaming responsibility
     D3D12_HEAP_PROPERTIES heap{};
     heap.Type = D3D12_HEAP_TYPE_UPLOAD;
@@ -186,7 +204,9 @@ bool DX12Buffer::CreateRawReadSnapshot(size_t readableBytes,
 bool DX12Buffer::CopyData(size_t offset, size_t sizeBytes, void* output) const
 {
     if (!m_mapped || !m_contentVersion || !output || !sizeBytes
-        || offset > m_dataSize || sizeBytes > m_dataSize - offset) return false;
+        || offset > m_dataSize || sizeBytes > m_dataSize - offset) {
+        return false;
+    }
     const auto* source = m_cpuData.empty() ? m_mapped : m_cpuData.data();
     std::memcpy(output, source + offset, sizeBytes);
     return true;
@@ -194,10 +214,16 @@ bool DX12Buffer::CopyData(size_t offset, size_t sizeBytes, void* output) const
 
 void DX12Buffer::NotifyGpuWrite()
 {
-    if (!IsGpuWritable()) return;
+    if (!IsGpuWritable()) {
+        return;
+    }
     assert(GetContentVersion() != (std::numeric_limits<uint64_t>::max)());
-    if (m_preparedWriteVersion) m_contentVersion = m_preparedWriteVersion->value.fetch_add(1, std::memory_order_acq_rel) + 1;
-    else ++m_contentVersion;
+    if (m_preparedWriteVersion) {
+        m_contentVersion = m_preparedWriteVersion->value.fetch_add(1, std::memory_order_acq_rel) + 1;
+    }
+    else {
+        ++m_contentVersion;
+    }
 }
 
 uint64_t DX12Buffer::GetContentVersion() const
@@ -216,7 +242,7 @@ std::shared_ptr<prepared_skinning_detail::BufferWriteVersion> DX12Buffer::Retain
 
 void DX12Buffer::Update(const void* data, size_t sizeBytes)
 {
-    /// @note GPU 書き込み専用バッファは CPU から更新しない (m_mapped が null)。
+    // GPU 書き込み専用バッファは CPU から更新しない (m_mapped が null)。
     if (!m_mapped) {
         FBZZ_LOG_ERROR("DX12Buffer: GPU 書き込み専用バッファは CPU から更新できません");
         return;
@@ -225,11 +251,12 @@ void DX12Buffer::Update(const void* data, size_t sizeBytes)
         FBZZ_LOG_ERROR("DX12Buffer: 無効な更新サイズです (%zu / %zu)", sizeBytes, m_size);
         return;
     }
-    /// @note 同じバッファを UI が次フレームで借りても、GPU が読む旧頂点を上書きしない。
+    // 同じバッファを UI が次フレームで借りても、GPU が読む旧頂点を上書きしない。
     if (m_cpuData.empty()) {
         m_cpuData.resize(m_size, 0);
-        if (m_dataSize > 0)
+        if (m_dataSize > 0) {
             std::memcpy(m_cpuData.data(), m_mapped, m_dataSize);
+        }
     }
     std::memcpy(m_cpuData.data(), data, sizeBytes);
     m_dataSize = (std::max)(m_dataSize, sizeBytes);
@@ -239,11 +266,16 @@ void DX12Buffer::Update(const void* data, size_t sizeBytes)
 
 D3D12_GPU_VIRTUAL_ADDRESS DX12Buffer::PrepareForSubmit(DX12UploadArena& arena)
 {
-    if (m_cpuData.empty()) return m_resource->GetGPUVirtualAddress();
-    if (!m_dirty && m_cachedAddress != 0 && m_cachedEpoch == arena.GetEpoch())
+    if (m_cpuData.empty()) {
+        return m_resource->GetGPUVirtualAddress();
+    }
+    if (!m_dirty && m_cachedAddress != 0 && m_cachedEpoch == arena.GetEpoch()) {
         return m_cachedAddress;
+    }
     const auto allocation = arena.Allocate(m_dataSize, 16);
-    if (!allocation) return 0;
+    if (!allocation) {
+        return 0;
+    }
     std::memcpy(allocation.cpu, m_cpuData.data(), m_dataSize);
     m_cachedAddress = allocation.gpu;
     m_cachedEpoch = arena.GetEpoch();
@@ -265,16 +297,21 @@ D3D12_INDEX_BUFFER_VIEW DX12Buffer::GetIndexView(DX12UploadArena& arena)
 
 bool DX12Buffer::ValidateIndexRange(uint32_t firstIndex, uint32_t indexCount, uint32_t vertexCount) const
 {
-    if (m_kind != Kind::Index || (static_cast<uint64_t>(firstIndex) + indexCount) * sizeof(uint32_t) > GetDataSize())
+    if (m_kind != Kind::Index || (static_cast<uint64_t>(firstIndex) + indexCount) * sizeof(uint32_t) > GetDataSize()) {
         return false;
+    }
     const uint8_t* data = m_cpuData.empty() ? m_mapped : m_cpuData.data();
-    if (!data) return false;
+    if (!data) {
+        return false;
+    }
     for (uint32_t index = 0; index < indexCount; ++index) {
         uint32_t vertexIndex = 0;
         std::memcpy(&vertexIndex, data + (static_cast<size_t>(firstIndex) + index) * sizeof(uint32_t), sizeof(vertexIndex));
-        if (vertexIndex >= vertexCount) return false;
+        if (vertexIndex >= vertexCount) {
+            return false;
+        }
     }
     return true;
 }
 
-} /// @note namespace fbzz::renderer
+} // namespace fbzz::renderer

@@ -22,12 +22,22 @@ struct UploadArenaSizing {
 /// @return Invalid explicit input selects the safe default and reports valid=false without numeric conversion.
 [[nodiscard]] constexpr UploadArenaSizing ParseUploadArenaMiB(std::string_view value, bool specified)
 {
-    if (!specified) return {};
-    if (value == "16") return {16u * MIB, true, true};
-    if (value == "32") return {32u * MIB, true, true};
-    if (value == "64") return {64u * MIB, true, true};
-    if (value == "128") return {128u * MIB, true, true};
+    if (!specified) {
+        return {};
+    }
+    if (value == "16") {
+        return {16u * MIB, true, true};
+    }
+    if (value == "32") {
+        return {32u * MIB, true, true};
+    }
+    if (value == "64") {
+        return {64u * MIB, true, true};
+    }
+    if (value == "128") {
+        return {128u * MIB, true, true};
+    }
     return {DEFAULT_BYTES_PER_FRAME, false, true};
 }
 
-} /// @note namespace fbzz::renderer::upload_arena_detail
+} // namespace fbzz::renderer::upload_arena_detail

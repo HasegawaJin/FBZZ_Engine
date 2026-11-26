@@ -2,6 +2,7 @@
 /// @brief   元入力を閉じた DIRECT 列へ記録し、需要が発生した時だけ投入する。
 /// @author  Hasegawa Jin
 /// @date    2026-10-16
+#include <Graphics/Renderer/Commands/ShaderBindingSlots.hpp>
 #include "DX12PreparedSkinning.hpp"
 #include "../Resources/DX12Buffer.hpp"
 #include "../DX12Context.hpp"
@@ -95,7 +96,7 @@ D3D12_RESOURCE_BARRIER Transition(ID3D12Resource* resource, D3D12_RESOURCE_STATE
     barrier.Transition.StateAfter = after;
     return barrier;
 }
-} /// @note namespace
+} // namespace
 
 /// @note Slot は ticket と描画 fence の両方が退役した後だけ再利用する。Prepare と停止は描画 executor 上で直列。
 /// @see https://microsoft.github.io/DirectX-Specs/d3d/CPUEfficiency.html Command lists do not retain resource references.
@@ -126,16 +127,26 @@ public:
     {
         auto& slot = m_pool->slots[m_index];
         if (!m_pool->alive.load(std::memory_order_acquire) || !slot.owner
-            || !slot.owner->alive.load(std::memory_order_acquire)) return false;
+            || !slot.owner->alive.load(std::memory_order_acquire)) {
+            return false;
+        }
         uint32_t expected = 0;
         if (!slot.submitted.compare_exchange_strong(expected, 1, std::memory_order_acq_rel)) {
-            if (expected != 2) return false;
-            for (size_t i = 0; i < writes.size(); ++i)
-                if (!writes[i].recorded || slot.outputs[i].version->value.load(std::memory_order_acquire) != writes[i].resultingVersion)
+            if (expected != 2) {
+                return false;
+            }
+            for (size_t i = 0; i < writes.size(); ++i) {
+                if (!writes[i].recorded || slot.outputs[i].version->value.load(std::memory_order_acquire) != writes[i].resultingVersion) {
                     return false;
+                }
+            }
             auto currentFrame = m_pool->currentFrame.load(std::memory_order_acquire);
-            if (currentFrame) slot.frameRetirement = std::move(currentFrame);
-            else if (m_pool->frameOpen.load(std::memory_order_acquire)) return false;
+            if (currentFrame) {
+                slot.frameRetirement = std::move(currentFrame);
+            }
+            else if (m_pool->frameOpen.load(std::memory_order_acquire)) {
+                return false;
+            }
             return true;
         }
         for (size_t i = 0; i < writes.size(); ++i) {
@@ -149,19 +160,19 @@ public:
             slot.submitted.store(3, std::memory_order_release);
             return false;
         }
-        /// @note 専用 fence は Context の未提出 main list の退役値を完了させない。
+        // 専用 fence は Context の未提出 main list の退役値を完了させない。
         /// @see https://learn.microsoft.com/en-us/windows/win32/direct3d12/user-mode-heap-synchronization Fence timelines.
         ID3D12CommandList* lists[] = {slot.commands.Get()};
         const profiler::frame_timeline::Scope timelineSubmit(profiler::frame_timeline::Event::QUEUE_SUBMIT, {}, writes.size());
         m_pool->queue->ExecuteCommandLists(1, lists);
         slot.fenceValue = slot.nextFenceValue++;
         if (FAILED(m_pool->queue->Signal(slot.fence.Get(), slot.fenceValue))) {
-            /// @note 投入済みの失敗は再利用しない。Logger/待機を呼べない境界なので呼出し元が full fallback を選ぶ。
+            // 投入済みの失敗は再利用しない。Logger/待機を呼べない境界なので呼出し元が full fallback を選ぶ。
             slot.fenceValue = (std::numeric_limits<uint64_t>::max)();
             slot.submitted.store(3, std::memory_order_release);
             return false;
         }
-        /// @note private 列は CPU input だけを読み、開いた main/compute list に依存しない。後続 compute 消費だけをこの private fence へ繋ぐ。
+        // private 列は CPU input だけを読み、開いた main/compute list に依存しない。後続 compute 消費だけをこの private fence へ繋ぐ。
         if (m_pool->computeQueue && FAILED(m_pool->computeQueue->Wait(slot.fence.Get(), slot.fenceValue))) {
             slot.submitted.store(3, std::memory_order_release);
             return false;
@@ -191,27 +202,33 @@ private:
     std::shared_ptr<DX12PreparedSkinningPool> m_pool;
     size_t m_index;
 };
-} /// @note namespace
+} // namespace
 
 std::shared_ptr<DX12PreparedSkinningPool> CreatePreparedSkinningPool(DX12Context& context)
 {
     auto pool = std::make_shared<DX12PreparedSkinningPool>(context);
-    if (context.IsFrameOpen()) BeginPreparedSkinningFrame(pool);
+    if (context.IsFrameOpen()) {
+        BeginPreparedSkinningFrame(pool);
+    }
     return pool;
 }
 
 void StopPreparedSkinningPool(const std::shared_ptr<DX12PreparedSkinningPool>& pool)
 {
-    if (pool) pool->alive.store(false, std::memory_order_release);
+    if (pool) {
+        pool->alive.store(false, std::memory_order_release);
+    }
 }
 
 void BeginPreparedSkinningFrame(const std::shared_ptr<DX12PreparedSkinningPool>& pool)
 {
-    if (!pool) return;
+    if (!pool) {
+        return;
+    }
     pool->frameOpen.store(true, std::memory_order_release);
     pool->currentFrame.store({}, std::memory_order_release);
     for (const auto& marker : pool->frameMarkers) {
-        /// @note 参照数は marker の CPU 値の所有だけを判定する。native slot の再利用は別途両 fence の完了を必須とする。
+        // 参照数は marker の CPU 値の所有だけを判定する。native slot の再利用は別途両 fence の完了を必須とする。
         if (marker.use_count() == 1) {
             marker->actualFence.store(0, std::memory_order_release);
             pool->currentFrame.store(marker, std::memory_order_release);
@@ -222,9 +239,12 @@ void BeginPreparedSkinningFrame(const std::shared_ptr<DX12PreparedSkinningPool>&
 
 void EndPreparedSkinningFrame(const std::shared_ptr<DX12PreparedSkinningPool>& pool, uint64_t actualFence)
 {
-    if (!pool) return;
-    if (auto marker = pool->currentFrame.exchange({}, std::memory_order_acq_rel))
+    if (!pool) {
+        return;
+    }
+    if (auto marker = pool->currentFrame.exchange({}, std::memory_order_acq_rel)) {
         marker->actualFence.store(actualFence ? actualFence : UINT64_MAX, std::memory_order_release);
+    }
     pool->frameOpen.store(false, std::memory_order_release);
 }
 
@@ -235,33 +255,65 @@ std::unique_ptr<prepared_skinning_detail::NativeWork> PrepareDX12Skinning(
     std::span<const math::Matrix4> matrices)
 {
     if (!pool || !pool->alive.load(std::memory_order_acquire) || !context.SupportsBindless()
-        || !context.IsFrameOpen() || context.IsComputeListOpen() || requests.empty() || requests.size() > 256) return {};
+        || !context.IsFrameOpen() || context.IsComputeListOpen() || requests.empty() || requests.size() > 256) {
+        return {};
+    }
     bool callbackObserved = false;
     const core::ExternalCallbackScope callbackScope([](void* state) {
         *static_cast<bool*>(state) = true;
         return false;
     }, &callbackObserved);
     auto owner = prepared_skinning_detail::AcquireResourceOwner(resources);
-    if (!owner) return {};
+    if (!owner) {
+        return {};
+    }
     auto* shader = static_cast<DX12Shader*>(resources.Get(shaderHandle));
-    if (callbackObserved || !shader || !shader->IsCompute() || !shader->GetPath().ends_with("SkinningCompute.cs.hlsl")) return {};
+    if (callbackObserved || !shader || !shader->IsCompute() || !shader->GetPath().ends_with("SkinningCompute.cs.hlsl")) {
+        return {};
+    }
     auto* pso = pipelines.GetOrCreateCompute(*shader);
-    if (callbackObserved || !pso || !owner->alive.load(std::memory_order_acquire)) return {};
+    if (callbackObserved || !pso || !owner->alive.load(std::memory_order_acquire)) {
+        return {};
+    }
     size_t index = MAX_SLOTS;
     size_t totalBytes = 0;
     for (size_t i = 0; i < pool->slots.size(); ++i) {
         auto& candidate = pool->slots[i];
         totalBytes += candidate.uploadCapacity;
-        for (const auto& snapshot : candidate.sourceSnapshots) totalBytes += snapshot.bytes.capacity();
-        for (const auto& output : candidate.outputs) totalBytes += output.bytes;
-        if (index == MAX_SLOTS && !candidate.leased.load(std::memory_order_acquire)
-            && (!candidate.frameRetirement || (candidate.frameRetirement->actualFence.load(std::memory_order_acquire) != 0
-                && candidate.frameRetirement->actualFence.load(std::memory_order_acquire) != UINT64_MAX
-                && pool->frameFence->GetCompletedValue() >= candidate.frameRetirement->actualFence.load(std::memory_order_acquire)))
-            && (candidate.fenceValue == 0 || (candidate.fenceValue != (std::numeric_limits<uint64_t>::max)()
-                && candidate.fence && candidate.fence->GetCompletedValue() >= candidate.fenceValue))) index = i;
+        for (const auto& snapshot : candidate.sourceSnapshots) {
+            totalBytes += snapshot.bytes.capacity();
+        }
+        for (const auto& output : candidate.outputs) {
+            totalBytes += output.bytes;
+        }
+        // 予算の集計は全枠で行い、再利用の検査はまだ候補が決まっていないときだけ行う。
+        if (index != MAX_SLOTS || candidate.leased.load(std::memory_order_acquire)) {
+            continue;
+        }
+
+        // フレーム終端で確定した値と、個別の提出で記録した値の両方を待つ。
+        if (candidate.frameRetirement) {
+            const uint64_t frameFenceValue = candidate.frameRetirement->actualFence.load(std::memory_order_acquire);
+            if (frameFenceValue == 0 || frameFenceValue == UINT64_MAX) {
+                continue;
+            }
+            if (pool->frameFence->GetCompletedValue() < frameFenceValue) {
+                continue;
+            }
+        }
+        if (candidate.fenceValue != 0) {
+            if (candidate.fenceValue == (std::numeric_limits<uint64_t>::max)() || !candidate.fence) {
+                continue;
+            }
+            if (candidate.fence->GetCompletedValue() < candidate.fenceValue) {
+                continue;
+            }
+        }
+        index = i;
     }
-    if (index == MAX_SLOTS) return {};
+    if (index == MAX_SLOTS) {
+        return {};
+    }
     auto& slot = pool->slots[index];
     struct SourceLayout { ResourceHandle<BufferTag> handle; uint64_t version = 0; uint32_t count = 0, largestBone = 0; size_t offset = 0; bool copied = false; };
     std::array<SourceLayout, 256> sources{};
@@ -273,10 +325,14 @@ std::unique_ptr<prepared_skinning_detail::NativeWork> PrepareDX12Skinning(
         const auto& request = requests[row];
         if (request.outputVertices.IsValid() || !request.vertexCount || request.vertexCount > 65535u * 64u
             || !request.boneCount || request.boneOffset > matrices.size()
-            || request.boneCount > matrices.size() - request.boneOffset) return {};
+            || request.boneCount > matrices.size() - request.boneOffset) {
+            return {};
+        }
         size_t sourceIndex = 0;
         while (sourceIndex < sourceCount && !(sources[sourceIndex].handle == request.sourceVertices
-            && sources[sourceIndex].version == request.sourceVersion && sources[sourceIndex].count == request.vertexCount)) ++sourceIndex;
+            && sources[sourceIndex].version == request.sourceVersion && sources[sourceIndex].count == request.vertexCount)) {
+            ++sourceIndex;
+        }
         if (sourceIndex == sourceCount) {
             inputCursor = (inputCursor + sizeof(SkinnedVertex) - 1u) / sizeof(SkinnedVertex) * sizeof(SkinnedVertex);
             sources[sourceCount++] = {request.sourceVertices, request.sourceVersion, request.vertexCount, 0, inputCursor, false};
@@ -288,27 +344,43 @@ std::unique_ptr<prepared_skinning_detail::NativeWork> PrepareDX12Skinning(
     const size_t constantsStart = Align256(inputCursor);
     const size_t uploadBytes = constantsStart + requests.size() * 768u;
     if (uploadBytes > MAX_TICKET_BYTES || outputBytes > MAX_TICKET_BYTES
-        || totalBytes + uploadBytes + outputBytes > MAX_BYTES) return {};
+        || totalBytes + uploadBytes + outputBytes > MAX_BYTES) {
+        return {};
+    }
     size_t accountedBytes = totalBytes + uploadBytes + outputBytes;
     size_t slotSourceBytes = 0;
-    for (const auto& snapshot : slot.sourceSnapshots) slotSourceBytes += snapshot.bytes.capacity();
+    for (const auto& snapshot : slot.sourceSnapshots) {
+        slotSourceBytes += snapshot.bytes.capacity();
+    }
     slot.leased.store(true, std::memory_order_release);
     auto work = std::make_unique<DX12PreparedWork>(pool, index);
     slot.submitted.store(0, std::memory_order_release);
     slot.frameRetirement.reset();
-    if (!pool->currentFrame.load(std::memory_order_acquire)) BeginPreparedSkinningFrame(pool);
+    if (!pool->currentFrame.load(std::memory_order_acquire)) {
+        BeginPreparedSkinningFrame(pool);
+    }
     slot.owner = owner;
     slot.pipeline = pso;
     slot.root = pipelines.GetComputeRootSignature();
     auto* device = context.GetDevice();
-    if (!slot.allocator && FAILED(device->CreateCommandAllocator(D3D12_COMMAND_LIST_TYPE_DIRECT, IID_PPV_ARGS(&slot.allocator)))) return {};
-    if (!slot.fence && FAILED(device->CreateFence(0, D3D12_FENCE_FLAG_NONE, IID_PPV_ARGS(&slot.fence)))) return {};
+    if (!slot.allocator && FAILED(device->CreateCommandAllocator(D3D12_COMMAND_LIST_TYPE_DIRECT, IID_PPV_ARGS(&slot.allocator)))) {
+        return {};
+    }
+    if (!slot.fence && FAILED(device->CreateFence(0, D3D12_FENCE_FLAG_NONE, IID_PPV_ARGS(&slot.fence)))) {
+        return {};
+    }
     /// @see https://learn.microsoft.com/en-us/windows/win32/api/d3d12/nf-d3d12-id3d12commandallocator-reset GPU completion precedes allocator reuse.
-    if (FAILED(slot.allocator->Reset())) return {};
+    if (FAILED(slot.allocator->Reset())) {
+        return {};
+    }
     if (slot.commands) {
-        if (FAILED(slot.commands->Reset(slot.allocator.Get(), slot.pipeline.Get()))) return {};
+        if (FAILED(slot.commands->Reset(slot.allocator.Get(), slot.pipeline.Get()))) {
+            return {};
+        }
     } else if (FAILED(device->CreateCommandList(0, D3D12_COMMAND_LIST_TYPE_DIRECT, slot.allocator.Get(),
-        slot.pipeline.Get(), IID_PPV_ARGS(&slot.commands)))) return {};
+        slot.pipeline.Get(), IID_PPV_ARGS(&slot.commands)))) {
+        return {};
+    }
     struct RecordingGuard {
         ID3D12GraphicsCommandList* commands;
         bool closed = false;
@@ -316,7 +388,9 @@ std::unique_ptr<prepared_skinning_detail::NativeWork> PrepareDX12Skinning(
     } recording{slot.commands.Get()};
     if (slot.uploadCapacity < uploadBytes) {
         slot.upload.Reset();
-        if (!CreateUpload(device, uploadBytes, slot.upload)) return {};
+        if (!CreateUpload(device, uploadBytes, slot.upload)) {
+            return {};
+        }
         slot.uploadCapacity = uploadBytes;
     }
     if (slot.descriptorCapacity < requests.size() * 3u) {
@@ -325,12 +399,16 @@ std::unique_ptr<prepared_skinning_detail::NativeWork> PrepareDX12Skinning(
         desc.NumDescriptors = static_cast<UINT>(requests.size() * 3u);
         desc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
         slot.descriptors.Reset();
-        if (FAILED(device->CreateDescriptorHeap(&desc, IID_PPV_ARGS(&slot.descriptors)))) return {};
+        if (FAILED(device->CreateDescriptorHeap(&desc, IID_PPV_ARGS(&slot.descriptors)))) {
+            return {};
+        }
         slot.descriptorCapacity = desc.NumDescriptors;
     }
     void* memory = nullptr;
     const D3D12_RANGE readRange{0, 0};
-    if (FAILED(slot.upload->Map(0, &readRange, &memory))) return {};
+    if (FAILED(slot.upload->Map(0, &readRange, &memory))) {
+        return {};
+    }
     auto* mapped = static_cast<uint8_t*>(memory);
     std::memcpy(mapped, matrices.data(), matrices.size_bytes());
     const uint32_t increment = device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
@@ -353,10 +431,11 @@ std::unique_ptr<prepared_skinning_detail::NativeWork> PrepareDX12Skinning(
                 || !source || source->IsGpuWritable() || source->GetStride() != sizeof(SkinnedVertex)
                 || source->GetDataSize() < sourceBytes || source->GetContentVersion() != request.sourceVersion) { valid = false; break; }
             SourceSnapshot* captured = nullptr;
-            for (auto& snapshot : slot.sourceSnapshots)
+            for (auto& snapshot : slot.sourceSnapshots) {
                 if (snapshot.source == request.sourceVertices && snapshot.resourceInstance == resources.GetInstanceId()
                     && snapshot.resourceEpoch == resources.GetResetVersion() && snapshot.contentVersion == request.sourceVersion
                     && snapshot.vertexCount == request.vertexCount) { captured = &snapshot; break; }
+            }
             if (!captured) {
                 captured = &slot.sourceSnapshots[slot.nextSourceSnapshot];
                 slot.nextSourceSnapshot = (slot.nextSourceSnapshot + 1u) % slot.sourceSnapshots.size();
@@ -366,7 +445,7 @@ std::unique_ptr<prepared_skinning_detail::NativeWork> PrepareDX12Skinning(
                     const size_t retainedSlotBytes = slotSourceBytes - oldCapacity;
                     const size_t retainedPoolBytes = accountedBytes - oldCapacity;
                     if (sourceBytes > MAX_TICKET_BYTES - retainedSlotBytes || sourceBytes > MAX_BYTES - retainedPoolBytes) { valid = false; break; }
-                    /// @note 旧容量を解放してから確保し、vector の実 capacity を公開前に両上限へ照合する。
+                    // 旧容量を解放してから確保し、vector の実 capacity を公開前に両上限へ照合する。
                     std::vector<uint8_t>().swap(captured->bytes);
                     slotSourceBytes = retainedSlotBytes;
                     accountedBytes = retainedPoolBytes;
@@ -375,13 +454,18 @@ std::unique_ptr<prepared_skinning_detail::NativeWork> PrepareDX12Skinning(
                     slotSourceBytes += bytes.capacity();
                     accountedBytes += bytes.capacity();
                     captured->bytes.swap(bytes);
-                } else captured->bytes.resize(sourceBytes);
+                } else {
+                    captured->bytes.resize(sourceBytes);
+                }
                 if (!source->CopyData(0, sourceBytes, captured->bytes.data())
                     || source->GetContentVersion() != request.sourceVersion || !owner->alive.load(std::memory_order_acquire)) { valid = false; break; }
                 const auto* vertices = static_cast<const SkinnedVertex*>(static_cast<const void*>(captured->bytes.data()));
                 uint32_t largestBone = 0;
-                for (uint32_t vertex = 0; vertex < request.vertexCount; ++vertex)
-                    for (uint32_t bone : vertices[vertex].boneIndices) largestBone = (std::max)(largestBone, bone);
+                for (uint32_t vertex = 0; vertex < request.vertexCount; ++vertex) {
+                    for (uint32_t bone : vertices[vertex].boneIndices) {
+                        largestBone = (std::max)(largestBone, bone);
+                    }
+                }
                 captured->resourceInstance = resources.GetInstanceId();
                 captured->resourceEpoch = resources.GetResetVersion();
                 captured->contentVersion = request.sourceVersion;
@@ -389,7 +473,7 @@ std::unique_ptr<prepared_skinning_detail::NativeWork> PrepareDX12Skinning(
                 captured->largestBone = largestBone;
                 captured->source = request.sourceVertices;
             }
-            /// @note 完全一致 hit も native 版と owner を再検証し、UPLOAD は CPU 書込み先に限定する。
+            // 完全一致 hit も native 版と owner を再検証し、UPLOAD は CPU 書込み先に限定する。
             /// @see https://learn.microsoft.com/en-us/windows/win32/api/d3d12/nf-d3d12-id3d12resource-map Simple Usage Models: avoid CPU reads from UPLOAD heaps.
             std::memcpy(mapped + sourceOffset, captured->bytes.data(), sourceBytes);
             if (callbackObserved || !owner->alive.load(std::memory_order_acquire)
@@ -397,17 +481,25 @@ std::unique_ptr<prepared_skinning_detail::NativeWork> PrepareDX12Skinning(
             capturedSource.largestBone = captured->largestBone;
             capturedSource.copied = true;
         }
-        if (capturedSource.largestBone >= request.boneCount) valid = false;
-        if (!valid) break;
+        if (capturedSource.largestBone >= request.boneCount) {
+            valid = false;
+        }
+        if (!valid) {
+            break;
+        }
         auto& output = slot.outputs[i];
         auto* buffer = output.owner == owner ? static_cast<DX12Buffer*>(resources.Get(output.handle)) : nullptr;
         if (callbackObserved || !owner->alive.load(std::memory_order_acquire)) { valid = false; break; }
         const auto required = static_cast<uint32_t>(request.vertexCount * sizeof(Vertex));
         if (!buffer || !output.resource || buffer->GetResource() != output.resource.Get()
             || !output.version || output.bytes < required) {
-            if (output.handle.IsValid() && buffer && buffer->GetResource() == output.resource.Get()) resources.Release(output.handle);
+            if (output.handle.IsValid() && buffer && buffer->GetResource() == output.resource.Get()) {
+                resources.Release(output.handle);
+            }
             if (callbackObserved || !owner->alive.load(std::memory_order_acquire)) { valid = false; break; }
-            if (output.srv != INVALID_BINDLESS_INDEX) context.FreeBindlessSlot(output.srv);
+            if (output.srv != INVALID_BINDLESS_INDEX) {
+                context.FreeBindlessSlot(output.srv);
+            }
             tracker.Remove(output.resource.Get());
             output = {};
             output.srv = INVALID_BINDLESS_INDEX;
@@ -431,7 +523,7 @@ std::unique_ptr<prepared_skinning_detail::NativeWork> PrepareDX12Skinning(
         }
         const uint64_t previous = output.version->value.load(std::memory_order_acquire);
         if (previous == (std::numeric_limits<uint64_t>::max)()) { valid = false; break; }
-        /// @note 再利用した buffer は final-mainframe fence 完了済みで、ExecuteCommandLists 境界の buffer decay 後にある。
+        // 再利用した buffer は final-mainframe fence 完了済みで、ExecuteCommandLists 境界の buffer decay 後にある。
         /// @see https://learn.microsoft.com/en-us/windows/win32/direct3d12/using-resource-barriers-to-synchronize-resource-states-in-direct3d-12 State decay to COMMON.
         tracker.Register(output.resource.Get(), D3D12_RESOURCE_STATE_COMMON);
         D3D12_SHADER_RESOURCE_VIEW_DESC sourceDesc{};
@@ -439,7 +531,7 @@ std::unique_ptr<prepared_skinning_detail::NativeWork> PrepareDX12Skinning(
         sourceDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
         sourceDesc.Buffer.NumElements = request.vertexCount;
         sourceDesc.Buffer.StructureByteStride = sizeof(SkinnedVertex);
-        /// @note 構造化 SRV の FirstElement は byte offset ではなく stride の倍数。
+        // 構造化 SRV の FirstElement は byte offset ではなく stride の倍数。
         sourceDesc.Buffer.FirstElement = sourceOffset / sizeof(SkinnedVertex);
         device->CreateShaderResourceView(slot.upload.Get(), &sourceDesc, cpu(i * 3));
         D3D12_SHADER_RESOURCE_VIEW_DESC bones{};
@@ -459,13 +551,15 @@ std::unique_ptr<prepared_skinning_detail::NativeWork> PrepareDX12Skinning(
         std::memcpy(mapped + constantOffset, constants, sizeof(constants));
         BindlessIndicesConstants indices;
         indices.Reset();
-        indices.pixel[14] = static_cast<uint32_t>(i * 3);
-        indices.pixel[15] = static_cast<uint32_t>(i * 3 + 1);
-        indices.uav[4] = static_cast<uint32_t>(i * 3 + 2);
+        indices.pixel[srv::SKIN_SRC_VERTICES] = static_cast<uint32_t>(i * 3);
+        indices.pixel[srv::SKIN_BONES] = static_cast<uint32_t>(i * 3 + 1);
+        indices.uav[uav::SKINNED_VERTICES] = static_cast<uint32_t>(i * 3 + 2);
         std::memcpy(mapped + constantOffset + 256u, &indices, sizeof(indices));
         const auto address = slot.upload->GetGPUVirtualAddress() + constantOffset;
-        for (uint32_t cb = 0; cb < 14; ++cb) slot.commands->SetComputeRootConstantBufferView(cb, address + 512u);
-        slot.commands->SetComputeRootConstantBufferView(0, address);
+        for (uint32_t cb = 0; cb < 14; ++cb) {
+            slot.commands->SetComputeRootConstantBufferView(cb, address + 512u);
+        }
+        slot.commands->SetComputeRootConstantBufferView(cb::SKIN_COMPUTE, address);
         slot.commands->SetComputeRootConstantBufferView(kBindlessIndicesRootParam, address + 256u);
         auto barrier = Transition(output.resource.Get(), D3D12_RESOURCE_STATE_COMMON, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
         slot.commands->ResourceBarrier(1, &barrier);
@@ -477,11 +571,13 @@ std::unique_ptr<prepared_skinning_detail::NativeWork> PrepareDX12Skinning(
     slot.upload->Unmap(0, nullptr);
     const HRESULT closeResult = slot.commands->Close();
     recording.closed = true;
-    if (callbackObserved || !valid || FAILED(closeResult) || !owner->alive.load(std::memory_order_acquire)) return {};
+    if (callbackObserved || !valid || FAILED(closeResult) || !owner->alive.load(std::memory_order_acquire)) {
+        return {};
+    }
     work->writes = slot.writes;
     work->instance = resources.GetInstanceId();
     work->epoch = resources.GetResetVersion();
     work->frame = resources.FrameStamp();
     return work;
 }
-} /// @note namespace fbzz::renderer
+} // namespace fbzz::renderer

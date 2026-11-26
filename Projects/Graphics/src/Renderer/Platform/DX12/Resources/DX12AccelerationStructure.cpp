@@ -20,12 +20,17 @@ namespace {
 
 bool ValidRayTransform(const math::Matrix4& transform)
 {
-    for (const auto& row : transform.m)
-        for (float value : row)
-            if (!std::isfinite(value)) return false;
+    for (const auto& row : transform.m) {
+        for (float value : row) {
+            if (!std::isfinite(value)) {
+                return false;
+            }
+        }
+    }
     if (transform.m[3][0] != 0.0f || transform.m[3][1] != 0.0f
-        || transform.m[3][2] != 0.0f || transform.m[3][3] != 1.0f)
+        || transform.m[3][2] != 0.0f || transform.m[3][3] != 1.0f) {
         return false;
+    }
     const auto& m = transform.m;
     const double determinant = static_cast<double>(m[0][0]) * (static_cast<double>(m[1][1]) * m[2][2] - static_cast<double>(m[1][2]) * m[2][1])
         - static_cast<double>(m[0][1]) * (static_cast<double>(m[1][0]) * m[2][2] - static_cast<double>(m[1][2]) * m[2][0])
@@ -69,14 +74,19 @@ bool CreateRayStorage(ID3D12Device& device, uint64_t bytes, D3D12_RESOURCE_STATE
 
 DX12AccelerationStructure::~DX12AccelerationStructure()
 {
-    if (m_tracker) m_tracker->Remove(m_result.Get());
-    if (m_tracker) m_tracker->Remove(m_scratch.Get());
+    if (m_tracker) {
+        m_tracker->Remove(m_result.Get());
+    }
+    if (m_tracker) {
+        m_tracker->Remove(m_scratch.Get());
+    }
     if (m_context) {
         m_context->FreeBindlessSlot(m_bindlessIndex);
         m_context->DeferRelease(m_result);
         m_context->DeferRelease(m_scratch);
-        for (auto& bottomLevel : m_bottomLevels)
+        for (auto& bottomLevel : m_bottomLevels) {
             m_context->DeferRelease(bottomLevel);
+        }
     }
 }
 
@@ -89,34 +99,57 @@ bool DX12AccelerationStructure::ResolveGeometry(ResourceManager& resources, DX12
         const auto* prepared = source.preparedSkinning
             ? &prepared_skinning_detail::TicketFactory::Native(*source.preparedSkinning) : nullptr;
         if (prepared && (!m_context || prepared->DeviceIdentity() != m_context->GetDevice()
-            || !prepared->OutputResource(source.preparedSkinningRow))) return false;
+            || !prepared->OutputResource(source.preparedSkinningRow))) {
+            return false;
+        }
         auto* vertices = static_cast<DX12Buffer*>(resources.Get(source.vertices));
         auto* indices = static_cast<DX12Buffer*>(resources.Get(source.indices));
-        if ((!prepared && (!vertices || vertices->GetKind() != DX12Buffer::Kind::Vertex)) || source.vertexCount == 0)
+        if ((!prepared && (!vertices || vertices->GetKind() != DX12Buffer::Kind::Vertex)) || source.vertexCount == 0) {
             return false;
+        }
         const uint32_t stride = prepared ? sizeof(Vertex) : vertices->GetStride();
         if (stride < 12 || stride % 4 != 0 || source.positionOffset % 4 != 0
-            || source.positionOffset > stride - 12)
+            || source.positionOffset > stride - 12) {
             return false;
+        }
         const uint64_t availableVertices = (prepared ? prepared->OutputBytes(source.preparedSkinningRow) : vertices->GetDataSize()) / stride;
-        if (source.vertexCount > availableVertices || source.firstVertex > availableVertices - source.vertexCount)
+        if (source.vertexCount > availableVertices || source.firstVertex > availableVertices - source.vertexCount) {
             return false;
+        }
         if (source.indices.IsValid()) {
             if (!indices || indices->GetKind() != DX12Buffer::Kind::Index
                 || source.indexCount == 0 || source.indexCount % 3 != 0
-                || !indices->ValidateIndexRange(source.firstIndex, source.indexCount, source.vertexCount))
+                || !indices->ValidateIndexRange(source.firstIndex, source.indexCount, source.vertexCount)) {
                 return false;
+            }
         } else if (source.indexCount != 0 || source.firstIndex != 0 || source.vertexCount % 3 != 0) {
             return false;
         }
         primitiveCount += (indices ? source.indexCount : source.vertexCount) / 3;
         /// @see https://microsoft.github.io/DirectX-Specs/d3d/Raytracing.html#geometry-limits DXR per-BLAS primitive limit
-        if (primitiveCount > (1u << 29)) return false;
-        const auto vertexAddress = prepared ? prepared->OutputAddress(source.preparedSkinningRow) : arena ? vertices->GetVertexView(*arena).BufferLocation
-                                         : vertices->GetResource()->GetGPUVirtualAddress();
-        const auto indexAddress = indices ? (arena ? indices->GetIndexView(*arena).BufferLocation
-                                                   : indices->GetResource()->GetGPUVirtualAddress()) : 0;
-        if (!vertexAddress || (indices && !indexAddress)) return false;
+        if (primitiveCount > (1u << 29)) {
+            return false;
+        }
+        // 変形出力があれば、その GPU アドレスを BLAS の頂点入力に使う。
+        D3D12_GPU_VIRTUAL_ADDRESS vertexAddress = 0;
+        if (prepared) {
+            vertexAddress = prepared->OutputAddress(source.preparedSkinningRow);
+        } else if (arena) {
+            vertexAddress = vertices->GetVertexView(*arena).BufferLocation;
+        } else {
+            vertexAddress = vertices->GetResource()->GetGPUVirtualAddress();
+        }
+
+        // アリーナを使う場合は、共有資源全体の先頭ではなく個別のバッファビューを参照する。
+        D3D12_GPU_VIRTUAL_ADDRESS indexAddress = 0;
+        if (indices) {
+            indexAddress = arena ? indices->GetIndexView(*arena).BufferLocation
+                : indices->GetResource()->GetGPUVirtualAddress();
+        }
+        if (!vertexAddress || (indices && !indexAddress)) {
+            return false;
+        }
+        // 検証済みの開始頂点・インデックスを GPU アドレスへ足して構築記述を作る。
         D3D12_RAYTRACING_GEOMETRY_DESC target{};
         target.Type = D3D12_RAYTRACING_GEOMETRY_TYPE_TRIANGLES;
         target.Flags = source.opaque ? D3D12_RAYTRACING_GEOMETRY_FLAG_OPAQUE : D3D12_RAYTRACING_GEOMETRY_FLAG_NONE;
@@ -139,10 +172,11 @@ bool DX12AccelerationStructure::ResolveInstances(ResourceManager& resources,
         auto* bottomLevel = static_cast<DX12AccelerationStructure*>(resources.Get(source.bottomLevel));
         if (!bottomLevel || bottomLevel->GetKind() != AccelerationStructureKind::BOTTOM_LEVEL
             || (requireBuilt && !bottomLevel->IsBuilt()) || source.instanceId > 0xFFFFFF
-            || !ValidRayTransform(source.transform))
+            || !ValidRayTransform(source.transform)) {
             return false;
+        }
         D3D12_RAYTRACING_INSTANCE_DESC target{};
-        /// @note Math already stores the column-vector affine transform as three row-major float4 rows.
+        // Math already stores the column-vector affine transform as three row-major float4 rows.
         /// @see https://learn.microsoft.com/en-us/windows/win32/api/d3d12/ns-d3d12-d3d12_raytracing_instance_desc Transform layout
         std::memcpy(target.Transform, source.transform.m, sizeof(target.Transform));
         target.InstanceID = source.instanceId;
@@ -158,43 +192,52 @@ bool DX12AccelerationStructure::ResolveInstances(ResourceManager& resources,
 bool DX12AccelerationStructure::Init(DX12Context& context, DX12StateTracker& tracker,
     const AccelerationStructureDesc& desc, ResourceManager& resources)
 {
-    if (!context.GetDevice() || !context.SupportsInlineRaytracing() || !context.SupportsBindless())
+    if (!context.GetDevice() || !context.SupportsInlineRaytracing() || !context.SupportsBindless()) {
         return false;
+    }
     m_context = &context;
     const bool bottomLevel = desc.kind == AccelerationStructureKind::BOTTOM_LEVEL;
     if ((!bottomLevel && desc.kind != AccelerationStructureKind::TOP_LEVEL)
         || (bottomLevel ? (desc.geometries.empty() || !desc.instances.empty())
                         : (desc.instances.empty() || !desc.geometries.empty()))
-        || desc.geometries.size() > (1u << 24) || desc.instances.size() > (1u << 24))
+        || desc.geometries.size() > (1u << 24) || desc.instances.size() > (1u << 24)) {
         return false;
+    }
     m_desc = desc;
     std::vector<D3D12_RAYTRACING_GEOMETRY_DESC> geometry;
     std::vector<D3D12_RAYTRACING_INSTANCE_DESC> instances;
     if (bottomLevel ? !ResolveGeometry(resources, nullptr, geometry)
-                    : !ResolveInstances(resources, instances, false))
+                    : !ResolveInstances(resources, instances, false)) {
         return false;
+    }
     auto inputs = BuildInputs(desc.kind, static_cast<uint32_t>(bottomLevel ? geometry.size() : instances.size()));
-    if (bottomLevel) inputs.pGeometryDescs = geometry.data();
+    if (bottomLevel) {
+        inputs.pGeometryDescs = geometry.data();
+    }
     Microsoft::WRL::ComPtr<ID3D12Device5> device;
     FBZZ_HR_CHECK(context.GetDevice()->QueryInterface(IID_PPV_ARGS(&device)));
     D3D12_RAYTRACING_ACCELERATION_STRUCTURE_PREBUILD_INFO sizes{};
     device->GetRaytracingAccelerationStructurePrebuildInfo(&inputs, &sizes);
     if (sizes.ResultDataMaxSizeInBytes == 0 || sizes.ScratchDataSizeInBytes == 0
-        || sizes.ResultDataMaxSizeInBytes > (std::numeric_limits<size_t>::max)() - sizes.ScratchDataSizeInBytes)
+        || sizes.ResultDataMaxSizeInBytes > (std::numeric_limits<size_t>::max)() - sizes.ScratchDataSizeInBytes) {
         return false;
+    }
     m_context = &context;
     m_tracker = &tracker;
     m_size = static_cast<size_t>(sizes.ResultDataMaxSizeInBytes + sizes.ScratchDataSizeInBytes);
     if (!CreateRayStorage(*device.Get(), sizes.ResultDataMaxSizeInBytes,
         D3D12_RESOURCE_STATE_RAYTRACING_ACCELERATION_STRUCTURE, m_result)
         || !CreateRayStorage(*device.Get(), sizes.ScratchDataSizeInBytes,
-            D3D12_RESOURCE_STATE_COMMON, m_scratch))
+            D3D12_RESOURCE_STATE_COMMON, m_scratch)) {
         return false;
+    }
     tracker.Register(m_result.Get(), D3D12_RESOURCE_STATE_RAYTRACING_ACCELERATION_STRUCTURE);
     tracker.Register(m_scratch.Get(), D3D12_RESOURCE_STATE_COMMON);
     if (!bottomLevel) {
         m_bindlessIndex = context.AllocateBindlessSlot();
-        if (m_bindlessIndex == UINT32_MAX) return false;
+        if (m_bindlessIndex == UINT32_MAX) {
+            return false;
+        }
         D3D12_SHADER_RESOURCE_VIEW_DESC view{};
         view.ViewDimension = D3D12_SRV_DIMENSION_RAYTRACING_ACCELERATION_STRUCTURE;
         view.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
@@ -207,13 +250,16 @@ bool DX12AccelerationStructure::Init(DX12Context& context, DX12StateTracker& tra
 bool DX12AccelerationStructure::Build(ID3D12GraphicsCommandList4& commands,
     DX12UploadArena& arena, ResourceManager& resources)
 {
-    if (m_built || !m_result || !m_scratch) return false;
+    if (m_built || !m_result || !m_scratch) {
+        return false;
+    }
     const bool bottomLevel = m_desc.kind == AccelerationStructureKind::BOTTOM_LEVEL;
     std::vector<D3D12_RAYTRACING_GEOMETRY_DESC> geometry;
     std::vector<D3D12_RAYTRACING_INSTANCE_DESC> instances;
     if (bottomLevel ? !ResolveGeometry(resources, &arena, geometry)
-                    : !ResolveInstances(resources, instances, true))
+                    : !ResolveInstances(resources, instances, true)) {
         return false;
+    }
     D3D12_BUILD_RAYTRACING_ACCELERATION_STRUCTURE_DESC build{};
     build.Inputs = BuildInputs(m_desc.kind, static_cast<uint32_t>(bottomLevel ? geometry.size() : instances.size()));
     if (bottomLevel) {
@@ -222,32 +268,43 @@ bool DX12AccelerationStructure::Build(ID3D12GraphicsCommandList4& commands,
             if (source.preparedSkinning) {
                 const auto& prepared = prepared_skinning_detail::TicketFactory::Native(*source.preparedSkinning);
                 auto* resource = const_cast<ID3D12Resource*>(static_cast<const ID3D12Resource*>(prepared.OutputResource(source.preparedSkinningRow)));
-                if (!resource) return false;
+                if (!resource) {
+                    return false;
+                }
                 m_tracker->QueueTransition(resource, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
                 m_context->RetainPreparedSkinning(source.preparedSkinning);
                 continue;
             }
             auto* vertices = static_cast<DX12Buffer*>(resources.Get(source.vertices));
-            if (vertices->IsGpuWritable())
+            if (vertices->IsGpuWritable()) {
                 m_tracker->QueueTransition(vertices->GetResource(), D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
+            }
         }
     } else {
         const auto upload = arena.Allocate(instances.size() * sizeof(instances[0]),
             D3D12_RAYTRACING_INSTANCE_DESCS_BYTE_ALIGNMENT);
-        if (!upload) return false;
+        if (!upload) {
+            return false;
+        }
         std::memcpy(upload.cpu, instances.data(), upload.size);
         build.Inputs.InstanceDescs = upload.gpu;
-        for (const auto& source : m_desc.instances)
+        for (const auto& source : m_desc.instances) {
             m_bottomLevels.emplace_back(static_cast<DX12AccelerationStructure*>(resources.Get(source.bottomLevel))->GetResource());
+        }
     }
     build.DestAccelerationStructureData = m_result->GetGPUVirtualAddress();
     build.ScratchAccelerationStructureData = m_scratch->GetGPUVirtualAddress();
     m_tracker->QueueTransition(m_scratch.Get(), D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
     m_tracker->FlushBarriers(&commands);
-    if (bottomLevel) for (const auto& source : m_desc.geometries)
-        if (source.preparedSkinning && !source.preparedSkinning->IsWriteCurrent(source.preparedSkinningRow)) return false;
+    if (bottomLevel) {
+        for (const auto& source : m_desc.geometries) {
+            if (source.preparedSkinning && !source.preparedSkinning->IsWriteCurrent(source.preparedSkinningRow)) {
+                return false;
+            }
+        }
+    }
     commands.BuildRaytracingAccelerationStructure(&build, 0, nullptr);
-    /// @note AS remains in AS state; UAV synchronization makes the build visible to TLAS construction and trace.
+    // AS remains in AS state; UAV synchronization makes the build visible to TLAS construction and trace.
     /// @see https://microsoft.github.io/DirectX-Specs/d3d/Raytracing.html#synchronizing-acceleration-structure-memory-writesreads AS synchronization
     D3D12_RESOURCE_BARRIER barrier{};
     barrier.Type = D3D12_RESOURCE_BARRIER_TYPE_UAV;

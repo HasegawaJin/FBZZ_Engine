@@ -660,6 +660,7 @@ fbzz_add_test_suite(GraphicsStandalone OPT_IN
         Graphics/Auto/Pipeline/GraphicsQualityLifetimeTests.cpp
         Graphics/Auto/Pipeline/GraphicsQualityShaderTests.cpp
         Graphics/Auto/Resources/BufferReadTests.cpp
+        Graphics/Auto/Resources/DX12UploadArenaPagingTests.cpp
         Graphics/Auto/Standalone/GraphicsStandaloneTests.cpp
         Graphics/Auto/Threading/ThreadedRenderingTests.cpp
         Graphics/Auto/Water/UnderwaterShaderTests.cpp
@@ -671,6 +672,8 @@ fbzz_add_test_suite(GraphicsStandalone OPT_IN
         FBZZGraphics
         FBZZTestKitEngine
         FBZZTestKitEditor
+        d3d12
+        dxgi
 )
 
 # @note Paint Library の GPU 検証は本番の非公開 Editor UI を描く。
