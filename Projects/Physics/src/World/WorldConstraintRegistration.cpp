@@ -93,7 +93,9 @@ void World::ConstraintRegistry::RebuildActiveView()
 
 void World::ConstraintRegistry::BeginSceneSync()
 {
-    for (auto& slot : m_constraintPool) slot.touched = false;
+    for (auto& slot : m_constraintPool) {
+        slot.touched = false;
+    }
 }
 
 bool World::ConstraintRegistry::EndSceneSync()
@@ -139,7 +141,9 @@ void World::AddConstraint(std::unique_ptr<Constraint> constraint)
 ConstraintHandle World::SyncConstraint(ConstraintHandle handle, std::unique_ptr<Constraint> constraint)
 {
     const ConstraintHandle synced = m_constraints.Sync(handle, std::move(constraint));
-    if (synced.IsValid()) m_sceneSyncChanged = true;
+    if (synced.IsValid()) {
+        m_sceneSyncChanged = true;
+    }
     return synced;
 }
 
@@ -155,7 +159,9 @@ Constraint* World::FindConstraint(ConstraintHandle handle) const
 
 void World::RemoveConstraint(ConstraintHandle handle)
 {
-    if (m_constraints.Remove(handle)) m_sceneSyncChanged = true;
+    if (m_constraints.Remove(handle)) {
+        m_sceneSyncChanged = true;
+    }
 }
 
 const std::vector<Constraint*>& World::GetConstraints() const

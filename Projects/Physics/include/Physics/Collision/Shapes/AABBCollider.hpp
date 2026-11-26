@@ -21,11 +21,10 @@ namespace fbzz::physics
         /// @note 8 * hx * hy * hz
         [[nodiscard]] FBZZ_PHYSICS_API float ComputeVolume() const override;
 
-        /// @note 中心から各面までの距離。Update() 後もローカル軸ではなくワールド軸基準で扱う。
-        math::Vector3 m_halfExtents;
+        math::Vector3 m_halfExtents; ///< 中心から各面までの距離。Update() 後もローカル軸ではなくワールド軸基準で扱う。
 
     private:
-        math::Vector3 m_worldCenter;
+        math::Vector3 m_worldCenter; ///< ワールド空間に変換済みのコライダーの中心 [m]。
     };
 
 } /// @note namespace fbzz::physics

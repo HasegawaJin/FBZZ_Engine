@@ -24,15 +24,15 @@ namespace fbzz::physics
 
     /// @note Volume の振る舞いを 1 つの設定構造体にまとめ、エディタと Serializer から扱いやすくする。
     struct VolumeSettings {
-        VolumeType type = VolumeType::Gravity;
-        math::Vector3 gravity = { 0.0f, -9.81f, 0.0f };
-        math::Vector3 magneticField = { 0.0f, 1.0f, 0.0f };
-        float swirlStrength = 1.0f;
-        float inwardStrength = 0.0f;
-        float liftStrength = 0.0f;
-        float explosionImpulse = 10.0f;
-        float timeScale = 1.0f;
-        float duration = -1.0f;
+        VolumeType type = VolumeType::Gravity; ///< ボリューム内で剛体に適用する効果の種類。
+        math::Vector3 gravity = { 0.0f, -9.81f, 0.0f }; ///< 内部の剛体へ適用するワールド空間の重力加速度 [m/s²]。
+        math::Vector3 magneticField = { 0.0f, 1.0f, 0.0f }; ///< 内部の剛体に適用する磁場設定。
+        float swirlStrength = 1.0f; ///< ボリューム中心のまわりに渦を作る力の強さ。
+        float inwardStrength = 0.0f; ///< ボリューム中心へ向かわせる力の強さ。
+        float liftStrength = 0.0f; ///< ボリュームの上方向へ掛ける力の強さ。
+        float explosionImpulse = 10.0f; ///< 爆発効果の力積の強さ。
+        float timeScale = 1.0f; ///< ボリューム内の剛体の刻みに掛ける時間倍率。
+        float duration = -1.0f; ///< ボリュームの有効時間 [秒]。
     };
 
     /// @note 形状判定は Collider に委譲し、効果だけを VolumeSettings で切り替える。
@@ -52,8 +52,8 @@ namespace fbzz::physics
         FBZZ_PHYSICS_API void Tick(float dt) override;
 
     private:
-        Collider* m_collider = nullptr;
-        VolumeSettings m_settings;
-        float m_elapsed = 0.0f;
+        Collider* m_collider = nullptr; ///< 内外判定に使うコライダーの非所有参照。
+        VolumeSettings m_settings; ///< 内部に入った剛体へ掛ける効果の設定。
+        float m_elapsed = 0.0f; ///< 時限ボリュームを作成してからの経過時間 [秒]。
     };
 } /// @note namespace fbzz::physics

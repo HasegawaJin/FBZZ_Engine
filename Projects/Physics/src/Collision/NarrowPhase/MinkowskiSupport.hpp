@@ -10,10 +10,10 @@ namespace fbzz::physics::convex_contact_detail
 {
     struct MinkowskiSupport
     {
-        const void* m_shapeA;
-        SupportFn m_supportA;
-        const void* m_shapeB;
-        SupportFn m_supportB;
+        const void* m_shapeA; ///< 差空間の支持点を作る 1 番目の凸形状。非所有。
+        SupportFn m_supportA; ///< 1 番目の形状の支持点を指定方向に求める関数。
+        const void* m_shapeB; ///< 差空間の支持点を作る 2 番目の凸形状。非所有。
+        SupportFn m_supportB; ///< 2 番目の形状の支持点を指定方向に求める関数。
 
         math::Vector3 SampleA(const math::Vector3& direction) const
         {

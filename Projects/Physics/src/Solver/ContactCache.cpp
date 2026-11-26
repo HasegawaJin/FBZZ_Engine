@@ -15,8 +15,9 @@ namespace fbzz::physics
         ContactKey MakeContactKey(const ContactPoint& contact)
         {
             ContactKey key{contact.colliderA, contact.colliderB};
-            if (key.a > key.b)
+            if (key.a > key.b) {
                 std::swap(key.a, key.b);
+            }
             return key;
         }
     }
@@ -25,28 +26,31 @@ namespace fbzz::physics
     {
         for (auto& cp : contacts)
         {
-            if (cp.isTrigger || !cp.colliderA || !cp.colliderB)
+            if (cp.isTrigger || !cp.colliderA || !cp.colliderB) {
                 continue;
+            }
 
             const auto cachedPair = m_cache.find(MakeContactKey(cp));
-            if (cachedPair == m_cache.end())
+            if (cachedPair == m_cache.end()) {
                 continue;
+            }
 
-            /// @note 最初の近傍エントリだけを使う。法線が合わない場合も次の候補には進まない。
+            // 最初の近傍エントリだけを使う。法線が合わない場合も次の候補には進まない。
             for (const auto& entry : cachedPair->second)
             {
                 const float distanceSq = (cp.point - entry.point).LengthSq();
-                if (distanceSq > MATCH_RADIUS_SQ)
+                if (distanceSq > MATCH_RADIUS_SQ) {
                     continue;
+                }
 
-                /// @note 三角形の継ぎ目などで法線が大きく変わると、前の接触基底は再利用できない。
+                // 三角形の継ぎ目などで法線が大きく変わると、前の接触基底は再利用できない。
                 if (entry.normal.LengthSq() <= 1e-6f ||
                     math::Vector3::Dot(entry.normal, cp.normal) < 0.98f)
                 {
                     break;
                 }
 
-                /// @note 前回の基底からワールド空間へ戻し、今回の法線・接線に射影し直す。
+                // 前回の基底からワールド空間へ戻し、今回の法線・接線に射影し直す。
                 const math::Vector3 cachedImpulse =
                     entry.normal * entry.normalImpulse +
                     entry.tangent[0] * entry.tangentImpulse[0] +
@@ -60,8 +64,9 @@ namespace fbzz::physics
                 const math::Vector3 tangentImpulse = cp.tangent[0] * cp.cachedTangentImpulse[0] +
                     cp.tangent[1] * cp.cachedTangentImpulse[1];
                 const math::Vector3 totalImpulse = normalImpulse + tangentImpulse;
-                if (totalImpulse.LengthSq() <= 1e-12f)
+                if (totalImpulse.LengthSq() <= 1e-12f) {
                     break;
+                }
 
                 if (cp.bodyA)
                 {
@@ -80,9 +85,10 @@ namespace fbzz::physics
                 break;
             }
 
-            /// @note 同じペアの接触点を調べるたびに、採用しなかったエントリも含めて age を進める。
-            for (auto& entry : cachedPair->second)
+            // 同じペアの接触点を調べるたびに、採用しなかったエントリも含めて age を進める。
+            for (auto& entry : cachedPair->second) {
                 ++entry.age;
+            }
         }
     }
 
@@ -90,13 +96,14 @@ namespace fbzz::physics
     {
         for (const auto& cp : contacts)
         {
-            if (cp.isTrigger || !cp.colliderA || !cp.colliderB)
+            if (cp.isTrigger || !cp.colliderA || !cp.colliderB) {
                 continue;
+            }
 
             const ContactKey key = MakeContactKey(cp);
             if (!cp.cacheImpulse)
             {
-                /// @note 反発が起きたペアは以前の接触点を含めて消し、次の Warm Start に持ち越さない。
+                // 反発が起きたペアは以前の接触点を含めて消し、次の Warm Start に持ち越さない。
                 m_cache.erase(key);
                 continue;
             }
@@ -113,10 +120,12 @@ namespace fbzz::physics
             const auto nearby = std::find_if(entries.begin(), entries.end(), [&](const CacheEntry& entry) {
                 return (cp.point - entry.point).LengthSq() <= MATCH_RADIUS_SQ;
             });
-            if (nearby == entries.end())
+            if (nearby == entries.end()) {
                 entries.push_back(refreshed);
-            else
+            }
+            else {
                 *nearby = refreshed;
+            }
         }
     }
 
@@ -132,10 +141,12 @@ namespace fbzz::physics
                     [](const CacheEntry& e) { return e.age > MAX_AGE; }),
                 entries.end());
 
-            if (entries.empty())
+            if (entries.empty()) {
                 it = m_cache.erase(it);
-            else
+            }
+            else {
                 ++it;
+            }
         }
     }
 

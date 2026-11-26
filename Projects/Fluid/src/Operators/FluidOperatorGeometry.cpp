@@ -36,15 +36,17 @@ FlatSegment MakeFlatSegment(const SegmentFrame& frame, bool capped)
         flat.along = { axis.x / flat.planar, axis.y / flat.planar, 0.0f };
         flat.across = { -flat.along.y, flat.along.x, 0.0f };
     }
-    if (frame.radius <= 0.0f) return flat;
+    if (frame.radius <= 0.0f) {
+        return flat;
+    }
     const float alongExtent = flat.planar > 1.0e-6f ? frame.halfLength / flat.planar : UNBOUNDED_SECTION_EXTENT;
     const float acrossExtent = flat.depth > 1.0e-6f ? frame.radius / flat.depth : UNBOUNDED_SECTION_EXTENT;
     if (capped) {
         flat.extent = (std::min)(alongExtent, acrossExtent);
         return flat;
     }
-    /// @note 端の球が断面に顔を出すのは R s > H k のときだけ (そのとき断面は «楕円を切った帯 + 端の円の一部»)。
-    /// @note 出ないときは楕円がそのまま断面になる。
+    // 端の球が断面に顔を出すのは R s > H k のときだけ (そのとき断面は «楕円を切った帯 + 端の円の一部»)。
+    // 出ないときは楕円がそのまま断面になる。
     flat.extent = frame.radius * flat.planar > frame.halfLength * flat.depth
         ? frame.halfLength * flat.planar + std::sqrt((std::max)(frame.radius * frame.radius
                                                           - frame.halfLength * frame.halfLength * flat.depth * flat.depth, 0.0f))
@@ -57,7 +59,9 @@ FlatSegment MakeFlatSegment(const SegmentFrame& frame, bool capped)
 {
     const float axisDistance = alpha * flat.planar;
     if (capped) {
-        if (std::fabs(axisDistance) > frame.halfLength) return 0.0f;
+        if (std::fabs(axisDistance) > frame.halfLength) {
+            return 0.0f;
+        }
         const float widthSquared = frame.radius * frame.radius - alpha * alpha * flat.depth * flat.depth;
         return widthSquared > 0.0f ? std::sqrt(widthSquared) : 0.0f;
     }

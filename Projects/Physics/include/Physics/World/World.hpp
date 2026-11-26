@@ -37,14 +37,14 @@ namespace fbzz::physics
     /// @brief Step() の最後に前フレームとの差分から生成するイベント。
     struct CollisionEvent
     {
-        const Collider* colliderA;
-        const Collider* colliderB;
-        RigidBody* bodyA;
-        RigidBody* bodyB;
-        math::Vector3 point = math::Vector3::ZERO;
-        math::Vector3 normal = math::Vector3::UP;
-        float depth = 0.0f;
-        bool isTrigger = false;
+        const Collider* colliderA; ///< ペアの 1 番目のコライダー。非所有。
+        const Collider* colliderB; ///< ペアの 2 番目のコライダー。非所有。
+        RigidBody* bodyA; ///< 1 番目のコライダーに紐づく剛体。非所有。
+        RigidBody* bodyB; ///< 2 番目のコライダーに紐づく剛体。非所有。
+        math::Vector3 point = math::Vector3::ZERO; ///< 接触点のワールド位置 [m]。
+        math::Vector3 normal = math::Vector3::UP; ///< 接触面のワールド法線。B から A へ向く。
+        float depth = 0.0f; ///< 接触面の貫通深さ [m]。
+        bool isTrigger = false; ///< いずれかのコライダーがトリガーで、接触解決しないかどうか。
 
         /// @name 衝突の強さ
         /// @note このイベントは Step() の末尾で作られるが、その時点では Resolve が既に速度を
@@ -55,12 +55,8 @@ namespace fbzz::physics
         /// @{
 
         math::Vector3 relativeVelocity = math::Vector3::ZERO;  ///< @note 接触点での相対速度 (A から見た B との差、角速度の寄与を含む)。解決前の値。
-        /// @brief 法線方向の接近速度。正 = 近づいている = 実際にぶつかった強さ。
-        /// @note 「一定速度以上で衝突したときだけダメージ」の判定はこの値を使う。
-        float approachSpeed = 0.0f;
-        /// @brief 解決で実際に加わった法線インパルス (質量込みの強さ)。
-        /// @note 軽い敵と重い敵で手応えを変えたい場合は approachSpeed ではなくこちらを使う。
-        float normalImpulse = 0.0f;
+        float approachSpeed = 0.0f; ///< 法線方向の接近速度。正 = 近づいている = 実際にぶつかった強さ。 「一定速度以上で衝突したときだけダメージ」の判定はこの値を使う。
+        float normalImpulse = 0.0f; ///< 解決で実際に加わった法線インパルス (質量込みの強さ)。 軽い敵と重い敵で手応えを変えたい場合は approachSpeed ではなくこちらを使う。
         /// @}
     };
 
@@ -104,13 +100,15 @@ namespace fbzz::physics
         FBZZ_PHYSICS_API const std::vector<Constraint*>& GetConstraints() const;
 
         /// @brief サブステップ、Volume、制約、衝突検出、衝突解決、イベント分類をこの順で実行する。
-        /// @param layerFilter 渡すとその 1 回だけ使い、渡さなければ SetCollisionMatrix の値が効く。
+        /// @param[in] layerFilter 渡すとその 1 回だけ使い、渡さなければ SetCollisionMatrix の値が効く。
         FBZZ_PHYSICS_API void Step(float dt, std::function<bool(int, int)> layerFilter = nullptr);
 
-        /// @pre Owner thread only, outside Step. UI publishes requests through its owning system.
+        /// @brief 次の広域判定で採取する診断データを指定する。
+        /// @param[in] request 採取範囲と上限の設定。
+        /// @pre 所有スレッドで Step の外から呼ぶ。UI からは所有システムを通す。
         FBZZ_PHYSICS_API void SetBroadPhaseDebugRequest(const BroadPhaseDebugRequest& request);
         [[nodiscard]] uint64_t GetBroadPhaseDebugWorldEpoch() const { return m_debugEpoch.value; }
-        /// @note Owner-thread read; the immutable result can be retained across removal, reset and World destruction.
+        /// @note 所有スレッドで取得する。取得した値は不変で、削除・リセット・World の破棄後も共有参照で保持できる。
         [[nodiscard]] std::shared_ptr<const BroadPhaseDebugSnapshot> GetBroadPhaseDebugSnapshot() const
         { return m_broadPhaseDebugSnapshot; }
 
@@ -123,11 +121,13 @@ namespace fbzz::physics
         void SetCollisionMatrix(const LayerCollisionMatrix& matrix)
         {
             if (m_hasCollisionMatrix &&
-                std::memcmp(&m_collisionMatrix, &matrix, sizeof(matrix)) == 0) return;
+                std::memcmp(&m_collisionMatrix, &matrix, sizeof(matrix)) == 0) {
+                return;
+            }
             m_collisionMatrix    = matrix;
             m_hasCollisionMatrix = true;
-            /// @note 値で captures する。this を掴むと World の代入 (ProjectRuntime::ResetPhysics が
-            /// @note `world = World{}` で作り直す) で消えたオブジェクトを指し続ける。
+            // 値で captures する。this を掴むと World の代入 (ProjectRuntime::ResetPhysics が
+            // `world = World{}` で作り直す) で消えたオブジェクトを指し続ける。
             const LayerCollisionMatrix copy = matrix;
             m_defaultLayerFilter = [copy](int a, int b) { return copy.CanCollide(a, b); };
         }
@@ -147,9 +147,13 @@ namespace fbzz::physics
         int  GetSubsteps() const { return m_substeps; }
 
         /// @name Step() 後に参照する衝突イベント
+        /// @note 返す配列は World が所有し、次の Step または登録のクリアで内容が更新される。
         /// @{
+        /// @brief 今回の更新で接触を開始した組のイベント。
         FBZZ_PHYSICS_API const std::vector<CollisionEvent>& GetEnterEvents() const;
+        /// @brief 前回から今回まで接触が続いた組のイベント。
         FBZZ_PHYSICS_API const std::vector<CollisionEvent>& GetStayEvents()  const;
+        /// @brief 今回の更新で接触を終了した組のイベント。
         FBZZ_PHYSICS_API const std::vector<CollisionEvent>& GetExitEvents()  const;
         /// @}
 
@@ -173,8 +177,13 @@ namespace fbzz::physics
         /// @note `[](const ColliderInstance& i){ return !i.isTrigger && (!i.body || i.body->IsStatic()); }`
         using ColliderFilter = std::function<bool(const ColliderInstance&)>;
 
-        /// @brief 最も近い 1 件のみ返す。
-        /// @return hit の有無。
+        /// @brief レイの最も近い交差を求める。
+        /// @param[in] origin レイの開始位置。ワールド座標。
+        /// @param[in] direction レイの向き。正規化してから距離を求める。
+        /// @param[in] maxDistance 開始位置から調べる最大距離 [m]。
+        /// @param[out] hit 最近接の結果。交差しなかった場合は未変更。
+        /// @param[in] filter 対象とするコライダーの判定。空なら絞り込まない。
+        /// @return 交差が見つかれば true。
         FBZZ_PHYSICS_API bool Raycast(const math::Vector3& origin,
                      const math::Vector3& direction,
                      float                maxDistance,
@@ -204,8 +213,8 @@ namespace fbzz::physics
         private:
             friend class World;
             SphereCastBatch(const World& world, bool useIndex) : m_world(world), m_useIndex(useIndex) {}
-            const World& m_world;
-            bool m_useIndex;
+            const World& m_world; ///< バッチ中に問い合わせる World の非所有参照。
+            bool m_useIndex; ///< バッチ開始時に BVH の有効性を照合した結果。
         };
 
         /// @brief 同じ読み取り区間の球スイープで、BVH の境界照合を一度だけ行う。
@@ -221,8 +230,8 @@ namespace fbzz::physics
 
     private:
         struct ColliderLifetime {
-            std::weak_ptr<const void> shape;
-            std::weak_ptr<const void> body;
+            std::weak_ptr<const void> shape; ///< コライダー本体の寿命を照合する弱参照。
+            std::weak_ptr<const void> body; ///< 紐づいた剛体の寿命を照合する弱参照。
             [[nodiscard]] bool IsAlive(const ColliderInstance& instance) const
             { return !shape.expired() && (!instance.body || !body.expired()); }
         };
@@ -233,25 +242,28 @@ namespace fbzz::physics
         FBZZ_PHYSICS_API static uint64_t NextDebugWorldEpoch();
         struct DebugEpoch
         {
-            uint64_t value = NextDebugWorldEpoch();
+            uint64_t value = NextDebugWorldEpoch(); ///< 診断に使う World の識別値。World を移動したときは移動先が引き継ぐ。
             DebugEpoch() = default;
             DebugEpoch(DebugEpoch&& other) noexcept : value(other.value) { other.value = NextDebugWorldEpoch(); }
             DebugEpoch& operator=(DebugEpoch&& other) noexcept
             {
-                if (this != &other) { value = other.value; other.value = NextDebugWorldEpoch(); }
+                if (this != &other) {
+                    value = other.value;
+                    other.value = NextDebugWorldEpoch();
+                }
                 return *this;
             }
         };
         FBZZ_PHYSICS_API void CaptureBroadPhaseDebugSnapshot();
-        DebugEpoch m_debugEpoch;
-        uint64_t m_broadPhaseDebugSequence = 0;
-        BroadPhaseDebugRequest m_broadPhaseDebugRequest;
-        std::shared_ptr<const BroadPhaseDebugSnapshot> m_broadPhaseDebugSnapshot;
-        std::shared_ptr<const BroadPhaseDebugSnapshot> m_pendingBroadPhaseDebugSnapshot;
+        DebugEpoch m_debugEpoch; ///< この World の診断値を別の World と区別する識別子。
+        uint64_t m_broadPhaseDebugSequence = 0; ///< この World でスナップショットを発行するたびに進める連番。
+        BroadPhaseDebugRequest m_broadPhaseDebugRequest; ///< 次の概略判定のスナップショットに使う要求。
+        std::shared_ptr<const BroadPhaseDebugSnapshot> m_broadPhaseDebugSnapshot; ///< 利用側へ公開済みの読み取り専用スナップショット。
+        std::shared_ptr<const BroadPhaseDebugSnapshot> m_pendingBroadPhaseDebugSnapshot; ///< 最後のサブステップで構築し、Step 終了時に公開するスナップショット。
         struct QueryNode {
-            AABB bounds;
-            size_t colliderIndex = SIZE_MAX;
-            size_t nextAfterSubtree = 0;
+            AABB bounds; ///< この部分木に含まれるコライダーを包むワールド AABB [m]。
+            size_t colliderIndex = SIZE_MAX; ///< 葉が指す m_colliders の添字。内部ノードでは SIZE_MAX。
+            size_t nextAfterSubtree = 0; ///< この部分木を飛ばすときに進む m_queryNodes の添字。
         };
         enum class QueryIndexUpdate { UNAVAILABLE, REFIT, REBUILD };
 
@@ -266,7 +278,7 @@ namespace fbzz::physics
             const ColliderFilter& filter, const bool* preparedIndex) const;
         /// @note Collider は外部所有で直接変更可能。境界が同期時点と一致しない問い合わせは全候補へ戻す。
         /// @note 作業状態を書き換えず、filter 内の再入問い合わせと複数スレッドの読み取りを許す。
-        /// @param preparedIndex バッチ開始時の索引の有効性。nullptr の場合はこの問い合わせで照合する。
+        /// @param[in] preparedIndex バッチ開始時の索引の有効性。nullptr の場合はこの問い合わせで照合する。
         template<typename Callback>
         void ForEachQueryCandidate(const AABB& queryBounds, Callback&& visitCandidate,
                                    const bool* preparedIndex = nullptr) const
@@ -304,12 +316,11 @@ namespace fbzz::physics
                 }
             }
         }
-        std::vector<QueryNode> m_queryNodes;
-        std::vector<AABB> m_indexedColliderBounds;
-        std::vector<size_t> m_queryBuildOrder;
-        std::vector<const Collider*> m_indexedColliderIdentities;
-        /// @note World の move を保ちつつ、並行 read query から次の安全点での refit 要求だけを記録する。
-        alignas(std::atomic_ref<bool>::required_alignment) mutable bool m_queryRefreshRequested = false;
+        std::vector<QueryNode> m_queryNodes; ///< 問い合わせ用 BVH のノード。親と左の子を順に格納する。
+        std::vector<AABB> m_indexedColliderBounds; ///< 索引を更新した時点のコライダー境界。添字は m_colliders と同じ。
+        std::vector<size_t> m_queryBuildOrder; ///< BVH 構築で分割する m_colliders の添字配列。
+        std::vector<const Collider*> m_indexedColliderIdentities; ///< 索引を更新した時点の比較用コライダー識別子。非所有。
+        alignas(std::atomic_ref<bool>::required_alignment) mutable bool m_queryRefreshRequested = false; ///< World の move を保ちつつ、並行 read query から次の安全点での refit 要求だけを記録する。
 
         FBZZ_PHYSICS_API void RemoveExpiredVolumes();
         FBZZ_PHYSICS_API void ApplyForcesAndVolumes(float dt, std::vector<float>& effectiveDts);
@@ -331,41 +342,41 @@ namespace fbzz::physics
         /// @brief Resolve の直後に呼ぶ。実際に加わった法線インパルスを記録する。
         FBZZ_PHYSICS_API void RecordContactImpulses();
 
-        math::Vector3 m_gravity = { 0.0f, -9.81f, 0.0f };
-        int m_substeps = 1;
+        math::Vector3 m_gravity = { 0.0f, -9.81f, 0.0f }; ///< このワールドが剛体へ加える重力加速度 [m/s²]。
+        int m_substeps = 1; ///< Step を分割する固定サブステップ数。
         std::function<bool(int, int)> m_layerFilter;         ///< @note BroadPhase 中に使う一時フィルタ。Scene の LayerCollisionMatrix から渡される。
         std::function<bool(int, int)> m_defaultLayerFilter;  ///< @note Step に何も渡されなかったときに使う既定。プロジェクト設定の衝突行列が入る。
-        LayerCollisionMatrix          m_collisionMatrix;
-        bool                          m_hasCollisionMatrix = false;
+        LayerCollisionMatrix          m_collisionMatrix; ///< プロジェクトから設定された既定のレイヤー衝突表。
+        bool                          m_hasCollisionMatrix = false; ///< 既定のレイヤー衝突表が設定されているかどうか。
 
         /// @name 現フレームの Step() に渡す非所有ビュー (EndSceneSync で再構築)
         /// @{
-        std::vector<RigidBody*>                 m_bodies;
-        std::vector<ColliderInstance>           m_colliders;
-        std::vector<ColliderLifetime>           m_colliderLifetimes;
-        std::vector<Volume*>                    m_volumes;
+        std::vector<RigidBody*>                 m_bodies; ///< シミュレーションに参加する剛体の非所有ビュー。
+        std::vector<ColliderInstance>           m_colliders; ///< シミュレーションと問い合わせで走査するコライダー登録のビュー。
+        std::vector<ColliderLifetime>           m_colliderLifetimes; ///< m_colliders と同じ添字で形状と剛体の寿命を検証する保管表。
+        std::vector<Volume*>                    m_volumes; ///< シミュレーションに作用するボリュームの非所有ビュー。
         /// @}
         struct BodySlot {
             RigidBody* body = nullptr;  ///< @note 所有権は RigidBodyComponent が持つ。World は非所有参照のみ保持する。
-            std::weak_ptr<const void> lifetime;
-            uint32_t generation = 1;
-            bool touched = false;
+            std::weak_ptr<const void> lifetime; ///< 非所有の剛体が破棄されたかを調べる寿命トークン。
+            uint32_t generation = 1; ///< このスロットの再利用を区別する世代番号。
+            bool touched = false; ///< 今回の Scene 同期で既存の登録を維持したかどうか。
         };
         struct ColliderSlot {
-            ColliderInstance collider;
-            ColliderLifetime lifetime;
-            uint32_t generation = 1;
-            bool touched = false;
-            bool occupied = false;
+            ColliderInstance collider; ///< このスロットが保持するコライダー登録。
+            ColliderLifetime lifetime; ///< 登録の形状と剛体の寿命を検証する弱参照。
+            uint32_t generation = 1; ///< このスロットの再利用を区別する世代番号。
+            bool touched = false; ///< 今回の Scene 同期で既存の登録を維持したかどうか。
+            bool occupied = false; ///< このスロットが有効なコライダー登録を保持しているかどうか。
         };
         struct VolumeSlot {
             std::unique_ptr<Volume> volume;  ///< @note Volume は PhysicsSystem が毎フレーム生成する使い捨て。World が所有する。
-            uint32_t generation = 1;
-            bool touched = false;
+            uint32_t generation = 1; ///< このスロットの再利用を区別する世代番号。
+            bool touched = false; ///< 今回の Scene 同期で既存の登録を維持したかどうか。
         };
-        std::vector<BodySlot> m_bodyPool;
-        std::vector<ColliderSlot> m_colliderPool;
-        std::vector<VolumeSlot> m_volumePool;
+        std::vector<BodySlot> m_bodyPool; ///< ハンドルで引く剛体登録のスロット配列。
+        std::vector<ColliderSlot> m_colliderPool; ///< ハンドルで引くコライダー登録のスロット配列。
+        std::vector<VolumeSlot> m_volumePool; ///< ハンドルで引くボリューム登録の所有スロット配列。
         class ConstraintRegistry {
         public:
             void Add(std::unique_ptr<Constraint> constraint);
@@ -381,38 +392,38 @@ namespace fbzz::physics
         private:
             void RebuildActiveView();
             struct ConstraintSlot {
-                std::unique_ptr<Constraint> constraint;
-                uint32_t generation = 1;
-                bool touched = false;
+                std::unique_ptr<Constraint> constraint; ///< このスロットに登録した拘束の単独所有ポインター。
+                uint32_t generation = 1; ///< このスロットの再利用を区別する世代番号。
+                bool touched = false; ///< 今回の Scene 同期で既存の登録を維持したかどうか。
             };
-            std::vector<std::unique_ptr<Constraint>> m_ownedConstraints;
-            std::vector<Constraint*> m_activeConstraints;
-            std::vector<ConstraintSlot> m_constraintPool;
+            std::vector<std::unique_ptr<Constraint>> m_ownedConstraints; ///< ハンドル同期を使わない直接登録の拘束を所有する配列。
+            std::vector<Constraint*> m_activeConstraints; ///< 解決に使う有効な拘束の非所有ビュー。
+            std::vector<ConstraintSlot> m_constraintPool; ///< Scene のハンドルで引く拘束の所有スロット配列。
         };
-        ConstraintRegistry m_constraints;
+        ConstraintRegistry m_constraints; ///< 同期と物理解決に使う拘束の登録簿。
         bool m_sceneSyncChanged = false; ///< @note 追加・削除など接触集合が変わり得る同期変更があったか
-        std::vector<CollisionPair>              m_collisionPairs;
-        std::vector<ContactPoint>               m_contacts;
+        std::vector<CollisionPair>              m_collisionPairs; ///< 今の概略判定で残ったコライダーの候補ペア。
+        std::vector<ContactPoint>               m_contacts; ///< 今のサブステップで詳細判定・解決する接触点。
         std::vector<float>                      m_effectiveDts;  ///< @note Step() 内で毎サブステップ使う有効 dt。ローカル vector だと物理更新ごとに確保が走るため再利用する。
-        PhysicsSolver                           m_solver;
-        ContactCache                            m_contactCache;
+        PhysicsSolver                           m_solver; ///< 概略判定、詳細判定と接触解決を実行するソルバー。
+        ContactCache                            m_contactCache; ///< 前フレームの最終サブステップから持ち越す接触の力積。
 
         using ColliderPair = std::pair<const Collider*, const Collider*>;
-        std::map<ColliderPair, CollisionEvent> m_prevEvents;
-        std::vector<CollisionEvent> m_enterEvents;
-        std::vector<CollisionEvent> m_stayEvents;
-        std::vector<CollisionEvent> m_exitEvents;
+        std::map<ColliderPair, CollisionEvent> m_prevEvents; ///< 前フレームの接触をコライダーペアごとに保持する分類用の表。
+        std::vector<CollisionEvent> m_enterEvents; ///< 今のステップで初めて重なったコライダーペアの通知。
+        std::vector<CollisionEvent> m_stayEvents; ///< 前ステップから重なり続けているコライダーペアの通知。
+        std::vector<CollisionEvent> m_exitEvents; ///< 今のステップで離れたコライダーペアの通知。
 
         /// @brief このフレームで観測した衝突の強さ。Step() の先頭で clear し、各サブステップの
         /// @note Resolve 前後で最大値を更新して ClassifyCollisions が読む。
         /// @note 1 フレームに複数サブステップがあると 2 回目以降は既に減速しているため、
         /// @note substep 数を変えてもダメージ量が変わらないよう最初の (最大の) 勢いで代表させる。
         struct ContactImpact {
-            math::Vector3 relativeVelocity = math::Vector3::ZERO;
-            float approachSpeed = 0.0f;
-            float normalImpulse = 0.0f;
+            math::Vector3 relativeVelocity = math::Vector3::ZERO; ///< 最も強く接近した時点の、接触点での相対速度 [m/s]。
+            float approachSpeed = 0.0f; ///< このフレームの接触点で観測した最大の接近速度 [m/s]。
+            float normalImpulse = 0.0f; ///< 接触解決後の累積法線力積の最大値 [N·s]。
         };
-        std::map<ColliderPair, ContactImpact> m_frameImpacts;
+        std::map<ColliderPair, ContactImpact> m_frameImpacts; ///< 今のステップで観測したコライダーペアごとの衝突の強さ。
     };
 
 } /// @note namespace fbzz::physics

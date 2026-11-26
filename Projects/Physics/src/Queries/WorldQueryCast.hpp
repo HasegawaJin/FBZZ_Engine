@@ -13,9 +13,9 @@ namespace fbzz::physics::world_query_detail {
 
 /// @note origin は呼び出し側が所有し、同期的なキャストの間だけ参照する。
 struct CastPath {
-    const math::Vector3& origin;
-    math::Vector3 unitDirection;
-    float maxDistance;
+    const math::Vector3& origin; ///< 掃引する形状の開始点のワールド座標 [m]。
+    math::Vector3 unitDirection; ///< 掃引のワールド単位方向。
+    float maxDistance; ///< 開始点から掃引する最大距離 [m]。
 };
 
 /// @return スクリプトが渡すゼロ方向など、長さが閾値未満なら空。
@@ -64,8 +64,8 @@ public:
     }
 
 private:
-    World::RaycastHit m_hit{.distance = std::numeric_limits<float>::infinity()};
-    size_t m_colliderIndex = SIZE_MAX;
+    World::RaycastHit m_hit{.distance = std::numeric_limits<float>::infinity()}; ///< 現時点で最も近い掃引のヒット情報。
+    size_t m_colliderIndex = SIZE_MAX; ///< 同距離のヒット間で登録順を決めるコライダーの添字。
 };
 
 } /// @note namespace fbzz::physics::world_query_detail

@@ -18,7 +18,9 @@ namespace fbzz::physics::world_query_detail
     bool RaycastInstance(const math::Vector3& origin, const math::Vector3& unitDirection, float maxDistance,
                          const ColliderInstance& instance, float& hitDistance, math::Vector3& hitNormal)
     {
-        if (!instance.collider) return false;
+        if (!instance.collider) {
+            return false;
+        }
         const Collider& collider = *instance.collider;
 
         switch (collider.GetType())

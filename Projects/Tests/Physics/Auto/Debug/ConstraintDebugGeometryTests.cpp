@@ -75,8 +75,8 @@ TEST_F(ConstraintDebugGeometryTest, DrawsOneLineForSpringRopeAndFixedConstraints
     physics::RopeConstraint   rope(&a, &b, 1.0f);
     physics::FixedConstraint  fixed(&a, &b);
 
-    /// @note 見た目が同じ 3 種をまとめて見るのは、どれか 1 つが switch から漏れたときに
-    ///       «この種類だけ線が出ない» を 1 回の失敗で拾うため。
+    // 見た目が同じ 3 種をまとめて見るのは、どれか 1 つが switch から漏れたときに
+    // «この種類だけ線が出ない» を 1 回の失敗で拾うため。
     EXPECT_EQ(physics::BuildConstraintDebugGeometry(spring).lines.size(), 1u);
     EXPECT_EQ(physics::BuildConstraintDebugGeometry(rope).lines.size(), 1u);
     EXPECT_EQ(physics::BuildConstraintDebugGeometry(fixed).lines.size(), 1u);
@@ -88,7 +88,7 @@ TEST_F(ConstraintDebugGeometryTest, DrawsNothingWhenOneBodyIsMissing)
     physics::RigidBody a = BodyAt(math::Vector3::ZERO);
     physics::DistanceConstraint constraint(&a, nullptr, 1.0f);
 
-    /// @note 片側が消えた制約で原点へ線を引くと、画面の中心へ «存在しない拘束» が生える。
+    // 片側が消えた制約で原点へ線を引くと、画面の中心へ «存在しない拘束» が生える。
     EXPECT_TRUE(physics::BuildConstraintDebugGeometry(constraint).lines.empty());
 }
 
@@ -117,7 +117,7 @@ TEST_F(ConstraintDebugGeometryTest, SkipsChainSegmentsWithAMissingBody)
     physics::RigidBody c = BodyAt(math::Vector3(0.0f, -2.0f, 0.0f));
     physics::ChainConstraint chain(std::vector<physics::RigidBody*>{ &a, nullptr, &c }, 1.0f);
 
-    /// @note 途中の body が消えた鎖で «飛ばして» 線を引くと、繋がっていない 2 点が繋がって見える。
+    // 途中の body が消えた鎖で «飛ばして» 線を引くと、繋がっていない 2 点が繋がって見える。
     EXPECT_TRUE(physics::BuildConstraintDebugGeometry(chain).lines.empty());
 }
 
@@ -146,10 +146,10 @@ TEST_F(ConstraintDebugGeometryTest, DrawsTheAnchorGapAndTheAxisOfAHinge)
         physics::BuildConstraintDebugGeometry(hinge);
 
     ASSERT_EQ(geometry.lines.size(), 2u);
-    /// @note 1 本目はアンカーのずれ。ここが伸びていれば拘束が解けている、と目で読める。
+    // 1 本目はアンカーのずれ。ここが伸びていれば拘束が解けている、と目で読める。
     EXPECT_VEC3_NEAR(geometry.lines[0].from, math::Vector3(1.0f, 0.0f, 0.0f), testkit::kTolerance);
     EXPECT_VEC3_NEAR(geometry.lines[0].to,   math::Vector3(1.0f, 0.0f, 0.0f), testkit::kTolerance);
-    /// @note 2 本目は軸。長さは入力の大きさに依らず正規化された固定長で出す。
+    // 2 本目は軸。長さは入力の大きさに依らず正規化された固定長で出す。
     EXPECT_VEC3_NEAR(geometry.lines[1].from, math::Vector3(1.0f, -0.35f, 0.0f), testkit::kTolerance);
     EXPECT_VEC3_NEAR(geometry.lines[1].to,   math::Vector3(1.0f,  0.35f, 0.0f), testkit::kTolerance);
 }
@@ -179,7 +179,7 @@ TEST_F(ConstraintDebugGeometryTest, DrawsTheSlideAxisAndTheBodyLinkOfASlider)
         physics::BuildConstraintDebugGeometry(slider);
 
     ASSERT_EQ(geometry.lines.size(), 2u);
-    /// @note 動ける方向は body A を中心に固定長で描く。入力軸の大きさに引きずられない。
+    // 動ける方向は body A を中心に固定長で描く。入力軸の大きさに引きずられない。
     EXPECT_VEC3_NEAR(geometry.lines[0].from, math::Vector3(0.0f, 0.0f, -0.5f), testkit::kTolerance);
     EXPECT_VEC3_NEAR(geometry.lines[0].to,   math::Vector3(0.0f, 0.0f,  0.5f), testkit::kTolerance);
     EXPECT_TRUE(ConnectsPoints(geometry.lines[1], a.GetPosition(), b.GetPosition()));

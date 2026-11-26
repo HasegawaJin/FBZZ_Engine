@@ -41,11 +41,11 @@ namespace fbzz::physics
         {
             return (!m_bodyA || !m_bodyALifetime.expired()) && (!m_bodyB || !m_bodyBLifetime.expired());
         }
-        std::weak_ptr<const void> m_bodyALifetime;
-        std::weak_ptr<const void> m_bodyBLifetime;
+        std::weak_ptr<const void> m_bodyALifetime; ///< 1 番目の剛体の破棄を検知する寿命トークン。
+        std::weak_ptr<const void> m_bodyBLifetime; ///< 2 番目の剛体の破棄を検知する寿命トークン。
 
     protected:
-        RigidBody* m_bodyA = nullptr;
-        RigidBody* m_bodyB = nullptr;
+        RigidBody* m_bodyA = nullptr; ///< 拘束を加える 1 番目の剛体の非所有参照。
+        RigidBody* m_bodyB = nullptr; ///< 拘束を加える 2 番目の剛体の非所有参照。
     };
 } /// @note namespace fbzz::physics

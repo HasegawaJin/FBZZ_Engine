@@ -18,8 +18,8 @@ namespace fbzz::physics
 class HeightFieldCollider : public Collider
 {
 public:
-    /// @param heightSamples 行優先、値域 [-1, 1]。maxHeight を掛けた値がローカル高さ。
-    /// @param holeMask セルの行優先配列。非 0 が穴で、空またはセル数と違う配列は穴なしとして扱う。
+    /// @param[in] heightSamples 行優先、値域 [-1, 1]。maxHeight を掛けた値がローカル高さ。
+    /// @param[in] holeMask セルの行優先配列。非 0 が穴で、空またはセル数と違う配列は穴なしとして扱う。
     /// @see Docs/design/terrain-layers.md §4 穴
     FBZZ_PHYSICS_API HeightFieldCollider(const std::vector<float>& heightSamples,
                                         int rowCount, int columnCount,
@@ -37,7 +37,7 @@ public:
                                          const math::Vector3& worldScale);
 
     /// @note 高さや穴が変わったときは格子を置き換えて BVH を再構築する。
-    /// @param holeMask コンストラクタと同じ規約。空なら穴なし。
+    /// @param[in] holeMask コンストラクタと同じ規約。空なら穴なし。
     FBZZ_PHYSICS_API void Rebuild(const std::vector<float>& heightSamples,
                                  int rowCount, int columnCount,
                                  float cellSize, float maxHeight,
@@ -56,20 +56,20 @@ public:
     float GetMaxHeight() const { return m_maxHeight; }
 
 private:
-    int   m_rowCount = 0;
-    int   m_columnCount = 0;
-    float m_cellSize  = 1.0f;
-    float m_maxHeight = 1.0f;
+    int   m_rowCount = 0; ///< 高さサンプルの行数。ローカル Z 方向。
+    int   m_columnCount = 0; ///< 高さサンプルの列数。ローカル X 方向。
+    float m_cellSize  = 1.0f; ///< 高さサンプル間のローカル間隔 [m]。
+    float m_maxHeight = 1.0f; ///< 正規化された高さサンプルへ掛ける局所の高さ尺度 [m]。
 
-    std::vector<float> m_heightSamples;
+    std::vector<float> m_heightSamples; ///< セルの頂点に対応する行優先の正規化高さサンプル。
     std::vector<std::uint8_t> m_holeMask; ///< @note 空、またはセル数と同じ長さ。
 
-    BVHTree m_bvh;
-    AABB    m_worldAABB;
+    BVHTree m_bvh; ///< 高さ場のワールド三角形を問い合わせるための BVH。
+    AABB    m_worldAABB; ///< 更新済み高さ場のワールド境界 [m]。
 
-    math::Vector3    m_worldPosition;
-    math::Quaternion m_worldRotation;
-    math::Vector3    m_worldScale = { 1.f, 1.f, 1.f };
+    math::Vector3    m_worldPosition; ///< 高さ場を配置するワールド位置 [m]。
+    math::Quaternion m_worldRotation; ///< 高さ場の局所軸を回転するワールド姿勢。
+    math::Vector3    m_worldScale = { 1.f, 1.f, 1.f }; ///< 高さ場の局所位置に掛ける軸別スケール。
 
     FBZZ_PHYSICS_API math::Vector3 LocalVertex(int vertexColumn, int vertexRow) const;
     /// @brief ローカル座標へ scale → rotation → translation を掛ける。

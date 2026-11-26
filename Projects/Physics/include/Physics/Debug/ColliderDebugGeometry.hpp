@@ -15,8 +15,8 @@ namespace fbzz::physics
     /// @note Renderer へ直接依存しないよう、Physics は線分リストだけを返す。
     struct DebugLine
     {
-        math::Vector3 from;
-        math::Vector3 to;
+        math::Vector3 from; ///< デバッグ線分の始点のワールド座標 [m]。
+        math::Vector3 to; ///< デバッグ線分の終点のワールド座標 [m]。
     };
 
     /// @note 可視化の視点。BVH を持つコライダー (TriangleMesh / HeightField) の詳細度をカメラで決める。
@@ -26,21 +26,19 @@ namespace fbzz::physics
     /// @note 当たり判定も読めなかった。
     struct ColliderDebugView
     {
-        math::Vector3 cameraPosition{};
-        /// @note この距離までを三角形ワイヤーで描く [m]。外側は BVH ノードの箱で表す。
-        float detailRadius = 80.0f;
-        /// @note false なら視点を無視し、全域を等間隔に間引いた従来の形を返す。
-        bool enabled = false;
+        math::Vector3 cameraPosition{}; ///< デバッグ表示の詳細度を判定するカメラのワールド位置 [m]。
+        float detailRadius = 80.0f; ///< この距離までを三角形ワイヤーで描く [m]。外側は BVH ノードの箱で表す。
+        bool enabled = false; ///< false なら視点を無視し、全域を等間隔に間引いた従来の形を返す。
     };
 
     struct ColliderDebugGeometry
     {
-        std::vector<DebugLine> lines;
+        std::vector<DebugLine> lines; ///< コライダーのデバッグ表示に使うワールド線分。
 
         /// @note lines の先頭 detailLineCount 本が三角形ワイヤー、残りが BVH ノードの箱。
         /// @note 並び順で表す理由: 線ごとに種別フラグを持たせると 10 万本規模で線分リスト自体が
         /// @note 倍近く太る。2 色に塗り分けたいだけなので境界 1 個で足りる。
-        std::size_t detailLineCount = 0;
+        std::size_t detailLineCount = 0; ///< 詳細形状の描画用として生成した線分数。
     };
 
     FBZZ_PHYSICS_API ColliderDebugGeometry BuildColliderDebugGeometry(const Collider& collider);

@@ -13,17 +13,23 @@ namespace fbzz::physics
 
     void RopeConstraint::SolvePosition(float /*dt*/)
     {
-        if (!m_bodyA || !m_bodyB) return;
+        if (!m_bodyA || !m_bodyB) {
+            return;
+        }
 
         const math::Vector3 delta = m_bodyB->GetPosition() - m_bodyA->GetPosition();
         const float length = delta.Length();
-        /// @note ロープは張ったときだけ両端を引く。たるんだ間も距離を補正すると、ロープが棒のように両端を押してしまう。
-        if (length <= m_maxLength || length < 1e-6f) return;
+        // ロープは張ったときだけ両端を引く。たるんだ間も距離を補正すると、ロープが棒のように両端を押してしまう。
+        if (length <= m_maxLength || length < 1e-6f) {
+            return;
+        }
 
         const float invA = m_bodyA->GetInvMass();
         const float invB = m_bodyB->GetInvMass();
         const float invSum = invA + invB;
-        if (invSum == 0.0f) return;
+        if (invSum == 0.0f) {
+            return;
+        }
 
         const math::Vector3 correction = delta * ((length - m_maxLength) / length);
         m_bodyA->SetPosition(m_bodyA->GetPosition() + correction * (invA / invSum));

@@ -18,21 +18,28 @@ namespace fbzz::physics
 
         void IncludeTriangle(AABB& bounds, const Triangle& triangle)
         {
-            for (const math::Vector3& vertex : triangle.v)
+            for (const math::Vector3& vertex : triangle.v) {
                 IncludePoint(bounds, vertex);
+            }
         }
 
         float AxisCoordinate(const math::Vector3& point, int axis)
         {
-            if (axis == 0) return point.x;
-            if (axis == 1) return point.y;
+            if (axis == 0) {
+                return point.x;
+            }
+            if (axis == 1) {
+                return point.y;
+            }
             return point.z;
         }
 
         int LongestAxis(const math::Vector3& extent)
         {
             int axis = extent.y > extent.x ? 1 : 0;
-            if (extent.z > (axis == 0 ? extent.x : extent.y)) axis = 2;
+            if (extent.z > (axis == 0 ? extent.x : extent.y)) {
+                axis = 2;
+            }
             return axis;
         }
     }
@@ -41,9 +48,11 @@ namespace fbzz::physics
     {
         triangles = std::move(worldTriangles);
         nodes.clear();
-        if (triangles.empty()) return;
+        if (triangles.empty()) {
+            return;
+        }
 
-        /// @note 三角形本体は元の順序で保持し、分割では添字だけを並べ替える。
+        // 三角形本体は元の順序で保持し、分割では添字だけを並べ替える。
         std::vector<uint32_t> triangleOrder(triangles.size());
         std::iota(triangleOrder.begin(), triangleOrder.end(), 0u);
         BuildRecursive(triangleOrder, 0, static_cast<int>(triangleOrder.size()), maxLeafTris);
@@ -56,15 +65,17 @@ namespace fbzz::physics
         nodes.emplace_back();
         BVHNode& node = nodes[nodeIndex];
         node.aabb = MakeEmptyBounds();
-        for (int orderIndex = rangeBegin; orderIndex < rangeEnd; ++orderIndex)
+        for (int orderIndex = rangeBegin; orderIndex < rangeEnd; ++orderIndex) {
             IncludeTriangle(node.aabb, triangles[triangleOrder[orderIndex]]);
+        }
 
         const int triangleCount = rangeEnd - rangeBegin;
         if (triangleCount <= maxLeafTris)
         {
             node.triIndices.reserve(static_cast<std::size_t>(triangleCount));
-            for (int orderIndex = rangeBegin; orderIndex < rangeEnd; ++orderIndex)
+            for (int orderIndex = rangeBegin; orderIndex < rangeEnd; ++orderIndex) {
                 node.triIndices.push_back(triangleOrder[orderIndex]);
+            }
             return nodeIndex;
         }
 
@@ -82,10 +93,11 @@ namespace fbzz::physics
             });
 
         int splitIndex = static_cast<int>(partitionEnd - triangleOrder.begin());
-        if (splitIndex == rangeBegin || splitIndex == rangeEnd)
+        if (splitIndex == rangeBegin || splitIndex == rangeEnd) {
             splitIndex = rangeBegin + triangleCount / 2;
+        }
 
-        /// @note 再帰中の nodes の再確保をまたぐため、親を参照で保持せず添字で引き直す。
+        // 再帰中の nodes の再確保をまたぐため、親を参照で保持せず添字で引き直す。
         const int leftChild = BuildRecursive(triangleOrder, rangeBegin, splitIndex, maxLeafTris);
         const int rightChild = BuildRecursive(triangleOrder, splitIndex, rangeEnd, maxLeafTris);
         nodes[nodeIndex].left = leftChild;
@@ -95,10 +107,12 @@ namespace fbzz::physics
 
     void BVHTree::Refit()
     {
-        if (nodes.empty() || triangles.empty()) return;
+        if (nodes.empty() || triangles.empty()) {
+            return;
+        }
 
         const int nodeCount = static_cast<int>(nodes.size());
-        /// @note 構築時は親を先に追加するため、逆順なら子の境界が先に確定する。
+        // 構築時は親を先に追加するため、逆順なら子の境界が先に確定する。
         for (int nodeIndex = nodeCount - 1; nodeIndex >= 0; --nodeIndex)
         {
             BVHNode& node = nodes[nodeIndex];
@@ -107,7 +121,9 @@ namespace fbzz::physics
             {
                 for (const uint32_t triangleIndex : node.triIndices)
                 {
-                    if (triangleIndex >= triangles.size()) continue;
+                    if (triangleIndex >= triangles.size()) {
+                        continue;
+                    }
                     IncludeTriangle(node.aabb, triangles[triangleIndex]);
                 }
                 continue;
@@ -115,10 +131,14 @@ namespace fbzz::physics
 
             const auto includeChildBounds = [&](int childIndex)
             {
-                if (childIndex <= nodeIndex || childIndex >= nodeCount) return;
+                if (childIndex <= nodeIndex || childIndex >= nodeCount) {
+                    return;
+                }
                 const AABB& childBounds = nodes[childIndex].aabb;
-                /// @note 反転した空の境界を合成すると親の境界が広がる。
-                if (!(childBounds.min.x <= childBounds.max.x)) return;
+                // 反転した空の境界を合成すると親の境界が広がる。
+                if (!(childBounds.min.x <= childBounds.max.x)) {
+                    return;
+                }
                 IncludePoint(node.aabb, childBounds.min);
                 IncludePoint(node.aabb, childBounds.max);
             };

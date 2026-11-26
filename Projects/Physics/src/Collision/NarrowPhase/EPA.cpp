@@ -15,7 +15,9 @@ namespace fbzz::physics
         const Simplex& gjkSimplex,
         int maxIterations, float tolerance)
     {
-        if (gjkSimplex.size < 4) return {};
+        if (gjkSimplex.size < 4) {
+            return {};
+        }
 
         const convex_contact_detail::MinkowskiSupport support{shapeA, supportA, shapeB, supportB};
         convex_contact_detail::EPAPolytope polytope(gjkSimplex);
@@ -30,19 +32,24 @@ namespace fbzz::physics
             }
 
             const auto* closestFace = polytope.FindClosestFace();
-            if (!closestFace) return {};
+            if (!closestFace) {
+                return {};
+            }
 
             const Simplex::Vertex supportVertex = support.SampleDifference(closestFace->outwardNormal);
             const float supportDistance = math::Vector3::Dot(closestFace->outwardNormal, supportVertex.point);
-            if (supportDistance - closestFace->originDistance < tolerance)
+            if (supportDistance - closestFace->originDistance < tolerance) {
                 return convex_contact_detail::BuildEPAContact(*closestFace, support, false);
+            }
 
             polytope.Expand(supportVertex);
         }
 
-        /// @note 反復上限でも、残った有効面から接触を近似する。
+        // 反復上限でも、残った有効面から接触を近似する。
         const auto* closestFace = polytope.FindClosestFace();
-        if (!closestFace) return {};
+        if (!closestFace) {
+            return {};
+        }
         return convex_contact_detail::BuildEPAContact(*closestFace, support, faceBudgetExceeded);
     }
 }

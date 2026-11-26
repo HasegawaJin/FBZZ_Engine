@@ -24,7 +24,7 @@ public:
     Probe(const math::Vector3& position, float radius)
         : m_collider(std::make_unique<physics::SphereCollider>(radius))
     {
-        /// @note クエリはコライダーが覚えているワールド形状を見る。Step を回さないので手で同期する。
+        // クエリはコライダーが覚えているワールド形状を見る。Step を回さないので手で同期する。
         m_collider->Update(position, math::Quaternion::Identity());
         m_body.SetMass(1.0f);
         m_body.SetPosition(position);
@@ -123,10 +123,10 @@ TEST_F(WorldQueryTest, RaycastStopsAtTheMaximumDistance)
 /// @brief Raycast returns the nearest of several hits.
 TEST_F(WorldQueryTest, RaycastReturnsTheNearestOfSeveralHits)
 {
-    /// @note 一番近いものを返さないと、壁の向こうの敵を掴めてしまう。
+    // 一番近いものを返さないと、壁の向こうの敵を掴めてしまう。
     Probe nearest({ 0.0f, 0.0f, 5.0f }, 1.0f);
     Probe farthest({ 0.0f, 0.0f, 20.0f }, 1.0f);
-    /// @note 登録順は関係しない
+    // 登録順は関係しない
     Register({ farthest.Instance(), nearest.Instance() });
 
     physics::World::RaycastHit hit;
@@ -144,14 +144,14 @@ TEST_F(WorldQueryTest, RaycastAcceptsAnUnnormalisedDirection)
     physics::World::RaycastHit hit;
     ASSERT_TRUE(world.Raycast(math::Vector3::ZERO, { 0.0f, 0.0f, 7.0f }, 100.0f, hit));
 
-    /// @note 距離は正規化した向きで測る。長さを掛けたままだと maxDistance の意味が変わる。
+    // 距離は正規化した向きで測る。長さを掛けたままだと maxDistance の意味が変わる。
     EXPECT_NEAR(hit.distance, 9.0f, testkit::kLooseTolerance);
 }
 
 /// @brief Raycast misses with a degenerate direction.
 TEST_F(WorldQueryTest, RaycastMissesWithADegenerateDirection)
 {
-    /// @note 「対象と重なっていて向きが決まらない」はスクリプトから普通に来る。
+    // 「対象と重なっていて向きが決まらない」はスクリプトから普通に来る。
     Probe target({ 0.0f, 0.0f, 10.0f }, 1.0f);
     Register({ target.Instance() });
 
@@ -214,7 +214,7 @@ TEST_F(WorldQueryTest, RaycastAllIsEmptyWhenNothingIsOnThePath)
 /// @brief Sphere cast hits what a ray would miss.
 TEST_F(WorldQueryTest, SphereCastHitsWhatARayWouldMiss)
 {
-    /// @note 太さのある弾や «足元の接地» はこちら。半径ぶん外れていても当たる。
+    // 太さのある弾や «足元の接地» はこちら。半径ぶん外れていても当たる。
     Probe target({ 1.5f, 0.0f, 10.0f }, 1.0f);
     Register({ target.Instance() });
 
@@ -235,7 +235,7 @@ TEST_F(WorldQueryTest, SphereCastStopsShortOfTheSurfaceByItsRadius)
     physics::World::RaycastHit hit;
     ASSERT_TRUE(world.SphereCast(math::Vector3::ZERO, 1.0f, math::Vector3::FORWARD, 100.0f, hit));
 
-    /// @note 半径 1 の球が半径 1 の的に触れるのは中心間 2 = 進んだ距離 8。
+    // 半径 1 の球が半径 1 の的に触れるのは中心間 2 = 進んだ距離 8。
     EXPECT_NEAR(hit.distance, 8.0f, testkit::kLooseTolerance);
 }
 
@@ -284,7 +284,7 @@ TEST_F(WorldQueryTest, OverlapSphereFindsWhatTouchesTheQuery)
 /// @brief Overlap sphere includes shapes that only reach in.
 TEST_F(WorldQueryTest, OverlapSphereIncludesShapesThatOnlyReachIn)
 {
-    /// @note 中心が範囲の外でも、半径で届いていれば «触れている»。索敵で取りこぼさないため。
+    // 中心が範囲の外でも、半径で届いていれば «触れている»。索敵で取りこぼさないため。
     Probe reaching({ 4.0f, 0.0f, 0.0f }, 2.5f);
     Register({ reaching.Instance() });
 

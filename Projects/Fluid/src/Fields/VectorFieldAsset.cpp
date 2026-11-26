@@ -34,23 +34,31 @@ const char* VectorFieldRecipeName(VectorFieldRecipe recipe)
 
 math::Vector3 VectorFieldAsset::SampleLocal(const math::Vector3& localPosition) const
 {
-    if (Empty()) return math::Vector3::ZERO;
+    if (Empty()) {
+        return math::Vector3::ZERO;
+    }
 
     const math::Vector3 span = {
         boundsMax.x - boundsMin.x, boundsMax.y - boundsMin.y, boundsMax.z - boundsMin.z };
-    if (span.x <= 1.0e-6f || span.y <= 1.0e-6f || span.z <= 1.0e-6f) return math::Vector3::ZERO;
-
-    /// @note [0,1] の正規化座標。AABB の外は場が無いものとして扱う。
-    const float u = (localPosition.x - boundsMin.x) / span.x;
-    const float v = (localPosition.y - boundsMin.y) / span.y;
-    const float w = (localPosition.z - boundsMin.z) / span.z;
-    if (u < 0.0f || u > 1.0f || v < 0.0f || v > 1.0f || w < 0.0f || w > 1.0f)
+    if (span.x <= 1.0e-6f || span.y <= 1.0e-6f || span.z <= 1.0e-6f) {
         return math::Vector3::ZERO;
+    }
 
-    /// @note テクセル中心へ寄せる。GPU の SampleLevel と同じ位置を引くための半テクセルずらし。
-    const float fx = u * static_cast<float>(sizeX) - 0.5f;
-    const float fy = v * static_cast<float>(sizeY) - 0.5f;
-    const float fz = w * static_cast<float>(sizeZ) - 0.5f;
+    // [0,1] の正規化座標。AABB の外は場が無いものとして扱う。
+    const float normalizedX = (localPosition.x - boundsMin.x) / span.x;
+    const float normalizedY = (localPosition.y - boundsMin.y) / span.y;
+    const float normalizedZ = (localPosition.z - boundsMin.z) / span.z;
+    const auto beyondBounds = [](float coordinate) {
+        return coordinate < 0.0f || coordinate > 1.0f;
+    };
+    if (beyondBounds(normalizedX) || beyondBounds(normalizedY) || beyondBounds(normalizedZ)) {
+        return math::Vector3::ZERO;
+    }
+
+    // テクセル中心へ寄せる。GPU の SampleLevel と同じ位置を引くための半テクセルずらし。
+    const float fx = normalizedX * static_cast<float>(sizeX) - 0.5f;
+    const float fy = normalizedY * static_cast<float>(sizeY) - 0.5f;
+    const float fz = normalizedZ * static_cast<float>(sizeZ) - 0.5f;
 
     const auto clampIndex = [](float f, uint32_t size) -> uint32_t {
         const int i = static_cast<int>(std::floor(f));
@@ -71,7 +79,7 @@ math::Vector3 VectorFieldAsset::SampleLocal(const math::Vector3& localPosition) 
     const float ty = std::clamp(fy - std::floor(fy), 0.0f, 1.0f);
     const float tz = std::clamp(fz - std::floor(fz), 0.0f, 1.0f);
 
-    /// @note 格子点の間の速度は周囲 8 点から求める。まず X 方向で 4 組を混ぜ、次に Y、最後に Z の割合を使う。
+    // 格子点の間の速度は周囲 8 点から求める。まず X 方向で 4 組を混ぜ、次に Y、最後に Z の割合を使う。
     const math::Vector3 c00 = LerpV(data[Index(x0, y0, z0)], data[Index(x1, y0, z0)], tx);
     const math::Vector3 c10 = LerpV(data[Index(x0, y1, z0)], data[Index(x1, y1, z0)], tx);
     const math::Vector3 c01 = LerpV(data[Index(x0, y0, z1)], data[Index(x1, y0, z1)], tx);
@@ -90,7 +98,7 @@ void BakeVectorField(VectorFieldRecipe recipe, uint32_t resolution,
     field.boundsMax = {  std::abs(extents.x),  std::abs(extents.y),  std::abs(extents.z) };
     field.data.resize(static_cast<size_t>(size) * size * size);
 
-    /// @note 種によってノイズ格子を読む座標をずらすと、同じレシピでも模様の異なる速度場を作れる。
+    // 種によってノイズ格子を読む座標をずらすと、同じレシピでも模様の異なる速度場を作れる。
     const float offset = static_cast<float>(math::PcgHash(seed) % 4096u) * 0.25f;
 
     const math::Vector3 span = {
@@ -101,7 +109,7 @@ void BakeVectorField(VectorFieldRecipe recipe, uint32_t resolution,
     for (uint32_t z = 0; z < size; ++z) {
         for (uint32_t y = 0; y < size; ++y) {
             for (uint32_t x = 0; x < size; ++x) {
-                /// @note テクセル中心のローカル座標
+                // テクセル中心のローカル座標
                 const float u = (static_cast<float>(x) + 0.5f) / static_cast<float>(size);
                 const float v = (static_cast<float>(y) + 0.5f) / static_cast<float>(size);
                 const float w = (static_cast<float>(z) + 0.5f) / static_cast<float>(size);
@@ -116,7 +124,7 @@ void BakeVectorField(VectorFieldRecipe recipe, uint32_t resolution,
                     value = math::CurlNoise({ local.x + offset, local.y + offset, local.z + offset });
                     break;
                 case VectorFieldRecipe::Turbulence: {
-                    /// @note オクターブごとに周波数を倍、振幅を半分。細かい渦が粗い渦に乗る。
+                    // オクターブごとに周波数を倍、振幅を半分。細かい渦が粗い渦に乗る。
                     float amplitude = 1.0f;
                     float frequency = 1.0f;
                     for (int octave = 0; octave < 3; ++octave) {
@@ -131,7 +139,7 @@ void BakeVectorField(VectorFieldRecipe recipe, uint32_t resolution,
                     break;
                 }
                 case VectorFieldRecipe::Vortex: {
-                    /// @note Y 軸まわりの接線 + 一定の上昇。中心では接線が定義できないのでゼロ。
+                    // Y 軸まわりの接線 + 一定の上昇。中心では接線が定義できないのでゼロ。
                     const math::Vector3 radial = { local.x, 0.0f, local.z };
                     const float distance = radial.Length();
                     if (distance > 1.0e-4f) {
@@ -143,12 +151,12 @@ void BakeVectorField(VectorFieldRecipe recipe, uint32_t resolution,
                     break;
                 }
                 case VectorFieldRecipe::Tornado: {
-                    /// @note 上に行くほど半径を絞り、内向きと接線方向の流れを合わせると、中心へ渦を巻きながら上昇する。
+                    // 上に行くほど半径を絞り、内向きと接線方向の流れを合わせると、中心へ渦を巻きながら上昇する。
                     const math::Vector3 radial = { local.x, 0.0f, local.z };
                     const float distance = radial.Length();
                     const float height = std::clamp(
                         (local.y - field.boundsMin.y) / (std::max)(span.y, 1.0e-4f), 0.0f, 1.0f);
-                    /// @note 上ほど強く吸う。下端では素通しにして «足元から吸い上げる» 形にする。
+                    // 上ほど強く吸う。下端では素通しにして «足元から吸い上げる» 形にする。
                     const float pull = 0.25f + height * 0.75f;
                     if (distance > 1.0e-4f) {
                         const math::Vector3 dir = radial * (1.0f / distance);
@@ -175,12 +183,14 @@ void BakeVectorField(VectorFieldRecipe recipe, uint32_t resolution,
 
 void NormalizeVectorField(VectorFieldAsset& field)
 {
-    if (field.Empty()) return;
+    if (field.Empty()) {
+        return;
+    }
 
     constexpr uint32_t kTile = kVelocityFieldTileResolution;
 
-    /// @name 1. 固定解像度へリサンプル
-    /// @note 既にその解像度なら触らない (焼き直しのたびに補間を重ねて鈍らせない)。
+    // 1. 固定解像度へリサンプル
+    // 既にその解像度なら触らない (焼き直しのたびに補間を重ねて鈍らせない)。
     if (field.sizeX != kTile || field.sizeY != kTile || field.sizeZ != kTile) {
         const math::Vector3 span = {
             field.boundsMax.x - field.boundsMin.x,
@@ -191,7 +201,7 @@ void NormalizeVectorField(VectorFieldAsset& field)
         for (uint32_t z = 0; z < kTile; ++z) {
             for (uint32_t y = 0; y < kTile; ++y) {
                 for (uint32_t x = 0; x < kTile; ++x) {
-                    /// @note テクセル中心を元の場の座標へ写して引く。
+                    // テクセル中心を元の場の座標へ写して引く。
                     const math::Vector3 local = {
                         field.boundsMin.x + span.x * (static_cast<float>(x) + 0.5f) / kTile,
                         field.boundsMin.y + span.y * (static_cast<float>(y) + 0.5f) / kTile,
@@ -205,9 +215,9 @@ void NormalizeVectorField(VectorFieldAsset& field)
         field.sizeX = field.sizeY = field.sizeZ = kTile;
     }
 
-    /// @name 2. 正規化係数を決めて量子化
-    /// @note 各軸を 1 バイトで表すので、成分の絶対値の最大を基準にすると 0～255 を使い切れる。ベクトルの長さを使うと刻み幅が最大 √3 倍になる。
-    /// @note 最大の成分は端の値から正確に復元でき、量子化を繰り返しても基準がずれない。すべての成分がほぼ 0 の場合は係数を 1 とする。
+    // 2. 正規化係数を決めて量子化
+    // 各軸を 1 バイトで表すので、成分の絶対値の最大を基準にすると 0～255 を使い切れる。ベクトルの長さを使うと刻み幅が最大 √3 倍になる。
+    // 最大の成分は端の値から正確に復元でき、量子化を繰り返しても基準がずれない。すべての成分がほぼ 0 の場合は係数を 1 とする。
     float maxComponent = 0.0f;
     for (const math::Vector3& v : field.data) {
         maxComponent = (std::max)(maxComponent,
@@ -215,7 +225,9 @@ void NormalizeVectorField(VectorFieldAsset& field)
     }
     field.maxMagnitude = maxComponent > 1.0e-6f ? maxComponent : 1.0f;
 
-    for (math::Vector3& value : field.data) value = QuantizeVectorFieldValue(value, field.maxMagnitude);
+    for (math::Vector3& value : field.data) {
+        value = QuantizeVectorFieldValue(value, field.maxMagnitude);
+    }
 }
 
 } /// @note namespace fbzz::fluid

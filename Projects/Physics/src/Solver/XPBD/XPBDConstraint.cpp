@@ -19,23 +19,30 @@ namespace fbzz::physics
                                     const math::Vector3& r,
                                     const math::Vector3& p)
         {
-            if (!body) return;
+            if (!body) {
+                return;
+            }
 
             const float invMass = body->GetInvMass();
-            if (invMass != 0.0f)
+            if (invMass != 0.0f) {
                 body->SetPosition(body->GetPosition() + p * invMass);
+            }
 
             const math::Vector3 angular = body->ApplyInvInertia(math::Vector3::Cross(r, p));
-            if (angular.LengthSq() > 0.0f)
+            if (angular.LengthSq() > 0.0f) {
                 body->SetRotation(IntegrateRotation(body->GetRotation(), angular, 1.0f));
+            }
         }
 
         void ApplyAngularImpulse(RigidBody* body, const math::Vector3& p)
         {
-            if (!body) return;
+            if (!body) {
+                return;
+            }
             const math::Vector3 angular = body->ApplyInvInertia(p);
-            if (angular.LengthSq() > 0.0f)
+            if (angular.LengthSq() > 0.0f) {
                 body->SetRotation(IntegrateRotation(body->GetRotation(), angular, 1.0f));
+            }
         }
     } /// @note namespace
 
@@ -43,14 +50,14 @@ namespace fbzz::physics
                                        const math::Vector3&    angular,
                                        float                   h)
     {
-        /// @note q_dot = 0.5 * [ω, 0] * q。RigidBody::Integrate と同じ形にしてある。
-        /// @note 線形化した角度補正を 0.5 rad 内へ収め、小慣性部位の単発補正で半回転する不安定化を防ぐ。
+        // q_dot = 0.5 * [ω, 0] * q。RigidBody::Integrate と同じ形にしてある。
+        // 線形化した角度補正を 0.5 rad 内へ収め、小慣性部位の単発補正で半回転する不安定化を防ぐ。
         /// @see https://github.com/matthias-research/pages/blob/master/challenges/PBD.js Body.applyRotation の回転増分制限。
         const double x = angular.x;
         const double y = angular.y;
         const double z = angular.z;
         const double step = h;
-        /// @note float 入力の二乗は double の範囲内。上限以下の増分ではノルムの平方根も不要。
+        // float 入力の二乗は double の範囲内。上限以下の増分ではノルムの平方根も不要。
         const double angleSquared = (x * x + y * y + z * z) * (step * step);
         float scale = 0.5f * h;
         if (angleSquared > 0.25) {
@@ -71,10 +78,12 @@ namespace fbzz::physics
                                            const math::Quaternion& current,
                                            float                   h)
     {
-        if (h <= 0.0f) return math::Vector3::ZERO;
+        if (h <= 0.0f) {
+            return math::Vector3::ZERO;
+        }
 
         const math::Quaternion delta = current * previous.Inverse();
-        /// @note 符号が逆のクォータニオンも同じ姿勢を表す。短い回転を選ぶと、わずかな姿勢差をほぼ 1 回転と誤認せず角速度を求められる。
+        // 符号が逆のクォータニオンも同じ姿勢を表す。短い回転を選ぶと、わずかな姿勢差をほぼ 1 回転と誤認せず角速度を求められる。
         const float scale = (delta.w < 0.0f ? -2.0f : 2.0f) / h;
         return math::Vector3{ delta.x, delta.y, delta.z } * scale;
     }
@@ -83,8 +92,10 @@ namespace fbzz::physics
                                  const math::Vector3& r,
                                  const math::Vector3& n)
     {
-        if (!body) return 0.0f;
-        /// @note 同じ押し方でも重心から離れた点は回転でも動く。押す向きにどれだけ点が動くかを、並進分と回転分を足して求める。
+        if (!body) {
+            return 0.0f;
+        }
+        // 同じ押し方でも重心から離れた点は回転でも動く。押す向きにどれだけ点が動くかを、並進分と回転分を足して求める。
         const math::Vector3 rn = math::Vector3::Cross(r, n);
         return body->GetInvMass() + math::Vector3::Dot(rn, body->ApplyInvInertia(rn));
     }
@@ -96,16 +107,20 @@ namespace fbzz::physics
                           float maxLambda)
     {
         const float violation = correction.Length();
-        if (violation <= kMinViolation || h <= 0.0f) return 0.0f;
+        if (violation <= kMinViolation || h <= 0.0f) {
+            return 0.0f;
+        }
 
         const math::Vector3 n = correction * (1.0f / violation);
         const float wSum = GeneralizedInverseMass(a, rA, n) + GeneralizedInverseMass(b, rB, n);
-        if (wSum <= kMinInverseMass) return 0.0f;
+        if (wSum <= kMinInverseMass) {
+            return 0.0f;
+        }
 
         const float alphaTilde = compliance / (h * h);
         float deltaLambda = (-violation - alphaTilde * lambda) / (wSum + alphaTilde);
 
-        /// @note 摩擦で支えられる上限は蓄積した λ に掛ける。毎回の差分を制限すると、時間を細かく分けるほど合計の摩擦が強くなってしまう。
+        // 摩擦で支えられる上限は蓄積した λ に掛ける。毎回の差分を制限すると、時間を細かく分けるほど合計の摩擦が強くなってしまう。
         if (maxLambda > 0.0f) {
             float clamped = lambda + deltaLambda;
             clamped = clamped >  maxLambda ?  maxLambda : clamped;
@@ -113,7 +128,9 @@ namespace fbzz::physics
             deltaLambda = clamped - lambda;
         }
         lambda += deltaLambda;
-        if (deltaLambda == 0.0f) return 0.0f;
+        if (deltaLambda == 0.0f) {
+            return 0.0f;
+        }
 
         const math::Vector3 p = n * deltaLambda;
         ApplyPositionalImpulse(a, rA, p);
@@ -127,18 +144,22 @@ namespace fbzz::physics
                        float maxLambda)
     {
         const float violation = correction.Length();
-        if (violation <= kMinViolation || h <= 0.0f) return 0.0f;
+        if (violation <= kMinViolation || h <= 0.0f) {
+            return 0.0f;
+        }
 
         const math::Vector3 n = correction * (1.0f / violation);
         const float wA = a ? math::Vector3::Dot(n, a->ApplyInvInertia(n)) : 0.0f;
         const float wB = b ? math::Vector3::Dot(n, b->ApplyInvInertia(n)) : 0.0f;
         const float wSum = wA + wB;
-        if (wSum <= kMinInverseMass) return 0.0f;
+        if (wSum <= kMinInverseMass) {
+            return 0.0f;
+        }
 
         const float alphaTilde = compliance / (h * h);
         float deltaLambda = (-violation - alphaTilde * lambda) / (wSum + alphaTilde);
 
-        /// @note 蓄積した λ を時間刻み h の二乗で割ると関節のトルクになるため、λ の合計を制限すればトルクを設定範囲に保てる。
+        // 蓄積した λ を時間刻み h の二乗で割ると関節のトルクになるため、λ の合計を制限すればトルクを設定範囲に保てる。
         if (maxLambda > 0.0f) {
             float clamped = lambda + deltaLambda;
             clamped = clamped >  maxLambda ?  maxLambda : clamped;
@@ -146,7 +167,9 @@ namespace fbzz::physics
             deltaLambda = clamped - lambda;
         }
         lambda += deltaLambda;
-        if (deltaLambda == 0.0f) return 0.0f;
+        if (deltaLambda == 0.0f) {
+            return 0.0f;
+        }
 
         const math::Vector3 p = n * deltaLambda;
         ApplyAngularImpulse(a, p);
@@ -159,20 +182,30 @@ namespace fbzz::physics
                                     float maxImpulse)
     {
         const float magnitude = deltaOmega.Length();
-        if (magnitude <= kMinViolation) return;
+        if (magnitude <= kMinViolation) {
+            return;
+        }
 
         const math::Vector3 n = deltaOmega * (1.0f / magnitude);
         const float wA = a ? math::Vector3::Dot(n, a->ApplyInvInertia(n)) : 0.0f;
         const float wB = b ? math::Vector3::Dot(n, b->ApplyInvInertia(n)) : 0.0f;
         const float wSum = wA + wB;
-        if (wSum <= kMinInverseMass) return;
+        if (wSum <= kMinInverseMass) {
+            return;
+        }
 
         float impulse = magnitude / wSum;
-        if (maxImpulse > 0.0f && impulse > maxImpulse) impulse = maxImpulse;
+        if (maxImpulse > 0.0f && impulse > maxImpulse) {
+            impulse = maxImpulse;
+        }
 
         const math::Vector3 p = n * impulse;
-        if (a) a->SetAngularVelocity(a->GetAngularVelocity() - a->ApplyInvInertia(p));
-        if (b) b->SetAngularVelocity(b->GetAngularVelocity() + b->ApplyInvInertia(p));
+        if (a) {
+            a->SetAngularVelocity(a->GetAngularVelocity() - a->ApplyInvInertia(p));
+        }
+        if (b) {
+            b->SetAngularVelocity(b->GetAngularVelocity() + b->ApplyInvInertia(p));
+        }
     }
 
     void ApplyVelocityChangeAtPoint(RigidBody* a, RigidBody* b,
@@ -181,14 +214,20 @@ namespace fbzz::physics
                                     float maxImpulse)
     {
         const float magnitude = deltaV.Length();
-        if (magnitude <= kMinViolation) return;
+        if (magnitude <= kMinViolation) {
+            return;
+        }
 
         const math::Vector3 n = deltaV * (1.0f / magnitude);
         const float wSum = GeneralizedInverseMass(a, rA, n) + GeneralizedInverseMass(b, rB, n);
-        if (wSum <= kMinInverseMass) return;
+        if (wSum <= kMinInverseMass) {
+            return;
+        }
 
         float impulse = magnitude / wSum;
-        if (maxImpulse > 0.0f && impulse > maxImpulse) impulse = maxImpulse;
+        if (maxImpulse > 0.0f && impulse > maxImpulse) {
+            impulse = maxImpulse;
+        }
 
         const math::Vector3 p = n * impulse;
         if (a) {
@@ -207,12 +246,17 @@ namespace fbzz::physics
     {
         math::Vector3 v{ q.x, q.y, q.z };
         float         w = q.w;
-        /// @note 同じ姿勢を表す符号違いのうち短い方。採らないと «ほぼ 1 回転» を返す。
-        if (w < 0.0f) { v = -v; w = -w; }
+        // 同じ姿勢を表す符号違いのうち短い方。採らないと «ほぼ 1 回転» を返す。
+        if (w < 0.0f) {
+            v = -v;
+            w = -w;
+        }
 
         const float length = v.Length();
-        /// @note 小角では 2v が回転ベクトル
-        if (length <= kMinViolation) return v * 2.0f;
+        // 小角では 2v が回転ベクトル
+        if (length <= kMinViolation) {
+            return v * 2.0f;
+        }
         return v * (2.0f * std::atan2(length, w) / length);
     }
 
@@ -220,10 +264,10 @@ namespace fbzz::physics
                              math::Quaternion&       swing,
                              math::Quaternion&       twist)
     {
-        /// @note ツイスト軸は関節フレームの X。q の X 成分と実部だけを残せばツイストになる。
+        // ツイスト軸は関節フレームの X。q の X 成分と実部だけを残せばツイストになる。
         const float length = std::sqrt(q.x * q.x + q.w * q.w);
-        /// @note 特異点: スイングが 180° に近いとツイスト成分が消え、向きが決められない。
-        /// @note ここを 0 除算で通すと NaN が姿勢へ入って以降のフレームが全部壊れる。
+        // 特異点: スイングが 180° に近いとツイスト成分が消え、向きが決められない。
+        // ここを 0 除算で通すと NaN が姿勢へ入って以降のフレームが全部壊れる。
         twist = length <= kMinViolation
             ? math::Quaternion::Identity()
             : math::Quaternion{ q.x / length, 0.0f, 0.0f, q.w / length };

@@ -73,7 +73,7 @@ TEST_F(XPBDPoseAnchorTest, HoldsTheBodyAtItsTargetUnderGravity)
 /// @brief Lets the body fall when disabled.
 TEST_F(XPBDPoseAnchorTest, LetsTheBodyFallWhenDisabled)
 {
-    /// @note 脱力して倒れる間は切る。切れていないと «力が抜けたのに胴だけ宙に留まる»。
+    // 脱力して倒れる間は切る。切れていないと «力が抜けたのに胴だけ宙に留まる»。
     physics::XPBDPoseAnchor& anchor = AddAnchor();
     anchor.SetEnabled(false);
 
@@ -85,8 +85,8 @@ TEST_F(XPBDPoseAnchorTest, LetsTheBodyFallWhenDisabled)
 /// @brief Starts disabled until it is turned on.
 TEST_F(XPBDPoseAnchorTest, StartsDisabledUntilItIsTurnedOn)
 {
-    /// @note 既定は «繋ぎ止めない»。組んだ瞬間に勝手に吊られていると、
-    ///       倒れるはずのラグドールが浮いたままになる。
+    // 既定は «繋ぎ止めない»。組んだ瞬間に勝手に吊られていると、
+    // 倒れるはずのラグドールが浮いたままになる。
     auto anchor = std::make_unique<physics::XPBDPoseAnchor>(&m_body);
     anchor->SetTarget(m_body.GetPosition(), m_body.GetRotation());
     anchor->SetStrength(1000.0f, 1000.0f, 0.1f, 0.1f);
@@ -103,7 +103,7 @@ TEST_F(XPBDPoseAnchorTest, StartsDisabledUntilItIsTurnedOn)
 /// @brief Follows a target that moves.
 TEST_F(XPBDPoseAnchorTest, FollowsATargetThatMoves)
 {
-    /// @note Active なラグドールは毎フレーム目標をクリップへ乗せ替える。付いて回ること。
+    // Active なラグドールは毎フレーム目標をクリップへ乗せ替える。付いて回ること。
     physics::XPBDPoseAnchor& anchor = AddAnchor();
 
     anchor.SetTarget({ 3.0f, 5.0f, 0.0f }, m_body.GetRotation());
@@ -130,8 +130,8 @@ TEST_F(XPBDPoseAnchorTest, PullsTheRotationTowardsTheTarget)
 /// @brief Sags below the target when the force limit is too low.
 TEST_F(XPBDPoseAnchorTest, SagsBelowTheTargetWhenTheForceLimitIsTooLow)
 {
-    /// @note 上限を «自重より弱く» すると支え切れない。押されたぶんだけ沈む挙動の芯。
-    /// @note 自重は約 9.8 N
+    // 上限を «自重より弱く» すると支え切れない。押されたぶんだけ沈む挙動の芯。
+    // 自重は約 9.8 N
     AddAnchor(1.0f, 1000.0f);
 
     Simulate(solver, 120);
@@ -162,7 +162,7 @@ TEST_F(XPBDPoseAnchorTest, DoesNotReportSaturationWhileItHolds)
 /// @brief Reports how far it is from the target.
 TEST_F(XPBDPoseAnchorTest, ReportsHowFarItIsFromTheTarget)
 {
-    /// @note 「どれだけ引き止め切れていないか」の物差し。0 なら目標どおり。
+    // 「どれだけ引き止め切れていないか」の物差し。0 なら目標どおり。
     physics::XPBDPoseAnchor& strong = AddAnchor();
 
     Simulate(solver, 120);
@@ -178,8 +178,8 @@ TEST_F(XPBDPoseAnchorTest, ReportsHowFarItIsFromTheTarget)
 /// @brief Treats a non positive limit as unlimited.
 TEST_F(XPBDPoseAnchorTest, TreatsANonPositiveLimitAsUnlimited)
 {
-    /// @note 0 以下は «上限なし»。«0 = 力を出さない» と読み替えると、
-    ///       上限を設定していない繋ぎ止めが全部効かなくなる。
+    // 0 以下は «上限なし»。«0 = 力を出さない» と読み替えると、
+    // 上限を設定していない繋ぎ止めが全部効かなくなる。
     AddAnchor(0.0f, 0.0f);
 
     Simulate(solver, 120);

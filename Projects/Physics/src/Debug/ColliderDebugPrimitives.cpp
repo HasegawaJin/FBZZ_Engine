@@ -21,9 +21,9 @@ namespace fbzz::physics::collider_debug_detail
 
         struct AxialBasis
         {
-            math::Vector3 radialAxisA;
-            math::Vector3 longitudinalAxis;
-            math::Vector3 radialAxisB;
+            math::Vector3 radialAxisA; ///< 形状の長軸に直交する 1 本目の半径方向。
+            math::Vector3 longitudinalAxis; ///< 円柱やカプセルの長さに沿う軸。
+            math::Vector3 radialAxisB; ///< 長軸と radialAxisA に直交する 2 本目の半径方向。
         };
 
         void AppendBoxEdges(ColliderDebugGeometry& geometry, const std::array<math::Vector3, 8>& corners)
@@ -33,8 +33,9 @@ namespace fbzz::physics::collider_debug_detail
                 {4, 5}, {5, 6}, {6, 7}, {7, 4},
                 {0, 4}, {1, 5}, {2, 6}, {3, 7}
             };
-            for (const auto& edge : EDGES)
+            for (const auto& edge : EDGES) {
                 AppendLine(geometry, corners[edge[0]], corners[edge[1]]);
+            }
         }
 
         math::Vector3 CirclePoint(const math::Vector3& center,
@@ -77,7 +78,7 @@ namespace fbzz::physics::collider_debug_detail
         AxialBasis BuildAxialBasis(const math::Vector3& shapeAxis)
         {
             const math::Vector3 longitudinalAxis = shapeAxis.Normalized();
-            /// @note 主軸が UP に近いときは参照軸を切り替え、正規化前の外積が短くなるのを避ける。
+            // 主軸が UP に近いときは参照軸を切り替え、正規化前の外積が短くなるのを避ける。
             const math::Vector3 referenceAxis = std::abs(longitudinalAxis.y) > 0.95f
                 ? math::Vector3::RIGHT : math::Vector3::UP;
             const math::Vector3 radialAxisA = math::Vector3::Cross(referenceAxis, longitudinalAxis).Normalized();
@@ -144,7 +145,9 @@ namespace fbzz::physics::collider_debug_detail
         const math::Vector3 topCenter = capsule.GetSegmentEnd();
         const math::Vector3 bottomCenter = capsule.GetSegmentStart();
         const math::Vector3 shapeAxis = topCenter - bottomCenter;
-        if (shapeAxis.LengthSq() < 1e-6f) return BuildBoundsGeometry(capsule);
+        if (shapeAxis.LengthSq() < 1e-6f) {
+            return BuildBoundsGeometry(capsule);
+        }
 
         const AxialBasis basis = BuildAxialBasis(shapeAxis);
         const float radius = capsule.m_radius;
@@ -164,7 +167,9 @@ namespace fbzz::physics::collider_debug_detail
         const math::Vector3 topCenter = cylinder.GetSegmentEnd();
         const math::Vector3 bottomCenter = cylinder.GetSegmentStart();
         const math::Vector3 shapeAxis = topCenter - bottomCenter;
-        if (shapeAxis.LengthSq() < 1e-6f) return BuildBoundsGeometry(cylinder);
+        if (shapeAxis.LengthSq() < 1e-6f) {
+            return BuildBoundsGeometry(cylinder);
+        }
 
         const AxialBasis basis = BuildAxialBasis(shapeAxis);
         ColliderDebugGeometry geometry;

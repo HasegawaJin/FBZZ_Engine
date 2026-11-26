@@ -30,22 +30,28 @@ constexpr int MAX_AXIS_CELLS = 512;
 void FluidGasSolver::AdoptOperators(const FluidRecipe& recipe)
 {
     m_sources.clear();
-    for (const FluidSource& source : recipe.sources)
-        if (source.enabled && m_sources.size() < static_cast<std::size_t>(kMaxFluidSources))
+    for (const FluidSource& source : recipe.sources) {
+        if (source.enabled && m_sources.size() < static_cast<std::size_t>(kMaxFluidSources)) {
             m_sources.push_back(source);
+        }
+    }
     m_hasColor = false;
     for (FluidSource& source : m_sources) {
         source.colorKey = Saturate(source.colorKey);
         m_hasColor = m_hasColor || source.colorKey > 0.0f;
     }
     m_forces.clear();
-    for (const FluidForce& force : recipe.forces)
-        if (force.enabled && m_forces.size() < static_cast<std::size_t>(kMaxFluidForces))
+    for (const FluidForce& force : recipe.forces) {
+        if (force.enabled && m_forces.size() < static_cast<std::size_t>(kMaxFluidForces)) {
             m_forces.push_back(force);
+        }
+    }
     m_colliders.clear();
-    for (const FluidCollider& collider : recipe.colliders)
-        if (collider.enabled && m_colliders.size() < static_cast<std::size_t>(kMaxFluidColliders))
+    for (const FluidCollider& collider : recipe.colliders) {
+        if (collider.enabled && m_colliders.size() < static_cast<std::size_t>(kMaxFluidColliders)) {
             m_colliders.push_back(collider);
+        }
+    }
     ResolveFluidSourceMasks(m_sources, m_sourceMasks);
 }
 
@@ -63,7 +69,7 @@ void FluidGasSolver::Reset(const FluidRecipe& recipe, int requestedCellsX, int r
     m_seed = recipe.seed;
     m_requestedResolution = GasGridRequest(recipe, m_cellsZ > 1);
 
-    /// @note seed は «ノイズ格子のどこを切り出すか» を決める。値を変えるのではなく座標をずらす。
+    // seed は «ノイズ格子のどこを切り出すか» を決める。値を変えるのではなく座標をずらす。
     const uint32_t hash = math::PcgHash(recipe.seed * 2654435761u + 1u);
     m_noiseOffset = { static_cast<float>(hash % 997u) * 0.731f,
                       static_cast<float>((hash >> 10) % 997u) * 0.517f,
@@ -76,10 +82,11 @@ void FluidGasSolver::Reset(const FluidRecipe& recipe, int requestedCellsX, int r
                                        &m_pressure, &m_excessDivergence, &m_expansion,
                                        &m_prevVx, &m_prevVy, &m_prevVz,
                                        &m_scratchA, &m_scratchB, &m_scratchC,
-                                       &m_curlX, &m_curlY, &m_curlZ, &m_vorticityMagnitude })
+                                       &m_curlX, &m_curlY, &m_curlZ, &m_vorticityMagnitude }) {
         field->assign(count, 0.0f);
+    }
 
-    /// @note 細部の座標は 2D (フリップブック) でだけ使う。3D (速度場 PNG) は速度しか焼かないので持たない。
+    // 細部の座標は 2D (フリップブック) でだけ使う。3D (速度場 PNG) は速度しか焼かないので持たない。
     for (int layer = 0; layer < 2; ++layer) {
         if (m_cellsZ == 1) {
             m_detailU[layer].assign(count, 0.0f);
@@ -98,20 +105,26 @@ void FluidGasSolver::Reset(const FluidRecipe& recipe, int requestedCellsX, int r
 /// @note 刻みごとに効くだけの浮力・散逸・床・圧力反復・燃焼は途中から差し替えてよい。
 bool FluidGasSolver::ReplaceOperators(const FluidRecipe& recipe)
 {
-    if (recipe.kind != FluidKind::Gas) return false;
-    if (recipe.seed != m_seed) return false;
-    if (GasGridRequest(recipe, m_cellsZ > 1) != m_requestedResolution) return false;
+    if (recipe.kind != FluidKind::Gas) {
+        return false;
+    }
+    if (recipe.seed != m_seed) {
+        return false;
+    }
+    if (GasGridRequest(recipe, m_cellsZ > 1) != m_requestedResolution) {
+        return false;
+    }
 
     m_settings = recipe.gas;
     const bool hadColor = m_hasColor;
     AdoptOperators(recipe);
-    /// @note 鍵の付いた発生源が 1 つも無くなったら、運んでいた色も捨てる («鍵が無ければ全部 0» を保つ)。
+    // 鍵の付いた発生源が 1 つも無くなったら、運んでいた色も捨てる («鍵が無ければ全部 0» を保つ)。
     if (hadColor && !m_hasColor) {
         std::fill(m_colorMass.begin(), m_colorMass.end(), 0.0f);
         std::fill(m_fuelColorMass.begin(), m_fuelColorMass.end(), 0.0f);
         std::fill(m_colorKey.begin(), m_colorKey.end(), 0.0f);
     }
-    /// @note 障害物は刻みの始めに組み直す。ここで忘れておかないと、消した障害物が次の 1 刻みだけ残る。
+    // 障害物は刻みの始めに組み直す。ここで忘れておかないと、消した障害物が次の 1 刻みだけ残る。
     m_solid.clear();
     m_hasSolid = false;
     return true;
@@ -119,33 +132,44 @@ bool FluidGasSolver::ReplaceOperators(const FluidRecipe& recipe)
 
 void FluidGasSolver::Advance(float dt)
 {
-    if (dt <= 0.0f) return;
+    if (dt <= 0.0f) {
+        return;
+    }
     float maxComponentSpeedSum = 0.0f;
-    for (std::size_t cellIndex = 0; cellIndex < m_vx.size(); ++cellIndex)
+    for (std::size_t cellIndex = 0; cellIndex < m_vx.size(); ++cellIndex) {
         maxComponentSpeedSum = (std::max)(maxComponentSpeedSum, std::fabs(m_vx[cellIndex]) + std::fabs(m_vy[cellIndex]) + std::fabs(m_vz[cellIndex]));
-    /// @note 1 刻みで 2 セルまでとし、半ラグランジュ移流で細い煙が隙間を飛び越えてちぎれることを防ぐ。
+    }
+    // 1 刻みで 2 セルまでとし、半ラグランジュ移流で細い煙が隙間を飛び越えてちぎれることを防ぐ。
     const float cellsTravelled = maxComponentSpeedSum * dt / m_cellWidth;
     const int substepCount = std::clamp(static_cast<int>(std::ceil(cellsTravelled / 2.0f)), 1, 16);
     const float substepDuration = dt / static_cast<float>(substepCount);
-    for (int substep = 0; substep < substepCount; ++substep) Step(substepDuration);
+    for (int substep = 0; substep < substepCount; ++substep) {
+        Step(substepDuration);
+    }
 }
 
 void FluidGasSolver::Step(float dt)
 {
-    if (dt <= 0.0f) return;
+    if (dt <= 0.0f) {
+        return;
+    }
 
-    /// @note 障害物と発生源は刻みの始めの時刻で評価する。
+    // 障害物と発生源は刻みの始めの時刻で評価する。
     BuildSolids();
     Inject(dt);
     Burn(dt);
     ApplyForces(dt);
 
-    /// @note 障害物の速度を反映してから投影し、燃焼の膨張を含む補正済みの速度場で運ぶ。
-    if (m_hasSolid) EnforceSolids(true);
+    // 障害物の速度を反映してから投影し、燃焼の膨張を含む補正済みの速度場で運ぶ。
+    if (m_hasSolid) {
+        EnforceSolids(true);
+    }
     Project(&m_expansion);
     Advect(dt);
-    /// @note 移流で固体セルへ入り込んだスカラー量を消し、固体の速度を戻す。
-    if (m_hasSolid) EnforceSolids(true);
+    // 移流で固体セルへ入り込んだスカラー量を消し、固体の速度を戻す。
+    if (m_hasSolid) {
+        EnforceSolids(true);
+    }
 
     AdvectDetail(dt);
     Dissipate(dt);

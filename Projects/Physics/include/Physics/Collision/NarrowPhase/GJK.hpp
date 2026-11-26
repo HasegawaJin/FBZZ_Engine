@@ -25,8 +25,8 @@ namespace fbzz::physics
             math::Vector3 suppB;  ///< @note shape B 上のサポート点
         };
 
-        std::array<Vertex, 4> verts;
-        int size = 0;
+        std::array<Vertex, 4> verts; ///< 差空間の支持点と元の支持点を格納する単体の頂点配列。
+        int size = 0; ///< verts の先頭から有効な頂点の個数。
 
         void Clear()              { size = 0; }
         void Add(const Vertex& v) { verts[size++] = v; }
@@ -51,7 +51,7 @@ namespace fbzz::physics
 
     struct GJKResult
     {
-        bool intersects = false;
+        bool intersects = false; ///< 2 つの凸形状が互いに交差しているかどうか。
 
         /// @note closestA / closestB / distance は GJK_Distance だけが埋める。
         /// @note GJK_Intersect は «当たったか» しか答えないので 0 のまま残る。
@@ -63,7 +63,7 @@ namespace fbzz::physics
     };
 
     /// @brief GJK 交差判定。当たったかどうかだけを答える。交差時は EPA に渡せる Simplex を result.simplex に残す。
-    /// @param maxIter 最大反復数 (通常 32 で収束)。
+    /// @param[in] maxIter 最大反復数 (通常 32 で収束)。
     /// @note 距離を出さない理由: NarrowPhase が毎フレーム呼ぶ経路で、必要なのは真偽と貫通量 (EPA の仕事) だけ。
     /// @note «当たっていない» と分かった時点で打ち切れるので、隙間の距離まで詰める反復を全ペアに払わせない。
     /// @note 距離が要る場合は GJK_Distance を使う。
@@ -73,7 +73,7 @@ namespace fbzz::physics
         int maxIter = 32);
 
     /// @brief 非交差時の隙間と、両形状上の最近傍点を求める。
-    /// @param tolerance 距離の上界と下界の差がこれを切ったら収束とみなす [m]。
+    /// @param[in] tolerance 距離の上界と下界の差がこれを切ったら収束とみなす [m]。
     /// @note 重なっていた場合は intersects = true を返すだけで、貫通量は測らない (EPA の仕事)。
     /// @note 最近傍点は «終了時の単体の上で原点に最も近い点» の重心座標から、元形状上のサポート点を
     /// @note 同じ重みで混ぜて復元する。平らな面どうしが向かい合う配置のように一意に決まらない場合は、

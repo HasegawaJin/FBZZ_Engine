@@ -29,7 +29,9 @@ namespace fbzz::physics::collider_debug_detail
         {
             for (const uint32_t triangleIndex : leaf.triIndices)
             {
-                if (triangleIndex >= bvh.triangles.size()) continue;
+                if (triangleIndex >= bvh.triangles.size()) {
+                    continue;
+                }
                 AppendTriangleEdges(detailGeometry, bvh.triangles[triangleIndex].v);
             }
         }
@@ -40,8 +42,11 @@ namespace fbzz::physics::collider_debug_detail
             int firstOnStack = parent.left;
             int lastOnStack = parent.right;
             const int nodeCount = static_cast<int>(bvh.nodes.size());
-            /// @note 遠い子を先に積み、近い子から詳細線を出す。同距離なら右の子を先に処理する。
-            if (firstOnStack >= 0 && firstOnStack < nodeCount && lastOnStack >= 0 && lastOnStack < nodeCount &&
+            const auto hasNode = [nodeCount](int index) {
+                return index >= 0 && index < nodeCount;
+            };
+            // 遠い子を先に積み、近い子から詳細線を出す。同距離なら右の子を先に処理する。
+            if (hasNode(firstOnStack) && hasNode(lastOnStack) &&
                 DistanceSquaredToBounds(cameraPosition, bvh.nodes[firstOnStack].aabb) <
                 DistanceSquaredToBounds(cameraPosition, bvh.nodes[lastOnStack].aabb))
             {
@@ -54,7 +59,9 @@ namespace fbzz::physics::collider_debug_detail
 
     ColliderDebugGeometry BuildBVHLodGeometry(const BVHTree& bvh, const ColliderDebugView& view)
     {
-        if (bvh.nodes.empty() || bvh.triangles.empty()) return {};
+        if (bvh.nodes.empty() || bvh.triangles.empty()) {
+            return {};
+        }
 
         ColliderDebugGeometry detailGeometry;
         ColliderDebugGeometry coarseGeometry;
@@ -65,33 +72,42 @@ namespace fbzz::physics::collider_debug_detail
         std::vector<int> pendingNodes;
         pendingNodes.reserve(64);
         pendingNodes.push_back(0);
+
+        // 視点に近い子から詳細線の予算を使い、十分小さく見える遠景の部分木は境界箱で打ち切る。
         while (!pendingNodes.empty())
         {
             const bool hasDetailBudget = detailGeometry.lines.size() < MAX_MESH_DEBUG_LINES;
             const bool hasCoarseBudget = coarseGeometry.lines.size() < COARSE_LINE_THRESHOLD;
-            if (!hasDetailBudget && !hasCoarseBudget) break;
+            if (!hasDetailBudget && !hasCoarseBudget) {
+                break;
+            }
 
             const int nodeIndex = pendingNodes.back();
             pendingNodes.pop_back();
-            if (nodeIndex < 0 || nodeIndex >= static_cast<int>(bvh.nodes.size())) continue;
+            if (nodeIndex < 0 || nodeIndex >= static_cast<int>(bvh.nodes.size())) {
+                continue;
+            }
 
             const BVHNode& node = bvh.nodes[nodeIndex];
             const math::Vector3 halfExtents = node.aabb.Extents();
             const float distanceSquared = DistanceSquaredToBounds(view.cameraPosition, node.aabb);
 
-            /// @note 詳細線の予算を使い切った手前のノードも、残りの箱の予算で表せる。
+            // 詳細線の予算を使い切った手前のノードも、残りの箱の予算で表せる。
             const bool drawDetail = distanceSquared <= detailRadiusSquared && hasDetailBudget;
             if (!drawDetail && (node.IsLeaf() || halfExtents.LengthSq() <= distanceSquared * COARSE_RATIO_SQUARED))
             {
-                if (hasCoarseBudget)
+                if (hasCoarseBudget) {
                     AppendBoundsBox(coarseGeometry, node.aabb.Center(), halfExtents);
+                }
                 continue;
             }
 
-            if (node.IsLeaf())
+            if (node.IsLeaf()) {
                 AppendLeafTriangles(detailGeometry, bvh, node);
-            else
+            }
+            else {
                 PushChildrenByDistance(pendingNodes, bvh, node, view.cameraPosition);
+            }
         }
 
         detailGeometry.detailLineCount = detailGeometry.lines.size();

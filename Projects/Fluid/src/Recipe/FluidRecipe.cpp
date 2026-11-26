@@ -10,9 +10,11 @@ namespace fbzz::fluid {
 
 int ResolveGasResolution(const FluidRecipe& recipe)
 {
-    if (recipe.gas.resolution > 0) return std::clamp(recipe.gas.resolution, 16, 512);
-    /// @note Auto: コマの解像度に合わせる。256 を超えると焼き時間が分単位になるので、
-    ///       そこから先は細部ノイズに任せる。
+    if (recipe.gas.resolution > 0) {
+        return std::clamp(recipe.gas.resolution, 16, 512);
+    }
+    // Auto: コマの解像度に合わせる。256 を超えると焼き時間が分単位になるので、
+    //       そこから先は細部ノイズに任せる。
     return std::clamp(recipe.output.frameSize, 64, 256);
 }
 

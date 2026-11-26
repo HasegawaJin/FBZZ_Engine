@@ -69,8 +69,9 @@ namespace fbzz::physics
     {
         if (view.enabled && view.detailRadius > 0.0f)
         {
-            if (const BVHTree* bvh = FindMeshBVH(collider))
+            if (const BVHTree* bvh = FindMeshBVH(collider)) {
                 return collider_debug_detail::BuildBVHLodGeometry(*bvh, view);
+            }
         }
         return BuildColliderDebugGeometry(collider);
     }

@@ -36,7 +36,7 @@ namespace fbzz::physics
         FBZZ_PHYSICS_API void Step(float dt, void (*prepareContacts)(void*),
                                   void (*projectPositions)(void*), void* context);
         /// @note LIMIT は姿勢を接触補正の前に制限し、外向きの速度だけを除く。
-        /// @param correctionIterations 各 substep で硬い関節と接触を解き直す回数。最小 1。
+        /// @param[in] correctionIterations 各 substep で硬い関節と接触を解き直す回数。最小 1。
         FBZZ_PHYSICS_API void Step(float dt, void (*prepareContacts)(void*),
                                   void (*projectPositions)(void*), void* context, XPBDProjectionMode mode,
                                   int correctionIterations = 4);
@@ -83,26 +83,24 @@ namespace fbzz::physics
     private:
         struct BodyState
         {
-            RigidBody*       body = nullptr;
-            math::Vector3    prevPosition;
-            math::Quaternion prevRotation;
-            math::Vector3 physicalPosition;
-            math::Quaternion physicalRotation;
-            math::Vector3 projectionTranslation;
-            math::Quaternion projectionRotation;
-            /// @note AddBody 時点の m_allowSleeping。外すときに戻す。
-            bool             restoreSleeping = true;
+            RigidBody*       body = nullptr; ///< ソルバーが姿勢と速度を更新する剛体の非所有参照。
+            math::Vector3    prevPosition; ///< サブステップを進める前のワールド位置 [m]。
+            math::Quaternion prevRotation; ///< サブステップを進める前のワールド姿勢。
+            math::Vector3 physicalPosition; ///< 物理パスで更新したワールド位置 [m]。
+            math::Quaternion physicalRotation; ///< 物理パスで更新したワールド姿勢。
+            math::Vector3 projectionTranslation; ///< 位置射影で加えたワールド変位 [m]。
+            math::Quaternion projectionRotation; ///< 位置射影で加えた姿勢の差分。
+            bool             restoreSleeping = true; ///< AddBody 時点の m_allowSleeping。外すときに戻す。
         };
 
         FBZZ_PHYSICS_API void Integrate(BodyState& state, float h) const;
         FBZZ_PHYSICS_API void DeriveVelocity(const BodyState& state, float h) const;
         static void LimitProjectionVelocity(const BodyState& state);
 
-        std::vector<BodyState>                       m_bodies;
-        std::vector<std::unique_ptr<XPBDConstraint>> m_constraints;
-        /// @note 非所有。呼び出し側が寿命を保証する (接触)。
-        std::vector<XPBDConstraint*>                 m_transient;
-        math::Vector3                                m_gravity{ 0.0f, -9.81f, 0.0f };
-        int                                          m_substeps = 8;
+        std::vector<BodyState>                       m_bodies; ///< このソルバーが積分と位置補正を行う剛体の作業配列。
+        std::vector<std::unique_ptr<XPBDConstraint>> m_constraints; ///< このソルバーが各刻みで解く XPBD 拘束。
+        std::vector<XPBDConstraint*>                 m_transient; ///< 非所有。呼び出し側が寿命を保証する (接触)。
+        math::Vector3                                m_gravity{ 0.0f, -9.81f, 0.0f }; ///< 積分時に加えるワールド空間の重力加速度 [m/s²]。
+        int                                          m_substeps = 8; ///< 1 回の Update を分けるサブステップ数。
     };
 } /// @note namespace fbzz::physics

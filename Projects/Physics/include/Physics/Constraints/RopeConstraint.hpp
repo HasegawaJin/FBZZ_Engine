@@ -17,6 +17,6 @@ namespace fbzz::physics
         FBZZ_PHYSICS_API void SolvePosition(float dt) override;
         ConstraintType GetType() const override { return ConstraintType::ROPE; }
 
-        float m_maxLength = 1.0f;
+        float m_maxLength = 1.0f; ///< 両剛体の位置の間に許す最大距離 [m]。
     };
 } /// @note namespace fbzz::physics

@@ -27,9 +27,10 @@ namespace fbzz::physics
 
         inline void AppendTriangleEdges(ColliderDebugGeometry& geometry, const math::Vector3 (&vertices)[3])
         {
-            /// @note BVH の詳細線では、残り予算が三角形一枚に満たなくても入る辺だけを出す。
-            for (std::size_t edgeIndex = 0; edgeIndex < 3 && geometry.lines.size() < MAX_MESH_DEBUG_LINES; ++edgeIndex)
+            // BVH の詳細線では、残り予算が三角形一枚に満たなくても入る辺だけを出す。
+            for (std::size_t edgeIndex = 0; edgeIndex < 3 && geometry.lines.size() < MAX_MESH_DEBUG_LINES; ++edgeIndex) {
                 AppendLine(geometry, vertices[edgeIndex], vertices[(edgeIndex + 1) % 3]);
+            }
         }
 
         void AppendBoundsBox(ColliderDebugGeometry& geometry, const math::Vector3& center,

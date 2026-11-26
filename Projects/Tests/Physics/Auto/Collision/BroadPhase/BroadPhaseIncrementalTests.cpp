@@ -48,15 +48,23 @@ std::vector<Pair> Expected(const std::vector<physics::ColliderInstance>& input,
     std::vector<Pair> expected;
     for (std::size_t first = 0; first < input.size(); ++first) {
         const auto& a = input[first];
-        if (!a.collider) continue;
+        if (!a.collider) {
+            continue;
+        }
         for (std::size_t second = first + 1; second < input.size(); ++second) {
             const auto& b = input[second];
-            if (!b.collider || (a.body && a.body == b.body)) continue;
-            if (filter && !filter(a.layer, b.layer)) continue;
+            if (!b.collider || (a.body && a.body == b.body)) {
+                continue;
+            }
+            if (filter && !filter(a.layer, b.layer)) {
+                continue;
+            }
             const auto inactive = [](const physics::ColliderInstance& value) {
                 return !value.body || value.body->IsStatic() || value.body->IsSleeping();
             };
-            if (!a.isTrigger && !b.isTrigger && inactive(a) && inactive(b)) continue;
+            if (!a.isTrigger && !b.isTrigger && inactive(a) && inactive(b)) {
+                continue;
+            }
             if (a.collider->GetAABB().Overlaps(b.collider->GetAABB())) expected.emplace_back(first, second);
         }
     }

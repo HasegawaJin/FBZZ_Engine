@@ -16,14 +16,14 @@ namespace fbzz::physics
     class XPBDContact final : public XPBDConstraint
     {
     public:
-        /// @param body        法線 (+normal) の向きへ押し出される剛体。null にはしない。
-        /// @param other       相手。null で «動かない世界» (静的コライダー)。
-        /// @param solveOther  true で相手も動かす。false なら反作用を力積として溜める。
-        /// @param worldPoint  接触点 (ワールド)。
-        /// @param normal      other → body の向き。正規化して渡すこと。
-        /// @param depth       符号付き貫通深さ [m]。負は近接した予測接触。
-        /// @param friction    クーロン摩擦係数。
-        /// @param restitution 反発係数 [0,1]。
+        /// @param[in] body        法線 (+normal) の向きへ押し出される剛体。null にはしない。
+        /// @param[in] other       相手。null で «動かない世界» (静的コライダー)。
+        /// @param[in] solveOther  true で相手も動かす。false なら反作用を力積として溜める。
+        /// @param[in] worldPoint  接触点 (ワールド)。
+        /// @param[in] normal      other → body の向き。正規化して渡すこと。
+        /// @param[in] depth       符号付き貫通深さ [m]。負は近接した予測接触。
+        /// @param[in] friction    クーロン摩擦係数。
+        /// @param[in] restitution 反発係数 [0,1]。
         FBZZ_PHYSICS_API void Set(RigidBody*           body,
                  RigidBody*           other,
                  bool                 solveOther,
@@ -64,8 +64,8 @@ namespace fbzz::physics
         /// @note 直前の substep の貫通深さ [m]。0 は貫通なし。接触許容内かは IsTouching で判定する。
         [[nodiscard]] float GetPenetration() const { return m_penetration; }
         /// @note 候補のワールド姿勢が相手との貫通や継続した静的接触の滑りを増やすかを調べる。
-        /// @param additionalSlip 姿勢復帰のため許容する追加の接線変位 [m]。
-        /// @param smoothSlipTolerance 接触許容幅を固着点の残差へ連続的に加える。
+        /// @param[in] additionalSlip 姿勢復帰のため許容する追加の接線変位 [m]。
+        /// @param[in] smoothSlipTolerance 接触許容幅を固着点の残差へ連続的に加える。
         [[nodiscard]] FBZZ_PHYSICS_API bool AllowsPoseCorrection(const math::Vector3& position,
             const math::Quaternion& rotation, float additionalSlip, bool smoothSlipTolerance) const;
 
@@ -75,36 +75,33 @@ namespace fbzz::physics
         FBZZ_PHYSICS_API void CaptureApproachSpeed();
         FBZZ_PHYSICS_API void SolveFriction(float h, const math::Vector3& rA, const math::Vector3& rB);
 
-        RigidBody*    m_body  = nullptr;
-        RigidBody*    m_other = nullptr;
-        bool          m_solveOther = false;
+        RigidBody*    m_body  = nullptr; ///< 法線の向きに押し出す剛体の非所有参照。
+        RigidBody*    m_other = nullptr; ///< 反作用を受ける相手の剛体の非所有参照。nullptr は動かない世界。
+        bool          m_solveOther = false; ///< 相手の剛体の姿勢もこの拘束で補正するかどうか。
 
-        /// @note 接触点。body 側は必ずローカル、other 側は «解くならローカル、解かないならワールド»。
-        math::Vector3 m_anchorA;
-        math::Vector3 m_anchorB;
-        math::Vector3 m_worldPoint;
-        math::Vector3 m_normal{ 0.0f, 1.0f, 0.0f };
-        float         m_depth       = 0.0f;
-        float         m_separation = 0.0f;
-        float         m_contactSlop = 0.0f;
-        float         m_friction    = 0.0f;
-        float         m_staticFriction = 0.0f;
-        math::Vector3 m_stickA;
-        math::Vector3 m_stickB;
-        bool m_continuous = false;
-        bool m_staticHeld = false;
-        float         m_restitution = 0.0f;
+        math::Vector3 m_anchorA; ///< 接触点。body 側は必ずローカル、other 側は «解くならローカル、解かないならワールド»。
+        math::Vector3 m_anchorB; ///< 相手側のアンカー [m]。相手を解くなら剛体ローカル、それ以外はワールド座標。
+        math::Vector3 m_worldPoint; ///< 接触の通知や反作用に使うワールド接触点 [m]。
+        math::Vector3 m_normal{ 0.0f, 1.0f, 0.0f }; ///< 相手から押し出す剛体へ向くワールド単位法線。
+        float         m_depth       = 0.0f; ///< 接触開始時の符号付き貫通深さ [m]。負値は近接点。
+        float         m_separation = 0.0f; ///< 位置補正後の法線方向の離隔 [m]。負値は貫通。
+        float         m_contactSlop = 0.0f; ///< 近接を接触として維持する許容距離 [m]。
+        float         m_friction    = 0.0f; ///< 接触の動摩擦係数。
+        float         m_staticFriction = 0.0f; ///< 固着中の接触に使う静摩擦係数。
+        math::Vector3 m_stickA; ///< 接触が固着したときの剛体ローカルの基準点 [m]。
+        math::Vector3 m_stickB; ///< 接触が固着したときの相手側の基準点 [m]。
+        bool m_continuous = false; ///< 前の接触から固着点を引き継いだかどうか。
+        bool m_staticHeld = false; ///< 静摩擦により現在の基準点を保持できているかどうか。
+        float         m_restitution = 0.0f; ///< 衝突時の法線方向の反発係数。
 
-        float         m_lambdaNormal   = 0.0f;
-        float         m_lambdaFriction = 0.0f;
-        float         m_penetration    = 0.0f;
-        /// @note この substep のはじめ (位置パスより前) の法線相対速度。反発の基準。
-        float         m_approachSpeed  = 0.0f;
-        bool m_hasApproachSpeed = false;
-        /// @note substep 内の速度力積 [N·s]。反復の差分でなく累積値を法線・摩擦円錐へ射影する。
-        float m_velocityNormal = 0.0f;
-        math::Vector3 m_velocityFriction = math::Vector3::ZERO;
-        math::Vector3 m_reaction;
+        float         m_lambdaNormal   = 0.0f; ///< 位置パスで蓄積した法線拘束の乗数。
+        float         m_lambdaFriction = 0.0f; ///< 位置パスで蓄積した摩擦拘束の乗数。
+        float         m_penetration    = 0.0f; ///< 直近のサブステップで得た非負の貫通深さ [m]。
+        float         m_approachSpeed  = 0.0f; ///< この substep のはじめ (位置パスより前) の法線相対速度。反発の基準。
+        bool m_hasApproachSpeed = false; ///< この接触で衝突前の接近速度を保存したかどうか。
+        float m_velocityNormal = 0.0f; ///< substep 内の速度力積 [N·s]。反復の差分でなく累積値を法線・摩擦円錐へ射影する。
+        math::Vector3 m_velocityFriction = math::Vector3::ZERO; ///< 速度パスで蓄積した接線方向の力積 [N·s]。
+        math::Vector3 m_reaction; ///< 相手の剛体に返す、未反映のワールド力積 [N·s]。
 
 
     };

@@ -31,9 +31,9 @@ constexpr float MAX_CORRECTION_SPEED = 2.0f;
 
 /// @note 刻みの始めの時刻で効いている力と、その時刻の中心・量の倍率。
 struct ActiveForce {
-    std::size_t   index = 0;
-    math::Vector3 center = { 0.0f, 0.0f, 0.0f };
-    float         amount = 1.0f;
+    std::size_t   index = 0; ///< ソルバーが保持する外力設定配列の添字。
+    math::Vector3 center = { 0.0f, 0.0f, 0.0f }; ///< この刻みで評価した外力の局所中心位置。
+    float         amount = 1.0f; ///< この刻みで外力の基準強度へ掛ける倍率。
 };
 
 /// @note 障害物に «触れている» とみなす距離 (粒子半径の倍率)。床の接触と同じ幅。
@@ -48,26 +48,37 @@ void FluidLiquidSolver::Advance(float dt)
 
 void FluidLiquidSolver::Advance(float dt, const FluidLiquidBoundary& boundary)
 {
-    if (dt <= 0.0f) return;
+    if (dt <= 0.0f) {
+        return;
+    }
+
+    // 現在の粒子とこのフレームに放出する粒子の両方から、刻みを決める速度の上限を見積もる。
     float maxSpeed = 0.0f;
-    for (const Particle& particle : m_particles)
+    for (const Particle& particle : m_particles) {
         maxSpeed = (std::max)(maxSpeed, std::sqrt(particle.vx * particle.vx + particle.vy * particle.vy
                                                   + particle.vz * particle.vz));
+    }
     for (const FluidSource& source : m_sources) {
         math::Vector3 launchVelocity = source.velocity + PoseFluidSource(source, m_time).motionVelocity;
-        if (!m_volumetric) launchVelocity.z = 0.0f;
+        if (!m_volumetric) {
+            launchVelocity.z = 0.0f;
+        }
         maxSpeed = (std::max)(maxSpeed, launchVelocity.Length() * (1.0f + Saturate(source.spread)));
     }
     maxSpeed += (std::max)(m_settings.gravity, 0.0f) * dt;
-    /// @note 力で速くなる分も 1 刻みの移動に入れる。Drag は遅くするだけなので数えない。
-    /// @note 倍率を掛けた実際の強さで見積もる (倍率が 1 を超える間だけ刻みが足りなくなるのを防ぐ)。
-    for (const FluidForce& force : m_forces)
-        if (force.type != FluidForceType::Drag && FluidForceActive(force, m_time))
+    // 力で速くなる分も 1 刻みの移動に入れる。Drag は遅くするだけなので数えない。
+    // 倍率を掛けた実際の強さで見積もる (倍率が 1 を超える間だけ刻みが足りなくなるのを防ぐ)。
+    for (const FluidForce& force : m_forces) {
+        if (force.type != FluidForceType::Drag && FluidForceActive(force, m_time)) {
             maxSpeed += std::fabs(force.strength * FluidForceAmount(force, m_time)) * dt;
-    /// @note 1 刻みで粒子半径まで。これを超えると近傍の取りこぼしで粒子がすり抜ける。
+        }
+    }
+    // 1 刻みで粒子半径まで。これを超えると近傍の取りこぼしで粒子がすり抜ける。
     const int substepCount = std::clamp(static_cast<int>(std::ceil(maxSpeed * dt / m_particleRadius)), 1, 48);
     const float substepDuration = dt / static_cast<float>(substepCount);
-    for (int substep = 0; substep < substepCount; ++substep) Step(substepDuration, boundary);
+    for (int substep = 0; substep < substepCount; ++substep) {
+        Step(substepDuration, boundary);
+    }
 }
 
 void FluidLiquidSolver::Step(float dt)
@@ -77,7 +88,11 @@ void FluidLiquidSolver::Step(float dt)
 
 void FluidLiquidSolver::Step(float dt, const FluidLiquidBoundary& boundary)
 {
-    if (dt <= 0.0f) return;
+    if (dt <= 0.0f) {
+        return;
+    }
+
+    // 粒子の追加と寿命切れの除去を済ませ、今回の粒子配列と作業配列の添字をそろえる。
     Emit();
     if (m_settings.particleLifetime > 0.0f) {
         const float lifetime = m_settings.particleLifetime;
@@ -94,10 +109,13 @@ void FluidLiquidSolver::Step(float dt, const FluidLiquidBoundary& boundary)
     m_deltaY.resize(particleCount);
     m_deltaZ.resize(particleCount);
 
+    // 力と障害物の位置や強さをこの刻みの先頭で評価し、全粒子で同じ値を使う。
     std::array<ActiveForce, kMaxFluidForces> activeForces{};
     int activeForceCount = 0;
     for (std::size_t forceIndex = 0; forceIndex < m_forces.size() && activeForceCount < kMaxFluidForces; ++forceIndex) {
-        if (!FluidForceActive(m_forces[forceIndex], m_time)) continue;
+        if (!FluidForceActive(m_forces[forceIndex], m_time)) {
+            continue;
+        }
         activeForces[static_cast<std::size_t>(activeForceCount)].index = forceIndex;
         activeForces[static_cast<std::size_t>(activeForceCount)].center = PoseFluidForce(m_forces[forceIndex], m_time).center;
         activeForces[static_cast<std::size_t>(activeForceCount)].amount = FluidForceAmount(m_forces[forceIndex], m_time);
@@ -107,25 +125,29 @@ void FluidLiquidSolver::Step(float dt, const FluidLiquidBoundary& boundary)
 
     m_activeColliders.clear();
     for (std::size_t colliderIndex = 0; colliderIndex < m_colliders.size(); ++colliderIndex) {
-        if (!FluidColliderActive(m_colliders[colliderIndex], m_time)) continue;
+        if (!FluidColliderActive(m_colliders[colliderIndex], m_time)) {
+            continue;
+        }
         const FluidOperatorPose pose = PoseFluidCollider(m_colliders[colliderIndex], m_time);
         ActiveCollider entry;
         entry.index = colliderIndex;
         entry.center = pose.center;
         entry.velocity = pose.motionVelocity;
-        if (!m_volumetric) entry.velocity.z = 0.0f;
+        if (!m_volumetric) {
+            entry.velocity.z = 0.0f;
+        }
         m_activeColliders.push_back(entry);
     }
 
-    /// @note 先に外力を速度へ積分し、その速度から近傍探索に使う予測位置を作る。
+    // 先に外力を速度へ積分し、その速度から近傍探索に使う予測位置を作る。
     for (std::size_t particleIndex = 0; particleIndex < particleCount; ++particleIndex) {
         Particle& particle = m_particles[particleIndex];
         particle.vy -= m_settings.gravity * dt;
         if (activeForceCount > 0) {
             const math::Vector3 position = { particle.x, particle.y, particle.z };
             math::Vector3 velocity = { particle.vx, particle.vy, particle.vz };
-            for (int k = 0; k < activeForceCount; ++k) {
-                const ActiveForce& force = activeForces[static_cast<std::size_t>(k)];
+            for (int activeForceIndex = 0; activeForceIndex < activeForceCount; ++activeForceIndex) {
+                const ActiveForce& force = activeForces[static_cast<std::size_t>(activeForceIndex)];
                 velocity += FluidForceDelta(m_forces[force.index], force.center, position, velocity, m_time, dt,
                                             noNoiseOffset, static_cast<int>(force.index), m_volumetric, force.amount);
             }
@@ -138,19 +160,32 @@ void FluidLiquidSolver::Step(float dt, const FluidLiquidBoundary& boundary)
         m_predictedZ[particleIndex] = particle.z + particle.vz * dt;
     }
 
+    // 予測位置の近傍で密度を求め、その密度が静止時の値へ近づくよう位置を補正する。
     BuildNeighbors();
     const int iterations = std::clamp(m_settings.solverIterations, 1, 20);
-    for (int iteration = 0; iteration < iterations; ++iteration) SolveDensity();
+    for (int iteration = 0; iteration < iterations; ++iteration) {
+        SolveDensity();
+    }
 
     CommitParticlePositions(dt, boundary);
     ApplyViscosity();
 
-    /// @note 排出判定は接触と粘性まで反映した位置・速度を受け取る。近傍索引を使い終えてから粒子を詰める。
-    for (Particle& particle : m_particles) particle.age += dt;
-    std::erase_if(m_particles, [&boundary](const Particle& p) {
-        return p.x < MIN_X || p.x > MAX_X || p.y < MIN_Y || p.y > MAX_Y
-            || p.z < MIN_Z || p.z > MAX_Z
-            || (boundary.drain && boundary.drain(boundary.context, {p.x, p.y, p.z}, {p.vx, p.vy, p.vz}));
+    // 排出判定は接触と粘性まで反映した位置・速度を受け取る。近傍索引を使い終えてから粒子を詰める。
+    for (Particle& particle : m_particles) {
+        particle.age += dt;
+    }
+    std::erase_if(m_particles, [&boundary](const Particle& particle) {
+        const auto beyondAxisBounds = [](float position, float minimum, float maximum) {
+            return position < minimum || position > maximum;
+        };
+        const bool outsideDomain = beyondAxisBounds(particle.x, MIN_X, MAX_X)
+            || beyondAxisBounds(particle.y, MIN_Y, MAX_Y)
+            || beyondAxisBounds(particle.z, MIN_Z, MAX_Z);
+        if (outsideDomain) {
+            return true;
+        }
+        return boundary.drain && boundary.drain(boundary.context,
+            {particle.x, particle.y, particle.z}, {particle.vx, particle.vy, particle.vz});
     });
     m_time += dt;
 }
@@ -168,9 +203,10 @@ void FluidLiquidSolver::CommitParticlePositions(float dt, const FluidLiquidBound
         if (boundary.sample) {
             const math::Vector3 predicted{m_predictedX[particleIndex], m_predictedY[particleIndex], m_predictedZ[particleIndex]};
             hasBoundaryContact = boundary.sample(boundary.context, predicted, m_particleRadius, surface);
-            /// @note 反発は位置補正から速度を再構成する前の、法線方向への入射速度で決める。
-            if (hasBoundaryContact)
+            // 反発は位置補正から速度を再構成する前の、法線方向への入射速度で決める。
+            if (hasBoundaryContact) {
                 approachSpeed = math::Vector3::Dot({particle.vx, particle.vy, particle.vz}, surface.normal);
+            }
         }
         if (hasBoundaryContact && surface.distance < m_particleRadius) {
             const auto offset = surface.normal * (m_particleRadius - surface.distance);
@@ -178,7 +214,7 @@ void FluidLiquidSolver::CommitParticlePositions(float dt, const FluidLiquidBound
             m_predictedY[particleIndex] += offset.y;
             m_predictedZ[particleIndex] += offset.z;
         }
-        /// @note (補正後の位置 − 前の位置) / dt と積分済み速度との差が補正由来の速度。粒子の飛散を抑えるため、この寄与だけを制限する。
+        // (補正後の位置 − 前の位置) / dt と積分済み速度との差が補正由来の速度。粒子の飛散を抑えるため、この寄与だけを制限する。
         float velocityCorrectionX = (m_predictedX[particleIndex] - particle.x) / dt - particle.vx;
         float velocityCorrectionY = (m_predictedY[particleIndex] - particle.y) / dt - particle.vy;
         float velocityCorrectionZ = (m_predictedZ[particleIndex] - particle.z) / dt - particle.vz;
@@ -209,12 +245,13 @@ void FluidLiquidSolver::CommitParticlePositions(float dt, const FluidLiquidBound
             particle.vz *= frictionKeep;
             particle.vy = (std::max)(particle.vy, 0.0f);
         }
-        /// @note 障害物との相対速度を法線と接線に分け、内向き成分を切り、摩擦は接線だけに掛ける。
+        // 障害物との相対速度を法線と接線に分け、内向き成分を切り、摩擦は接線だけに掛ける。
         for (const ActiveCollider& contact : m_activeColliders) {
             const FluidCollider& collider = m_colliders[contact.index];
             const math::Vector3 particlePosition = { particle.x, particle.y, particle.z };
-            if (FluidColliderDistance(collider, contact.center, particlePosition, 0.0f, m_volumetric) > m_particleRadius * COLLIDER_CONTACT_SCALE)
+            if (FluidColliderDistance(collider, contact.center, particlePosition, 0.0f, m_volumetric) > m_particleRadius * COLLIDER_CONTACT_SCALE) {
                 continue;
+            }
             const math::Vector3 surfaceNormal = FluidColliderNormal(collider, contact.center, particlePosition, 0.0f, m_volumetric);
             const float keep = std::exp(-(std::max)(collider.friction, 0.0f) * 10.0f * dt);
             const float rx = particle.vx - contact.velocity.x;

@@ -20,8 +20,7 @@ inline constexpr int kFluidSourceMaskSize = 256;
 inline constexpr int kFluidSourceMaskAtlasColumns = 4;
 
 struct FluidSourceMask {
-    /// @note kFluidSourceMaskSize² 個。行は上から下、値は [0,1] = 輝度 × α。空なら読めていない。
-    std::vector<float> values;
+    std::vector<float> values; ///< kFluidSourceMaskSize² 個。行は上から下、値は [0,1] = 輝度 × α。空なら読めていない。
 
     [[nodiscard]] bool IsValid() const
     {

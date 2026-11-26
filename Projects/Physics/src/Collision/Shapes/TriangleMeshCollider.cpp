@@ -22,16 +22,20 @@ namespace fbzz::physics
         constexpr float TRANSFORM_TOLERANCE_SQUARED = TRANSFORM_TOLERANCE * TRANSFORM_TOLERANCE;
         const bool positionChanged = (worldPosition - m_lastPos).LengthSq() > TRANSFORM_TOLERANCE_SQUARED;
         const bool scaleChanged = (worldScale - m_lastScale).LengthSq() > TRANSFORM_TOLERANCE_SQUARED;
-        /// @note q と −q は同じ回転を表す。
+        // q と −q は同じ回転を表す。
         const float rotationAlignment = std::abs(math::Quaternion::Dot(worldRotation, m_lastRot));
         const bool rotationChanged = rotationAlignment < (1.0f - TRANSFORM_TOLERANCE);
 
-        if (!positionChanged && !rotationChanged && !scaleChanged) return;
+        if (!positionChanged && !rotationChanged && !scaleChanged) {
+            return;
+        }
 
-        /// @note 剛体変換では三角形の所属する葉を保持する。スケール変更は縮退面の集合も変えうる。
-        if (!scaleChanged && !m_bvh.triangles.empty())
+        // 剛体変換では三角形の所属する葉を保持する。スケール変更は縮退面の集合も変えうる。
+        if (!scaleChanged && !m_bvh.triangles.empty()) {
             RefitTransform(worldPosition, worldRotation);
-        else
+        }
+        else {
             RebuildBVH(worldPosition, worldRotation, worldScale);
+        }
     }
 }

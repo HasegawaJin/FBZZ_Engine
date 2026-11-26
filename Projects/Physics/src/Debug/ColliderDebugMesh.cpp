@@ -22,12 +22,18 @@ namespace fbzz::physics::collider_debug_detail
                                   const std::vector<math::Vector3>& vertices,
                                   uint32_t startIndex, uint32_t endIndex)
         {
-            if (geometry.lines.size() >= MAX_CONVEX_HULL_DEBUG_LINES) return;
-            if (startIndex >= vertices.size() || endIndex >= vertices.size()) return;
+            if (geometry.lines.size() >= MAX_CONVEX_HULL_DEBUG_LINES) {
+                return;
+            }
+            if (startIndex >= vertices.size() || endIndex >= vertices.size()) {
+                return;
+            }
 
-            /// @note 検索キーは無向。出力の向きは最初に出会った面の頂点順で決める。
+            // 検索キーは無向。出力の向きは最初に出会った面の頂点順で決める。
             const EdgeKey key{std::min(startIndex, endIndex), std::max(startIndex, endIndex)};
-            if (std::find(emittedEdges.begin(), emittedEdges.end(), key) != emittedEdges.end()) return;
+            if (std::find(emittedEdges.begin(), emittedEdges.end(), key) != emittedEdges.end()) {
+                return;
+            }
 
             emittedEdges.push_back(key);
             AppendLine(geometry, vertices[startIndex], vertices[endIndex]);
@@ -37,18 +43,21 @@ namespace fbzz::physics::collider_debug_detail
     ColliderDebugGeometry BuildMeshGeometry(const std::vector<Triangle>& triangles)
     {
         ColliderDebugGeometry geometry;
-        if (triangles.empty()) return geometry;
+        if (triangles.empty()) {
+            return geometry;
+        }
 
         constexpr std::size_t TRIANGLE_BUDGET = MAX_MESH_DEBUG_LINES / 3;
         geometry.lines.reserve(std::min(MAX_MESH_DEBUG_LINES, triangles.size() * 3));
         if (triangles.size() <= TRIANGLE_BUDGET)
         {
-            for (const Triangle& triangle : triangles)
+            for (const Triangle& triangle : triangles) {
                 AppendTriangleEdges(geometry, triangle.v);
+            }
         }
         else
         {
-            /// @note 視点を使わない表示は、入力順の全域から等間隔に選び、三角形単位で収める。
+            // 視点を使わない表示は、入力順の全域から等間隔に選び、三角形単位で収める。
             for (std::size_t sampleIndex = 0; sampleIndex < TRIANGLE_BUDGET; ++sampleIndex)
             {
                 const std::size_t triangleIndex = sampleIndex * triangles.size() / TRIANGLE_BUDGET;
@@ -63,8 +72,12 @@ namespace fbzz::physics::collider_debug_detail
         ColliderDebugGeometry geometry;
         const auto& vertices = hull.GetWorldVertices();
         const auto& faces = hull.GetFaces();
-        if (vertices.empty()) return geometry;
-        if (faces.empty()) return BuildBoundsGeometry(hull);
+        if (vertices.empty()) {
+            return geometry;
+        }
+        if (faces.empty()) {
+            return BuildBoundsGeometry(hull);
+        }
 
         std::vector<EdgeKey> emittedEdges;
         emittedEdges.reserve(faces.size() * 3);

@@ -21,10 +21,10 @@ namespace fbzz::physics {
         /// @brief 4/3 π r³。
         [[nodiscard]] FBZZ_PHYSICS_API float ComputeVolume() const override;
 
-        float m_radius;
+        float m_radius; ///< 球中心から表面までの半径 [m]。
 
     private:
-        math::Vector3 m_worldCenter;
+        math::Vector3 m_worldCenter; ///< ワールド空間に変換済みのコライダーの中心 [m]。
     };
 
 } /// @note namespace fbzz::physics

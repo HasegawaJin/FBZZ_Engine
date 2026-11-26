@@ -22,36 +22,34 @@ enum class FluidBakeMode : std::uint8_t { Flat2D = 0, Volume3D };
 enum class FluidBakeSolver : std::uint8_t { Auto = 0, Gpu, Cpu };
 
 struct FluidBakeSettings {
-    FluidBakeMode mode = FluidBakeMode::Flat2D;
+    FluidBakeMode mode = FluidBakeMode::Flat2D; ///< フラット画像またはボリュームから作るベイク出力の形式。
 
     /// @name 3D
     /// @{
-    int volumeResolution = 64;
+    int volumeResolution = 64; ///< ベイクで使うボリューム格子の一辺のセル数。
     /// @brief 視線 1 本あたりのレイマーチの標本数。volume_resolution を上げても、ここが据え置きだと絵が良くならない。
     /// @note 1 ボクセルに標本が 1 個しか入らない場合の目安は volume_resolution の 2 倍。
-    int raySteps = 128;
-    /// @brief 影の行進の標本数。上げると影の縞が減るが、標本数 × 視線標本数だけ焼き時間が増える。
-    int shadowSteps = 16;
-    FluidBakeSolver solver = FluidBakeSolver::Auto;
-    float densityScale = 1.0f;
-    int scatteringOctaves = 3;
-    float skyOcclusion = 0.6f;
-    bool blackbodyEmission = false;
-    float blackbodyMinKelvin = 1000.0f;
-    float blackbodyMaxKelvin = 2800.0f;
-    bool sixWayLightmaps = false;
+    int raySteps = 128; ///< ベイク視線に沿って密度を積分する刻み数。
+    int shadowSteps = 16; ///< 影の行進の標本数。上げると影の縞が減るが、標本数 × 視線標本数だけ焼き時間が増える。
+    FluidBakeSolver solver = FluidBakeSolver::Auto; ///< ベイク時に使う流体ソルバーの選択。
+    float densityScale = 1.0f; ///< ベイクで参照する密度に掛ける倍率。
+    int scatteringOctaves = 3; ///< 散乱光の近似で重ねる次数。
+    float skyOcclusion = 0.6f; ///< ベイク時の環境光遮蔽の強さ。
+    bool blackbodyEmission = false; ///< 温度から黒体放射を評価するかどうか。
+    float blackbodyMinKelvin = 1000.0f; ///< 黒体放射へ写すときの下限温度 [K]。
+    float blackbodyMaxKelvin = 2800.0f; ///< 黒体放射へ写すときの上限温度 [K]。
+    bool sixWayLightmaps = false; ///< 6 方向からのライティング応答を出力するかどうか。
 
-    float lightYawDegrees = 35.0f;
-    float lightPitchDegrees = 50.0f;
-    math::Vector3 lightColor{ 3.0f, 2.85f, 2.7f };
-    math::Vector3 ambient{ 0.25f, 0.28f, 0.33f };
-    /// @brief 3D の密度から光学厚さを作る基準倍率。render.opacity の相対倍率を掛けてベイクへ渡す。
-    float extinction = 10.0f;
-    float anisotropy = 0.3f;
-    float emissionIntensity = 6.0f;
-    float exposure = 0.8f;
-    float cameraYawDegrees = 0.0f;
-    float halfExtent = 1.0f;
+    float lightYawDegrees = 35.0f; ///< 入射光方向を決める方位角 [度]。
+    float lightPitchDegrees = 50.0f; ///< 入射光方向を決める仰角 [度]。
+    math::Vector3 lightColor{ 3.0f, 2.85f, 2.7f }; ///< ベイク時に当てる主光源のリニア RGB。
+    math::Vector3 ambient{ 0.25f, 0.28f, 0.33f }; ///< ベイク時に加える環境光のリニア RGB。
+    float extinction = 10.0f; ///< 3D の密度から光学厚さを作る基準倍率。render.opacity の相対倍率を掛けてベイクへ渡す。
+    float anisotropy = 0.3f; ///< 散乱位相の方向性を指定する係数。
+    float emissionIntensity = 6.0f; ///< ベイクで加える放射光の強度倍率。
+    float exposure = 0.8f; ///< ベイク結果の露出倍率。
+    float cameraYawDegrees = 0.0f; ///< 流体を撮る視線の方位角 [度]。
+    float halfExtent = 1.0f; ///< ベイク対象の局所座標での領域の半幅。
     /// @}
 };
 

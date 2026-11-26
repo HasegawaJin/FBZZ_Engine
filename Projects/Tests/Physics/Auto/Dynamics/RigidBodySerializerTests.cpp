@@ -89,7 +89,7 @@ TEST_F(RigidBodySerializerTest, RestoresTheStaticFlag)
 /// @brief Checks saving twice produces the same text.
 TEST_F(RigidBodySerializerTest, SavingTwiceProducesTheSameText)
 {
-    /// @note 出力が安定していないと、何も触っていないのに .scene の差分が出る。
+    // 出力が安定していないと、何も触っていないのに .scene の差分が出る。
     const physics::RigidBody original = MakeDistinctBody();
 
     EXPECT_EQ(physics::RigidBodySerializer::Serialize(original),
@@ -117,7 +117,7 @@ TEST_F(RigidBodySerializerTest, InverseMassFollowsTheRestoredMass)
     ASSERT_TRUE(physics::RigidBodySerializer::Deserialize(
         restored, physics::RigidBodySerializer::Serialize(original)));
 
-    /// @note 質量だけ書き戻して逆質量を計算し直さないと、重さを変えても押した手応えが変わらない。
+    // 質量だけ書き戻して逆質量を計算し直さないと、重さを変えても押した手応えが変わらない。
     EXPECT_NEAR(restored.GetInvMass(), 0.25f, testkit::kTolerance);
 }
 
@@ -126,7 +126,7 @@ TEST_F(RigidBodySerializerTest, InverseMassFollowsTheRestoredMass)
 /// @brief Fills missing keys with defaults.
 TEST_F(RigidBodySerializerTest, FillsMissingKeysWithDefaults)
 {
-    /// @note 古いシーンには新しいキーが無い。読めなくなるのではなく既定値で埋める。
+    // 古いシーンには新しいキーが無い。読めなくなるのではなく既定値で埋める。
     physics::RigidBody body;
     body.SetPosition({1.0f, 2.0f, 3.0f});
     body.m_isStatic = true;
@@ -150,8 +150,8 @@ TEST_F(RigidBodySerializerTest, AcceptsAnEmptyDocument)
 /// @brief Rejects text that is not TOML.
 TEST_F(RigidBodySerializerTest, RejectsTextThatIsNotToml)
 {
-    /// @note 壊れたファイルは «読めなかった» と答える。既定値で上書きして
-    ///       「開いたら全部リセットされていた」にしない。
+    // 壊れたファイルは «読めなかった» と答える。既定値で上書きして
+    // 「開いたら全部リセットされていた」にしない。
     physics::RigidBody body;
     body.SetMass(5.0f);
     body.SetPosition({1.0f, 2.0f, 3.0f});
@@ -164,7 +164,7 @@ TEST_F(RigidBodySerializerTest, RejectsTextThatIsNotToml)
 /// @brief Keeps the rotation normalised.
 TEST_F(RigidBodySerializerTest, KeepsTheRotationNormalised)
 {
-    /// @note 保存された成分は丸められている。読んだまま使うと回転行列がスケールを持つ。
+    // 保存された成分は丸められている。読んだまま使うと回転行列がスケールを持つ。
     physics::RigidBody body;
     ASSERT_TRUE(physics::RigidBodySerializer::Deserialize(
         body, "rotation = [0.0, 0.0, 0.0, 4.0]\n"));

@@ -16,14 +16,14 @@ namespace fbzz::physics
 
     struct Triangle
     {
-        math::Vector3 v[3];
+        math::Vector3 v[3]; ///< 三角形の 3 頂点のワールド座標 [m]。元の頂点順で並べる。
         math::Vector3 normal;    ///< @note 正規化済み面法線
         uint32_t      index = 0; ///< @note 元のインデックスバッファ上の三角形番号 (デバッグ用)
     };
 
     struct BVHNode
     {
-        AABB                  aabb;
+        AABB                  aabb; ///< 部分木内に含まれる三角形のワールド境界 [m]。
         int                   left       = -1; ///< @note 内部ノード: 左子インデックス
         int                   right      = -1; ///< @note 内部ノード: 右子インデックス (-1 なら葉ノード)
         std::vector<uint32_t> triIndices;       ///< @note 葉ノードのみ有効
@@ -34,8 +34,8 @@ namespace fbzz::physics
     /// @note BVH ツリー本体。再帰ポインタではなくフラット配列で管理し、再構築時の所有を単純にする。
     struct BVHTree
     {
-        std::vector<BVHNode> nodes;
-        std::vector<Triangle> triangles;
+        std::vector<BVHNode> nodes; ///< メッシュの BVH ノード。先頭は根、子は配列の添字で参照する。
+        std::vector<Triangle> triangles; ///< BVH の葉が添字で参照するワールド空間の三角形。
 
         /// @note ワールド変換済み三角形リストから中点分割で BVH を構築する。
         /// @note maxLeafTris は、葉ノードに格納する最大三角形数。
@@ -58,9 +58,11 @@ namespace fbzz::physics
     template<typename TriangleVisitor>
     void BVHTree::Query(const AABB& queryBounds, TriangleVisitor&& visitTriangle) const
     {
-        if (nodes.empty()) return;
+        if (nodes.empty()) {
+            return;
+        }
 
-        /// @note 固定長スタックを使い、検索でヒープ確保や再帰呼び出しを行わない。
+        // 固定長スタックを使い、検索でヒープ確保や再帰呼び出しを行わない。
         std::array<int, 64> pendingNodes;
         int pendingCount = 0;
         pendingNodes[pendingCount++] = 0;
@@ -68,19 +70,24 @@ namespace fbzz::physics
         while (pendingCount > 0)
         {
             const int nodeIndex = pendingNodes[--pendingCount];
-            if (nodeIndex < 0 || nodeIndex >= static_cast<int>(nodes.size())) continue;
+            if (nodeIndex < 0 || nodeIndex >= static_cast<int>(nodes.size())) {
+                continue;
+            }
 
             const BVHNode& node = nodes[nodeIndex];
-            if (!node.aabb.Overlaps(queryBounds)) continue;
+            if (!node.aabb.Overlaps(queryBounds)) {
+                continue;
+            }
 
             if (node.IsLeaf())
             {
-                /// @note 葉全体に当たっても、各三角形の範囲まで重なるとは限らない。
+                // 葉全体に当たっても、各三角形の範囲まで重なるとは限らない。
                 for (const uint32_t triangleIndex : node.triIndices)
                 {
                     const Triangle& triangle = triangles[triangleIndex];
-                    if (mesh_bvh_detail::TriangleBounds(triangle.v).Overlaps(queryBounds))
+                    if (mesh_bvh_detail::TriangleBounds(triangle.v).Overlaps(queryBounds)) {
                         visitTriangle(triangle);
+                    }
                 }
             }
             else if (pendingCount + 1 < static_cast<int>(pendingNodes.size()))

@@ -36,7 +36,7 @@ void World::RefreshQueryIndex()
         m_indexedColliderIdentities.clear();
         return;
     }
-    /// @note query を使わない World と substep に索引維持の走査を追加しない。
+    // query を使わない World と substep に索引維持の走査を追加しない。
     if (!std::atomic_ref<bool>(m_queryRefreshRequested).exchange(false, std::memory_order_relaxed)) {
         return;
     }
@@ -79,7 +79,7 @@ World::QueryIndexUpdate World::CaptureQueryIndexInputs()
         m_indexedColliderIdentities[colliderIndex] = m_colliders[colliderIndex].collider;
     }
 
-    /// @note 少数の形状や不正な境界では、索引構築の負担と保守的判定の欠落を避ける。
+    // 少数の形状や不正な境界では、索引構築の負担と保守的判定の欠落を避ける。
     if (!allBoundsUsable || colliderCount < MIN_INDEXED_COLLIDERS) {
         return QueryIndexUpdate::UNAVAILABLE;
     }

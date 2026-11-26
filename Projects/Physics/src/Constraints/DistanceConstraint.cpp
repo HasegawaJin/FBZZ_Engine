@@ -13,18 +13,24 @@ namespace fbzz::physics
 
     void DistanceConstraint::SolvePosition(float /*dt*/)
     {
-        if (!m_bodyA || !m_bodyB) return;
+        if (!m_bodyA || !m_bodyB) {
+            return;
+        }
 
         const math::Vector3 delta = m_bodyB->GetPosition() - m_bodyA->GetPosition();
         const float length = delta.Length();
-        if (length < 1e-6f) return;
+        if (length < 1e-6f) {
+            return;
+        }
 
         const float invA = m_bodyA->GetInvMass();
         const float invB = m_bodyB->GetInvMass();
         const float invSum = invA + invB;
-        if (invSum == 0.0f) return;
+        if (invSum == 0.0f) {
+            return;
+        }
 
-        /// @note 現在の長さから目標を引いた分だけ両端を戻す。逆質量の割合で分けるので軽い方が大きく動き、固定端は動かない。
+        // 現在の長さから目標を引いた分だけ両端を戻す。逆質量の割合で分けるので軽い方が大きく動き、固定端は動かない。
         const math::Vector3 correction = delta * ((length - m_distance) / length);
         m_bodyA->SetPosition(m_bodyA->GetPosition() + correction * (invA / invSum));
         m_bodyB->SetPosition(m_bodyB->GetPosition() - correction * (invB / invSum));

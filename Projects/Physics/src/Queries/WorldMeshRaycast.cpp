@@ -25,16 +25,22 @@ namespace fbzz::physics::world_query_detail
             const Vector3 edgeAC = vertexC - vertexA;
             const Vector3 directionCrossAC = Vector3::Cross(unitDirection, edgeAC);
             const float determinant = Vector3::Dot(edgeAB, directionCrossAC);
-            if (std::abs(determinant) < PARALLEL_TOLERANCE) return -1.0f;
+            if (std::abs(determinant) < PARALLEL_TOLERANCE) {
+                return -1.0f;
+            }
 
             const float inverseDeterminant = 1.0f / determinant;
             const Vector3 fromVertexA = origin - vertexA;
             const float weightB = inverseDeterminant * Vector3::Dot(fromVertexA, directionCrossAC);
-            if (weightB < 0.0f || weightB > 1.0f) return -1.0f;
+            if (weightB < 0.0f || weightB > 1.0f) {
+                return -1.0f;
+            }
 
             const Vector3 originCrossAB = Vector3::Cross(fromVertexA, edgeAB);
             const float weightC = inverseDeterminant * Vector3::Dot(unitDirection, originCrossAB);
-            if (weightC < 0.0f || weightB + weightC > 1.0f) return -1.0f;
+            if (weightC < 0.0f || weightB + weightC > 1.0f) {
+                return -1.0f;
+            }
             return inverseDeterminant * Vector3::Dot(edgeAC, originCrossAB);
         }
 
@@ -66,7 +72,9 @@ namespace fbzz::physics::world_query_detail
             }
         });
 
-        if (!std::isfinite(nearestDistance) || nearestDistance > maxDistance) return false;
+        if (!std::isfinite(nearestDistance) || nearestDistance > maxDistance) {
+            return false;
+        }
         hitDistance = nearestDistance;
         hitNormal = nearestNormal;
         return true;
@@ -89,12 +97,15 @@ namespace fbzz::physics::world_query_detail
             {
                 nearestDistance = distance;
                 const Vector3 faceNormal = Vector3::Cross(vertexB - vertexA, vertexC - vertexA);
-                if (faceNormal.LengthSq() > 1e-12f)
+                if (faceNormal.LengthSq() > 1e-12f) {
                     nearestNormal = NormalAgainstRay(faceNormal.Normalized(), unitDirection);
+                }
             }
         }
 
-        if (!std::isfinite(nearestDistance) || nearestDistance > maxDistance) return false;
+        if (!std::isfinite(nearestDistance) || nearestDistance > maxDistance) {
+            return false;
+        }
         hitDistance = nearestDistance;
         hitNormal = nearestNormal;
         return true;

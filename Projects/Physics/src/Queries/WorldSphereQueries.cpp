@@ -77,22 +77,27 @@ namespace fbzz::physics::world_query_detail
             float candidateDistance;
             Vector3 candidateNormal;
             if (RaySphere(origin, unitDirection, maxDistance, capsule.GetSegmentStart(), expandedRadius,
-                          candidateDistance, candidateNormal))
+                          candidateDistance, candidateNormal)) {
                 considerHit(candidateDistance, candidateNormal);
+            }
             if (RaySphere(origin, unitDirection, maxDistance, capsule.GetSegmentEnd(), expandedRadius,
-                          candidateDistance, candidateNormal))
+                          candidateDistance, candidateNormal)) {
                 considerHit(candidateDistance, candidateNormal);
+            }
 
-            /// @note 膨張した端球と外接箱のうち、最も手前のヒットを採る。
+            // 膨張した端球と外接箱のうち、最も手前のヒットを採る。
             const AABB bounds = ExpandedBounds(capsule, expansionRadius);
-            if (RayBounds(origin, unitDirection, maxDistance, bounds, candidateDistance, candidateNormal))
+            if (RayBounds(origin, unitDirection, maxDistance, bounds, candidateDistance, candidateNormal)) {
                 considerHit(candidateDistance, candidateNormal);
+            }
         }
     }
 
     bool SphereOverlapsInstance(const Vector3& center, float radius, const ColliderInstance& instance)
     {
-        if (!instance.collider) return false;
+        if (!instance.collider) {
+            return false;
+        }
         const Collider& collider = *instance.collider;
 
         switch (collider.GetType())
@@ -108,7 +113,7 @@ namespace fbzz::physics::world_query_detail
         case ColliderType::TRIANGLE_MESH:
         case ColliderType::HEIGHT_FIELD:
         case ColliderType::CONVEX_HULL:
-            /// @note 複雑な形状は外接箱で保守的に照会する。
+            // 複雑な形状は外接箱で保守的に照会する。
             return DistanceSquaredToBounds(center, collider.GetAABB()) <= radius * radius;
         case ColliderType::CAPSULE:
             return SphereOverlapsCapsule(center, radius, static_cast<const CapsuleCollider&>(collider));

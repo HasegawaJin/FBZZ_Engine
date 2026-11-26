@@ -29,24 +29,31 @@ namespace fbzz::physics
 
     void SliderConstraint::SolvePosition(float /*dt*/)
     {
-        if (!m_bodyA || !m_bodyB) return;
+        if (!m_bodyA || !m_bodyB) {
+            return;
+        }
 
         const math::Vector3 axis = m_axis.Normalized();
         const math::Vector3 currentOffset = m_bodyB->GetPosition() - m_bodyA->GetPosition();
         float distance = math::Vector3::Dot(currentOffset, axis);
-        if (m_limitEnabled)
+        if (m_limitEnabled) {
             distance = std::clamp(distance, m_minDistance, m_maxDistance);
+        }
 
         const math::Vector3 targetOffset = axis * distance;
         const math::Vector3 error = currentOffset - targetOffset;
         const float invA = m_bodyA->GetInvMass();
         const float invB = m_bodyB->GetInvMass();
         const float invSum = invA + invB;
-        if (invSum == 0.0f) return;
+        if (invSum == 0.0f) {
+            return;
+        }
 
-        if (!m_bodyA->IsStatic())
+        if (!m_bodyA->IsStatic()) {
             m_bodyA->SetPosition(m_bodyA->GetPosition() + error * (invA / invSum));
-        if (!m_bodyB->IsStatic())
+        }
+        if (!m_bodyB->IsStatic()) {
             m_bodyB->SetPosition(m_bodyB->GetPosition() - error * (invB / invSum));
+        }
     }
 } // namespace fbzz::physics

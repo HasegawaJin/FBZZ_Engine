@@ -51,7 +51,7 @@ TEST_F(ColliderVolumeTest, ContainsIsFalseWithoutACollider)
 {
     physics::ColliderVolume volume(nullptr, SettingsFor(physics::VolumeType::Gravity));
 
-    /// @note 形状を失った Volume は «どこでも効く» ではなく «どこにも効かない» 側へ倒す。
+    // 形状を失った Volume は «どこでも効く» ではなく «どこにも効かない» 側へ倒す。
     EXPECT_FALSE(volume.Contains(math::Vector3::ZERO));
 }
 
@@ -73,7 +73,7 @@ TEST_F(ColliderVolumeTest, ContainsTreatsTheAABBBoundaryAsInside)
     box.Update(math::Vector3::ZERO, math::Quaternion::Identity());
     physics::ColliderVolume volume(&box, SettingsFor(physics::VolumeType::Gravity));
 
-    /// @note 面の上に立っている body を «外» にすると、境界で効果が点滅する。
+    // 面の上に立っている body を «外» にすると、境界で効果が点滅する。
     EXPECT_TRUE(volume.Contains(math::Vector3(1.0f, 0.0f, 0.0f)));
     EXPECT_FALSE(volume.Contains(math::Vector3(1.01f, 0.0f, 0.0f)));
 }
@@ -86,7 +86,7 @@ TEST_F(ColliderVolumeTest, ContainsDelegatesToTheCylinderShape)
     physics::ColliderVolume volume(&cylinder, SettingsFor(physics::VolumeType::Gravity));
 
     EXPECT_TRUE(volume.Contains(math::Vector3(0.5f, 1.5f, 0.0f)));
-    /// @note 高さは足りているが半径の外。円柱を外接箱で判定していれば取りこぼす点。
+    // 高さは足りているが半径の外。円柱を外接箱で判定していれば取りこぼす点。
     EXPECT_FALSE(volume.Contains(math::Vector3(0.9f, 0.0f, 0.9f)));
 }
 
@@ -97,11 +97,11 @@ TEST_F(ColliderVolumeTest, ContainsMeasuresDistanceToTheCapsuleSegment)
     capsule.Update(math::Vector3::ZERO, math::Quaternion::Identity());
     physics::ColliderVolume volume(&capsule, SettingsFor(physics::VolumeType::Gravity));
 
-    /// @note 円柱部の側面内
+    // 円柱部の側面内
     EXPECT_TRUE(volume.Contains(math::Vector3(0.4f, 1.0f, 0.0f)));
-    /// @note 端の半球内
+    // 端の半球内
     EXPECT_TRUE(volume.Contains(math::Vector3(0.0f, 2.4f, 0.0f)));
-    /// @note 端の半球の外
+    // 端の半球の外
     EXPECT_FALSE(volume.Contains(math::Vector3(0.0f, 2.6f, 0.0f)));
 }
 
@@ -121,7 +121,7 @@ TEST_F(ColliderVolumeTest, GravityAppliesTheConfiguredAccelerationScaledByMass)
     volume.Apply(body, kUnitDt);
     body.Integrate(kUnitDt);
 
-    /// @note 力は質量倍で入るので、加速度は質量に依らず settings.gravity と一致する。
+    // 力は質量倍で入るので、加速度は質量に依らず settings.gravity と一致する。
     EXPECT_VEC3_NEAR(body.GetVelocity(), math::Vector3(0.0f, 4.0f, 0.0f), testkit::kTolerance);
 }
 
@@ -136,8 +136,8 @@ TEST_F(ColliderVolumeTest, GravityDoesNotWakeASleepingBody)
     body.Sleep();
     volume.Apply(body, kUnitDt);
 
-    /// @note ここで起きてしまうと、Volume 内に静止した body が二度と Sleep できず
-    ///       World::Step の early-out が永久に効かなくなる。
+    // ここで起きてしまうと、Volume 内に静止した body が二度と Sleep できず
+    // World::Step の early-out が永久に効かなくなる。
     EXPECT_TRUE(body.IsSleeping());
 }
 
@@ -155,7 +155,7 @@ TEST_F(ColliderVolumeTest, ApplyIgnoresStaticBodies)
     body.SetMass(1.0f);
     volume.Apply(body, kUnitDt);
 
-    /// @note 動的に戻すと、静止中に誤って蓄積した力が速度に現れる。
+    // 動的に戻すと、静止中に誤って蓄積した力が速度に現れる。
     body.m_isStatic = false;
     body.SetMass(1.0f);
     body.Integrate(kUnitDt);
@@ -177,7 +177,7 @@ TEST_F(ColliderVolumeTest, VortexPushesTangentiallyAroundTheVerticalAxis)
     settings.liftStrength   = 0.0f;
     physics::ColliderVolume volume(&sphere, settings);
 
-    /// @note 中心の +X 側にいる body から見て中心方向は -X。接線は (-inward.z, 0, inward.x) = (0,0,-1)。
+    // 中心の +X 側にいる body から見て中心方向は -X。接線は (-inward.z, 0, inward.x) = (0,0,-1)。
     physics::RigidBody body = UnitBody(math::Vector3(1.0f, 0.0f, 0.0f));
     volume.Apply(body, kUnitDt);
     body.Integrate(kUnitDt);
@@ -196,8 +196,8 @@ TEST_F(ColliderVolumeTest, VortexLiftsWithoutASwirlDirectionAtTheCenter)
     settings.liftStrength   = 3.0f;
     physics::ColliderVolume volume(&sphere, settings);
 
-    /// @note 軸上では内向きベクトルが決まらない。ここで正規化を通すと NaN が全身へ広がるため、
-    ///       水平成分を 0 に落として上昇分だけ残すことを固定する。
+    // 軸上では内向きベクトルが決まらない。ここで正規化を通すと NaN が全身へ広がるため、
+    // 水平成分を 0 に落として上昇分だけ残すことを固定する。
     physics::RigidBody body = UnitBody(math::Vector3::ZERO);
     volume.Apply(body, kUnitDt);
     body.Integrate(kUnitDt);
@@ -217,7 +217,7 @@ TEST_F(ColliderVolumeTest, ExplosionPushesOutwardAsAnImmediateImpulse)
     physics::RigidBody body = UnitBody(math::Vector3(0.0f, 0.0f, 4.0f));
     volume.Apply(body, kUnitDt);
 
-    /// @note インパルスなので積分を待たずに速度へ乗る。
+    // インパルスなので積分を待たずに速度へ乗る。
     EXPECT_VEC3_NEAR(body.GetVelocity(), math::Vector3(0.0f, 0.0f, 7.0f), testkit::kTolerance);
 }
 
@@ -249,7 +249,7 @@ TEST_F(ColliderVolumeTest, TimeDilationAppliesNoForce)
     volume.Apply(body, kUnitDt);
     body.Integrate(kUnitDt);
 
-    /// @note 減速は World が dt をスケールして行う。Volume 側で力を足すと二重に効く。
+    // 減速は World が dt をスケールして行う。Volume 側で力を足すと二重に効く。
     EXPECT_VEC3_NEAR(body.GetVelocity(), math::Vector3::ZERO, testkit::kTolerance);
 }
 
@@ -268,7 +268,7 @@ TEST_F(ColliderVolumeTest, MagneticAppliesLorentzForceScaledByCharge)
     volume.Apply(body, kUnitDt);
     body.Integrate(kUnitDt);
 
-    /// @note F = q (v × B) = 2 * ((1,0,0) × (0,1,0)) = (0,0,2)
+    // F = q (v × B) = 2 * ((1,0,0) × (0,1,0)) = (0,0,2)
     EXPECT_VEC3_NEAR(body.GetVelocity(), math::Vector3(1.0f, 0.0f, 2.0f), testkit::kTolerance);
 }
 
@@ -298,7 +298,7 @@ TEST_F(ColliderVolumeTest, TimeScaleIsNeutralForEveryTypeExceptTimeDilation)
     gravity.timeScale = 0.5f;
 
     EXPECT_FLOAT_EQ(physics::ColliderVolume(nullptr, dilation).GetTimeScale(), 0.5f);
-    /// @note timeScale が設定されていても、型が違えば dt を触らせない。
+    // timeScale が設定されていても、型が違えば dt を触らせない。
     EXPECT_FLOAT_EQ(physics::ColliderVolume(nullptr, gravity).GetTimeScale(), 1.0f);
 }
 

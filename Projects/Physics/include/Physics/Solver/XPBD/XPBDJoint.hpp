@@ -17,43 +17,36 @@ namespace fbzz::physics
     /// @note 関節の可動域 [rad]。すべて «たわみ 0» からの符号付きの量。
     struct XPBDJointLimits
     {
-        bool  enabled = false;
-        /// @note 関節フレーム X 軸まわり (ねじり)。
-        float twistMin = 0.0f, twistMax = 0.0f;
-        /// @note 関節フレーム Y 軸まわり。
-        float swingMinY = 0.0f, swingMaxY = 0.0f;
-        /// @note 関節フレーム Z 軸まわり。
-        float swingMinZ = 0.0f, swingMaxZ = 0.0f;
-        /// @note 0 で «そこで止まる»。大きくすると止まり際に食い込む (ゴムの止まり方)。
-        float compliance = 0.0f;
+        bool  enabled = false; ///< 親子の相対角度を可動域に制限するかどうか。
+        float twistMin = 0.0f; ///< 関節フレームの X 軸まわりのねじり下限 [rad]。
+        float twistMax = 0.0f; ///< 関節フレームの X 軸まわりのねじり上限 [rad]。
+        float swingMinY = 0.0f; ///< 関節フレームの Y 軸まわりの曲げ下限 [rad]。
+        float swingMaxY = 0.0f; ///< 関節フレームの Y 軸まわりの曲げ上限 [rad]。
+        float swingMinZ = 0.0f; ///< 関節フレームの Z 軸まわりの曲げ下限 [rad]。
+        float swingMaxZ = 0.0f; ///< 関節フレームの Z 軸まわりの曲げ上限 [rad]。
+        float compliance = 0.0f; ///< 0 で «そこで止まる»。大きくすると止まり際に食い込む (ゴムの止まり方)。
     };
 
     /// @note 目標姿勢へ引き戻すサーボ。
     struct XPBDJointDrive
     {
-        /// @note false で完全に脱力する (Passive ラグドール)。
-        bool  enabled = false;
-        /// @note 0 で剛。単位 [rad/(N·m)]。定常たわみは compliance × トルクで、刻みに依らない。
-        float compliance = 1.0e-4f;
-        /// @note 相対角速度を削る割合 [1/s]。ドライブの D 項。
-        float damping = 0.0f;
-        /// @note 比例・減衰を合算したトルクの上限 [N·m]。0 以下で無制限。
-        /// @note 超えた関節は目標へ追従できず back-drive する ─ «モーターが力負けする» 画。
-        float maxTorque = 0.0f;
-        /// @note 関節フレームでの目標相対姿勢。Identity で «たわみ 0 の姿勢»。
-        math::Quaternion target = math::Quaternion::Identity();
+        bool  enabled = false; ///< false で完全に脱力する (Passive ラグドール)。
+        float compliance = 1.0e-4f; ///< 0 で剛。単位 [rad/(N·m)]。定常たわみは compliance × トルクで、刻みに依らない。
+        float damping = 0.0f; ///< 相対角速度を削る割合 [1/s]。ドライブの D 項。
+        float maxTorque = 0.0f; ///< 比例・減衰を合算したトルクの上限 [N·m]。0 以下で無制限。 超えた関節は目標へ追従できず back-drive する ─ «モーターが力負けする» 画。
+        math::Quaternion target = math::Quaternion::Identity(); ///< 関節フレームでの目標相対姿勢。Identity で «たわみ 0 の姿勢»。
     };
 
     class XPBDJoint final : public XPBDConstraint
     {
     public:
-        /// @param parent null なら «ワールドへ固定» になる。ローカル量はワールド量として扱う。
+        /// @param[in] parent null なら «ワールドへ固定» になる。ローカル量はワールド量として扱う。
         FBZZ_PHYSICS_API XPBDJoint(RigidBody* parent, RigidBody* child);
 
         /// @note 今の両者の姿勢を «たわみ 0» として、アンカーと関節フレームを組む。
 
-        /// @param worldAnchor 関節の位置 (ワールド)。
-        /// @param worldFrame  関節フレームの姿勢 (ワールド)。X が骨の向きになるように渡す。
+        /// @param[in] worldAnchor 関節の位置 (ワールド)。
+        /// @param[in] worldFrame  関節フレームの姿勢 (ワールド)。X が骨の向きになるように渡す。
         FBZZ_PHYSICS_API void Build(const math::Vector3& worldAnchor, const math::Quaternion& worldFrame);
 
         [[nodiscard]] XPBDJointLimits& Limits() { return m_limits; }
@@ -89,20 +82,20 @@ namespace fbzz::physics
             friend class XPBDJoint;
             struct Limit
             {
-                math::Vector3 axis;
-                bool atLower = false;
-                bool atUpper = false;
+                math::Vector3 axis; ///< 侵入方向の角速度を取り除くワールド空間の軸。
+                bool atLower = false; ///< 関節角がこの軸の下限へ達しているかどうか。
+                bool atUpper = false; ///< 関節角がこの軸の上限へ達しているかどうか。
             };
 
-            math::Vector3 m_childArm;
-            math::Vector3 m_parentArm;
-            math::Vector3 m_columnX;
-            math::Vector3 m_columnY;
-            math::Vector3 m_columnZ;
-            math::Vector3 m_cofactorX;
-            float m_determinant = 0.0f;
-            Limit m_limits[3]{};
-            int m_limitCount = 0;
+            math::Vector3 m_childArm; ///< 子の重心からソケットのアンカーへのワールドオフセット [m]。
+            math::Vector3 m_parentArm; ///< 親の重心からソケットのアンカーへのワールドオフセット [m]。
+            math::Vector3 m_columnX; ///< ワールド X 方向の力積へのソケットの相対速度応答。
+            math::Vector3 m_columnY; ///< ワールド Y 方向の力積へのソケットの相対速度応答。
+            math::Vector3 m_columnZ; ///< ワールド Z 方向の力積へのソケットの相対速度応答。
+            math::Vector3 m_cofactorX; ///< ソケットの速度応答を逆算する行列の X 方向の余因子。
+            float m_determinant = 0.0f; ///< ソケットの速度応答行列の行列式。退化の判定にも使う。
+            Limit m_limits[3]{}; ///< 速度を射影する関節の角度制限の作業配列。
+            int m_limitCount = 0; ///< m_limits に格納した角度制限の数。
         };
 
         /// @note 硬いソケットと可動域の速度射影を準備する。モーターの減衰は SolveVelocity が扱う。
@@ -127,8 +120,8 @@ namespace fbzz::physics
         /// @note 1 つでも違うと «広げたはずなのに押し戻される» という形でしか現れない。
         /// @note どちらも SolveLimits と同じ分解 (DecomposeSwingTwist + TwistAngle) を通す。
 
-        /// @param deviation 親フレームから見た子フレームの相対回転。
-        /// @param margin    測った角へ足す余裕 [rad]。押されて少し越える分を吸収する。
+        /// @param[in] deviation 親フレームから見た子フレームの相対回転。
+        /// @param[in] margin    測った角へ足す余裕 [rad]。押されて少し越える分を吸収する。
         FBZZ_PHYSICS_API void LearnLimits(const math::Quaternion& deviation, float margin);
 
         /// @note 今の姿勢をそのまま可動域へ取り込む。
@@ -145,28 +138,28 @@ namespace fbzz::physics
         FBZZ_PHYSICS_API void SolveLimits(float h);
         FBZZ_PHYSICS_API void SolveSocket(float h);
 
-        RigidBody* m_parent = nullptr;
-        RigidBody* m_child  = nullptr;
+        RigidBody* m_parent = nullptr; ///< 関節の親剛体の非所有参照。nullptr はワールド固定。
+        RigidBody* m_child  = nullptr; ///< 関節の子剛体の非所有参照。
 
-        math::Vector3    m_anchorParent;
-        math::Vector3    m_anchorChild;
-        math::Quaternion m_frameParent = math::Quaternion::Identity();
-        math::Quaternion m_frameChild  = math::Quaternion::Identity();
+        math::Vector3    m_anchorParent; ///< 親の剛体ローカルでの接続点 [m]。親が固定ワールドならワールド位置。
+        math::Vector3    m_anchorChild; ///< 子の剛体ローカルでの接続点 [m]。
+        math::Quaternion m_frameParent = math::Quaternion::Identity(); ///< 親の剛体ローカルでの関節フレーム。親が固定ワールドならワールド姿勢。
+        math::Quaternion m_frameChild  = math::Quaternion::Identity(); ///< 子の剛体ローカルでの関節フレーム。
 
-        XPBDJointLimits m_limits;
-        XPBDJointDrive  m_drive;
-        float           m_socketCompliance = 0.0f;
+        XPBDJointLimits m_limits; ///< 関節フレームを基準にしたねじり・曲げの可動域。
+        XPBDJointDrive  m_drive; ///< 関節を目標姿勢へ追従させる角度ドライブの設定。
+        float           m_socketCompliance = 0.0f; ///< アンカーを結ぶソケット拘束の柔らかさ [m/N]。
 
-        float m_lambdaSocket = 0.0f;
-        float m_lambdaTwist  = 0.0f;
-        float m_lambdaSwing  = 0.0f;
-        float m_lambdaDrive  = 0.0f;
-        math::Vector3 m_driveImpulse;
+        float m_lambdaSocket = 0.0f; ///< 今のサブステップでソケット拘束が蓄積した乗数。
+        float m_lambdaTwist  = 0.0f; ///< 今のサブステップでねじりの可動域拘束が蓄積した乗数。
+        float m_lambdaSwing  = 0.0f; ///< 今のサブステップで曲げの可動域拘束が蓄積した乗数。
+        float m_lambdaDrive  = 0.0f; ///< 今のサブステップで位置ドライブが蓄積した乗数。
+        math::Vector3 m_driveImpulse; ///< 今のサブステップで速度ドライブが蓄積した角力積 [N·m·s]。
 
-        float m_twistAngle     = 0.0f;
-        float m_swingAngleY    = 0.0f;
-        float m_swingAngleZ    = 0.0f;
-        bool  m_driveSaturated = false;
-        bool  m_limited        = false;
+        float m_twistAngle     = 0.0f; ///< 直近で測った基準姿勢からのねじり角 [rad]。
+        float m_swingAngleY    = 0.0f; ///< 直近で測った関節フレーム Y 軸まわりの曲げ角 [rad]。
+        float m_swingAngleZ    = 0.0f; ///< 直近で測った関節フレーム Z 軸まわりの曲げ角 [rad]。
+        bool  m_driveSaturated = false; ///< 直近のサブステップでドライブが出力上限に達したかどうか。
+        bool  m_limited        = false; ///< 直近のサブステップで可動域からはみ出したかどうか。
     };
 } /// @note namespace fbzz::physics

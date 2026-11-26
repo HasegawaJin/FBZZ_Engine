@@ -17,6 +17,9 @@ namespace fbzz::physics::cloth_detail {
 using math::Vector3;
 
 inline constexpr float GEOMETRY_EPSILON = 1.0e-8f;
+/// @note 0 で衝突を無効にし、正の離隔距離は格子のセル幅として使える範囲 [m] に制限する。
+inline constexpr float MIN_COLLISION_DISTANCE = 1.0e-6f;
+inline constexpr float MAX_COLLISION_DISTANCE = 100.0f;
 /// @note 候補走査と連続判定の計算上限。超過時は呼び出し側でステップを巻き戻す。
 inline constexpr std::size_t MAX_COLLISION_CANDIDATES = 2000000;
 
@@ -39,7 +42,9 @@ inline bool TryGetCollisionCell(const Vector3& position, float cellSize, std::ar
         std::floor(static_cast<double>(position.z) / cellSize)
     };
     for (int axis = 0; axis < 3; ++axis) {
-        if (!std::isfinite(coordinates[axis]) || std::abs(coordinates[axis]) > 1.0e15) return false;
+        if (!std::isfinite(coordinates[axis]) || std::abs(coordinates[axis]) > 1.0e15) {
+            return false;
+        }
         outCell[axis] = static_cast<int64_t>(coordinates[axis]);
     }
     return true;

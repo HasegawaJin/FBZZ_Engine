@@ -90,12 +90,12 @@ TEST(FluidGpuStepTest, MovingSourcePacksThePosedCenterAndItsSpeed)
     EXPECT_NEAR(s.velocity[1], 1.0f, 1.0e-6f);
     EXPECT_EQ(s.velocity[3], 1.0f);
 
-    /// @note 動きの速度だけでも流速を与える (発生源が周りを引きずる)。
+    // 動きの速度だけでも流速を与える (発生源が周りを引きずる)。
     recipe.sources[0].velocity = { 0.0f, 0.0f, 0.0f };
     const auto dragged = fluid::PackFluidGpuStep(recipe, 32, 0.5f, 0.01f, 1.0f, 1.0f);
     EXPECT_EQ(dragged.sources[0].velocity[3], 1.0f);
 
-    /// @note 継がない設定なら流速は基準のまま。
+    // 継がない設定なら流速は基準のまま。
     recipe.sources[0].motion.inheritVelocity = false;
     const auto still = fluid::PackFluidGpuStep(recipe, 32, 0.5f, 0.01f, 1.0f, 1.0f);
     EXPECT_NEAR(still.sources[0].centerShape[0], 0.4f, 1.0e-6f);
@@ -142,7 +142,7 @@ TEST(FluidGpuStepTest, ColorKeyPacksIntoExtraAndFollowsTheEnabledSources)
     const auto step = fluid::PackFluidGpuStep(recipe, 16, 0.0f, 0.01f, 1.0f, 1.0f);
     ASSERT_EQ(step.sourceCount, 2u);
     EXPECT_EQ(step.sources[0].extra[0], 0.25f);
-    /// @note 無効な発生源は詰めないので、後ろの鍵が前へ詰まる (GPU は詰めた順でしか発生源を知らない)。
+    // 無効な発生源は詰めないので、後ろの鍵が前へ詰まる (GPU は詰めた順でしか発生源を知らない)。
     EXPECT_EQ(step.sources[1].extra[0], 0.75f);
     EXPECT_EQ(step.sources[1].extra[1], 0.0f);
     EXPECT_EQ(step.sources[1].extra[2], 0.0f);
@@ -172,7 +172,7 @@ TEST(FluidGpuStepTest, ConeAndRingPackTheirShapeAndANormalizedAxis)
     EXPECT_EQ(step.sources[0].sizeNoise[0], 0.2f);
     EXPECT_EQ(step.sources[0].sizeNoise[1], 0.6f);
 
-    /// @note 長さ 0 の向きは上向き。
+    // 長さ 0 の向きは上向き。
     EXPECT_EQ(step.sources[1].centerShape[3], 3.0f);
     EXPECT_EQ(step.sources[1].axis[0], 0.0f);
     EXPECT_EQ(step.sources[1].axis[1], 1.0f);
@@ -211,11 +211,11 @@ TEST(FluidGpuStepTest, ForcesPackTypeStrengthAndParams)
     EXPECT_EQ(f.params[1], 1.5f);
     EXPECT_EQ(f.params[2], 4.0f);
     EXPECT_EQ(f.params[3], 0.25f);
-    /// @note 長さ 0 の向きは +X。
+    // 長さ 0 の向きは +X。
     EXPECT_EQ(inside.forces[1].directionStrength[0], 1.0f);
     EXPECT_EQ(inside.forces[1].directionStrength[1], 0.0f);
 
-    /// @note 窓の外では強さ 0 で送る (枠は残る)。
+    // 窓の外では強さ 0 で送る (枠は残る)。
     EXPECT_EQ(fluid::PackFluidGpuStep(recipe, 32, 0.9f, 0.01f, 1.0f, 1.0f).forces[0].directionStrength[3], 0.0f);
     EXPECT_EQ(fluid::PackFluidGpuStep(recipe, 32, 1.5f, 0.01f, 1.0f, 1.0f).forces[0].directionStrength[3], 0.0f);
     EXPECT_EQ(fluid::PackFluidGpuStep(recipe, 32, 1.5f, 0.01f, 1.0f, 1.0f).forceCount, 2u);
@@ -268,7 +268,7 @@ TEST(FluidGpuStepTest, CollidersPackShapeWidenedSizeAndNormal)
     const auto step = fluid::PackFluidGpuStep(recipe, 16, 0.0f, 0.01f, 1.0f, 1.0f);
     ASSERT_EQ(step.colliderCount, 4u);
 
-    /// @note 球は半径をセル幅まで広げて 3 軸に複製する (y・z の値は使わない)。
+    // 球は半径をセル幅まで広げて 3 軸に複製する (y・z の値は使わない)。
     const fluid::FluidGpuCollider& s = step.colliders[0];
     EXPECT_EQ(s.centerShape[0], 0.1f);
     EXPECT_EQ(s.centerShape[2], 0.3f);
@@ -278,7 +278,7 @@ TEST(FluidGpuStepTest, CollidersPackShapeWidenedSizeAndNormal)
     EXPECT_NEAR(s.sizeActive[2], step.cellSize, 1.0e-7f);
     EXPECT_EQ(s.sizeActive[3], 1.0f);
 
-    /// @note 箱は軸ごとに広げる。
+    // 箱は軸ごとに広げる。
     const fluid::FluidGpuCollider& b = step.colliders[1];
     EXPECT_EQ(b.centerShape[3], 1.0f);
     EXPECT_EQ(b.sizeActive[0], 0.3f);
@@ -289,7 +289,7 @@ TEST(FluidGpuStepTest, CollidersPackShapeWidenedSizeAndNormal)
     EXPECT_NEAR(step.colliders[2].normal[0], 0.6f, 1.0e-6f);
     EXPECT_NEAR(step.colliders[2].normal[1], 0.0f, 1.0e-6f);
     EXPECT_NEAR(step.colliders[2].normal[2], 0.8f, 1.0e-6f);
-    /// @note 長さ 0 の法線は上向き。
+    // 長さ 0 の法線は上向き。
     EXPECT_EQ(step.colliders[3].normal[0], 0.0f);
     EXPECT_EQ(step.colliders[3].normal[1], 1.0f);
     EXPECT_EQ(step.colliders[3].normal[2], 0.0f);
@@ -307,7 +307,7 @@ TEST(FluidGpuStepTest, CollidersComeAndGoWithTheirWindow)
     EXPECT_EQ(fluid::PackFluidGpuStep(recipe, 32, 0.4f, 0.01f, 1.0f, 1.0f).colliders[0].sizeActive[3], 0.0f);
     EXPECT_EQ(fluid::PackFluidGpuStep(recipe, 32, 0.6f, 0.01f, 1.0f, 1.0f).colliders[0].sizeActive[3], 1.0f);
     EXPECT_EQ(fluid::PackFluidGpuStep(recipe, 32, 0.75f, 0.01f, 1.0f, 1.0f).colliders[0].sizeActive[3], 0.0f);
-    /// @note 居ない刻みも枠は残す (GPU 側は w で読み飛ばす)。
+    // 居ない刻みも枠は残す (GPU 側は w で読み飛ばす)。
     EXPECT_EQ(fluid::PackFluidGpuStep(recipe, 32, 0.9f, 0.01f, 1.0f, 1.0f).colliderCount, 1u);
 }
 
@@ -330,7 +330,7 @@ TEST(FluidGpuStepTest, MovingColliderPacksThePosedCenterAndItsSpeed)
     EXPECT_EQ(c.velocity[1], 0.0f);
     EXPECT_EQ(c.velocity[3], 0.0f);
 
-    /// @note 継がない設定なら動いても流れは押さない (位置だけ動く)。
+    // 継がない設定なら動いても流れは押さない (位置だけ動く)。
     recipe.colliders[0].motion.inheritVelocity = false;
     const auto still = fluid::PackFluidGpuStep(recipe, 32, 0.5f, 0.01f, 1.0f, 1.0f);
     EXPECT_NEAR(still.colliders[0].centerShape[0], 0.4f, 1.0e-6f);
@@ -386,7 +386,7 @@ TEST(FluidGpuStepTest, TextureSourcesTakeAtlasTilesInPackingOrder)
     EXPECT_EQ(step.sources[2].axis[3], -1.0f);
     EXPECT_EQ(step.sources[3].axis[3], 1.0f);
 
-    /// @note タイル番号と同じ順・同じ絞り込み (無効な発生源は数えない)。
+    // タイル番号と同じ順・同じ絞り込み (無効な発生源は数えない)。
     const std::vector<std::string> expected = { "Textures/Logo.png", "Textures/Rune.png" };
     EXPECT_EQ(fluid::FluidGpuMaskPaths(recipe), expected);
 }
@@ -407,7 +407,7 @@ TEST(FluidGpuStepTest, TextureSourceAxisIsTheBasisNormal)
     EXPECT_NEAR(step.sources[0].axis[0], 0.0f, 1.0e-6f);
     EXPECT_NEAR(step.sources[0].axis[1], 0.6f, 1.0e-6f);
     EXPECT_NEAR(step.sources[0].axis[2], 0.8f, 1.0e-6f);
-    /// @note 長さ 0 の向きは Cone / Ring (上向き) と違い、手前向き (画像が正面に見える)。
+    // 長さ 0 の向きは Cone / Ring (上向き) と違い、手前向き (画像が正面に見える)。
     EXPECT_NEAR(step.sources[1].axis[0], 0.0f, 1.0e-6f);
     EXPECT_NEAR(step.sources[1].axis[1], 0.0f, 1.0e-6f);
     EXPECT_NEAR(step.sources[1].axis[2], 1.0f, 1.0e-6f);
@@ -422,7 +422,7 @@ TEST(FluidGpuStepTest, MaskPathsStopAtTheSourceLimit)
     late.shape = fluid::FluidSourceShape::Texture;
     late.texture = "Textures/Late.png";
     recipe.sources.push_back(late);
-    /// @note 詰めない発生源のマスクはアトラスにも置かない (置くとタイル番号が 1 つずれる)。
+    // 詰めない発生源のマスクはアトラスにも置かない (置くとタイル番号が 1 つずれる)。
     EXPECT_TRUE(fluid::FluidGpuMaskPaths(recipe).empty());
 
     recipe.sources[3] = late;

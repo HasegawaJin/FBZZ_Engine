@@ -27,14 +27,21 @@ using cloth_detail::Dot;
 /// @see https://iquilezles.org/articles/intersectors/ Inigo Quilez, Intersectors の Sphere / Capsule。
 double SweepCapsule(const Vector3& start, const Vector3& end, const Vector3& a, const Vector3& b, float radius)
 {
+    // 開始点が既に内部にある場合は、境界に入る時刻を報告しない。
     const Vector3 axis = b - a;
     const float axisSq = axis.LengthSq();
     const Vector3 nearest = axisSq > GEOMETRY_EPSILON
         ? a + axis * std::clamp(Vector3::Dot(start - a, axis) / axisSq, 0.0f, 1.0f) : a;
-    if ((start - nearest).LengthSq() <= radius * radius) return -1.0;
+    if ((start - nearest).LengthSq() <= radius * radius) {
+        return -1.0;
+    }
     const Vector3d ro = ToDouble(start), delta = ToDouble(end) - ro;
     const double length = std::sqrt(Dot(delta, delta));
-    if (!(length > 1.0e-12)) return -1.0;
+    if (!(length > 1.0e-12)) {
+        return -1.0;
+    }
+
+    // 交差を線分上の距離で求め、円筒側面と球端の候補のうち最も近いものを採用する。
     const Vector3d rd = delta * (1.0 / length);
     const double r2 = static_cast<double>(radius) * radius;
     double best = std::numeric_limits<double>::infinity();
@@ -42,13 +49,18 @@ double SweepCapsule(const Vector3& start, const Vector3& end, const Vector3& a, 
         const Vector3d oc = ro - center;
         const double half = Dot(oc, rd);
         const double h = half * half - (Dot(oc, oc) - r2);
-        if (h < 0.0) return;
+        if (h < 0.0) {
+            return;
+        }
         const double t = -half - std::sqrt(h);
-        if (t >= 0.0) best = std::min(best, t);
+        if (t >= 0.0) {
+            best = std::min(best, t);
+        }
     };
     const Vector3d pa = ToDouble(a), ba = ToDouble(b) - pa;
     const double baba = Dot(ba, ba);
     if (baba > 1.0e-24) {
+        // 軸への射影が両端の間にある解だけが円筒側面に当たる。軸が退化していれば球端だけを調べる。
         const Vector3d oa = ro - pa;
         const double bard = Dot(ba, rd), baoa = Dot(ba, oa);
         const double qa = baba - bard * bard;
@@ -59,7 +71,9 @@ double SweepCapsule(const Vector3& start, const Vector3& end, const Vector3& a, 
             if (h >= 0.0) {
                 const double t = (-qb - std::sqrt(h)) / qa;
                 const double y = baoa + t * bard;
-                if (t >= 0.0 && y > 0.0 && y < baba) best = std::min(best, t);
+                if (t >= 0.0 && y > 0.0 && y < baba) {
+                    best = std::min(best, t);
+                }
             }
         }
         sphere(ToDouble(b));
@@ -74,13 +88,15 @@ double SweepCapsule(const Vector3& start, const Vector3& end, const Vector3& a, 
 void ClothSolver::SolveContacts(std::span<const ClothContact> contacts, float substepDuration)
 {
     for (size_t particleIndex = 0; particleIndex < m_positions.size(); ++particleIndex) {
-        if (m_stepInverseMasses[particleIndex] == 0.0f) continue;
+        if (m_stepInverseMasses[particleIndex] == 0.0f) {
+            continue;
+        }
         for (size_t contactIndex = 0; contactIndex < contacts.size(); ++contactIndex) {
             const auto& contact = contacts[contactIndex];
             Vector3 normal;
             float depth;
             bool swept = false;
-            /// @note 形状は現在位置で与えられるため、形状に固定した座標で開始点を velocity*h だけ戻す。平面は半空間なので掃引しない。
+            // 形状は現在位置で与えられるため、形状に固定した座標で開始点を velocity*h だけ戻す。平面は半空間なので掃引しない。
             if (m_settings.continuousCollision && contact.type != ClothContactType::PLANE) {
                 const Vector3 start = m_previous[particleIndex] + contact.velocity * substepDuration;
                 const Vector3 end = contact.type == ClothContactType::CAPSULE ? contact.b : contact.a;
@@ -97,17 +113,20 @@ void ClothSolver::SolveContacts(std::span<const ClothContact> contacts, float su
                 Vector3 center = contact.a;
                 if (contact.type == ClothContactType::CAPSULE) {
                     const Vector3 axis = contact.b - contact.a;
-                    if (axis.LengthSq() > GEOMETRY_EPSILON)
+                    if (axis.LengthSq() > GEOMETRY_EPSILON) {
                         center += axis * std::clamp(Vector3::Dot(m_positions[particleIndex] - contact.a, axis) / axis.LengthSq(), 0.0f, 1.0f);
+                    }
                 }
                 const Vector3 delta = m_positions[particleIndex] - center;
                 const float length = delta.Length();
                 normal = delta.NormalizedOr((m_previous[particleIndex] - center).NormalizedOr(Vector3::UP));
                 depth = contact.radius + m_settings.thickness - length;
             }
-            if (depth < 0.0f && !swept) continue;
+            if (depth < 0.0f && !swept) {
+                continue;
+            }
             m_positions[particleIndex] += normal * std::max(depth, 0.0f);
-            /// @note 摩擦は相対接線速度を減衰させる近似。位置射影の後に評価し、法線方向の侵入速度を除く。
+            // 摩擦は相対接線速度を減衰させる近似。位置射影の後に評価し、法線方向の侵入速度を除く。
             const Vector3 contactOffset = m_positions[particleIndex]-normal*m_settings.thickness-contact.rotationCenter;
             const Vector3 surfaceVelocity = contact.velocity+Vector3::Cross(contact.angularVelocity,contactOffset);
             const Vector3 relativeVelocity = m_velocities[particleIndex] - surfaceVelocity;

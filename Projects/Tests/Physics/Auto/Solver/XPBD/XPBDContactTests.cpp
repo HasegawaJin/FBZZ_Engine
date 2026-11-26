@@ -50,8 +50,8 @@ class XPBDContactTest : public testkit::Fixture {};
 /// @brief Normalizes the contact normal it was given.
 TEST_F(XPBDContactTest, NormalizesTheContactNormalItWasGiven)
 {
-    /// @note 法線は押し出しの «向き» としてそのまま長さを持って使われる。正規化を呼び出し側に
-    /// @note 任せると、長さ 3 の法線を渡した接触だけ 3 倍めり込みを押し返す。
+    // 法線は押し出しの «向き» としてそのまま長さを持って使われる。正規化を呼び出し側に
+    // 任せると、長さ 3 の法線を渡した接触だけ 3 倍めり込みを押し返す。
     auto                 body = MakeBody(math::Vector3::ZERO);
     physics::XPBDContact contact;
 
@@ -67,8 +67,8 @@ TEST_F(XPBDContactTest, NormalizesTheContactNormalItWasGiven)
 /// @brief Refuses to solve a null other even when asked to.
 TEST_F(XPBDContactTest, RefusesToSolveANullOtherEvenWhenAskedTo)
 {
-    /// @note 静的コライダーとの接触は other が null で来る。solveOther をそのまま信じると
-    /// @note 位置パスが null を参照する。
+    // 静的コライダーとの接触は other が null で来る。solveOther をそのまま信じると
+    // 位置パスが null を参照する。
     auto                 body = MakeBody(math::Vector3::ZERO);
     physics::XPBDContact contact;
 
@@ -84,7 +84,7 @@ TEST_F(XPBDContactTest, RefusesToSolveANullOtherEvenWhenAskedTo)
 /// @brief Reports no penetration when the contact is already separated.
 TEST_F(XPBDContactTest, ReportsNoPenetrationWhenTheContactIsAlreadySeparated)
 {
-    /// @note 貫通量 0 は貫通がないことだけを示す。接触許容を含む IsTouching で支持を別に判定する。
+    // 貫通量 0 は貫通がないことだけを示す。接触許容を含む IsTouching で支持を別に判定する。
     auto                 body = MakeBody(math::Vector3::ZERO);
     physics::XPBDContact contact;
     contact.Set(body.get(), nullptr, false,
@@ -106,7 +106,7 @@ TEST_F(XPBDContactTest, PushesTheBodyOutByTheDepthAndReportsIt)
 
     contact.SolvePosition(kSubstep);
 
-    /// @note 相手が «動かない世界» なので、深さのぶんだけこちらが法線方向へ出る。
+    // 相手が «動かない世界» なので、深さのぶんだけこちらが法線方向へ出る。
     EXPECT_VEC3_NEAR(body->GetPosition(), math::Vector3(0.0f, 0.2f, 0.0f),
                      testkit::kLooseTolerance);
     EXPECT_NEAR(contact.GetPenetration(), 0.2f, testkit::kLooseTolerance);
@@ -117,8 +117,8 @@ TEST_F(XPBDContactTest, PushesTheBodyOutByTheDepthAndReportsIt)
 /// @brief Leaves an unsolved other in place and stores the reaction instead.
 TEST_F(XPBDContactTest, LeavesAnUnsolvedOtherInPlaceAndStoresTheReactionInstead)
 {
-    /// @note World 側が積分している剛体が相手。ここで動かすと同じフレームで 2 回進む。
-    /// @note 受けた押しはフレーム末に 1 回だけ返すため、力積として溜める。
+    // World 側が積分している剛体が相手。ここで動かすと同じフレームで 2 回進む。
+    // 受けた押しはフレーム末に 1 回だけ返すため、力積として溜める。
     auto                 body  = MakeBody(math::Vector3::ZERO);
     auto                 other = MakeBody(math::Vector3(0.0f, -1.0f, 0.0f));
     body->SetVelocity({0,-1,0});
@@ -131,7 +131,7 @@ TEST_F(XPBDContactTest, LeavesAnUnsolvedOtherInPlaceAndStoresTheReactionInstead)
 
     EXPECT_VEC3_NEAR(other->GetPosition(), math::Vector3(0.0f, -1.0f, 0.0f),
                      testkit::kTolerance);
-    /// @note 法線は other → body の向き。相手はその逆へ押される。
+    // 法線は other → body の向き。相手はその逆へ押される。
     EXPECT_LT(contact.ReactionImpulse().y, 0.0f);
 }
 
@@ -150,7 +150,7 @@ TEST_F(XPBDContactTest, SplitsThePushBetweenBothBodiesWhenTheOtherIsSolved)
     EXPECT_TRUE(contact.IsOtherSolved());
     EXPECT_GT(body->GetPosition().y, 0.0f);
     EXPECT_LT(other->GetPosition().y, -1.0f);
-    /// @note 既に押し返した相手へ力積まで返すと、二重に効いて弾け飛ぶ。
+    // 既に押し返した相手へ力積まで返すと、二重に効いて弾け飛ぶ。
     EXPECT_VEC3_NEAR(contact.ReactionImpulse(), math::Vector3::ZERO, testkit::kTolerance);
 }
 

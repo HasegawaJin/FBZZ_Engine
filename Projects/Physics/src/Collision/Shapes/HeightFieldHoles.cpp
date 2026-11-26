@@ -14,9 +14,17 @@ bool HeightFieldCollider::IsHoleCell(int cellColumn, int cellRow) const
 {
     const int cellColumnCount = m_columnCount - 1;
     const int cellRowCount = m_rowCount - 1;
-    if (m_holeMask.empty() || cellColumn < 0 || cellRow < 0 ||
-        cellColumn >= cellColumnCount || cellRow >= cellRowCount)
+    if (m_holeMask.empty()) {
         return false;
+    }
+
+    // サンプルの間にあるセルだけを対象にし、負の座標を符号なしの添字へ変換しない。
+    if (cellColumn < 0 || cellRow < 0) {
+        return false;
+    }
+    if (cellColumn >= cellColumnCount || cellRow >= cellRowCount) {
+        return false;
+    }
 
     const std::size_t maskIndex = static_cast<std::size_t>(cellRow) * static_cast<std::size_t>(cellColumnCount)
                                 + static_cast<std::size_t>(cellColumn);
@@ -29,9 +37,10 @@ void HeightFieldCollider::SanitizeHoles()
         ? static_cast<std::size_t>(m_rowCount - 1) * static_cast<std::size_t>(m_columnCount - 1) : 0;
     const bool hasHoles = std::any_of(m_holeMask.begin(), m_holeMask.end(),
         [](std::uint8_t cellMaskValue) { return cellMaskValue != 0; });
-    /// @note サイズが合わないマスクを部分的に読むと穴の位置がずれる。
-    if (m_holeMask.size() != cellCount || !hasHoles)
+    // サイズが合わないマスクを部分的に読むと穴の位置がずれる。
+    if (m_holeMask.size() != cellCount || !hasHoles) {
         m_holeMask.clear();
+    }
 }
 
 } /// @note namespace fbzz::physics

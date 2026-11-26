@@ -22,31 +22,36 @@ namespace fbzz::physics
         const math::Vector3 initialOffset = centerA - centerB;
         const float combinedRadius = radiusA + radiusB;
 
-        /// @note |initialOffset + t * displacement|² = combinedRadius²。移動全体を 1 とするので、根は時間の割合になる。
+        // |initialOffset + t * displacement|² = combinedRadius²。移動全体を 1 とするので、根は時間の割合になる。
         const float a = math::Vector3::Dot(displacement, displacement);
         const float b = 2.0f * math::Vector3::Dot(displacement, initialOffset);
         const float c = math::Vector3::Dot(initialOffset, initialOffset) - combinedRadius * combinedRadius;
 
-        /// @note 移動量がほぼ 0 の場合は、二次方程式の 2a で除算できない。
-        if (a < 1e-10f)
+        // 移動量がほぼ 0 の場合は、二次方程式の 2a で除算できない。
+        if (a < 1e-10f) {
             return result;
+        }
 
         const float discriminant = b * b - 4.0f * a * c;
-        if (discriminant < 0.0f)
+        if (discriminant < 0.0f) {
             return result;
+        }
 
         const float sqrtDiscriminant = std::sqrt(discriminant);
         const float entryTime = (-b - sqrtDiscriminant) / (2.0f * a);
         const float exitTime = (-b + sqrtDiscriminant) / (2.0f * a);
 
-        /// @note 開始時点で重なっている場合も、区間内の離脱時刻があれば採用する。
+        // 開始時点で重なっている場合も、区間内の離脱時刻があれば採用する。
         float toi = -1.0f;
-        if (entryTime >= 0.0f && entryTime <= 1.0f)
+        if (entryTime >= 0.0f && entryTime <= 1.0f) {
             toi = entryTime;
-        else if (exitTime >= 0.0f && exitTime <= 1.0f)
+        }
+        else if (exitTime >= 0.0f && exitTime <= 1.0f) {
             toi = exitTime;
-        if (toi < 0.0f)
+        }
+        if (toi < 0.0f) {
             return result;
+        }
 
         const math::Vector3 impactCenterA = centerA + displacement * toi;
         const math::Vector3 impactOffset = impactCenterA - centerB;
@@ -69,14 +74,16 @@ namespace fbzz::physics
         const math::Vector3 movement = vel * dt;
         const float normalDisplacement = math::Vector3::Dot(movement, planeNormal);
 
-        if (normalDisplacement >= 0.0f)
+        if (normalDisplacement >= 0.0f) {
             return result;
+        }
 
-        /// @note 球の中心から平面までの符号付き距離が半径と一致する時刻を求める。
+        // 球の中心から平面までの符号付き距離が半径と一致する時刻を求める。
         const float initialDistance = math::Vector3::Dot(center, planeNormal) - planeD;
         const float toi = (radius - initialDistance) / normalDisplacement;
-        if (toi < 0.0f || toi > 1.0f)
+        if (toi < 0.0f || toi > 1.0f) {
             return result;
+        }
 
         result.hit = true;
         result.toi = toi;

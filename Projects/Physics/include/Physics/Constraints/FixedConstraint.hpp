@@ -17,7 +17,7 @@ namespace fbzz::physics
         ConstraintType GetType() const override { return ConstraintType::FIXED; }
 
     private:
-        math::Vector3    m_localOffsetA;
-        math::Quaternion m_relativeRotation;
+        math::Vector3    m_localOffsetA; ///< A のローカル空間での B の初期位置 [m]。
+        math::Quaternion m_relativeRotation; ///< A から見た B の初期相対姿勢。
     };
 } /// @note namespace fbzz::physics

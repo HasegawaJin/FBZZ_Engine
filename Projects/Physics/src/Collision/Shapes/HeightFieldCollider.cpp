@@ -25,7 +25,7 @@ HeightFieldCollider::HeightFieldCollider(const std::vector<float>& heightSamples
     assert(rowCount >= 2 && columnCount >= 2);
     assert(static_cast<int>(heightSamples.size()) == rowCount * columnCount);
     SanitizeHoles();
-    /// @note ワールド三角形は最初に姿勢が与えられたときに構築する。
+    // ワールド三角形は最初に姿勢が与えられたときに構築する。
 }
 
 void HeightFieldCollider::Update(const math::Vector3& worldPosition,
@@ -49,16 +49,17 @@ void HeightFieldCollider::UpdateWithScale(const math::Vector3& worldPosition,
     m_worldRotation = worldRotation;
     m_worldScale = worldScale;
 
-    /// @note 初回は姿勢が既定値でも構築する。空の高さ場も現在の位置へ外接箱を同期する。
+    // 初回は姿勢が既定値でも構築する。空の高さ場も現在の位置へ外接箱を同期する。
     if (m_bvh.triangles.empty())
     {
         RebuildBVH();
         return;
     }
 
-    /// @note 高さと穴が同じなら、スケール変更でも三角形の所属する葉を保持する。
-    if (positionChanged || rotationChanged || scaleChanged)
+    // 高さと穴が同じなら、スケール変更でも三角形の所属する葉を保持する。
+    if (positionChanged || rotationChanged || scaleChanged) {
         RefitTransform();
+    }
 }
 
 void HeightFieldCollider::Rebuild(const std::vector<float>& heightSamples,

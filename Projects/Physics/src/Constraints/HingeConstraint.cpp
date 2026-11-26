@@ -66,7 +66,9 @@ namespace fbzz::physics
 
     float HingeConstraint::CurrentAngle() const
     {
-        if (!m_bodyA || !m_bodyB) return 0.0f;
+        if (!m_bodyA || !m_bodyB) {
+            return 0.0f;
+        }
 
         const math::Vector3 axis = m_axis.Normalized();
         const math::Vector3 refA = ProjectPerpendicular(m_bodyA->GetRotation() * m_referenceA, axis);
@@ -78,7 +80,9 @@ namespace fbzz::physics
 
     void HingeConstraint::ApplyForce(float dt)
     {
-        if (!m_motorEnabled || !m_bodyA || !m_bodyB || dt <= 0.0f) return;
+        if (!m_motorEnabled || !m_bodyA || !m_bodyB || dt <= 0.0f) {
+            return;
+        }
 
         const math::Vector3 axis = m_axis.Normalized();
         const float relSpeed = math::Vector3::Dot(
@@ -87,13 +91,19 @@ namespace fbzz::physics
         const float torqueMag = std::clamp(speedError / dt, -m_motorMaxTorque, m_motorMaxTorque);
         const math::Vector3 torque = axis * torqueMag;
 
-        if (!m_bodyA->IsStatic()) m_bodyA->ApplyTorque(-torque);
-        if (!m_bodyB->IsStatic()) m_bodyB->ApplyTorque(torque);
+        if (!m_bodyA->IsStatic()) {
+            m_bodyA->ApplyTorque(-torque);
+        }
+        if (!m_bodyB->IsStatic()) {
+            m_bodyB->ApplyTorque(torque);
+        }
     }
 
     void HingeConstraint::SolvePosition(float /*dt*/)
     {
-        if (!m_bodyA || !m_bodyB) return;
+        if (!m_bodyA || !m_bodyB) {
+            return;
+        }
 
         const math::Vector3 worldAnchorA = m_bodyA->GetPosition() + (m_bodyA->GetRotation() * m_localAnchorA);
         const math::Vector3 worldAnchorB = m_bodyB->GetPosition() + (m_bodyB->GetRotation() * m_localAnchorB);
@@ -102,25 +112,33 @@ namespace fbzz::physics
         const float invA = m_bodyA->GetInvMass();
         const float invB = m_bodyB->GetInvMass();
         const float invSum = invA + invB;
-        if (invSum == 0.0f) return;
+        if (invSum == 0.0f) {
+            return;
+        }
 
         m_bodyA->SetPosition(m_bodyA->GetPosition() + delta * (invA / invSum));
         m_bodyB->SetPosition(m_bodyB->GetPosition() - delta * (invB / invSum));
 
-        if (!m_limitEnabled) return;
+        if (!m_limitEnabled) {
+            return;
+        }
 
         const float angle = CurrentAngle();
         const float clampedAngle = std::clamp(angle, m_minAngle, m_maxAngle);
         const float error = angle - clampedAngle;
-        if (std::abs(error) < 1e-4f) return;
+        if (std::abs(error) < 1e-4f) {
+            return;
+        }
 
         const float weightA = invA / invSum;
         const float weightB = invB / invSum;
         const math::Quaternion corrA = math::Quaternion::FromAxisAngle(m_axis, error * weightA);
         const math::Quaternion corrB = math::Quaternion::FromAxisAngle(m_axis, -error * weightB);
-        if (!m_bodyA->IsStatic())
+        if (!m_bodyA->IsStatic()) {
             m_bodyA->SetRotation((corrA * m_bodyA->GetRotation()).Normalized());
-        if (!m_bodyB->IsStatic())
+        }
+        if (!m_bodyB->IsStatic()) {
             m_bodyB->SetRotation((corrB * m_bodyB->GetRotation()).Normalized());
+        }
     }
 } // namespace fbzz::physics

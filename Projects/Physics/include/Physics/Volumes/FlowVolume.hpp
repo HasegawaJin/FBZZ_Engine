@@ -17,7 +17,7 @@ namespace fbzz::physics
         /// @note ワールド空間の媒質速度 [m/s]。空なら流れなし。
         /// @note FluidVolumeDesc::flowVelocity と同じ型にしてある。同じ場のスナップショットを
         /// @note 水にも風にもそのまま渡せる。
-        std::function<math::Vector3(const math::Vector3& worldPosition)> flowVelocity;
+        std::function<math::Vector3(const math::Vector3& worldPosition)> flowVelocity; ///< 指定したワールド位置 [m] での媒質速度 [m/s] を求めるコールバック。
     };
 
     /// @note 流れが剛体を運ぶ。**F = k * m * (v_flow - v)**。k は体が持つ
@@ -37,6 +37,6 @@ namespace fbzz::physics
         FBZZ_PHYSICS_API void Apply(RigidBody& body, float dt) override;
 
     private:
-        FlowVolumeDesc m_desc;
+        FlowVolumeDesc m_desc; ///< 流れの範囲と剛体との結合を決める記述。
     };
 } /// @note namespace fbzz::physics

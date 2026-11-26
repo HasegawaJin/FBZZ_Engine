@@ -25,10 +25,10 @@ namespace fbzz::physics
 
         /// @note 公開する理由: 他の制約 (m_distance / m_maxLength / m_stiffness) と同じく張ったあとに
         /// @note 調整する値。連なりだけは並びの整合が要るので private に残す。
-        float m_segmentLength = 1.0f;
-        int m_solverIterations = 4;
+        float m_segmentLength = 1.0f; ///< 鎖で隣接する剛体間に保つ基準距離 [m]。
+        int m_solverIterations = 4; ///< 鎖の位置拘束を解き直す回数。
 
     private:
-        std::vector<RigidBody*> m_bodies;
+        std::vector<RigidBody*> m_bodies; ///< 鎖をたどる順に並んだ剛体の非所有参照。
     };
 } /// @note namespace fbzz::physics

@@ -27,11 +27,11 @@ namespace fbzz::physics
         FBZZ_PHYSICS_API std::array<math::Vector3, 8> GetCorners() const;
         FBZZ_PHYSICS_API math::Vector3 SupportPoint(const math::Vector3& dir) const;
 
-        math::Vector3 m_halfExtents;
+        math::Vector3 m_halfExtents; ///< 箱のローカル X、Y、Z 軸それぞれの半幅 [m]。
 
     private:
-        math::Vector3 m_worldCenter;
-        math::Quaternion m_worldRot;
+        math::Vector3 m_worldCenter; ///< ワールド空間に変換済みのコライダーの中心 [m]。
+        math::Quaternion m_worldRot; ///< 箱の 3 本のローカル軸をワールドへ回す姿勢。
     };
 
 } /// @note namespace fbzz::physics

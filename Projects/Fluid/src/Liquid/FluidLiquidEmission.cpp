@@ -38,21 +38,27 @@ void FluidLiquidSolver::Emit()
         const FluidSource& source = m_sources[sourceIndex];
         const int total = (std::max)(source.count, 0);
         int target = 0;
-        if (source.duration <= 0.0f)
+        if (source.duration <= 0.0f) {
             target = m_time >= source.startTime ? total : 0;
-        else
+        }
+        else {
             target = static_cast<int>(static_cast<float>(total)
                                       * Saturate((m_time - source.startTime) / source.duration));
+        }
         target = std::clamp(target, 0, total);
-        if (m_emittedPerSource[sourceIndex] >= target || m_particles.size() >= limit) continue;
+        if (m_emittedPerSource[sourceIndex] >= target || m_particles.size() >= limit) {
+            continue;
+        }
 
         const FluidOperatorPose pose = PoseFluidSource(source, m_time);
         math::Vector3 launchVelocity = source.velocity + pose.motionVelocity;
-        /// @note 2D は奥行きの速度を見ない (レシピに z が書いてあっても平面の絵には関係しない)。
-        if (!m_volumetric) launchVelocity.z = 0.0f;
+        // 2D は奥行きの速度を見ない (レシピに z が書いてあっても平面の絵には関係しない)。
+        if (!m_volumetric) {
+            launchVelocity.z = 0.0f;
+        }
         const float speed = launchVelocity.Length();
-        /// @note 詰まりすぎを避けて広げる倍率は FluidLiquidEmitScale が正本 (Inspector も同じ値を出す)。
-        /// @note 撃ち出す速度に動きの速さを含めて測るため、その速度を持った写しを渡す。
+        // 詰まりすぎを避けて広げる倍率は FluidLiquidEmitScale が正本 (Inspector も同じ値を出す)。
+        // 撃ち出す速度に動きの速さを含めて測るため、その速度を持った写しを渡す。
         FluidSource fitted = source;
         fitted.velocity = launchVelocity;
         const float scale = FluidLiquidEmitScale(fitted, m_settings, m_volumetric);
@@ -82,7 +88,7 @@ void FluidLiquidSolver::Emit()
             particle.y = pose.center.y + (point.y - pose.center.y) * scale;
             if (m_volumetric) {
                 particle.z = pose.center.z + (point.z - pose.center.z) * scale;
-                /// @note ばらつきの向きは球面上で一様にする (円柱座標で z を一様に取ると球面一様になる)。
+                // ばらつきの向きは球面上で一様にする (円柱座標で z を一様に取ると球面一様になる)。
                 const float cz = NextRandom() * 2.0f - 1.0f;
                 const float angle = NextRandom() * 2.0f * FLUID_PI;
                 const float ring = std::sqrt((std::max)(0.0f, 1.0f - cz * cz));

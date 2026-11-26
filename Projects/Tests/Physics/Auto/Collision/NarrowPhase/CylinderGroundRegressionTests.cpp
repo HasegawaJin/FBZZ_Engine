@@ -90,7 +90,7 @@ TEST_F(CylinderGroundRegressionTest, FallingCylinderStaysAboveBodylessLargeFloor
     world.SyncCollider({}, m_falling);
     world.EndSceneSync();
 
-    /// @note activation 1 step + warmup 60 + measure 120 と同じ固定刻みで、測定 runner の接地境界を検証する。
+    // activation 1 step + warmup 60 + measure 120 と同じ固定刻みで、測定 runner の接地境界を検証する。
     constexpr float FIXED_SECONDS = 1.0f / 60.0f;
     constexpr int FIXED_STEPS = 181;
     constexpr float MIN_CENTER_Y = 0.10f;

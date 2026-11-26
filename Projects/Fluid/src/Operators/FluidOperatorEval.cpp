@@ -12,7 +12,9 @@ namespace {
 
 [[nodiscard]] bool InWindow(bool enabled, float startTime, float duration, float time)
 {
-    if (!enabled || time < startTime) return false;
+    if (!enabled || time < startTime) {
+        return false;
+    }
     return duration <= 0.0f || time < startTime + duration;
 }
 
@@ -30,7 +32,9 @@ FluidMotionSample SampleFluidMotion(const FluidMotion& motion, float time)
 {
     FluidMotionSample sample{ { 0.0f, 0.0f, 0.0f }, { 0.0f, 0.0f, 0.0f } };
     const std::vector<FluidMotionKey>& keys = motion.keys;
-    if (keys.empty()) return sample;
+    if (keys.empty()) {
+        return sample;
+    }
     if (time <= keys.front().time) {
         sample.offset = keys.front().offset;
         return sample;
@@ -42,7 +46,9 @@ FluidMotionSample SampleFluidMotion(const FluidMotion& motion, float time)
     for (std::size_t keyIndex = 0; keyIndex + 1 < keys.size(); ++keyIndex) {
         const FluidMotionKey& startKey = keys[keyIndex];
         const FluidMotionKey& endKey = keys[keyIndex + 1];
-        if (time >= endKey.time) continue;
+        if (time >= endKey.time) {
+            continue;
+        }
         const float keyDuration = endKey.time - startKey.time;
         if (keyDuration < 1.0e-6f) {
             sample.offset = startKey.offset;
@@ -61,15 +67,25 @@ FluidMotionSample SampleFluidMotion(const FluidMotion& motion, float time)
 float SampleFluidAmount(const FluidAmount& amount, float time)
 {
     const std::vector<FluidAmountKey>& keys = amount.keys;
-    if (keys.empty()) return 1.0f;
-    if (time <= keys.front().time) return keys.front().scale;
-    if (time >= keys.back().time) return keys.back().scale;
+    if (keys.empty()) {
+        return 1.0f;
+    }
+    if (time <= keys.front().time) {
+        return keys.front().scale;
+    }
+    if (time >= keys.back().time) {
+        return keys.back().scale;
+    }
     for (std::size_t keyIndex = 0; keyIndex + 1 < keys.size(); ++keyIndex) {
         const FluidAmountKey& startKey = keys[keyIndex];
         const FluidAmountKey& endKey = keys[keyIndex + 1];
-        if (time >= endKey.time) continue;
+        if (time >= endKey.time) {
+            continue;
+        }
         const float keyDuration = endKey.time - startKey.time;
-        if (keyDuration < 1.0e-6f) return startKey.scale;
+        if (keyDuration < 1.0e-6f) {
+            return startKey.scale;
+        }
         return startKey.scale + (endKey.scale - startKey.scale) * ((time - startKey.time) / keyDuration);
     }
     return keys.back().scale;
@@ -87,9 +103,9 @@ FluidOperatorPose PoseFluidForce(const FluidForce& force, float time)
 
 float FluidSourceAmount(const FluidSource& source, float time)
 {
-    /// @note 発生源だけ 0 で止める理由: 掛かる先は density/temperature/fuel で、負にすると «質量を引く»
-    ///       ことになり、散逸・移流・色の鍵 (mass/max(carrier,ε))・黒体放射 (T^4) が符号を想定していない。
-    ///       «煙を削る» は倍率の裏口でなく別の部品で設計する。力側は strength が元々負を許すので止めない。
+    // 発生源だけ 0 で止める理由: 掛かる先は density/temperature/fuel で、負にすると «質量を引く»
+    //       ことになり、散逸・移流・色の鍵 (mass/max(carrier,ε))・黒体放射 (T^4) が符号を想定していない。
+    //       «煙を削る» は倍率の裏口でなく別の部品で設計する。力側は strength が元々負を許すので止めない。
     return (std::max)(SampleFluidAmount(source.amount, time), 0.0f);
 }
 

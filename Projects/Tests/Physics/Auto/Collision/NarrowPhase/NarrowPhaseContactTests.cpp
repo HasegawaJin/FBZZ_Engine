@@ -86,7 +86,7 @@ TEST_F(NarrowPhaseContactTest, BuildsAFourPointManifoldOnTheYFaceOfTwoBoxes)
 
     const std::vector<physics::ContactPoint> contacts = Collide(a, b);
 
-    /// @note 床の上の箱がこれ。1 点しか返らないと、置いた瞬間に必ず傾く。
+    // 床の上の箱がこれ。1 点しか返らないと、置いた瞬間に必ず傾く。
     ASSERT_EQ(contacts.size(), 4u);
     EXPECT_TRUE(AllPointsAreDistinct(contacts));
     EXPECT_VEC3_NEAR(contacts[0].normal, -math::Vector3::UP, testkit::kTolerance);
@@ -115,7 +115,7 @@ TEST_F(NarrowPhaseContactTest, SharesThePositionCorrectionAcrossTheManifold)
 
     const std::vector<physics::ContactPoint> contacts = Collide(a, b);
 
-    /// @note 4 点それぞれが «貫通を全部戻す» と、押し戻しが 4 倍になって弾かれる。
+    // 4 点それぞれが «貫通を全部戻す» と、押し戻しが 4 倍になって弾かれる。
     ASSERT_EQ(contacts.size(), 4u);
     for (const physics::ContactPoint& contact : contacts)
         EXPECT_NEAR(contact.positionCorrectionWeight, 0.25f, testkit::kTolerance);
@@ -125,13 +125,13 @@ TEST_F(NarrowPhaseContactTest, SharesThePositionCorrectionAcrossTheManifold)
 TEST_F(NarrowPhaseContactTest, ChoosesTheShallowestAxisAsThePushDirection)
 {
     physics::AABBCollider a = UnitBox(math::Vector3::ZERO);
-    /// @note X に 1.8、Y に 0.4 だけずらす。深く食い込んだ X ではなく浅い Y へ逃がす。
+    // X に 1.8、Y に 0.4 だけずらす。深く食い込んだ X ではなく浅い Y へ逃がす。
     physics::AABBCollider b = UnitBox(math::Vector3(0.2f, 1.6f, 0.0f));
 
     const std::vector<physics::ContactPoint> contacts = Collide(a, b);
 
     ASSERT_FALSE(contacts.empty());
-    /// @note 深い方へ押し出すと、角でぶつかった箱が横へ飛ぶ。
+    // 深い方へ押し出すと、角でぶつかった箱が横へ飛ぶ。
     EXPECT_VEC3_NEAR(contacts[0].normal, -math::Vector3::UP, testkit::kTolerance);
     EXPECT_NEAR(contacts[0].depth, 0.4f, testkit::kLooseTolerance);
 }
@@ -150,7 +150,7 @@ TEST_F(NarrowPhaseContactTest, CollidesTwoCapsulesWhoseAxesAreBothDegenerate)
 
     const std::vector<physics::ContactPoint> contacts = Collide(a, b);
 
-    /// @note 実質は球同士。両方の線分の長さが 0 でも最近点は決まる。
+    // 実質は球同士。両方の線分の長さが 0 でも最近点は決まる。
     ASSERT_EQ(contacts.size(), 1u);
     EXPECT_NEAR(contacts[0].depth, 0.5f, testkit::kLooseTolerance);
     EXPECT_UNIT_LENGTH(contacts[0].normal, testkit::kLooseTolerance);
@@ -178,7 +178,7 @@ TEST_F(NarrowPhaseContactTest, CollidesAnUprightCapsuleAgainstADegenerateOne)
     upright.Update(math::Vector3::ZERO, math::Quaternion::Identity());
     flat.Update(math::Vector3(0.6f, 0.0f, 0.0f), math::Quaternion::Identity());
 
-    /// @note 潰れている側が A か B かで処理が分かれる。両方向を通す。
+    // 潰れている側が A か B かで処理が分かれる。両方向を通す。
     const std::vector<physics::ContactPoint> contacts = Collide(upright, flat);
 
     ASSERT_EQ(contacts.size(), 1u);
@@ -191,13 +191,13 @@ TEST_F(NarrowPhaseContactTest, ClampsToTheNearEndOfACrossingCapsule)
     physics::CapsuleCollider upright(0.5f, 1.0f);
     physics::CapsuleCollider lying(0.5f, 1.0f);
     upright.Update(math::Vector3::ZERO, math::Quaternion::Identity());
-    /// @note 横倒しにして、最近点が線分の «端» に来る位置へ置く。
+    // 横倒しにして、最近点が線分の «端» に来る位置へ置く。
     lying.Update(math::Vector3(1.2f, 0.0f, 0.0f),
                  math::Quaternion::FromAxisAngle(math::Vector3::FORWARD, math::HALF_PI));
 
     const std::vector<physics::ContactPoint> contacts = Collide(upright, lying);
 
-    /// @note 線分の内側だけを探すと、T 字に交わった配置で «届いていない» と判定して抜ける。
+    // 線分の内側だけを探すと、T 字に交わった配置で «届いていない» と判定して抜ける。
     ASSERT_EQ(contacts.size(), 1u);
     EXPECT_GT(contacts[0].depth, 0.0f);
 }
@@ -211,7 +211,7 @@ TEST_F(NarrowPhaseContactTest, ClampsToTheFarEndOfACrossingCapsule)
     lying.Update(math::Vector3(-1.2f, 0.0f, 0.0f),
                  math::Quaternion::FromAxisAngle(math::Vector3::FORWARD, math::HALF_PI));
 
-    /// @note 反対側へ置くと、クランプされる端が逆になる。両端とも拾えることを見る。
+    // 反対側へ置くと、クランプされる端が逆になる。両端とも拾えることを見る。
     const std::vector<physics::ContactPoint> contacts = Collide(upright, lying);
 
     ASSERT_EQ(contacts.size(), 1u);
@@ -232,7 +232,7 @@ TEST_F(NarrowPhaseContactTest, PushesASphereInsideACylinderOutTheNearestSide)
 
     const std::vector<physics::ContactPoint> contacts = Collide(sphere, cylinder);
 
-    /// @note 側面まで 0.5、円板まで 2.0。浅い側面へ逃がす。
+    // 側面まで 0.5、円板まで 2.0。浅い側面へ逃がす。
     ASSERT_EQ(contacts.size(), 1u);
     EXPECT_VEC3_NEAR(contacts[0].normal, math::Vector3::RIGHT, testkit::kTolerance);
     EXPECT_NEAR(contacts[0].depth, 1.0f, testkit::kTolerance);
@@ -248,8 +248,8 @@ TEST_F(NarrowPhaseContactTest, PushesASphereOnTheCylinderAxisOutThroughACap)
 
     const std::vector<physics::ContactPoint> contacts = Collide(sphere, cylinder);
 
-    /// @note 軸上では «外向きの半径方向» が定義できない。正規化に突っ込むと NaN が伝播するので、
-    /// @note 必ず円板側へ逃がす。
+    // 軸上では «外向きの半径方向» が定義できない。正規化に突っ込むと NaN が伝播するので、
+    // 必ず円板側へ逃がす。
     ASSERT_EQ(contacts.size(), 1u);
     EXPECT_VEC3_NEAR(contacts[0].normal, math::Vector3::UP, testkit::kTolerance);
     EXPECT_NEAR(contacts[0].depth, 2.5f, testkit::kTolerance);
@@ -257,7 +257,7 @@ TEST_F(NarrowPhaseContactTest, PushesASphereOnTheCylinderAxisOutThroughACap)
 
 TEST_F(NarrowPhaseContactTest, CapsuleMergesMeshSeamButUsesDeepestHeightFieldContact)
 {
-    /// @note 同じ平面を同じ対角線で二分し、カプセルの軸を対角線から少しずらして両面に接触させる。
+    // 同じ平面を同じ対角線で二分し、カプセルの軸を対角線から少しずらして両面に接触させる。
     physics::TriangleMeshCollider mesh(
         {{0, 0, 0}, {2, 0, 0}, {0, 0, 2}, {2, 0, 2}}, {0, 2, 1, 1, 2, 3});
     physics::HeightFieldCollider heightField({0, 0, 0, 0}, 2, 2, 2.0f, 1.0f);

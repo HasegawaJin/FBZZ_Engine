@@ -35,29 +35,37 @@ constexpr float TENSILE_STRENGTH = 0.05f;
 void FluidLiquidSolver::AdoptOperators(const FluidRecipe& recipe)
 {
     m_sources.clear();
-    for (const FluidSource& source : recipe.sources)
-        if (source.enabled && m_sources.size() < static_cast<std::size_t>(kMaxFluidSources))
+    for (const FluidSource& source : recipe.sources) {
+        if (source.enabled && m_sources.size() < static_cast<std::size_t>(kMaxFluidSources)) {
             m_sources.push_back(source);
-    /// @note 粒子半径まで寸法を広げ、体積 0 によって FluidLiquidEmitScale が全粒を 1 点へ出すことを防ぐ。
+        }
+    }
+    // 粒子半径まで寸法を広げ、体積 0 によって FluidLiquidEmitScale が全粒を 1 点へ出すことを防ぐ。
     for (FluidSource& source : m_sources) {
         source.size.x = (std::max)(source.size.x, m_particleRadius);
         source.size.y = (std::max)(source.size.y, m_particleRadius);
         source.size.z = (std::max)(source.size.z, m_particleRadius);
     }
     m_forces.clear();
-    for (const FluidForce& force : recipe.forces)
-        if (force.enabled && m_forces.size() < static_cast<std::size_t>(kMaxFluidForces))
+    for (const FluidForce& force : recipe.forces) {
+        if (force.enabled && m_forces.size() < static_cast<std::size_t>(kMaxFluidForces)) {
             m_forces.push_back(force);
+        }
+    }
     m_colliders.clear();
     for (const FluidCollider& collider : recipe.colliders) {
-        if (!collider.enabled || m_colliders.size() >= static_cast<std::size_t>(kMaxFluidColliders)) continue;
+        if (!collider.enabled || m_colliders.size() >= static_cast<std::size_t>(kMaxFluidColliders)) {
+            continue;
+        }
         m_colliders.push_back(collider);
-        /// @note 2D では箱の奥行きを広げ、d.z = 0 の距離と法線が z 軸で決まって粒子を平面外へ押し出すことを防ぐ。
-        if (!m_volumetric && collider.shape == FluidColliderShape::Box) m_colliders.back().size.z = 1.0e6f;
+        // 2D では箱の奥行きを広げ、d.z = 0 の距離と法線が z 軸で決まって粒子を平面外へ押し出すことを防ぐ。
+        if (!m_volumetric && collider.shape == FluidColliderShape::Box) {
+            m_colliders.back().size.z = 1.0e6f;
+        }
     }
     m_activeColliders.clear();
     ResolveFluidSourceMasks(m_sources, m_sourceMasks);
-    /// @note 撃ち出し済みの数は «有効な発生源の中での添字» で引き継ぐ。増えた分は 0 から、減った分は捨てる。
+    // 撃ち出し済みの数は «有効な発生源の中での添字» で引き継ぐ。増えた分は 0 から、減った分は捨てる。
     m_emittedPerSource.resize(m_sources.size(), 0);
 }
 
@@ -74,7 +82,7 @@ void FluidLiquidSolver::Reset(const FluidRecipe& recipe, bool volumetric)
 
     m_kernelRadius  = m_particleRadius * 4.0f;
     m_kernelRadiusSquared = m_kernelRadius * m_kernelRadius;
-    /// @note Poly6 / Spiky の係数は次元で違う。流用すると静止密度が狂い、液面が縮むか膨らむ。
+    // Poly6 / Spiky の係数は次元で違う。流用すると静止密度が狂い、液面が縮むか膨らむ。
     if (m_volumetric) {
         m_densityKernelScale         = 315.0f / (64.0f * FLUID_PI * std::pow(m_kernelRadius, 9.0f));
         m_gradientKernelScale = -45.0f / (FLUID_PI * std::pow(m_kernelRadius, 6.0f));
@@ -83,7 +91,7 @@ void FluidLiquidSolver::Reset(const FluidRecipe& recipe, bool volumetric)
         m_gradientKernelScale = -30.0f / (FLUID_PI * std::pow(m_kernelRadius, 5.0f));
     }
 
-    /// @note 粒子を直径間隔で並べて静止密度を測り、解析値と格子の丸めとの差による初期圧縮・膨張を防ぐ。
+    // 粒子を直径間隔で並べて静止密度を測り、解析値と格子の丸めとの差による初期圧縮・膨張を防ぐ。
     const float particleSpacing = 2.0f * m_particleRadius;
     const int kernelReach = static_cast<int>(std::ceil(m_kernelRadius / particleSpacing));
     const int kernelReachZ = m_volumetric ? kernelReach : 0;
@@ -97,7 +105,9 @@ void FluidLiquidSolver::Reset(const FluidRecipe& recipe, bool volumetric)
                 const float dz = static_cast<float>(k) * particleSpacing;
                 const float r2 = dx * dx + dy * dy + dz * dz;
                 density += Poly6(r2);
-                if (i == 0 && j == 0 && k == 0) continue;
+                if (i == 0 && j == 0 && k == 0) {
+                    continue;
+                }
                 const float scale = SpikyGradientScale(std::sqrt(r2));
                 gradientSquaredSum += (scale * dx) * (scale * dx) + (scale * dy) * (scale * dy)
                                  + (scale * dz) * (scale * dz);
@@ -106,7 +116,7 @@ void FluidLiquidSolver::Reset(const FluidRecipe& recipe, bool volumetric)
     }
     m_restDensity = (std::max)(density, 1.0e-6f);
     const float restGradientSum = (std::max)(gradientSquaredSum / (m_restDensity * m_restDensity), 1.0e-12f);
-    /// @note 拘束をわずかに柔らかくする (CFM)。0 だと近傍が 1 つしか無い飛沫で分母が 0 に近づき跳ねる。
+    // 拘束をわずかに柔らかくする (CFM)。0 だと近傍が 1 つしか無い飛沫で分母が 0 に近づき跳ねる。
     m_densityRegularization = 0.01f * restGradientSum;
     m_tensileReference = (std::max)(Poly6((0.2f * m_kernelRadius) * (0.2f * m_kernelRadius)), 1.0e-12f);
     m_tensileScale = TENSILE_STRENGTH / restGradientSum;
@@ -121,8 +131,12 @@ void FluidLiquidSolver::Reset(const FluidRecipe& recipe, bool volumetric)
 /// @note 重力・粘性・まとまり・反復数・寿命は刻みごとに効くだけなので、途中から差し替えてよい。
 bool FluidLiquidSolver::ReplaceOperators(const FluidRecipe& recipe)
 {
-    if (recipe.kind != FluidKind::Liquid) return false;
-    if (std::clamp(recipe.liquid.particleRadius, 0.002f, 0.1f) != m_particleRadius) return false;
+    if (recipe.kind != FluidKind::Liquid) {
+        return false;
+    }
+    if (std::clamp(recipe.liquid.particleRadius, 0.002f, 0.1f) != m_particleRadius) {
+        return false;
+    }
     m_settings = recipe.liquid;
     AdoptOperators(recipe);
     return true;

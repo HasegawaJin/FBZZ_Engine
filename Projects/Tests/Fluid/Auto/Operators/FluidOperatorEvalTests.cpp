@@ -51,7 +51,7 @@ FluidSource MakeSource(FluidSourceShape shape)
         break;
     case FluidSourceShape::Capsule:
     case FluidSourceShape::Cylinder:
-        /// @note R = 0.15、H = 0.4 (上向き)
+        // R = 0.15、H = 0.4 (上向き)
         source.size = { 0.15f, 0.4f, 0.0f };
         break;
     }
@@ -245,7 +245,7 @@ TEST(FluidOperatorEvalTest, SphereWeightMatchesTheLegacyGasFormula)
     EXPECT_FLOAT_EQ(fluid::FluidSourceWeight(source, c, c, 0.01f, true), 1.0f);
     const math::Vector3 points[] = { { 0.2f, -0.1f, 0.0f }, { -0.05f, -0.3f, 0.2f }, { 0.35f, -0.2f, 0.05f } };
     for (const math::Vector3& p : points) {
-        /// @note 旧 FluidGasSolver::Inject の式そのまま。
+        // 旧 FluidGasSolver::Inject の式そのまま。
         const float r = 0.3f;
         const float dx = (p.x - c.x) / r;
         const float dy = (p.y - c.y) / r;
@@ -255,7 +255,7 @@ TEST(FluidOperatorEvalTest, SphereWeightMatchesTheLegacyGasFormula)
         EXPECT_FLOAT_EQ(fluid::FluidSourceWeight(source, c, p, 0.01f, true), expected);
     }
     EXPECT_EQ(fluid::FluidSourceWeight(source, c, { 0.5f, -0.2f, 0.05f }, 0.01f, true), 0.0f);
-    /// @note 格子より小さい球はセル幅まで広げる (広げないと 1 セルにも入らない)。
+    // 格子より小さい球はセル幅まで広げる (広げないと 1 セルにも入らない)。
     FluidSource tiny = source;
     tiny.size = { 0.001f, 0.001f, 0.001f };
     EXPECT_GT(fluid::FluidSourceWeight(tiny, c, { c.x + 0.05f, c.y, c.z }, 0.1f, true), 0.0f);
@@ -280,30 +280,30 @@ TEST(FluidOperatorEvalTest, BoxWeightMatchesTheLegacyGasFormula)
 /// @brief Cone weight opens from the apex along the direction.
 TEST(FluidOperatorEvalTest, ConeWeightOpensFromTheApexAlongTheDirection)
 {
-    /// @note R = 0.2, L = 0.5, 上向き
+    // R = 0.2, L = 0.5, 上向き
     const FluidSource source = MakeSource(FluidSourceShape::Cone);
     const math::Vector3 c = source.center;
     const auto at = [&](float along, float across) {
         return fluid::FluidSourceWeight(source, c, { c.x + across, c.y + along, c.z }, 0.02f, true);
     };
-    /// @note 頂点は minSize の半分の太さを持つ
+    // 頂点は minSize の半分の太さを持つ
     EXPECT_FLOAT_EQ(at(0.0f, 0.0f), 1.0f);
     EXPECT_FLOAT_EQ(at(0.25f, 0.0f), 1.0f);
-    /// @note 底の手前でなめらかに 0 へ
+    // 底の手前でなめらかに 0 へ
     EXPECT_NEAR(at(0.45f, 0.0f), 0.4f, 1.0e-5f);
     EXPECT_GT(at(0.25f, 0.05f), 0.0f);
-    /// @note その高さの許容半径 0.1 の外
+    // その高さの許容半径 0.1 の外
     EXPECT_EQ(at(0.25f, 0.11f), 0.0f);
-    /// @note 頂点の後ろ
+    // 頂点の後ろ
     EXPECT_EQ(at(-0.01f, 0.0f), 0.0f);
-    /// @note 底の先
+    // 底の先
     EXPECT_EQ(at(0.51f, 0.0f), 0.0f);
 }
 
 /// @brief Ring weight peaks on the ring and is empty in the middle.
 TEST(FluidOperatorEvalTest, RingWeightPeaksOnTheRingAndIsEmptyInTheMiddle)
 {
-    /// @note R = 0.4, r = 0.1, 法線は上
+    // R = 0.4, r = 0.1, 法線は上
     const FluidSource source = MakeSource(FluidSourceShape::Ring);
     const math::Vector3 c = source.center;
     EXPECT_FLOAT_EQ(fluid::FluidSourceWeight(source, c, { c.x + 0.4f, c.y, c.z }, 0.01f, true), 1.0f);
@@ -329,7 +329,7 @@ TEST(FluidOperatorEvalTest, SampledPointsLandInsideEveryShape)
     std::vector<FluidSource> sources = { MakeSource(FluidSourceShape::Sphere), MakeSource(FluidSourceShape::Box),
                                          MakeSource(FluidSourceShape::Cone), MakeSource(FluidSourceShape::Ring) };
     FluidSource tiltedCone = MakeSource(FluidSourceShape::Cone);
-    /// @note 傾けても z = center.z の断面が三角形として残る開き
+    // 傾けても z = center.z の断面が三角形として残る開き
     tiltedCone.size = { 0.4f, 0.5f, 0.0f };
     tiltedCone.direction = { 0.3f, 0.8f, 0.5f };
     sources.push_back(tiltedCone);
@@ -337,41 +337,41 @@ TEST(FluidOperatorEvalTest, SampledPointsLandInsideEveryShape)
     sidewaysCone.direction = { -1.0f, 0.2f, 0.0f };
     sources.push_back(sidewaysCone);
     FluidSource flatRing = MakeSource(FluidSourceShape::Ring);
-    /// @note 画面内に寝た輪 (2D では輪帯)
+    // 画面内に寝た輪 (2D では輪帯)
     flatRing.direction = { 0.0f, 0.0f, 1.0f };
     sources.push_back(flatRing);
     FluidSource tiltedRing = MakeSource(FluidSourceShape::Ring);
     tiltedRing.direction = { 0.4f, 0.7f, 0.6f };
     sources.push_back(tiltedRing);
-    /// @note 上向きのカプセル
+    // 上向きのカプセル
     sources.push_back(MakeSource(FluidSourceShape::Capsule));
-    /// @note 上向きの円柱
+    // 上向きの円柱
     sources.push_back(MakeSource(FluidSourceShape::Cylinder));
     for (const FluidSourceShape shape : { FluidSourceShape::Capsule, FluidSourceShape::Cylinder }) {
         FluidSource lying = MakeSource(shape);
-        /// @note 画面内に寝た棒 (2D の断面がいちばん大きい)
+        // 画面内に寝た棒 (2D の断面がいちばん大きい)
         lying.direction = { 1.0f, 0.0f, 0.0f };
         sources.push_back(lying);
         FluidSource tilted = MakeSource(shape);
-        /// @note 奥へ傾けた棒 (2D の断面は細い楕円)
+        // 奥へ傾けた棒 (2D の断面は細い楕円)
         tilted.direction = { 0.3f, 0.5f, 0.8f };
         sources.push_back(tilted);
         FluidSource facing = MakeSource(shape);
-        /// @note 真奥向き (2D の断面は円)
+        // 真奥向き (2D の断面は円)
         facing.direction = { 0.0f, 0.0f, 1.0f };
         sources.push_back(facing);
     }
-    /// @note 正面向きの板
+    // 正面向きの板
     sources.push_back(MakeSource(FluidSourceShape::Texture));
     FluidSource lyingPlate = MakeSource(FluidSourceShape::Texture);
-    /// @note 寝た板 (2D では厚みの帯)
+    // 寝た板 (2D では厚みの帯)
     lyingPlate.direction = { 0.0f, 1.0f, 0.0f };
     sources.push_back(lyingPlate);
     FluidSource tiltedPlate = MakeSource(FluidSourceShape::Texture);
     tiltedPlate.direction = { 0.3f, 0.5f, 0.8f };
     sources.push_back(tiltedPlate);
 
-    /// @note 形の縁 (u = 0 / 1) ちょうどは重み 0 になりうるので、内側の値だけで確かめる。
+    // 形の縁 (u = 0 / 1) ちょうどは重み 0 になりうるので、内側の値だけで確かめる。
     const float us[] = { 0.1f, 0.3f, 0.6f, 0.85f };
     for (std::size_t s = 0; s < sources.size(); ++s) {
         const FluidSource& source = sources[s];
@@ -404,21 +404,21 @@ TEST(FluidOperatorEvalTest, TexturePlateFacesTheViewerByDefault)
     ExpectVectorNear(up, { 0.0f, 1.0f, 0.0f });
     ExpectVectorNear(normal, { 0.0f, 0.0f, 1.0f });
 
-    /// @note 向き 0 は手前向き (Cone / Ring の上向きとは違う)。
+    // 向き 0 は手前向き (Cone / Ring の上向きとは違う)。
     plate.direction = { 0.0f, 0.0f, 0.0f };
     fluid::FluidTextureSourceBasis(plate, right, up, normal);
     ExpectVectorNear(right, { 1.0f, 0.0f, 0.0f });
     ExpectVectorNear(up, { 0.0f, 1.0f, 0.0f });
     ExpectVectorNear(normal, { 0.0f, 0.0f, 1.0f });
 
-    /// @note 真上向きは cross((0,1,0), n) が潰れるので right を x に固定する。
+    // 真上向きは cross((0,1,0), n) が潰れるので right を x に固定する。
     plate.direction = { 0.0f, 3.0f, 0.0f };
     fluid::FluidTextureSourceBasis(plate, right, up, normal);
     ExpectVectorNear(right, { 1.0f, 0.0f, 0.0f });
     ExpectVectorNear(up, { 0.0f, 0.0f, -1.0f });
     ExpectVectorNear(normal, { 0.0f, 1.0f, 0.0f });
 
-    /// @note 横向きの板でも画像の上は y のまま。
+    // 横向きの板でも画像の上は y のまま。
     plate.direction = { 1.0f, 0.0f, 0.0f };
     fluid::FluidTextureSourceBasis(plate, right, up, normal);
     ExpectVectorNear(right, { 0.0f, 0.0f, -1.0f });
@@ -428,16 +428,18 @@ TEST(FluidOperatorEvalTest, TexturePlateFacesTheViewerByDefault)
 /// @brief Texture weight follows the mask.
 TEST(FluidOperatorEvalTest, TextureWeightFollowsTheMask)
 {
-    /// @note 半幅 0.4・半高さ 0.3・厚み 0.05
+    // 半幅 0.4・半高さ 0.3・厚み 0.05
     const FluidSource plate = MakeSource(FluidSourceShape::Texture);
     const math::Vector3 c = plate.center;
     const fluid::FluidSourceMask mask = LeftHalfMask();
-    /// @note 読めていないマスクは 1 (= 板の形)
+    // 読めていないマスクは 1 (= 板の形)
     const fluid::FluidSourceMask missing;
     for (const bool volumetric : { false, true }) {
         for (int i = -9; i <= 9; ++i) {
-            /// @note 左右の境目は双線形で混ざる
-            if (i == 0) continue;
+            // 左右の境目は双線形で混ざる
+            if (i == 0) {
+                continue;
+            }
             for (const float y : { -0.2f, 0.0f, 0.2f }) {
                 const math::Vector3 p = { c.x + 0.04f * static_cast<float>(i), c.y + y, c.z };
                 const float weight = fluid::FluidTextureSourceWeight(plate, c, p, 0.01f, volumetric, mask);
@@ -452,7 +454,7 @@ TEST(FluidOperatorEvalTest, TextureWeightFollowsTheMask)
             }
         }
     }
-    /// @note 板の外 (横と厚み)。2D は奥行きを見ないので厚みの外でも湧く。
+    // 板の外 (横と厚み)。2D は奥行きを見ないので厚みの外でも湧く。
     EXPECT_EQ(fluid::FluidTextureSourceWeight(plate, c, { c.x - 0.45f, c.y, c.z }, 0.01f, true, mask), 0.0f);
     EXPECT_EQ(fluid::FluidTextureSourceWeight(plate, c, { c.x - 0.2f, c.y + 0.31f, c.z }, 0.01f, true, mask), 0.0f);
     EXPECT_EQ(fluid::FluidTextureSourceWeight(plate, c, { c.x - 0.2f, c.y, c.z + 0.06f }, 0.01f, true, mask), 0.0f);
@@ -480,10 +482,10 @@ TEST(FluidOperatorEvalTest, TextureSamplingRejectsWhereTheMaskIsEmpty)
                             EXPECT_EQ(point.z, plate.center.z);
                         }
                     } else {
-                        /// @note マスク 0 は accept が 0 でも外れる。
+                        // マスク 0 は accept が 0 でも外れる。
                         EXPECT_FALSE(accepted) << u0 << "," << u1 << "," << u2;
                     }
-                    /// @note 画像が無ければ accept が 1 の手前でも必ず通る。
+                    // 画像が無ければ accept が 1 の手前でも必ず通る。
                     EXPECT_TRUE(fluid::SampleFluidTextureSourcePoint(plate, plate.center, missing, u0, u1, u2,
                                                                      0.999f, volumetric, point));
                 }
@@ -518,40 +520,40 @@ TEST(FluidOperatorEvalTest, ColliderPoseAndWindowFollowTheSourceRules)
 /// @brief Collider distance is signed and crosses zero on the surface.
 TEST(FluidOperatorEvalTest, ColliderDistanceIsSignedAndCrossesZeroOnTheSurface)
 {
-    /// @note 半径 0.3
+    // 半径 0.3
     const FluidCollider sphere = MakeCollider(FluidColliderShape::Sphere);
     EXPECT_NEAR(Distance(sphere, { 0.0f, 0.0f, 0.0f }), -0.3f, 1.0e-6f);
     EXPECT_NEAR(Distance(sphere, { 0.3f, 0.0f, 0.0f }), 0.0f, 1.0e-6f);
     EXPECT_LT(Distance(sphere, { 0.29f, 0.0f, 0.0f }), 0.0f);
     EXPECT_GT(Distance(sphere, { 0.31f, 0.0f, 0.0f }), 0.0f);
     EXPECT_NEAR(Distance(sphere, { 0.0f, -0.5f, 0.0f }), 0.2f, 1.0e-6f);
-    /// @note セル幅より小さい障害物は minSize まで広げる。
+    // セル幅より小さい障害物は minSize まで広げる。
     FluidCollider tiny = sphere;
     tiny.size = { 0.001f, 0.001f, 0.001f };
     EXPECT_LT(Distance(tiny, { 0.05f, 0.0f, 0.0f }, true, 0.1f), 0.0f);
 
-    /// @note 半分 (0.3, 0.2, 0.25)
+    // 半分 (0.3, 0.2, 0.25)
     const FluidCollider box = MakeCollider(FluidColliderShape::Box);
     EXPECT_NEAR(Distance(box, { 0.0f, 0.0f, 0.0f }), -0.2f, 1.0e-6f);
     EXPECT_NEAR(Distance(box, { 0.3f, 0.0f, 0.0f }), 0.0f, 1.0e-6f);
     EXPECT_LT(Distance(box, { 0.0f, 0.19f, 0.0f }), 0.0f);
     EXPECT_GT(Distance(box, { 0.0f, 0.21f, 0.0f }), 0.0f);
     EXPECT_NEAR(Distance(box, { 0.4f, 0.0f, 0.0f }), 0.1f, 1.0e-6f);
-    /// @note 角の外は角までの距離
+    // 角の外は角までの距離
     EXPECT_NEAR(Distance(box, { 0.4f, 0.3f, 0.0f }), std::sqrt(0.02f), 1.0e-5f);
 
-    /// @note 法線 +y (長さは問わない)
+    // 法線 +y (長さは問わない)
     FluidCollider plane = MakeCollider(FluidColliderShape::Plane);
     EXPECT_NEAR(Distance(plane, { 0.3f, 0.4f, 0.0f }), 0.4f, 1.0e-6f);
     EXPECT_NEAR(Distance(plane, { 5.0f, -0.1f, 3.0f }), -0.1f, 1.0e-6f);
     EXPECT_NEAR(Distance(plane, { 5.0f, 0.0f, -2.0f }), 0.0f, 1.0e-6f);
     plane.direction = { 1.0f, 1.0f, 0.0f };
     EXPECT_NEAR(Distance(plane, { 1.0f, 0.0f, 0.0f }), std::sqrt(0.5f), 1.0e-5f);
-    /// @note 長さ 0 は上向き
+    // 長さ 0 は上向き
     plane.direction = { 0.0f, 0.0f, 0.0f };
     EXPECT_NEAR(Distance(plane, { 0.0f, -0.25f, 0.0f }), -0.25f, 1.0e-6f);
 
-    /// @note 2D は奥行きの差を見ない (z = center.z の断面の円)。
+    // 2D は奥行きの差を見ない (z = center.z の断面の円)。
     EXPECT_NEAR(Distance(sphere, { 0.2f, 0.0f, 5.0f }, false), -0.1f, 1.0e-6f);
     EXPECT_GT(Distance(sphere, { 0.2f, 0.0f, 5.0f }, true), 0.0f);
     EXPECT_LT(Distance(box, { 0.1f, 0.1f, 5.0f }, false), 0.0f);
@@ -563,14 +565,14 @@ TEST(FluidOperatorEvalTest, ColliderNormalsPointOutOfTheSurface)
     const FluidCollider sphere = MakeCollider(FluidColliderShape::Sphere);
     ExpectVectorNear(Normal(sphere, { 0.5f, 0.0f, 0.0f }), { 1.0f, 0.0f, 0.0f });
     ExpectVectorNear(Normal(sphere, { 0.0f, -0.1f, 0.0f }), { 0.0f, -1.0f, 0.0f });
-    /// @note 中心は上へ倒す
+    // 中心は上へ倒す
     ExpectVectorNear(Normal(sphere, { 0.0f, 0.0f, 0.0f }), { 0.0f, 1.0f, 0.0f });
     const float diagonal = std::sqrt(0.5f);
 
     const FluidCollider box = MakeCollider(FluidColliderShape::Box);
     ExpectVectorNear(Normal(box, { 0.4f, 0.0f, 0.0f }), { 1.0f, 0.0f, 0.0f });
     ExpectVectorNear(Normal(box, { 0.4f, 0.3f, 0.0f }), { diagonal, diagonal, 0.0f });
-    /// @note 中では最も浅い面の向き。
+    // 中では最も浅い面の向き。
     ExpectVectorNear(Normal(box, { 0.25f, 0.05f, 0.0f }), { 1.0f, 0.0f, 0.0f });
     ExpectVectorNear(Normal(box, { -0.25f, 0.0f, 0.0f }), { -1.0f, 0.0f, 0.0f });
     ExpectVectorNear(Normal(box, { 0.0f, -0.15f, 0.0f }), { 0.0f, -1.0f, 0.0f });
@@ -581,7 +583,7 @@ TEST(FluidOperatorEvalTest, ColliderNormalsPointOutOfTheSurface)
     plane.direction = { 1.0f, 1.0f, 0.0f };
     ExpectVectorNear(Normal(plane, { 0.0f, 0.0f, 0.0f }), { diagonal, diagonal, 0.0f });
 
-    /// @note 2D は z を落として正規化し直す。潰れたら上向き。
+    // 2D は z を落として正規化し直す。潰れたら上向き。
     ExpectVectorNear(Normal(sphere, { 0.2f, 0.0f, 5.0f }, false), { 1.0f, 0.0f, 0.0f });
     ExpectVectorNear(Normal(box, { 0.4f, 0.0f, 0.5f }, false), { 1.0f, 0.0f, 0.0f });
     plane.direction = { 0.0f, 0.0f, 1.0f };
@@ -607,10 +609,10 @@ TEST(FluidOperatorEvalTest, WindPushesAlongItsDirection)
     EXPECT_NEAR(dv.x, 0.3f, 1.0e-6f);
     EXPECT_EQ(dv.y, 0.0f);
     EXPECT_EQ(dv.z, 0.0f);
-    /// @note 向きが 0 なら x 軸へ倒す。
+    // 向きが 0 なら x 軸へ倒す。
     wind.direction = { 0.0f, 0.0f, 0.0f };
     EXPECT_NEAR(Delta(wind, { 0.0f, 0.0f, 0.0f }, { 0.0f, 0.0f, 0.0f }, true).x, 0.3f, 1.0e-6f);
-    /// @note 強さ 0 は何もしない。
+    // 強さ 0 は何もしない。
     wind.strength = 0.0f;
     EXPECT_EQ(Length(Delta(wind, { 0.0f, 0.0f, 0.0f }, { 0.0f, 0.0f, 0.0f }, true)), 0.0f);
 }
@@ -624,14 +626,14 @@ TEST(FluidOperatorEvalTest, AttractAndRepulsePointTowardAndAwayFromTheCenter)
     EXPECT_NEAR(attract.x, -0.2f, 1.0e-6f);
     EXPECT_NEAR(repulse.x, 0.2f, 1.0e-6f);
     EXPECT_EQ(attract.y, 0.0f);
-    /// @note 中心ちょうどでは向きが決まらないので 0。
+    // 中心ちょうどでは向きが決まらないので 0。
     EXPECT_EQ(Length(Delta(MakeForce(FluidForceType::Attract), { 0.0f, 0.0f, 0.0f }, { 0.0f, 0.0f, 0.0f }, true)), 0.0f);
 }
 
 /// @brief Checks vortex turns counter clockwise around its axis.
 TEST(FluidOperatorEvalTest, VortexTurnsCounterClockwiseAroundItsAxis)
 {
-    /// @note 2D の軸は常に画面の奥行き
+    // 2D の軸は常に画面の奥行き
     const FluidForce vortex = MakeForce(FluidForceType::Vortex);
     const math::Vector3 flat = Delta(vortex, { 0.5f, 0.0f, 0.0f }, { 0.0f, 0.0f, 0.0f }, false);
     EXPECT_NEAR(flat.x, 0.0f, 1.0e-6f);
@@ -642,10 +644,10 @@ TEST(FluidOperatorEvalTest, VortexTurnsCounterClockwiseAroundItsAxis)
     FluidForce upright = vortex;
     upright.direction = { 0.0f, 1.0f, 0.0f };
     const math::Vector3 volume = Delta(upright, { 0.5f, 0.0f, 0.0f }, { 0.0f, 0.0f, 0.0f }, true);
-    /// @note cross(+y, +x) = −z
+    // cross(+y, +x) = −z
     EXPECT_NEAR(volume.z, -0.2f, 1.0e-6f);
     EXPECT_NEAR(volume.y, 0.0f, 1.0e-6f);
-    /// @note 軸の上では回す向きが無い。
+    // 軸の上では回す向きが無い。
     EXPECT_EQ(Length(Delta(upright, { 0.0f, 0.7f, 0.0f }, { 0.0f, 0.0f, 0.0f }, true)), 0.0f);
 }
 
@@ -666,7 +668,7 @@ TEST(FluidOperatorEvalTest, NoiseFollowsTheCurlNoiseFormula)
     EXPECT_NEAR(dv.y, curl.y * 2.0f * 0.1f, 1.0e-4f);
     EXPECT_NEAR(dv.z, curl.z * 2.0f * 0.1f, 1.0e-4f);
     EXPECT_GT(Length(dv), 0.0f);
-    /// @note 部品の添字がずれればノイズの切り出し位置も変わる。
+    // 部品の添字がずれればノイズの切り出し位置も変わる。
     const math::Vector3 other = fluid::FluidForceDelta(noise, noise.center, p, { 0.0f, 0.0f, 0.0f }, 0.7f, 0.1f,
                                                        offset, 3, true, 1.0f);
     EXPECT_GT(Length(dv - other), 0.0f);
@@ -681,10 +683,10 @@ TEST(FluidOperatorEvalTest, DragNeverOvershoots)
     for (const float dt : { 0.001f, 0.1f, 1.0f, 100.0f }) {
         const math::Vector3 after = v + Delta(drag, { 0.1f, 0.1f, 0.1f }, v, true, dt);
         EXPECT_LE(Length(after), Length(v) + 1.0e-6f) << dt;
-        /// @note 向きは保ったまま縮む (振り戻して逆向きにならない)。
+        // 向きは保ったまま縮む (振り戻して逆向きにならない)。
         EXPECT_GE(after.x * v.x + after.y * v.y + after.z * v.z, 0.0f) << dt;
     }
-    /// @note 負の強さは «加速» にしない。
+    // 負の強さは «加速» にしない。
     drag.strength = -5.0f;
     EXPECT_EQ(Length(Delta(drag, { 0.1f, 0.1f, 0.1f }, v, true, 0.5f)), 0.0f);
 }
@@ -710,7 +712,7 @@ TEST(FluidOperatorEvalTest, InfluenceFallsOffWithTheRadius)
     EXPECT_NEAR(atHalf, 0.2f * 0.25f, 1.0e-6f);
     EXPECT_EQ(Delta(wind, { 1.0f, 0.0f, 0.0f }, zero, true).x, 0.0f);
     EXPECT_EQ(Delta(wind, { 0.0f, 1.5f, 0.0f }, zero, true).x, 0.0f);
-    /// @note 2D は奥行きの差を距離に数えない。
+    // 2D は奥行きの差を距離に数えない。
     EXPECT_NEAR(Delta(wind, { 0.5f, 0.0f, 3.0f }, zero, false).x, atHalf, 1.0e-6f);
 }
 
@@ -752,10 +754,10 @@ TEST(FluidOperatorEvalTest, GasVortexForceStirsTheGrid)
     for (int i = 0; i < 4; ++i) stirred.Step(1.0f / 30.0f);
 
     EXPECT_NEAR(InnerCurl(still), 0.0f, 1.0e-6f);
-    /// @note 正の強さは反時計回り = 正の渦度
+    // 正の強さは反時計回り = 正の渦度
     EXPECT_GT(InnerCurl(stirred), 1.0f);
 
-    /// @note 切ってある力は効かない。
+    // 切ってある力は効かない。
     recipe.forces[0].enabled = false;
     fluid::FluidGasSolver disabled;
     disabled.Reset(recipe, 32, 32, 1);
@@ -794,7 +796,7 @@ TEST(FluidOperatorEvalTest, LiquidWindForcePushesTheParticles)
 
     ASSERT_FALSE(calm.Particles().empty());
     ASSERT_FALSE(windy.Particles().empty());
-    /// @note 0.3 秒・加速度 4 なら ½·4·0.3² = 0.18 ずれる。床の摩擦で目減りする分を見込む。
+    // 0.3 秒・加速度 4 なら ½·4·0.3² = 0.18 ずれる。床の摩擦で目減りする分を見込む。
     EXPECT_GT(MeanX(windy), MeanX(calm) + 0.05f);
     for (const auto& particle : windy.Particles()) EXPECT_EQ(particle.z, 0.0f);
 }
@@ -818,7 +820,7 @@ TEST(FluidOperatorEvalTest, EmitScaleWidensOnlyACrowdedSource)
     crowded.count = 600;
     const float scale = fluid::FluidLiquidEmitScale(crowded, liquid, false);
     EXPECT_GT(scale, 1.0f);
-    /// @note 600 粒を静止密度の 2 倍まで詰めて置く面積は (600/2) × (2r)²。半径はその比の平方根だけ広がる。
+    // 600 粒を静止密度の 2 倍まで詰めて置く面積は (600/2) × (2r)²。半径はその比の平方根だけ広がる。
     const float spacing = 2.0f * liquid.particleRadius;
     const float needed = 300.0f * spacing * spacing;
     const float area = 3.14159265f * crowded.size.x * crowded.size.x;
@@ -828,7 +830,7 @@ TEST(FluidOperatorEvalTest, EmitScaleWidensOnlyACrowdedSource)
 /// @brief Emit scale is the size the solver actually emits into.
 TEST(FluidOperatorEvalTest, EmitScaleIsTheSizeTheSolverActuallyEmitsInto)
 {
-    /// @note Inspector に出す «実際に湧く大きさ» がソルバーの中の広げ方とずれていないことを見る。
+    // Inspector に出す «実際に湧く大きさ» がソルバーの中の広げ方とずれていないことを見る。
     fluid::FluidRecipe recipe;
     recipe.kind = fluid::FluidKind::Liquid;
     recipe.liquid.floor = false;
@@ -853,7 +855,7 @@ TEST(FluidOperatorEvalTest, EmitScaleIsTheSizeTheSolverActuallyEmitsInto)
     float farthest = 0.0f;
     for (const auto& particle : solver.Particles())
         farthest = (std::max)(farthest, std::sqrt(particle.x * particle.x + particle.y * particle.y));
-    /// @note 600 粒を一様に撒けば縁まで届く。密度拘束の押し出し (1 反復で粒子半径の半分まで) の分を見込む。
+    // 600 粒を一様に撒けば縁まで届く。密度拘束の押し出し (1 反復で粒子半径の半分まで) の分を見込む。
     EXPECT_GT(farthest, fitted * 0.8f);
     EXPECT_LT(farthest, fitted + 4.0f * solver.ParticleRadius());
 }

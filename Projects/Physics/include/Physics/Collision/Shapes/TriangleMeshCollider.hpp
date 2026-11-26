@@ -20,8 +20,8 @@ namespace fbzz::physics
     {
     public:
         /// @brief 頂点位置リストとインデックスリスト (三角形ごとに 3 つ) から BVH を構築する。
-        /// @param positions ローカル空間の頂点位置。
-        /// @param indices   三角形インデックス。3 の倍数でない端数は捨てる。
+        /// @param[in] positions ローカル空間の頂点位置。
+        /// @param[in] indices   三角形インデックス。3 の倍数でない端数は捨てる。
         FBZZ_PHYSICS_API TriangleMeshCollider(const std::vector<math::Vector3>& positions,
                              const std::vector<uint32_t>&      indices);
 
@@ -43,14 +43,14 @@ namespace fbzz::physics
 
     private:
         std::vector<math::Vector3> m_localPositions; ///< @note ローカル空間頂点 (スケール前)
-        std::vector<uint32_t>      m_indices;
+        std::vector<uint32_t>      m_indices; ///< 局所頂点を 3 個ずつ参照する三角形の添字。
 
-        BVHTree       m_bvh;
-        AABB          m_worldAABB;
+        BVHTree       m_bvh; ///< 三角形を問い合わせるワールド空間の BVH。
+        AABB          m_worldAABB; ///< 更新済み三角形メッシュ全体のワールド境界 [m]。
 
-        math::Vector3    m_lastPos;
-        math::Quaternion m_lastRot;
-        math::Vector3    m_lastScale = {1.0f, 1.0f, 1.0f};
+        math::Vector3    m_lastPos; ///< BVH に最後に反映したワールド位置 [m]。
+        math::Quaternion m_lastRot; ///< BVH に最後に反映したワールド姿勢。
+        math::Vector3    m_lastScale = {1.0f, 1.0f, 1.0f}; ///< BVH に最後に反映した軸別スケール。
 
         FBZZ_PHYSICS_API void RebuildBVH(const math::Vector3&    pos,
                         const math::Quaternion& rot,

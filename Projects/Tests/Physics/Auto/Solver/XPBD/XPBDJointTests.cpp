@@ -45,7 +45,7 @@ struct JointRig {
 
         auto owned = std::make_unique<physics::XPBDJoint>(parent.get(), child.get());
         joint = owned.get();
-        /// @note 関節はワールド原点、フレームは «X が骨の向き» ＝ 無回転でよい。
+        // 関節はワールド原点、フレームは «X が骨の向き» ＝ 無回転でよい。
         joint->Build(math::Vector3::ZERO, math::Quaternion::Identity());
         solver.AddConstraint(std::move(owned));
     }
@@ -107,7 +107,7 @@ TEST_F(XPBDJointTest, LimplessJointHangsStraightDown)
     rig.Damp();
     rig.Simulate(600);
 
-    /// @note ほぼ π/2
+    // ほぼ π/2
     EXPECT_GT(rig.DroopAngle(), 1.4f);
     EXPECT_LT(rig.SocketError(), 1.0e-3f);
 }
@@ -119,7 +119,7 @@ TEST_F(XPBDJointTest, SwingLimitStopsTheBone)
     JointRig rig;
     auto& limits = rig.joint->Limits();
     limits.enabled   = true;
-    /// @note 下へ垂れるのは Z 軸まわりの負回転
+    // 下へ垂れるのは Z 軸まわりの負回転
     limits.swingMinZ = -0.30f;
     limits.swingMaxZ = 0.30f;
     limits.swingMinY = -0.05f;
@@ -142,9 +142,9 @@ TEST_F(XPBDJointTest, AsymmetricSwingLimitIsRespected)
     JointRig rig;
     auto& limits = rig.joint->Limits();
     limits.enabled   = true;
-    /// @note 下へは 1 度も曲がらない
+    // 下へは 1 度も曲がらない
     limits.swingMinZ = 0.0f;
-    /// @note 上へは大きく曲がる
+    // 上へは大きく曲がる
     limits.swingMaxZ = 1.20f;
     limits.swingMinY = -0.05f;
     limits.swingMaxY = 0.05f;
@@ -183,7 +183,7 @@ TEST_F(XPBDJointTest, TorqueLimitMakesTheDriveGiveWay)
     drive.enabled    = true;
     drive.compliance = 1.0e-5f;
     drive.damping    = 20.0f;
-    /// @note 水平で支えるのに要るトルクは m·g·L = 9.81 N·m。その 1/5 しか出せない。
+    // 水平で支えるのに要るトルクは m·g·L = 9.81 N·m。その 1/5 しか出せない。
     drive.maxTorque  = 2.0f;
 
     rig.Damp();
@@ -235,10 +235,10 @@ TEST_F(XPBDJointTest, SaturatedDriveMovesTowardTheBalanceFromBothSides)
         return rig.DroopAngle();
     };
 
-    /// @note 釣り合いより «上» に置くと、2 N·m では支え切れずに落ちる。
+    // 釣り合いより «上» に置くと、2 N·m では支え切れずに落ちる。
     EXPECT_GT(settle(balance - 0.40f), balance - 0.40f);
-    /// @note «下» に置くと、必要トルクが 2 N·m を下回るので余った分で持ち上がる。
-    ///       真下 (π/2) を越えると重力トルクの符号が変わるので、それより手前に置く。
+    // «下» に置くと、必要トルクが 2 N·m を下回るので余った分で持ち上がる。
+    // 真下 (π/2) を越えると重力トルクの符号が変わるので、それより手前に置く。
     EXPECT_LT(settle(balance + 0.15f), balance + 0.15f);
 }
 
@@ -283,7 +283,7 @@ TEST_F(XPBDJointTest, DriveFollowsAMovingTarget)
     drive.compliance = 1.0e-5f;
     drive.damping    = 20.0f;
 
-    /// @note 関節フレーム Z 軸まわりに +0.5 rad ＝ 骨を上へ持ち上げる目標。
+    // 関節フレーム Z 軸まわりに +0.5 rad ＝ 骨を上へ持ち上げる目標。
     drive.target = math::Quaternion::FromAxisAngle(math::Vector3::FORWARD, 0.5f);
     rig.Simulate(180);
 
@@ -303,7 +303,7 @@ TEST_F(XPBDJointTest, TwistLimitStopsRotationAboutTheBone)
     limits.swingMinZ = -2.0f;
     limits.swingMaxZ = 2.0f;
 
-    /// @note 骨の軸まわりに回し続ける。制限が効かなければ 1 回転してしまう。
+    // 骨の軸まわりに回し続ける。制限が効かなければ 1 回転してしまう。
     rig.Damp();
     rig.child->SetAngularVelocity({ 6.0f, 0.0f, 0.0f });
     rig.Simulate(120);
@@ -319,8 +319,8 @@ TEST_F(XPBDJointTest, TwistLimitStopsRotationAboutTheBone)
 /// @brief Reports the parent joint frame following the parent rotation.
 TEST_F(XPBDJointTest, ReportsTheParentJointFrameFollowingTheParentRotation)
 {
-    /// @note Build() は «今の姿勢» をたわみ 0 に据える。ワールド版が組み立て時の値を返すと、
-    ///       可動域の角錐が体に付いて回らず、原点に取り残された図になる。
+    // Build() は «今の姿勢» をたわみ 0 に据える。ワールド版が組み立て時の値を返すと、
+    // 可動域の角錐が体に付いて回らず、原点に取り残された図になる。
     JointRig               rig;
     const math::Quaternion turn = math::Quaternion::FromAxisAngle(math::Vector3::UP, 1.0f);
 
@@ -344,8 +344,8 @@ TEST_F(XPBDJointTest, ReportsTheChildJointFrameFollowingTheChildRotation)
 /// @brief Exposes the same limits and drive through const access.
 TEST_F(XPBDJointTest, ExposesTheSameLimitsAndDriveThroughConstAccess)
 {
-    /// @note const 版が値のコピーを返すと «設定したのに表示は初期値» になり、調整している側からは
-    ///       可動域を書き換えても効いていないようにしか見えない。
+    // const 版が値のコピーを返すと «設定したのに表示は初期値» になり、調整している側からは
+    // 可動域を書き換えても効いていないようにしか見えない。
     JointRig rig;
     rig.joint->Limits().twistMax = 0.75f;
     rig.joint->Drive().maxTorque = 12.0f;

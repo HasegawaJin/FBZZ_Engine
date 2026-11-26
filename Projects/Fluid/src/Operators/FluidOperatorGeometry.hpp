@@ -26,15 +26,17 @@ inline constexpr float MIN_DIRECTION_LENGTH_SQUARED = 1.0e-12f;
 [[nodiscard]] inline math::Vector3 NormalizeOr(const math::Vector3& vector, const math::Vector3& fallback)
 {
     const float lengthSq = ScalarDot(vector, vector);
-    if (lengthSq < MIN_DIRECTION_LENGTH_SQUARED) return fallback;
+    if (lengthSq < MIN_DIRECTION_LENGTH_SQUARED) {
+        return fallback;
+    }
     return vector * (1.0f / std::sqrt(lengthSq));
 }
 
 /// @note 芯の線分 center ± axis × half と、その周りの肉の半径。
 struct SegmentFrame {
-    math::Vector3 axis{ 0.0f, 1.0f, 0.0f };
-    float radius = 0.0f;
-    float halfLength = 0.0f;
+    math::Vector3 axis{ 0.0f, 1.0f, 0.0f }; ///< 形状中心から線分の正方向を向く単位ベクトル。
+    float radius = 0.0f; ///< 線分から境界までの半径。
+    float halfLength = 0.0f; ///< 線分中心から端点までの距離。
 };
 
 /// @note z = center.z の断面を測るための面内の枠。α = 面内の軸方向、β = それに直交する向き。
@@ -42,10 +44,10 @@ struct SegmentFrame {
 /// @note 芯への距離は «中ほど (|α s| <= H) なら √(α²k² + β²)»、«端を過ぎたら √((|α| − H s)² + β² + H²k²)»。
 /// @note 傾いた棒を平面で切ると細い楕円になり、寝かせれば «2D のカプセル» になる — その両方をこの式が持つ。
 struct FlatSegment {
-    math::Vector3 along{ 1.0f, 0.0f, 0.0f };
-    math::Vector3 across{ 0.0f, 1.0f, 0.0f };
-    float planar = 0.0f;   ///< @note s
-    float depth = 1.0f;    ///< @note k
+    math::Vector3 along{ 1.0f, 0.0f, 0.0f }; ///< 投影面内で線分に平行な単位ベクトル。
+    math::Vector3 across{ 0.0f, 1.0f, 0.0f }; ///< 投影面内で線分と直交する単位ベクトル。
+    float planar = 0.0f; ///< 線分軸のうち投影面に平行な成分の長さ。
+    float depth = 1.0f; ///< 線分軸のうち投影面に垂直な成分の大きさ。
     float extent = 0.0f;   ///< @note |α| の上限 (断面の端)
 };
 

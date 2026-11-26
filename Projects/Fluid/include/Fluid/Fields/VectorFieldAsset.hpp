@@ -3,11 +3,9 @@
 /// @author  Hasegawa Jin
 /// @date    2026-09-11
 
-/// @note 場をアセットにするのは、ForceField が Wind / Vortex / Turbulence … と «式» を 1 つずつ
-/// @note enum へ足してきたため。竜巻・磁気パルス・魔法陣のように «その形にしか無い流れ» は式では
-/// @note 書けず、足すたびにフィールドと HLSL の分岐が増える。焼いたグリッドを 1 枚標本化する形に
-/// @note すれば、どんな流れでも型の変更なしに表現でき、粒子以外 (草・煙・布) も同じ場を共有できる。
-/// @note ファイル (速度場 PNG / .fga) の読み書きは Engine の VectorFieldFile。ここは «格子と式» だけ。
+///
+/// @note 流れを格子に焼いておくと、力場の種類やシェーダーの分岐を追加せずに粒子・草・煙・布で同じ場を標本化できる。
+/// @note 速度場 PNG と FGA の読み書きは Engine の VectorFieldFile が担当する。
 /// @see Docs/design/fluid-library.md
 #pragma once
 #include <Fluid/Api.hpp>
@@ -72,16 +70,13 @@ enum class VectorFieldRecipe : uint8_t {
 /// @note 取り込みを終えた時点で data は **kVelocityFieldTileResolution³ かつ量子化済み**。
 /// @note GPU が RGBA8 から復元するのと同じ値が入っているので、CPU と GPU は必ず同じ場を見る。
 struct VectorFieldAsset {
-    uint32_t sizeX = 0;
-    uint32_t sizeY = 0;
-    uint32_t sizeZ = 0;
-    /// @brief 場のローカル AABB。GameObject の Transform でワールドへ運ぶ。
-    math::Vector3 boundsMin = { -1.0f, -1.0f, -1.0f };
-    math::Vector3 boundsMax = {  1.0f,  1.0f,  1.0f };
-    /// @brief x が最も速く変わる順 (index = (z * sizeY + y) * sizeX + x)。
-    std::vector<math::Vector3> data;
-    /// @brief RGBA8 へ詰めるときの正規化係数。復元は (rgb * 2 - 1) * maxMagnitude。
-    float maxMagnitude = 1.0f;
+    uint32_t sizeX = 0; ///< ベクトル場の X 軸方向の格子点数。
+    uint32_t sizeY = 0; ///< ベクトル場の Y 軸方向の格子点数。
+    uint32_t sizeZ = 0; ///< ベクトル場の Z 軸方向の格子点数。
+    math::Vector3 boundsMin = { -1.0f, -1.0f, -1.0f }; ///< 場のローカル AABB。GameObject の Transform でワールドへ運ぶ。
+    math::Vector3 boundsMax = {  1.0f,  1.0f,  1.0f }; ///< ベクトル場の局所座標範囲の最大点。
+    std::vector<math::Vector3> data; ///< x が最も速く変わる順 (index = (z * sizeY + y) * sizeX + x)。
+    float maxMagnitude = 1.0f; ///< RGBA8 へ詰めるときの正規化係数。復元は (rgb * 2 - 1) * maxMagnitude。
 
     [[nodiscard]] bool Empty() const { return data.empty() || sizeX == 0 || sizeY == 0 || sizeZ == 0; }
     [[nodiscard]] size_t Index(uint32_t x, uint32_t y, uint32_t z) const
@@ -90,17 +85,26 @@ struct VectorFieldAsset {
     }
 
     /// @brief ローカル座標をトリリニア補間で標本化する。
-    /// @return AABB の外はゼロ。場の外へ出た粒子が縁の値を引きずり続けないため。
+    /// @param[in] localPosition boundsMin および boundsMax と同じ座標系での標本位置。有限値を渡す。
+    /// @return 局所座標系での速度。格子が空、AABB のいずれかの辺が 1e-6 以下、または標本位置が範囲外ならゼロ。
+    /// @note AABB の境界は標本化に含める。場の外で縁の速度が残らないよう、外側はゼロを返す。
     [[nodiscard]] FBZZ_FLUID_API math::Vector3 SampleLocal(const math::Vector3& localPosition) const;
 };
 
 /// @brief レシピからグリッドを焼く。
+/// @param[in] recipe 局所座標から速度を生成する手続き。
+/// @param[in] resolution 格子の 1 辺の点数。2 から kMaxVectorFieldResolution に収める。
+/// @param[in] extents 原点から AABB の端までの局所距離。各成分の絶対値を使う。
+/// @param[in] seed 手続きノイズの標本位置を決める種。
+/// @param[in] strength 焼き込む速度の倍率。
+/// @param[out] outField 焼いた速度格子で置き換える。
 /// @note 解像度も量子化もここでは揃えない (呼び出し側が保存し、取り込みで NormalizeVectorField が通る)。
 FBZZ_FLUID_API void BakeVectorField(VectorFieldRecipe recipe, uint32_t resolution,
                      const math::Vector3& extents, uint32_t seed, float strength,
                      VectorFieldAsset& outField);
 
 /// @brief 取り込み直後の場を «エンジンが扱う形» へ揃える。
+/// @param[in,out] field 取り込んだ格子。現在の速度を標本化し、格子解像度と量子化後の値を更新する。
 /// @note 1. kVelocityFieldTileResolution³ へトリリニアでリサンプルし、
 /// @note 2. 最大長で正規化して RGBA8 相当へ量子化し、復元される値を data へ書き戻す。
 /// @note GPU に載せる瞬間ではなく取り込みで揃えることで «GPU で使い始めた途端に CPU の軌跡も

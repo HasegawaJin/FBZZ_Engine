@@ -34,7 +34,7 @@ TEST_F(AABBTest, OverlapsIsTrueForBoxesThatShareVolume)
 /// @brief Overlaps treats touching faces as overlapping.
 TEST_F(AABBTest, OverlapsTreatsTouchingFacesAsOverlapping)
 {
-    /// @note 境界は閉区間。ちょうど面が接している状態を «重なっている» 側に倒す。
+    // 境界は閉区間。ちょうど面が接している状態を «重なっている» 側に倒す。
     const physics::AABB a = Box(math::Vector3::ZERO, 1.0f);
     const physics::AABB b = Box(math::Vector3(2.0f, 0.0f, 0.0f), 1.0f);
 
@@ -56,8 +56,8 @@ TEST_F(AABBTest, OverlapsIsFalseWhenSeparatedOnTheYAxis)
 /// @brief Overlaps is `false` when separated on the Z axis.
 TEST_F(AABBTest, OverlapsIsFalseWhenSeparatedOnTheZAxis)
 {
-    /// @note 1 軸でも離れていれば非重なり。3 軸それぞれを別のテストにしているのは、
-    ///       判定式の軸を書き間違えたときに «どの軸か» がテスト名で分かるようにするため。
+    // 1 軸でも離れていれば非重なり。3 軸それぞれを別のテストにしているのは、
+    // 判定式の軸を書き間違えたときに «どの軸か» がテスト名で分かるようにするため。
     EXPECT_FALSE(Box(math::Vector3::ZERO, 1.0f).Overlaps(Box(math::Vector3(0.0f, 0.0f, 2.1f), 1.0f)));
 }
 

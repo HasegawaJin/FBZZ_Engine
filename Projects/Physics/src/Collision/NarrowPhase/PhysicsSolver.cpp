@@ -14,8 +14,8 @@ namespace fbzz::physics
     {
         struct ContactManifold
         {
-            ContactPoint points[4];
-            int count = 0;
+            ContactPoint points[4]; ///< 同じ形状ペアから生成した接触点を格納する固定長配列。
+            int count = 0; ///< points の先頭から使用中の接触点数。
         };
 
         void AddManifoldPoint(ContactManifold& manifold, const ContactPoint& base,
@@ -31,6 +31,7 @@ namespace fbzz::physics
         {
             constexpr float EPS = 1e-5f;
 
+            // 両箱が重なる範囲から、接触法線に垂直な長方形の端を求める。
             ContactManifold manifold;
             const float minX = std::max(aabbA.min.x, aabbB.min.x);
             const float maxX = std::min(aabbA.max.x, aabbB.max.x);
@@ -69,29 +70,38 @@ namespace fbzz::physics
                 {
                     for (float v : vs)
                     {
-                        if (axis == 0)
+                        if (axis == 0) {
                             AddManifoldPoint(manifold, base, { fixed, u, v });
-                        else if (axis == 1)
+                        }
+                        else if (axis == 1) {
                             AddManifoldPoint(manifold, base, { u, fixed, v });
-                        else
+                        }
+                        else {
                             AddManifoldPoint(manifold, base, { u, v, fixed });
+                        }
                     }
                 }
             };
 
-            if (std::abs(base.normal.x) > 0.5f)
+            if (std::abs(base.normal.x) > 0.5f) {
                 AddRect(base.point.x, 0);
-            else if (std::abs(base.normal.y) > 0.5f)
+            }
+            else if (std::abs(base.normal.y) > 0.5f) {
                 AddRect(base.point.y, 1);
-            else
+            }
+            else {
                 AddRect(base.point.z, 2);
+            }
 
-            if (manifold.count == 0)
+            if (manifold.count == 0) {
                 AddManifoldPoint(manifold, base, base.point);
+            }
 
+            // 補正量を全接触点に分け、点を増やしても箱全体の位置補正が増えないようにする。
             const float weight = 1.0f / static_cast<float>(manifold.count);
-            for (int i = 0; i < manifold.count; ++i)
+            for (int i = 0; i < manifold.count; ++i) {
                 manifold.points[i].positionCorrectionWeight = weight;
+            }
 
             return manifold;
         }
@@ -99,11 +109,13 @@ namespace fbzz::physics
         bool IsPointInsideOBB(const math::Vector3& point, const OBBCollider& box, float tolerance)
         {
             const math::Vector3 delta = point - box.GetCenter();
-            for (int i = 0; i < 3; ++i)
+            const float halfExtents[] = {box.m_halfExtents.x, box.m_halfExtents.y, box.m_halfExtents.z};
+            for (int axisIndex = 0; axisIndex < 3; ++axisIndex)
             {
-                const float extent = i == 0 ? box.m_halfExtents.x : (i == 1 ? box.m_halfExtents.y : box.m_halfExtents.z);
-                if (std::abs(math::Vector3::Dot(delta, box.GetAxis(i))) > extent + tolerance)
+                const float projection = math::Vector3::Dot(delta, box.GetAxis(axisIndex));
+                if (std::abs(projection) > halfExtents[axisIndex] + tolerance) {
                     return false;
+                }
             }
             return true;
         }
@@ -114,12 +126,14 @@ namespace fbzz::physics
             constexpr float MATCH_RADIUS_SQ = 1e-4f;
             for (int i = 0; i < manifold.count; ++i)
             {
-                if ((manifold.points[i].point - point).LengthSq() <= MATCH_RADIUS_SQ)
+                if ((manifold.points[i].point - point).LengthSq() <= MATCH_RADIUS_SQ) {
                     return;
+                }
             }
 
-            if (manifold.count < 4)
+            if (manifold.count < 4) {
                 AddManifoldPoint(manifold, base, point);
+            }
         }
 
         ContactManifold BuildOBBManifold(const OBBCollider& a, const OBBCollider& b,
@@ -132,21 +146,25 @@ namespace fbzz::physics
 
             for (const math::Vector3& point : cornersA)
             {
-                if (IsPointInsideOBB(point, b, tolerance))
+                if (IsPointInsideOBB(point, b, tolerance)) {
                     AddUniqueManifoldPoint(manifold, base, point);
+                }
             }
             for (const math::Vector3& point : cornersB)
             {
-                if (IsPointInsideOBB(point, a, tolerance))
+                if (IsPointInsideOBB(point, a, tolerance)) {
                     AddUniqueManifoldPoint(manifold, base, point);
+                }
             }
 
-            if (manifold.count == 0)
+            if (manifold.count == 0) {
                 AddManifoldPoint(manifold, base, base.point);
+            }
 
             const float weight = 1.0f / static_cast<float>(manifold.count);
-            for (int i = 0; i < manifold.count; ++i)
+            for (int i = 0; i < manifold.count; ++i) {
                 manifold.points[i].positionCorrectionWeight = weight;
+            }
 
             return manifold;
         }
@@ -180,7 +198,7 @@ namespace fbzz::physics
             contact.isTrigger = pair.colliderA->isTrigger || pair.colliderB->isTrigger;
             if (contact.bodyA && contact.bodyB)
             {
-                /// @note 形状ごとの法線を bodyB → bodyA へ揃える。
+                // 形状ごとの法線を bodyB → bodyA へ揃える。
                 const math::Vector3 bodyDelta = contact.bodyA->GetPosition() - contact.bodyB->GetPosition();
                 if (bodyDelta.LengthSq() > 1e-8f &&
                     math::Vector3::Dot(contact.normal, bodyDelta) < 0.0f)
@@ -195,6 +213,7 @@ namespace fbzz::physics
     void PhysicsSolver::NarrowPhase(const std::vector<CollisionPair>& pairs,
                                     std::vector<ContactPoint>& outContacts)
     {
+        // 判定関数は形状の順を固定して呼び、逆順の組に同じ実装を使う。
         const auto testOrderedPair = [this](const Collider& shapeA, ColliderType typeA,
                                            const Collider& shapeB, ColliderType typeB,
                                            ContactPoint& outContact) -> bool
@@ -336,6 +355,7 @@ namespace fbzz::physics
             return false;
         };
 
+        // 検出した法線を入力順へ戻し、面で接触する箱同士は位置補正を分ける複数の点を作る。
         for (const CollisionPair& pair : pairs)
         {
             const Collider& shapeA = *pair.colliderA->collider;
@@ -348,21 +368,29 @@ namespace fbzz::physics
             const bool hit = swapped
                 ? testOrderedPair(shapeB, typeB, shapeA, typeA, baseContact)
                 : testOrderedPair(shapeA, typeA, shapeB, typeB, baseContact);
-            if (!hit) continue;
-            if (swapped) baseContact.normal = -baseContact.normal;
+            if (!hit) {
+                continue;
+            }
+            if (swapped) {
+                baseContact.normal = -baseContact.normal;
+            }
 
             const auto appendManifold = [&](const ContactManifold& manifold)
             {
-                for (int pointIndex = 0; pointIndex < manifold.count; ++pointIndex)
+                for (int pointIndex = 0; pointIndex < manifold.count; ++pointIndex) {
                     AppendContact(pair, manifold.points[pointIndex], outContacts);
+                }
             };
-            if (typeA == ColliderType::AABB && typeB == ColliderType::AABB)
+            if (typeA == ColliderType::AABB && typeB == ColliderType::AABB) {
                 appendManifold(BuildAABBManifold(shapeA.GetAABB(), shapeB.GetAABB(), baseContact));
-            else if (typeA == ColliderType::OBB && typeB == ColliderType::OBB)
+            }
+            else if (typeA == ColliderType::OBB && typeB == ColliderType::OBB) {
                 appendManifold(BuildOBBManifold(static_cast<const OBBCollider&>(shapeA),
                                                 static_cast<const OBBCollider&>(shapeB), baseContact));
-            else
+            }
+            else {
                 AppendContact(pair, baseContact, outContacts);
+            }
         }
     }
 }

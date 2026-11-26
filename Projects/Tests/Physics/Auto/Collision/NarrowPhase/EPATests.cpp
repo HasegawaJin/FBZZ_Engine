@@ -22,7 +22,9 @@ physics::EPAResult ContactOf(const void* a, physics::SupportFn supportA,
                              const void* b, physics::SupportFn supportB)
 {
     const physics::GJKResult gjk = physics::GJK_Intersect(a, supportA, b, supportB);
-    if (!gjk.intersects) return {};
+    if (!gjk.intersects) {
+        return {};
+    }
     return physics::EPA_GetContactInfo(a, supportA, b, supportB, gjk.simplex);
 }
 
@@ -45,8 +47,8 @@ class EPATest : public testkit::Fixture {};
 /// @brief Normal points from b toward a for spheres overlapping along X.
 TEST_F(EPATest, NormalPointsFromBTowardAForSpheresOverlappingAlongX)
 {
-    /// @note 法線は «B を A から引き離す» 向きではなく «B から A へ押し戻す» 向き。
-    ///       ContactPoint::normal と同じ規約で、逆に取ると床に乗った物を床へ押し込む。
+    // 法線は «B を A から引き離す» 向きではなく «B から A へ押し戻す» 向き。
+    //       ContactPoint::normal と同じ規約で、逆に取ると床に乗った物を床へ押し込む。
     const testkit::SupportSphere a{math::Vector3::ZERO, 1.0f};
     const testkit::SupportSphere b{math::Vector3(1.5f, 0.0f, 0.0f), 1.0f};
 
@@ -87,7 +89,7 @@ TEST_F(EPATest, NormalIsAUnitVector)
 /// @brief Depth matches the overlap of two spheres.
 TEST_F(EPATest, DepthMatchesTheOverlapOfTwoSpheres)
 {
-    /// @note 球どうしの貫通量は «半径の和 - 中心間距離» で解析的に決まる。
+    // 球どうしの貫通量は «半径の和 - 中心間距離» で解析的に決まる。
     constexpr float kDistances[] = {0.5f, 1.0f, 1.5f, 1.9f};
 
     for (const float distance : kDistances) {
@@ -121,7 +123,7 @@ TEST_F(EPATest, DepthIsAlwaysPositiveForIntersectingShapes)
 /// @brief Chooses the shallowest axis for overlapping boxes.
 TEST_F(EPATest, ChoosesTheShallowestAxisForOverlappingBoxes)
 {
-    /// @note X と Z は全面重なり、Y だけ 0.2 の重なり。最小移動量は Y 方向。
+    // X と Z は全面重なり、Y だけ 0.2 の重なり。最小移動量は Y 方向。
     const testkit::SupportBox a{math::Vector3::ZERO, math::Vector3(1.0f, 1.0f, 1.0f)};
     const testkit::SupportBox b{math::Vector3(0.0f, 1.8f, 0.0f), math::Vector3(1.0f, 1.0f, 1.0f)};
 
@@ -163,9 +165,9 @@ TEST_F(EPATest, ContactPointsLieOnTheSurfaceOfEachSphere)
 /// @brief Contact points are separated by the depth along the normal.
 TEST_F(EPATest, ContactPointsAreSeparatedByTheDepthAlongTheNormal)
 {
-    /// @note contactA は A の表面上で B 側へ最も入り込んだ点、contactB はその逆。
-    ///       法線は B→A 向きなので、contactB から contactA へのベクトルを法線に射影すると
-    ///       そのまま貫通量になる。
+    // contactA は A の表面上で B 側へ最も入り込んだ点、contactB はその逆。
+    //       法線は B→A 向きなので、contactB から contactA へのベクトルを法線に射影すると
+    //       そのまま貫通量になる。
     const testkit::SupportSphere a{math::Vector3::ZERO, 1.0f};
     const testkit::SupportSphere b{math::Vector3(1.5f, 0.0f, 0.0f), 1.0f};
 
@@ -194,8 +196,8 @@ TEST_F(EPATest, ContactPointOnTheSphereFacesTheOtherShape)
 /// @brief Is invalid when the simplex is not a tetrahedron.
 TEST_F(EPATest, IsInvalidWhenTheSimplexIsNotATetrahedron)
 {
-    /// @note GJK が四面体まで拡張できなかった場合、EPA はポリトープの初期面を作れない。
-    ///       ここで無効を返さずに進むと、初期化されていない面を参照することになる。
+    // GJK が四面体まで拡張できなかった場合、EPA はポリトープの初期面を作れない。
+    //       ここで無効を返さずに進むと、初期化されていない面を参照することになる。
     const testkit::SupportSphere a{math::Vector3::ZERO, 1.0f};
     const testkit::SupportSphere b{math::Vector3(0.5f, 0.0f, 0.0f), 1.0f};
 
@@ -211,8 +213,8 @@ TEST_F(EPATest, IsInvalidWhenTheSimplexIsNotATetrahedron)
 /// @brief Produces a valid contact for every intersecting random pair.
 TEST_F(EPATest, ProducesAValidContactForEveryIntersectingRandomPair)
 {
-    /// @note «交差していると GJK が言ったのに EPA が接触を作れない» は、
-    ///       呼び出し側が押し戻しを取りこぼす形で表に出る。組み合わせを振って潰す。
+    // «交差していると GJK が言ったのに EPA が接触を作れない» は、
+    //       呼び出し側が押し戻しを取りこぼす形で表に出る。組み合わせを振って潰す。
     for (int i = 0; i < 64; ++i) {
         const math::Vector3 direction = Rng().NextUnitVector3();
         const float         distance  = Rng().NextFloat(0.1f, 1.9f);

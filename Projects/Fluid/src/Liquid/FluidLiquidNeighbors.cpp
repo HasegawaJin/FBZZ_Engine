@@ -36,9 +36,10 @@ void FluidLiquidSolver::BuildNeighbors()
         m_cellOfParticle[particleIndex] = cell;
         ++m_cellStart[static_cast<std::size_t>(cell) + 1];
     }
-    /// @note 粒子数の累積和を取ると、各セルに属する粒子を書き込む区間の先頭になる。
-    for (int cell = 0; cell < cellCount; ++cell)
+    // 粒子数の累積和を取ると、各セルに属する粒子を書き込む区間の先頭になる。
+    for (int cell = 0; cell < cellCount; ++cell) {
         m_cellStart[static_cast<std::size_t>(cell) + 1] += m_cellStart[static_cast<std::size_t>(cell)];
+    }
 
     std::vector<int> nextCellSlot(m_cellStart.begin(), m_cellStart.end() - 1);
     m_cellParticles.resize(particleCount);
@@ -48,8 +49,8 @@ void FluidLiquidSolver::BuildNeighbors()
         m_cellParticles[static_cast<std::size_t>(particleSlot)] = static_cast<int>(particleIndex);
     }
 
-    /// @note セル幅はカーネル半径 h なので、同じセルと隣接セルだけ調べれば予測位置から h 未満の粒子を列挙できる。
-    /// @note 各密度反復では近傍の索引を再利用し、補正後の位置から距離とカーネルの重みを計算し直す。
+    // セル幅はカーネル半径 h なので、同じセルと隣接セルだけ調べれば予測位置から h 未満の粒子を列挙できる。
+    // 各密度反復では近傍の索引を再利用し、補正後の位置から距離とカーネルの重みを計算し直す。
     /// @see https://mmacklin.com/pbf_sig_preprint.pdf Macklin & Müller, Position Based Fluids (2013), §6.
     const int reachZ = m_volumetric ? 1 : 0;
     const int cellsPerLayer = m_cellsX * m_cellsY;
@@ -62,21 +63,31 @@ void FluidLiquidSolver::BuildNeighbors()
         const int cellX = m_cellOfParticle[particleIndex] % m_cellsX;
         for (int offsetZ = -reachZ; offsetZ <= reachZ; ++offsetZ) {
             const int neighborZ = cellZ + offsetZ;
-            if (neighborZ < 0 || neighborZ >= m_cellsZ) continue;
+            if (neighborZ < 0 || neighborZ >= m_cellsZ) {
+                continue;
+            }
             for (int offsetY = -1; offsetY <= 1; ++offsetY) {
                 const int neighborY = cellY + offsetY;
-                if (neighborY < 0 || neighborY >= m_cellsY) continue;
+                if (neighborY < 0 || neighborY >= m_cellsY) {
+                    continue;
+                }
                 for (int offsetX = -1; offsetX <= 1; ++offsetX) {
                     const int neighborX = cellX + offsetX;
-                    if (neighborX < 0 || neighborX >= m_cellsX) continue;
+                    if (neighborX < 0 || neighborX >= m_cellsX) {
+                        continue;
+                    }
                     const std::size_t cell = static_cast<std::size_t>((neighborZ * m_cellsY + neighborY) * m_cellsX + neighborX);
                     for (int k = m_cellStart[cell]; k < m_cellStart[cell + 1]; ++k) {
                         const int neighborParticle = m_cellParticles[static_cast<std::size_t>(k)];
-                        if (static_cast<std::size_t>(neighborParticle) == particleIndex) continue;
+                        if (static_cast<std::size_t>(neighborParticle) == particleIndex) {
+                            continue;
+                        }
                         const float dx = m_predictedX[particleIndex] - m_predictedX[static_cast<std::size_t>(neighborParticle)];
                         const float dy = m_predictedY[particleIndex] - m_predictedY[static_cast<std::size_t>(neighborParticle)];
                         const float dz = m_predictedZ[particleIndex] - m_predictedZ[static_cast<std::size_t>(neighborParticle)];
-                        if (dx * dx + dy * dy + dz * dz < m_kernelRadiusSquared) m_neighbors.push_back(neighborParticle);
+                        if (dx * dx + dy * dy + dz * dz < m_kernelRadiusSquared) {
+                            m_neighbors.push_back(neighborParticle);
+                        }
                     }
                 }
             }

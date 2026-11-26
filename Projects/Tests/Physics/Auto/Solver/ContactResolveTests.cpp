@@ -80,14 +80,14 @@ TEST_F(ContactResolveTest, StopsABodyThatIsMovingIntoTheSurface)
 
     Resolve(MakeContact(material));
 
-    /// @note 反発 0 なら «めり込む向きの速度» だけが消える。
+    // 反発 0 なら «めり込む向きの速度» だけが消える。
     EXPECT_NEAR(falling.GetVelocity().y, 0.0f, testkit::kLooseTolerance);
 }
 
 /// @brief Does not touch a body that is already separating.
 TEST_F(ContactResolveTest, DoesNotTouchABodyThatIsAlreadySeparating)
 {
-    /// @note 離れていく接触にインパルスを入れると、跳ね上がった直後にもう一度蹴られる。
+    // 離れていく接触にインパルスを入れると、跳ね上がった直後にもう一度蹴られる。
     const physics::PhysicsMaterial material = MakeMaterial(0.0f, 0.0f);
     falling.SetVelocity({ 0.0f, 5.0f, 0.0f });
 
@@ -124,7 +124,7 @@ TEST_F(ContactResolveTest, LeavesAStaticBodyWhereItIs)
 /// @brief Bounce height follows the restitution.
 TEST_F(ContactResolveTest, BounceHeightFollowsTheRestitution)
 {
-    /// @note 材質の値がそのまま «跳ね返る速度の比» になる。
+    // 材質の値がそのまま «跳ね返る速度の比» になる。
     const physics::PhysicsMaterial bouncy = MakeMaterial(0.8f, 0.0f);
     falling.SetVelocity({ 0.0f, -5.0f, 0.0f });
 
@@ -152,7 +152,7 @@ TEST_F(ContactResolveTest, BouncierMaterialsComeBackFaster)
 /// @brief Takes the less bouncy of the two materials.
 TEST_F(ContactResolveTest, TakesTheLessBouncyOfTheTwoMaterials)
 {
-    /// @note 反発の既定の合成規則は Minimum。ゴム玉を粘土の床へ落としても跳ねない。
+    // 反発の既定の合成規則は Minimum。ゴム玉を粘土の床へ落としても跳ねない。
     const physics::PhysicsMaterial rubber = MakeMaterial(0.9f, 0.0f);
     const physics::PhysicsMaterial clay   = MakeMaterial(0.0f, 0.0f);
 
@@ -176,7 +176,7 @@ TEST_F(ContactResolveTest, FrictionSlowsTheSlideAlongTheSurface)
     Resolve(MakeContact(grippy));
 
     EXPECT_LT(falling.GetVelocity().x, 3.0f);
-    /// @note 押し返して逆走させない
+    // 押し返して逆走させない
     EXPECT_GE(falling.GetVelocity().x, 0.0f);
 }
 
@@ -199,7 +199,7 @@ TEST_F(ContactResolveTest, GrippierMaterialsSlowTheSlideMore)
 /// @brief Friction acts on every tangential direction.
 TEST_F(ContactResolveTest, FrictionActsOnEveryTangentialDirection)
 {
-    /// @note 接線は 2 軸ある。片方しか解いていないと、斜めに滑ったときだけ止まらない。
+    // 接線は 2 軸ある。片方しか解いていないと、斜めに滑ったときだけ止まらない。
     const physics::PhysicsMaterial grippy = MakeMaterial(0.0f, 1.0f);
     falling.SetVelocity({ 3.0f, -5.0f, 3.0f });
 
@@ -214,7 +214,7 @@ TEST_F(ContactResolveTest, FrictionActsOnEveryTangentialDirection)
 /// @brief Trigger contacts leave velocity and position unchanged.
 TEST_F(ContactResolveTest, TriggerContactsLeaveVelocityAndPositionUnchanged)
 {
-    /// @note トリガーは «通知するだけ»。速度も位置も動かしてはいけない。
+    // トリガーは «通知するだけ»。速度も位置も動かしてはいけない。
     const physics::PhysicsMaterial material = MakeMaterial(0.5f, 1.0f);
     physics::ContactPoint contact = MakeContact(material, 0.5f);
     contact.isTrigger = true;
@@ -243,7 +243,7 @@ TEST_F(ContactResolveTest, PushesADeeplyOverlappingBodyOutAlongTheNormal)
 /// @brief Leaves a shallow overlap alone.
 TEST_F(ContactResolveTest, LeavesAShallowOverlapAlone)
 {
-    /// @note 許容量 (slop) 以下の重なりまで押し返すと、接地したものが小刻みに震える。
+    // 許容量 (slop) 以下の重なりまで押し返すと、接地したものが小刻みに震える。
     const physics::PhysicsMaterial material = MakeMaterial(0.0f, 0.0f);
 
     Resolve(MakeContact(material, 0.005f));

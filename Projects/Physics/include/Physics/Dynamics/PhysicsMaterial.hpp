@@ -31,9 +31,8 @@ namespace fbzz::physics
         float dynamicFriction = 0.4f;   ///< @note 動摩擦係数
         float density         = 1.0f;   ///< @note 密度 (kg/m^3 相当。RigidBody の質量自動計算で使う)
 
-        /// @note 合成規則。既定値は選択制にする前の固定規則と一致させてある。
-        PhysicsMaterialCombine restitutionCombine = PhysicsMaterialCombine::Minimum;
-        PhysicsMaterialCombine frictionCombine    = PhysicsMaterialCombine::GeometricMean;
+        PhysicsMaterialCombine restitutionCombine = PhysicsMaterialCombine::Minimum; ///< 合成規則。既定値は選択制にする前の固定規則と一致させてある。
+        PhysicsMaterialCombine frictionCombine    = PhysicsMaterialCombine::GeometricMean; ///< 2 形状の摩擦係数からペアの摩擦係数を作る規則。
 
         /// @brief 2 つのマテリアルが衝突したときの合成値。
         /// @note 規則が食い違う場合は「優先度の高い方」(列挙の並び順) を採用する。平均等の
@@ -50,14 +49,14 @@ namespace fbzz::physics
 
         /// @brief プリセット。Scene 側から値を直接持つため、これは初期値として使う。
         FBZZ_PHYSICS_API static const PhysicsMaterial Default;   ///< @note 汎用
-        FBZZ_PHYSICS_API static const PhysicsMaterial Rubber;    ///< @note restitution=0.8, dynamic=0.9
-        FBZZ_PHYSICS_API static const PhysicsMaterial Ice;       ///< @note restitution=0.05, dynamic=0.02
-        FBZZ_PHYSICS_API static const PhysicsMaterial Metal;     ///< @note restitution=0.4,  dynamic=0.3
-        FBZZ_PHYSICS_API static const PhysicsMaterial Wood;      ///< @note restitution=0.2,  dynamic=0.6
-        FBZZ_PHYSICS_API static const PhysicsMaterial Stone;     ///< @note restitution=0.1,  dynamic=0.8
+        FBZZ_PHYSICS_API static const PhysicsMaterial Rubber; ///< ゴムの接触特性を表す組み込み材質。
+        FBZZ_PHYSICS_API static const PhysicsMaterial Ice; ///< 氷の接触特性を表す組み込み材質。
+        FBZZ_PHYSICS_API static const PhysicsMaterial Metal; ///< 金属の接触特性を表す組み込み材質。
+        FBZZ_PHYSICS_API static const PhysicsMaterial Wood; ///< 木材の接触特性を表す組み込み材質。
+        FBZZ_PHYSICS_API static const PhysicsMaterial Stone; ///< 石の接触特性を表す組み込み材質。
 
         /// @brief プリセットの列挙。Editor の新規作成メニューとスクリプトから同じ表を使う。
-        static constexpr int PRESET_COUNT = 6;
+        static constexpr int PRESET_COUNT = 6; ///< 組み込み材質プリセットの件数。
         FBZZ_PHYSICS_API static const char*           PresetName(int index);
         FBZZ_PHYSICS_API static const PhysicsMaterial* PresetAt(int index);
         /// @brief 名前からプリセットを引く。

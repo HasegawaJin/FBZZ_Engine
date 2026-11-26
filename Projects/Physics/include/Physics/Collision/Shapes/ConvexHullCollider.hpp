@@ -42,12 +42,12 @@ namespace fbzz::physics
     private:
         std::vector<math::Vector3> m_localVerts;  ///< @note ローカル空間の凸包頂点
         std::vector<math::Vector3> m_worldVerts;  ///< @note Update で変換済み
-        std::vector<std::array<uint32_t, 3>> m_faces;
+        std::vector<std::array<uint32_t, 3>> m_faces; ///< 凸包を構成する局所面の頂点添字と法線。
 
-        math::Vector3    m_worldCenter;
-        math::Quaternion m_worldRot;
-        math::Vector3    m_worldScale = { 1.0f, 1.0f, 1.0f };
-        AABB             m_worldAABB;
+        math::Vector3    m_worldCenter; ///< ワールド空間に変換済みのコライダーの中心 [m]。
+        math::Quaternion m_worldRot; ///< 凸包の局所頂点をワールドへ回す回転。
+        math::Vector3    m_worldScale = { 1.0f, 1.0f, 1.0f }; ///< 凸包の局所頂点へ掛ける軸別スケール。
+        AABB             m_worldAABB; ///< 更新済み凸包のワールド境界 [m]。
 
         /// @note Quickhull で凸包を計算し m_localVerts に格納する
         FBZZ_PHYSICS_API void BuildHull(std::vector<math::Vector3> points);

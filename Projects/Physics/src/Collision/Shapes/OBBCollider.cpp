@@ -41,8 +41,12 @@ namespace fbzz::physics
 
     math::Vector3 OBBCollider::GetAxis(int index) const
     {
-        if (index == 0) return m_worldRot * math::Vector3::RIGHT;
-        if (index == 1) return m_worldRot * math::Vector3::UP;
+        if (index == 0) {
+            return m_worldRot * math::Vector3::RIGHT;
+        }
+        if (index == 1) {
+            return m_worldRot * math::Vector3::UP;
+        }
         return m_worldRot * math::Vector3::FORWARD;
     }
 
@@ -67,11 +71,12 @@ namespace fbzz::physics
     math::Vector3 OBBCollider::SupportPoint(const math::Vector3& dir) const
     {
         math::Vector3 result = m_worldCenter;
-        for (int i = 0; i < 3; ++i)
+        const float halfExtents[] = {m_halfExtents.x, m_halfExtents.y, m_halfExtents.z};
+        for (int axisIndex = 0; axisIndex < 3; ++axisIndex)
         {
-            const math::Vector3 axis = GetAxis(i);
-            const float extent = i == 0 ? m_halfExtents.x : (i == 1 ? m_halfExtents.y : m_halfExtents.z);
-            result += axis * (math::Vector3::Dot(axis, dir) >= 0.0f ? extent : -extent);
+            const math::Vector3 axis = GetAxis(axisIndex);
+            const float halfExtent = halfExtents[axisIndex];
+            result += axis * (math::Vector3::Dot(axis, dir) >= 0.0f ? halfExtent : -halfExtent);
         }
         return result;
     }

@@ -15,7 +15,9 @@ namespace fbzz::physics::cloth_detail {
 using math::Vector3;
 
 struct Vector3d {
-    double x = 0.0, y = 0.0, z = 0.0;
+    double x = 0.0; ///< 掃引接触の計算に使うワールド X 成分 [m]。
+    double y = 0.0; ///< 掃引接触の計算に使うワールド Y 成分 [m]。
+    double z = 0.0; ///< 掃引接触の計算に使うワールド Z 成分 [m]。
 };
 inline Vector3d ToDouble(const Vector3& v) { return {v.x, v.y, v.z}; }
 inline Vector3d operator-(const Vector3d& a, const Vector3d& b) { return {a.x - b.x, a.y - b.y, a.z - b.z}; }

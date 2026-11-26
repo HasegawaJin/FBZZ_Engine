@@ -50,7 +50,7 @@ namespace fbzz::physics
             const auto* c = static_cast<const CapsuleCollider*>(shape);
             const math::Vector3 s = c->GetSegmentStart();
             const math::Vector3 e = c->GetSegmentEnd();
-            /// @note セグメント上で dir と最も内積が大きい点 + radius
+            // セグメント上で dir と最も内積が大きい点 + radius
             const math::Vector3 best = (math::Vector3::Dot(s, dir) >= math::Vector3::Dot(e, dir))
                                         ? s : e;
             return best + SupportDirection(dir) * c->m_radius;
@@ -62,7 +62,9 @@ namespace fbzz::physics
             const float projection0 = math::Vector3::Dot(triangle->v[0], direction);
             const float projection1 = math::Vector3::Dot(triangle->v[1], direction);
             const float projection2 = math::Vector3::Dot(triangle->v[2], direction);
-            if (projection0 >= projection1 && projection0 >= projection2) return triangle->v[0];
+            if (projection0 >= projection1 && projection0 >= projection2) {
+                return triangle->v[0];
+            }
             return projection1 >= projection2 ? triangle->v[1] : triangle->v[2];
         }
 
@@ -72,10 +74,14 @@ namespace fbzz::physics
                              ContactPoint& out)
         {
             const GJKResult gjk = GJK_Intersect(shapeA, supportA, shapeB, supportB);
-            if (!gjk.intersects) return false;
+            if (!gjk.intersects) {
+                return false;
+            }
 
             const EPAResult epa = EPA_GetContactInfo(shapeA, supportA, shapeB, supportB, gjk.simplex);
-            if (!epa.valid) return false;
+            if (!epa.valid) {
+                return false;
+            }
 
             out.normal = epa.normal;
             out.depth  = epa.depth;

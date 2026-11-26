@@ -11,15 +11,23 @@ namespace fbzz::physics {
     namespace {
         float AxisValue(const math::Vector3& v, int axis)
         {
-            if (axis == 0) return v.x;
-            if (axis == 1) return v.y;
+            if (axis == 0) {
+                return v.x;
+            }
+            if (axis == 1) {
+                return v.y;
+            }
             return v.z;
         }
 
         int LongestAxis(const math::Vector3& size)
         {
-            if (size.x >= size.y && size.x >= size.z) return 0;
-            if (size.y >= size.z) return 1;
+            if (size.x >= size.y && size.x >= size.z) {
+                return 0;
+            }
+            if (size.y >= size.z) {
+                return 1;
+            }
             return 2;
         }
 
@@ -86,16 +94,17 @@ namespace fbzz::physics {
             node.count = count;
             node.parent = parent;
 
-            if (count <= LEAF_SIZE)
+            if (count <= LEAF_SIZE) {
                 return nodeIndex;
+            }
 
             const AABB centerBounds = ComputeCenterBounds(proxies, proxyOrder, start, count);
             const math::Vector3 centerSize = centerBounds.max - centerBounds.min;
             const int splitAxis = LongestAxis(centerSize);
             const int split = start + count / 2;
 
-            /// @note Rebuild on membership changes or quality degradation uses median splitting instead of SAH.
-            /// @note 構築を O(n log n) に抑えつつ、総当たりより候補ペア数を安定して削減する。
+            // Rebuild on membership changes or quality degradation uses median splitting instead of SAH.
+            // 構築を O(n log n) に抑えつつ、総当たりより候補ペア数を安定して削減する。
             std::nth_element(proxyOrder.begin() + start,
                              proxyOrder.begin() + split,
                              proxyOrder.begin() + start + count,
@@ -104,7 +113,7 @@ namespace fbzz::physics {
                                         AxisValue(proxies[static_cast<size_t>(b)].center, splitAxis);
                              });
 
-            /// @note 全中心が同一点に潰れても split は count/2 で進むため、再帰は必ず収束する。
+            // 全中心が同一点に潰れても split は count/2 で進むため、再帰は必ず収束する。
             node.left = BuildBroadPhaseBVH(proxies, proxyOrder, nodes, start, split - start, nodeIndex);
             node.right = BuildBroadPhaseBVH(proxies, proxyOrder, nodes, split, start + count - split, nodeIndex);
             return nodeIndex;
@@ -135,8 +144,12 @@ namespace fbzz::physics {
         std::size_t escapes = 0;
         const std::size_t escapeLimit = std::max(std::size_t{8}, proxies.size() / 8);
         std::size_t validCount = 0;
+
+        // 入力順で境界を更新する。構成が同じ間は、境界の変化と既存の葉からはみ出した数だけを記録する。
         for (std::size_t index = 0; index < colliders.size(); ++index) {
-            if (!colliders[index].collider) continue;
+            if (!colliders[index].collider) {
+                continue;
+            }
             const AABB bounds = colliders[index].collider->GetAABB();
             allBoundsFinite &= FiniteBroadPhaseBounds(bounds);
             if (validCount == proxies.size()) {
@@ -144,13 +157,17 @@ namespace fbzz::physics {
                 rebuild = true;
             } else {
                 auto& proxy = proxies[validCount];
-                if (proxy.colliderIndex != index) rebuild = true;
+                if (proxy.colliderIndex != index) {
+                    rebuild = true;
+                }
                 if (!SameBroadPhaseBounds(proxy.bounds, bounds)) {
                     proxy.bounds = bounds;
                     proxy.center = bounds.Center();
                     if (!rebuild) {
                         changedProxyIndices.push_back(static_cast<int>(validCount));
-                        if (!nodes[static_cast<std::size_t>(proxy.leafIndex)].bounds.Overlaps(bounds)) ++escapes;
+                        if (!nodes[static_cast<std::size_t>(proxy.leafIndex)].bounds.Overlaps(bounds)) {
+                            ++escapes;
+                        }
                         rebuild = escapes > escapeLimit;
                     }
                 }
@@ -162,6 +179,8 @@ namespace fbzz::physics {
             proxies.resize(validCount);
             rebuild = true;
         }
+
+        // 木の構成が変わらない場合は変更された葉だけを更新し、境界の重なりが増えすぎたら木を作り直す。
         allProxyBoundsFinite = allBoundsFinite;
         if (proxies.size() < 2 || !allProxyBoundsFinite) {
             nodes.clear();
@@ -172,7 +191,9 @@ namespace fbzz::physics {
             Rebuild();
         } else if (!changedProxyIndices.empty()) {
             RefitChangedLeaves();
-            if (NormalizedArea() > normalizedAreaAtBuild * 1.5) Rebuild();
+            if (NormalizedArea() > normalizedAreaAtBuild * 1.5) {
+                Rebuild();
+            }
         }
     }
 
@@ -190,20 +211,30 @@ namespace fbzz::physics {
 
         const auto refit = [&](int index) {
             auto& node = nodes[static_cast<std::size_t>(index)];
-            if (!node.dirty) return;
-            if (!node.IsLeaf()) internalNodeArea -= BroadPhaseArea(node.bounds);
+            if (!node.dirty) {
+                return;
+            }
+            if (!node.IsLeaf()) {
+                internalNodeArea -= BroadPhaseArea(node.bounds);
+            }
             node.bounds = node.IsLeaf() ? ComputeBounds(proxies, proxyOrder, node.start, node.count)
                 : MergeBounds(nodes[static_cast<std::size_t>(node.left)].bounds,
                     nodes[static_cast<std::size_t>(node.right)].bounds);
-            if (!node.IsLeaf()) internalNodeArea += BroadPhaseArea(node.bounds);
+            if (!node.IsLeaf()) {
+                internalNodeArea += BroadPhaseArea(node.bounds);
+            }
             node.dirty = false;
         };
-        /// @note preorderの添字を逆順に処理すれば、共有祖先も子の更新後に一度だけ反映できる。
+        // preorderの添字を逆順に処理すれば、共有祖先も子の更新後に一度だけ反映できる。
         if (dirtyNodeIndices.size() > nodes.size() / 4) {
-            for (std::size_t index = nodes.size(); index > 0; --index) refit(static_cast<int>(index - 1));
+            for (std::size_t index = nodes.size(); index > 0; --index) {
+                refit(static_cast<int>(index - 1));
+            }
         } else {
             std::sort(dirtyNodeIndices.begin(), dirtyNodeIndices.end(), std::greater<int>{});
-            for (int index : dirtyNodeIndices) refit(index);
+            for (int index : dirtyNodeIndices) {
+                refit(index);
+            }
         }
     }
 
@@ -216,16 +247,22 @@ namespace fbzz::physics {
     void PhysicsSolver::BroadPhaseState::Rebuild()
     {
         proxyOrder.resize(proxies.size());
-        for (std::size_t index = 0; index < proxyOrder.size(); ++index) proxyOrder[index] = static_cast<int>(index);
+        for (std::size_t index = 0; index < proxyOrder.size(); ++index) {
+            proxyOrder[index] = static_cast<int>(index);
+        }
         nodes.clear();
         nodes.reserve(proxies.size() * 2);
         BuildBroadPhaseBVH(proxies, proxyOrder, nodes, 0, static_cast<int>(proxies.size()));
         internalNodeArea = 0.0;
         for (std::size_t index = 0; index < nodes.size(); ++index) {
             const auto& node = nodes[index];
-            if (!node.IsLeaf()) { internalNodeArea += BroadPhaseArea(node.bounds); continue; }
-            for (int offset = 0; offset < node.count; ++offset)
+            if (!node.IsLeaf()) {
+                internalNodeArea += BroadPhaseArea(node.bounds);
+                continue;
+            }
+            for (int offset = 0; offset < node.count; ++offset) {
                 proxies[static_cast<std::size_t>(proxyOrder[static_cast<std::size_t>(node.start + offset)])].leafIndex = static_cast<int>(index);
+            }
         }
         normalizedAreaAtBuild = NormalizedArea();
     }

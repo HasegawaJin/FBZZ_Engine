@@ -20,8 +20,10 @@ namespace fbzz::physics
             {
                 const math::Vector3 lineToOrigin =
                     math::Vector3::Cross(math::Vector3::Cross(line, towardOrigin), line);
-                /// @note 原点が辺と同一直線上なら交差として扱う。
-                if (lineToOrigin.LengthSq() < 1e-10f) return true;
+                // 原点が辺と同一直線上なら交差として扱う。
+                if (lineToOrigin.LengthSq() < 1e-10f) {
+                    return true;
+                }
                 searchDirection = lineToOrigin;
             }
             else
@@ -60,8 +62,9 @@ namespace fbzz::physics
                 return ReduceLine(simplex, searchDirection);
             }
 
-            if (math::Vector3::Dot(faceNormal, towardOrigin) > 0.0f)
+            if (math::Vector3::Dot(faceNormal, towardOrigin) > 0.0f) {
                 searchDirection = faceNormal;
+            }
             else
             {
                 simplex.Set(simplex.verts[2], simplex.verts[1], simplex.verts[0]);

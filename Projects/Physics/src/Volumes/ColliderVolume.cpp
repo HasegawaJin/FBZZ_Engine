@@ -19,7 +19,9 @@ namespace fbzz::physics
 
     bool ColliderVolume::Contains(const math::Vector3& position) const
     {
-        if (!m_collider) return false;
+        if (!m_collider) {
+            return false;
+        }
 
         if (m_collider->GetType() == ColliderType::SPHERE)
         {
@@ -36,23 +38,27 @@ namespace fbzz::physics
                    position.z >= aabb.min.z && position.z <= aabb.max.z;
         }
 
-        if (m_collider->GetType() == ColliderType::CYLINDER)
+        if (m_collider->GetType() == ColliderType::CYLINDER) {
             return static_cast<const CylinderCollider*>(m_collider)->Contains(position);
+        }
 
-        /// @note Capsule は線分上の最近傍点との距離で内外を判定する。
+        // Capsule は線分上の最近傍点との距離で内外を判定する。
         const auto* capsule = static_cast<const CapsuleCollider*>(m_collider);
         const math::Vector3 segment = capsule->GetSegmentEnd() - capsule->GetSegmentStart();
         const float lenSq = segment.LengthSq();
         float t = 0.0f;
-        if (lenSq > 1e-6f)
+        if (lenSq > 1e-6f) {
             t = std::clamp(math::Vector3::Dot(position - capsule->GetSegmentStart(), segment) / lenSq, 0.0f, 1.0f);
+        }
         const math::Vector3 closest = capsule->GetSegmentStart() + segment * t;
         return (position - closest).LengthSq() <= capsule->m_radius * capsule->m_radius;
     }
 
     void ColliderVolume::Apply(RigidBody& body, float /*dt*/)
     {
-        if (body.IsStatic() || !m_collider) return;
+        if (body.IsStatic() || !m_collider) {
+            return;
+        }
 
         const AABB aabb = m_collider->GetAABB();
         const math::Vector3 center = aabb.Center();
@@ -60,8 +66,8 @@ namespace fbzz::physics
         switch (m_settings.type)
         {
         case VolumeType::Gravity:
-            /// @note 継続的な環境力は sleep timer をリセットしない (毎 substep WakeUp すると
-            ///       World::Step の sleep early-out が効かなくなる)。
+            // 継続的な環境力は sleep timer をリセットしない (毎 substep WakeUp すると
+            //       World::Step の sleep early-out が効かなくなる)。
             body.ApplyForceNoWake(m_settings.gravity * body.GetMass());
             break;
         case VolumeType::Vortex:
@@ -77,15 +83,15 @@ namespace fbzz::physics
         }
         case VolumeType::Explosion:
         {
-            /// @note Explosion は継続力ではなく瞬間インパルスとして扱う。
-            ///       duration が短い Volume と組み合わせて 1 回だけ発火させる想定。
+            // Explosion は継続力ではなく瞬間インパルスとして扱う。
+            //       duration が短い Volume と組み合わせて 1 回だけ発火させる想定。
             const math::Vector3 delta = body.GetPosition() - center;
             const math::Vector3 dir = delta.LengthSq() > 1e-6f ? delta.Normalized() : math::Vector3::UP;
             body.ApplyImpulse(dir * m_settings.explosionImpulse);
             break;
         }
         case VolumeType::TimeDilation:
-            /// @note 時間スケールは World 側で effectiveDt に反映済み。
+            // 時間スケールは World 側で effectiveDt に反映済み。
             break;
         case VolumeType::Magnetic:
             body.ApplyForceNoWake(math::Vector3::Cross(body.GetVelocity(), m_settings.magneticField) * body.m_charge);

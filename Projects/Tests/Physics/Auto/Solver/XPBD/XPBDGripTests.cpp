@@ -64,7 +64,7 @@ TEST_F(XPBDGripTest, RotationLockIsOptionalAndTorqueLimited)
         a.SetAngularVelocity({0,3,0});
         physics::XPBDSolver solver;solver.SetGravity(math::Vector3::ZERO);solver.SetSubsteps(1);solver.AddBody(&a);solver.AddTransient(&g);
         solver.Step(0.01f);solver.ClearTransient();solver.ClearBodies();
-        /// @note 同じquaternion積分・速度復元の丸めを除き、把持が加えた有限トルクの差だけを照合する。
+        // 同じquaternion積分・速度復元の丸めを除き、把持が加えた有限トルクの差だけを照合する。
         if(rotation)EXPECT_NEAR(freeSpeed-a.GetAngularVelocity().y,0.02f,1.0e-5f);
         else {freeSpeed=a.GetAngularVelocity().y;EXPECT_NEAR(freeSpeed,3,1.0e-3f);}
     }

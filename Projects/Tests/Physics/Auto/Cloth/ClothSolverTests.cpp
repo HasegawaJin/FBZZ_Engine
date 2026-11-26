@@ -12,10 +12,10 @@ namespace fbzz::tests {
 
 class ClothSolverTest : public testkit::Fixture {
 protected:
-    physics::ClothSolver m_solver;
-    std::array<math::Vector3, 4> m_positions{{{0, 1, 0}, {1, 1, 0}, {0, 0, 0}, {1, 0, 0}}};
-    std::array<uint32_t, 6> m_indices{0, 2, 1, 1, 2, 3};
-    std::array<float, 4> m_masses{0, 0, 1, 1};
+    physics::ClothSolver m_solver; ///< テストごとに初期化する布ソルバー。
+    std::array<math::Vector3, 4> m_positions{{{0, 1, 0}, {1, 1, 0}, {0, 0, 0}, {1, 0, 0}}}; ///< 標準の四隅の初期座標。
+    std::array<uint32_t, 6> m_indices{0, 2, 1, 1, 2, 3}; ///< 2 三角形を定義する m_positions の添字。
+    std::array<float, 4> m_masses{0, 0, 1, 1}; ///< m_positions の各質点に対応する逆質量。0 は固定点。
     void SetUp() override
     {
         ASSERT_TRUE(m_solver.Initialize(m_positions, m_indices, m_masses));
@@ -47,7 +47,7 @@ protected:
         ASSERT_TRUE(m_solver.SetSettings(settings));
     }
     /// @brief 固定した三角形の上へ、別の三角形を落とす。
-    /// @param dropEdge true なら辺同士が十字に交わる配置、false なら 1 質点だけが三角形の内部へ落ちる配置。
+    /// @param[in] dropEdge true なら辺同士が十字に交わる配置、false なら 1 質点だけが三角形の内部へ落ちる配置。
     void DropOntoFixedTriangle(bool dropEdge, bool faces, bool continuous, float gravity)
     {
         const std::array<math::Vector3, 6> vertexDrop{{{0,0,0}, {1,0,0}, {0,0,1},
@@ -55,7 +55,7 @@ protected:
         const std::array<math::Vector3, 6> edgeDrop{{{0,0,-1}, {0,0,1}, {0,-1,0.5f},
             {-1,0.2f,0}, {1,0.2f,0}, {0,1.2f,0}}};
         const std::array<uint32_t, 6> indices{0,1,2,3,4,5};
-        /// @note 質点落下では遠い 2 点を固定し、落ちる質点の辺が固定三角形の辺と交差しないようにする。
+        // 質点落下では遠い 2 点を固定し、落ちる質点の辺が固定三角形の辺と交差しないようにする。
         const std::array<float, 6> masses{0,0,0,1,dropEdge ? 1.0f : 0.0f,dropEdge ? 1.0f : 0.0f};
         ASSERT_TRUE(m_solver.Initialize(dropEdge ? edgeDrop : vertexDrop, indices, masses));
         physics::ClothSettings settings;
@@ -347,7 +347,7 @@ TEST_F(ClothSolverTest, ContinuousCollisionStopsTunnelingThroughTriangleAndEdge)
 {
     for (bool edge : {false, true}) {
         for (bool continuous : {false, true}) {
-            /// @note 1 substep で 0.55 m 落ちるため、離散の近接判定だけでは裏へ抜ける。
+            // 1 substep で 0.55 m 落ちるため、離散の近接判定だけでは裏へ抜ける。
             DropOntoFixedTriangle(edge, true, continuous, -2000.0f);
             ASSERT_TRUE(m_solver.Step(1.0f / 60.0f));
             const float height = edge ? 0.5f * (m_solver.Positions()[3].y + m_solver.Positions()[4].y)

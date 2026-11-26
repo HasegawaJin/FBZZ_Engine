@@ -8,10 +8,10 @@
 namespace fbzz::physics
 {
     /// @brief 流れが体を引きずる力 F = k * m * (v_flow - v) [N]。
-    /// @param coupling 結合係数 [1/s]。負や 0 を渡しても式は成り立つ (呼び手が弾く)。
-    /// @param mass 体の質量 [kg]。
-    /// @param flow ワールド空間の媒質速度 [m/s]。
-    /// @param velocity 体のワールド速度 [m/s]。
+    /// @param[in] coupling 結合係数 [1/s]。負や 0 を渡しても式は成り立つ (呼び手が弾く)。
+    /// @param[in] mass 体の質量 [kg]。
+    /// @param[in] flow ワールド空間の媒質速度 [m/s]。
+    /// @param[in] velocity 体のワールド速度 [m/s]。
     /// @note 風 (FlowVolume) と水 (FluidVolume) が同じ式を共有する理由: 片方だけ直すと同じノブが
     ///       媒質ごとに違う意味を持ち始めるため。重み付け (沈み率等) は呼び手が coupling に掛けて渡す。
     /// @see Docs/design/flow-field.md §2 / Docs/design/buoyancy.md §5

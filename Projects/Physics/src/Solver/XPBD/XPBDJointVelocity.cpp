@@ -18,9 +18,9 @@ namespace fbzz::physics
 
         struct LimitJacobians
         {
-            math::Vector3 twist;
-            math::Vector3 swingY;
-            math::Vector3 swingZ;
+            math::Vector3 twist; ///< ねじり角の変化を測るワールド角速度への勾配。
+            math::Vector3 swingY; ///< 関節フレーム Y 軸の曲げ角の変化を測る勾配。
+            math::Vector3 swingZ; ///< 関節フレーム Z 軸の曲げ角の変化を測る勾配。
         };
 
         /// @note q̇=0.5[ω,0]q と ḋ=ω×d から、twist=2atan2(qx,qw)、swing=(0,-dz,dy)atan2(|dYZ|,dx)/|dYZ| を微分する。
@@ -33,7 +33,9 @@ namespace fbzz::physics
             const double qz = relativeRotation.z;
             const double qw = relativeRotation.w;
             const double twistNormSquared = qx * qx + qw * qw;
-            if (twistNormSquared <= 1.0e-8) return {};
+            if (twistNormSquared <= 1.0e-8) {
+                return {};
+            }
 
             const auto childAxis = relativeRotation * math::Vector3::RIGHT;
             const double axisX = childAxis.x;
@@ -61,13 +63,13 @@ namespace fbzz::physics
 
         struct SocketVelocitySystem
         {
-            const math::Vector3& m_childOffset;
-            const math::Vector3& m_parentOffset;
-            const math::Vector3& m_columnX;
-            const math::Vector3& m_columnY;
-            const math::Vector3& m_columnZ;
-            const math::Vector3& m_cofactorX;
-            float m_determinant;
+            const math::Vector3& m_childOffset; ///< 子の重心からソケットのアンカーへのワールドオフセット [m]。
+            const math::Vector3& m_parentOffset; ///< 親の重心からソケットのアンカーへのワールドオフセット [m]。
+            const math::Vector3& m_columnX; ///< ワールド X 方向の力積へのソケットの相対速度応答。
+            const math::Vector3& m_columnY; ///< ワールド Y 方向の力積へのソケットの相対速度応答。
+            const math::Vector3& m_columnZ; ///< ワールド Z 方向の力積へのソケットの相対速度応答。
+            const math::Vector3& m_cofactorX; ///< ソケットの速度応答を逆算する行列の X 方向の余因子。
+            float m_determinant; ///< ソケットの速度応答行列の行列式。退化の判定にも使う。
 
             math::Vector3 SolveImpulse(const math::Vector3& relativeAnchorVelocity) const
             {
@@ -97,16 +99,19 @@ namespace fbzz::physics
                 const auto childAnchorVelocity = childLinearVelocity + math::Vector3::Cross(childAngularVelocity, socket.m_childOffset);
                 const auto parentAnchorVelocity = parentLinearVelocity + math::Vector3::Cross(parentAngularVelocity, socket.m_parentOffset);
                 const auto relativeAnchorVelocity = childAnchorVelocity - parentAnchorVelocity;
-                /// @note ソケットの 3×3 解は通常 1 回で収束する。残差が 1 µm/s 以下なら力積の再計算を省く。
-                if (relativeAnchorVelocity.LengthSq() <= SOCKET_VELOCITY_TOLERANCE_SQ) break;
+                // ソケットの 3×3 解は通常 1 回で収束する。残差が 1 µm/s 以下なら力積の再計算を省く。
+                if (relativeAnchorVelocity.LengthSq() <= SOCKET_VELOCITY_TOLERANCE_SQ) {
+                    break;
+                }
                 const auto impulse = socket.SolveImpulse(relativeAnchorVelocity);
                 const auto nextChildLinearVelocity = childLinearVelocity - impulse * childInverseMass;
                 const auto nextChildAngularVelocity = childAngularVelocity - child.ApplyInvInertia(math::Vector3::Cross(socket.m_childOffset, impulse));
                 const auto nextParentLinearVelocity = parentLinearVelocity + impulse * parentInverseMass;
                 const auto nextParentAngularVelocity = parentAngularVelocity + parent.ApplyInvInertia(math::Vector3::Cross(socket.m_parentOffset, impulse));
                 if (SameVelocityBits(nextChildLinearVelocity, childLinearVelocity) && SameVelocityBits(nextChildAngularVelocity, childAngularVelocity)
-                    && SameVelocityBits(nextParentLinearVelocity, parentLinearVelocity) && SameVelocityBits(nextParentAngularVelocity, parentAngularVelocity))
+                    && SameVelocityBits(nextParentLinearVelocity, parentLinearVelocity) && SameVelocityBits(nextParentAngularVelocity, parentAngularVelocity)) {
                     break;
+                }
                 childLinearVelocity = nextChildLinearVelocity;
                 childAngularVelocity = nextChildAngularVelocity;
                 parentLinearVelocity = nextParentLinearVelocity;
@@ -122,8 +127,10 @@ namespace fbzz::physics
     XPBDJoint::VelocityProjection XPBDJoint::PrepareVelocityProjection() const
     {
         VelocityProjection projection;
-        if (!m_child) return projection;
-        /// @note 位置射影後の速度も関節の許容運動へ射影する。脱力中も接続点の速度を一致させ、自由回転は残す。
+        if (!m_child) {
+            return projection;
+        }
+        // 位置射影後の速度も関節の許容運動へ射影する。脱力中も接続点の速度を一致させ、自由回転は残す。
         /// @see https://matthias-research.github.io/pages/publications/PBDBodies.pdf Velocity Update.
         if (m_socketCompliance <= 0.0f) {
             projection.m_childArm = m_child->GetRotation() * m_anchorChild;
@@ -133,8 +140,9 @@ namespace fbzz::physics
                 const auto& parentArm = projection.m_parentArm;
                 auto velocityChange = impulse * (m_child->GetInvMass() + (m_parent ? m_parent->GetInvMass() : 0.0f));
                 velocityChange += math::Vector3::Cross(m_child->ApplyInvInertia(math::Vector3::Cross(childArm, impulse)), childArm);
-                if (m_parent)
+                if (m_parent) {
                     velocityChange += math::Vector3::Cross(m_parent->ApplyInvInertia(math::Vector3::Cross(parentArm, impulse)), parentArm);
+                }
                 return velocityChange;
             };
             projection.m_columnX = anchorVelocityResponse(math::Vector3::RIGHT);
@@ -155,7 +163,7 @@ namespace fbzz::physics
             const bool atSwingZLimit = atLimit(angles.swingRotationVector.z, m_limits.swingMinZ, m_limits.swingMaxZ);
             const bool atTwistLimit = atLimit(angles.twistAngle, m_limits.twistMin, m_limits.twistMax);
             if (atSwingYLimit || atSwingZLimit || atTwistLimit) {
-                /// @note 速度射影の反復では姿勢が変わらない。上下限に達した軸を一度だけ用意する。
+                // 速度射影の反復では姿勢が変わらない。上下限に達した軸を一度だけ用意する。
                 const auto jacobians = BuildLimitJacobians(relativeRotation);
                 const auto addLimit = [&](const math::Vector3& gradient, float angle, float low, float high) {
                     projection.m_limits[projection.m_limitCount++] = {
@@ -164,9 +172,15 @@ namespace fbzz::physics
                         angle >= high - LIMIT_ANGLE_TOLERANCE,
                     };
                 };
-                if (atSwingYLimit) addLimit(jacobians.swingY, angles.swingRotationVector.y, m_limits.swingMinY, m_limits.swingMaxY);
-                if (atSwingZLimit) addLimit(jacobians.swingZ, angles.swingRotationVector.z, m_limits.swingMinZ, m_limits.swingMaxZ);
-                if (atTwistLimit) addLimit(jacobians.twist, angles.twistAngle, m_limits.twistMin, m_limits.twistMax);
+                if (atSwingYLimit) {
+                    addLimit(jacobians.swingY, angles.swingRotationVector.y, m_limits.swingMinY, m_limits.swingMaxY);
+                }
+                if (atSwingZLimit) {
+                    addLimit(jacobians.swingZ, angles.swingRotationVector.z, m_limits.swingMinZ, m_limits.swingMaxZ);
+                }
+                if (atTwistLimit) {
+                    addLimit(jacobians.twist, angles.twistAngle, m_limits.twistMin, m_limits.twistMax);
+                }
             }
         }
         return projection;
@@ -176,7 +190,9 @@ namespace fbzz::physics
     {
         const bool projectSocket = projection.m_determinant > 1.0e-9f;
         const bool socketOnly = projection.m_limitCount == 0;
-        if (!projectSocket && socketOnly) return;
+        if (!projectSocket && socketOnly) {
+            return;
+        }
 
         const SocketVelocitySystem socket{
             projection.m_childArm, projection.m_parentArm,
@@ -185,18 +201,21 @@ namespace fbzz::physics
         const auto canDeferVelocityWrites = [](const RigidBody& body) {
             const auto positionLock = body.GetFreezePosition();
             const auto rotationLock = body.GetFreezeRotation();
-            return !body.m_allowSleeping && !body.IsSleeping()
-                && std::bit_cast<std::uint32_t>(body.m_sleepTimer) == 0
-                && !positionLock.x && !positionLock.y && !positionLock.z
-                && !rotationLock.x && !rotationLock.y && !rotationLock.z;
+            if (body.m_allowSleeping || body.IsSleeping() || std::bit_cast<std::uint32_t>(body.m_sleepTimer) != 0) {
+                return false;
+            }
+            if (positionLock.x || positionLock.y || positionLock.z) {
+                return false;
+            }
+            return !rotationLock.x && !rotationLock.y && !rotationLock.z;
         };
-        /// @note 休止と軸固定の影響がない二剛体間では、関節内の反復結果だけを先に求めて一度書き戻す。
-        if (socketOnly && m_parent && m_parent != m_child
-            && canDeferVelocityWrites(*m_child) && canDeferVelocityWrites(*m_parent)) {
+        // 休止と軸固定の影響がない二剛体間では、関節内の反復結果だけを先に求めて一度書き戻す。
+        const bool socketConnectsDistinctBodies = socketOnly && m_parent && m_parent != m_child;
+        if (socketConnectsDistinctBodies && canDeferVelocityWrites(*m_child) && canDeferVelocityWrites(*m_parent)) {
             ProjectSocketInLocalState(socket, *m_child, *m_parent);
             return;
         }
-        /// @note 可動域とソケットの速度射影を交互に解く。ソケットだけで角速度を再生成して可動域へ突っ込ませない。
+        // 可動域とソケットの速度射影を交互に解く。ソケットだけで角速度を再生成して可動域へ突っ込ませない。
         for (int iteration = 0; iteration < VELOCITY_PROJECTION_ITERATIONS; ++iteration) {
             bool adjustedLimit = false;
             for (int index = 0; index < projection.m_limitCount; ++index) {
@@ -210,7 +229,7 @@ namespace fbzz::physics
                 }
             }
             if (projectSocket) {
-                /// @note 3軸を別々に解くと細い肢の大きな逆慣性で収束が遅い。点の3×3有効質量を同時に解く。
+                // 3軸を別々に解くと細い肢の大きな逆慣性で収束が遅い。点の3×3有効質量を同時に解く。
                 const auto oldChildLinear = m_child->GetVelocity();
                 const auto oldChildAngular = m_child->GetAngularVelocity();
                 const auto oldParentLinear = m_parent ? m_parent->GetVelocity() : math::Vector3::ZERO;
@@ -221,7 +240,9 @@ namespace fbzz::physics
                 const auto parentAnchorVelocity = m_parent ? oldParentLinear + math::Vector3::Cross(oldParentAngular, socket.m_parentOffset) : math::Vector3::ZERO;
                 const auto relativeAnchorVelocity = childAnchorVelocity - parentAnchorVelocity;
                 if (relativeAnchorVelocity.LengthSq() <= SOCKET_VELOCITY_TOLERANCE_SQ) {
-                    if (!adjustedLimit) break;
+                    if (!adjustedLimit) {
+                        break;
+                    }
                     continue;
                 }
                 const auto impulse = socket.SolveImpulse(relativeAnchorVelocity);
@@ -231,15 +252,29 @@ namespace fbzz::physics
                     m_parent->SetVelocity(m_parent->GetVelocity()+impulse*m_parent->GetInvMass());
                     m_parent->SetAngularVelocity(m_parent->GetAngularVelocity()+m_parent->ApplyInvInertia(math::Vector3::Cross(socket.m_parentOffset,impulse)));
                 }
-                /// @note ソケットだけを反復するとき、両者の速度と休止状態が同じなら次回も同じ結果になる。
-                if (socketOnly && m_child->IsSleeping() == childSleeping
+
+                // 可動域の補正が残っていなければ、速度と休止状態が変わらなかった時点で打ち切れる。
+                if (!socketOnly) {
+                    continue;
+                }
+                const bool childUnchanged = m_child->IsSleeping() == childSleeping
                     && SameVelocityBits(m_child->GetVelocity(), oldChildLinear)
-                    && SameVelocityBits(m_child->GetAngularVelocity(), oldChildAngular)
-                    && (!m_parent || (m_parent->IsSleeping() == parentSleeping
-                        && SameVelocityBits(m_parent->GetVelocity(), oldParentLinear)
-                        && SameVelocityBits(m_parent->GetAngularVelocity(), oldParentAngular))))
+                    && SameVelocityBits(m_child->GetAngularVelocity(), oldChildAngular);
+                if (!childUnchanged) {
+                    continue;
+                }
+                if (!m_parent) {
                     break;
-            } else if (!adjustedLimit) break;
+                }
+                const bool parentUnchanged = m_parent->IsSleeping() == parentSleeping
+                    && SameVelocityBits(m_parent->GetVelocity(), oldParentLinear)
+                    && SameVelocityBits(m_parent->GetAngularVelocity(), oldParentAngular);
+                if (parentUnchanged) {
+                    break;
+                }
+            } else if (!adjustedLimit) {
+                break;
+            }
         }
     }
 } /// @note namespace fbzz::physics

@@ -34,7 +34,7 @@ namespace fbzz::physics
         std::vector<std::size_t> selectedIndices;
         selectedIndices.reserve(static_cast<std::size_t>(pointBudget));
 
-        /// @note フィボナッチ球の方向ごとに外周点を拾い、入力点の並びだけで間引かれるのを防ぐ。
+        // フィボナッチ球の方向ごとに外周点を拾い、入力点の並びだけで間引かれるのを防ぐ。
         constexpr float GOLDEN_ANGLE = 2.39996322972865332f;
         for (int directionIndex = 0; directionIndex < pointBudget; ++directionIndex)
         {
@@ -45,20 +45,24 @@ namespace fbzz::physics
             const math::Vector3 direction = {std::cos(azimuth) * ringRadius, height, std::sin(azimuth) * ringRadius};
 
             const std::size_t pointIndex = FindFarthestPointIndex(points, direction);
-            if (std::find(selectedIndices.begin(), selectedIndices.end(), pointIndex) == selectedIndices.end())
+            if (std::find(selectedIndices.begin(), selectedIndices.end(), pointIndex) == selectedIndices.end()) {
                 selectedIndices.push_back(pointIndex);
+            }
         }
 
         std::vector<math::Vector3> selectedPoints;
         selectedPoints.reserve(selectedIndices.size());
-        for (const std::size_t pointIndex : selectedIndices)
+        for (const std::size_t pointIndex : selectedIndices) {
             selectedPoints.push_back(points[pointIndex]);
+        }
         return selectedPoints;
     }
 
     math::Vector3 ConvexHullCollider::SupportPoint(const math::Vector3& direction) const
     {
-        if (m_worldVerts.empty()) return m_worldCenter;
+        if (m_worldVerts.empty()) {
+            return m_worldCenter;
+        }
         const std::size_t pointIndex = convex_hull_detail::FindFarthestPointIndex(m_worldVerts, direction);
         return m_worldVerts[pointIndex];
     }

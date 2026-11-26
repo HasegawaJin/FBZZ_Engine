@@ -4,6 +4,7 @@
 /// @date    2026-11-21
 
 #include <Physics/Solver/XPBD/XPBDJoint.hpp>
+#include <Math/Scalar/MathUtils.hpp>
 #include "XPBDJointAngles.hpp"
 #include <algorithm>
 #include <cmath>
@@ -17,18 +18,16 @@ namespace fbzz::physics
         /// @note 位置補正と同じ閾値で報告すると数値誤差でほぼ常に true になる。
         constexpr float LIMIT_REPORT_ANGLE = 0.01f;
 
-        float ClampToRange(float value, float low, float high)
-        {
-            return value < low ? low : (value > high ? high : value);
-        }
-
         /// @note twist から符号付きの角度 [rad] を取り出す。X 軸まわりのみ。
         float TwistAngle(const math::Quaternion& twist)
         {
             float axisComponent = twist.x;
             float scalarComponent = twist.w;
-            /// @note 短い方の弧
-            if (scalarComponent < 0.0f) { axisComponent = -axisComponent; scalarComponent = -scalarComponent; }
+            // 短い方の弧
+            if (scalarComponent < 0.0f) {
+                axisComponent = -axisComponent;
+                scalarComponent = -scalarComponent;
+            }
             return 2.0f * std::atan2(axisComponent, scalarComponent);
         }
     }
@@ -43,8 +42,8 @@ namespace fbzz::physics
 
     void XPBDJoint::SolveLimits(float substepDuration)
     {
-        /// @note 診断値はドライブの後・ソケットの前で測る。可動域に対してどこに居るかを見たいので、
-        /// @note «押し戻す前» の値を残す。
+        // 診断値はドライブの後・ソケットの前で測る。可動域に対してどこに居るかを見たいので、
+        // «押し戻す前» の値を残す。
         const math::Quaternion parentFrame = ParentFrameWorld();
         const math::Quaternion childFrame = ChildFrameWorld();
         const math::Quaternion relativeRotation = (parentFrame.Inverse() * childFrame).Normalized();
@@ -55,14 +54,16 @@ namespace fbzz::physics
         m_swingAngleZ = angles.swingRotationVector.z;
 
         m_limited = false;
-        if (!m_limits.enabled) return;
+        if (!m_limits.enabled) {
+            return;
+        }
 
-        /// @note スイング: 軸ごとの超過分をまとめて 1 回の角度補正にする。厳密には Y と Z の
-        /// @note 回転は交換しないが、超過は小さい前提なので合成で足りる。
+        // スイング: 軸ごとの超過分をまとめて 1 回の角度補正にする。厳密には Y と Z の
+        // 回転は交換しないが、超過は小さい前提なので合成で足りる。
         const float swingExcessY =
-            m_swingAngleY - ClampToRange(m_swingAngleY, m_limits.swingMinY, m_limits.swingMaxY);
+            m_swingAngleY - math::Clamp(m_swingAngleY, m_limits.swingMinY, m_limits.swingMaxY);
         const float swingExcessZ =
-            m_swingAngleZ - ClampToRange(m_swingAngleZ, m_limits.swingMinZ, m_limits.swingMaxZ);
+            m_swingAngleZ - math::Clamp(m_swingAngleZ, m_limits.swingMinZ, m_limits.swingMaxZ);
 
         if (std::abs(swingExcessY) > MIN_ANGLE_CORRECTION || std::abs(swingExcessZ) > MIN_ANGLE_CORRECTION) {
             const math::Vector3 correction = parentFrame * math::Vector3{ 0.0f, swingExcessY, swingExcessZ };
@@ -71,10 +72,10 @@ namespace fbzz::physics
                         std::abs(swingExcessY) > LIMIT_REPORT_ANGLE || std::abs(swingExcessZ) > LIMIT_REPORT_ANGLE;
         }
 
-        /// @note ツイスト: スイングで傾いた «後» の骨の軸まわりに戻す。親フレームの X で回すと、
-        /// @note 大きく振れているときに戻す向きがずれてスイングを増やしてしまう。
+        // ツイスト: スイングで傾いた «後» の骨の軸まわりに戻す。親フレームの X で回すと、
+        // 大きく振れているときに戻す向きがずれてスイングを増やしてしまう。
         const float twistExcess =
-            m_twistAngle - ClampToRange(m_twistAngle, m_limits.twistMin, m_limits.twistMax);
+            m_twistAngle - math::Clamp(m_twistAngle, m_limits.twistMin, m_limits.twistMax);
         if (std::abs(twistExcess) > MIN_ANGLE_CORRECTION) {
             const math::Vector3 axis =
                 (parentFrame * (angles.swingRotation * math::Vector3::RIGHT)).NormalizedOr(math::Vector3::RIGHT);
@@ -86,7 +87,9 @@ namespace fbzz::physics
 
     void XPBDJoint::LearnLimits(const math::Quaternion& relativeRotation, float margin)
     {
-        if (!m_limits.enabled) return;
+        if (!m_limits.enabled) {
+            return;
+        }
 
         const float angleMargin = std::max(margin, 0.0f);
 

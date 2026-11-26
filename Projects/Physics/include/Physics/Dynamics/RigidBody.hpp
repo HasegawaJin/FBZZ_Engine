@@ -14,9 +14,9 @@ namespace fbzz::physics
 
     struct AxisLock
     {
-        bool x = false;
-        bool y = false;
-        bool z = false;
+        bool x = false; ///< 指定した X 軸成分を固定するかどうか。
+        bool y = false; ///< 指定した Y 軸成分を固定するかどうか。
+        bool z = false; ///< 指定した Z 軸成分を固定するかどうか。
     };
 
     /// @brief PhysicsSystem から同期される剛体状態。
@@ -25,7 +25,7 @@ namespace fbzz::physics
     {
         friend class World;
         friend class Constraint;
-        detail::RegistrationLifetime m_registrationLifetime;
+        detail::RegistrationLifetime m_registrationLifetime; ///< World の非所有登録が剛体の破棄を検知する寿命トークン。
 
     public:
         /// @note 非所有接触キャッシュ用の個体寿命。所有スレッドで観測する。
@@ -106,12 +106,11 @@ namespace fbzz::physics
         /// @name 拡張プロパティ
         /// @{
 
-        /// @brief Magnetic VolumeComponent 用の Lorentz 力 F = m_charge * (v × B)。0 のとき磁場の影響を受けない。
-        float m_charge = 0.0f;
+        float m_charge = 0.0f; ///< Magnetic VolumeComponent 用の Lorentz 力 F = m_charge * (v × B)。0 のとき磁場の影響を受けない。
 
         /// @brief N 体重力引力用 (World::ApplyGravitationalAttraction)。true のとき同フラグを持つ
         /// @note 他ボディと F = G*m₁*m₂/r² を双方向で受ける。
-        bool  m_isGravitationalSource = false;
+        bool  m_isGravitationalSource = false; ///< 万有引力の相互作用に参加するかどうか。
         float m_gravitationalMass     = 1.0f;  ///< @brief 慣性質量 m_mass と独立して設定可
 
         void* m_userData = nullptr;  ///< @brief engine 側コンポーネントへのポインタ (衝突コールバック用)。Physics は型を知らない。
@@ -120,21 +119,14 @@ namespace fbzz::physics
         bool  m_useCCD    = false;  ///< @brief true のとき World::CCDPhase で TOI を計算する
         float m_ccdRadius = 0.5f;   ///< @brief CCD 判定の代表半径 (SphereCollider の半径に合わせる)
 
-        /// @brief 重力と減衰のゲーム向け調整値。World の重力ベクトルは共有し、剛体ごとに倍率だけ変える。
-        bool  m_useGravity  = true;
-        float m_gravityScale = 1.0f;
-        /// @note ワールドのステップに対する時計倍率。ランタイム専用。
-        float m_timeScale = 1.0f;
-        /// @note 移動速度の減衰率。1 秒当たりの強さをステップ幅に応じて適用する。
-        float m_linearDrag   = 0.0f;
-        /// @note 回転速度に掛ける減衰率。直進の減衰とは独立に設定する。
-        float m_angularDrag  = 0.0f;
-        /// @note 低速の状態が続いたとき、この剛体のシミュレーションを休止してよいか。
-        bool  m_allowSleeping = true;
-        /// @note 現在休止中か。加力などで起床すると移動と回転の更新を再開する。
-        bool  m_isSleeping = false;
-        /// @note 並進と回転の両方が休止しきい値以下だった連続時間（秒）。
-        float m_sleepTimer = 0.0f;
+        bool  m_useGravity  = true; ///< 重力と減衰のゲーム向け調整値。World の重力ベクトルは共有し、剛体ごとに倍率だけ変える。
+        float m_gravityScale = 1.0f; ///< World の重力に掛ける剛体ごとの倍率。
+        float m_timeScale = 1.0f; ///< ワールドのステップに対する時計倍率。ランタイム専用。
+        float m_linearDrag   = 0.0f; ///< 移動速度の減衰率。1 秒当たりの強さをステップ幅に応じて適用する。
+        float m_angularDrag  = 0.0f; ///< 回転速度に掛ける減衰率。直進の減衰とは独立に設定する。
+        bool  m_allowSleeping = true; ///< 低速の状態が続いたとき、この剛体のシミュレーションを休止してよいか。
+        bool  m_isSleeping = false; ///< 現在休止中か。加力などで起床すると移動と回転の更新を再開する。
+        float m_sleepTimer = 0.0f; ///< 並進と回転の両方が休止しきい値以下だった連続時間（秒）。
         /// @}
 
     private:
@@ -154,15 +146,11 @@ namespace fbzz::physics
         /// @brief 対角慣性テンソルの逆数 (ボディ空間)。完全な 3x3 テンソルではなく対角近似にして、
         /// @note Step 4-6 の単純なソルバーに合わせる。SetMass() / SetInertiaFromCollider() 呼び出し時に
         /// @note 自動再計算される。m_isStatic == true のとき {0,0,0}。
-        math::Vector3 m_invInertiaDiag = { 1.0f, 1.0f, 1.0f };
-        /// @note 慣性を再計算するときに借りる形状。剛体は形状の寿命を所有しない。
-        const Collider* m_inertiaCollider = nullptr;
-        /// @note 形状からの計算を上書きする、物体の各軸まわりの慣性。形状を再指定すると解除する。
-        math::Vector3 m_authoredInertia = math::Vector3::ZERO;
-        /// @note ワールドの指定軸に沿う移動を止めるための軸別設定。
-        AxisLock m_freezePosition;
-        /// @note ワールドの指定軸まわりの角速度やトルクを抑えるための軸別設定。
-        AxisLock m_freezeRotation;
+        math::Vector3 m_invInertiaDiag = { 1.0f, 1.0f, 1.0f }; ///< 主軸座標系での対角逆慣性 [1/(kg·m²)]。
+        const Collider* m_inertiaCollider = nullptr; ///< 慣性を再計算するときに借りる形状。剛体は形状の寿命を所有しない。
+        math::Vector3 m_authoredInertia = math::Vector3::ZERO; ///< 形状からの計算を上書きする、物体の各軸まわりの慣性。形状を再指定すると解除する。
+        AxisLock m_freezePosition; ///< ワールドの指定軸に沿う移動を止めるための軸別設定。
+        AxisLock m_freezeRotation; ///< ワールドの指定軸まわりの角速度やトルクを抑えるための軸別設定。
         float m_flowCoupling = 0.0f; ///< @brief 媒質との結合係数 [1/s]。0 で流れを受けない
 
         FBZZ_PHYSICS_API void RecomputeInertia();

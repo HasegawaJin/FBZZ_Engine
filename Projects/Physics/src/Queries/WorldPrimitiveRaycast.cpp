@@ -23,7 +23,9 @@ namespace fbzz::physics::world_query_detail
         bool NormalizeQueryNormal(const Vector3& unnormalized, Vector3& normal)
         {
             const float length = unnormalized.Length();
-            if (!std::isfinite(length) || length < math::EPSILON) return false;
+            if (!std::isfinite(length) || length < math::EPSILON) {
+                return false;
+            }
             normal = unnormalized / length;
             return true;
         }
@@ -33,18 +35,25 @@ namespace fbzz::physics::world_query_detail
                    const Vector3& center, float radius, float& hitDistance, Vector3& hitNormal)
     {
         const Vector3 fromCenter = origin - center;
-        /// @note 正規化した方向に対する二次方程式は二次項が 1 なので、一次項の半分で解ける。
+        // 正規化した方向に対する二次方程式は二次項が 1 なので、一次項の半分で解ける。
         const float halfLinear = Vector3::Dot(fromCenter, unitDirection);
         const float constant = Vector3::Dot(fromCenter, fromCenter) - radius * radius;
         const float discriminant = halfLinear * halfLinear - constant;
-        if (discriminant < 0.0f) return false;
+        if (discriminant < 0.0f) {
+            return false;
+        }
 
         const float rootOffset = std::sqrt(discriminant);
         float distance = -halfLinear - rootOffset;
-        if (distance < 0.0f) distance = -halfLinear + rootOffset;
-        if (distance < 0.0f || distance > maxDistance) return false;
-        if (!std::isfinite(distance) || !NormalizeQueryNormal(origin + unitDirection * distance - center, hitNormal))
+        if (distance < 0.0f) {
+            distance = -halfLinear + rootOffset;
+        }
+        if (distance < 0.0f || distance > maxDistance) {
             return false;
+        }
+        if (!std::isfinite(distance) || !NormalizeQueryNormal(origin + unitDirection * distance - center, hitNormal)) {
+            return false;
+        }
 
         hitDistance = distance;
         return true;
@@ -63,38 +72,50 @@ namespace fbzz::physics::world_query_detail
         const std::array minimum{bounds.min.x, bounds.min.y, bounds.min.z};
         const std::array maximum{bounds.max.x, bounds.max.y, bounds.max.z};
 
+        // 各軸で箱に入ってから出るまでの区間を絞る。3 軸の区間が重ならなければ箱に当たらない。
         for (std::size_t axis = 0; axis < originComponents.size(); ++axis)
         {
             const float axisOrigin = originComponents[axis];
             const float axisDirection = directionComponents[axis];
             if (std::abs(axisDirection) < 1e-8f)
             {
-                if (axisOrigin < minimum[axis] || axisOrigin > maximum[axis]) return false;
+                if (axisOrigin < minimum[axis] || axisOrigin > maximum[axis]) {
+                    return false;
+                }
                 continue;
             }
 
             float axisEntry = (minimum[axis] - axisOrigin) / axisDirection;
             float axisExit = (maximum[axis] - axisOrigin) / axisDirection;
             const bool entersFromMaximum = axisEntry > axisExit;
-            if (entersFromMaximum) std::swap(axisEntry, axisExit);
+            if (entersFromMaximum) {
+                std::swap(axisEntry, axisExit);
+            }
             if (axisEntry > entryDistance)
             {
                 entryDistance = axisEntry;
                 entryAxis = axis;
                 entersMaximumFace = entersFromMaximum;
             }
-            if (axisExit < exitDistance) exitDistance = axisExit;
-            if (entryDistance > exitDistance) return false;
+            if (axisExit < exitDistance) {
+                exitDistance = axisExit;
+            }
+            if (entryDistance > exitDistance) {
+                return false;
+            }
         }
-        if (entryDistance < 0.0f || entryDistance > maxDistance) return false;
+        if (entryDistance < 0.0f || entryDistance > maxDistance) {
+            return false;
+        }
 
-        /// @note 距離 0 の境界ヒットでは進行方向によらず、始点が乗っている面の法線を使う。
+        // 距離 0 の境界ヒットでは進行方向によらず、始点が乗っている面の法線を使う。
         if (entryDistance == 0.0f)
         {
             for (std::size_t axis = 0; axis < originComponents.size(); ++axis)
             {
-                if (originComponents[axis] != minimum[axis] && originComponents[axis] != maximum[axis])
+                if (originComponents[axis] != minimum[axis] && originComponents[axis] != maximum[axis]) {
                     continue;
+                }
                 entryAxis = axis;
                 entersMaximumFace = originComponents[axis] == maximum[axis];
                 break;
@@ -119,9 +140,12 @@ namespace fbzz::physics::world_query_detail
 
         float distance;
         Vector3 localNormal;
-        if (!RayBounds(localOrigin, localDirection, maxDistance, localBounds, distance, localNormal))
+        if (!RayBounds(localOrigin, localDirection, maxDistance, localBounds, distance, localNormal)) {
             return false;
-        if (!NormalizeQueryNormal(worldRotation * localNormal, hitNormal)) return false;
+        }
+        if (!NormalizeQueryNormal(worldRotation * localNormal, hitNormal)) {
+            return false;
+        }
         hitDistance = distance;
         return true;
     }
@@ -136,7 +160,7 @@ namespace fbzz::physics::world_query_detail
         const Vector3 fromSegmentStart = origin - segmentStart;
         const float segmentLengthSquared = Vector3::Dot(segment, segment);
 
-        /// @note 軸に垂直な平面へ投影して、無限円柱の側面との交差を解く。
+        // 軸に垂直な平面へ投影して、無限円柱の側面との交差を解く。
         const float directionAlongSegment = Vector3::Dot(unitDirection, segment) / segmentLengthSquared;
         const float originAlongSegment = Vector3::Dot(fromSegmentStart, segment) / segmentLengthSquared;
         const Vector3 radialDirection = unitDirection - segment * directionAlongSegment;
@@ -154,7 +178,9 @@ namespace fbzz::physics::world_query_detail
             {
                 const float rootOffset = std::sqrt(discriminant);
                 float distance = (-linear - rootOffset) / (2.0f * quadratic);
-                if (distance < 0.0f) distance = (-linear + rootOffset) / (2.0f * quadratic);
+                if (distance < 0.0f) {
+                    distance = (-linear + rootOffset) / (2.0f * quadratic);
+                }
                 if (distance >= 0.0f && distance < maxDistance)
                 {
                     const float segmentFraction = directionAlongSegment * distance + originAlongSegment;
@@ -173,6 +199,7 @@ namespace fbzz::physics::world_query_detail
             }
         }
 
+        // 側面の候補に両端の球を加え、最も近い候補の距離と法線を採用する。
         const auto considerEndSphere = [&](const Vector3& endpoint)
         {
             float candidateDistance;
@@ -187,7 +214,9 @@ namespace fbzz::physics::world_query_detail
         considerEndSphere(segmentStart);
         considerEndSphere(segmentEnd);
 
-        if (!std::isfinite(nearestDistance) || nearestDistance > maxDistance) return false;
+        if (!std::isfinite(nearestDistance) || nearestDistance > maxDistance) {
+            return false;
+        }
         hitDistance = nearestDistance;
         hitNormal = nearestNormal;
         return true;
@@ -210,7 +239,7 @@ namespace fbzz::physics::world_query_detail
         float nearestDistance = std::numeric_limits<float>::infinity();
         Vector3 nearestNormal;
 
-        /// @note 無限円柱の解は近い順。上下の円板の間に収まる側面の交差だけを採る。
+        // 無限円柱の解は近い順。上下の円板の間に収まる側面の交差だけを採る。
         const float quadratic = Vector3::Dot(radialDirection, radialDirection);
         if (quadratic > 1e-8f)
         {
@@ -224,9 +253,13 @@ namespace fbzz::physics::world_query_detail
                                                (-linear + rootOffset) / (2.0f * quadratic)};
                 for (const float distance : sideDistances)
                 {
-                    if (distance < 0.0f || distance >= nearestDistance) continue;
+                    if (distance < 0.0f || distance >= nearestDistance) {
+                        continue;
+                    }
                     const float axialDistance = axialOrigin + axialDirection * distance;
-                    if (std::abs(axialDistance) > halfHeight) continue;
+                    if (std::abs(axialDistance) > halfHeight) {
+                        continue;
+                    }
                     Vector3 candidateNormal;
                     if (NormalizeQueryNormal(origin + unitDirection * distance - (center + axis * axialDistance),
                                              candidateNormal))
@@ -239,6 +272,7 @@ namespace fbzz::physics::world_query_detail
             }
         }
 
+        // 円板の平面までの距離を求め、半径内かつ側面より手前にある交差だけを採用する。
         if (std::abs(axialDirection) > 1e-8f)
         {
             constexpr float CAP_DIRECTIONS[] = {-1.0f, 1.0f};
@@ -246,15 +280,20 @@ namespace fbzz::physics::world_query_detail
             {
                 const float capHeight = halfHeight * capDirection;
                 const float distance = (capHeight - axialOrigin) / axialDirection;
-                if (distance < 0.0f || distance >= nearestDistance) continue;
-                if ((origin + unitDirection * distance - (center + axis * capHeight)).LengthSq() > radius * radius)
+                if (distance < 0.0f || distance >= nearestDistance) {
                     continue;
+                }
+                if ((origin + unitDirection * distance - (center + axis * capHeight)).LengthSq() > radius * radius) {
+                    continue;
+                }
                 nearestDistance = distance;
                 nearestNormal = axis * capDirection;
             }
         }
 
-        if (!std::isfinite(nearestDistance) || nearestDistance > maxDistance) return false;
+        if (!std::isfinite(nearestDistance) || nearestDistance > maxDistance) {
+            return false;
+        }
         hitDistance = nearestDistance;
         hitNormal = nearestNormal;
         return true;

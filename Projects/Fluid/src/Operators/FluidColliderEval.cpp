@@ -42,7 +42,9 @@ float FluidColliderDistance(const FluidCollider& collider, const math::Vector3& 
                             float minimumSize, bool isVolumetric)
 {
     math::Vector3 centerOffset = point - center;
-    if (!isVolumetric) centerOffset.z = 0.0f;
+    if (!isVolumetric) {
+        centerOffset.z = 0.0f;
+    }
     switch (collider.shape) {
     case FluidColliderShape::Box: {
         const auto [faceDistanceX, faceDistanceY, faceDistanceZ] = BoxFaceDistances(centerOffset, collider.size, minimumSize);
@@ -63,7 +65,7 @@ float FluidColliderDistance(const FluidCollider& collider, const math::Vector3& 
         const SegmentFrame frame = MakeSegmentFrame(collider.direction, collider.size, minimumSize);
         const float axisDistance = ScalarDot(centerOffset, frame.axis);
         const math::Vector3 radial = centerOffset - frame.axis * axisDistance;
-        /// @note 半径の向きと軸の向きを 2 軸と見れば、Box と同じ «外の長さ + 中の深さ» で測れる。
+        // 半径の向きと軸の向きを 2 軸と見れば、Box と同じ «外の長さ + 中の深さ» で測れる。
         const float radialDistance = std::sqrt(ScalarDot(radial, radial)) - frame.radius;
         const float capDistance = std::fabs(axisDistance) - frame.halfLength;
         const float outsideRadius = (std::max)(radialDistance, 0.0f);
@@ -81,18 +83,20 @@ math::Vector3 FluidColliderNormal(const FluidCollider& collider, const math::Vec
 {
     const math::Vector3 up = { 0.0f, 1.0f, 0.0f };
     math::Vector3 centerOffset = point - center;
-    if (!isVolumetric) centerOffset.z = 0.0f;
+    if (!isVolumetric) {
+        centerOffset.z = 0.0f;
+    }
     math::Vector3 normal = up;
     switch (collider.shape) {
     case FluidColliderShape::Box: {
         const auto [faceDistanceX, faceDistanceY, faceDistanceZ] = BoxFaceDistances(centerOffset, collider.size, minimumSize);
-        /// @note 距離 > 0 ⇔ どれかの q > 0 (外側の長さが正)。
+        // 距離 > 0 ⇔ どれかの q > 0 (外側の長さが正)。
         if ((std::max)(faceDistanceX, (std::max)(faceDistanceY, faceDistanceZ)) > 0.0f) {
             normal = NormalizeOr(math::Vector3{ (std::max)(faceDistanceX, 0.0f) * SignOrPositive(centerOffset.x),
                                                 (std::max)(faceDistanceY, 0.0f) * SignOrPositive(centerOffset.y),
                                                 (std::max)(faceDistanceZ, 0.0f) * SignOrPositive(centerOffset.z) }, up);
         } else if (faceDistanceX >= faceDistanceY && faceDistanceX >= faceDistanceZ) {
-            /// @note 同じ深さの軸が並んだら x → y → z の順に採る (GPU の写しも同じ順)。
+            // 同じ深さの軸が並んだら x → y → z の順に採る (GPU の写しも同じ順)。
             normal = { SignOrPositive(centerOffset.x), 0.0f, 0.0f };
         } else if (faceDistanceY >= faceDistanceZ) {
             normal = { 0.0f, SignOrPositive(centerOffset.y), 0.0f };
@@ -125,7 +129,7 @@ math::Vector3 FluidColliderNormal(const FluidCollider& collider, const math::Vec
         if ((std::max)(radialDistance, capDistance) > 0.0f) {
             normal = NormalizeOr(radialNormal * (std::max)(radialDistance, 0.0f) + capNormal * (std::max)(capDistance, 0.0f), up);
         } else {
-            /// @note 同じ深さなら半径の側を採る (Box が x → y → z の順に採るのと同じ «先の軸が勝つ» 規則)。
+            // 同じ深さなら半径の側を採る (Box が x → y → z の順に採るのと同じ «先の軸が勝つ» 規則)。
             normal = radialDistance >= capDistance ? radialNormal : capNormal;
         }
         break;

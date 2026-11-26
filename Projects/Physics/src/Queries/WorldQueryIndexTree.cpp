@@ -21,7 +21,7 @@ void World::RebuildQueryNodes()
 
 void World::RefitQueryNodes()
 {
-    /// @note 親が子より先に並ぶため、逆順なら更新済みの子の境界を使える。
+    // 親が子より先に並ぶため、逆順なら更新済みの子の境界を使える。
     for (size_t remainingNodes = m_queryNodes.size(); remainingNodes > 0; --remainingNodes) {
         const size_t nodeIndex = remainingNodes - 1;
         QueryNode& node = m_queryNodes[nodeIndex];
@@ -53,15 +53,27 @@ size_t World::BuildQueryNode(size_t rangeBegin, size_t rangeEnd)
         m_queryNodes[nodeIndex].colliderIndex = m_queryBuildOrder[rangeBegin];
     } else {
         const math::Vector3 extent = nodeBounds.max - nodeBounds.min;
-        const int splitAxis = extent.x >= extent.y && extent.x >= extent.z ? 0 : (extent.y >= extent.z ? 1 : 2);
+        // 最長軸の中心座標で二分する。同じ幅なら X、Y、Z の順に採る。
+        int splitAxis = 2;
+        const bool xIsLongest = extent.x >= extent.y && extent.x >= extent.z;
+        if (xIsLongest) {
+            splitAxis = 0;
+        } else if (extent.y >= extent.z) {
+            splitAxis = 1;
+        }
         const auto centerAlongSplitAxis = [this, splitAxis](size_t colliderIndex) {
             const AABB& bounds = m_indexedColliderBounds[colliderIndex];
-            /// @note 加算前に半分にして、同符号の大きな境界値でも中心座標のオーバーフローを避ける。
-            if (splitAxis == 0) return bounds.min.x * 0.5f + bounds.max.x * 0.5f;
-            if (splitAxis == 1) return bounds.min.y * 0.5f + bounds.max.y * 0.5f;
+            // 加算前に半分にして、同符号の大きな境界値でも中心座標のオーバーフローを避ける。
+            if (splitAxis == 0) {
+                return bounds.min.x * 0.5f + bounds.max.x * 0.5f;
+            }
+            if (splitAxis == 1) {
+                return bounds.min.y * 0.5f + bounds.max.y * 0.5f;
+            }
             return bounds.min.z * 0.5f + bounds.max.z * 0.5f;
         };
 
+        // 同じ中心座標でも登録順で並べ、再構築時の分割を揃える。
         const size_t medianIndex = rangeBegin + leafCount / 2;
         const auto buildOrder = m_queryBuildOrder.begin();
         std::nth_element(buildOrder + rangeBegin, buildOrder + medianIndex, buildOrder + rangeEnd,

@@ -38,7 +38,7 @@ TEST_F(RigidBodyTest, IntegratesVelocityFromTheAccumulatedForce)
 /// @brief Advances position with the updated velocity.
 TEST_F(RigidBodyTest, AdvancesPositionWithTheUpdatedVelocity)
 {
-    /// @note 半陰的オイラー: 位置は «更新後» の速度で進む。陽的オイラーなら初速 0 のまま動かない。
+    // 半陰的オイラー: 位置は «更新後» の速度で進む。陽的オイラーなら初速 0 のまま動かない。
     body.SetMass(1.0f);
     body.ApplyForce({10.0f, 0.0f, 0.0f});
 
@@ -50,7 +50,7 @@ TEST_F(RigidBodyTest, AdvancesPositionWithTheUpdatedVelocity)
 /// @brief Consumes the force after a single step.
 TEST_F(RigidBodyTest, ConsumesTheForceAfterASingleStep)
 {
-    /// @note 力は «そのフレームだけ» の入力。持ち越すと押し続けたように加速していく。
+    // 力は «そのフレームだけ» の入力。持ち越すと押し続けたように加速していく。
     body.SetMass(1.0f);
     body.ApplyForce({10.0f, 0.0f, 0.0f});
     body.Integrate(0.1f);
@@ -98,7 +98,7 @@ TEST_F(RigidBodyTest, StaticBodiesDoNotIntegrate)
 /// @brief Keeps the rotation normalized while spinning.
 TEST_F(RigidBodyTest, KeepsTheRotationNormalizedWhileSpinning)
 {
-    /// @note q_dot の加算は正規性を壊す。放置すると回転行列がスケールを持ち、モデルが伸びる。
+    // q_dot の加算は正規性を壊す。放置すると回転行列がスケールを持ち、モデルが伸びる。
     body.SetAngularVelocity({0.0f, 10.0f, 0.0f});
 
     testkit::StepFixed([this](float dt) { body.Integrate(dt); }, 120);
@@ -137,7 +137,7 @@ TEST_F(RigidBodyTest, StaticBodiesReportZeroInverseMass)
 /// @brief Negative mass accelerates against the applied force.
 TEST_F(RigidBodyTest, NegativeMassAcceleratesAgainstTheAppliedForce)
 {
-    /// @note 反重力演出のために負の質量を許している。0 に丸めていないことを固定する。
+    // 反重力演出のために負の質量を許している。0 に丸めていないことを固定する。
     body.SetMass(-2.0f);
     body.ApplyForce({10.0f, 0.0f, 0.0f});
 
@@ -171,7 +171,7 @@ TEST_F(RigidBodyTest, ImpulseAtTheCenterOfMassDoesNotSpinTheBody)
 /// @brief Checks impulse off the center of mass spins the body.
 TEST_F(RigidBodyTest, ImpulseOffTheCenterOfMassSpinsTheBody)
 {
-    /// @note «端を殴れば回る»。重心へ入れると回らずに滑るだけになる。
+    // «端を殴れば回る»。重心へ入れると回らずに滑るだけになる。
     body.SetMass(1.0f);
 
     body.ApplyImpulseAtPoint({0.0f, 1.0f, 0.0f}, {1.0f, 0.0f, 0.0f});
@@ -222,7 +222,7 @@ TEST_F(RigidBodyTest, InertiaFromASphereIsIsotropic)
 /// @brief Checks inertia from a box resists the long axis the least.
 TEST_F(RigidBodyTest, InertiaFromABoxResistsTheLongAxisTheLeast)
 {
-    /// @note 細長い箱は «長い軸まわり» が一番回りやすい。ここが逆だと転倒の見た目が不自然になる。
+    // 細長い箱は «長い軸まわり» が一番回りやすい。ここが逆だと転倒の見た目が不自然になる。
     physics::OBBCollider box({0.5f, 4.0f, 0.5f});
     body.SetMass(1.0f);
     body.SetInertiaFromCollider(&box);
@@ -328,7 +328,7 @@ TEST_F(RigidBodyTest, NeverSleepsWhenSleepingIsDisabled)
 /// @brief Sleeping bodies report zero inverse mass.
 TEST_F(RigidBodyTest, SleepingBodiesReportZeroInverseMass)
 {
-    /// @note ソルバーは «動かせない相手» として扱う。ここが 0 でないと寝た剛体が押し返される。
+    // ソルバーは «動かせない相手» として扱う。ここが 0 でないと寝た剛体が押し返される。
     body.SetMass(1.0f);
 
     body.Sleep();
@@ -375,7 +375,7 @@ TEST_F(RigidBodyTest, ApplyForceWakesASleepingBody)
 /// @brief Gravity does not wake a sleeping body.
 TEST_F(RigidBodyTest, GravityDoesNotWakeASleepingBody)
 {
-    /// @note ApplyForceNoWake が起こしてしまうと、接地した剛体が永久に眠れない。
+    // ApplyForceNoWake が起こしてしまうと、接地した剛体が永久に眠れない。
     body.Sleep();
 
     body.ApplyForceNoWake({0.0f, -9.81f, 0.0f});

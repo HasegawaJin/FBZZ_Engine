@@ -9,21 +9,21 @@
 namespace fbzz::physics {
     struct BroadPhaseProxy
     {
-        size_t colliderIndex = 0;
-        AABB bounds;
-        math::Vector3 center = math::Vector3::ZERO;
-        int leafIndex = -1;
+        size_t colliderIndex = 0; ///< この境界に対応する登録コライダー配列の添字。
+        AABB bounds; ///< コライダーのワールド AABB [m]。
+        math::Vector3 center = math::Vector3::ZERO; ///< BVH の分割に使う AABB のワールド中心 [m]。
+        int leafIndex = -1; ///< この境界を格納する葉の nodes 内の添字。
     };
 
     struct BroadPhaseNode
     {
-        AABB bounds;
-        int left = -1;
-        int right = -1;
-        int start = 0;
-        int count = 0;
-        int parent = -1;
-        bool dirty = false;
+        AABB bounds; ///< 配下にあるコライダーを包むワールド AABB [m]。
+        int left = -1; ///< 左の子の nodes 内の添字。子がなければ -1。
+        int right = -1; ///< 右の子の nodes 内の添字。子がなければ -1。
+        int start = 0; ///< この部分木が受け持つ proxyOrder の区間の先頭。
+        int count = 0; ///< この部分木が受け持つコライダー境界の件数。
+        int parent = -1; ///< 親ノードの nodes 内の添字。根なら -1。
+        bool dirty = false; ///< 紐づく境界が変わり、このノードの範囲を再計算する必要があるかどうか。
 
         bool IsLeaf() const { return left < 0 && right < 0; }
     };
@@ -41,14 +41,14 @@ namespace fbzz::physics {
         void CollectPairs(const std::vector<ColliderInstance>& colliders, std::vector<CollisionPair>& outPairs,
                           const std::function<bool(int, int)>& layerFilter) const;
 
-        std::vector<BroadPhaseProxy> proxies;
-        std::vector<int> proxyOrder;
-        std::vector<BroadPhaseNode> nodes;
-        std::vector<int> dirtyNodeIndices;
-        std::vector<int> changedProxyIndices;
-        double internalNodeArea = 0.0;
-        double normalizedAreaAtBuild = 0.0;
-        bool allProxyBoundsFinite = true;
+        std::vector<BroadPhaseProxy> proxies; ///< 登録コライダーごとの境界を格納する配列。
+        std::vector<int> proxyOrder; ///< BVH に格納する順序で並べ替える proxies の添字。
+        std::vector<BroadPhaseNode> nodes; ///< 広域判定用の BVH ノードを格納する配列。
+        std::vector<int> dirtyNodeIndices; ///< 境界の再計算が必要な nodes の添字。
+        std::vector<int> changedProxyIndices; ///< 前回から境界が変化した proxies の添字。
+        double internalNodeArea = 0.0; ///< 内部ノードの境界面積の合計。
+        double normalizedAreaAtBuild = 0.0; ///< 再構築直後の正規化面積。木の質の診断に使う。
+        bool allProxyBoundsFinite = true; ///< すべてのコライダー境界が BVH に格納可能かどうか。
 
     private:
         void RefitChangedLeaves();

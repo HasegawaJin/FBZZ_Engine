@@ -14,8 +14,8 @@ namespace
 {
     struct CornerOffset
     {
-        int column;
-        int row;
+        int column; ///< 高さ場セルの原点から隅までの列オフセット。
+        int row; ///< 高さ場セルの原点から隅までの行オフセット。
     };
 
     constexpr uint32_t TRIANGLES_PER_CELL = 2u;
@@ -27,7 +27,9 @@ namespace
     bool TryUpdateNormal(Triangle& triangle)
     {
         const math::Vector3 normal = math::Vector3::Cross(triangle.v[1] - triangle.v[0], triangle.v[2] - triangle.v[0]);
-        if (!(normal.LengthSq() >= MIN_FACE_NORMAL_LENGTH_SQUARED)) return false;
+        if (!(normal.LengthSq() >= MIN_FACE_NORMAL_LENGTH_SQUARED)) {
+            return false;
+        }
         triangle.normal = normal.Normalized();
         return true;
     }
@@ -60,7 +62,9 @@ std::vector<Triangle> HeightFieldCollider::BuildWorldTriangles() const
     {
         for (int cellColumn = 0; cellColumn < cellColumnCount; ++cellColumn)
         {
-            if (IsHoleCell(cellColumn, cellRow)) continue;
+            if (IsHoleCell(cellColumn, cellRow)) {
+                continue;
+            }
 
             math::Vector3 worldCorners[std::size(CELL_CORNERS)];
             for (std::size_t cornerIndex = 0; cornerIndex < std::size(CELL_CORNERS); ++cornerIndex)
@@ -69,7 +73,7 @@ std::vector<Triangle> HeightFieldCollider::BuildWorldTriangles() const
                 worldCorners[cornerIndex] = ToWorld(LocalVertex(cellColumn + corner.column, cellRow + corner.row));
             }
 
-            /// @note 穴や縮退面を飛ばしても、入力格子から決まる三角形番号は詰めない。
+            // 穴や縮退面を飛ばしても、入力格子から決まる三角形番号は詰めない。
             const uint32_t cellIndex = static_cast<uint32_t>(cellRow) * static_cast<uint32_t>(cellColumnCount)
                                      + static_cast<uint32_t>(cellColumn);
             const uint32_t firstTriangleIndex = cellIndex * TRIANGLES_PER_CELL;
@@ -78,8 +82,9 @@ std::vector<Triangle> HeightFieldCollider::BuildWorldTriangles() const
                 const auto& corners = TRIANGLE_CORNERS[triangleInCell];
                 Triangle triangle{{worldCorners[corners[0]], worldCorners[corners[1]], worldCorners[corners[2]]},
                                   {}, firstTriangleIndex + triangleInCell};
-                if (TryUpdateNormal(triangle))
+                if (TryUpdateNormal(triangle)) {
                     worldTriangles.push_back(triangle);
+                }
             }
         }
     }
@@ -93,7 +98,9 @@ void HeightFieldCollider::UpdateWorldTriangles(std::vector<Triangle>& worldTrian
     for (Triangle& triangle : worldTriangles)
     {
         const uint32_t cellIndex = triangle.index / TRIANGLES_PER_CELL;
-        if (cellIndex >= cellCount) continue;
+        if (cellIndex >= cellCount) {
+            continue;
+        }
 
         const int cellColumn = static_cast<int>(cellIndex % cellColumnCount);
         const int cellRow = static_cast<int>(cellIndex / cellColumnCount);
@@ -104,7 +111,7 @@ void HeightFieldCollider::UpdateWorldTriangles(std::vector<Triangle>& worldTrian
             triangle.v[vertexIndex] = ToWorld(LocalVertex(cellColumn + corner.column, cellRow + corner.row));
         }
 
-        /// @note スケール 0 などで一時的に縮退した場合は前の法線を保持する。
+        // スケール 0 などで一時的に縮退した場合は前の法線を保持する。
         TryUpdateNormal(triangle);
     }
 }

@@ -65,11 +65,11 @@ namespace fbzz::physics
                                                const math::Vector3& n);
 
     /// @note 位置拘束を 1 回解く。b に null を渡すと «動かない相手» になる (床・壁)。
-    /// @param rA,rB     各剛体の重心からアンカーへのワールドベクトル。
-    /// @param correction A のアンカーが B のアンカーからずれている量 [m]。**A はこの向きと逆へ動く。**
-    /// @param compliance 0 で剛。単位は [m/N]。
-    /// @param lambda    この substep で蓄積した λ。拘束が持ち、ResetLambda で捨てる。
-    /// @param maxLambda λ の絶対値の上限 (0 以下で無制限)。クーロン摩擦は「接線の λ ≤ μ×法線の λ」なので、
+    /// @param[in] rA,rB     各剛体の重心からアンカーへのワールドベクトル。
+    /// @param[in] correction A のアンカーが B のアンカーからずれている量 [m]。**A はこの向きと逆へ動く。**
+    /// @param[in] compliance 0 で剛。単位は [m/N]。
+    /// @param[in,out] lambda    この substep で蓄積した λ。拘束が持ち、ResetLambda で捨てる。
+    /// @param[in] maxLambda λ の絶対値の上限 (0 以下で無制限)。クーロン摩擦は「接線の λ ≤ μ×法線の λ」なので、
     /// @note 法線側の λ に μ を掛けて渡せば「滑り出すまでは止まる」がそのまま書ける。
     /// @return 今回加えた Δλ。力に直すと Δλ/h² [N]。
     FBZZ_PHYSICS_API float SolvePositional(RigidBody* a, RigidBody* b,
@@ -79,9 +79,9 @@ namespace fbzz::physics
                           float maxLambda = 0.0f);
 
     /// @note 角度拘束を 1 回解く。b に null を渡すと «回らない相手» になる。
-    /// @param correction 軸 × 角度 [rad]。**A はこの向きと逆へ回る。**
-    /// @param compliance 0 で剛。単位は [rad/(N·m)]。
-    /// @param maxLambda  λ の絶対値の上限 (0 以下で無制限)。トルク上限 τ_max [N·m] を掛けたいなら
+    /// @param[in] correction 軸 × 角度 [rad]。**A はこの向きと逆へ回る。**
+    /// @param[in] compliance 0 で剛。単位は [rad/(N·m)]。
+    /// @param[in] maxLambda  λ の絶対値の上限 (0 以下で無制限)。トルク上限 τ_max [N·m] を掛けたいなら
     /// @note τ_max·h² を渡す (λ/h² がトルクなので λ を切ることがそのままトルクを切ることに
     /// @note なる。上限に当たった関節は目標へ追従できなくなり back-drive する)。
     /// @return 今回加えた Δλ。トルクに直すと Δλ/h² [N·m]。
@@ -93,7 +93,7 @@ namespace fbzz::physics
     /// @note 相対角速度を deltaOmega だけ変える。減衰・摩擦のような速度パスの補正で使う。
     /// @note a の角速度が -deltaOmega 側、b が +deltaOmega 側へ動く。
 
-    /// @param maxImpulse 角力積の上限 [N·m·s]。0 以下で無制限。
+    /// @param[in] maxImpulse 角力積の上限 [N·m·s]。0 以下で無制限。
     /// @note トルク上限 τ_max を掛けたいなら τ_max·h を渡す ─ 減衰も
     /// @note 関節が出す «力» なので、位置パスと同じ上限に従わないと、
     /// @note «出せないはずのトルクで荷重を支える» ことになる。
@@ -104,8 +104,8 @@ namespace fbzz::physics
     /// @note 接触点での相対速度を deltaV だけ変える。反発と動摩擦に使う。
     /// @note a の速度が -deltaV 側、b が +deltaV 側へ動く。b に null を渡すと «動かない相手»。
 
-    /// @param rA,rB      各剛体の重心から接触点へのワールドベクトル。
-    /// @param maxImpulse 力積の上限 [N·s]。0 以下で無制限。
+    /// @param[in] rA,rB      各剛体の重心から接触点へのワールドベクトル。
+    /// @param[in] maxImpulse 力積の上限 [N·s]。0 以下で無制限。
     /// @note 動摩擦を «法線力積 × μ» で切るために使う。
     FBZZ_PHYSICS_API void ApplyVelocityChangeAtPoint(RigidBody* a, RigidBody* b,
                                     const math::Vector3& rA, const math::Vector3& rB,

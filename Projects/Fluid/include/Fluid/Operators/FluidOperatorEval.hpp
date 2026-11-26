@@ -20,9 +20,8 @@
 namespace fbzz::fluid {
 
 struct FluidMotionSample {
-    math::Vector3 offset;
-    /// @note キー間の傾き (区間の外・キーが 1 つ以下なら 0)。
-    math::Vector3 velocity;
+    math::Vector3 offset; ///< 操作の基準中心に加える変位。流体シミュレーションの局所座標系。
+    math::Vector3 velocity; ///< キー間の傾き (区間の外・キーが 1 つ以下なら 0)。
 };
 
 /// @note キーが無ければ 0。time が先頭以前・末尾以降なら端のキーの offset で、速度は 0。
@@ -37,10 +36,8 @@ struct FluidMotionSample {
 
 /// @note time における部品の «今の姿»。
 struct FluidOperatorPose {
-    /// @note 基準の center + 動きのずれ。
-    math::Vector3 center;
-    /// @note 動きの速度 (motion.inheritVelocity が false なら 0)。
-    math::Vector3 motionVelocity;
+    math::Vector3 center; ///< 基準の center + 動きのずれ。
+    math::Vector3 motionVelocity; ///< 動きの速度 (motion.inheritVelocity が false なら 0)。
 };
 [[nodiscard]] FBZZ_FLUID_API FluidOperatorPose PoseFluidSource(const FluidSource& source, float time);
 [[nodiscard]] FBZZ_FLUID_API FluidOperatorPose PoseFluidForce(const FluidForce& force, float time);

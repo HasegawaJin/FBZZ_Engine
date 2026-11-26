@@ -36,7 +36,7 @@ BodyHandle World::SyncBody(BodyHandle previousHandle, RigidBody* body)
         return previousHandle;
     }
 
-    /// @note Scene 側でハンドルが失われても、生存中の同一個体は未申告の既存スロットに再接続する。
+    // Scene 側でハンドルが失われても、生存中の同一個体は未申告の既存スロットに再接続する。
     for (size_t slotIndex = 0; slotIndex < m_bodyPool.size(); ++slotIndex) {
         BodySlot& bodySlot = m_bodyPool[slotIndex];
         if (bodySlot.body != body) {
@@ -75,7 +75,7 @@ ColliderHandle World::SyncCollider(ColliderHandle previousHandle, ColliderInstan
         instance.collider->m_registrationLifetime.Observe(),
         instance.body ? instance.body->m_registrationLifetime.Observe() : std::weak_ptr<const void>{},
     };
-    /// @note Physics 単体でも形状の慣性と AABB の回転制約を反映する。
+    // Physics 単体でも形状の慣性と AABB の回転制約を反映する。
     if (instance.body) {
         instance.body->SetInertiaFromCollider(instance.collider);
     }
@@ -85,7 +85,7 @@ ColliderHandle World::SyncCollider(ColliderHandle previousHandle, ColliderInstan
         colliderSlot.lifetime = instanceLifetime;
         colliderSlot.occupied = true;
         colliderSlot.touched = true;
-        /// @note 非所有の形状は同期前に直接更新できるので、既存スロットでも接触の再検出が必要。
+        // 非所有の形状は同期前に直接更新できるので、既存スロットでも接触の再検出が必要。
         m_sceneSyncChanged = true;
     };
 

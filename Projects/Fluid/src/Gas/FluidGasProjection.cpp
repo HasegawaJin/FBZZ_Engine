@@ -14,7 +14,7 @@ namespace fbzz::fluid {
 float FluidGasSolver::Divergence(int x, int y, int z) const
 {
     const float inverseTwoH = 0.5f / m_cellWidth;
-    /// @note セルの両側の速度差を、その間隔（セル幅の 2 倍）で割る。各軸の値を足すと、その場所から流れが広がる速さになる。
+    // セルの両側の速度差を、その間隔（セル幅の 2 倍）で割る。各軸の値を足すと、その場所から流れが広がる速さになる。
     float divergence = 0.0f;
     if (m_cellsX > 1) {
         const float right = m_vx[Index((std::min)(x + 1, m_cellsX - 1), y, z)];
@@ -23,9 +23,13 @@ float FluidGasSolver::Divergence(int x, int y, int z) const
     }
     if (m_cellsY > 1) {
         const float up = m_vy[Index(x, (std::min)(y + 1, m_cellsY - 1), z)];
-        /// @note 床は «通り抜けられない壁»。下のゴーストは鏡映 (-vy) で、床へ向かう流れを発散として拾う。
-        const float down = y > 0 ? m_vy[Index(x, y - 1, z)]
-                                 : (m_settings.floor ? -m_vy[Index(x, 0, z)] : m_vy[Index(x, 0, z)]);
+        float down = 0.0f;
+        if (y > 0) {
+            down = m_vy[Index(x, y - 1, z)];
+        } else {
+            // 底面の外側では、床があるときだけセルの速度を反転して流入を発散に反映する。
+            down = m_settings.floor ? -m_vy[Index(x, 0, z)] : m_vy[Index(x, 0, z)];
+        }
         divergence += (up - down) * inverseTwoH;
     }
     if (m_cellsZ > 1) {
@@ -39,13 +43,17 @@ float FluidGasSolver::Divergence(int x, int y, int z) const
 float FluidGasSolver::MaxDivergence() const
 {
     float maxDivergence = 0.0f;
-    for (int z = 0; z < m_cellsZ; ++z)
-        for (int y = 0; y < m_cellsY; ++y)
+    for (int z = 0; z < m_cellsZ; ++z) {
+        for (int y = 0; y < m_cellsY; ++y) {
             for (int x = 0; x < m_cellsX; ++x) {
-                /// @note 障害物の中は流体ではない (投影もそこを解かない)。縁の固体セルは外の流れとの差を拾うだけ。
-                if (m_hasSolid && m_solid[Index(x, y, z)] != 0) continue;
+                // 障害物の中は流体ではない (投影もそこを解かない)。縁の固体セルは外の流れとの差を拾うだけ。
+                if (m_hasSolid && m_solid[Index(x, y, z)] != 0) {
+                    continue;
+                }
                 maxDivergence = (std::max)(maxDivergence, std::fabs(Divergence(x, y, z)));
             }
+        }
+    }
     return maxDivergence;
 }
 
@@ -65,8 +73,10 @@ void FluidGasSolver::Project(const std::vector<float>* expansion)
             }
         }
     }
-    /// @note 固体セルの速度は障害物が決める。床の制限と重なる場合も最後に障害物の速度を戻す。
-    if (m_hasSolid) EnforceSolids(false);
+    // 固体セルの速度は障害物が決める。床の制限と重なる場合も最後に障害物の速度を戻す。
+    if (m_hasSolid) {
+        EnforceSolids(false);
+    }
 }
 
 void FluidGasSolver::BuildPressureRhs(const std::vector<float>* expansion)
@@ -75,7 +85,7 @@ void FluidGasSolver::BuildPressureRhs(const std::vector<float>* expansion)
         for (int y = 0; y < m_cellsY; ++y) {
             for (int x = 0; x < m_cellsX; ++x) {
                 const std::size_t cell = Index(x, y, z);
-                /// @note 実際の広がりから燃焼などで意図した膨張を引く。圧力で取り除くのは、この余分な広がりだけ。
+                // 実際の広がりから燃焼などで意図した膨張を引く。圧力で取り除くのは、この余分な広がりだけ。
                 m_excessDivergence[cell] = Divergence(x, y, z)
                     - (expansion != nullptr ? (*expansion)[cell] : 0.0f);
             }
@@ -85,7 +95,7 @@ void FluidGasSolver::BuildPressureRhs(const std::vector<float>* expansion)
 
 void FluidGasSolver::SolvePressure()
 {
-    /// @note 前の刻みの圧力を初期値にし、赤黒順の SOR で更新済みの隣接圧力を次の色が読む。
+    // 前の刻みの圧力を初期値にし、赤黒順の SOR で更新済みの隣接圧力を次の色が読む。
     const bool hasSolids = m_hasSolid;
     const float cellWidthSquared = m_cellWidth * m_cellWidth;
     constexpr float OVER_RELAXATION = 1.7f;
@@ -96,15 +106,21 @@ void FluidGasSolver::SolvePressure()
                 for (int y = 0; y < m_cellsY; ++y) {
                     for (int x = ((y + z + color) & 1); x < m_cellsX; x += 2) {
                         const std::size_t cell = Index(x, y, z);
-                        if (hasSolids && m_solid[cell] != 0) continue;
+                        if (hasSolids && m_solid[cell] != 0) {
+                            continue;
+                        }
 
                         float neighborPressureSum = 0.0f;
                         int stencilSize = 0;
-                        /// @note 床・固体は隣を自セルと同圧にするため差分が消える。開放端は p = 0 のまま分母に数える。
+                        // 床・固体は隣を自セルと同圧にするため差分が消える。開放端は p = 0 のまま分母に数える。
                         const auto accumulateNeighbor = [&](int nx, int ny, int nz, bool closedOutside) {
-                            if (nx >= 0 && nx < m_cellsX && ny >= 0 && ny < m_cellsY && nz >= 0 && nz < m_cellsZ) {
+                            const bool insideGrid = nx >= 0 && nx < m_cellsX
+                                && ny >= 0 && ny < m_cellsY && nz >= 0 && nz < m_cellsZ;
+                            if (insideGrid) {
                                 const std::size_t neighbor = Index(nx, ny, nz);
-                                if (hasSolids && m_solid[neighbor] != 0) return;
+                                if (hasSolids && m_solid[neighbor] != 0) {
+                                    return;
+                                }
                                 neighborPressureSum += m_pressure[neighbor];
                                 ++stencilSize;
                             } else if (!closedOutside) {
@@ -123,7 +139,9 @@ void FluidGasSolver::SolvePressure()
                             accumulateNeighbor(x, y, z - 1, false);
                             accumulateNeighbor(x, y, z + 1, false);
                         }
-                        if (stencilSize == 0) continue;
+                        if (stencilSize == 0) {
+                            continue;
+                        }
 
                         const float targetPressure = (neighborPressureSum - cellWidthSquared * m_excessDivergence[cell])
                             / static_cast<float>(stencilSize);
@@ -139,9 +157,11 @@ void FluidGasSolver::SubtractPressureGradient()
 {
     const bool hasSolids = m_hasSolid;
     const float inverseTwoH = 0.5f / m_cellWidth;
-    /// @note 圧力解法と同じ境界条件で、中心差分に使う隣接圧力を選ぶ。
+    // 圧力解法と同じ境界条件で、中心差分に使う隣接圧力を選ぶ。
     const auto pressureAt = [&](int x, int y, int z, float centerPressure, bool closedOutside) {
-        if (x >= 0 && x < m_cellsX && y >= 0 && y < m_cellsY && z >= 0 && z < m_cellsZ) {
+        const bool insideGrid = x >= 0 && x < m_cellsX
+            && y >= 0 && y < m_cellsY && z >= 0 && z < m_cellsZ;
+        if (insideGrid) {
             const std::size_t cell = Index(x, y, z);
             return hasSolids && m_solid[cell] != 0 ? centerPressure : m_pressure[cell];
         }
@@ -151,17 +171,22 @@ void FluidGasSolver::SubtractPressureGradient()
         for (int y = 0; y < m_cellsY; ++y) {
             for (int x = 0; x < m_cellsX; ++x) {
                 const std::size_t cell = Index(x, y, z);
-                if (hasSolids && m_solid[cell] != 0) continue;
+                if (hasSolids && m_solid[cell] != 0) {
+                    continue;
+                }
                 const float centerPressure = m_pressure[cell];
-                if (m_cellsX > 1)
+                if (m_cellsX > 1) {
                     m_vx[cell] -= (pressureAt(x + 1, y, z, centerPressure, false)
                         - pressureAt(x - 1, y, z, centerPressure, false)) * inverseTwoH;
-                if (m_cellsY > 1)
+                }
+                if (m_cellsY > 1) {
                     m_vy[cell] -= (pressureAt(x, y + 1, z, centerPressure, false)
                         - pressureAt(x, y - 1, z, centerPressure, m_settings.floor)) * inverseTwoH;
-                if (m_cellsZ > 1)
+                }
+                if (m_cellsZ > 1) {
                     m_vz[cell] -= (pressureAt(x, y, z + 1, centerPressure, false)
                         - pressureAt(x, y, z - 1, centerPressure, false)) * inverseTwoH;
+                }
             }
         }
     }

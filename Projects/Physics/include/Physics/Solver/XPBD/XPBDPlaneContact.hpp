@@ -15,10 +15,10 @@ namespace fbzz::physics
     class XPBDPlaneContact final : public XPBDConstraint
     {
     public:
-        /// @param localPoint   剛体ローカルの接触点 (重心からのオフセット)。
-        /// @param radius       接触点の太さ [m]。平面から radius だけ浮いた所で止まる。
-        /// @param planeNormal  平面の法線 (上向き)。正規化して渡すこと。
-        /// @param planeOffset  平面の位置。dot(planeNormal, x) = planeOffset を満たす面。
+        /// @param[in] localPoint   剛体ローカルの接触点 (重心からのオフセット)。
+        /// @param[in] radius       接触点の太さ [m]。平面から radius だけ浮いた所で止まる。
+        /// @param[in] planeNormal  平面の法線 (上向き)。正規化して渡すこと。
+        /// @param[in] planeOffset  平面の位置。dot(planeNormal, x) = planeOffset を満たす面。
         FBZZ_PHYSICS_API XPBDPlaneContact(RigidBody*           body,
                          const math::Vector3& localPoint,
                          float                radius,
@@ -45,19 +45,18 @@ namespace fbzz::physics
     private:
         FBZZ_PHYSICS_API void SolveFriction(float h);
 
-        RigidBody*    m_body = nullptr;
-        math::Vector3 m_localPoint;
-        float         m_radius = 0.0f;
-        math::Vector3 m_normal{ 0.0f, 1.0f, 0.0f };
-        float         m_offset = 0.0f;
-        float         m_friction = 0.0f;
+        RigidBody*    m_body = nullptr; ///< 平面との接触を解く剛体の非所有参照。
+        math::Vector3 m_localPoint; ///< 剛体ローカルで重心を基準とする接触点 [m]。
+        float         m_radius = 0.0f; ///< 接触点から平面へ確保する隙間の半径 [m]。
+        math::Vector3 m_normal{ 0.0f, 1.0f, 0.0f }; ///< 平面の許容領域を指すワールド単位法線。
+        float         m_offset = 0.0f; ///< 平面方程式 dot(x, normal) の右辺 [m]。
+        float         m_friction = 0.0f; ///< 接触点と平面との摩擦係数。
 
-        float m_lambda         = 0.0f;
-        float m_lambdaFriction = 0.0f;
-        float m_penetration    = 0.0f;
+        float m_lambda         = 0.0f; ///< 今のサブステップの法線拘束の累積乗数。
+        float m_lambdaFriction = 0.0f; ///< 今のサブステップの摩擦拘束の累積乗数。
+        float m_penetration    = 0.0f; ///< 直近のサブステップで測った貫通の深さ [m]。
 
-        /// @note 前の substep の位置パスを終えた時点の接触点。ここからの移動が «滑った量»。
-        math::Vector3 m_previousPoint;
-        bool          m_hasPreviousPoint = false;
+        math::Vector3 m_previousPoint; ///< 前の substep の位置パスを終えた時点の接触点。ここからの移動が «滑った量»。
+        bool          m_hasPreviousPoint = false; ///< 摩擦の計算に使う直前の接触点を記録したかどうか。
     };
 } /// @note namespace fbzz::physics

@@ -70,7 +70,7 @@ TEST_F(ContactIslandTest, ResolvesEveryContactOfAConnectedStack)
 
     solver.Resolve(contacts);
 
-    /// @note 1 本でも取りこぼすと、その段だけ押し戻されずに沈む。
+    // 1 本でも取りこぼすと、その段だけ押し戻されずに沈む。
     for (const physics::ContactPoint& contact : contacts)
         EXPECT_GT(contact.cachedNormalImpulse, 0.0f);
 }
@@ -78,8 +78,8 @@ TEST_F(ContactIslandTest, ResolvesEveryContactOfAConnectedStack)
 /// @brief Merges two islands when a later contact bridges them.
 TEST_F(ContactIslandTest, MergesTwoIslandsWhenALaterContactBridgesThem)
 {
-    /// @note A-B と C-D を別々に見つけたあとで、B-C が両者を繋ぐ。この «後から合流する»
-    ///       順序で島の付け替えを間違えると、片方の島が空のまま捨てられて接触が丸ごと消える。
+    // A-B と C-D を別々に見つけたあとで、B-C が両者を繋ぐ。この «後から合流する»
+    // 順序で島の付け替えを間違えると、片方の島が空のまま捨てられて接触が丸ごと消える。
     std::vector<physics::ContactPoint> contacts{ Touching(a, b), Touching(c, d), Touching(b, c) };
 
     solver.Resolve(contacts);
@@ -91,7 +91,7 @@ TEST_F(ContactIslandTest, MergesTwoIslandsWhenALaterContactBridgesThem)
 /// @brief Resolves independent islands separately.
 TEST_F(ContactIslandTest, ResolvesIndependentIslandsSeparately)
 {
-    /// @note 繋がっていない 2 組。合流させずにそれぞれ解けることを見る。
+    // 繋がっていない 2 組。合流させずにそれぞれ解けることを見る。
     std::vector<physics::ContactPoint> contacts{ Touching(a, b), Touching(c, d) };
 
     solver.Resolve(contacts);
@@ -111,7 +111,7 @@ TEST_F(ContactIslandTest, LeavesTriggerContactsUnresolved)
 
     solver.Resolve(contacts);
 
-    /// @note Trigger は «通り抜けられる当たり»。押し返した時点で Trigger ではなくなる。
+    // Trigger は «通り抜けられる当たり»。押し返した時点で Trigger ではなくなる。
     EXPECT_FLOAT_EQ(contacts[0].cachedNormalImpulse, 0.0f);
     EXPECT_VEC3_NEAR(a.GetVelocity(), velocityBefore, testkit::kTolerance);
     EXPECT_GT(contacts[1].cachedNormalImpulse, 0.0f);
@@ -128,8 +128,8 @@ TEST_F(ContactIslandTest, SkipsContactsWhereNeitherSideCanMove)
 
     solver.Resolve(contacts);
 
-    /// @note 静止した床と眠っている箱の接触を毎 substep 解いても状態は変わらない。
-    ///       積み上がったシーンではこの組が大半を占めるので、外せないと反復が空回りする。
+    // 静止した床と眠っている箱の接触を毎 substep 解いても状態は変わらない。
+    // 積み上がったシーンではこの組が大半を占めるので、外せないと反復が空回りする。
     EXPECT_FLOAT_EQ(contacts[0].cachedNormalImpulse, 0.0f);
     EXPECT_GT(contacts[1].cachedNormalImpulse, 0.0f);
 }
@@ -139,8 +139,8 @@ TEST_F(ContactIslandTest, SkipsContactsWhereNeitherSideCanMove)
 /// @brief Builds a friction basis even when the normal is the reference axis.
 TEST_F(ContactIslandTest, BuildsAFrictionBasisEvenWhenTheNormalIsTheReferenceAxis)
 {
-    /// @note 壁との接触。法線が基底の作成に使う既定軸と平行なので、外積が 0 に潰れる。
-    ///       予備の軸へ切り替えないと摩擦の 2 軸が NaN になり、接触点ごと壊れる。
+    // 壁との接触。法線が基底の作成に使う既定軸と平行なので、外積が 0 に潰れる。
+    // 予備の軸へ切り替えないと摩擦の 2 軸が NaN になり、接触点ごと壊れる。
     std::vector<physics::ContactPoint> contacts{ Touching(a, b) };
     contacts[0].normal = math::Vector3::RIGHT;
 
@@ -161,7 +161,7 @@ TEST_F(ContactIslandTest, BuildsAFrictionBasisForAnOrdinaryNormal)
 
     solver.Resolve(contacts);
 
-    /// @note 2 軸は互いにも直交していること。潰れていると摩擦が 1 方向にしか効かない。
+    // 2 軸は互いにも直交していること。潰れていると摩擦が 1 方向にしか効かない。
     EXPECT_NEAR(math::Vector3::Dot(contacts[0].tangent[0], contacts[0].tangent[1]),
                 0.0f, testkit::kLooseTolerance);
     EXPECT_UNIT_LENGTH(contacts[0].tangent[0], testkit::kLooseTolerance);

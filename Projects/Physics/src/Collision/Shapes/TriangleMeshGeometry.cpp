@@ -37,7 +37,7 @@ namespace fbzz::physics
         : m_localPositions(positions)
         , m_indices(indices)
     {
-        /// @note インポートや手続き生成の入力にある不完全な末尾は、三角形にせず捨てる。
+        // インポートや手続き生成の入力にある不完全な末尾は、三角形にせず捨てる。
         m_indices.resize(m_indices.size() - m_indices.size() % VERTICES_PER_TRIANGLE);
         RebuildBVH(math::Vector3::ZERO, math::Quaternion::Identity(), {1.0f, 1.0f, 1.0f});
     }
@@ -65,12 +65,14 @@ namespace fbzz::physics
                 assert(vertexIndex < m_localPositions.size());
                 triangle.v[cornerIndex] =
                     TransformVertex(m_localPositions[vertexIndex], worldPosition, worldRotation, worldScale);
-                /// @note 再構築時の外接箱には、BVH から除外する縮退三角形の頂点も含める。
+                // 再構築時の外接箱には、BVH から除外する縮退三角形の頂点も含める。
                 mesh_bvh_detail::IncludePoint(m_worldAABB, triangle.v[cornerIndex]);
             }
 
             const math::Vector3 faceNormal = UnnormalizedFaceNormal(triangle);
-            if (faceNormal.LengthSq() < MIN_FACE_NORMAL_LENGTH_SQUARED) continue;
+            if (faceNormal.LengthSq() < MIN_FACE_NORMAL_LENGTH_SQUARED) {
+                continue;
+            }
 
             triangle.normal = faceNormal.Normalized();
             worldTriangles.push_back(triangle);
@@ -86,22 +88,27 @@ namespace fbzz::physics
 
         for (Triangle& triangle : m_bvh.triangles)
         {
-            /// @note 縮退面を除外しても残した入力上の番号で、元のローカル頂点を引き直す。
+            // 縮退面を除外しても残した入力上の番号で、元のローカル頂点を引き直す。
             const std::size_t firstIndex = static_cast<std::size_t>(triangle.index) * VERTICES_PER_TRIANGLE;
-            if (firstIndex + VERTICES_PER_TRIANGLE > m_indices.size()) continue;
+            if (firstIndex + VERTICES_PER_TRIANGLE > m_indices.size()) {
+                continue;
+            }
 
             for (std::size_t cornerIndex = 0; cornerIndex < VERTICES_PER_TRIANGLE; ++cornerIndex)
             {
                 const uint32_t vertexIndex = m_indices[firstIndex + cornerIndex];
-                if (vertexIndex >= m_localPositions.size()) continue;
+                if (vertexIndex >= m_localPositions.size()) {
+                    continue;
+                }
                 triangle.v[cornerIndex] =
                     TransformVertex(m_localPositions[vertexIndex], worldPosition, worldRotation, m_lastScale);
             }
 
-            /// @note 頂点から法線を引き直し、前回の回転の保持順に依存させない。
+            // 頂点から法線を引き直し、前回の回転の保持順に依存させない。
             const math::Vector3 faceNormal = UnnormalizedFaceNormal(triangle);
-            if (faceNormal.LengthSq() >= MIN_FACE_NORMAL_LENGTH_SQUARED)
+            if (faceNormal.LengthSq() >= MIN_FACE_NORMAL_LENGTH_SQUARED) {
                 triangle.normal = faceNormal.Normalized();
+            }
         }
 
         m_bvh.Refit();

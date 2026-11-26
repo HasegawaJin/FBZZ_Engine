@@ -11,18 +11,24 @@ namespace fbzz::physics {
                                        const ColliderInstance& b,
                                        const std::function<bool(int, int)>& layerFilter)
         {
-            if (layerFilter && !layerFilter(a.layer, b.layer)) return true;
+            if (layerFilter && !layerFilter(a.layer, b.layer)) {
+                return true;
+            }
 
-            /// @note 同じ剛体に属するコライダー同士は当たらない。«胴+脚4本» のように 1 体を
-            /// @note 複数形状で表すと重なりは当然で、解こうとすると自分自身を押してしまう。
-            /// @note トリガー判定より先に見るのも、自分の一部への侵入通知に意味が無いため。
-            if (a.body && a.body == b.body) return true;
+            // 同じ剛体に属するコライダー同士は当たらない。«胴+脚4本» のように 1 体を
+            // 複数形状で表すと重なりは当然で、解こうとすると自分自身を押してしまう。
+            // トリガー判定より先に見るのも、自分の一部への侵入通知に意味が無いため。
+            if (a.body && a.body == b.body) {
+                return true;
+            }
 
-            if (a.isTrigger || b.isTrigger) return false;
+            if (a.isTrigger || b.isTrigger) {
+                return false;
+            }
 
-            /// @note 非 Trigger の Static / Sleeping 同士は解決しても状態が変わらない。特に
-            /// @note Sleeping dynamic vs static TriangleMesh は、接触維持のためだけに Terrain BVH
-            /// @note クエリを毎 substep 実行し 1 フレーム数十 ms を消費しうる。
+            // 非 Trigger の Static / Sleeping 同士は解決しても状態が変わらない。特に
+            // Sleeping dynamic vs static TriangleMesh は、接触維持のためだけに Terrain BVH
+            // クエリを毎 substep 実行し 1 フレーム数十 ms を消費しうる。
             const bool inactiveA = !a.body || a.body->IsStatic() || a.body->IsSleeping();
             const bool inactiveB = !b.body || b.body->IsStatic() || b.body->IsSleeping();
             return inactiveA && inactiveB;
@@ -36,8 +42,12 @@ namespace fbzz::physics {
         {
             const ColliderInstance& colliderA = colliders[a.colliderIndex];
             const ColliderInstance& colliderB = colliders[b.colliderIndex];
-            if (ShouldSkipBroadPhasePair(colliderA, colliderB, layerFilter)) return;
-            if (!a.bounds.Overlaps(b.bounds)) return;
+            if (ShouldSkipBroadPhasePair(colliderA, colliderB, layerFilter)) {
+                return;
+            }
+            if (!a.bounds.Overlaps(b.bounds)) {
+                return;
+            }
 
             outPairs.push_back({ &colliderA, &colliderB });
         }
@@ -71,7 +81,9 @@ namespace fbzz::physics {
         {
             const BroadPhaseNode& nodeA = nodes[static_cast<size_t>(nodeAIndex)];
             const BroadPhaseNode& nodeB = nodes[static_cast<size_t>(nodeBIndex)];
-            if (!nodeA.bounds.Overlaps(nodeB.bounds)) return;
+            if (!nodeA.bounds.Overlaps(nodeB.bounds)) {
+                return;
+            }
 
             if (nodeA.IsLeaf() && nodeB.IsLeaf())
             {
@@ -122,7 +134,9 @@ namespace fbzz::physics {
     void PhysicsSolver::BroadPhaseState::CollectPairs(const std::vector<ColliderInstance>& colliders,
         std::vector<CollisionPair>& outPairs, const std::function<bool(int, int)>& layerFilter) const
     {
-        if (proxies.size() < 2) return;
+        if (proxies.size() < 2) {
+            return;
+        }
         if (!allProxyBoundsFinite) {
             for (size_t first = 0; first < proxies.size(); ++first) {
                 for (size_t second = first + 1; second < proxies.size(); ++second) {

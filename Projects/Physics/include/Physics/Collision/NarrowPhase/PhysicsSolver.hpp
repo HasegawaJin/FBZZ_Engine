@@ -30,13 +30,20 @@ namespace fbzz::physics
     public:
         FBZZ_PHYSICS_API PhysicsSolver();
         FBZZ_PHYSICS_API ~PhysicsSolver();
+        /// @param[in] other 広域判定の索引を複製するコピー元。
         FBZZ_PHYSICS_API PhysicsSolver(const PhysicsSolver& other);
+        /// @param[in] other 広域判定の索引を複製するコピー元。自己代入では索引を維持する。
         FBZZ_PHYSICS_API PhysicsSolver& operator=(const PhysicsSolver& other);
+        /// @param[in,out] other 広域判定の索引の所有権を渡す移動元。
         FBZZ_PHYSICS_API PhysicsSolver(PhysicsSolver&& other) noexcept;
+        /// @param[in,out] other 広域判定の索引の所有権を渡す移動元。
         FBZZ_PHYSICS_API PhysicsSolver& operator=(PhysicsSolver&& other) noexcept;
 
         /// @brief AABB の重なりだけを見て NarrowPhase 対象を絞る。レイヤー行列はここで適用する。
-        /// @note 境界と索引だけを保持し、ColliderInstanceとbody状態は呼出しごとに読む。結果はoutPairsへ追記する。
+        /// @param[in] colliders 今回の候補検索で参照するコライダーと剛体の状態。
+        /// @param[in,out] outPairs 検出した候補を追記する。追記した対は colliders の要素を参照する。
+        /// @param[in] layerFilter レイヤーの組を通すか判定する。空ならレイヤーで絞り込まない。
+        /// @note 次回へは境界と索引を保持し、コライダーと剛体は呼び出しごとに参照する。
         /// @pre 同じsolverの並行実行、およびfilterからの同じsolverへの再入・入力変更は禁止。
         /// @see Docs/design/broadphase-incremental.md
         FBZZ_PHYSICS_API void BroadPhase(const std::vector<ColliderInstance>& colliders,
@@ -44,10 +51,13 @@ namespace fbzz::physics
                         const std::function<bool(int, int)>& layerFilter);
 
         /// @brief 形状の組み合わせごとに詳細判定し、ContactPoint を生成する。
+        /// @param[in] pairs BroadPhase が抽出した候補対。各要素が参照するコライダーは呼び出し中有効であること。
+        /// @param[in,out] outContacts 検出した接触点を追記する。箱同士では複数点を追加する場合がある。
         FBZZ_PHYSICS_API void NarrowPhase(const std::vector<CollisionPair>& pairs,
                         std::vector<ContactPoint>& outContacts);
 
         /// @brief PGS ベースの衝突解決 (Warm Starting 済みの蓄積インパルスを引き継ぐ)。
+        /// @param[in,out] contacts 既存の接触と蓄積インパルスを読み、剛体と接触の解法結果を更新する。
         /// @note 接触島ごとに法線・摩擦の速度解決を反復し、最後に貫通を位置で補正する。
         FBZZ_PHYSICS_API void Resolve(std::vector<ContactPoint>& contacts);
 
@@ -60,13 +70,18 @@ namespace fbzz::physics
         /// @note 同じ接線基底を WarmStart の前と単独の Resolve 呼び出しで使う。
         static void PrepareContactTangents(std::vector<ContactPoint>& contacts);
 
-        /// @pre Called on the owner thread immediately after BroadPhase with its current inputs/output.
+        /// @brief 直近の広域判定の索引と候補対から診断データを作る。
+        /// @param[in] request 採取する範囲と各項目の上限を指定する。
+        /// @param[in] colliders 直近の BroadPhase に渡した配列。
+        /// @param[in] pairs 直近の BroadPhase が結果を書いた配列。
+        /// @param[in] selectedIndex 選択したコライダーを指す colliders の添字。
+        /// @param[in,out] snapshot 呼び出し側が設定した選択状態を読み、採取結果を追加する。
+        /// @pre 所有スレッドで BroadPhase の直後に呼ぶこと。
         FBZZ_PHYSICS_API void CaptureBroadPhaseDebugSnapshot(const BroadPhaseDebugRequest& request,
             const std::vector<ColliderInstance>& colliders, const std::vector<CollisionPair>& pairs,
             std::size_t selectedIndex, BroadPhaseDebugSnapshot& snapshot) const;
         struct BroadPhaseState;
-        /// @note 衝突候補の絞り込みに再利用する空間索引を、このソルバーが所有する。剛体の現在の状態は呼び出しごとに入力から読む。
-        std::unique_ptr<BroadPhaseState> m_broadPhase;
+        std::unique_ptr<BroadPhaseState> m_broadPhase; ///< 衝突候補の絞り込みに再利用する空間索引を、このソルバーが所有する。剛体の現在の状態は呼び出しごとに入力から読む。
 
         FBZZ_PHYSICS_API bool TestSphereSphere(const SphereCollider& a, const SphereCollider& b,
                             ContactPoint& out);
@@ -145,8 +160,8 @@ namespace fbzz::physics
         FBZZ_PHYSICS_API void ResolvePosition(ContactPoint& cp);
 
         static constexpr int   VELOCITY_ITER = 6;   ///< @note Warm Starting で削減
-        static constexpr float SLOP          = 0.01f;
-        static constexpr float BAUMGARTE     = 0.8f;
+        static constexpr float SLOP          = 0.01f; ///< 位置補正を加えずに許容する貫通の深さ [m]。
+        static constexpr float BAUMGARTE     = 0.8f; ///< 許容分を超えた貫通に掛ける位置補正の係数。
     };
 
 } /// @note namespace fbzz::physics

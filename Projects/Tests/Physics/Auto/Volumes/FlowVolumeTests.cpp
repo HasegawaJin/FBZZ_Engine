@@ -57,7 +57,7 @@ TEST_F(FlowVolumeTest, LeavesABodyWithoutCouplingUntouched)
     volume.Apply(body, kUnitDt);
     body.Integrate(kUnitDt);
 
-    /// @note 既定は «流れを受けない»。宣言しない限り、置いてある物は風で動かない。
+    // 既定は «流れを受けない»。宣言しない限り、置いてある物は風で動かない。
     EXPECT_VEC3_NEAR(body.GetVelocity(), math::Vector3::ZERO, testkit::kTolerance);
 }
 
@@ -79,7 +79,7 @@ TEST_F(FlowVolumeTest, ContainsIsTrueEverywhere)
 {
     physics::FlowVolume volume(UniformFlow(kFlow));
 
-    /// @note 半径も減衰も場の側 (SampleFlow) が持つ。この Volume は器なので内外を判定しない。
+    // 半径も減衰も場の側 (SampleFlow) が持つ。この Volume は器なので内外を判定しない。
     EXPECT_TRUE(volume.Contains(math::Vector3::ZERO));
     EXPECT_TRUE(volume.Contains(math::Vector3(1.0e4f, -1.0e4f, 1.0e4f)));
 }
@@ -95,7 +95,7 @@ TEST_F(FlowVolumeTest, AcceleratesARestingBodyAlongTheFlow)
     volume.Apply(body, kUnitDt);
     body.Integrate(kUnitDt);
 
-    /// @note F = k*m*(v_flow - 0) なので、加速度は質量に依らず k*v_flow。
+    // F = k*m*(v_flow - 0) なので、加速度は質量に依らず k*v_flow。
     EXPECT_VEC3_NEAR(body.GetVelocity(), kFlow * (kCoupling * kUnitDt), testkit::kTolerance);
 }
 
@@ -104,7 +104,7 @@ TEST_F(FlowVolumeTest, ConvergesToTheFlowVelocity)
 {
     constexpr float kDt    = 0.02f;  ///< 固定ステップ [s]
     constexpr int   kSteps = 2000;   ///< 40 秒ぶん。残差は (1 - k*dt)^n = 0.99^2000 ~ 2e-9
-    /// 許容: 1 ステップぶんの残差より十分大きく、収束を «ほぼ一致» と呼べる幅。
+    // 許容: 1 ステップぶんの残差より十分大きく、収束を «ほぼ一致» と呼べる幅。
     constexpr float kConvergedTolerance = 1.0e-3f;
 
     physics::RigidBody body = MakeBody(kCoupling);
@@ -115,7 +115,7 @@ TEST_F(FlowVolumeTest, ConvergesToTheFlowVelocity)
         body.Integrate(kDt);
     }
 
-    /// @note 流れとの速度差にだけ力が掛かるので、止まる先は v_flow ちょうど。
+    // 流れとの速度差にだけ力が掛かるので、止まる先は v_flow ちょうど。
     EXPECT_VEC3_NEAR(body.GetVelocity(), kFlow, kConvergedTolerance);
 }
 
@@ -139,14 +139,14 @@ TEST_F(FlowVolumeTest, SharesTheCouplingFormulaWithFluidVolume)
 {
     const math::Vector3 velocity{ 1.0f, 2.0f, 3.0f };
 
-    /// @note FluidVolume が «沈み率で重み付けした結合» として呼ぶのと同じ関数。
-    ///       完全に沈んだ (submersion = 1) ときは FlowVolume とまったく同じ力になる。
+    // FluidVolume が «沈み率で重み付けした結合» として呼ぶのと同じ関数。
+    // 完全に沈んだ (submersion = 1) ときは FlowVolume とまったく同じ力になる。
     const math::Vector3 expected = (kFlow - velocity) * (kCoupling * kMass);
     EXPECT_VEC3_NEAR(physics::FlowDragForce(kCoupling, kMass, kFlow, velocity),
                      expected, testkit::kTolerance);
 
-    /// @note 沈み率は結合係数側に掛ける。FluidVolumeTests の
-    ///       DragCarriesARestingBodyAlongTheFlow が見ている «静止した体 + submersion 1» の式。
+    // 沈み率は結合係数側に掛ける。FluidVolumeTests の
+    // DragCarriesARestingBodyAlongTheFlow が見ている «静止した体 + submersion 1» の式。
     EXPECT_VEC3_NEAR(physics::FlowDragForce(kCoupling * 1.0f, kMass, kFlow, math::Vector3::ZERO),
                      kFlow * (kCoupling * kMass), testkit::kTolerance);
 }

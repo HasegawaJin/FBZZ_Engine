@@ -16,23 +16,30 @@ public:
     RegistrationLifetime(RegistrationLifetime&& other) noexcept { other.m_token.reset(); }
     RegistrationLifetime& operator=(const RegistrationLifetime& other) noexcept
     {
-        if (this != &other) m_token.reset();
+        if (this != &other) {
+            m_token.reset();
+        }
         return *this;
     }
     RegistrationLifetime& operator=(RegistrationLifetime&& other) noexcept
     {
-        if (this != &other) { m_token.reset(); other.m_token.reset(); }
+        if (this != &other) {
+            m_token.reset();
+            other.m_token.reset();
+        }
         return *this;
     }
 
     [[nodiscard]] std::weak_ptr<const void> Observe() const
     {
-        if (!m_token) m_token = std::make_shared<const unsigned char>(0);
+        if (!m_token) {
+            m_token = std::make_shared<const unsigned char>(0);
+        }
         return m_token;
     }
 
 private:
-    mutable std::shared_ptr<const void> m_token;
+    mutable std::shared_ptr<const void> m_token; ///< 登録対象が生存している間に保持するトークンの共有所有。
 };
 
 } /// @note namespace fbzz::physics::detail

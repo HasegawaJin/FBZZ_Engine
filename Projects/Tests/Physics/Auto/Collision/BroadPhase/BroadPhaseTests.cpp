@@ -165,8 +165,8 @@ TEST_F(BroadPhaseTest, ProducesNoPairsForAnEmptyWorld)
 /// @brief Reports each pair exactly once.
 TEST_F(BroadPhaseTest, ReportsEachPairExactlyOnce)
 {
-    /// @note 同じ組を 2 回出すと、その接触だけインパルスが二重に入る。
-    ///       BVH の «自分自身との走査» と «兄弟ノード同士の走査» が重複しないことの確認。
+    // 同じ組を 2 回出すと、その接触だけインパルスが二重に入る。
+    // BVH の «自分自身との走査» と «兄弟ノード同士の走査» が重複しないことの確認。
     Body a({ 0.0f, 0.0f, 0.0f });
     Body b({ 0.5f, 0.0f, 0.0f });
     Body c({ 1.0f, 0.0f, 0.0f });
@@ -188,7 +188,7 @@ TEST_F(BroadPhaseTest, FindsOnlyTheOverlappingSubsetInACrowd)
 /// @brief Skips entries without a collider.
 TEST_F(BroadPhaseTest, SkipsEntriesWithoutACollider)
 {
-    /// @note コンポーネントを外した直後などに null が混ざる。走査ごと落とさないこと。
+    // コンポーネントを外した直後などに null が混ざる。走査ごと落とさないこと。
     Body a({ 0.0f, 0.0f, 0.0f });
     Body b({ 1.0f, 0.0f, 0.0f });
     physics::ColliderInstance empty;
@@ -239,7 +239,7 @@ TEST_F(BroadPhaseTest, TreatsAMissingFilterAsCollideEverything)
 /// @brief Skips two static colliders.
 TEST_F(BroadPhaseTest, SkipsTwoStaticColliders)
 {
-    /// @note 解いても両方動かない。地形どうしの接触で BVH を毎 substep 叩くのを避ける。
+    // 解いても両方動かない。地形どうしの接触で BVH を毎 substep 叩くのを避ける。
     Body a({ 0.0f, 0.0f, 0.0f });
     Body b({ 1.0f, 0.0f, 0.0f });
     a.AsStatic();
@@ -272,8 +272,8 @@ TEST_F(BroadPhaseTest, SkipsTwoSleepingColliders)
 /// @brief Skips a sleeping collider resting on static geometry.
 TEST_F(BroadPhaseTest, SkipsASleepingColliderRestingOnStaticGeometry)
 {
-    /// @note 眠った剛体が地形に載っているだけの状態。ここを毎 substep 判定すると
-    ///       何も起きないのに Terrain の BVH クエリだけが積み上がる。
+    // 眠った剛体が地形に載っているだけの状態。ここを毎 substep 判定すると
+    // 何も起きないのに Terrain の BVH クエリだけが積み上がる。
     Body sleeper({ 0.0f, 0.0f, 0.0f });
     Body ground({ 1.0f, 0.0f, 0.0f });
     sleeper.AsSleeping();
@@ -285,7 +285,7 @@ TEST_F(BroadPhaseTest, SkipsASleepingColliderRestingOnStaticGeometry)
 /// @brief Waking a sleeper brings the pair back.
 TEST_F(BroadPhaseTest, WakingASleeperBringsThePairBack)
 {
-    /// @note 間引きは «今眠っているか» で決まる。起こした次のステップから判定が戻ること。
+    // 間引きは «今眠っているか» で決まる。起こした次のステップから判定が戻ること。
     Body sleeper({ 0.0f, 0.0f, 0.0f });
     Body ground({ 1.0f, 0.0f, 0.0f });
     sleeper.AsSleeping();
@@ -310,7 +310,7 @@ TEST_F(BroadPhaseTest, SkipsColliderOnlyEntriesThatHaveNoBody)
 /// @brief Keeps static pairs when either side is a trigger.
 TEST_F(BroadPhaseTest, KeepsStaticPairsWhenEitherSideIsATrigger)
 {
-    /// @note トリガーは «動かないけれど通知はしたい» 組。間引きの対象から外す。
+    // トリガーは «動かないけれど通知はしたい» 組。間引きの対象から外す。
     Body zone({ 0.0f, 0.0f, 0.0f });
     Body wall({ 1.0f, 0.0f, 0.0f });
     zone.AsStatic();
@@ -323,7 +323,7 @@ TEST_F(BroadPhaseTest, KeepsStaticPairsWhenEitherSideIsATrigger)
 /// @brief Applies the layer filter even to triggers.
 TEST_F(BroadPhaseTest, AppliesTheLayerFilterEvenToTriggers)
 {
-    /// @note トリガーは静止ペアの間引きだけを免除される。レイヤー行列より上位ではない。
+    // トリガーは静止ペアの間引きだけを免除される。レイヤー行列より上位ではない。
     Body zone({ 0.0f, 0.0f, 0.0f });
     Body wall({ 1.0f, 0.0f, 0.0f });
     zone.AsTrigger();
@@ -345,7 +345,7 @@ TEST_F(BroadPhaseTest, KeepsFindingEveryPairAfterTheTreeSplits)
 {
     BodySet bodies = MakeSpreadClusters(5, 0);
 
-    /// @note 離れた 5 組は別々のノードへ落ちる。ノードをまたぐ走査が抜けていると 0 組になる。
+    // 離れた 5 組は別々のノードへ落ちる。ノードをまたぐ走査が抜けていると 0 組になる。
     EXPECT_EQ(Sweep(InstancesOf(bodies)).size(), 5u);
 }
 
@@ -355,8 +355,8 @@ TEST_F(BroadPhaseTest, SplitsAlongWhicheverAxisTheCrowdIsSpreadOn)
     BodySet alongY = MakeSpreadClusters(5, 1);
     BodySet alongZ = MakeSpreadClusters(5, 2);
 
-    /// @note 分割軸は «中心の広がりが一番大きい軸»。X 決め打ちだと、縦に積んだ床や
-    ///       奥行きに並んだ壁で木が痩せて総当たりに戻る。
+    // 分割軸は «中心の広がりが一番大きい軸»。X 決め打ちだと、縦に積んだ床や
+    // 奥行きに並んだ壁で木が痩せて総当たりに戻る。
     EXPECT_EQ(Sweep(InstancesOf(alongY)).size(), 5u);
     EXPECT_EQ(Sweep(InstancesOf(alongZ)).size(), 5u);
 }
@@ -364,8 +364,8 @@ TEST_F(BroadPhaseTest, SplitsAlongWhicheverAxisTheCrowdIsSpreadOn)
 /// @brief Reports each pair exactly once even when the tree splits.
 TEST_F(BroadPhaseTest, ReportsEachPairExactlyOnceEvenWhenTheTreeSplits)
 {
-    /// @note 6 個すべてが互いに重なる。分割後は «左の葉の中» «左と右» «右の葉の中» の
-    ///       3 経路で走査されるので、境界の扱いを間違えると同じ組が二重に出る。
+    // 6 個すべてが互いに重なる。分割後は «左の葉の中» «左と右» «右の葉の中» の
+    // 3 経路で走査されるので、境界の扱いを間違えると同じ組が二重に出る。
     BodySet crowd = MakeCrowd(6, 0.2f);
 
     std::vector<std::pair<size_t, size_t>> expected;
@@ -378,8 +378,8 @@ TEST_F(BroadPhaseTest, ReportsEachPairExactlyOnceEvenWhenTheTreeSplits)
 /// @brief Terminates when every collider shares the same centre.
 TEST_F(BroadPhaseTest, TerminatesWhenEveryColliderSharesTheSameCentre)
 {
-    /// @note 中心が 1 点に潰れると分割軸の幅が 0 になる。«幅で切る» 作りだと片側が空になり、
-    ///       同じ集合で無限に再帰する。中央値で必ず半分に割ることをここで縛る。
+    // 中心が 1 点に潰れると分割軸の幅が 0 になる。«幅で切る» 作りだと片側が空になり、
+    // 同じ集合で無限に再帰する。中央値で必ず半分に割ることをここで縛る。
     BodySet stacked = MakeCrowd(6, 0.0f);
 
     EXPECT_EQ(Sweep(InstancesOf(stacked)).size(), 15u);

@@ -17,16 +17,11 @@ namespace fbzz::fluid {
 
 /// @note 1 本のレシピを解く刻み。
 struct FluidStepPlan {
-    /// @note コマ間隔 [秒] (= duration ÷ コマ数)。
-    float frameDt = 1.0f / 24.0f;
-    /// @note 1 コマを何回に分けて解くか。
-    int substeps = 2;
-    /// @note 焼き始めの前に進めるコマ数 (= ceil(warmup ÷ frameDt))。
-    int warmupFrames = 0;
-    /// @note 焼くコマ数 (columns × rows)。
-    int frameCount = 1;
-    /// @note ループのために末尾へ余分に解くコマ数 (ループしなければ 0)。
-    int loopOverlap = 0;
+    float frameDt = 1.0f / 24.0f; ///< コマ間隔 [秒] (= duration ÷ コマ数)。
+    int substeps = 2; ///< 1 コマを何回に分けて解くか。
+    int warmupFrames = 0; ///< 焼き始めの前に進めるコマ数 (= ceil(warmup ÷ frameDt))。
+    int frameCount = 1; ///< 焼くコマ数 (columns × rows)。
+    int loopOverlap = 0; ///< ループのために末尾へ余分に解くコマ数 (ループしなければ 0)。
 
     [[nodiscard]] float StepDt() const { return frameDt / static_cast<float>(substeps); }
     /// @note 焼き始めから frame コマ目の時刻 [秒]。
@@ -57,14 +52,18 @@ template <class Solver>
 void AdvanceFluidFrame(Solver& solver, const FluidStepPlan& plan)
 {
     const float stepDt = plan.StepDt();
-    for (int step = 0; step < plan.substeps; ++step) solver.Advance(stepDt);
+    for (int step = 0; step < plan.substeps; ++step) {
+        solver.Advance(stepDt);
+    }
 }
 
 /// @note frames コマ進める。
 template <class Solver>
 void AdvanceFluidFrames(Solver& solver, const FluidStepPlan& plan, int frames)
 {
-    for (int frame = 0; frame < frames; ++frame) AdvanceFluidFrame(solver, plan);
+    for (int frame = 0; frame < frames; ++frame) {
+        AdvanceFluidFrame(solver, plan);
+    }
 }
 
 /// @note Reset 直後の場を «焼き始め» の状態まで進める。

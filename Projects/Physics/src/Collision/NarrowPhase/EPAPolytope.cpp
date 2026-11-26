@@ -30,7 +30,7 @@ namespace fbzz::physics::convex_contact_detail
             const float normalLengthSquared = faceNormal.LengthSq();
             if (normalLengthSquared < 1e-12f)
             {
-                /// @note 縮退面は近接面の候補から外す。同じ支持点の繰り返し追加を避けるため。
+                // 縮退面は近接面の候補から外す。同じ支持点の繰り返し追加を避けるため。
                 face.outwardNormal = math::Vector3::UP;
                 face.originDistance = UNUSABLE_FACE_DISTANCE;
                 return face;
@@ -49,14 +49,14 @@ namespace fbzz::physics::convex_contact_detail
 
         struct HorizonEdge
         {
-            Simplex::Vertex start;
-            Simplex::Vertex end;
+            Simplex::Vertex start; ///< 地平線の向き付き辺の始点。
+            Simplex::Vertex end; ///< 地平線の向き付き辺の終点。
         };
 
         void AppendHorizonEdge(std::vector<HorizonEdge>& horizonEdges,
                                const Simplex::Vertex& start, const Simplex::Vertex& end)
         {
-            /// @note 削除面が共有する逆向きの辺を打ち消し、再構築に必要な輪郭だけを残す。
+            // 削除面が共有する逆向きの辺を打ち消し、再構築に必要な輪郭だけを残す。
             for (int edgeIndex = static_cast<int>(horizonEdges.size()) - 1; edgeIndex >= 0; --edgeIndex)
             {
                 const auto& edge = horizonEdges[edgeIndex];
@@ -118,7 +118,8 @@ namespace fbzz::physics::convex_contact_detail
             }
         }
 
-        for (const HorizonEdge& edge : horizonEdges)
+        for (const HorizonEdge& edge : horizonEdges) {
             m_faces.push_back(MakeFace(edge.start, edge.end, supportVertex));
+        }
     }
 }

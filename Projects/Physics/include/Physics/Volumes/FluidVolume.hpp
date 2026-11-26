@@ -31,44 +31,29 @@ namespace fbzz::physics
     /// @brief 水面も格子も高さ場も知らない。
     struct FluidVolumeDesc
     {
-        /// @brief 基準面 (center.y) からの表面の高さ [m]。空なら平らな面として扱う。
-        /// @param worldX, worldZ ワールド座標 (変位«後»、つまり画面に出ている位置)。
-        /// @param time startTime から Tick で進んだ秒数。
-        std::function<float(float worldX, float worldZ, float time)> surfaceHeight;
+        std::function<float(float worldX, float worldZ, float time)> surfaceHeight; ///< 変位後のワールド XZ と startTime から Tick で進めた時刻で、基準面に対する表面の高さ [m] を返す。空なら平らな面。
         /// @brief 変位後 worldXZ の水域所属。空なら halfX/halfZ の矩形を使う。
         /// @note shape は不変 snapshot から評価し、時刻は surfaceHeight と同じ Tick 時計を受ける。
-        std::function<bool(float worldX, float worldZ, float time)> containsXZ;
-        /// @brief ワールド XZ の浮力限界深さ [m]。空なら depthLimit を使う。
-        std::function<float(float worldX, float worldZ, float time)> depthLimitAt;
-        /// @brief ワールド空間の流速 [m/s]。空なら流れなし。
-        std::function<math::Vector3(const math::Vector3& worldPosition)> flowVelocity;
+        std::function<bool(float worldX, float worldZ, float time)> containsXZ; ///< 変位後のワールド XZ 座標が水域内かを判定する。空なら包絡矩形を使う。
+        std::function<float(float worldX, float worldZ, float time)> depthLimitAt; ///< ワールド XZ の浮力限界深さ [m]。空なら depthLimit を使う。
+        std::function<math::Vector3(const math::Vector3& worldPosition)> flowVelocity; ///< ワールド空間の流速 [m/s]。空なら流れなし。
         /// @brief Exclude a 3D world-space point from per-probe forces.
         /// @note With allowProbeIntersection, Contains does not reject a candidate from its center; Apply checks the center and every probe independently.
-        std::function<bool(const math::Vector3& worldPosition)> pointAllowed;
+        std::function<bool(const math::Vector3& worldPosition)> pointAllowed; ///< 各サンプル位置が力を受ける領域に含まれるかを判定する。
         /// @brief Allow a body whose center is outside the point membership to be tested at its probes.
-        bool allowProbeIntersection = false;
+        bool allowProbeIntersection = false; ///< 重心が領域の外にあっても、各サンプル位置の所属を調べるかどうか。
 
-        /// @brief 所属判定の軸平行包絡矩形の中心。y が表面の基準面。
-        math::Vector3 center = math::Vector3::ZERO;
-        float halfX = 0.0f;
-        float halfZ = 0.0f;
+        math::Vector3 center = math::Vector3::ZERO; ///< 所属判定の軸平行包絡矩形の中心。y が表面の基準面。
+        float halfX = 0.0f; ///< 流体領域の包絡矩形のワールド X 方向半幅 [m]。
+        float halfZ = 0.0f; ///< 流体領域の包絡矩形のワールド Z 方向半幅 [m]。
 
-        /// @brief 完全に沈んだときの上向き加速度 [m/s^2]。
-        float buoyancy = 15.0f;
-        /// @brief 流体中での速度減衰 [1/s]。流れがあるときは «流体に対する» 速度に掛かる。
-        float drag = 2.0f;
-        /// @brief 浮力が届く表面からの深さ [m]。
-        /// @note 上限を置く理由: 表面は厚みを持たない板なので、置いたままだと
-        /// @note «表面の真下にある洞窟» の中まで浮力が届いてしまう。
-        float depthLimit = 10.0f;
-        /// @brief 表面の評価に渡す初期時刻 [秒]。Tick(dt) がここから進める。
-        /// @note Physics は Engine の Time を知らないので、時計の起点は呼び手が渡す。
-        float startTime = 0.0f;
-        /// @brief surfaceHeight の絶対値の上限 [m]。不明なら無限大で早期判定を無効にする。
-        float surfaceHeightBound = std::numeric_limits<float>::infinity();
+        float buoyancy = 15.0f; ///< 完全に沈んだときの上向き加速度 [m/s^2]。
+        float drag = 2.0f; ///< 流体中での速度減衰 [1/s]。流れがあるときは «流体に対する» 速度に掛かる。
+        float depthLimit = 10.0f; ///< 浮力が届く表面からの深さ [m]。 上限を置く理由: 表面は厚みを持たない板なので、置いたままだと «表面の真下にある洞窟» の中まで浮力が届いてしまう。
+        float startTime = 0.0f; ///< 表面の評価に渡す初期時刻 [秒]。Tick(dt) がここから進める。 Physics は Engine の Time を知らないので、時計の起点は呼び手が渡す。
+        float surfaceHeightBound = std::numeric_limits<float>::infinity(); ///< surfaceHeight の絶対値の上限 [m]。不明なら無限大で早期判定を無効にする。
 
-        /// @brief 剛体ごとの等価球半径。複数の FluidVolume で共有できるよう shared_ptr で持つ。
-        std::shared_ptr<const BodyRadiusMap> radii;
+        std::shared_ptr<const BodyRadiusMap> radii; ///< 剛体ごとの等価球半径。複数の FluidVolume で共有できるよう shared_ptr で持つ。
     };
 
     /// @brief 包絡矩形・所属 callback・深さで切った流体。等価球の水平 4 点で表面と比べ、沈み率ぶんの揚力・
@@ -91,8 +76,8 @@ namespace fbzz::physics
         FBZZ_PHYSICS_API float DepthLimitAt(float worldX, float worldZ) const;
         FBZZ_PHYSICS_API float RadiusOf(const RigidBody& body) const;
 
-        FluidVolumeDesc m_desc;
-        float m_maxRadius = DEFAULT_BODY_RADIUS;
-        float m_time = 0.0f;
+        FluidVolumeDesc m_desc; ///< 水面、流れ、所属と浮力を決める設定とコールバック。
+        float m_maxRadius = DEFAULT_BODY_RADIUS; ///< 問い合わせ候補を広げるために保持する剛体の等価球半径の上限 [m]。
+        float m_time = 0.0f; ///< 水面と流れのコールバックに渡す現在の時刻 [秒]。
     };
 } /// @note namespace fbzz::physics

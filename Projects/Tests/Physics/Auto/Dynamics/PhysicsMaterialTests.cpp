@@ -38,8 +38,8 @@ TEST_F(PhysicsMaterialTest, CombineImplementsEachRule)
 /// @brief Combine is symmetric in its operands.
 TEST_F(PhysicsMaterialTest, CombineIsSymmetricInItsOperands)
 {
-    /// @note 接触ペアの «どちらが A か» はブロードフェーズの都合で決まる。
-    ///       非対称だと、同じ 2 物体の摩擦がフレームによって変わる。
+    // 接触ペアの «どちらが A か» はブロードフェーズの都合で決まる。
+    // 非対称だと、同じ 2 物体の摩擦がフレームによって変わる。
     const PhysicsMaterialCombine modes[] = {
         PhysicsMaterialCombine::Average,  PhysicsMaterialCombine::GeometricMean,
         PhysicsMaterialCombine::Minimum,  PhysicsMaterialCombine::Multiply,
@@ -54,7 +54,7 @@ TEST_F(PhysicsMaterialTest, CombineIsSymmetricInItsOperands)
 /// @brief Resolve combine takes the stronger rule.
 TEST_F(PhysicsMaterialTest, ResolveCombineTakesTheStrongerRule)
 {
-    /// @note 列挙の並び順がそのまま優先度。折衷せず «強く指定した側» を勝たせる。
+    // 列挙の並び順がそのまま優先度。折衷せず «強く指定した側» を勝たせる。
     EXPECT_EQ(PhysicsMaterial::ResolveCombine(PhysicsMaterialCombine::Average,
                                               PhysicsMaterialCombine::Maximum),
               PhysicsMaterialCombine::Maximum);
@@ -101,7 +101,7 @@ TEST_F(PhysicsMaterialTest, DefaultFrictionRuleIsTheGeometricMean)
 /// @brief Checks rubber overrides the rule when it asks for maximum.
 TEST_F(PhysicsMaterialTest, RubberOverridesTheRuleWhenItAsksForMaximum)
 {
-    /// @note 「相手が何でも噛む」ゴムの指定が、既定規則の材質と当たっても生き残ること。
+    // 「相手が何でも噛む」ゴムの指定が、既定規則の材質と当たっても生き残ること。
     PhysicsMaterial slippery;
     slippery.dynamicFriction = 0.02f;
     PhysicsMaterial grippy;
@@ -128,7 +128,7 @@ TEST_F(PhysicsMaterialTest, StaticAndDynamicFrictionUseTheSameRuleButDifferentVa
 /// @brief Restitution and friction rules are independent.
 TEST_F(PhysicsMaterialTest, RestitutionAndFrictionRulesAreIndependent)
 {
-    /// @note 反発だけ Maximum にした材質が、摩擦の規則まで持って行かないこと。
+    // 反発だけ Maximum にした材質が、摩擦の規則まで持って行かないこと。
     PhysicsMaterial a;
     a.restitution        = 0.1f;
     a.dynamicFriction    = 0.25f;
@@ -157,7 +157,7 @@ TEST_F(PhysicsMaterialTest, EveryPresetIndexResolvesToANameAndAValue)
 /// @brief Preset name round-trips through find preset.
 TEST_F(PhysicsMaterialTest, PresetNameRoundTripsThroughFindPreset)
 {
-    /// @note Editor のメニューとスクリプトが同じ表を引くための契約。
+    // Editor のメニューとスクリプトが同じ表を引くための契約。
     for (int i = 0; i < PhysicsMaterial::PRESET_COUNT; ++i) {
         const PhysicsMaterial* found = PhysicsMaterial::FindPreset(PhysicsMaterial::PresetName(i));
 
@@ -184,7 +184,7 @@ TEST_F(PhysicsMaterialTest, UnknownAndNullNamesAreRejected)
 /// @brief Presets rank as their names suggest.
 TEST_F(PhysicsMaterialTest, PresetsRankAsTheirNamesSuggest)
 {
-    /// @note 数値そのものではなく «氷は滑る・ゴムは跳ねる» という順序関係を守らせる。
+    // 数値そのものではなく «氷は滑る・ゴムは跳ねる» という順序関係を守らせる。
     EXPECT_LT(PhysicsMaterial::Ice.dynamicFriction, PhysicsMaterial::Wood.dynamicFriction);
     EXPECT_LT(PhysicsMaterial::Wood.dynamicFriction, PhysicsMaterial::Stone.dynamicFriction);
     EXPECT_GT(PhysicsMaterial::Rubber.restitution, PhysicsMaterial::Stone.restitution);

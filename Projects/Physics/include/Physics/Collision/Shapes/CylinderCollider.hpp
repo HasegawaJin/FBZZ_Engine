@@ -46,12 +46,12 @@ namespace fbzz::physics
         /// @note PhysicsSolver から SupportFn として渡すための static ラッパー
         FBZZ_PHYSICS_API static math::Vector3 SupportFnImpl(const void* shape, const math::Vector3& dir);
 
-        float m_radius     = 0.5f;
+        float m_radius     = 0.5f; ///< 円柱の長軸から側面までの半径 [m]。
         float m_halfHeight = 1.0f; ///< @note 中心から円板までの距離
 
     private:
-        math::Vector3 m_worldCenter;
-        math::Vector3 m_worldAxis = math::Vector3::UP;
+        math::Vector3 m_worldCenter; ///< ワールド空間に変換済みのコライダーの中心 [m]。
+        math::Vector3 m_worldAxis = math::Vector3::UP; ///< 円柱の長さ方向を表すワールド単位軸。
     };
 
 } /// @note namespace fbzz::physics

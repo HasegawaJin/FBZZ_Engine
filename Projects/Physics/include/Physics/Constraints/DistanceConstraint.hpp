@@ -17,6 +17,6 @@ namespace fbzz::physics
         FBZZ_PHYSICS_API void SolvePosition(float dt) override;
         ConstraintType GetType() const override { return ConstraintType::DISTANCE; }
 
-        float m_distance = 1.0f;
+        float m_distance = 1.0f; ///< 2 つの剛体の位置を戻す基準距離 [m]。
     };
 } /// @note namespace fbzz::physics

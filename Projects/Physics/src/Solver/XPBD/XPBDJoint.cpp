@@ -22,7 +22,7 @@ namespace fbzz::physics
             m_anchorParent = inverseBodyRotation * (worldAnchor - m_parent->GetPosition());
             m_frameParent  = (inverseBodyRotation * normalizedWorldFrame).Normalized();
         } else {
-            /// @note 親が居ない関節はワールドへ固定する。ローカル量をそのままワールド量として持つ。
+            // 親が居ない関節はワールドへ固定する。ローカル量をそのままワールド量として持つ。
             m_anchorParent = worldAnchor;
             m_frameParent  = normalizedWorldFrame;
         }
@@ -61,11 +61,13 @@ namespace fbzz::physics
 
     void XPBDJoint::SolvePosition(float substepDuration)
     {
-        if (!m_child) return;
+        if (!m_child) {
+            return;
+        }
 
-        /// @note Gauss-Seidel は «後に解いたものが勝つ»。ドライブ (柔らかい目標) を先に、可動域
-        /// @note (硬い壁) を次に、ソケット (伸びてはいけない) を最後に置く。逆順だと力み切った
-        /// @note ドライブが関節を可動域の外へ押し出したまま残る。
+        // Gauss-Seidel は «後に解いたものが勝つ»。ドライブ (柔らかい目標) を先に、可動域
+        // (硬い壁) を次に、ソケット (伸びてはいけない) を最後に置く。逆順だと力み切った
+        // ドライブが関節を可動域の外へ押し出したまま残る。
         SolveDrive(substepDuration);
         SolveLimits(substepDuration);
         SolveSocket(substepDuration);
@@ -73,17 +75,29 @@ namespace fbzz::physics
 
     void XPBDJoint::SolvePhysicalPosition(float substepDuration)
     {
-        if (!m_child) return;
+        if (!m_child) {
+            return;
+        }
         SolveDrive(substepDuration);
-        if (m_limits.compliance > 0.0f) SolveLimits(substepDuration);
-        if (m_socketCompliance > 0.0f) SolveSocket(substepDuration);
+        if (m_limits.compliance > 0.0f) {
+            SolveLimits(substepDuration);
+        }
+        if (m_socketCompliance > 0.0f) {
+            SolveSocket(substepDuration);
+        }
     }
 
     void XPBDJoint::SolveCorrectionPosition(float substepDuration)
     {
-        if (!m_child) return;
-        if (m_limits.compliance <= 0.0f) SolveLimits(substepDuration);
-        if (m_socketCompliance <= 0.0f) SolveSocket(substepDuration);
+        if (!m_child) {
+            return;
+        }
+        if (m_limits.compliance <= 0.0f) {
+            SolveLimits(substepDuration);
+        }
+        if (m_socketCompliance <= 0.0f) {
+            SolveSocket(substepDuration);
+        }
     }
 
     void XPBDJoint::SolveSocket(float substepDuration)
@@ -100,7 +114,9 @@ namespace fbzz::physics
 
     void XPBDJoint::SolveVelocity(float substepDuration)
     {
-        if (!m_child || substepDuration <= 0.0f) return;
+        if (!m_child || substepDuration <= 0.0f) {
+            return;
+        }
         SolveDriveVelocity(substepDuration);
         ProjectVelocity(PrepareVelocityProjection());
     }

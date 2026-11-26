@@ -24,8 +24,8 @@ namespace fbzz::physics
     PhysicsMaterialCombine PhysicsMaterial::ResolveCombine(PhysicsMaterialCombine a,
                                                           PhysicsMaterialCombine b)
     {
-        /// @note 列挙の並び順をそのまま優先度として使う (後ろほど強い)。
-        ///       Average < GeometricMean < Minimum < Multiply < Maximum
+        // 列挙の並び順をそのまま優先度として使う (後ろほど強い)。
+        //       Average < GeometricMean < Minimum < Multiply < Maximum
         return static_cast<uint8_t>(a) >= static_cast<uint8_t>(b) ? a : b;
     }
 
@@ -73,21 +73,30 @@ namespace fbzz::physics
 
     const char* PhysicsMaterial::PresetName(int index)
     {
-        if (index < 0 || index >= PRESET_COUNT) return "";
+        if (index < 0 || index >= PRESET_COUNT) {
+            return "";
+        }
         return kPresetNames[index];
     }
 
     const PhysicsMaterial* PhysicsMaterial::PresetAt(int index)
     {
-        if (index < 0 || index >= PRESET_COUNT) return nullptr;
+        if (index < 0 || index >= PRESET_COUNT) {
+            return nullptr;
+        }
         return kPresets[index];
     }
 
     const PhysicsMaterial* PhysicsMaterial::FindPreset(const char* name)
     {
-        if (!name) return nullptr;
-        for (int i = 0; i < PRESET_COUNT; ++i)
-            if (std::strcmp(name, kPresetNames[i]) == 0) return kPresets[i];
+        if (!name) {
+            return nullptr;
+        }
+        for (int i = 0; i < PRESET_COUNT; ++i) {
+            if (std::strcmp(name, kPresetNames[i]) == 0) {
+                return kPresets[i];
+            }
+        }
         return nullptr;
     }
 } // namespace fbzz::physics

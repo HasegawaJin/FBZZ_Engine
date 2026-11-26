@@ -20,7 +20,7 @@ math::Vector3 SampleCone3D(const FluidSource& source, float radius, float length
     math::Vector3 firstBasis;
     math::Vector3 secondBasis;
     OrthonormalBasis(axis, firstBasis, secondBasis);
-    /// @note 断面積は t² に比例するので、t = L·u^(1/3) で体積一様になる。
+    // 断面積は t² に比例するので、t = L·u^(1/3) で体積一様になる。
     const float t = length * std::cbrt(u0);
     const float allowed = length > 0.0f ? radius * t / length : 0.0f;
     const float r = allowed * std::sqrt(u1);
@@ -35,12 +35,16 @@ math::Vector3 SampleCone2D(const FluidSource& source, float radius, float length
 {
     const math::Vector3 axis = NormalizeOr(source.direction, math::Vector3{ 0.0f, 1.0f, 0.0f });
     const float planar = std::sqrt(axis.x * axis.x + axis.y * axis.y);
-    if (length <= 0.0f || planar < 1.0e-6f) return { 0.0f, 0.0f, 0.0f };
+    if (length <= 0.0f || planar < 1.0e-6f) {
+        return { 0.0f, 0.0f, 0.0f };
+    }
     const float slope = radius / length;
     const float g = (1.0f + slope * slope) * planar * planar - 1.0f;
-    if (g <= 0.0f) return { 0.0f, 0.0f, 0.0f };
+    if (g <= 0.0f) {
+        return { 0.0f, 0.0f, 0.0f };
+    }
     const float planarLength = length / planar;
-    /// @note 三角形の幅は頂点からの距離に比例するので、√u で面積一様になる。
+    // 三角形の幅は頂点からの距離に比例するので、√u で面積一様になる。
     const float along = planarLength * std::sqrt(u0);
     const float across = along * std::sqrt(g) * (2.0f * u1 - 1.0f);
     const float ax = axis.x / planar;
@@ -101,24 +105,35 @@ math::Vector3 SampleTexturePlate(const FluidSource& source, float u0, float u1, 
     float t[3] = { 2.0f * u0 - 1.0f, 2.0f * u1 - 1.0f, 2.0f * u2 - 1.0f };
     if (!isVolumetric) {
         int solvedAxis = 0;
-        for (int k = 1; k < 3; ++k)
-            if (std::fabs(axes[k].z) > std::fabs(axes[solvedAxis].z)) solvedAxis = k;
+        for (int k = 1; k < 3; ++k) {
+            if (std::fabs(axes[k].z) > std::fabs(axes[solvedAxis].z)) {
+                solvedAxis = k;
+            }
+        }
         if (std::fabs(axes[solvedAxis].z) > 1.0e-9f) {
             float otherAxesDepth = 0.0f;
-            for (int k = 0; k < 3; ++k)
-                if (k != solvedAxis) otherAxesDepth += axes[k].z * t[k];
+            for (int k = 0; k < 3; ++k) {
+                if (k != solvedAxis) {
+                    otherAxesDepth += axes[k].z * t[k];
+                }
+            }
             float value = -otherAxesDepth / axes[solvedAxis].z;
             if (std::fabs(value) > PLATE_INTERIOR_LIMIT) {
                 const float plateScale = PLATE_INTERIOR_LIMIT / std::fabs(value);
-                for (int k = 0; k < 3; ++k)
-                    if (k != solvedAxis) t[k] *= plateScale;
+                for (int k = 0; k < 3; ++k) {
+                    if (k != solvedAxis) {
+                        t[k] *= plateScale;
+                    }
+                }
                 value *= plateScale;
             }
             t[solvedAxis] = value;
         }
     }
     math::Vector3 offset = axes[0] * t[0] + axes[1] * t[1] + axes[2] * t[2];
-    if (!isVolumetric) offset.z = 0.0f;
+    if (!isVolumetric) {
+        offset.z = 0.0f;
+    }
     return offset;
 }
 
@@ -131,14 +146,18 @@ math::Vector3 SampleSegment3D(const SegmentFrame& frame, bool capped, float u0, 
         const float angle = 2.0f * FLUID_PI * u;
         return firstBasis * (r * std::cos(angle)) + secondBasis * (r * std::sin(angle));
     };
-    /// @note 断面積は半径の 2 乗に比例するので、r = R√u で面一様になる。
+    // 断面積は半径の 2 乗に比例するので、r = R√u で面一様になる。
     const float radial = frame.radius * std::sqrt(u1);
-    if (capped) return frame.axis * (frame.halfLength * (2.0f * u0 - 1.0f)) + disc(radial, u2);
-    /// @note 両端の半球を合わせると球 1 つ。球と円柱を体積比で選び分ければ、カプセル全体で一様になる。
+    if (capped) {
+        return frame.axis * (frame.halfLength * (2.0f * u0 - 1.0f)) + disc(radial, u2);
+    }
+    // 両端の半球を合わせると球 1 つ。球と円柱を体積比で選び分ければ、カプセル全体で一様になる。
     const float tube = 2.0f * FLUID_PI * frame.radius * frame.radius * frame.halfLength;
     const float ball = 4.0f / 3.0f * FLUID_PI * frame.radius * frame.radius * frame.radius;
     const float total = tube + ball;
-    if (total <= 0.0f) return { 0.0f, 0.0f, 0.0f };
+    if (total <= 0.0f) {
+        return { 0.0f, 0.0f, 0.0f };
+    }
     const float pick = u0 * total;
     if (pick < tube) {
         const float u = tube > 0.0f ? pick / tube : 0.0f;
@@ -148,14 +167,16 @@ math::Vector3 SampleSegment3D(const SegmentFrame& frame, bool capped, float u0, 
     const float r = frame.radius * std::cbrt(u);
     const float cosTheta = 1.0f - 2.0f * u1;
     const float sinTheta = std::sqrt((std::max)(0.0f, 1.0f - cosTheta * cosTheta));
-    /// @note 球を軸で半分に割り、軸方向の符号の側の端へ寄せる (半球が端の半球そのものになる)。
+    // 球を軸で半分に割り、軸方向の符号の側の端へ寄せる (半球が端の半球そのものになる)。
     return frame.axis * (r * cosTheta + (cosTheta >= 0.0f ? frame.halfLength : -frame.halfLength)) + disc(r * sinTheta, u2);
 }
 
 math::Vector3 SampleSegment2D(const SegmentFrame& frame, bool capped, float u0, float u1)
 {
     const FlatSegment flat = MakeFlatSegment(frame, capped);
-    if (flat.extent <= 0.0f || flat.extent >= UNBOUNDED_SECTION_EXTENT) return { 0.0f, 0.0f, 0.0f };
+    if (flat.extent <= 0.0f || flat.extent >= UNBOUNDED_SECTION_EXTENT) {
+        return { 0.0f, 0.0f, 0.0f };
+    }
     const float alpha = flat.extent * (2.0f * u0 - 1.0f);
     const float beta = FlatSegmentHalfWidth(frame, flat, capped, alpha) * (2.0f * u1 - 1.0f);
     const math::Vector3 offset = flat.along * alpha + flat.across * beta;
@@ -170,6 +191,8 @@ math::Vector3 SampleFluidSourcePoint(const FluidSource& source, const math::Vect
     const float sx = (std::max)(source.size.x, 0.0f);
     const float sy = (std::max)(source.size.y, 0.0f);
     const float sz = (std::max)(source.size.z, 0.0f);
+
+    // 形状の中心からの変位を標本化する。厚みを持たない場合は平面断面の分布を使う。
     math::Vector3 offset = { 0.0f, 0.0f, 0.0f };
     switch (source.shape) {
     case FluidSourceShape::Box:
@@ -193,6 +216,7 @@ math::Vector3 SampleFluidSourcePoint(const FluidSource& source, const math::Vect
     }
     case FluidSourceShape::Sphere:
     default:
+        // 球では体積が半径の 3 乗、円では面積が 2 乗に比例する。乱数を対応する根に通して偏りを抑える。
         if (isVolumetric) {
             const float r = sx * std::cbrt(u0);
             const float cosTheta = 1.0f - 2.0f * u1;
@@ -206,8 +230,12 @@ math::Vector3 SampleFluidSourcePoint(const FluidSource& source, const math::Vect
         }
         break;
     }
+
+    // 2D の発生源は中心と同じ Z の断面へ配置する。
     math::Vector3 point = center + offset;
-    if (!isVolumetric) point.z = center.z;
+    if (!isVolumetric) {
+        point.z = center.z;
+    }
     return point;
 }
 
@@ -215,11 +243,13 @@ void FluidTextureSourceBasis(const FluidSource& source, math::Vector3& outRight,
                              math::Vector3& outNormal)
 {
     outNormal = NormalizeOr(source.direction, math::Vector3{ 0.0f, 0.0f, 1.0f });
-    if (std::fabs(outNormal.y) < 0.99f)
+    if (std::fabs(outNormal.y) < 0.99f) {
         outRight = NormalizeOr(math::Vector3::Cross(math::Vector3{ 0.0f, 1.0f, 0.0f }, outNormal),
                                math::Vector3{ 1.0f, 0.0f, 0.0f });
-    else
+    }
+    else {
         outRight = { 1.0f, 0.0f, 0.0f };
+    }
     outUp = math::Vector3::Cross(outNormal, outRight);
 }
 
@@ -236,9 +266,13 @@ bool SampleFluidTextureSourcePoint(const FluidSource& source, const math::Vector
     const float sy = (std::max)(source.size.y, 0.0f);
     const float a = sx > 0.0f ? ScalarDot(offset, right) / sx : 0.0f;
     const float b = sy > 0.0f ? ScalarDot(offset, up) / sy : 0.0f;
-    if (accept >= SampleFluidSourceMask(mask, (a + 1.0f) * 0.5f, (1.0f - b) * 0.5f)) return false;
+    if (accept >= SampleFluidSourceMask(mask, (a + 1.0f) * 0.5f, (1.0f - b) * 0.5f)) {
+        return false;
+    }
     outPoint = center + offset;
-    if (!isVolumetric) outPoint.z = center.z;
+    if (!isVolumetric) {
+        outPoint.z = center.z;
+    }
     return true;
 }
 

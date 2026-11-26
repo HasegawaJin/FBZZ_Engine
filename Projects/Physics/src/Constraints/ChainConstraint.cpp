@@ -19,7 +19,9 @@ namespace fbzz::physics
 
     void ChainConstraint::SolvePosition(float /*dt*/)
     {
-        if (m_bodies.size() < 2) return;
+        if (m_bodies.size() < 2) {
+            return;
+        }
 
         for (int iter = 0; iter < m_solverIterations; ++iter)
         {
@@ -27,16 +29,22 @@ namespace fbzz::physics
             {
                 RigidBody* a = m_bodies[i];
                 RigidBody* b = m_bodies[i + 1];
-                if (!a || !b) continue;
+                if (!a || !b) {
+                    continue;
+                }
 
                 const math::Vector3 delta = b->GetPosition() - a->GetPosition();
                 const float length = delta.Length();
-                if (length < 1e-6f) continue;
+                if (length < 1e-6f) {
+                    continue;
+                }
 
                 const float invA = a->GetInvMass();
                 const float invB = b->GetInvMass();
                 const float invSum = invA + invB;
-                if (invSum == 0.0f) continue;
+                if (invSum == 0.0f) {
+                    continue;
+                }
 
                 const math::Vector3 correction = delta * ((length - m_segmentLength) / length);
                 a->SetPosition(a->GetPosition() + correction * (invA / invSum));

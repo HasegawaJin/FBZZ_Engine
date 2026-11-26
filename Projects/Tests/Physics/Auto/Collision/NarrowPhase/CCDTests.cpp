@@ -21,7 +21,7 @@ class CCDTest : public testkit::Fixture {};
 /// @brief Finds the time of impact for an approaching sphere.
 TEST_F(CCDTest, FindsTheTimeOfImpactForAnApproachingSphere)
 {
-    /// @note 1 フレームで 10 進む球。中心間 10、半径の和 2 なので 8 進んだところで接触する。
+    // 1 フレームで 10 進む球。中心間 10、半径の和 2 なので 8 進んだところで接触する。
     const physics::CCDResult result = physics::CCDSolver::SweptSphereSphere(
         { -10.0f, 0.0f, 0.0f }, 1.0f, { 100.0f, 0.0f, 0.0f },
         math::Vector3::ZERO, 1.0f, 0.1f);
@@ -56,7 +56,7 @@ TEST_F(CCDTest, MissesASphereThatThePathPassesBeside)
 /// @brief Misses when the frame is too short to reach the target.
 TEST_F(CCDTest, MissesWhenTheFrameIsTooShortToReachTheTarget)
 {
-    /// @note 同じ速度でも dt が短ければ届かない。TOI が 1 を超える解は採らない。
+    // 同じ速度でも dt が短ければ届かない。TOI が 1 を超える解は採らない。
     const physics::CCDResult result = physics::CCDSolver::SweptSphereSphere(
         { -10.0f, 0.0f, 0.0f }, 1.0f, { 100.0f, 0.0f, 0.0f },
         math::Vector3::ZERO, 1.0f, 0.01f);
@@ -67,7 +67,7 @@ TEST_F(CCDTest, MissesWhenTheFrameIsTooShortToReachTheTarget)
 /// @brief Misses when the mover is standing still.
 TEST_F(CCDTest, MissesWhenTheMoverIsStandingStill)
 {
-    /// @note 動いていなければ通り抜けようが無い。ここで解こうとすると 0 除算になる。
+    // 動いていなければ通り抜けようが無い。ここで解こうとすると 0 除算になる。
     const physics::CCDResult result = physics::CCDSolver::SweptSphereSphere(
         { -10.0f, 0.0f, 0.0f }, 1.0f, math::Vector3::ZERO,
         math::Vector3::ZERO, 1.0f, 0.1f);
@@ -120,7 +120,7 @@ TEST_F(CCDTest, LargerRadiiMakeContactHappenEarlier)
 /// @brief Finds the time of impact against a ground plane.
 TEST_F(CCDTest, FindsTheTimeOfImpactAgainstAGroundPlane)
 {
-    /// @note 高さ 10 から 1 フレームで 20 落ちる。半径 1 なので高さ 1 で接触 = 9 落ちた時点。
+    // 高さ 10 から 1 フレームで 20 落ちる。半径 1 なので高さ 1 で接触 = 9 落ちた時点。
     const physics::CCDResult result = physics::CCDSolver::SweptSpherePlane(
         { 0.0f, 10.0f, 0.0f }, 1.0f, { 0.0f, -200.0f, 0.0f },
         math::Vector3::UP, 0.0f, 0.1f);
@@ -164,7 +164,7 @@ TEST_F(CCDTest, MissesAPlaneItCannotReachThisFrame)
 /// @brief Honours the plane offset.
 TEST_F(CCDTest, HonoursThePlaneOffset)
 {
-    /// @note 高さ 5 に持ち上げた床。同じ落下でも接触は早くなる。
+    // 高さ 5 に持ち上げた床。同じ落下でも接触は早くなる。
     const physics::CCDResult raised = physics::CCDSolver::SweptSpherePlane(
         { 0.0f, 10.0f, 0.0f }, 1.0f, { 0.0f, -200.0f, 0.0f },
         math::Vector3::UP, 5.0f, 0.1f);
@@ -180,10 +180,10 @@ TEST_F(CCDTest, HonoursThePlaneOffset)
 /// @brief Needs CCD only when a frame moves more than half the radius.
 TEST_F(CCDTest, NeedsCCDOnlyWhenAFrameMovesMoreThanHalfTheRadius)
 {
-    /// @note しきい値は «1 フレームの移動量 > 半径 * 0.5»。ここを緩めると穴が開き、
-    ///       締めすぎると全部の弾が CCD 経路へ入って重くなる。
+    // しきい値は «1 フレームの移動量 > 半径 * 0.5»。ここを緩めると穴が開き、
+    // 締めすぎると全部の弾が CCD 経路へ入って重くなる。
     physics::RigidBody body;
-    /// @note dt=1/60 で 0.0667 進む
+    // dt=1/60 で 0.0667 進む
     body.SetVelocity({ 0.0f, 0.0f, 4.0f });
 
     EXPECT_TRUE(physics::CCDSolver::NeedsCCD(body, 0.1f, testkit::kFixedDeltaTime));

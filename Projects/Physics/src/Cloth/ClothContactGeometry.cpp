@@ -27,10 +27,14 @@ Vector3 TriangleWeights(const Vector3& p, const Vector3& a, const Vector3& b, co
 {
     const Vector3 ab = b - a, ac = c - a, ap = p - a;
     const float d1 = Vector3::Dot(ab, ap), d2 = Vector3::Dot(ac, ap);
-    if (d1 <= 0.0f && d2 <= 0.0f) return {1.0f, 0.0f, 0.0f};
+    if (d1 <= 0.0f && d2 <= 0.0f) {
+        return {1.0f, 0.0f, 0.0f};
+    }
     const Vector3 bp = p - b;
     const float d3 = Vector3::Dot(ab, bp), d4 = Vector3::Dot(ac, bp);
-    if (d3 >= 0.0f && d4 <= d3) return {0.0f, 1.0f, 0.0f};
+    if (d3 >= 0.0f && d4 <= d3) {
+        return {0.0f, 1.0f, 0.0f};
+    }
     const float vc = d1 * d4 - d3 * d2;
     if (vc <= 0.0f && d1 >= 0.0f && d3 <= 0.0f) {
         const float v = SafeRatio(d1, d1 - d3);
@@ -38,7 +42,9 @@ Vector3 TriangleWeights(const Vector3& p, const Vector3& a, const Vector3& b, co
     }
     const Vector3 cp = p - c;
     const float d5 = Vector3::Dot(ab, cp), d6 = Vector3::Dot(ac, cp);
-    if (d6 >= 0.0f && d5 <= d6) return {0.0f, 0.0f, 1.0f};
+    if (d6 >= 0.0f && d5 <= d6) {
+        return {0.0f, 0.0f, 1.0f};
+    }
     const float vb = d5 * d2 - d1 * d6;
     if (vb <= 0.0f && d2 >= 0.0f && d6 <= 0.0f) {
         const float w = SafeRatio(d2, d2 - d6);
@@ -50,7 +56,9 @@ Vector3 TriangleWeights(const Vector3& p, const Vector3& a, const Vector3& b, co
         return {0.0f, 1.0f - w, w};
     }
     const float sum = va + vb + vc;
-    if (sum <= 1.0e-20f) return {1.0f, 0.0f, 0.0f};
+    if (sum <= 1.0e-20f) {
+        return {1.0f, 0.0f, 0.0f};
+    }
     const float v = vb / sum, w = vc / sum;
     return {1.0f - v - w, v, w};
 }
@@ -62,10 +70,16 @@ std::pair<float, float> SegmentParameters(const Vector3& p0, const Vector3& p1, 
     const Vector3 d1 = p1 - p0, d2 = q1 - q0, r = p0 - q0;
     const float a = Vector3::Dot(d1, d1), e = Vector3::Dot(d2, d2), f = Vector3::Dot(d2, r);
     constexpr float TINY = 1.0e-20f;
-    if (a <= TINY && e <= TINY) return {0.0f, 0.0f};
-    if (a <= TINY) return {0.0f, std::clamp(f / e, 0.0f, 1.0f)};
+    if (a <= TINY && e <= TINY) {
+        return {0.0f, 0.0f};
+    }
+    if (a <= TINY) {
+        return {0.0f, std::clamp(f / e, 0.0f, 1.0f)};
+    }
     const float c = Vector3::Dot(d1, r);
-    if (e <= TINY) return {std::clamp(-c / a, 0.0f, 1.0f), 0.0f};
+    if (e <= TINY) {
+        return {std::clamp(-c / a, 0.0f, 1.0f), 0.0f};
+    }
     const float b = Vector3::Dot(d1, d2);
     const float denominator = a * e - b * b;
     float s = denominator > a * e * 1.0e-6f ? std::clamp((b * f - c * e) / denominator, 0.0f, 1.0f) : 0.0f;
@@ -123,11 +137,17 @@ bool OrientContactNormal(const std::vector<Vector3>& positions, const std::vecto
         : Vector3::Cross(positions[particles[2]] - positions[particles[1]],
                          positions[particles[3]] - positions[particles[1]]);
     const float lengthSq = unnormalized.LengthSq();
-    if (!(lengthSq > 1.0e-20f)) return false;
+    if (!(lengthSq > 1.0e-20f)) {
+        return false;
+    }
     outNormal = unnormalized / std::sqrt(lengthSq);
     const float side = Vector3::Dot(WeightedOffset(previous, particles, weights), outNormal);
-    if (std::abs(side) <= 1.0e-7f) return false;
-    if (side < 0.0f) outNormal = -outNormal;
+    if (std::abs(side) <= 1.0e-7f) {
+        return false;
+    }
+    if (side < 0.0f) {
+        outNormal = -outNormal;
+    }
     return true;
 }
 
@@ -137,10 +157,16 @@ void ProjectSeparation(std::vector<Vector3>& positions, const std::vector<float>
                        const ParticleQuad& particles, const ContactWeights& weights, const Vector3& normal, float penetration)
 {
     float weightedInverseMass = 0.0f;
-    for (int i = 0; i < 4; ++i) weightedInverseMass += weights[i] * weights[i] * inverseMasses[particles[i]];
-    if (weightedInverseMass <= GEOMETRY_EPSILON) return;
+    for (int i = 0; i < 4; ++i) {
+        weightedInverseMass += weights[i] * weights[i] * inverseMasses[particles[i]];
+    }
+    if (weightedInverseMass <= GEOMETRY_EPSILON) {
+        return;
+    }
     const float scale = penetration / weightedInverseMass;
-    for (int i = 0; i < 4; ++i) positions[particles[i]] += normal * (scale * weights[i] * inverseMasses[particles[i]]);
+    for (int i = 0; i < 4; ++i) {
+        positions[particles[i]] += normal * (scale * weights[i] * inverseMasses[particles[i]]);
+    }
 }
 
 }

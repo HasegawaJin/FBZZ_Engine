@@ -122,15 +122,17 @@ TEST_F(BVHTest, RootBoundsEncloseEveryTriangle)
 /// @brief Checks every triangle appears in exactly one leaf.
 TEST_F(BVHTest, EveryTriangleAppearsInExactlyOneLeaf)
 {
-    /// @note 重複して入っていると同じ三角形と 2 回衝突判定し、押し戻しが二重に効く。
-    ///       抜けていると、その面だけすり抜ける。
+    // 重複して入っていると同じ三角形と 2 回衝突判定し、押し戻しが二重に効く。
+    //       抜けていると、その面だけすり抜ける。
     physics::BVHTree tree;
     tree.Build(TriangleStrip(50), 4);
 
     ASSERT_EQ(tree.triangles.size(), 50u);
     std::vector<int> appearances(50, 0);
     for (const physics::BVHNode& node : tree.nodes) {
-        if (!node.IsLeaf()) continue;
+        if (!node.IsLeaf()) {
+            continue;
+        }
         for (uint32_t index : node.triIndices) {
             ASSERT_LT(index, appearances.size());
             ++appearances[index];
@@ -161,7 +163,9 @@ TEST_F(BVHTest, LeavesHoldNoMoreThanTheRequestedTriangleCount)
 
     size_t leafCount = 0;
     for (const physics::BVHNode& node : tree.nodes) {
-        if (!node.IsLeaf()) continue;
+        if (!node.IsLeaf()) {
+            continue;
+        }
         ++leafCount;
         EXPECT_FALSE(node.triIndices.empty());
         EXPECT_LE(node.triIndices.size(), static_cast<size_t>(kMaxLeafTris));
@@ -178,7 +182,9 @@ TEST_F(BVHTest, ChildBoundsAreContainedInTheirParent)
     ASSERT_FALSE(tree.nodes.empty());
     ASSERT_FALSE(tree.nodes.front().IsLeaf());
     for (const physics::BVHNode& node : tree.nodes) {
-        if (node.IsLeaf()) continue;
+        if (node.IsLeaf()) {
+            continue;
+        }
         for (const int childIndex : {node.left, node.right}) {
             ASSERT_GE(childIndex, 0);
             ASSERT_LT(static_cast<size_t>(childIndex), tree.nodes.size());
@@ -235,7 +241,7 @@ TEST_F(BVHTest, QueryFindsEveryTriangleWhenTheBoxCoversTheMesh)
 /// @brief Query finds only the triangles under the box.
 TEST_F(BVHTest, QueryFindsOnlyTheTrianglesUnderTheBox)
 {
-    /// @note 三角形 i は x 方向に [i, i+0.8]。問い合わせ [4.9, 5.5] と重なるのは 5 番だけ。
+    // 三角形 i は x 方向に [i, i+0.8]。問い合わせ [4.9, 5.5] と重なるのは 5 番だけ。
     physics::BVHTree tree;
     tree.Build(TriangleStrip(32), 4);
 
@@ -248,7 +254,7 @@ TEST_F(BVHTest, QueryFindsOnlyTheTrianglesUnderTheBox)
 /// @brief Query matches a brute force scan for random boxes.
 TEST_F(BVHTest, QueryMatchesABruteForceScanForRandomBoxes)
 {
-    /// @note BVH の枝刈りが «結果を変えない» ことが本質。総当たりと突き合わせる。
+    // BVH の枝刈りが «結果を変えない» ことが本質。総当たりと突き合わせる。
     physics::BVHTree                     tree;
     const std::vector<physics::Triangle> triangles = TriangleStrip(64);
     tree.Build(std::vector<physics::Triangle>(triangles), 4);
@@ -267,7 +273,7 @@ TEST_F(BVHTest, QueryMatchesABruteForceScanForRandomBoxes)
 /// @brief Query matches a brute force scan for a single triangle.
 TEST_F(BVHTest, QueryMatchesABruteForceScanForASingleTriangle)
 {
-    /// @note 三角形 1 枚は «根がそのまま葉» という最小構成。境界条件が壊れやすい。
+    // 三角形 1 枚は «根がそのまま葉» という最小構成。境界条件が壊れやすい。
     physics::BVHTree                     tree;
     const std::vector<physics::Triangle> triangles = TriangleStrip(1);
     tree.Build(std::vector<physics::Triangle>(triangles));

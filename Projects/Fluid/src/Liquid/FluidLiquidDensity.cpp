@@ -19,7 +19,9 @@ using operator_geometry_detail::Saturate;
 
 float FluidLiquidSolver::Poly6(float distanceSquared) const
 {
-    if (distanceSquared >= m_kernelRadiusSquared) return 0.0f;
+    if (distanceSquared >= m_kernelRadiusSquared) {
+        return 0.0f;
+    }
     const float d = m_kernelRadiusSquared - distanceSquared;
     return m_densityKernelScale * d * d * d;
 }
@@ -27,7 +29,9 @@ float FluidLiquidSolver::Poly6(float distanceSquared) const
 /// @note ∇W = scale × (p_i − p_j)。scale は負 (離れるほど W が減る)。
 float FluidLiquidSolver::SpikyGradientScale(float distance) const
 {
-    if (distance <= 1.0e-7f || distance >= m_kernelRadius) return 0.0f;
+    if (distance <= 1.0e-7f || distance >= m_kernelRadius) {
+        return 0.0f;
+    }
     const float d = m_kernelRadius - distance;
     return m_gradientKernelScale * d * d / distance;
 }
@@ -41,7 +45,7 @@ void FluidLiquidSolver::SolveDensity()
 {
     const float inverseRestDensity = 1.0f / m_restDensity;
     const float cohesion = Saturate(m_settings.cohesion);
-    /// @note Jacobi 反復では全粒子の λ と位置補正を計算し終えてから予測位置を更新する。
+    // Jacobi 反復では全粒子の λ と位置補正を計算し終えてから予測位置を更新する。
     ComputeDensityMultipliers(inverseRestDensity, cohesion);
     ComputeDensityCorrections(inverseRestDensity);
     ApplyDensityCorrections();
@@ -53,7 +57,7 @@ void FluidLiquidSolver::ComputeDensityMultipliers(float inverseRestDensity, floa
 {
     const std::size_t particleCount = m_particles.size();
     for (std::size_t particleIndex = 0; particleIndex < particleCount; ++particleIndex) {
-        /// @note Poly6 による密度の総和には自粒子も含める。近傍リストには自粒子が入らない。
+        // Poly6 による密度の総和には自粒子も含める。近傍リストには自粒子が入らない。
         float density = Poly6(0.0f);
         float selfGradientX = 0.0f;
         float selfGradientY = 0.0f;
@@ -74,11 +78,13 @@ void FluidLiquidSolver::ComputeDensityMultipliers(float inverseRestDensity, floa
                                      + (scale * dz) * (scale * dz);
         }
         m_density[particleIndex] = density;
-        /// @note 密度を静止時の値で割ると 1 が基準になる。そこから 1 を引くと、粒子が詰まり過ぎた度合いを正の値で表せる。
+        // 密度を静止時の値で割ると 1 が基準になる。そこから 1 を引くと、粒子が詰まり過ぎた度合いを正の値で表せる。
         float constraint = density * inverseRestDensity - 1.0f;
-        /// @note 静止密度を下回る場合だけ cohesion を掛け、疎な粒子を引き寄せる強さを調整する。
-        if (constraint < 0.0f) constraint *= cohesion;
-        /// @note 自粒子の勾配は寄与を足してから二乗し、近傍粒子の勾配は個別に二乗してから足す。
+        // 静止密度を下回る場合だけ cohesion を掛け、疎な粒子を引き寄せる強さを調整する。
+        if (constraint < 0.0f) {
+            constraint *= cohesion;
+        }
+        // 自粒子の勾配は寄与を足してから二乗し、近傍粒子の勾配は個別に二乗してから足す。
         const float denominator = selfGradientX * selfGradientX + selfGradientY * selfGradientY
             + selfGradientZ * selfGradientZ + neighborGradientSquares + m_densityRegularization;
         m_densityMultiplier[particleIndex] = -constraint / denominator;
@@ -90,7 +96,7 @@ void FluidLiquidSolver::ComputeDensityMultipliers(float inverseRestDensity, floa
 void FluidLiquidSolver::ComputeDensityCorrections(float inverseRestDensity)
 {
     const std::size_t particleCount = m_particles.size();
-    /// @note 発生直後に粒子が重なっても、一反復の補正距離を粒子半径の半分までに抑える。
+    // 発生直後に粒子が重なっても、一反復の補正距離を粒子半径の半分までに抑える。
     const float maxCorrection = m_particleRadius * 0.5f;
     for (std::size_t particleIndex = 0; particleIndex < particleCount; ++particleIndex) {
         float sumX = 0.0f;
@@ -103,7 +109,9 @@ void FluidLiquidSolver::ComputeDensityCorrections(float inverseRestDensity)
             const float dz = m_predictedZ[particleIndex] - m_predictedZ[neighborIndex];
             const float r2 = dx * dx + dy * dy + dz * dz;
             const float scale = SpikyGradientScale(std::sqrt(r2));
-            if (scale == 0.0f) continue;
+            if (scale == 0.0f) {
+                continue;
+            }
             const float kernelRatio = Poly6(r2) / m_tensileReference;
             const float tensileCorrection = -m_tensileScale * kernelRatio * kernelRatio * kernelRatio * kernelRatio;
             const float coefficient = (m_densityMultiplier[particleIndex] + m_densityMultiplier[neighborIndex] + tensileCorrection) * scale * inverseRestDensity;
@@ -132,13 +140,17 @@ void FluidLiquidSolver::ApplyDensityCorrections()
         m_predictedX[particleIndex] += m_deltaX[particleIndex];
         m_predictedY[particleIndex] += m_deltaY[particleIndex];
         m_predictedZ[particleIndex] += m_deltaZ[particleIndex];
-        if (m_settings.floor && m_predictedY[particleIndex] < floorLimit) m_predictedY[particleIndex] = floorLimit;
-        /// @note 各反復で床、次いで登録順の障害物から半径ぶん離す。次の障害物は直前の補正を反映した位置を読む。
+        if (m_settings.floor && m_predictedY[particleIndex] < floorLimit) {
+            m_predictedY[particleIndex] = floorLimit;
+        }
+        // 各反復で床、次いで登録順の障害物から半径ぶん離す。次の障害物は直前の補正を反映した位置を読む。
         for (const ActiveCollider& active : m_activeColliders) {
             const FluidCollider& collider = m_colliders[active.index];
             const math::Vector3 p = { m_predictedX[particleIndex], m_predictedY[particleIndex], m_predictedZ[particleIndex] };
             const float distance = FluidColliderDistance(collider, active.center, p, 0.0f, m_volumetric);
-            if (distance >= m_particleRadius) continue;
+            if (distance >= m_particleRadius) {
+                continue;
+            }
             const math::Vector3 n = FluidColliderNormal(collider, active.center, p, 0.0f, m_volumetric);
             const float push = m_particleRadius - distance;
             m_predictedX[particleIndex] += n.x * push;
@@ -153,7 +165,9 @@ void FluidLiquidSolver::ApplyDensityCorrections()
 void FluidLiquidSolver::ApplyViscosity()
 {
     const float viscosity = Saturate(m_settings.viscosity);
-    if (viscosity <= 0.0f) return;
+    if (viscosity <= 0.0f) {
+        return;
+    }
     const std::size_t particleCount = m_particles.size();
     const float inverseRestDensity = 1.0f / m_restDensity;
     for (std::size_t particleIndex = 0; particleIndex < particleCount; ++particleIndex) {
@@ -174,7 +188,7 @@ void FluidLiquidSolver::ApplyViscosity()
         m_deltaY[particleIndex] = sumY * viscosity;
         m_deltaZ[particleIndex] = sumZ * viscosity;
     }
-    /// @note 全粒子の速度差は適用前の速度から求める。更新した速度が同じパスの近傍計算へ混ざるのを防ぐ。
+    // 全粒子の速度差は適用前の速度から求める。更新した速度が同じパスの近傍計算へ混ざるのを防ぐ。
     for (std::size_t particleIndex = 0; particleIndex < particleCount; ++particleIndex) {
         m_particles[particleIndex].vx += m_deltaX[particleIndex];
         m_particles[particleIndex].vy += m_deltaY[particleIndex];

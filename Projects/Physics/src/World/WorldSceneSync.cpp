@@ -71,7 +71,9 @@ void World::EndSceneSync()
         }
     }
 
-    if (m_constraints.EndSceneSync()) m_sceneSyncChanged = true;
+    if (m_constraints.EndSceneSync()) {
+        m_sceneSyncChanged = true;
+    }
     RebuildSceneViews();
     RefreshQueryIndex();
 }

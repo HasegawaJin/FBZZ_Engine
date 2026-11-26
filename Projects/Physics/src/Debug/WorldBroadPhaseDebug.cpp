@@ -31,13 +31,17 @@ void World::SetBroadPhaseDebugRequest(const BroadPhaseDebugRequest& request)
 
 void World::CaptureBroadPhaseDebugSnapshot()
 {
-    if (!m_broadPhaseDebugRequest.enabled) return;
+    if (!m_broadPhaseDebugRequest.enabled) {
+        return;
+    }
     auto snapshot = std::make_shared<BroadPhaseDebugSnapshot>();
     snapshot->worldEpoch = m_debugEpoch.value;
     snapshot->sequence = ++m_broadPhaseDebugSequence;
     snapshot->request = m_broadPhaseDebugRequest;
     snapshot->selectionValid = !snapshot->request.selectedOnly;
     std::size_t selectedIndex = SIZE_MAX;
+
+    // 別の World や再利用されたスロットを誤って選ばないよう、世代と登録状態を検証してから入力の添字を探す。
     if (snapshot->request.selectedOnly) {
         const ColliderHandle selected = snapshot->request.selected;
         if (snapshot->request.selectedWorldEpoch == m_debugEpoch.value && selected.IsValid()
@@ -59,9 +63,11 @@ void World::CaptureBroadPhaseDebugSnapshot()
     m_solver.CaptureBroadPhaseDebugSnapshot(snapshot->request, m_colliders, m_collisionPairs,
         selectedIndex, *snapshot);
 
-    /// @note Resolve only sampled identities, with a bounded pool walk; the disabled path never scans or copies.
+    // 採取した添字だけを要求リストにし、登録プールを上限まで走査してハンドルへ変換する。
     std::map<std::size_t, ColliderHandle> handles;
-    for (const auto& proxy : snapshot->proxies) handles.emplace(proxy.sourceIndex, ColliderHandle{});
+    for (const auto& proxy : snapshot->proxies) {
+        handles.emplace(proxy.sourceIndex, ColliderHandle{});
+    }
     for (const auto& pair : snapshot->pairs) {
         handles.emplace(pair.sourceIndexA, ColliderHandle{});
         handles.emplace(pair.sourceIndexB, ColliderHandle{});
@@ -72,19 +78,26 @@ void World::CaptureBroadPhaseDebugSnapshot()
     for (; next != handles.end() && poolIndex < m_colliderPool.size()
         && poolIndex < BROAD_PHASE_DEBUG_MAX_WORK; ++poolIndex) {
         const auto& slot = m_colliderPool[poolIndex];
-        if (!slot.occupied || !slot.collider.collider) continue;
+        if (!slot.occupied || !slot.collider.collider) {
+            continue;
+        }
         if (next->first == sourceIndex) {
             next->second = {static_cast<uint32_t>(poolIndex + 1), slot.generation};
             ++next;
         }
         ++sourceIndex;
     }
-    if (next != handles.end()) snapshot->workLimitReached = true;
-    for (auto& proxy : snapshot->proxies) proxy.handle = handles[proxy.sourceIndex];
+    if (next != handles.end()) {
+        snapshot->workLimitReached = true;
+    }
+    for (auto& proxy : snapshot->proxies) {
+        proxy.handle = handles[proxy.sourceIndex];
+    }
     for (auto& pair : snapshot->pairs) {
         pair.handleA = handles[pair.sourceIndexA];
         pair.handleB = handles[pair.sourceIndexB];
     }
+    // 走査上限で対応付けできなかった項目は除き、診断結果が切り詰められたことを残す。
     const auto proxyEnd = std::remove_if(snapshot->proxies.begin(), snapshot->proxies.end(),
         [](const BroadPhaseDebugProxy& proxy) { return !proxy.handle.IsValid(); });
     snapshot->proxiesTruncated |= proxyEnd != snapshot->proxies.end();

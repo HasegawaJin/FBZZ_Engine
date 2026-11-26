@@ -30,10 +30,10 @@ namespace fbzz::physics
             m_targetRotation = rotation;
         }
 
-        /// @param maxForce  出せる力の上限 [N]。0 以下で無制限。
-        /// @param maxTorque 出せるトルクの上限 [N·m]。0 以下で無制限。
-        /// @param sag       上限の力を出し切るまでに沈む距離 [m]。
-        /// @param tilt      上限のトルクを出し切るまでに傾く角 [rad]。
+        /// @param[in] maxForce  出せる力の上限 [N]。0 以下で無制限。
+        /// @param[in] maxTorque 出せるトルクの上限 [N·m]。0 以下で無制限。
+        /// @param[in] sag       上限の力を出し切るまでに沈む距離 [m]。
+        /// @param[in] tilt      上限のトルクを出し切るまでに傾く角 [rad]。
         FBZZ_PHYSICS_API void SetStrength(float maxForce, float maxTorque, float sag, float tilt);
         /// @note 有限出力用。0 以下の軸は解かない。単位は SetStrength と同じ。
         FBZZ_PHYSICS_API void SetFiniteStrength(float maxForce, float maxTorque, float sag, float tilt);
@@ -47,20 +47,20 @@ namespace fbzz::physics
         [[nodiscard]] bool IsSaturated() const { return m_saturated; }
 
     private:
-        RigidBody*       m_body = nullptr;
-        bool             m_enabled = false;
-        bool             m_finiteStrength = false;
-        math::Vector3    m_targetPosition;
-        math::Quaternion m_targetRotation = math::Quaternion::Identity();
+        RigidBody*       m_body = nullptr; ///< 目標姿勢へ近づける剛体の非所有参照。
+        bool             m_enabled = false; ///< 姿勢アンカーの解決を行うかどうか。
+        bool             m_finiteStrength = false; ///< 位置補正に有限出力の計算を使うかどうか。
+        math::Vector3    m_targetPosition; ///< アンカーを誘導するワールド目標位置 [m]。
+        math::Quaternion m_targetRotation = math::Quaternion::Identity(); ///< アンカーを誘導するワールド目標姿勢。
 
-        float m_maxForce  = 0.0f;
-        float m_maxTorque = 0.0f;
-        float m_linearCompliance  = 0.0f;
-        float m_angularCompliance = 0.0f;
+        float m_maxForce  = 0.0f; ///< 並進補正で課す力の上限 [N]。
+        float m_maxTorque = 0.0f; ///< 回転補正で課すトルク上限 [N·m]。
+        float m_linearCompliance  = 0.0f; ///< 並進拘束の柔らかさ [m/N]。
+        float m_angularCompliance = 0.0f; ///< 回転拘束の柔らかさ [rad/(N·m)]。
 
-        float m_lambdaLinear  = 0.0f;
-        float m_lambdaAngular = 0.0f;
-        float m_offset    = 0.0f;
-        bool  m_saturated = false;
+        float m_lambdaLinear  = 0.0f; ///< 並進拘束で蓄積した乗数。
+        float m_lambdaAngular = 0.0f; ///< 回転拘束で蓄積した乗数。
+        float m_offset    = 0.0f; ///< 位置補正を加える前の剛体重心とワールド目標位置の距離 [m]。
+        bool  m_saturated = false; ///< 補正に必要な出力が設定上限に達したかどうか。
     };
 } /// @note namespace fbzz::physics

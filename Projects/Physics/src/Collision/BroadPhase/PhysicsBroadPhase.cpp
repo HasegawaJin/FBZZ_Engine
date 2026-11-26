@@ -16,8 +16,10 @@ namespace fbzz::physics {
         : m_broadPhase(other.m_broadPhase ? std::make_unique<BroadPhaseState>(*other.m_broadPhase) : nullptr) {}
     PhysicsSolver& PhysicsSolver::operator=(const PhysicsSolver& other)
     {
-        if (this != &other) m_broadPhase = other.m_broadPhase
+        if (this != &other) {
+            m_broadPhase = other.m_broadPhase
             ? std::make_unique<BroadPhaseState>(*other.m_broadPhase) : nullptr;
+        }
         return *this;
     }
 
@@ -25,7 +27,9 @@ namespace fbzz::physics {
                                     std::vector<CollisionPair>& outPairs,
                                     const std::function<bool(int, int)>& layerFilter)
     {
-        if (!m_broadPhase) m_broadPhase = std::make_unique<BroadPhaseState>();
+        if (!m_broadPhase) {
+            m_broadPhase = std::make_unique<BroadPhaseState>();
+        }
         m_broadPhase->Update(colliders);
         m_broadPhase->CollectPairs(colliders, outPairs, layerFilter);
     }
@@ -34,30 +38,49 @@ namespace fbzz::physics {
         const std::vector<ColliderInstance>& colliders, const std::vector<CollisionPair>& pairs,
         std::size_t selectedIndex, BroadPhaseDebugSnapshot& snapshot) const
     {
-        if (!request.enabled || !m_broadPhase) return;
+        if (!request.enabled || !m_broadPhase) {
+            return;
+        }
+
+        // 木を使わない場合も、形状数が足りない場合と境界が非有限で総当たりになった場合を区別する。
         const auto& state = *m_broadPhase;
-        snapshot.structure = state.proxies.size() < 2 ? BroadPhaseDebugStructure::EMPTY
-            : (state.allProxyBoundsFinite ? BroadPhaseDebugStructure::BVH : BroadPhaseDebugStructure::BRUTE_FORCE);
+        if (state.proxies.size() < 2) {
+            snapshot.structure = BroadPhaseDebugStructure::EMPTY;
+        } else if (state.allProxyBoundsFinite) {
+            snapshot.structure = BroadPhaseDebugStructure::BVH;
+        } else {
+            snapshot.structure = BroadPhaseDebugStructure::BRUTE_FORCE;
+        }
         snapshot.totalNodes = state.nodes.size();
         snapshot.totalProxies = state.proxies.size();
         snapshot.totalPairs = pairs.size();
         snapshot.broadPhaseRan = true;
         snapshot.candidatePairsAvailable = request.candidatePairs;
+
+        // 診断の選択対象は入力コライダーの添字で受け取る。索引内に対応するプロキシがなければ全体表示へ切り替えない。
         const auto findProxy = [&](std::size_t sourceIndex) -> const BroadPhaseProxy* {
             const auto found = std::lower_bound(state.proxies.begin(), state.proxies.end(), sourceIndex,
                 [](const BroadPhaseProxy& proxy, std::size_t index) { return proxy.colliderIndex < index; });
             return found != state.proxies.end() && found->colliderIndex == sourceIndex ? &*found : nullptr;
         };
         const BroadPhaseProxy* selected = request.selectedOnly ? findProxy(selectedIndex) : nullptr;
-        if (request.selectedOnly && (!snapshot.selectionValid || !selected)) return;
+        if (request.selectedOnly && (!snapshot.selectionValid || !selected)) {
+            return;
+        }
 
         const auto addNode = [&](int index, uint32_t depth) {
             const auto& node = state.nodes[static_cast<std::size_t>(index)];
-            if (depth < request.minDepth || depth > request.maxDepth) return;
-            if (snapshot.nodes.size() >= request.maxNodes) { snapshot.nodesTruncated = true; return; }
+            if (depth < request.minDepth || depth > request.maxDepth) {
+                return;
+            }
+            if (snapshot.nodes.size() >= request.maxNodes) {
+                snapshot.nodesTruncated = true;
+                return;
+            }
             snapshot.nodes.push_back({node.bounds, index, node.parent, node.left, node.right,
                 depth, static_cast<std::size_t>(node.count), node.IsLeaf()});
         };
+        // 選択時は葉の祖先だけを根から順に採取する。全体表示では深さと作業量の上限を設けて木をたどる。
         if (request.hierarchy && !state.nodes.empty()) {
             if (selected) {
                 std::array<int, BROAD_PHASE_DEBUG_MAX_DEPTH + 1> ancestors{};
@@ -67,13 +90,19 @@ namespace fbzz::physics {
                     ancestors[count++] = current;
                     current = state.nodes[static_cast<std::size_t>(current)].parent;
                 }
-                if (current >= 0) { snapshot.nodesTruncated = true; snapshot.workLimitReached = true; }
+                if (current >= 0) {
+                    snapshot.nodesTruncated = true;
+                    snapshot.workLimitReached = true;
+                }
                 for (std::size_t index = count; index > 0; --index) {
                     ++snapshot.examinedNodes;
                     addNode(ancestors[index - 1], static_cast<uint32_t>(count - index));
                 }
             } else if (request.maxNodes != 0) {
-                struct Visit { int index; uint32_t depth; };
+                struct Visit {
+                    int index; ///< これから調べる BVH ノードの採取元配列の添字。
+                    uint32_t depth; ///< これから調べるノードの、根からの深さ。
+                };
                 std::array<Visit, BROAD_PHASE_DEBUG_MAX_DEPTH + 1> stack{};
                 std::size_t top = 0;
                 stack[top++] = {0, 0};
@@ -86,7 +115,9 @@ namespace fbzz::physics {
                         snapshot.nodesTruncated |= top != 0 || (!node.IsLeaf() && visit.depth < request.maxDepth);
                         break;
                     }
-                    if (node.IsLeaf() || visit.depth >= request.maxDepth) continue;
+                    if (node.IsLeaf() || visit.depth >= request.maxDepth) {
+                        continue;
+                    }
                     if (top + 2 > stack.size()) {
                         snapshot.nodesTruncated = true;
                         snapshot.workLimitReached = true;
@@ -99,13 +130,19 @@ namespace fbzz::physics {
                     snapshot.nodesTruncated = true;
                     snapshot.workLimitReached = true;
                 }
-            } else snapshot.nodesTruncated = true;
+            } else {
+                snapshot.nodesTruncated = true;
+            }
         }
 
+        // 描画に使える有限な境界だけを書き出し、元のプロキシ数は診断情報として残す。
         if (request.bounds) {
             const std::size_t count = selected ? std::size_t{1} : state.proxies.size();
             for (std::size_t index = 0; index < count; ++index) {
-                if (snapshot.proxies.size() >= request.maxProxies) { snapshot.proxiesTruncated = true; break; }
+                if (snapshot.proxies.size() >= request.maxProxies) {
+                    snapshot.proxiesTruncated = true;
+                    break;
+                }
                 if (snapshot.examinedProxies >= BROAD_PHASE_DEBUG_MAX_WORK) {
                     snapshot.proxiesTruncated = true;
                     snapshot.workLimitReached = true;
@@ -113,16 +150,24 @@ namespace fbzz::physics {
                 }
                 ++snapshot.examinedProxies;
                 const auto& proxy = selected ? *selected : state.proxies[index];
-                if (!FiniteBroadPhaseBounds(proxy.bounds)) { snapshot.proxiesTruncated = true; continue; }
+                if (!FiniteBroadPhaseBounds(proxy.bounds)) {
+                    snapshot.proxiesTruncated = true;
+                    continue;
+                }
                 const auto& collider = colliders[proxy.colliderIndex];
                 snapshot.proxies.push_back({{}, proxy.bounds, proxy.colliderIndex,
                     !collider.body || collider.body->IsStatic(), collider.body && collider.body->IsSleeping(),
                     collider.isTrigger, collider.layer});
             }
         }
+
+        // 候補対を同じ入力の添字へ戻し、境界とともに保存する。選択時はその形状に関係する対だけを含める。
         if (request.candidatePairs) {
             for (const auto& pair : pairs) {
-                if (snapshot.pairs.size() >= request.maxPairs) { snapshot.pairsTruncated = true; break; }
+                if (snapshot.pairs.size() >= request.maxPairs) {
+                    snapshot.pairsTruncated = true;
+                    break;
+                }
                 if (snapshot.examinedPairs >= BROAD_PHASE_DEBUG_MAX_WORK) {
                     snapshot.pairsTruncated = true;
                     snapshot.workLimitReached = true;
@@ -131,7 +176,9 @@ namespace fbzz::physics {
                 ++snapshot.examinedPairs;
                 const auto first = static_cast<std::size_t>(pair.colliderA - colliders.data());
                 const auto second = static_cast<std::size_t>(pair.colliderB - colliders.data());
-                if (selected && first != selectedIndex && second != selectedIndex) continue;
+                if (selected && first != selectedIndex && second != selectedIndex) {
+                    continue;
+                }
                 const auto* a = findProxy(first);
                 const auto* b = findProxy(second);
                 if (!a || !b || !FiniteBroadPhaseBounds(a->bounds) || !FiniteBroadPhaseBounds(b->bounds)) {

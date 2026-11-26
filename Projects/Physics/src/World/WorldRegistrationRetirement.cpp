@@ -34,12 +34,14 @@ void World::RetireExpiredRegistrations()
         borrowedRegistrationsRetired = true;
     }
 
-    if (m_constraints.RetireExpired()) m_sceneSyncChanged = true;
+    if (m_constraints.RetireExpired()) {
+        m_sceneSyncChanged = true;
+    }
 
     if (!borrowedRegistrationsRetired) {
         return;
     }
-    /// @note アドレスを再利用した別個体へ接触、warm start、イベントを持ち越さない。
+    // アドレスを再利用した別個体へ接触、warm start、イベントを持ち越さない。
     m_sceneSyncChanged = true;
     m_collisionPairs.clear();
     m_contacts.clear();

@@ -102,10 +102,10 @@ TEST_F(FluidVolumeTest, LiftsAFullySubmergedBodyByTheConfiguredAcceleration)
     volume.Apply(body, kUnitDt);
     body.Integrate(kUnitDt);
 
-    /// @note 4 点とも沈み率 1 なので、合計の揚力は buoyancy * mass。
-    ///       質量倍で入るため、加速度は質量に依らず buoyancy と一致する。
+    // 4 点とも沈み率 1 なので、合計の揚力は buoyancy * mass。
+    // 質量倍で入るため、加速度は質量に依らず buoyancy と一致する。
     EXPECT_VEC3_NEAR(body.GetVelocity(), math::Vector3(0.0f, kBuoyancy, 0.0f), testkit::kTolerance);
-    /// @note 水平 4 点の沈み率が等しければトルクは打ち消し合う。
+    // 水平 4 点の沈み率が等しければトルクは打ち消し合う。
     EXPECT_VEC3_NEAR(body.GetAngularVelocity(), math::Vector3::ZERO, testkit::kTolerance);
 }
 
@@ -121,9 +121,9 @@ TEST_F(FluidVolumeTest, AppliesATorqueThatRestoresTheHorizontalForATiltedBody)
     volume.Apply(body, kUnitDt);
     body.Integrate(kUnitDt);
 
-    /// @note +Z 側と -Z 側の腕は傾けても高さが変わらず打ち消し合う。残るのは ±X の差だけで、
-    ///       4 点の和をまとめると torque_z = -buoyancy * mass * 0.25 * arm^2 * sin t * cos t。
-    ///       コライダー未設定の剛体の慣性は等方 (1/m) なので、角速度は torque / mass。
+    // +Z 側と -Z 側の腕は傾けても高さが変わらず打ち消し合う。残るのは ±X の差だけで、
+    // 4 点の和をまとめると torque_z = -buoyancy * mass * 0.25 * arm^2 * sin t * cos t。
+    // コライダー未設定の剛体の慣性は等方 (1/m) なので、角速度は torque / mass。
     const float arm = kRadius * 0.6f;
     const float sinTilt = std::sin(math::ToRad(kTiltDeg));
     const float cosTilt = std::cos(math::ToRad(kTiltDeg));
@@ -131,7 +131,7 @@ TEST_F(FluidVolumeTest, AppliesATorqueThatRestoresTheHorizontalForATiltedBody)
 
     EXPECT_VEC3_NEAR(body.GetAngularVelocity(),
                      math::Vector3(0.0f, 0.0f, torqueZ / kMass), testkit::kTolerance);
-    /// @note +X 側が浮き上がった傾きなので、戻す向き (Z 負) でなければならない。
+    // +X 側が浮き上がった傾きなので、戻す向き (Z 負) でなければならない。
     EXPECT_LT(body.GetAngularVelocity().z, 0.0f);
 }
 
@@ -153,8 +153,8 @@ TEST_F(FluidVolumeTest, DragCarriesARestingBodyAlongTheFlow)
     volume.Apply(body, kUnitDt);
     body.Integrate(kUnitDt);
 
-    /// @note 抵抗は «流体に対する» 速度に掛かる。静止した体には流れがそのまま推進力になる。
-    ///       F = (flow - v) * drag * mass * submersion、submersion は完全に沈んで 1。
+    // 抵抗は «流体に対する» 速度に掛かる。静止した体には流れがそのまま推進力になる。
+    // F = (flow - v) * drag * mass * submersion、submersion は完全に沈んで 1。
     EXPECT_VEC3_NEAR(body.GetVelocity(), flow * kDrag * kUnitDt, testkit::kTolerance);
 }
 
@@ -166,11 +166,11 @@ TEST_F(FluidVolumeTest, ContainsSpansFromOneBodyRadiusAboveTheSurfaceToTheDepthL
     physics::RigidBody body = MakeBody(math::Vector3::ZERO);
     physics::FluidVolume volume(FlatFluid(body));
 
-    /// @note 重心が表面より上でも、体の下側が浸かっていれば浮力は掛かる。
+    // 重心が表面より上でも、体の下側が浸かっていれば浮力は掛かる。
     EXPECT_TRUE(volume.Contains(math::Vector3(0.0f, kRadius * 0.5f, 0.0f)));
     EXPECT_FALSE(volume.Contains(math::Vector3(0.0f, kRadius * 1.5f, 0.0f)));
 
-    /// @note 表面は厚みを持たない板なので、下限が無いと真下の洞窟まで浮力が届く。
+    // 表面は厚みを持たない板なので、下限が無いと真下の洞窟まで浮力が届く。
     EXPECT_TRUE(volume.Contains(math::Vector3(0.0f, -kDepthLimit + 0.5f, 0.0f)));
     EXPECT_FALSE(volume.Contains(math::Vector3(0.0f, -kDepthLimit - 0.5f, 0.0f)));
 }

@@ -54,7 +54,9 @@ namespace fbzz::physics::convex_contact_detail
             const float normalX = std::abs(contact.normal.x);
             const float normalY = std::abs(contact.normal.y);
             const float normalZ = std::abs(contact.normal.z);
-            if (!requireAxisSearch && std::max({normalX, normalY, normalZ}) >= 0.75f) return;
+            if (!requireAxisSearch && std::max({normalX, normalY, normalZ}) >= 0.75f) {
+                return;
+            }
 
             const math::Vector3 axes[6] = {
                 math::Vector3::RIGHT, -math::Vector3::RIGHT,
@@ -69,7 +71,7 @@ namespace fbzz::physics::convex_contact_detail
 
             for (const math::Vector3& axis : axes)
             {
-                /// @note B→A 法線では A の反対側と B の軸側の支持点で重なりを測る。
+                // B→A 法線では A の反対側と B の軸側の支持点で重なりを測る。
                 const math::Vector3 supportPointA = support.SampleA(-axis);
                 const math::Vector3 supportPointB = support.SampleB(axis);
                 const float axisDepth = math::Vector3::Dot(supportPointB - supportPointA, axis);
@@ -97,7 +99,7 @@ namespace fbzz::physics::convex_contact_detail
     {
         EPAResult contact;
         RecoverFaceContactPoints(face, contact);
-        /// @note A−B の外向き法線を反転して、B→A の押し戻し方向に揃える。
+        // A−B の外向き法線を反転して、B→A の押し戻し方向に揃える。
         /// @see EPAResult::normal
         contact.normal = -face.outwardNormal;
         contact.depth = face.originDistance;

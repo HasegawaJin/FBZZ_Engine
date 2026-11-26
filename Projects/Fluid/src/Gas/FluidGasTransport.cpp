@@ -17,21 +17,24 @@ namespace {
 
 void FluidGasSolver::ResetDetailLayer(int layer)
 {
-    for (int y = 0; y < m_cellsY; ++y)
+    for (int y = 0; y < m_cellsY; ++y) {
         for (int x = 0; x < m_cellsX; ++x) {
             const std::size_t cellIndex = Index(x, y, 0);
             m_detailU[layer][cellIndex] = CellCenter(x, m_cellsX);
             m_detailV[layer][cellIndex] = CellCenter(y, m_cellsY);
         }
+    }
 }
 
 void FluidGasSolver::AdvectDetail(float dt)
 {
-    if (!HasDetail()) return;
-    /// @note 細部の座標も Advect が退避した投影済み速度で運び、煙の移流と同じ流れを読む。
+    if (!HasDetail()) {
+        return;
+    }
+    // 細部の座標も Advect が退避した投影済み速度で運び、煙の移流と同じ流れを読む。
     const float cellsPerUnit = dt / m_cellWidth;
     for (int layer = 0; layer < 2; ++layer) {
-        for (int y = 0; y < m_cellsY; ++y)
+        for (int y = 0; y < m_cellsY; ++y) {
             for (int x = 0; x < m_cellsX; ++x) {
                 const std::size_t cellIndex = Index(x, y, 0);
                 const float gridX = static_cast<float>(x) - m_prevVx[cellIndex] * cellsPerUnit;
@@ -39,6 +42,7 @@ void FluidGasSolver::AdvectDetail(float dt)
                 m_scratchA[cellIndex] = SampleGrid(m_detailU[layer], gridX, gridY, 0.0f);
                 m_scratchB[cellIndex] = SampleGrid(m_detailV[layer], gridX, gridY, 0.0f);
             }
+        }
         m_detailU[layer].swap(m_scratchA);
         m_detailV[layer].swap(m_scratchB);
     }
@@ -47,7 +51,9 @@ void FluidGasSolver::AdvectDetail(float dt)
 /// @brief 層 0 は位相 0、層 1 は位相 0.5 で初期位置へ戻す。どちらもその瞬間の重みが 0 なので継ぎ目は見えない。
 void FluidGasSolver::UpdateDetailEpochs()
 {
-    if (!HasDetail()) return;
+    if (!HasDetail()) {
+        return;
+    }
     const float period = (std::max)(m_settings.detailPeriod, 0.05f);
     const int epoch0 = static_cast<int>(std::floor(m_time / period));
     const int epoch1 = static_cast<int>(std::floor(m_time / period + 0.5f));
@@ -127,13 +133,15 @@ void FluidGasSolver::MinMaxAround(const std::vector<float>& field, float gridX, 
     const int y1 = (std::min)(y0 + 1, m_cellsY - 1);
     const int z1 = (std::min)(z0 + 1, m_cellsZ - 1);
     outMin = outMax = field[Index(x0, y0, z0)];
-    for (const int z : { z0, z1 })
-        for (const int y : { y0, y1 })
+    for (const int z : { z0, z1 }) {
+        for (const int y : { y0, y1 }) {
             for (const int x : { x0, x1 }) {
                 const float value = field[Index(x, y, z)];
                 outMin = (std::min)(outMin, value);
                 outMax = (std::max)(outMax, value);
             }
+        }
+    }
 }
 
 float FluidGasSolver::SampleDensity(float x, float y, float z) const
@@ -158,7 +166,7 @@ void FluidGasSolver::SampleVelocity(float x, float y, float z, float& outX, floa
 
 void FluidGasSolver::Advect(float dt)
 {
-    /// @note スカラー量と速度の自己移流は、同じ投影済み速度を読み、セルを更新する順序の影響を受けない。
+    // スカラー量と速度の自己移流は、同じ投影済み速度を読み、セルを更新する順序の影響を受けない。
     std::copy(m_vx.begin(), m_vx.end(), m_prevVx.begin());
     std::copy(m_vy.begin(), m_vy.end(), m_prevVy.begin());
     std::copy(m_vz.begin(), m_vz.end(), m_prevVz.begin());
@@ -171,7 +179,7 @@ void FluidGasSolver::Advect(float dt)
         AdvectScalar(m_fuelColorMass, dt);
     }
 
-    /// @note 速度の自己移流は渦の芯での振動を避けて半ラグランジュとし、形の鋭さはスカラー側の MacCormack で出す。
+    // 速度の自己移流は渦の芯での振動を避けて半ラグランジュとし、形の鋭さはスカラー側の MacCormack で出す。
     const float cellsPerUnit = dt / m_cellWidth;
     for (int z = 0; z < m_cellsZ; ++z) {
         for (int y = 0; y < m_cellsY; ++y) {
@@ -182,7 +190,9 @@ void FluidGasSolver::Advect(float dt)
                 const float gridZ = m_cellsZ > 1 ? static_cast<float>(z) - m_prevVz[cellIndex] * cellsPerUnit : 0.0f;
                 m_vx[cellIndex] = SampleGrid(m_prevVx, gridX, gridY, gridZ);
                 m_vy[cellIndex] = SampleGrid(m_prevVy, gridX, gridY, gridZ);
-                if (m_cellsZ > 1) m_vz[cellIndex] = SampleGrid(m_prevVz, gridX, gridY, gridZ);
+                if (m_cellsZ > 1) {
+                    m_vz[cellIndex] = SampleGrid(m_prevVz, gridX, gridY, gridZ);
+                }
             }
         }
     }
@@ -218,7 +228,7 @@ void FluidGasSolver::AdvectScalar(std::vector<float>& field, float dt)
         return;
     }
 
-    /// @note MacCormack の逆向き移流では、移流後の場を同じ速度で時刻だけ逆に進め、元の場の推定を作る。
+    // MacCormack の逆向き移流では、移流後の場を同じ速度で時刻だけ逆に進め、元の場の推定を作る。
     for (int z = 0; z < m_cellsZ; ++z) {
         for (int y = 0; y < m_cellsY; ++y) {
             for (int x = 0; x < m_cellsX; ++x) {
@@ -229,7 +239,7 @@ void FluidGasSolver::AdvectScalar(std::vector<float>& field, float dt)
         }
     }
 
-    /// @note 往復誤差の半分で数値拡散を補正し、出発点の補間に使った値の範囲へ収めて新しい極値を抑える。
+    // 往復誤差の半分で数値拡散を補正し、出発点の補間に使った値の範囲へ収めて新しい極値を抑える。
     for (int z = 0; z < m_cellsZ; ++z) {
         for (int y = 0; y < m_cellsY; ++y) {
             for (int x = 0; x < m_cellsX; ++x) {

@@ -28,8 +28,8 @@ namespace fbzz::physics
         float m_halfHeight = 1.0f; ///< @note 中心から円柱端までの距離
 
     private:
-        math::Vector3 m_worldCenter;
-        math::Vector3 m_worldStart;
-        math::Vector3 m_worldEnd;
+        math::Vector3 m_worldCenter; ///< ワールド空間に変換済みのコライダーの中心 [m]。
+        math::Vector3 m_worldStart; ///< ワールド空間に変換済みのカプセル軸線分の始点 [m]。
+        math::Vector3 m_worldEnd; ///< ワールド空間に変換済みのカプセル軸線分の終点 [m]。
     };
 } /// @note namespace fbzz::physics

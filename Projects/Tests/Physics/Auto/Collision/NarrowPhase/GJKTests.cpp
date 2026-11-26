@@ -73,7 +73,7 @@ TEST_F(GJKTest, ReportsNoIntersectionForClearlySeparatedSpheres)
 /// @brief Separates just inside and just outside the sum of radii.
 TEST_F(GJKTest, SeparatesJustInsideAndJustOutsideTheSumOfRadii)
 {
-    /// @note 判定の境目は «中心間距離 == 半径の和»。両側 1mm を挟んで挙動が切り替わることを見る。
+    // 判定の境目は «中心間距離 == 半径の和»。両側 1mm を挟んで挙動が切り替わることを見る。
     const testkit::SupportSphere a{math::Vector3::ZERO, 1.0f};
     const testkit::SupportSphere justInside{math::Vector3(2.0f - 0.001f, 0.0f, 0.0f), 1.0f};
     const testkit::SupportSphere justOutside{math::Vector3(2.0f + 0.001f, 0.0f, 0.0f), 1.0f};
@@ -85,7 +85,7 @@ TEST_F(GJKTest, SeparatesJustInsideAndJustOutsideTheSumOfRadii)
 /// @brief Reports intersection for coincident spheres.
 TEST_F(GJKTest, ReportsIntersectionForCoincidentSpheres)
 {
-    /// @note 中心が完全に一致すると Minkowski 差の初期方向がゼロになる縮退経路を踏む。
+    // 中心が完全に一致すると Minkowski 差の初期方向がゼロになる縮退経路を踏む。
     const testkit::SupportSphere a{math::Vector3(3.0f, -2.0f, 1.0f), 1.0f};
     const testkit::SupportSphere b = a;
 
@@ -106,7 +106,7 @@ TEST_F(GJKTest, ReportsIntersectionForOverlappingBoxes)
 /// @brief Reports no intersection when boxes are apart on a single axis.
 TEST_F(GJKTest, ReportsNoIntersectionWhenBoxesAreApartOnASingleAxis)
 {
-    /// @note 分離軸が 1 本でもあれば非交差。X と Z は重なっているが Y だけ離れている配置。
+    // 分離軸が 1 本でもあれば非交差。X と Z は重なっているが Y だけ離れている配置。
     const testkit::SupportBox a{math::Vector3::ZERO, math::Vector3(1.0f, 1.0f, 1.0f)};
     const testkit::SupportBox b{math::Vector3(0.0f, 2.5f, 0.0f), math::Vector3(1.0f, 1.0f, 1.0f)};
 
@@ -116,7 +116,7 @@ TEST_F(GJKTest, ReportsNoIntersectionWhenBoxesAreApartOnASingleAxis)
 /// @brief Reports intersection when only corners overlap.
 TEST_F(GJKTest, ReportsIntersectionWhenOnlyCornersOverlap)
 {
-    /// @note 面ではなく角どうしがわずかに食い込む配置。単体が三角形止まりになりやすい。
+    // 面ではなく角どうしがわずかに食い込む配置。単体が三角形止まりになりやすい。
     const testkit::SupportBox a{math::Vector3::ZERO, math::Vector3(1.0f, 1.0f, 1.0f)};
     const testkit::SupportBox b{math::Vector3(1.9f, 1.9f, 1.9f), math::Vector3(1.0f, 1.0f, 1.0f)};
 
@@ -166,8 +166,8 @@ TEST_F(GJKTest, DetectsAPointOutsideABox)
 /// @brief Leaves a full tetrahedron when shapes intersect.
 TEST_F(GJKTest, LeavesAFullTetrahedronWhenShapesIntersect)
 {
-    /// @note EPA_GetContactInfo は size < 4 の単体を受け取ると即座に valid=false を返す。
-    ///       つまり «交差時は必ず四面体» が GJK 側の契約になる。
+    // EPA_GetContactInfo は size < 4 の単体を受け取ると即座に valid=false を返す。
+    //       つまり «交差時は必ず四面体» が GJK 側の契約になる。
     const testkit::SupportSphere a{math::Vector3::ZERO, 1.0f};
     const testkit::SupportSphere b{math::Vector3(0.5f, 0.2f, -0.3f), 1.0f};
 
@@ -180,7 +180,7 @@ TEST_F(GJKTest, LeavesAFullTetrahedronWhenShapesIntersect)
 /// @brief Leaves a full tetrahedron for shallow box overlap.
 TEST_F(GJKTest, LeavesAFullTetrahedronForShallowBoxOverlap)
 {
-    /// @note 浅い面接触は単体が三角形で止まりやすく、四面体への拡張が効いているかが出る。
+    // 浅い面接触は単体が三角形で止まりやすく、四面体への拡張が効いているかが出る。
     const testkit::SupportBox a{math::Vector3::ZERO, math::Vector3(1.0f, 1.0f, 1.0f)};
     const testkit::SupportBox b{math::Vector3(0.0f, 1.99f, 0.0f), math::Vector3(1.0f, 1.0f, 1.0f)};
 
@@ -193,7 +193,7 @@ TEST_F(GJKTest, LeavesAFullTetrahedronForShallowBoxOverlap)
 /// @brief Checks simplex vertices reconstruct the minkowski difference.
 TEST_F(GJKTest, SimplexVerticesReconstructTheMinkowskiDifference)
 {
-    /// @note point == suppA - suppB が崩れると、EPA が復元する接触点が形状の外に出る。
+    // point == suppA - suppB が崩れると、EPA が復元する接触点が形状の外に出る。
     const testkit::SupportSphere a{math::Vector3::ZERO, 1.0f};
     const testkit::SupportSphere b{math::Vector3(0.7f, 0.4f, 0.1f), 1.0f};
 
@@ -225,13 +225,15 @@ TEST_F(GJKTest, GivesTheSameAnswerRegardlessOfArgumentOrder)
 /// @brief Agrees with the analytic answer for random sphere pairs.
 TEST_F(GJKTest, AgreesWithTheAnalyticAnswerForRandomSpherePairs)
 {
-    /// @note 球どうしなら «中心間距離 < 半径の和» が正解。境界ぎわは判定が割れるので、
-    ///       判定の «外側» に十分な余白を取った組だけを見る。
+    // 球どうしなら «中心間距離 < 半径の和» が正解。境界ぎわは判定が割れるので、
+    //       判定の «外側» に十分な余白を取った組だけを見る。
     for (int i = 0; i < 128; ++i) {
         const math::Vector3 offset = Rng().NextVector3(-4.0f, 4.0f);
         const float         sum    = 2.0f;
         const float         gap    = offset.Length() - sum;
-        if (std::fabs(gap) < 0.01f) continue;
+        if (std::fabs(gap) < 0.01f) {
+            continue;
+        }
 
         const testkit::SupportSphere a{math::Vector3::ZERO, 1.0f};
         const testkit::SupportSphere b{offset, 1.0f};
@@ -248,7 +250,7 @@ class GJKDistanceTest : public testkit::Fixture {};
 /// @brief Reports the gap between separated spheres.
 TEST_F(GJKDistanceTest, ReportsTheGapBetweenSeparatedSpheres)
 {
-    /// @note 中心間 5m、半径 1m どうし。隙間はちょうど 3m。
+    // 中心間 5m、半径 1m どうし。隙間はちょうど 3m。
     const testkit::SupportSphere a{math::Vector3::ZERO, 1.0f};
     const testkit::SupportSphere b{math::Vector3(5.0f, 0.0f, 0.0f), 1.0f};
 
@@ -278,7 +280,7 @@ TEST_F(GJKDistanceTest, ClosestPointsLieOnTheSurfaceOfEachSphere)
 /// @brief Closest points are separated by the reported distance.
 TEST_F(GJKDistanceTest, ClosestPointsAreSeparatedByTheReportedDistance)
 {
-    /// @note distance と最近傍点が別々に計算されて食い違う、が一番ありがちな壊れ方。
+    // distance と最近傍点が別々に計算されて食い違う、が一番ありがちな壊れ方。
     for (int i = 0; i < 64; ++i) {
         const math::Vector3 direction = Rng().NextUnitVector3();
         const float         span      = Rng().NextFloat(2.5f, 12.0f);
@@ -316,8 +318,8 @@ TEST_F(GJKDistanceTest, DistanceMatchesTheAnalyticGapForRandomSpherePairs)
 /// @brief Reports the gap between separated boxes.
 TEST_F(GJKDistanceTest, ReportsTheGapBetweenSeparatedBoxes)
 {
-    /// @note 面どうしが向かい合う配置。最近傍«点»は面全体で一意に決まらないが、
-    ///       隙間と、法線方向 (X) の座標は一意に決まる。
+    // 面どうしが向かい合う配置。最近傍«点»は面全体で一意に決まらないが、
+    //       隙間と、法線方向 (X) の座標は一意に決まる。
     const testkit::SupportBox a{math::Vector3::ZERO, math::Vector3(1.0f, 1.0f, 1.0f)};
     const testkit::SupportBox b{math::Vector3(5.0f, 0.0f, 0.0f), math::Vector3(1.0f, 1.0f, 1.0f)};
 
@@ -348,8 +350,8 @@ TEST_F(GJKDistanceTest, ReportsTheGapFromABoxFaceToAPoint)
 /// @brief Reports the gap from a box corner to a point.
 TEST_F(GJKDistanceTest, ReportsTheGapFromABoxCornerToAPoint)
 {
-    /// @note 対角線上の点。最近傍は面ではなく «角» — 箱の支持点そのものなので、
-    ///       単体は 1 頂点のまま収束する。三角形まで育つ配置は下の «面の内側» が受け持つ。
+    // 対角線上の点。最近傍は面ではなく «角» — 箱の支持点そのものなので、
+    //       単体は 1 頂点のまま収束する。三角形まで育つ配置は下の «面の内側» が受け持つ。
     const testkit::SupportBox   box{math::Vector3::ZERO, math::Vector3(1.0f, 1.0f, 1.0f)};
     const testkit::SupportPoint point{math::Vector3(3.0f, 3.0f, 3.0f)};
 
@@ -372,14 +374,14 @@ TEST_F(GJKDistanceTest, GivesTheSameGapRegardlessOfArgumentOrder)
     const physics::GJKResult swapped = physics::GJK_Distance(
         &b, testkit::kSphereSupport, &a, testkit::kSphereSupport);
 
-    /// @note 曲面上の «点» は距離より一桁粗い精度でしか決まらない。半径 R の球で距離が e ずれると
-    ///       接点は接線方向に sqrt(2*R*e) 動くため、距離の許容 1e-4 に対し点は 0.014 程度まで動きうる。
+    // 曲面上の «点» は距離より一桁粗い精度でしか決まらない。半径 R の球で距離が e ずれると
+    //       接点は接線方向に sqrt(2*R*e) 動くため、距離の許容 1e-4 に対し点は 0.014 程度まで動きうる。
     constexpr float kSurfacePointTolerance = 0.02f;
 
     ASSERT_FALSE(forward.intersects);
     ASSERT_FALSE(swapped.intersects);
     EXPECT_NEAR(forward.distance, swapped.distance, testkit::kLooseTolerance);
-    /// @note 引数を入れ替えたら «A 上の点» と «B 上の点» も入れ替わる。
+    // 引数を入れ替えたら «A 上の点» と «B 上の点» も入れ替わる。
     EXPECT_VEC3_NEAR(swapped.closestA, forward.closestB, kSurfacePointTolerance);
     EXPECT_VEC3_NEAR(swapped.closestB, forward.closestA, kSurfacePointTolerance);
 }
@@ -387,7 +389,7 @@ TEST_F(GJKDistanceTest, GivesTheSameGapRegardlessOfArgumentOrder)
 /// @brief Reports intersection without measuring the gap.
 TEST_F(GJKDistanceTest, ReportsIntersectionWithoutMeasuringTheGap)
 {
-    /// @note 重なっている場合、隙間は «無い»。貫通量は EPA の仕事なので 0 のまま返す。
+    // 重なっている場合、隙間は «無い»。貫通量は EPA の仕事なので 0 のまま返す。
     const testkit::SupportSphere a{math::Vector3::ZERO, 1.0f};
     const testkit::SupportSphere b{math::Vector3(0.5f, 0.0f, 0.0f), 1.0f};
 
@@ -401,12 +403,14 @@ TEST_F(GJKDistanceTest, ReportsIntersectionWithoutMeasuringTheGap)
 /// @brief Agrees with GJK intersect on whether shapes touch.
 TEST_F(GJKDistanceTest, AgreesWithGJKIntersectOnWhetherShapesTouch)
 {
-    /// @note 2 つの入口が «当たっている / いない» で食い違うと、当たり判定と距離クエリで
-    ///       別々の世界が見えることになる。境界ぎわを避けて突き合わせる。
+    // 2 つの入口が «当たっている / いない» で食い違うと、当たり判定と距離クエリで
+    //       別々の世界が見えることになる。境界ぎわを避けて突き合わせる。
     for (int i = 0; i < 128; ++i) {
         const math::Vector3 offset = Rng().NextVector3(-4.0f, 4.0f);
         const float         gap    = offset.Length() - 2.0f;
-        if (std::fabs(gap) < 0.02f) continue;
+        if (std::fabs(gap) < 0.02f) {
+            continue;
+        }
 
         const testkit::SupportSphere a{math::Vector3::ZERO, 1.0f};
         const testkit::SupportSphere b{offset, 1.0f};
@@ -424,8 +428,8 @@ TEST_F(GJKDistanceTest, AgreesWithGJKIntersectOnWhetherShapesTouch)
 /// @brief Distance grows monotonically as shapes separate.
 TEST_F(GJKDistanceTest, DistanceGrowsMonotonicallyAsShapesSeparate)
 {
-    /// @note 少しずつ離していったときに距離が単調に増えること。飛びがあれば、
-    ///       単体の削り方か収束判定のどちらかが配置によって崩れている。
+    // 少しずつ離していったときに距離が単調に増えること。飛びがあれば、
+    //       単体の削り方か収束判定のどちらかが配置によって崩れている。
     const testkit::SupportSphere a{math::Vector3::ZERO, 1.0f};
 
     float previous = -1.0f;
@@ -452,7 +456,7 @@ TEST_F(GJKDistanceTest, DistanceGrowsMonotonicallyAsShapesSeparate)
 /// @brief Reports the gap when the closest point falls inside a face.
 TEST_F(GJKDistanceTest, ReportsTheGapWhenTheClosestPointFallsInsideAFace)
 {
-    /// @note X 方向へ離し、Y と Z を «隅では釣り合わない» 量だけずらす。
+    // X 方向へ離し、Y と Z を «隅では釣り合わない» 量だけずらす。
     const testkit::SupportBox a{math::Vector3::ZERO, math::Vector3(1.0f, 1.0f, 1.0f)};
     const testkit::SupportBox b{math::Vector3(5.0f, 0.3f, 0.4f), math::Vector3(1.0f, 1.0f, 1.0f)};
 
@@ -460,7 +464,7 @@ TEST_F(GJKDistanceTest, ReportsTheGapWhenTheClosestPointFallsInsideAFace)
 
     ASSERT_FALSE(result.intersects);
     EXPECT_NEAR(result.distance, AnalyticGap(a, b), testkit::kLooseTolerance);
-    /// @note 隙間は X 方向だけ。ずらした Y / Z は «面の中で» 吸収され、距離には出ない。
+    // 隙間は X 方向だけ。ずらした Y / Z は «面の中で» 吸収され、距離には出ない。
     EXPECT_NEAR(result.closestA.x, 1.0f, testkit::kLooseTolerance);
     EXPECT_NEAR(result.closestB.x, 4.0f, testkit::kLooseTolerance);
 }
@@ -468,7 +472,7 @@ TEST_F(GJKDistanceTest, ReportsTheGapWhenTheClosestPointFallsInsideAFace)
 /// @brief Reports the gap when the closest feature is an edge.
 TEST_F(GJKDistanceTest, ReportsTheGapWhenTheClosestFeatureIsAnEdge)
 {
-    /// @note 2 軸で離し、残る 1 軸だけ重なりを残す。最近傍は «辺の内側の 1 点»。
+    // 2 軸で離し、残る 1 軸だけ重なりを残す。最近傍は «辺の内側の 1 点»。
     const testkit::SupportBox a{math::Vector3::ZERO, math::Vector3(1.0f, 1.0f, 1.0f)};
     const testkit::SupportBox b{math::Vector3(4.0f, 4.0f, 0.3f), math::Vector3(1.0f, 1.0f, 1.0f)};
 
@@ -481,8 +485,8 @@ TEST_F(GJKDistanceTest, ReportsTheGapWhenTheClosestFeatureIsAnEdge)
 /// @brief Agrees with the analytic gap for random box pairs.
 TEST_F(GJKDistanceTest, AgreesWithTheAnalyticGapForRandomBoxPairs)
 {
-    /// @note 面・辺・角のどれが最近傍になるかを配置任せにして、式と突き合わせる。
-    ///       単体が 1 頂点で止まる配置と、複数頂点を内分する配置の両方がここを通る。
+    // 面・辺・角のどれが最近傍になるかを配置任せにして、式と突き合わせる。
+    //       単体が 1 頂点で止まる配置と、複数頂点を内分する配置の両方がここを通る。
     int checked = 0;
     for (int i = 0; i < 200; ++i) {
         const testkit::SupportBox a{Rng().NextVector3(-1.0f, 1.0f),
@@ -490,9 +494,11 @@ TEST_F(GJKDistanceTest, AgreesWithTheAnalyticGapForRandomBoxPairs)
         const testkit::SupportBox b{Rng().NextVector3(-6.0f, 6.0f),
                                     Rng().NextVector3(0.3f, 1.5f)};
 
-        /// @note 重なりぎわは EPA の領分。GJK_Distance は隙間を測ることだけを受け持つ。
+        // 重なりぎわは EPA の領分。GJK_Distance は隙間を測ることだけを受け持つ。
         const float expected = AnalyticGap(a, b);
-        if (expected < 0.05f) continue;
+        if (expected < 0.05f) {
+            continue;
+        }
 
         const physics::GJKResult result = Distance(a, b);
 
@@ -505,7 +511,7 @@ TEST_F(GJKDistanceTest, AgreesWithTheAnalyticGapForRandomBoxPairs)
         ++checked;
     }
 
-    /// @note 全部が «重なりぎわ» で弾かれると、何も確かめないまま緑になる。
+    // 全部が «重なりぎわ» で弾かれると、何も確かめないまま緑になる。
     EXPECT_GT(checked, 50);
 }
 

@@ -24,14 +24,19 @@ namespace fbzz::physics
             const math::Vector3 ac = c - a;
             const math::Vector3 ap = p - a;
 
+            // 各頂点から p への射影で領域を判別する。最近点が辺にある場合は、その辺に沿った位置を返す。
             const float d1 = math::Vector3::Dot(ab, ap);
             const float d2 = math::Vector3::Dot(ac, ap);
-            if (d1 <= 0.0f && d2 <= 0.0f) return a;
+            if (d1 <= 0.0f && d2 <= 0.0f) {
+                return a;
+            }
 
             const math::Vector3 bp = p - b;
             const float d3 = math::Vector3::Dot(ab, bp);
             const float d4 = math::Vector3::Dot(ac, bp);
-            if (d3 >= 0.0f && d4 <= d3) return b;
+            if (d3 >= 0.0f && d4 <= d3) {
+                return b;
+            }
 
             const float vc = d1 * d4 - d3 * d2;
             if (vc <= 0.0f && d1 >= 0.0f && d3 <= 0.0f)
@@ -43,7 +48,9 @@ namespace fbzz::physics
             const math::Vector3 cp2 = p - c;
             const float d5 = math::Vector3::Dot(ab, cp2);
             const float d6 = math::Vector3::Dot(ac, cp2);
-            if (d6 >= 0.0f && d5 <= d6) return c;
+            if (d6 >= 0.0f && d5 <= d6) {
+                return c;
+            }
 
             const float vb = d5 * d2 - d1 * d6;
             if (vb <= 0.0f && d2 >= 0.0f && d6 <= 0.0f)
@@ -59,6 +66,7 @@ namespace fbzz::physics
                 return b + (c - b) * w;
             }
 
+            // 3 頂点や各辺の領域から外れた点は、面に落とした重心座標から復元する。
             const float denom = 1.0f / (va + vb + vc);
             const float v = vb * denom;
             const float w = vc * denom;
@@ -107,11 +115,11 @@ namespace fbzz::physics
                 }
             };
 
-            /// @note 線分の端点と三角形の最近接点。
+            // 線分の端点と三角形の最近接点。
             Consider(segmentStart, ClosestPointOnTriangle(segmentStart, tri));
             Consider(segmentEnd, ClosestPointOnTriangle(segmentEnd, tri));
 
-            /// @note 線分と三角形の各辺の最近接点。
+            // 線分と三角形の各辺の最近接点。
             for (int edge = 0; edge < 3; ++edge)
             {
                 math::Vector3 segmentPoint;
@@ -122,7 +130,7 @@ namespace fbzz::physics
                 Consider(segmentPoint, edgePoint);
             }
 
-            /// @note 線分が三角形面を横切り、交点が三角形内にある場合は距離 0。
+            // 線分が三角形面を横切り、交点が三角形内にある場合は距離 0。
             const float signedStart = math::Vector3::Dot(segmentStart - tri.v[0], tri.normal);
             const float signedEnd   = math::Vector3::Dot(segmentEnd - tri.v[0], tri.normal);
             const float planeDelta  = signedStart - signedEnd;
@@ -132,14 +140,15 @@ namespace fbzz::physics
                 if (planeT >= 0.0f && planeT <= 1.0f)
                 {
                     const math::Vector3 intersection = segmentStart + (segmentEnd - segmentStart) * planeT;
-                    if (IsPointOnTriangle(intersection, tri))
+                    if (IsPointOnTriangle(intersection, tri)) {
                         Consider(intersection, intersection);
+                    }
                 }
             }
             else if (std::abs(signedStart) <= 1e-5f &&
                      (IsPointOnTriangle(segmentStart, tri) || IsPointOnTriangle(segmentEnd, tri)))
             {
-                /// @note 線分全体が面とほぼ平行かつ同一平面にある退化ケース。
+                // 線分全体が面とほぼ平行かつ同一平面にある退化ケース。
                 Consider(IsPointOnTriangle(segmentStart, tri) ? segmentStart : segmentEnd,
                          IsPointOnTriangle(segmentStart, tri) ? segmentStart : segmentEnd);
             }
@@ -157,16 +166,20 @@ namespace fbzz::physics
         const math::Vector3 diff    = center - closest;
         const float         distSq  = diff.LengthSq();
 
-        if (distSq >= s.m_radius * s.m_radius) return false;
+        if (distSq >= s.m_radius * s.m_radius) {
+            return false;
+        }
 
         const float dist = std::sqrt(distSq);
 
         if (dist < 1e-6f)
         {
-            /// @note 球中心が三角形面上またはほぼ一致: 面法線を使用
-            /// @note 双面: 球中心が裏側なら法線を反転
+            // 球中心が三角形面上またはほぼ一致: 面法線を使用
+            // 双面: 球中心が裏側なら法線を反転
             math::Vector3 n = tri.normal;
-            if (math::Vector3::Dot(n, center - tri.v[0]) < 0.0f) n = -n;
+            if (math::Vector3::Dot(n, center - tri.v[0]) < 0.0f) {
+                n = -n;
+            }
             out.normal = n;
             out.depth  = s.m_radius;
         }
@@ -184,22 +197,24 @@ namespace fbzz::physics
                                           const Triangle& tri,
                                           ContactPoint& out)
     {
-        /// @note SAT (Separating Axis Theorem): 13 軸をテストする
-        /// @note 軸: 3 面法線 (AABB 軸) + 3 辺 × 3 AABB 軸 = 9 + 1 三角形法線 = 13
+        // SAT (Separating Axis Theorem): 13 軸をテストする
+        // 軸: 3 面法線 (AABB 軸) + 3 辺 × 3 AABB 軸 = 9 + 1 三角形法線 = 13
         const AABB&         aabb = b.GetAABB();
         const math::Vector3 center = aabb.Center();
         const math::Vector3 half   = aabb.Extents();
 
-        /// @note 三角形頂点を AABB 中心相対座標に変換
+        // 三角形頂点を AABB 中心相対座標に変換
         math::Vector3 v[3];
-        for (int i = 0; i < 3; ++i) v[i] = tri.v[i] - center;
+        for (int i = 0; i < 3; ++i) {
+            v[i] = tri.v[i] - center;
+        }
 
         math::Vector3 e[3];
         e[0] = v[1] - v[0];
         e[1] = v[2] - v[1];
         e[2] = v[0] - v[2];
 
-        /// @note AABB の 3 軸 (X, Y, Z)
+        // AABB の 3 軸 (X, Y, Z)
         const math::Vector3 aabbAxes[3] = {
             {1.0f, 0.0f, 0.0f},
             {0.0f, 1.0f, 0.0f},
@@ -214,16 +229,18 @@ namespace fbzz::physics
         auto TestAxis = [&](math::Vector3 axis) -> bool
         {
             const float lenSq = axis.LengthSq();
-            /// @note 縮退軸はスキップ (分離なし扱い)
-            if (lenSq < EPS) return true;
+            // 縮退軸はスキップ (分離なし扱い)
+            if (lenSq < EPS) {
+                return true;
+            }
             axis = axis * (1.0f / std::sqrt(lenSq));
 
-            /// @note AABB の投影半幅
+            // AABB の投影半幅
             const float r = half.x * std::abs(axis.x)
                           + half.y * std::abs(axis.y)
                           + half.z * std::abs(axis.z);
 
-            /// @note 三角形の投影範囲
+            // 三角形の投影範囲
             const float p0 = math::Vector3::Dot(v[0], axis);
             const float p1 = math::Vector3::Dot(v[1], axis);
             const float p2 = math::Vector3::Dot(v[2], axis);
@@ -231,8 +248,10 @@ namespace fbzz::physics
             const float triMax = std::max({p0, p1, p2});
 
             const float overlap = std::min(r - triMin, triMax + r);
-            /// @note 分離軸発見
-            if (overlap <= 0.0f) return false;
+            // 分離軸発見
+            if (overlap <= 0.0f) {
+                return false;
+            }
 
             if (overlap < minOverlap)
             {
@@ -242,28 +261,38 @@ namespace fbzz::physics
             return true;
         };
 
-        /// @note 3 AABB 軸
-        for (int i = 0; i < 3; ++i)
-            if (!TestAxis(aabbAxes[i])) return false;
+        // 3 AABB 軸
+        for (int i = 0; i < 3; ++i) {
+            if (!TestAxis(aabbAxes[i])) {
+                return false;
+            }
+        }
 
-        /// @note 三角形法線
-        if (!TestAxis(tri.normal)) return false;
+        // 三角形法線
+        if (!TestAxis(tri.normal)) {
+            return false;
+        }
 
-        /// @note 9 クロス積軸 (edgeI × aabbAxisJ)
-        for (int i = 0; i < 3; ++i)
-            for (int j = 0; j < 3; ++j)
-                if (!TestAxis(math::Vector3::Cross(e[i], aabbAxes[j]))) return false;
+        // 9 クロス積軸 (edgeI × aabbAxisJ)
+        for (int i = 0; i < 3; ++i) {
+            for (int j = 0; j < 3; ++j) {
+                if (!TestAxis(math::Vector3::Cross(e[i], aabbAxes[j]))) {
+                    return false;
+                }
+            }
+        }
 
-        /// @note 全軸で重なり → 衝突
-        /// @note 法線方向: AABB 中心 → 三角形 重心 に対して bestAxis を合わせる
+        // 全軸で重なり → 衝突
+        // 法線方向: AABB 中心 → 三角形 重心 に対して bestAxis を合わせる
         const math::Vector3 triCentroid = (v[0] + v[1] + v[2]) / 3.0f;
-        if (math::Vector3::Dot(bestAxis, triCentroid) < 0.0f)
+        if (math::Vector3::Dot(bestAxis, triCentroid) < 0.0f) {
             bestAxis = -bestAxis;
+        }
 
-        /// @note AABB → 三角形 方向
+        // AABB → 三角形 方向
         out.normal = -bestAxis;
         out.depth  = minOverlap;
-        /// @note 近似接触点
+        // 近似接触点
         out.point  = center + bestAxis * (half.x + half.y + half.z) / 3.0f;
         return true;
     }
@@ -275,9 +304,9 @@ namespace fbzz::physics
         const math::Vector3 segmentStart = c.GetSegmentStart();
         const math::Vector3 segmentEnd = c.GetSegmentEnd();
 
-        /// @note Terrain MeshCollider では BroadPhase/BVH の AABB が重なっても、カプセルが
-        /// @note 三角形面から半径以上離れているケースが多い。符号付き距離だけで届かないと
-        /// @note 分かれば、線分-線分最近傍や ClosestPointOnTriangle の重い計算へ進まない。
+        // Terrain MeshCollider では BroadPhase/BVH の AABB が重なっても、カプセルが
+        // 三角形面から半径以上離れているケースが多い。符号付き距離だけで届かないと
+        // 分かれば、線分-線分最近傍や ClosestPointOnTriangle の重い計算へ進まない。
         const float signedDistS = math::Vector3::Dot(segmentStart - tri.v[0], tri.normal);
         const float signedDistE = math::Vector3::Dot(segmentEnd - tri.v[0], tri.normal);
         if ((signedDistS > c.m_radius && signedDistE > c.m_radius) ||
@@ -291,13 +320,17 @@ namespace fbzz::physics
         const float bestDistSq = ClosestPointsOnSegmentTriangle(
             segmentStart, segmentEnd, tri, bestCapsule, closestTrianglePoint);
 
-        if (bestDistSq >= c.m_radius * c.m_radius) return false;
+        if (bestDistSq >= c.m_radius * c.m_radius) {
+            return false;
+        }
 
         const float dist = std::sqrt(bestDistSq);
         if (dist < 1e-6f)
         {
             math::Vector3 n = tri.normal;
-            if (math::Vector3::Dot(n, bestCapsule - tri.v[0]) < 0.0f) n = -n;
+            if (math::Vector3::Dot(n, bestCapsule - tri.v[0]) < 0.0f) {
+                n = -n;
+            }
             out.normal = n;
             out.depth  = c.m_radius;
         }
@@ -328,7 +361,9 @@ namespace fbzz::physics
                     bestContact = candidate;
                 }
             });
-            if (deepestTriangle) out = bestContact;
+            if (deepestTriangle) {
+                out = bestContact;
+            }
             return deepestTriangle;
         }
 
@@ -366,11 +401,13 @@ namespace fbzz::physics
         bool MergeCapsuleContactPatch(const std::vector<ContactPoint>& candidates, float capsuleRadius,
                                       ContactPoint& out)
         {
-            if (candidates.empty()) return false;
+            if (candidates.empty()) {
+                return false;
+            }
 
-            /// @note 最深接触を基準に、同じ接触パッチに属する三角形だけをマージする。三角形ごとに
-            /// @note 法線を持つため、境界を跨ぐたびに最深の1枚を選ぶと法線・摩擦方向がフレーム
-            /// @note 単位で切り替わる。近い接触点かつ近い法線の候補に限定し、鋭い角は丸めない。
+            // 最深接触を基準に、同じ接触パッチに属する三角形だけをマージする。三角形ごとに
+            // 法線を持つため、境界を跨ぐたびに最深の1枚を選ぶと法線・摩擦方向がフレーム
+            // 単位で切り替わる。近い接触点かつ近い法線の候補に限定し、鋭い角は丸めない。
             auto deepest = std::max_element(candidates.begin(), candidates.end(),
                 [](const ContactPoint& lhs, const ContactPoint& rhs) {
                     return lhs.depth < rhs.depth;
@@ -389,11 +426,17 @@ namespace fbzz::physics
             int mergedCount = 0;
             for (const ContactPoint& candidate : candidates)
             {
-                if (deepestPenetration - candidate.depth > DEPTH_TOLERANCE) continue;
-                if ((candidate.point - referencePoint).LengthSq() > mergeRadiusSq) continue;
-                if (math::Vector3::Dot(candidate.normal, referenceNormal) < NORMAL_MERGE_DOT) continue;
+                if (deepestPenetration - candidate.depth > DEPTH_TOLERANCE) {
+                    continue;
+                }
+                if ((candidate.point - referencePoint).LengthSq() > mergeRadiusSq) {
+                    continue;
+                }
+                if (math::Vector3::Dot(candidate.normal, referenceNormal) < NORMAL_MERGE_DOT) {
+                    continue;
+                }
 
-                /// @note 深い接触ほど大きく反映し、接触点・法線の急な切り替わりを抑える。
+                // 深い接触ほど大きく反映し、接触点・法線の急な切り替わりを抑える。
                 const float weight = std::max(candidate.depth, 1e-4f);
                 normalSum += candidate.normal * weight;
                 pointSum += candidate.point * weight;
@@ -406,7 +449,7 @@ namespace fbzz::physics
             {
                 out.normal = normalSum.Normalized();
                 out.point = pointSum * (1.0f / weightSum);
-                /// @note 深度は最大値を残す。平均すると位置補正が不足して再び貫通するため。
+                // 深度は最大値を残す。平均すると位置補正が不足して再び貫通するため。
                 out.depth = deepestPenetration;
             }
             return true;
@@ -438,7 +481,9 @@ namespace fbzz::physics
         candidates.reserve(8);
         mesh.GetBVH().Query(capsule.GetAABB(), [&](const Triangle& triangle) {
             ContactPoint candidate;
-            if (TestCapsuleTriangle(capsule, triangle, candidate)) candidates.push_back(candidate);
+            if (TestCapsuleTriangle(capsule, triangle, candidate)) {
+                candidates.push_back(candidate);
+            }
         });
         return MergeCapsuleContactPatch(candidates, capsule.m_radius, out);
     }
@@ -453,7 +498,9 @@ namespace fbzz::physics
             [&](const Triangle& triangle, ContactPoint& contact) {
                 return TestAABBTriangle(localBox, TriangleInBoxSpace(triangle, box, inverseRotation), contact);
             }, out);
-        if (!deepestTriangle) return false;
+        if (!deepestTriangle) {
+            return false;
+        }
         out.point = ProjectBoxSupport(out.normal, box.m_halfExtents,
                                       TriangleInBoxSpace(*deepestTriangle, box, inverseRotation));
         out.normal = (box.GetRotation() * out.normal).Normalized();
@@ -516,7 +563,9 @@ namespace fbzz::physics
             [&](const Triangle& triangle, ContactPoint& contact) {
                 return TestAABBTriangle(localBox, TriangleInBoxSpace(triangle, box, inverseRotation), contact);
             }, out);
-        if (!deepestTriangle) return false;
+        if (!deepestTriangle) {
+            return false;
+        }
         out.normal = (box.GetRotation() * out.normal).Normalized();
         out.point = box.GetCenter() + box.GetRotation() * out.point;
         return true;

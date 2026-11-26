@@ -12,8 +12,8 @@ namespace fbzz::physics
 {
     /// @note BroadPhase 用の軸整合境界。形状ごとの詳細判定より先に粗い重なりを調べる。
     struct AABB {
-        math::Vector3 min;
-        math::Vector3 max;
+        math::Vector3 min; ///< 箱を構成する各軸の最小座標。交差対象と同じ座標系。
+        math::Vector3 max; ///< 箱を構成する各軸の最大座標。交差対象と同じ座標系。
 
         FBZZ_PHYSICS_API bool          Overlaps(const AABB& other) const;
         FBZZ_PHYSICS_API AABB          Merge(const AABB& other)    const;
@@ -46,7 +46,7 @@ namespace fbzz::physics
 
     private:
         friend class World;
-        detail::RegistrationLifetime m_registrationLifetime;
+        detail::RegistrationLifetime m_registrationLifetime; ///< World の非所有登録でコライダーの破棄を検知する寿命トークン。
     };
 
 } /// @note namespace fbzz::physics

@@ -51,8 +51,8 @@ TEST_F(XPBDSolverTest, FreeFallMatchesAnalyticDrop)
 
     Simulate(solver, 60);
 
-    /// @note 半陰的オイラーは解析解より 0.5·g·h·t だけ余分に落ちる。substep を細かくすると
-    ///       その差は縮む ─ ここでは «おおよそ自由落下している» ことだけ確認する。
+    // 半陰的オイラーは解析解より 0.5·g·h·t だけ余分に落ちる。substep を細かくすると
+    // その差は縮む ─ ここでは «おおよそ自由落下している» ことだけ確認する。
     const float expected = 10.0f + 0.5f * kGravity * 1.0f;
     EXPECT_NEAR(body->GetPosition().y, expected, 0.15f);
 
@@ -111,7 +111,7 @@ TEST_F(XPBDSolverTest, OffCenterContactGeneratesRotation)
 
     auto body = MakeBody({ 0.0f, 1.0f, 0.0f });
     solver.AddBody(body.get());
-    /// @note 重心から外れた 1 点だけで支える。トルクが立たなければ姿勢は変わらない。
+    // 重心から外れた 1 点だけで支える。トルクが立たなければ姿勢は変わらない。
     solver.AddConstraint(std::make_unique<physics::XPBDPlaneContact>(
         body.get(), math::Vector3{ 0.6f, 0.0f, 0.0f }, 0.1f, math::Vector3::UP, 0.0f));
 
