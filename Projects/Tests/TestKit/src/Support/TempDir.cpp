@@ -23,21 +23,27 @@ TempDir::TempDir(const std::string& label)
 {
     std::error_code ec;
     const auto      base = std::filesystem::temp_directory_path(ec);
-    if (ec) return;
+    if (ec) {
+        return;
+    }
 
     const auto prefix = "fbzz_test_" + label + "_" + std::to_string(GetCurrentProcessId()) + "_";
     for (;;) {
         const unsigned serial = g_counter.fetch_add(1, std::memory_order_relaxed);
         m_path = base / (prefix + std::to_string(serial));
-        /// @note PID 再利用後の残骸も削除しない。作成に成功したディレクトリだけを所有する。
+        // PID 再利用後の残骸も削除しない。作成に成功したディレクトリだけを所有する。
         m_valid = std::filesystem::create_directory(m_path, ec);
-        if (m_valid || ec) return;
+        if (m_valid || ec) {
+            return;
+        }
     }
 }
 
 TempDir::~TempDir()
 {
-    if (!m_valid) return;
+    if (!m_valid) {
+        return;
+    }
     std::error_code ec;
     std::filesystem::remove_all(m_path, ec);
 }

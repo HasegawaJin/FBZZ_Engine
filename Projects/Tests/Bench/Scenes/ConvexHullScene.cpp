@@ -70,7 +70,7 @@ std::vector<math::Vector3> MakeCloud(CloudShape shape, int count, uint32_t seed)
         break;
     case CloudShape::CubeCorners:
         for (int i = 0; i < count; ++i) {
-            /// @note 角 8 点を繰り返しつつ、内側の点も混ぜる。内側の点は包みに現れてはならない。
+            // 角 8 点を繰り返しつつ、内側の点も混ぜる。内側の点は包みに現れてはならない。
             if (i < 8)
                 points.push_back({ (i & 1) ? 1.5f : -1.5f,
                                    (i & 2) ? 1.5f : -1.5f,
@@ -143,9 +143,11 @@ public:
                      "入力 %zu 点に対して包みの頂点が 0", m_points.size());
 
         for (const math::Vector3& vertex : m_worldVerts)
-            if (!log.CheckFinite("包みの頂点", vertex, 1.0e4f)) return;
+            if (!log.CheckFinite("包みの頂点", vertex, 1.0e4f)) {
+                return;
+            }
 
-        /// @note 描画側は壊れた面を黙って捨てているが、GJK / EPA は面をそのまま信じる。
+        // 描画側は壊れた面を黙って捨てているが、GJK / EPA は面をそのまま信じる。
         for (std::size_t i = 0; i < m_faces.size(); ++i) {
             const std::array<uint32_t, 3>& face = m_faces[i];
             if (face[0] >= m_worldVerts.size() || face[1] >= m_worldVerts.size()
@@ -157,18 +159,20 @@ public:
                          Severity::Error, "面 %zu が同じ頂点を 2 度使っている (法線が作れない)", i);
         }
 
-        /// @note 頂点上限を超えた点は BuildHull が入力ごと捨てる。捨てた点が包みの外に残るのは
-        ///       仕様どおりなので、そこを Error にすると «上限を試す» たびに嘘の異常が点く。
+        // 頂点上限を超えた点は BuildHull が入力ごと捨てる。捨てた点が包みの外に残るのは
+        // 仕様どおりなので、そこを Error にすると «上限を試す» たびに嘘の異常が点く。
         const Severity coverage = Truncated() ? Severity::Warning : Severity::Error;
 
         log.ReportIf(m_outsideCount > 0, coverage,
                      "包みの外に出た入力点が %d 個 (最大 %.4f m)%s", m_outsideCount, m_worstOutside,
                      Truncated() ? " ── 頂点上限で捨てた点なら正常" : "");
 
-        /// @note サポート関数の定義そのもの。どの入力点にも負けてはいけない。
+        // サポート関数の定義そのもの。どの入力点にも負けてはいけない。
         const math::Vector3 direction = Direction();
         const math::Vector3 support   = SupportPoint();
-        if (!log.CheckFinite("サポート点", support, 1.0e4f)) return;
+        if (!log.CheckFinite("サポート点", support, 1.0e4f)) {
+            return;
+        }
 
         const float best  = math::Vector3::Dot(support, direction);
         float       rival = best;
@@ -229,7 +233,7 @@ public:
             for (const math::Vector3& p : m_rotatedPoints)
                 view.DrawPoint(p, colors::kGrid, 2.5f);
 
-        /// @note 面の稜線。潰れた点群では 0 本になる ── それ自体が見たい情報。
+        // 面の稜線。潰れた点群では 0 本になる ── それ自体が見たい情報。
         for (const std::array<uint32_t, 3>& face : m_faces) {
             if (face[0] >= m_worldVerts.size() || face[1] >= m_worldVerts.size()
                 || face[2] >= m_worldVerts.size())
@@ -241,11 +245,11 @@ public:
 
         for (const math::Vector3& v : m_worldVerts) view.DrawPoint(v, colors::kBody, 4.0f);
 
-        /// @note 包み損ねた点は «欠陥そのもの» なので、他より目立たせる。
+        // 包み損ねた点は «欠陥そのもの» なので、他より目立たせる。
         for (const math::Vector3& p : m_outsidePoints) view.DrawCircle(p, 0.08f, colors::kContact,
                                                                       false, 2.0f);
 
-        /// @note GJK が実際に呼ぶ経路。方向と返り値を並べて描く。
+        // GJK が実際に呼ぶ経路。方向と返り値を並べて描く。
         const math::Vector3 dir = Direction();
         view.DrawArrow({ 0.0f, 0.0f, 0.0f }, dir * 2.6f, colors::kQuery, 2.0f);
         view.DrawPoint(SupportPoint(), colors::kContact, 6.0f);
@@ -284,7 +288,9 @@ private:
     /// 包みと入力点を同じ回転で回す。片方だけ回すと «包み損ね» が偽で出る。
     void Transform()
     {
-        if (!m_hull) return;
+        if (!m_hull) {
+            return;
+        }
 
         const math::Quaternion rot =
             math::Quaternion::FromAxisAngle({ 0.32f, 0.90f, 0.30f }, m_angle);
@@ -307,13 +313,15 @@ private:
         m_outsidePoints.clear();
         m_outsideCount = 0;
         m_worstOutside = 0.0f;
-        if (m_faces.empty() || m_worldVerts.empty()) return;
+        if (m_faces.empty() || m_worldVerts.empty()) {
+            return;
+        }
 
         math::Vector3 centroid = math::Vector3::ZERO;
         for (const math::Vector3& v : m_worldVerts) centroid = centroid + v;
         centroid = centroid * (1.0f / static_cast<float>(m_worldVerts.size()));
 
-        /// @note 面の厚みは点群の広がりに対する比で見る。絶対値だと大きな形ほど厳しくなる。
+        // 面の厚みは点群の広がりに対する比で見る。絶対値だと大きな形ほど厳しくなる。
         float extent = 0.0f;
         for (const math::Vector3& v : m_worldVerts)
             extent = (std::max)(extent, (v - centroid).Length());
@@ -331,13 +339,17 @@ private:
 
                 math::Vector3 normal = math::Vector3::Cross(e1, e2);
                 const float   length = normal.Length();
-                if (length < 1e-6f) continue;
+                if (length < 1e-6f) {
+                    continue;
+                }
                 normal = normal * (1.0f / length);
                 if (math::Vector3::Dot(normal, a - centroid) < 0.0f) normal = normal * -1.0f;
 
                 worst = (std::max)(worst, math::Vector3::Dot(normal, p - a));
             }
-            if (worst <= tolerance) continue;
+            if (worst <= tolerance) {
+                continue;
+            }
             ++m_outsideCount;
             m_worstOutside = (std::max)(m_worstOutside, worst);
             m_outsidePoints.push_back(p);

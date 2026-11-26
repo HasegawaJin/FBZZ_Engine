@@ -15,8 +15,8 @@ void Viewport2D::Begin(const char* id, const ImVec2& size)
                       ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse);
     m_origin = ImGui::GetCursorScreenPos();
 
-    /// @note ウィンドウを潰したときに 0 や負が来る。InvisibleButton はそこで assert するので、
-    ///       最低 1px を保証してから使う。
+    // ウィンドウを潰したときに 0 や負が来る。InvisibleButton はそこで assert するので、
+    // 最低 1px を保証してから使う。
     const ImVec2 available = ImGui::GetContentRegionAvail();
     m_size = {(std::max)(1.0f, available.x), (std::max)(1.0f, available.y)};
 
@@ -39,9 +39,9 @@ void Viewport2D::HandlePanZoom()
 
     if (ImGui::IsItemActive() && ImGui::IsMouseDragging(ImGuiMouseButton_Left)) {
         const ImVec2 delta = ImGui::GetIO().MouseDelta;
-        /// @note 画面を掴んで動かす感触にするため、世界は逆向きへずらす。
+        // 画面を掴んで動かす感触にするため、世界は逆向きへずらす。
         const float dx = -delta.x / m_pixelsPerMeter;
-        /// @note 画面 Y は下向き
+        // 画面 Y は下向き
         const float dy = delta.y / m_pixelsPerMeter;
 
         if (m_plane == ViewPlane::XY) {
@@ -68,7 +68,9 @@ void Viewport2D::SetFocus(const math::Vector3& center, float pixelsPerMeter)
 
 ImVec2 Viewport2D::PlaneCoords(const math::Vector3& world) const
 {
-    if (m_plane == ViewPlane::XY) return {world.x, world.y};
+    if (m_plane == ViewPlane::XY) {
+        return {world.x, world.y};
+    }
     return {world.x, world.z};
 }
 
@@ -83,7 +85,9 @@ ImVec2 Viewport2D::ToScreen(const math::Vector3& world) const
 
 void Viewport2D::DrawGrid(float stepMeters)
 {
-    if (!m_drawList || stepMeters <= 0.0f) return;
+    if (!m_drawList || stepMeters <= 0.0f) {
+        return;
+    }
 
     const ImVec2 center      = PlaneCoords(m_center);
     const float  halfWidth   = m_size.x * 0.5f / m_pixelsPerMeter;
@@ -108,14 +112,18 @@ void Viewport2D::DrawGrid(float stepMeters)
 void Viewport2D::DrawLine(const math::Vector3& a, const math::Vector3& b, ImU32 color,
                           float thickness)
 {
-    if (!m_drawList) return;
+    if (!m_drawList) {
+        return;
+    }
     m_drawList->AddLine(ToScreen(a), ToScreen(b), color, thickness);
 }
 
 void Viewport2D::DrawArrow(const math::Vector3& from, const math::Vector3& to, ImU32 color,
                            float thickness)
 {
-    if (!m_drawList) return;
+    if (!m_drawList) {
+        return;
+    }
 
     const ImVec2 start = ToScreen(from);
     const ImVec2 end   = ToScreen(to);
@@ -124,9 +132,11 @@ void Viewport2D::DrawArrow(const math::Vector3& from, const math::Vector3& to, I
     const float dx     = end.x - start.x;
     const float dy     = end.y - start.y;
     const float length = std::sqrt(dx * dx + dy * dy);
-    if (length < 1.0f) return;
+    if (length < 1.0f) {
+        return;
+    }
 
-    /// @note 矢じりは画面上の固定サイズ。拡大率を変えても «向きが読める» 大きさを保つ。
+    // 矢じりは画面上の固定サイズ。拡大率を変えても «向きが読める» 大きさを保つ。
     constexpr float kHead = 9.0f;
     const float     ux    = dx / length;
     const float     uy    = dy / length;
@@ -138,7 +148,9 @@ void Viewport2D::DrawArrow(const math::Vector3& from, const math::Vector3& to, I
 void Viewport2D::DrawCircle(const math::Vector3& center, float radiusMeters, ImU32 color,
                             bool filled, float thickness)
 {
-    if (!m_drawList) return;
+    if (!m_drawList) {
+        return;
+    }
 
     const ImVec2 screen = ToScreen(center);
     const float  radius = ToPixels(radiusMeters);
@@ -149,7 +161,9 @@ void Viewport2D::DrawCircle(const math::Vector3& center, float radiusMeters, ImU
 void Viewport2D::DrawBox(const math::Vector3& center, const math::Vector3& halfExtents,
                          ImU32 color, bool filled, float thickness)
 {
-    if (!m_drawList) return;
+    if (!m_drawList) {
+        return;
+    }
 
     const ImVec2 minCorner = ToScreen(center - halfExtents);
     const ImVec2 maxCorner = ToScreen(center + halfExtents);
@@ -162,19 +176,25 @@ void Viewport2D::DrawBox(const math::Vector3& center, const math::Vector3& halfE
 
 void Viewport2D::DrawPoint(const math::Vector3& position, ImU32 color, float radiusPixels)
 {
-    if (!m_drawList) return;
+    if (!m_drawList) {
+        return;
+    }
     m_drawList->AddCircleFilled(ToScreen(position), radiusPixels, color, 16);
 }
 
 void Viewport2D::DrawText(const math::Vector3& position, ImU32 color, const char* text)
 {
-    if (!m_drawList) return;
+    if (!m_drawList) {
+        return;
+    }
     m_drawList->AddText(ToScreen(position), color, text);
 }
 
 void Viewport2D::DrawGroundLine(float height, ImU32 color)
 {
-    if (!m_drawList || m_plane != ViewPlane::XY) return;
+    if (!m_drawList || m_plane != ViewPlane::XY) {
+        return;
+    }
 
     const float sy = ToScreen({0.0f, height, 0.0f}).y;
     m_drawList->AddLine({m_origin.x, sy}, {m_origin.x + m_size.x, sy}, color, 2.0f);

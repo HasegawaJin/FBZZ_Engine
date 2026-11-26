@@ -10,8 +10,8 @@ void EngineFixture::SetUp()
 {
     Fixture::SetUp();
 
-    /// @note Logger は sink とは別に stdout へも直接書く。既定のままだと Engine の INFO ログが
-    ///       gtest の出力に混ざり、失敗箇所が埋もれる。ERROR だけ通す。
+    // Logger は sink とは別に stdout へも直接書く。既定のままだと Engine の INFO ログが
+    // gtest の出力に混ざり、失敗箇所が埋もれる。ERROR だけ通す。
     core::Logger::SetMinLevel(core::LogLevel::LOG_ERROR);
 }
 

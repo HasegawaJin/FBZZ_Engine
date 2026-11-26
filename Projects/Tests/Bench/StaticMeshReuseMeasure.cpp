@@ -54,15 +54,26 @@ uint64_t HashGeometry(const renderer::RenderScene& snapshot)
 }
 int Measure(int argc, char** argv)
 {
-    if (argc != 5 && argc != 6) return 2;
+    if (argc != 5 && argc != 6) {
+        return 2;
+    }
     const int count = std::atoi(argv[1]), samples = std::atoi(argv[3]);
     const int warmup = argc == 6 ? std::atoi(argv[5]) : 120;
     const std::string mode(argv[2]);
     const bool service = mode.starts_with("service-");
     const bool pair = mode == "initial-pair";
-    if (count <= 0 || samples <= 0 || warmup < 0 || (mode != "static" && mode != "one-percent" && mode != "all"
-        && mode != "churn" && mode != "cold" && !pair && mode != "service-one-percent"
-        && mode != "service-all" && mode != "service-churn")) return 2;
+    // 計測回数を検証してから、モードに対応する変更件数と更新方法を決める。
+    if (count <= 0 || samples <= 0 || warmup < 0) {
+        return 2;
+    }
+    const bool changesAll = mode == "all" || mode == "service-all";
+    const bool replacesEntities = mode == "churn" || mode == "service-churn";
+    const bool changesOnePercent = mode == "one-percent" || mode == "service-one-percent" || replacesEntities;
+    const bool recreatesScene = mode == "cold" || pair;
+    if (!changesAll && !changesOnePercent && !recreatesScene && mode != "static") {
+        return 2;
+    }
+
     profiler::Profiler::SetEnabled(false);
     scene::Scene scene;
     std::array<renderer::Mesh, 8> meshes;
@@ -93,16 +104,19 @@ int Measure(int argc, char** argv)
     scene::managed_detail::ManagedServiceResult serviceResult;
     bool valid = true;
     for (int frame = 0; frame < samples + warmup; ++frame) {
-        if (mode == "cold" || pair) {
+        if (recreatesScene) {
             scene.Clear();
             for (int index = 0; index < count; ++index) entities[index] = create(index);
         }
         const auto updateStart = std::chrono::steady_clock::now();
-        const int changed = mode == "all" || mode == "service-all" ? count
-            : mode == "one-percent" || mode == "churn" || mode == "service-one-percent" || mode == "service-churn"
-                ? (std::max)(1, count / 100) : 0;
+        int changed = 0;
+        if (changesAll) {
+            changed = count;
+        } else if (changesOnePercent) {
+            changed = (std::max)(1, count / 100);
+        }
         for (int index = 0; index < changed; ++index) {
-            if (mode == "churn" || mode == "service-churn") {
+            if (replacesEntities) {
                 valid = scene.DestroyGameObject(entities[index]) && valid;
                 entities[index] = create(index);
             }
@@ -129,9 +143,13 @@ int Measure(int argc, char** argv)
     if (service) scene::Script::SetInPlayMode(previousPlay);
     HMODULE engine = GetModuleHandleW(L"FBZZEngine.dll");
     wchar_t modulePath[MAX_PATH]{};
-    if (!engine || !GetModuleFileNameW(engine, modulePath, MAX_PATH)) return 3;
+    if (!engine || !GetModuleFileNameW(engine, modulePath, MAX_PATH)) {
+        return 3;
+    }
     std::FILE* output = nullptr;
-    if (fopen_s(&output, argv[4], "wb") != 0 || !output) return 4;
+    if (fopen_s(&output, argv[4], "wb") != 0 || !output) {
+        return 4;
+    }
     const std::unique_ptr<std::FILE, decltype(&std::fclose)> ownedOutput(output, &std::fclose);
     std::fprintf(output, "{\"valid\":%s,\"objects\":%d,\"mode\":\"%s\",\"warmup\":%d,\"samples\":%d,\"boundary\":\"%s\",\"extractionsPerSample\":%d,\"enginePath\":\"",
         valid ? "true" : "false", count, mode.c_str(), warmup, samples,

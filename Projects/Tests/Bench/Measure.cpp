@@ -54,7 +54,9 @@ bool ReadPositiveInt(const char* text, int& out)
 {
     char* end = nullptr;
     const long value = std::strtol(text, &end, 10);
-    if (end == text || *end != '\0' || value <= 0 || value > 100000000) return false;
+    if (end == text || *end != '\0' || value <= 0 || value > 100000000) {
+        return false;
+    }
     out = static_cast<int>(value);
     return true;
 }
@@ -76,9 +78,13 @@ void PinCurrentThread()
     int       seen   = 0;
     for (int bit = 0; bit < static_cast<int>(sizeof(DWORD_PTR) * 8); ++bit) {
         const DWORD_PTR mask = static_cast<DWORD_PTR>(1) << bit;
-        if ((processMask & mask) == 0) continue;
+        if ((processMask & mask) == 0) {
+            continue;
+        }
         chosen = mask;
-        if (++seen == 2) break;
+        if (++seen == 2) {
+            break;
+        }
     }
     SetThreadAffinityMask(GetCurrentThread(), chosen);
 }
@@ -89,7 +95,9 @@ std::string CpuBrand()
 {
     std::array<int, 4> info{};
     __cpuid(info.data(), 0x80000000);
-    if (static_cast<unsigned>(info[0]) < 0x80000004u) return "unknown";
+    if (static_cast<unsigned>(info[0]) < 0x80000004u) {
+        return "unknown";
+    }
 
     char brand[49] = {};
     for (int leaf = 0; leaf < 3; ++leaf) {
@@ -188,7 +196,9 @@ void PrintResult(const Result& result)
 bool WriteJson(const MeasureOptions& options, const std::string& startedAt, const std::vector<Result>& results)
 {
     std::FILE* file = nullptr;
-    if (fopen_s(&file, options.jsonPath.c_str(), "wb") != 0 || file == nullptr) return false;
+    if (fopen_s(&file, options.jsonPath.c_str(), "wb") != 0 || file == nullptr) {
+        return false;
+    }
 
     std::fprintf(file, "{\n  \"schema\": \"fbzz-bench/2\",\n");
     std::fprintf(file, "  \"label\": %s,\n", QuoteJson(options.label).c_str());
@@ -317,7 +327,7 @@ int RunMeasure(const MeasureOptions& options)
             const auto simEnd = std::chrono::steady_clock::now();
             simulate.samples.push_back(elapsed(simBegin, simEnd) / options.steps);
 
-            /// @note 問い合わせ系の場面 (BVH / CCD / NarrowPhase) は仕事の本体が Present にある。止めた状態で同じ回数だけ回して別に計る。
+            // 問い合わせ系の場面 (BVH / CCD / NarrowPhase) は仕事の本体が Present にある。止めた状態で同じ回数だけ回して別に計る。
             const auto presentBegin = std::chrono::steady_clock::now();
             for (int s = 0; s < options.steps; ++s)
                 scene->Present();
@@ -330,7 +340,7 @@ int RunMeasure(const MeasureOptions& options)
         results.push_back(std::move(present));
     }
 
-    /// @note 畳んだ値を volatile へ書き、演算ごと最適化で消されるのを防ぐ。
+    // 畳んだ値を volatile へ書き、演算ごと最適化で消されるのを防ぐ。
     volatile double sink = 0.0;
     for (const MicroCase& micro : AllMicroCases()) {
         Result result{ "micro", micro.name, "op", "ns/op", {} };

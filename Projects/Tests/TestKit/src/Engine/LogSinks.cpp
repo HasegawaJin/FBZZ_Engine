@@ -9,7 +9,9 @@ namespace fbzz::testkit {
 const core::LogEntry* RecordingLogSink::Find(const std::string& needle) const
 {
     for (const core::LogEntry& entry : entries) {
-        if (entry.message.find(needle) != std::string::npos) return &entry;
+        if (entry.message.find(needle) != std::string::npos) {
+            return &entry;
+        }
     }
     return nullptr;
 }

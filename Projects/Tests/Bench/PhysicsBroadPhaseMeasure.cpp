@@ -16,11 +16,12 @@
 
 namespace fbzz::bench {
 namespace {
+
 struct Input {
-    std::vector<std::unique_ptr<physics::SphereCollider>> shapes;
-    std::vector<std::unique_ptr<physics::RigidBody>> bodies;
-    std::vector<physics::ColliderInstance> colliders;
-    std::vector<math::Vector3> positions;
+    std::vector<std::unique_ptr<physics::SphereCollider>> shapes; ///< 各入力球の形状を所有する配列。
+    std::vector<std::unique_ptr<physics::RigidBody>> bodies; ///< 各入力球の剛体を所有する配列。
+    std::vector<physics::ColliderInstance> colliders; ///< 同じ添字の形状と剛体を参照する BroadPhase 入力。
+    std::vector<math::Vector3> positions; ///< 各入力球の基準となるワールド座標。
 };
 
 Input MakeInput(int count, const std::string& mode)
@@ -36,8 +37,12 @@ Input MakeInput(int count, const std::string& mode)
         auto body = std::make_unique<physics::RigidBody>();
         body->SetMass(1.0f);
         body->SetPosition(position);
-        if (mode == "static") body->m_isStatic = true;
-        if (mode == "sleep") body->Sleep();
+        if (mode == "static") {
+            body->m_isStatic = true;
+        }
+        if (mode == "sleep") {
+            body->Sleep();
+        }
         physics::ColliderInstance collider;
         collider.collider = shape.get();
         collider.body = body.get();
@@ -53,11 +58,17 @@ void MoveInput(Input& input, const std::string& mode, int step)
 {
     const float offset = step % 2 == 0 ? 0.1f : -0.1f;
     const std::size_t count = input.shapes.size();
-    std::size_t moving = 0;
-    if (mode == "one") moving = 1;
-    if (mode == "one-percent") moving = (std::max)(std::size_t{1}, count / 100);
-    if (mode == "all" || mode == "shuffle") moving = count;
-    for (std::size_t index = 0; index < moving; ++index) {
+    std::size_t movingCount = 0;
+    if (mode == "one") {
+        movingCount = 1;
+    } else if (mode == "one-percent") {
+        movingCount = (std::max)(std::size_t{1}, count / 100);
+    } else if (mode == "all" || mode == "shuffle") {
+        movingCount = count;
+    }
+
+    // 基準位置から更新して移動量を一定に保ち、shuffle では球の組をまとめて並べ替える。
+    for (std::size_t index = 0; index < movingCount; ++index) {
         auto position = input.positions[index];
         if (mode == "shuffle") {
             const auto group = (index / 2 + static_cast<std::size_t>(step) * 37) % (count / 2);
@@ -68,29 +79,47 @@ void MoveInput(Input& input, const std::string& mode, int step)
         }
         input.shapes[index]->Update(position, math::Quaternion::Identity());
     }
-    if (mode == "churn") input.colliders.back().collider = step % 2 == 0 ? nullptr : input.shapes.back().get();
+    if (mode == "churn") {
+        input.colliders.back().collider = step % 2 == 0 ? nullptr : input.shapes.back().get();
+    }
 }
 
 bool ValidatePairs(const Input& input, const std::vector<physics::CollisionPair>& pairs,
                    const std::string& mode, int step)
 {
-    const auto expected = mode == "static" || mode == "sleep" ? 0u : input.shapes.size() / 2
-        - (mode == "churn" && step % 2 == 0 ? 1u : 0u);
-    if (pairs.size() != expected) return false;
-    std::vector<unsigned char> seen(input.shapes.size() / 2, 0);
+    const bool allPairsInactive = mode == "static" || mode == "sleep";
+    const bool lastColliderAbsent = mode == "churn" && step % 2 == 0;
+    const std::size_t candidatePairCount = input.shapes.size() / 2 - (lastColliderAbsent ? 1u : 0u);
+    const std::size_t expectedPairCount = allPairsInactive ? 0u : candidatePairCount;
+    if (pairs.size() != expectedPairCount) {
+        return false;
+    }
+
+    // 入力を 2 個ずつ並べた組だけが衝突できる。別の組との接触や同じ組の重複を失敗とする。
+    std::vector<unsigned char> seenGroups(input.shapes.size() / 2, 0);
     for (const auto& pair : pairs) {
-        const auto first = static_cast<std::size_t>(pair.colliderA - input.colliders.data());
-        const auto second = static_cast<std::size_t>(pair.colliderB - input.colliders.data());
-        if (first >= input.colliders.size() || second >= input.colliders.size() || first == second
-            || first / 2 != second / 2 || seen[first / 2]++) return false;
+        const auto firstIndex = static_cast<std::size_t>(pair.colliderA - input.colliders.data());
+        const auto secondIndex = static_cast<std::size_t>(pair.colliderB - input.colliders.data());
+        if (firstIndex >= input.colliders.size() || secondIndex >= input.colliders.size()) {
+            return false;
+        }
+        const std::size_t firstGroup = firstIndex / 2;
+        if (firstIndex == secondIndex || firstGroup != secondIndex / 2) {
+            return false;
+        }
+        const bool groupAlreadySeen = seenGroups[firstGroup] != 0;
+        ++seenGroups[firstGroup];
+        if (groupAlreadySeen) {
+            return false;
+        }
     }
     return true;
 }
 
 struct Result {
-    std::string name;
-    std::vector<double> samples;
-    std::size_t lastPairCount = 0;
+    std::string name; ///< JSON 出力で計測条件を識別する名前。
+    std::vector<double> samples; ///< ウォームアップ後の所要時間（マイクロ秒）。
+    std::size_t lastPairCount = 0; ///< 最後の BroadPhase 呼び出しで得た衝突候補の組数。
 };
 
 bool MeasureBroadPhase(int count, const std::string& mode, int warmup, int steps, int repeats,
@@ -105,13 +134,20 @@ bool MeasureBroadPhase(int count, const std::string& mode, int warmup, int steps
         for (int step = 0; step < warmup + steps; ++step) {
             MoveInput(input, mode, step);
             pairs.clear();
-            if (mode == "cold") solver = physics::PhysicsSolver{};
+            if (mode == "cold") {
+                solver = physics::PhysicsSolver{};
+            }
+
+            // 計測窓には BroadPhase だけを入れ、正しさの検査は計時を止めてから行う。
             const auto begin = std::chrono::steady_clock::now();
             solver.BroadPhase(input.colliders, pairs, {});
             const auto end = std::chrono::steady_clock::now();
-            if (!ValidatePairs(input, pairs, mode, step)) return false;
-            if (step >= warmup) result.samples.push_back(
-                std::chrono::duration<double, std::micro>(end - begin).count());
+            if (!ValidatePairs(input, pairs, mode, step)) {
+                return false;
+            }
+            if (step >= warmup) {
+                result.samples.push_back(std::chrono::duration<double, std::micro>(end - begin).count());
+            }
         }
         result.lastPairCount = pairs.size();
     }
@@ -141,12 +177,15 @@ bool MeasureWorld(int count, int warmup, int steps, int repeats, Result& result)
             world.EndSceneSync();
             world.Step(1.0f / 60.0f);
             const auto end = std::chrono::steady_clock::now();
-            if (step >= warmup) result.samples.push_back(
-                std::chrono::duration<double, std::micro>(end - begin).count());
+            if (step >= warmup) {
+                result.samples.push_back(std::chrono::duration<double, std::micro>(end - begin).count());
+            }
         }
         for (int index = 0; index < count; ++index) {
             const auto position = input.bodies[index]->GetPosition();
-            if (!std::isfinite(position.z) || position.z <= 0.0f) return false;
+            if (!std::isfinite(position.z) || position.z <= 0.0f) {
+                return false;
+            }
         }
     }
     return true;
@@ -158,8 +197,8 @@ double Percentile(std::vector<double> values, double fraction)
     const auto rank = static_cast<std::size_t>(std::ceil(fraction * values.size()));
     return values[(std::max)(std::size_t{1}, rank) - 1];
 }
-} /// @note namespace
-} /// @note namespace fbzz::bench
+} // namespace
+} // namespace fbzz::bench
 
 int main(int argc, char** argv)
 {
@@ -176,7 +215,9 @@ int main(int argc, char** argv)
         else if (option == "--repeats") repeats = std::atoi(argv[index + 1]);
         else return 2;
     }
-    if (!output || warmup < 1 || steps < 1 || repeats < 1) return 2;
+    if (!output || warmup < 1 || steps < 1 || repeats < 1) {
+        return 2;
+    }
     std::vector<Result> results;
     for (int count : {256, 5000}) {
         for (const std::string mode : {"unchanged", "one", "one-percent", "all", "shuffle", "churn", "static", "sleep", "cold"}) {
@@ -190,11 +231,15 @@ int main(int argc, char** argv)
     }
     for (int count : {256, 1024}) {
         Result result;
-        if (!MeasureWorld(count, warmup, steps, repeats, result)) return 1;
+        if (!MeasureWorld(count, warmup, steps, repeats, result)) {
+            return 1;
+        }
         results.push_back(std::move(result));
     }
     std::FILE* file = nullptr;
-    if (fopen_s(&file, output, "wb") != 0 || !file) return 2;
+    if (fopen_s(&file, output, "wb") != 0 || !file) {
+        return 2;
+    }
     std::fprintf(file, "{\"schema\":\"fbzz-broadphase-measure/1\",\"warmup\":%d,\"steps\":%d,\"repeats\":%d,\"results\":[", warmup, steps, repeats);
     for (std::size_t index = 0; index < results.size(); ++index) {
         const auto& result = results[index];

@@ -21,6 +21,7 @@
 #include <cwchar>
 #include <initializer_list>
 #include <iterator>
+#include <limits>
 #include <string_view>
 
 namespace fbzz::testkit {
@@ -37,7 +38,9 @@ int EnvInt(const char* name, int fallback)
 {
     char   buffer[32] = {};
     size_t length     = 0;
-    if (getenv_s(&length, buffer, sizeof(buffer), name) != 0 || length == 0) return fallback;
+    if (getenv_s(&length, buffer, sizeof(buffer), name) != 0 || length == 0) {
+        return fallback;
+    }
 
     const int value = std::atoi(buffer);
     return value > 0 ? value : fallback;
@@ -77,14 +80,23 @@ void ApplyFont(HANDLE output, HWND console, const ConsoleOptions& options)
 void ApplyBufferSize(HANDLE output, int bufferLines)
 {
     CONSOLE_SCREEN_BUFFER_INFO info = {};
-    if (!GetConsoleScreenBufferInfo(output, &info)) return;
+    if (!GetConsoleScreenBufferInfo(output, &info)) {
+        return;
+    }
 
-    /// @note バッファは常に窓以上でなければならず、窓を先に縮めないと順序次第でどちらの API も «引数が不正» で黙って失敗する。
+    // ウィンドウの両端を含む幅を計算し、現在の窓を縮める前に COORD へ渡せる範囲を確認する。
+    constexpr int FALLBACK_WIDTH = 120;
+    constexpr int MAX_BUFFER_DIMENSION = std::numeric_limits<SHORT>::max();
+    const int windowWidth = info.srWindow.Right - info.srWindow.Left + 1;
+    const int bufferWidth = windowWidth > 0 ? windowWidth : FALLBACK_WIDTH;
+    if (bufferWidth > MAX_BUFFER_DIMENSION || bufferLines <= 0 || bufferLines > MAX_BUFFER_DIMENSION) {
+        return;
+    }
+    const COORD size{static_cast<SHORT>(bufferWidth), static_cast<SHORT>(bufferLines)};
+
+    // バッファは常に窓以上でなければならず、窓を先に縮めないと順序次第でどちらの API も «引数が不正» で黙って失敗する。
     SMALL_RECT collapsed = {0, 0, 1, 1};
     SetConsoleWindowInfo(output, TRUE, &collapsed);
-
-    const SHORT width = info.srWindow.Right - info.srWindow.Left + 1;
-    COORD       size{width > 0 ? width : 120, static_cast<SHORT>(bufferLines)};
     SetConsoleScreenBufferSize(output, size);
 
     SMALL_RECT restored = info.srWindow;
@@ -99,7 +111,7 @@ bool IsSoleConsoleOwner()
 {
     DWORD       processIds[8] = {};
     const DWORD count = GetConsoleProcessList(processIds, static_cast<DWORD>(std::size(processIds)));
-    /// @note 0 は「コンソールに繋がっていない」= 呼び出し失敗。閉じる想定で扱う。
+    // 0 は「コンソールに繋がっていない」= 呼び出し失敗。閉じる想定で扱う。
     return count <= 1;
 }
 
@@ -110,8 +122,8 @@ void RedirectStandardStreams()
     freopen_s(&stream, "CONOUT$", "w", stderr);
     freopen_s(&stream, "CONIN$", "r", stdin);
 
-    /// @note gtest は printf 経由で書く。バッファに溜めたまま落ちると出力が消えるので、
-    ///       行単位で吐かせる。テストの実行時間に対して無視できるコスト。
+    // gtest は printf 経由で書く。バッファに溜めたまま落ちると出力が消えるので、
+    // 行単位で吐かせる。テストの実行時間に対して無視できるコスト。
     setvbuf(stdout, nullptr, _IOLBF, 4096);
 }
 
@@ -119,19 +131,31 @@ void RedirectStandardStreams()
 
 bool IsAutomatedRun(int argc, char** argv)
 {
-    /// @note CTest は起動する全テストにこれを立てる。
-    if (HasEnv("CTEST_INTERACTIVE_DEBUG_MODE")) return true;
-    if (HasEnv("CI")) return true;
-    if (HasEnv("FBZZ_TEST_NO_PAUSE")) return true;
+    // CTest は起動する全テストにこれを立てる。
+    if (HasEnv("CTEST_INTERACTIVE_DEBUG_MODE")) {
+        return true;
+    }
+    if (HasEnv("CI")) {
+        return true;
+    }
+    if (HasEnv("FBZZ_TEST_NO_PAUSE")) {
+        return true;
+    }
 
     for (int i = 1; i < argc; ++i) {
-        if (!argv[i]) continue;
+        if (!argv[i]) {
+            continue;
+        }
         const std::string_view argument{argv[i]};
 
-        /// @note gtest_discover_tests がビルド中に走らせる列挙。ここで止まるとビルドがハングする。
-        if (argument.starts_with("--gtest_list_tests")) return true;
-        /// @note レポート出力を要求している = 誰かが機械で読む実行。
-        if (argument.starts_with("--gtest_output")) return true;
+        // gtest_discover_tests がビルド中に走らせる列挙。ここで止まるとビルドがハングする。
+        if (argument.starts_with("--gtest_list_tests")) {
+            return true;
+        }
+        // レポート出力を要求している = 誰かが機械で読む実行。
+        if (argument.starts_with("--gtest_output")) {
+            return true;
+        }
     }
     return false;
 }
@@ -141,24 +165,28 @@ bool EnsureConsole(const ConsoleOptions& options)
     bool ownsConsole = false;
 
     if (GetConsoleWindow() == nullptr) {
-        /// @note 親のコンソール (VS の出力先や cmd) があればそれを借りる。
-        ///       無ければ自前で作る ─ このときだけ、終了と同時に窓が消える。
+        // 親のコンソール (VS の出力先や cmd) があればそれを借りる。
+        // 無ければ自前で作る ─ このときだけ、終了と同時に窓が消える。
         if (!AttachConsole(ATTACH_PARENT_PROCESS)) {
-            if (!AllocConsole()) return false;
+            if (!AllocConsole()) {
+                return false;
+            }
             ownsConsole = true;
         }
         RedirectStandardStreams();
     }
 
-    /// @note 自分で作った場合はもちろん、OS / デバッガが用意したコンソールでも
-    ///       繋がっているのが自分だけなら終了と同時に消える。どちらも入力待ちが要る。
+    // 自分で作った場合はもちろん、OS / デバッガが用意したコンソールでも
+    // 繋がっているのが自分だけなら終了と同時に消える。どちらも入力待ちが要る。
     const bool closesWithUs = ownsConsole || IsSoleConsoleOwner();
 
     const HANDLE output  = GetStdHandle(STD_OUTPUT_HANDLE);
     const HWND   console = GetConsoleWindow();
-    if (output == INVALID_HANDLE_VALUE) return closesWithUs;
+    if (output == INVALID_HANDLE_VALUE) {
+        return closesWithUs;
+    }
 
-    /// @note 日本語のテスト説明とファイル名を化けさせない。
+    // 日本語のテスト説明とファイル名を化けさせない。
     SetConsoleOutputCP(CP_UTF8);
     SetConsoleCP(CP_UTF8);
 
@@ -179,14 +207,14 @@ void WaitForKey(const char* message)
 
 void SuppressBlockingErrorDialogs()
 {
-    /// @note クリティカルエラーと «アプリケーションエラー» の窓を出さずに終了させる。
+    // クリティカルエラーと «アプリケーションエラー» の窓を出さずに終了させる。
     SetErrorMode(SEM_FAILCRITICALERRORS | SEM_NOGPFAULTERRORBOX | SEM_NOOPENFILEERRORBOX);
 
-    /// @note abort() の «Debug Error!» ダイアログを止め、メッセージだけ stderr へ残す。
+    // abort() の «Debug Error!» ダイアログを止め、メッセージだけ stderr へ残す。
     _set_abort_behavior(_WRITE_ABORT_MSG, _WRITE_ABORT_MSG | _CALL_REPORTFAULT);
 
 #ifdef _DEBUG
-    /// @note assert 失敗の報告先をダイアログから stderr へ切り替える。assert は _CRT_ASSERT だが、CRT の内部検査 (イテレーターの範囲外・二重解放) は _CRT_ERROR で上がるため両方指定する。
+    // assert 失敗の報告先をダイアログから stderr へ切り替える。assert は _CRT_ASSERT だが、CRT の内部検査 (イテレーターの範囲外・二重解放) は _CRT_ERROR で上がるため両方指定する。
     for (const int reportType : { _CRT_ASSERT, _CRT_ERROR, _CRT_WARN }) {
         _CrtSetReportMode(reportType, _CRTDBG_MODE_FILE);
         _CrtSetReportFile(reportType, _CRTDBG_FILE_STDERR);

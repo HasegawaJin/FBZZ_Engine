@@ -23,20 +23,28 @@ void PumpRenderWaitMessages()
 }
 int Measure(int argc, char** argv)
 {
-    if (argc != 6) return 2;
+    if (argc != 6) {
+        return 2;
+    }
     const bool queued = std::string(argv[1]) == "queued";
     const bool gpu = std::string(argv[2]) == "gpu";
     const int views = std::atoi(argv[3]), samples = std::atoi(argv[4]);
-    if (views < 0 || views > 64 || samples <= 0) return 2;
+    if (views < 0 || views > 64 || samples <= 0) {
+        return 2;
+    }
     const HRESULT com = CoInitializeEx(nullptr, COINIT_MULTITHREADED);
-    if (FAILED(com)) return 3;
+    if (FAILED(com)) {
+        return 3;
+    }
     HWND window = gpu ? CreateWindowExW(0, L"STATIC", L"Render synchronization measurement", WS_POPUP,
         0, 0, 32, 32, nullptr, nullptr, GetModuleHandleW(nullptr), nullptr) : nullptr;
     tests::ProfilerRecordingResult result;
     result.log = false;
     auto bundle = gpu ? renderer::EnableRenderThread(renderer::CreateRenderer(renderer::RendererBackend::DX12, window, 32, 32))
                       : tests::MakeProfilerRecordingProbe(result);
-    if (!bundle.renderer) return 4;
+    if (!bundle.renderer) {
+        return 4;
+    }
     auto& r = *bundle.renderer;
     r.SetRenderWaitPump(&PumpRenderWaitMessages);
     r.SetVSync(false); r.SetRenderWhenOccluded(true);
@@ -47,7 +55,9 @@ int Measure(int argc, char** argv)
     {
         renderer::ResourceManager resources(r);
         const auto output = gpu ? resources.CreateRenderTarget(32, 32) : renderer::ResourceHandle<renderer::RenderTargetTag>{};
-        if (gpu && !output.IsValid()) return 5;
+        if (gpu && !output.IsValid()) {
+            return 5;
+        }
         constexpr int WARMUP = 120;
         for (int frame = 0; frame < samples + WARMUP; ++frame) {
             resources.AdvanceFrame();
@@ -115,7 +125,9 @@ int Measure(int argc, char** argv)
     std::string graphicsDll = modulePath;
     std::replace(graphicsDll.begin(), graphicsDll.end(), '\\', '/');
     FILE* file = nullptr;
-    if (fopen_s(&file, argv[5], "wb") != 0 || !file) return 6;
+    if (fopen_s(&file, argv[5], "wb") != 0 || !file) {
+        return 6;
+    }
     std::fprintf(file, "{\"variant\":\"%s\",\"backend\":\"%s\",\"graphicsDll\":\"%s\",\"views\":%d,\"samples\":%d,\"warmup\":120,\"valid\":%s,\"pixelChecksum\":%.9f,\"profiledPasses\":%llu,\"recordMs\":[", argv[1], argv[2], graphicsDll.c_str(), views, samples, valid ? "true" : "false", pixelChecksum, static_cast<unsigned long long>(profiledPasses));
     for (size_t index = 0; index < recordMs.size(); ++index) std::fprintf(file, "%s%.9f", index ? "," : "", recordMs[index]);
     std::fprintf(file, "],\"completeMs\":[");

@@ -53,7 +53,9 @@ std::string Quote(std::string_view value)
 bool Parse(int argc, char** argv, Options& options)
 {
     for (int index = 1; index < argc; ++index) {
-        if (index + 1 == argc) return false;
+        if (index + 1 == argc) {
+            return false;
+        }
         const std::string_view key = argv[index++];
         const char* value = argv[index];
         if (key == "--family") options.family = value;
@@ -63,7 +65,9 @@ bool Parse(int argc, char** argv, Options& options)
         else if (key == "--samples" || key == "--warmup") {
             char* end = nullptr;
             const long number = std::strtol(value, &end, 10);
-            if (end == value || *end != 0 || number < (key == "--samples" ? 1 : 0) || number > 256) return false;
+            if (end == value || *end != 0 || number < (key == "--samples" ? 1 : 0) || number > 256) {
+                return false;
+            }
             (key == "--samples" ? options.samples : options.warmup) = static_cast<int>(number);
         } else return false;
     }
@@ -136,7 +140,9 @@ struct Result {
     void Observe(int iteration, const Options& options, double totalUs, double operationUs, double updateUs, uint64_t hash, uint64_t expectedHash, bool finished)
     {
         valid &= hash == expectedHash; complete &= finished;
-        if (iteration < options.warmup) return;
+        if (iteration < options.warmup) {
+            return;
+        }
         total.push_back(totalUs); operation.push_back(operationUs); update.push_back(updateUs);
         hashes.push_back(hash);
         checksum = (checksum ^ hash) * 1099511628211ULL;
@@ -197,7 +203,9 @@ bool RunTrees(const Options& options, std::ostream& output, size_t& executed)
     for (const size_t count : {size_t{1}, size_t{128}, size_t{4096}, size_t{8192}})
         for (const bool branched : {false, true}) for (const bool sparse : {false, true}) {
             const std::string name = std::string(sparse ? "sparse_" : "dense_") + (branched ? "branched_" : "repeated_") + std::to_string(count);
-            if (!Selected(options, "profiler_tree", name)) continue;
+            if (!Selected(options, "profiler_tree", name)) {
+                continue;
+            }
             auto snapshot = TreeInput(count, sparse, branched);
             const auto reference = editor::detail::BuildRecordedProfTree(snapshot);
             Result result(options.samples); result.expected.fill(TreeHash(reference));
@@ -218,7 +226,9 @@ bool RunRootSiblingRanks(const Options& options, std::ostream& output, size_t& e
 {
     constexpr std::string_view FAMILY = "hierarchy";
     const std::string name = "root_sibling_4096";
-    if (!Selected(options, FAMILY, name)) return true;
+    if (!Selected(options, FAMILY, name)) {
+        return true;
+    }
 
     constexpr size_t COUNT = 4096;
     constexpr size_t QUERIES = 32;
@@ -260,7 +270,9 @@ bool RunHierarchySync(const Options& options, std::ostream& output, size_t& exec
 {
     constexpr std::string_view FAMILY = "hierarchy";
     const std::string name = flushLeaf ? "flush_leaf_512" : "flush_subtree_4096";
-    if (!Selected(options, FAMILY, name)) return true;
+    if (!Selected(options, FAMILY, name)) {
+        return true;
+    }
 
     const size_t count = flushLeaf ? 512 : 4096;
     const size_t branches = flushLeaf ? 1 : 4;
@@ -294,7 +306,7 @@ bool RunHierarchySync(const Options& options, std::ostream& output, size_t& exec
         result.expected[state] = expected.value;
     }
 
-    /// @note ルートのローカル位置を交互に変更し、部分木または末端までの祖先が同期したことを計測外で照合する。
+    // ルートのローカル位置を交互に変更し、部分木または末端までの祖先が同期したことを計測外で照合する。
     scene::GameObject& root = *nodes.front();
     scene::GameObject& target = flushLeaf ? *nodes.back() : root;
     const math::Vector3 rootPosition = root.transform.position;
@@ -335,7 +347,9 @@ bool RunBoundsCase(const Options& options, std::ostream& output, const std::stri
     const char* suffix = raw ? (mutate ? "_direct_updates" : "_stationary")
         : (!expectBounds ? "_empty_mask" : (mutate ? "_edits_between_views" : "_eligible_views"));
     const std::string name = shape + suffix + (uncachedViews ? "_uncached" : "");
-    if (!Selected(options, family, name)) return true;
+    if (!Selected(options, family, name)) {
+        return true;
+    }
     asset::Model model; renderer::Mesh mesh; scene::Scene owner;
     mesh.boundsRadius = 1; mesh.boundsExtents = {1, 1, 1};
     auto skin = std::make_unique<renderer::Mesh>(); skin->boundsRadius = 1; skin->isSkinned = true;
@@ -388,7 +402,7 @@ bool RunBoundsCase(const Options& options, std::ostream& output, const std::stri
             const auto firstView = resolve();
             const auto secondView = resolve();
             const auto beforeEdit = Clock::now();
-            /// @note 同一フレームの 3 ビュー目だけが通知なしの入力変更を見る。
+            // 同一フレームの 3 ビュー目だけが通知なしの入力変更を見る。
             if (mutate) update(1 - state);
             const auto afterEdit = Clock::now();
             const auto thirdView = resolve();

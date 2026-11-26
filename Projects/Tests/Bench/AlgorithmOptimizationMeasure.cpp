@@ -75,7 +75,9 @@ Memory ReadMemory()
 {
     PROCESS_MEMORY_COUNTERS counters{};
     counters.cb = sizeof(counters);
-    if (!GetProcessMemoryInfo(GetCurrentProcess(), &counters, sizeof(counters))) return {};
+    if (!GetProcessMemoryInfo(GetCurrentProcess(), &counters, sizeof(counters))) {
+        return {};
+    }
     return {counters.WorkingSetSize, counters.PagefileUsage};
 }
 struct Result {
@@ -112,7 +114,9 @@ uint64_t GeometryHash(const renderer::RenderScene& value)
 }
 void Append(Result& result, int iteration, int warmup, double total, double first = 0, double later = 0)
 {
-    if (iteration < warmup) return;
+    if (iteration < warmup) {
+        return;
+    }
     result.total.push_back(total); result.first.push_back(first); result.later.push_back(later);
 }
 void Reserve(Result& result, int samples)
@@ -208,11 +212,15 @@ bool CanvasBefore(scene::Scene& scene, Probe&& probe)
     for (scene::EntityID id : scene.GetEntities<scene::UICanvas>()) {
         auto* canvas = scene.GetComponent<scene::UICanvas>(id);
         auto* root = scene.GetGameObject(id);
-        if (!canvas || !canvas->enabled || !root || !root->activeInHierarchy()) continue;
+        if (!canvas || !canvas->enabled || !root || !root->activeInHierarchy()) {
+            continue;
+        }
         std::vector<scene::GameObject*> pending{root};
         while (!pending.empty()) {
             auto* object = pending.back(); pending.pop_back();
-            if (probe(*object)) return false;
+            if (probe(*object)) {
+                return false;
+            }
             for (int index = 0; index < object->GetChildCount(); ++index)
                 if (auto* child = object->GetChild(index)) pending.push_back(child);
         }
@@ -308,12 +316,14 @@ Result GeometryCase(const std::string& name, int count, int warmup, int samples)
         Append(result, iteration, warmup, Us(begin, end), first, later);
         for (int view = 0; view < views; ++view) {
             const auto& value = held[view];
-            if (retireFirst && view == 0) continue;
+            if (retireFirst && view == 0) {
+                continue;
+            }
             result.valid = result.valid && value && value->Objects().size() == static_cast<size_t>(count + (name == "mixed2"));
             if (value) result.checksum += value->items.size();
         }
     }
-    /// @note Hashing is outside every measured interval; this supplements, rather than replaces, the lifetime/reentry regression suites.
+    // ハッシュは計測区間の外で求める。寿命と再入は専用の回帰テストで検証する。
     result.valid = result.valid && cache.rayTracingInputs == ray;
     result.checksum = 14695981039346656037ULL;
     for (int view = retireFirst ? 1 : 0; view < views; ++view)
@@ -436,7 +446,9 @@ Result WaterSplineCase(const std::string& scenario, int count, int warmup, int s
                 : scene::BuildWaterSplineSnapshot(shape, points, river ? 1u : 8u, transform, mesh, 5.0f, 100000.0f);
         }
         const auto end = Clock::now();
-        if (!result.valid) return result;
+        if (!result.valid) {
+            return result;
+        }
         Append(result, i, warmup, Us(begin, end) / repetitions);
         if (i >= warmup) result.checksum += WaterMeshHash(steady ? *water.splineSnapshot : mesh);
     }
@@ -449,11 +461,19 @@ Result WaterCacheCase(const std::string& scenario, int count, int warmup, int sa
     const bool grouped = scenario == "zone-steady" || scenario == "zone-change";
     const bool changing = scenario == "zone-change";
     const bool horizon = scenario == "horizon-links";
-    if ((!grouped && !horizon && scenario != "independent") || count < 2 || count > 512
-        || (horizon && count % 2 != 0)) {
+    // シナリオ名と生成する水面数を、シーンを組み立てる前に検証する。
+    const bool knownScenario = grouped || horizon || scenario == "independent";
+    if (!knownScenario || count < 2 || count > 512) {
         result.valid = false;
         return result;
     }
+
+    // 水平線リンクは海と川の組を作るため、水面数が偶数である必要がある。
+    if (horizon && count % 2 != 0) {
+        result.valid = false;
+        return result;
+    }
+
     testkit::ResourceTrackingRenderer device;
     renderer::ResourceManager resources(device);
     scene::Scene world;
@@ -548,10 +568,17 @@ Result WaterMediumCase(const std::string& scenario, int count, int warmup, int s
 {
     Result result;
     const bool duplicated = scenario == "duplicates";
-    if ((!duplicated && scenario != "unique") || count < 2 || count > 8192 || count % 2 != 0) {
+    if (!duplicated && scenario != "unique") {
         result.valid = false;
         return result;
     }
+
+    // 重複シナリオと同じ件数で比較できるよう、どちらも偶数の候補を要求する。
+    if (count < 2 || count > 8192 || count % 2 != 0) {
+        result.valid = false;
+        return result;
+    }
+
     testkit::ResourceTrackingRenderer device;
     renderer::ResourceManager resources(device);
     renderer::Camera camera;
@@ -821,11 +848,23 @@ Result LandscapeCase(LandscapePass pass, const std::string& scenario, uint32_t c
     const bool replace = scenario == "replace-static" || scenario == "replace-moving";
     const bool moving = scenario == "moving" || scenario == "replace-moving";
     const uint32_t width = static_cast<uint32_t>(std::sqrt(count));
-    if ((replace && !instanceShadow) || (!replace && !moving && scenario != "static")
-        || (!instanceShadow && !vegetation && !grass && count % width != 0)) {
+    // スナップショット差し替えはインスタンス影の計測だけで使う。
+    if (replace && !instanceShadow) {
         result.valid = false;
         return result;
     }
+    if (!replace && !moving && scenario != "static") {
+        result.valid = false;
+        return result;
+    }
+
+    // 地形パスではパッチを幅のそろった格子として生成する。
+    const bool usesTerrainGrid = !instanceShadow && !vegetation && !grass;
+    if (usesTerrainGrid && count % width != 0) {
+        result.valid = false;
+        return result;
+    }
+
     testkit::ResourceTrackingRenderer device;
     device.m_supportStructuredRegions = true;
     renderer::ResourceManager resources(device);
@@ -851,7 +890,7 @@ Result LandscapeCase(LandscapePass pass, const std::string& scenario, uint32_t c
     } else if (grass) AddLandscapeGrass(*snapshot, resources, count);
     else AddLandscapeTerrain(*snapshot, resources, count);
     std::shared_ptr<renderer::RenderScene> prior;
-    /// @note The same resource frame sees two immutable snapshots whose instance identities match.
+    // The same resource frame sees two immutable snapshots whose instance identities match.
     if (replace) {
         prior = std::make_shared<renderer::RenderScene>(*snapshot);
         for (auto& input : prior->instances) input.world.m[1][3] += 0.25f;
@@ -913,7 +952,9 @@ Result LandscapeCase(LandscapePass pass, const std::string& scenario, uint32_t c
         case LandscapePass::SHADOW: renderer::ExecuteShadowPass(ctx); break;
         }
         const auto end = Clock::now();
-        if (sample < 0) continue;
+        if (sample < 0) {
+            continue;
+        }
         Append(result, sample, 0, Us(begin, end));
         if (occlusion) {
             occlusionCuller.CopyGpuRows(occlusionRows);
@@ -987,14 +1028,18 @@ Result TerrainExtractionCase(const std::string& scenario, uint32_t count, int wa
         const auto begin = Clock::now();
         scene::ExtractRenderTerrains(ctx, output);
         const auto end = Clock::now();
-        if (sample < 0) continue;
+        if (sample < 0) {
+            continue;
+        }
         Append(result, sample, 0, Us(begin, end));
         result.valid = result.valid && output.terrains.size() == count;
         for (const auto& input : output.terrains) {
             result.valid = result.valid && input.patches.size() == 1;
             for (const auto& patch : input.patches) {
                 result.valid = result.valid && resources.Get(patch.vertexBuffer) && patch.occlusion;
-                if (!patch.occlusion) continue;
+                if (!patch.occlusion) {
+                    continue;
+                }
                 result.checksum = (result.checksum ^ patch.indexCountLOD[0]) * 1099511628211ULL;
                 for (float height : patch.occlusion->heights)
                     result.checksum = (result.checksum ^ std::bit_cast<uint32_t>(height)) * 1099511628211ULL;
@@ -1053,7 +1098,9 @@ Result RayGrassCase(const std::string& scenario, uint32_t count, int warmup, int
         const auto begin = Clock::now();
         scene::ExtractRayFiberSources(scene, resources, output, true);
         const auto end = Clock::now();
-        if (sample < 0) continue;
+        if (sample < 0) {
+            continue;
+        }
         Append(result, sample, 0, Us(begin, end));
         result.valid = result.valid && output.rayUnsupportedEffects.size() == (count + 1) / 2;
         result.recorded += output.rayUnsupportedEffects.size();
@@ -1092,10 +1139,18 @@ void Write(std::ostream& output, const Result& value)
 }
 int Measure(int argc, char** argv)
 {
-    if (argc != 9) return 2;
+    if (argc != 9) {
+        return 2;
+    }
     const std::string family = argv[1], scenario = argv[2], label = argv[3];
     const int count = std::atoi(argv[4]), warmup = std::atoi(argv[5]), samples = std::atoi(argv[6]);
-    if (count <= 0 || warmup < 0 || samples <= 0 || samples > 10000 || (label != "before" && label != "after")) return 2;
+    if (count <= 0 || warmup < 0 || samples <= 0 || samples > 10000) {
+        return 2;
+    }
+    if (label != "before" && label != "after") {
+        return 2;
+    }
+
     profiler::Profiler::RequestCaptureFilter({}); profiler::Profiler::SetEnabled(false);
     std::vector<Result> results;
     const auto begin = Clock::now();
@@ -1110,7 +1165,7 @@ int Measure(int argc, char** argv)
     else if (family == "bvh") results.push_back(BvhCase(scenario, count, warmup, samples));
     else if (family == "water-spline") results.push_back(WaterSplineCase(scenario, count, warmup, samples));
     else if (family == "water-cache") {
-        /// @note The CPU backend reports missing dynamic-texture support. Keep console I/O outside the measured function.
+        // The CPU backend reports missing dynamic-texture support. Keep console I/O outside the measured function.
         core::Logger::SetMinLevel(core::LogLevel::LOG_ERROR);
         results.push_back(WaterCacheCase(scenario, count, warmup, samples));
         core::Logger::SetMinLevel(core::LogLevel::INFO);
@@ -1131,7 +1186,9 @@ int Measure(int argc, char** argv)
     else return 2;
     const auto end = Clock::now();
     std::ofstream output(argv[7], std::ios::binary);
-    if (!output) return 2;
+    if (!output) {
+        return 2;
+    }
     output.precision(12);
     output << "{\"schema\":\"fbzz-algorithm-measure/1\",\"family\":\"" << family << "\",\"scenario\":\"" << scenario
         << "\",\"label\":\"" << label << "\",\"buildLabel\":\"" << argv[8]

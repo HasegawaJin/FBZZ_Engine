@@ -79,8 +79,9 @@ export function ParseRun(text: string, source: string): BenchRun {
         Fail(source, `JSON として読めない (${(error as Error).message})`);
     }
     const root = Expect<Record<string, unknown>>(source, data, isObject, 'ルート');
-    if (root.schema !== 'fbzz-bench/1' && root.schema !== 'fbzz-bench/2')
+    if (root.schema !== 'fbzz-bench/1' && root.schema !== 'fbzz-bench/2') {
         Fail(source, `未対応の schema: ${String(root.schema)}`);
+    }
 
     const env = Expect<Record<string, unknown>>(source, root.environment, isObject, 'environment');
     const settings = Expect<Record<string, unknown>>(source, root.settings, isObject, 'settings');
@@ -116,7 +117,7 @@ export function ParseRun(text: string, source: string): BenchRun {
                     `results[${index}].regenerationSamples`);
             if (Array.isArray(regenerationSamples) && !regenerationSamples.every(isNumber))
                 Fail(source, `results[${index}].regenerationSamples が数値でない`);
-            return {
+            const result: BenchResult = {
                 kind,
                 name: Expect<string>(source, r.name, isString, `results[${index}].name`),
                 phase: Expect<string>(source, r.phase, isString, `results[${index}].phase`),
@@ -127,22 +128,24 @@ export function ParseRun(text: string, source: string): BenchRun {
                     : Expect<number>(source, r.p95, isNumber, `results[${index}].p95`),
                 min: Expect<number>(source, r.min, isNumber, `results[${index}].min`),
                 max: Expect<number>(source, r.max, isNumber, `results[${index}].max`),
-                ...(r.allocationsPerIteration === undefined ? {} : {
-                    allocationsPerIteration: r.allocationsPerIteration === null ? null
-                        : Expect<number>(source, r.allocationsPerIteration, isNumber,
-                            `results[${index}].allocationsPerIteration`),
-                }),
-                ...(r.regenerationSamples === undefined ? {} : {
-                    regenerationSamples: regenerationSamples as number[] | null,
-                }),
-                ...(r.regenerationsPerIteration === undefined ? {} : {
-                    regenerationsPerIteration: r.regenerationsPerIteration === null ? null
-                        : Expect<number>(source, r.regenerationsPerIteration, isNumber,
-                            `results[${index}].regenerationsPerIteration`),
-                }),
-                ...(r.note === undefined ? {} : { note: Expect<string>(source, r.note, isString,
-                    `results[${index}].note`) }),
             };
+
+            // 旧形式で欠けている項目は省略し、計測不能として記録された null は残す。
+            if (r.allocationsPerIteration !== undefined) {
+                result.allocationsPerIteration = r.allocationsPerIteration === null ? null
+                    : Expect<number>(source, r.allocationsPerIteration, isNumber, `results[${index}].allocationsPerIteration`);
+            }
+            if (regenerationSamples !== undefined) {
+                result.regenerationSamples = regenerationSamples as number[] | null;
+            }
+            if (r.regenerationsPerIteration !== undefined) {
+                result.regenerationsPerIteration = r.regenerationsPerIteration === null ? null
+                    : Expect<number>(source, r.regenerationsPerIteration, isNumber, `results[${index}].regenerationsPerIteration`);
+            }
+            if (r.note !== undefined) {
+                result.note = Expect<string>(source, r.note, isString, `results[${index}].note`);
+            }
+            return result;
         }),
         source,
     };

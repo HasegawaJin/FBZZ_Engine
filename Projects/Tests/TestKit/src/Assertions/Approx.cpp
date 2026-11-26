@@ -24,8 +24,8 @@ namespace fbzz::testkit {
 namespace {
 
 struct ComponentDiff {
-    float       worst = 0.0f;
-    std::string name;
+    float worst = 0.0f; ///< 許容差と比べる最大の絶対差。非有限の成分があればその値。
+    std::string name; ///< 最大差または最初の非有限値を検出した成分の表示名。
 
     bool IsWithin(float tolerance) const
     {
@@ -38,7 +38,9 @@ ComponentDiff WorstOf(std::initializer_list<std::pair<const char*, float>> diffs
     ComponentDiff result;
     for (const auto& [name, diff] : diffs) {
         const float magnitude = std::fabs(diff);
-        if (!std::isfinite(magnitude)) return {magnitude, name};
+        if (!std::isfinite(magnitude)) {
+            return {magnitude, name};
+        }
         if (magnitude > result.worst) {
             result.worst = magnitude;
             result.name  = name;
@@ -52,12 +54,17 @@ ComponentDiff WorstOfMatrix(const float (&actual)[N][N], const float (&expected)
 {
     ComponentDiff result;
     for (int row = 0; row < N; ++row) {
-        for (int col = 0; col < N; ++col) {
-            const float magnitude = std::fabs(actual[row][col] - expected[row][col]);
-            if (!std::isfinite(magnitude) || magnitude > result.worst) {
+        for (int column = 0; column < N; ++column) {
+            const float magnitude = std::fabs(actual[row][column] - expected[row][column]);
+            const bool magnitudeIsFinite = std::isfinite(magnitude);
+
+            // 非有限値は許容差と比較できないため、最初に見つけた成分を失敗理由として返す。
+            if (!magnitudeIsFinite || magnitude > result.worst) {
                 result.worst = magnitude;
-                result.name  = "m[" + std::to_string(row) + "][" + std::to_string(col) + "]";
-                if (!std::isfinite(magnitude)) return result;
+                result.name = "m[" + std::to_string(row) + "][" + std::to_string(column) + "]";
+                if (!magnitudeIsFinite) {
+                    return result;
+                }
             }
         }
     }
@@ -85,7 +92,7 @@ std::string Describe(const T& value)
            << " (許容 " << toleranceExpr << " = " << tolerance << ")";
 }
 
-} /// @note namespace
+} // namespace
 
 ::testing::AssertionResult CompareVector2(const char* actualExpr,
                                           const char* expectedExpr,
@@ -96,7 +103,9 @@ std::string Describe(const T& value)
 {
     const ComponentDiff diff = WorstOf({{"x", actual.x - expected.x},
                                         {"y", actual.y - expected.y}});
-    if (diff.IsWithin(tolerance)) return ::testing::AssertionSuccess();
+    if (diff.IsWithin(tolerance)) {
+        return ::testing::AssertionSuccess();
+    }
     return Failed(actualExpr, expectedExpr, toleranceExpr,
                   Describe(actual), Describe(expected), diff, tolerance);
 }
@@ -111,7 +120,9 @@ std::string Describe(const T& value)
     const ComponentDiff diff = WorstOf({{"x", actual.x - expected.x},
                                         {"y", actual.y - expected.y},
                                         {"z", actual.z - expected.z}});
-    if (diff.IsWithin(tolerance)) return ::testing::AssertionSuccess();
+    if (diff.IsWithin(tolerance)) {
+        return ::testing::AssertionSuccess();
+    }
     return Failed(actualExpr, expectedExpr, toleranceExpr,
                   Describe(actual), Describe(expected), diff, tolerance);
 }
@@ -127,7 +138,9 @@ std::string Describe(const T& value)
                                         {"y", actual.y - expected.y},
                                         {"z", actual.z - expected.z},
                                         {"w", actual.w - expected.w}});
-    if (diff.IsWithin(tolerance)) return ::testing::AssertionSuccess();
+    if (diff.IsWithin(tolerance)) {
+        return ::testing::AssertionSuccess();
+    }
     return Failed(actualExpr, expectedExpr, toleranceExpr,
                   Describe(actual), Describe(expected), diff, tolerance);
 }
@@ -139,7 +152,7 @@ std::string Describe(const T& value)
                                              const math::Quaternion& expected,
                                              float tolerance)
 {
-    /// @note 符号を揃える。q と -q は同じ回転なので、成分を直に引くと «正しいのに落ちる»。
+    // q と -q は同じ回転を表すため、成分差を求める前に符号を揃える。
     const float sign = (math::Quaternion::Dot(actual, expected) < 0.0f) ? -1.0f : 1.0f;
     const math::Quaternion aligned{expected.x * sign, expected.y * sign,
                                    expected.z * sign, expected.w * sign};
@@ -148,7 +161,9 @@ std::string Describe(const T& value)
                                         {"y", actual.y - aligned.y},
                                         {"z", actual.z - aligned.z},
                                         {"w", actual.w - aligned.w}});
-    if (diff.IsWithin(tolerance)) return ::testing::AssertionSuccess();
+    if (diff.IsWithin(tolerance)) {
+        return ::testing::AssertionSuccess();
+    }
 
     const float clamped  = std::clamp(std::fabs(math::Quaternion::Dot(actual, expected)), 0.0f, 1.0f);
     const float angleDeg = 2.0f * std::acos(clamped) * 57.2957795f;
@@ -165,7 +180,9 @@ std::string Describe(const T& value)
                                           float tolerance)
 {
     const ComponentDiff diff = WorstOfMatrix(actual.m, expected.m);
-    if (diff.IsWithin(tolerance)) return ::testing::AssertionSuccess();
+    if (diff.IsWithin(tolerance)) {
+        return ::testing::AssertionSuccess();
+    }
     return Failed(actualExpr, expectedExpr, toleranceExpr,
                   Describe(actual), Describe(expected), diff, tolerance);
 }
@@ -178,7 +195,9 @@ std::string Describe(const T& value)
                                           float tolerance)
 {
     const ComponentDiff diff = WorstOfMatrix(actual.m, expected.m);
-    if (diff.IsWithin(tolerance)) return ::testing::AssertionSuccess();
+    if (diff.IsWithin(tolerance)) {
+        return ::testing::AssertionSuccess();
+    }
     return Failed(actualExpr, expectedExpr, toleranceExpr,
                   Describe(actual), Describe(expected), diff, tolerance);
 }
@@ -189,8 +208,9 @@ std::string Describe(const T& value)
                                            float tolerance)
 {
     const float length = actual.Length();
-    if (std::isfinite(length) && std::isfinite(tolerance) && std::fabs(length - 1.0f) <= tolerance)
+    if (std::isfinite(length) && std::isfinite(tolerance) && std::fabs(length - 1.0f) <= tolerance) {
         return ::testing::AssertionSuccess();
+    }
 
     return ::testing::AssertionFailure()
            << "\n  " << actualExpr << " = " << Describe(actual)
@@ -198,4 +218,4 @@ std::string Describe(const T& value)
            << tolerance << ")";
 }
 
-} /// @note namespace fbzz::testkit
+} // namespace fbzz::testkit

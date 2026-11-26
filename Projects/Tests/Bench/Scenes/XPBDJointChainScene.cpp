@@ -93,16 +93,20 @@ public:
     void DetectAnomalies(AnomalyLog& log) override
     {
         math::Vector3 previous = m_root ? m_root->GetPosition() : math::Vector3::ZERO;
-        if (!log.CheckFinite("根元", previous, 1.0e4f)) return;
+        if (!log.CheckFinite("根元", previous, 1.0e4f)) {
+            return;
+        }
 
         for (size_t i = 0; i < m_bones.size(); ++i) {
             const math::Vector3 position = m_bones[i]->GetPosition();
 
             char label[32];
             std::snprintf(label, sizeof(label), "骨 %zu の位置", i);
-            if (!log.CheckFinite(label, position, 1.0e4f)) return;
+            if (!log.CheckFinite(label, position, 1.0e4f)) {
+                return;
+            }
 
-            /// @note ソケットは «長さ» の拘束そのもの。伸びたらそこが解けていない。
+            // ソケットは «長さ» の拘束そのもの。伸びたらそこが解けていない。
             const float span  = (position - previous).Length();
             const float error = std::fabs(span - kBoneSpan);
             log.ReportIf(error > kBoneSpan * kSpanTolerance, Severity::Error,
@@ -112,9 +116,11 @@ public:
             previous = position;
         }
 
-        if (!m_limitsEnabled) return;
+        if (!m_limitsEnabled) {
+            return;
+        }
 
-        /// @note 有効にした可動域を越えているなら、制限そのものが解けていない。
+        // 有効にした可動域を越えているなら、制限そのものが解けていない。
         const float limit = m_swingLimitDeg / kRadToDeg + kLimitSlack;
         for (size_t i = 0; i < m_joints.size(); ++i) {
             const float swing = std::fabs(m_joints[i]->GetSwingAngleZ());

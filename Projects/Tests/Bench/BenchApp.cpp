@@ -60,21 +60,21 @@ ImFont* LoadJapaneseFont(ImGuiIO& io)
         "C:/Windows/Fonts/msgothic.ttc",
     };
 
-    /// @note BuildRanges の結果はアトラス生成 (最初の NewFrame) まで生きている必要がある。
+    // BuildRanges の結果はアトラス生成 (最初の NewFrame) まで生きている必要がある。
     static ImVector<ImWchar> ranges;
     if (ranges.empty()) {
         ImFontGlyphRangesBuilder builder;
         builder.AddRanges(io.Fonts->GetGlyphRangesJapanese());
-        /// @note « » を含む Latin-1
+        // « » を含む Latin-1
         builder.AddRanges(io.Fonts->GetGlyphRangesDefault());
         static const ImWchar kSymbols[] = {
-            /// @note 約物 (─ に使う 二重ダッシュ・…)
+            // 約物 (─ に使う 二重ダッシュ・…)
             0x2000, 0x206F,
-            /// @note 矢印
+            // 矢印
             0x2190, 0x21FF,
-            /// @note 罫線 (─)
+            // 罫線 (─)
             0x2500, 0x257F,
-            /// @note 幾何形
+            // 幾何形
             0x25A0, 0x25FF,
             0,
         };
@@ -87,9 +87,11 @@ ImFont* LoadJapaneseFont(ImGuiIO& io)
     cfg.OversampleV = 2;
 
     for (const char* path : kCandidates) {
-        /// @note 存在確認してから渡す。ImGui は読めないファイルで IM_ASSERT する。
+        // 存在確認してから渡す。ImGui は読めないファイルで IM_ASSERT する。
         std::error_code ec;
-        if (!std::filesystem::exists(path, ec)) continue;
+        if (!std::filesystem::exists(path, ec)) {
+            continue;
+        }
         if (ImFont* font = io.Fonts->AddFontFromFileTTF(path, kFontSize, &cfg, ranges.Data))
             return font;
     }
@@ -103,18 +105,18 @@ bool BenchApp::OnInit()
 
     m_imguiContext = ImGui::CreateContext();
     ImGuiIO& io    = ImGui::GetIO();
-    /// @note 配置を保存しない。毎回同じ見え方で開く。
+    // 配置を保存しない。毎回同じ見え方で開く。
     io.IniFilename = nullptr;
     ImGui::StyleColorsDark();
 
     if (ImFont* font = LoadJapaneseFont(io)) io.FontDefault = font;
     else                                     io.Fonts->AddFontDefault();
 
-    /// @note フォントアトラスはこの中で GPU テクスチャになる。フォントを足すのは必ずこの前。
+    // フォントアトラスはこの中で GPU テクスチャになる。フォントを足すのは必ずこの前。
     core::Application::Get().GetImGuiRenderer().ImGuiInit(
         core::Application::Get().GetWindow().GetHandle());
 
-    /// @note ImGui は Win32 のメッセージを自分では拾わない。ここを繋がないとマウスもキーも届かず «描画はされるがボタンが押せない» 画面になる。ビューポートのパン・ズームも同じ経路なので丸ごと死ぬ。
+    // ImGui は Win32 のメッセージを自分では拾わない。ここを繋がないとマウスもキーも届かず «描画はされるがボタンが押せない» 画面になる。ビューポートのパン・ズームも同じ経路なので丸ごと死ぬ。
     core::Application::Get().GetWindow().SetWndProcHook(
         [](HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam) -> bool {
             return ImGui_ImplWin32_WndProcHandler(hwnd, msg, wparam, lparam) != 0;
@@ -129,7 +131,9 @@ void BenchApp::OnUpdate(float dt)
     m_frameMsAvg += (dt * 1000.0f - m_frameMsAvg) * kSmoothing;
 
     m_stepsThisFrame = 0;
-    if (m_scenes.empty()) return;
+    if (m_scenes.empty()) {
+        return;
+    }
     BenchScene& scene = *m_scenes[static_cast<size_t>(m_selected)];
 
     const auto begin = std::chrono::steady_clock::now();
@@ -146,8 +150,8 @@ void BenchApp::OnUpdate(float dt)
             m_accumulator -= kFixedStep;
             ++m_stepsThisFrame;
         }
-        /// @note 消化しきれなかったぶんは捨てる。持ち越すと次のフレームも上限に張り付き、
-        /// @note 一度遅れたら二度と追いつけない。
+        // 消化しきれなかったぶんは捨てる。持ち越すと次のフレームも上限に張り付き、
+        // 一度遅れたら二度と追いつけない。
         if (m_accumulator >= kFixedStep - kStepSnap) {
             m_accumulator = 0.0f;
             ++m_droppedFrames;
@@ -162,10 +166,12 @@ void BenchApp::OnUpdate(float dt)
 /// @note DrawControls はスライダーを触った時点で場面を組み直す。描画の途中で検査すると «設定前後が混ざった状態» を見ることになり、触った瞬間だけ偽の異常が出る。
 void BenchApp::OnLateUpdate(float)
 {
-    if (m_scenes.empty()) return;
+    if (m_scenes.empty()) {
+        return;
+    }
     BenchScene& scene = *m_scenes[static_cast<size_t>(m_selected)];
 
-    /// @note 検査も描画も Present が作った «このフレームの最終状態» だけを見る。
+    // 検査も描画も Present が作った «このフレームの最終状態» だけを見る。
     scene.Present();
 
     m_anomalies.BeginFrame();
@@ -194,11 +200,11 @@ void BenchApp::OnRender()
 
 void BenchApp::OnShutdown()
 {
-    /// @note 場面が持つ剛体より先にソルバを畳ませる。破棄順は各場面のデストラクタが持つ。
+    // 場面が持つ剛体より先にソルバを畳ませる。破棄順は各場面のデストラクタが持つ。
     m_scenes.clear();
 
-    /// @note ImGui を畳む前にフックを外す。残したまま context を壊すと、終了処理中に来た
-    /// @note 1 通のメッセージが破棄済みの context を触りに行く。
+    // ImGui を畳む前にフックを外す。残したまま context を壊すと、終了処理中に来た
+    // 1 通のメッセージが破棄済みの context を触りに行く。
     core::Application::Get().GetWindow().SetWndProcHook(nullptr);
 
     core::Application::Get().GetImGuiRenderer().ImGuiShutdown();
@@ -210,12 +216,14 @@ void BenchApp::OnShutdown()
 
 void BenchApp::SelectScene(int index)
 {
-    if (index < 0 || index >= static_cast<int>(m_scenes.size())) return;
+    if (index < 0 || index >= static_cast<int>(m_scenes.size())) {
+        return;
+    }
 
     m_selected       = index;
     m_accumulator    = 0.0f;
     m_droppedFrames  = 0;
-    /// @note 前の場面の履歴を持ち越さない。«この場面で何回出たか» が読めなくなる。
+    // 前の場面の履歴を持ち越さない。«この場面で何回出たか» が読めなくなる。
     m_anomalies.BeginFrame();
     m_anomalies.ClearHistory();
 
@@ -293,7 +301,7 @@ void BenchApp::DrawPerformance()
     const ImVec4 fpsColor = fps >= 50.0f ? kOkColor : (fps >= 25.0f ? kWarnColor : kErrorColor);
     ImGui::TextColored(fpsColor, "%.0f FPS  (%.2f ms/frame)", fps, m_frameMsAvg);
 
-    /// @note 場面の負荷と «描画も含めた» 負荷の差が、物理以外に掛かっている分。
+    // 場面の負荷と «描画も含めた» 負荷の差が、物理以外に掛かっている分。
     ImGui::Text("物理 %.2f ms / %d 刻み", m_simMsAvg, m_stepsThisFrame);
 
     if (m_droppedFrames > 0) {
@@ -323,7 +331,7 @@ void BenchApp::DrawAnomalies()
             ImGui::TextDisabled("ほか %d 件", m_anomalies.Suppressed());
     }
 
-    /// @note 1 フレームだけ出て消えた異常はここにしか残らない。放置して回している間の分も拾う。
+    // 1 フレームだけ出て消えた異常はここにしか残らない。放置して回している間の分も拾う。
     if (m_anomalies.Frames() > 0) {
         ImGui::PushTextWrapPos(0.0f);
         ImGui::TextDisabled("この場面で %d フレーム検出 / 最初: %s", m_anomalies.Frames(),

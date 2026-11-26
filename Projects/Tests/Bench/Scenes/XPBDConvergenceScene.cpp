@@ -111,7 +111,9 @@ public:
 
             char label[48];
             std::snprintf(label, sizeof(label), "substep %d の位置", column.substeps);
-            if (!log.CheckFinite(label, position, 1.0e3f)) return;
+            if (!log.CheckFinite(label, position, 1.0e3f)) {
+                return;
+            }
 
             log.ReportIf(position.y < kRadius - kPenetration, Severity::Error,
                          "substep %d の球が床へ %.4f m 食い込んでいる",
@@ -121,8 +123,10 @@ public:
             highest = (std::max)(highest, position.y);
         }
 
-        /// @note 落ち着くまでは差が出てよい。固定するのは «静止位置» だけ。
-        if (m_elapsed < kSettleSeconds || !Settled()) return;
+        // 落ち着くまでは差が出てよい。固定するのは «静止位置» だけ。
+        if (m_elapsed < kSettleSeconds || !Settled()) {
+            return;
+        }
 
         log.ReportIf(highest - lowest > kSettleSpread, Severity::Error,
                      "静止したのに高さが substep 数で %.5f m ばらついている", highest - lowest);
@@ -167,7 +171,7 @@ public:
         for (const Column& column : m_columns) {
             const math::Vector3 position = column.body->GetPosition();
             view.DrawCircle(position, kRadius, colors::kBody, true);
-            /// @note 静止すべき高さ。球の底がここに触れていれば正しい。
+            // 静止すべき高さ。球の底がここに触れていれば正しい。
             view.DrawLine({position.x - 0.5f, kRadius, 0.0f}, {position.x + 0.5f, kRadius, 0.0f},
                           colors::kNormal, 1.0f);
 
@@ -188,7 +192,9 @@ private:
     bool Settled() const
     {
         for (const Column& column : m_columns)
-            if (column.body->GetVelocity().Length() > kSettleSpeed) return false;
+            if (column.body->GetVelocity().Length() > kSettleSpeed) {
+                return false;
+            }
         return true;
     }
 

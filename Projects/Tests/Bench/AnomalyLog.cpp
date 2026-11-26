@@ -17,10 +17,12 @@ void AnomalyLog::BeginFrame()
 
 void AnomalyLog::EndFrame()
 {
-    if (m_current.empty()) return;
+    if (m_current.empty()) {
+        return;
+    }
 
     ++m_frames;
-    /// @note 最初の 1 件だけ残す。以降はたいてい最初の異常の帰結で、原因から遠ざかる。
+    // 最初の 1 件だけ残す。以降はたいてい最初の異常の帰結で、原因から遠ざかる。
     if (m_firstSeen.empty()) m_firstSeen = m_current.front().message;
 }
 
@@ -34,7 +36,9 @@ void AnomalyLog::Report(Severity severity, const char* format, ...)
 
 void AnomalyLog::ReportIf(bool broken, Severity severity, const char* format, ...)
 {
-    if (!broken) return;
+    if (!broken) {
+        return;
+    }
 
     va_list args;
     va_start(args, format);

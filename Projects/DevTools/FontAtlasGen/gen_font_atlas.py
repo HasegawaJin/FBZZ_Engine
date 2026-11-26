@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
-# FBZZ Engine
-# Projects/DevTools/FontAtlasGen/gen_font_atlas.py
-# TTF フォントを RGBA PNG アトラスと .fnt メタデータファイルに変換する。
+# @file    gen_font_atlas.py
+# @brief   TTF をグレースケールの PNG アトラスとグリフ配置の .fnt に変換する。
+# @author  Hasegawa Jin
+# @date    2026-06-02
 #
 # 必要ライブラリ: pip install Pillow
 #
@@ -36,6 +37,8 @@ except ImportError:
 FIRST_CHAR = 0x20
 LAST_CHAR  = 0x7E
 CHARS = [chr(c) for c in range(FIRST_CHAR, LAST_CHAR + 1)]
+PADDING_PIXELS = 1
+ATLAS_COLUMNS = 10
 
 
 def next_pow2(n: int) -> int:
@@ -62,9 +65,7 @@ def generate_atlas(ttf_path: str, size: int) -> tuple:
     ascent, descent = font.getmetrics()
     line_height = ascent + descent   # セル高さ = 行高さ
 
-    # 全グリフの最大 advance を測定してセル幅を決める。
-    # WHY: セル幅を揃えることで UV 計算が単純になり、行全体を一定ピッチで並べられる。
-    #      グリフの実ピクセルはセル内に収まる; 余白は透明なのでレンダリングに影響しない。
+    # 最も幅の広いグリフに揃えると、文字コードから一定間隔でセルを引ける。
     max_advance = 1
     advances = {}
     for c in CHARS:
@@ -73,45 +74,40 @@ def generate_atlas(ttf_path: str, size: int) -> tuple:
         if adv > max_advance:
             max_advance = adv
 
-    cell_w = int(math.ceil(max_advance)) + 2   # +2 px パディング
-    cell_h = line_height + 2                   # +2 px パディング
+    glyph_width = int(math.ceil(max_advance))
+    cell_w = glyph_width + 2 * PADDING_PIXELS
+    cell_h = line_height + 2 * PADDING_PIXELS
+    rows = math.ceil(len(CHARS) / ATLAS_COLUMNS)
 
-    # 10 列固定でアトラスを並べる (95 文字 → 10 列 × 10 行)
-    cols = 10
-    rows = math.ceil(len(CHARS) / cols)
-
-    atlas_w = next_pow2(cols * cell_w)
+    atlas_w = next_pow2(ATLAS_COLUMNS * cell_w)
     atlas_h = next_pow2(rows * cell_h)
 
-    # グレースケールアトラスを生成する。
-    # WHY: RGBA で保存すると WIC (DirectXTex) が alpha チャンネルを失うことがある。
-    #      グレースケール "L" モードにすることで、グリフの coverage が R チャンネルに入り
-    #      UIText.hlsl が .r で読み取るパスと一致する。アンチエイリアス情報も保持される。
+    # UIText.hlsl が R チャンネルを読むため、文字の被覆率をグレースケールで保存する。
     atlas = Image.new("L", (atlas_w, atlas_h), 0)
     draw  = ImageDraw.Draw(atlas)
 
     glyphs = {}
     for idx, c in enumerate(CHARS):
-        col = idx % cols
-        row = idx // cols
-        ox  = col * cell_w + 1   # 1 px パディング
-        oy  = row * cell_h + 1   # 1 px パディング
+        col = idx % ATLAS_COLUMNS
+        row = idx // ATLAS_COLUMNS
+        ox = col * cell_w + PADDING_PIXELS
+        oy = row * cell_h + PADDING_PIXELS
 
         # ベースラインを oy + ascent に合わせて描画する (anchor="ls" = left, baseline)
         draw.text((ox, oy + ascent), c, font=font, fill=255, anchor="ls")
 
-        # セル全体を UV 範囲とする。透明部分はシェーダーで破棄される。
+        # 外周の余白を除いたグリフ領域だけを UV に変換する。
         u0 = ox / atlas_w
         v0 = oy / atlas_h
-        u1 = (ox + cell_w - 2) / atlas_w
-        v1 = (oy + cell_h - 2) / atlas_h
+        u1 = (ox + glyph_width) / atlas_w
+        v1 = (oy + line_height) / atlas_h
 
         glyphs[c] = (u0, v0, u1, v1, advances[c])
 
     meta = {
         "line_height": line_height,
         "base":        ascent,
-        "cell_w":      cell_w - 2,
+        "cell_w":      glyph_width,
         "glyphs":      glyphs,
     }
     return atlas, meta

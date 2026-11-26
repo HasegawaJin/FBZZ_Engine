@@ -32,7 +32,9 @@ struct Options {
 bool Parse(int argc, char** argv, Options& options)
 {
     for (int index = 1; index < argc; ++index) {
-        if (index + 1 == argc) return false;
+        if (index + 1 == argc) {
+            return false;
+        }
         const std::string_view key = argv[index++];
         const char* value = argv[index];
         if (key == "--case") options.selected = value;
@@ -41,7 +43,9 @@ bool Parse(int argc, char** argv, Options& options)
         else if (key == "--samples" || key == "--warmup") {
             char* end = nullptr;
             const long number = std::strtol(value, &end, 10);
-            if (end == value || *end != 0 || number < (key == "--samples" ? 1 : 0) || number > 256) return false;
+            if (end == value || *end != 0 || number < (key == "--samples" ? 1 : 0) || number > 256) {
+                return false;
+            }
             (key == "--samples" ? options.samples : options.warmup) = static_cast<int>(number);
         } else return false;
     }
@@ -204,7 +208,9 @@ void WriteDigest(std::ostream& output, const char* name, const Digest& digest)
 bool Run(const Options& options, std::ostream& output, size_t objectCount, size_t slots, size_t& executed)
 {
     const std::string name = "mixed_n" + std::to_string(objectCount) + "_m" + std::to_string(slots);
-    if (options.selected != "all" && options.selected != name) return true;
+    if (options.selected != "all" && options.selected != name) {
+        return true;
+    }
     const Input input(objectCount, slots);
     const size_t resultCount = objectCount * slots;
     std::vector<demand::Result> legacy(resultCount), prepared(resultCount);
@@ -235,7 +241,9 @@ bool Run(const Options& options, std::ostream& output, size_t objectCount, size_
         const size_t currentMismatches = Mismatches(legacy, prepared);
         mismatches += currentMismatches;
         valid &= currentMismatches == 0 && legacyDigest == expected && preparedDigest == expected;
-        if (iteration < options.warmup) continue;
+        if (iteration < options.warmup) {
+            continue;
+        }
         legacyUs.push_back(oldTime); preparedUs.push_back(newTime); legacyFirst.push_back(oldFirst ? 1 : 0);
     }
     output << "{\"kind\":\"case\",\"case\":" << Quote(name) << ",\"label\":" << Quote(options.label)

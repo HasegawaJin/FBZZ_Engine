@@ -21,15 +21,15 @@
 
 int main(int argc, char** argv)
 {
-    /// @note --measure は窓も GPU も使わない。EnsureConsole は標準出力を新しいコンソールへ繋ぎ替えるため、呼ぶとパイプ先へ結果が届かない。
+    // --measure は窓も GPU も使わない。EnsureConsole は標準出力を新しいコンソールへ繋ぎ替えるため、呼ぶとパイプ先へ結果が届かない。
     fbzz::bench::MeasureOptions measure;
     if (fbzz::bench::ParseMeasureOptions(argc, argv, measure)) {
         fbzz::testkit::SuppressBlockingErrorDialogs();
         return fbzz::bench::RunMeasure(measure);
     }
 
-    /// @note 起動に失敗したときのログを読ませる。コンソールが無いまま落ちると
-    ///       «何も起きなかった» としか見えない。
+    // 起動に失敗したときのログを読ませる。コンソールが無いまま落ちると
+    // «何も起きなかった» としか見えない。
     const bool ownsConsole = fbzz::testkit::EnsureConsole();
 
     auto& app = fbzz::core::Application::Get();
